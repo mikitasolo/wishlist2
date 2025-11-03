@@ -4,6 +4,11 @@ A beautiful, modern wishlist application built with Next.js, React, TypeScript, 
 
 ## ✨ Features
 
+- 🔐 **Three User Modes:**
+  - **Public**: View-only access (no sign-in required)
+  - **Authorized**: Book/unbook items with magic link authentication
+  - **Admin**: Full CRUD operations + user management
+  
 - 🎁 View wishlist items with beautiful card layout
 - 🖼️ Display items with images, prices, and product links
 - 📌 Book items (mark as reserved for gift-giving)
@@ -12,15 +17,19 @@ A beautiful, modern wishlist application built with Next.js, React, TypeScript, 
 - 📱 Fully responsive design
 - 🔍 Filter items by status (All, Available, Booked, Completed)
 - 📊 Real-time statistics dashboard
-- 🔒 Read-only for friends (items managed manually or via admin interface)
+- 🔒 Invitation-only authentication system
+- ✉️ Magic link sign-in (no passwords needed)
+- 👥 User management for admins
+- 📧 Email notifications via Brevo
 
 ## 🛠️ Tech Stack
 
-- **Frontend**: Next.js 14, React 18, TypeScript
+- **Frontend**: Next.js 14 (App Router), React 18, TypeScript
+- **Authentication**: NextAuth.js with magic link
+- **Email**: Brevo (Sendinblue) API
 - **Styling**: Tailwind CSS
 - **Database**: MongoDB with Mongoose
 - **Deployment**: Vercel
-- **Image Optimization**: Next.js Image component
 
 ## 📋 Prerequisites
 
@@ -28,6 +37,7 @@ Before you begin, ensure you have:
 
 - Node.js 18+ installed
 - A MongoDB database (MongoDB Atlas recommended)
+- A Brevo (Sendinblue) account for sending emails
 - npm or yarn package manager
 
 ## 🚀 Local Development Setup
@@ -45,170 +55,230 @@ cd wishlist2
 npm install
 ```
 
-### 3. Set up environment variables
+### 3. Set up MongoDB
+
+1. Go to [MongoDB Atlas](https://www.mongodb.com/cloud/atlas)
+2. Create a cluster (free tier available)
+3. Create a database user
+4. Whitelist your IP address
+5. Get your connection string
+
+### 4. Set up Brevo (for magic link emails)
+
+1. Sign up at [Brevo](https://www.brevo.com/)
+2. Go to [API Settings](https://account.brevo.com/advanced/api)
+3. Generate an API key
+4. Verify your sender email address in Brevo
+
+### 5. Configure environment variables
 
 Create a `.env.local` file in the root directory:
 
 ```bash
-MONGODB_URI=your_mongodb_connection_string_here
+# MongoDB
+MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/wishlist?retryWrites=true&w=majority
+
+# NextAuth
+NEXTAUTH_SECRET=your_secret_here  # Generate with: openssl rand -base64 32
+NEXTAUTH_URL=http://localhost:3000
+
+# Brevo Email
+BREVO_API_KEY=your_brevo_api_key_here
+EMAIL_FROM=noreply@yourdomain.com  # Must be verified in Brevo
 ```
 
-**To get your MongoDB connection string:**
-
-1. Go to [MongoDB Atlas](https://www.mongodb.com/cloud/atlas)
-2. Sign in or create an account
-3. Create a cluster (free tier available)
-4. Click "Connect" on your cluster
-5. Choose "Connect your application"
-6. Copy the connection string
-7. Replace `<password>` with your database user password
-8. Replace `<database>` with your database name (e.g., `wishlist`)
-
-Example:
-```
-MONGODB_URI=mongodb+srv://username:password@cluster0.xxxxx.mongodb.net/wishlist?retryWrites=true&w=majority
+**To generate NEXTAUTH_SECRET:**
+```bash
+openssl rand -base64 32
 ```
 
-### 4. Run the development server
+### 6. Create your admin user
+
+Run the seeding script to create your admin account:
+
+```bash
+npm run seed-admin
+```
+
+Enter your email address when prompted. This will create an admin user in the database.
+
+### 7. Run the development server
 
 ```bash
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) in your browser to see the application.
+Open [http://localhost:3000](http://localhost:3000) to see the application.
+
+### 8. Sign in as admin
+
+1. Go to [http://localhost:3000/auth/signin](http://localhost:3000/auth/signin)
+2. Enter your admin email
+3. Check your email for the magic link
+4. Click the link to sign in
 
 ## 🌐 Deploying to Vercel
 
-### Option 1: Deploy via Vercel Dashboard
+### 1. Push your code to GitHub
 
-1. Push your code to GitHub, GitLab, or Bitbucket
-2. Go to [Vercel](https://vercel.com)
-3. Click "New Project"
-4. Import your repository
-5. Vercel will automatically detect Next.js
-6. Add your environment variable:
-   - Key: `MONGODB_URI`
-   - Value: Your MongoDB connection string
-7. Click "Deploy"
-
-### Option 2: Deploy via Vercel CLI
-
-1. Install Vercel CLI:
 ```bash
-npm i -g vercel
+git add .
+git commit -m "Initial commit"
+git push origin main
 ```
 
-2. Login to Vercel:
+### 2. Deploy to Vercel
+
+1. Go to [Vercel](https://vercel.com) and sign in
+2. Click "New Project"
+3. Import your GitHub repository
+4. Configure environment variables (see below)
+5. Deploy!
+
+### 3. Set up environment variables in Vercel
+
+In your Vercel project settings → Environment Variables, add:
+
+| Variable | Value | Environment |
+|----------|-------|-------------|
+| `MONGODB_URI` | Your MongoDB connection string | Production, Preview, Development |
+| `NEXTAUTH_SECRET` | Your generated secret | Production, Preview, Development |
+| `NEXTAUTH_URL` | Your production URL (e.g., `https://wishlist.vercel.app`) | Production |
+| `NEXTAUTH_URL` | Auto-generated preview URL | Preview |
+| `NEXTAUTH_URL` | `http://localhost:3000` | Development |
+| `BREVO_API_KEY` | Your Brevo API key | Production, Preview, Development |
+| `EMAIL_FROM` | Your verified sender email | Production, Preview, Development |
+
+### 4. Create admin user in production
+
+After deployment, run the seed script against your production database:
+
 ```bash
-vercel login
+# Set MONGODB_URI to your production database
+MONGODB_URI="your_production_mongodb_uri" npm run seed-admin
 ```
 
-3. Deploy:
-```bash
-vercel
-```
+## 👥 User Management
 
-4. Follow the prompts and add your environment variables when asked
+### Three User Modes
 
-5. For production deployment:
-```bash
-vercel --prod
-```
+1. **Public (Unauthenticated)**
+   - Can view all wishlist items
+   - Cannot book or modify items
+   - See "Sign in to book" prompts
 
-### Setting Environment Variables in Vercel
+2. **Authorized Users**
+   - Invited by admin
+   - Sign in via magic link
+   - Can book/unbook items
+   - Can mark items as completed
+   - Cannot add/delete items
 
-After deployment, you can manage environment variables in the Vercel Dashboard:
+3. **Admin**
+   - Full access to admin panel
+   - Can create/edit/delete items
+   - Can invite new users
+   - Can view all users
+   - Access to `/admin` dashboard
 
-1. Go to your project in Vercel Dashboard
-2. Navigate to Settings → Environment Variables
-3. Add `MONGODB_URI` with your connection string
-4. Choose which environments to apply it to (Production, Preview, Development)
-5. Save and redeploy if necessary
+### Inviting Users
 
-## 🎯 Use Case
+As an admin:
 
-This wishlist is designed to be **shared with friends and family**. They can:
-- View all your wishlist items
-- Book items they plan to gift you (so others know it's taken)
-- Mark items as completed when gifted
-- Filter items by status
+1. Go to `/admin`
+2. Click on "Users" tab
+3. Enter user's email
+4. Select role (user or admin)
+5. Click "Invite"
 
-Items are managed directly in MongoDB or via an admin interface (to be built separately). The public-facing site is **read-only except for booking/completion status**.
+The user will receive an invitation email and can then sign in using the magic link.
 
-## 📦 Project Structure
+## 📁 Project Structure
 
 ```
 wishlist2/
-├── app/                      # Next.js app directory
-│   ├── api/                 # API routes
-│   │   └── items/          # Items CRUD endpoints
-│   ├── globals.css         # Global styles
-│   ├── layout.tsx          # Root layout
-│   └── page.tsx            # Main wishlist page
-├── components/              # React components
-│   ├── AddItemModal.tsx    # Modal for adding items (for future admin use)
-│   └── WishlistItem.tsx    # Individual item card
-├── lib/                     # Utility functions
-│   └── mongodb.ts          # MongoDB connection
-├── models/                  # Mongoose models
-│   └── Item.ts             # Item schema
-├── public/                  # Static assets
-├── .env.local              # Local environment variables (create this)
-├── .env.example            # Example environment variables
-├── .gitignore              # Git ignore rules
-├── next.config.js          # Next.js configuration
-├── package.json            # Dependencies
-├── postcss.config.js       # PostCSS configuration
-├── tailwind.config.ts      # Tailwind CSS configuration
-├── tsconfig.json           # TypeScript configuration
-└── vercel.json             # Vercel deployment configuration
+├── app/
+│   ├── admin/
+│   │   └── page.tsx                # Admin panel
+│   ├── api/
+│   │   ├── auth/
+│   │   │   └── [...nextauth]/
+│   │   │       └── route.ts        # NextAuth API route
+│   │   ├── invite/
+│   │   │   └── route.ts            # User invitation API
+│   │   └── items/
+│   │       ├── route.ts            # Items CRUD
+│   │       └── [id]/
+│   │           └── route.ts        # Individual item operations
+│   ├── auth/
+│   │   ├── signin/
+│   │   │   └── page.tsx            # Sign in page
+│   │   ├── error/
+│   │   │   └── page.tsx            # Auth error page
+│   │   └── verify-request/
+│   │       └── page.tsx            # Email sent confirmation
+│   ├── globals.css                  # Global styles
+│   ├── layout.tsx                   # Root layout with SessionProvider
+│   └── page.tsx                     # Main wishlist page
+├── components/
+│   ├── AddItemModal.tsx            # Modal for adding items
+│   ├── AuthButton.tsx              # Sign in/out button
+│   ├── SessionProvider.tsx         # NextAuth session provider
+│   └── WishlistItem.tsx            # Individual item card
+├── lib/
+│   ├── auth.ts                     # NextAuth configuration
+│   ├── email.ts                    # Brevo email functions
+│   └── mongodb.ts                  # MongoDB connection
+├── models/
+│   ├── Item.ts                     # Item schema
+│   └── User.ts                     # User schema with roles
+├── scripts/
+│   └── seed-admin.ts               # Admin user creation script
+├── types/
+│   └── next-auth.d.ts              # NextAuth type extensions
+├── .env.local                       # Local environment variables (create this)
+├── .env.example                     # Example environment variables
+├── .gitignore                       # Git ignore rules
+├── next.config.js                   # Next.js configuration
+├── package.json                     # Dependencies
+├── tailwind.config.ts               # Tailwind CSS configuration
+├── tsconfig.json                    # TypeScript configuration
+└── vercel.json                      # Vercel deployment configuration
 ```
 
 ## 🔌 API Endpoints
 
-### Get all items
-```
-GET /api/items
-Response: { success: true, data: [...items] }
-```
+### Authentication
 
-### Create a new item
-```
-POST /api/items
-Body: {
-  name: string (required)
-  imageUrl: string (required)
-  price?: string
-  link?: string
-  isBooked?: boolean
-  isCompleted?: boolean
-}
-Response: { success: true, data: item }
-```
+| Endpoint | Method | Description | Auth Required |
+|----------|--------|-------------|---------------|
+| `/api/auth/signin` | POST | Sign in with email | No |
+| `/api/auth/signout` | POST | Sign out | Yes |
+| `/api/auth/callback/email` | GET | Magic link callback | No |
 
-### Update an item
-```
-PATCH /api/items/[id]
-Body: {
-  name?: string
-  imageUrl?: string
-  price?: string
-  link?: string
-  isBooked?: boolean      // Used by friends to book/reserve items
-  isCompleted?: boolean   // Used by friends to mark as gifted
-}
-Response: { success: true, data: item }
-```
+### Items
 
-### Delete an item
-```
-DELETE /api/items/[id]
-Response: { success: true, data: {} }
-```
+| Endpoint | Method | Description | Auth Required |
+|----------|--------|-------------|---------------|
+| `/api/items` | GET | Get all items | No (public) |
+| `/api/items` | POST | Create item | Admin only |
+| `/api/items/[id]` | PATCH | Update item | Yes (limited for users) |
+| `/api/items/[id]` | DELETE | Delete item | Admin only |
 
-**Note:** The public-facing UI only allows updating `isBooked` and `isCompleted` fields. POST and DELETE operations are available via API for admin/manual management.
+**PATCH permissions:**
+- **Users**: Can only update `isBooked` and `isCompleted`
+- **Admins**: Can update all fields
 
-## 📝 Item Schema
+### User Management
+
+| Endpoint | Method | Description | Auth Required |
+|----------|--------|-------------|---------------|
+| `/api/invite` | POST | Invite new user | Admin only |
+| `/api/invite` | GET | List all users | Admin only |
+
+## 📝 Data Models
+
+### Item Schema
 
 ```typescript
 {
@@ -218,53 +288,66 @@ Response: { success: true, data: {} }
   link?: string         // Optional - Product link
   isCompleted: boolean  // Default: false - Completion status
   isBooked: boolean     // Default: false - Booking status
+  createdAt: Date       // Auto-generated
+  updatedAt: Date       // Auto-generated
 }
 ```
 
-## 🎨 Customization
-
-### Colors
-
-The app uses a pink/purple color scheme. To customize, edit `tailwind.config.ts`:
+### User Schema
 
 ```typescript
-colors: {
-  primary: {
-    // Your custom colors
-  },
+{
+  email: string         // Required - User email (unique)
+  role: 'user' | 'admin' // Required - User role
+  isInvited: boolean    // Required - Invitation status
+  invitedBy?: string    // Optional - Email of inviter
+  createdAt: Date       // Auto-generated
+  updatedAt: Date       // Auto-generated
 }
 ```
 
-### Background
+## 🔐 Security Features
 
-Edit the gradient in `app/globals.css`:
-
-```css
-:root {
-  --background-start-rgb: 252, 231, 243;
-  --background-end-rgb: 255, 255, 255;
-}
-```
+- ✅ Invitation-only authentication
+- ✅ Magic link authentication (no password storage)
+- ✅ Role-based access control
+- ✅ JWT session tokens
+- ✅ Protected API routes
+- ✅ CSRF protection (NextAuth built-in)
 
 ## 🐛 Troubleshooting
 
 ### MongoDB Connection Issues
 
-- Ensure your IP address is whitelisted in MongoDB Atlas (Network Access)
-- Verify your database user has the correct permissions
-- Check that your connection string is correctly formatted
+- Ensure your IP is whitelisted in MongoDB Atlas
+- Verify database user permissions
+- Check connection string format
 
-### Build Errors
+### Email Not Sending
 
-- Clear Next.js cache: `rm -rf .next`
-- Delete node_modules and reinstall: `rm -rf node_modules && npm install`
-- Ensure all environment variables are set
+- Verify Brevo API key is correct
+- Check that sender email is verified in Brevo
+- Look for errors in terminal logs
+- Ensure EMAIL_FROM matches verified sender
 
-### Vercel Deployment Issues
+### Magic Link Not Working
 
-- Check that environment variables are set in Vercel Dashboard
-- Review build logs in Vercel for specific errors
-- Ensure your MongoDB cluster allows connections from anywhere (0.0.0.0/0)
+- Check that NEXTAUTH_URL matches your domain
+- Verify NEXTAUTH_SECRET is set
+- Ensure link hasn't expired (24 hours)
+- Check spam folder
+
+### "Access Denied" on Sign In
+
+- User must be invited first by an admin
+- Check that user exists in database with `isInvited: true`
+- Verify email address matches exactly
+
+### Admin Panel Not Accessible
+
+- Ensure you're signed in
+- Verify your user has `role: 'admin'` in database
+- Check browser console for errors
 
 ## 📄 License
 
@@ -281,4 +364,3 @@ Created with ❤️ for wishlist management
 ---
 
 **Happy wishing! 🎁✨**
-

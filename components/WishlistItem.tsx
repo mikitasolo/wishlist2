@@ -7,9 +7,10 @@ import { useState } from 'react';
 interface WishlistItemProps {
   item: IItem;
   onUpdate: (id: string, updates: Partial<IItem>) => Promise<void>;
+  isAuthenticated: boolean;
 }
 
-export default function WishlistItem({ item, onUpdate }: WishlistItemProps) {
+export default function WishlistItem({ item, onUpdate, isAuthenticated }: WishlistItemProps) {
   const [isUpdating, setIsUpdating] = useState(false);
 
   const handleToggleBooked = async () => {
@@ -67,42 +68,53 @@ export default function WishlistItem({ item, onUpdate }: WishlistItemProps) {
           </p>
         )}
 
-        {/* Action buttons */}
-        <div className="flex flex-wrap gap-2 mb-3">
-          <button
-            onClick={handleToggleBooked}
-            className={`flex-1 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
-              item.isBooked
-                ? 'bg-amber-500 text-white hover:bg-amber-600'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-            disabled={isUpdating}
-          >
-            {item.isBooked ? 'Unbook' : 'Book'}
-          </button>
-          
-          <button
-            onClick={handleToggleCompleted}
-            className={`flex-1 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
-              item.isCompleted
-                ? 'bg-green-500 text-white hover:bg-green-600'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-            disabled={isUpdating}
-          >
-            {item.isCompleted ? 'Uncomplete' : 'Complete'}
-          </button>
-        </div>
+        {/* Action buttons - only shown for authenticated users */}
+        {isAuthenticated && (
+          <div className="flex flex-wrap gap-2 mb-3">
+            <button
+              onClick={handleToggleBooked}
+              className={`flex-1 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+                item.isBooked
+                  ? 'bg-amber-500 text-white hover:bg-amber-600'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+              disabled={isUpdating}
+            >
+              {item.isBooked ? 'Unbook' : 'Book'}
+            </button>
+            
+            <button
+              onClick={handleToggleCompleted}
+              className={`flex-1 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+                item.isCompleted
+                  ? 'bg-green-500 text-white hover:bg-green-600'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+              disabled={isUpdating}
+            >
+              {item.isCompleted ? 'Uncomplete' : 'Complete'}
+            </button>
+          </div>
+        )}
 
         {item.link && (
           <a
             href={item.link}
             target="_blank"
             rel="noopener noreferrer"
-            className="block w-full bg-primary-600 text-white text-sm font-medium px-3 py-2 rounded-lg hover:bg-primary-700 transition-colors text-center"
+            className={`block w-full bg-primary-600 text-white text-sm font-medium px-3 py-2 rounded-lg hover:bg-primary-700 transition-colors text-center ${
+              !isAuthenticated ? 'mt-0' : ''
+            }`}
           >
             View Item
           </a>
+        )}
+
+        {/* Sign in prompt for public viewers */}
+        {!isAuthenticated && !item.link && (
+          <p className="text-sm text-gray-500 text-center italic">
+            Sign in to book this item
+          </p>
         )}
       </div>
     </div>

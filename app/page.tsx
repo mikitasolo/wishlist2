@@ -1,10 +1,15 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useSession } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
 import WishlistItem from '@/components/WishlistItem';
+import AuthButton from '@/components/AuthButton';
 import { IItem } from '@/models/Item';
 
 export default function Home() {
+  const { data: session } = useSession();
+  const router = useRouter();
   const [items, setItems] = useState<IItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'available' | 'booked' | 'completed'>('all');
@@ -64,13 +69,55 @@ export default function Home() {
     <main className="min-h-screen">
       <div className="max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
         {/* Header */}
-        <div className="text-center mb-12">
-          <h1 className="text-5xl font-bold text-gray-900 mb-4">
-            My Wishlist 🎁
-          </h1>
-          <p className="text-xl text-gray-600">
-            Track and manage your desired items
-          </p>
+        <div className="mb-8">
+          <div className="flex justify-between items-center mb-8">
+            <div className="text-center flex-1">
+              <h1 className="text-5xl font-bold text-gray-900 mb-4">
+                My Wishlist 🎁
+              </h1>
+              <p className="text-xl text-gray-600">
+                {session?.user?.role === 'admin' 
+                  ? 'Manage your wishlist items'
+                  : session?.user 
+                    ? 'Book items you plan to gift'
+                    : 'View wishlist items'}
+              </p>
+            </div>
+            <div className="absolute top-8 right-8">
+              <AuthButton />
+            </div>
+          </div>
+
+          {/* Public mode message */}
+          {!session?.user && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-8">
+              <p className="text-sm text-blue-800 text-center">
+                👋 You're viewing in <strong>public mode</strong>. 
+                <button 
+                  onClick={() => router.push('/auth/signin')}
+                  className="ml-2 text-blue-600 font-semibold hover:underline"
+                >
+                  Sign in
+                </button>
+                {' '}to book items you plan to gift.
+              </p>
+            </div>
+          )}
+
+          {/* Admin panel link */}
+          {session?.user?.role === 'admin' && (
+            <div className="bg-primary-50 border border-primary-200 rounded-lg p-4 mb-8">
+              <p className="text-sm text-primary-800 text-center">
+                👑 You're signed in as <strong>admin</strong>. 
+                <button 
+                  onClick={() => router.push('/admin')}
+                  className="ml-2 text-primary-600 font-semibold hover:underline"
+                >
+                  Go to Admin Panel
+                </button>
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Stats */}
@@ -162,6 +209,7 @@ export default function Home() {
                 key={item._id}
                 item={item}
                 onUpdate={handleUpdateItem}
+                isAuthenticated={!!session?.user}
               />
             ))}
           </div>
