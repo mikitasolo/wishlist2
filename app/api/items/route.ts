@@ -5,11 +5,36 @@ import connectDB from '@/lib/mongodb';
 import Item from '@/models/Item';
 
 // GET /api/items - Get all items (public)
+// Admin and public users don't see bookedBy to avoid spoiling surprises
 export async function GET() {
   try {
+    const session = await getServerSession(authOptions);
+    
     await connectDB();
     const items = await Item.find({}).sort({ createdAt: -1 });
-    return NextResponse.json({ success: true, data: items }, { status: 200 });
+    
+    // Filter items based on user role
+    const filteredItems = items.map((item) => {
+      const itemObj = item.toObject();
+      
+      // Hide bookedBy from admin and non-authenticated users
+      if (!session?.user || session.user.role === 'admin') {
+        // For admin and public: hide booking details completely
+        if (itemObj.status === 'booked') {
+          return {
+            ...itemObj,
+            status: 'available', // Show as available to avoid spoiling
+            bookedBy: undefined,
+          };
+        }
+        return { ...itemObj, bookedBy: undefined };
+      }
+      
+      // For regular authenticated users: keep all data (they need to see what they booked)
+      return itemObj;
+    });
+    
+    return NextResponse.json({ success: true, data: filteredItems }, { status: 200 });
   } catch (error) {
     console.error('Error fetching items:', error);
     return NextResponse.json(
@@ -40,8 +65,8 @@ export async function POST(request: NextRequest) {
       imageUrl: body.imageUrl,
       price: body.price,
       link: body.link,
-      isCompleted: body.isCompleted || false,
-      isBooked: body.isBooked || false,
+      status: body.status || 'available',
+      bookedBy: body.bookedBy || null,
     });
 
     return NextResponse.json({ success: true, data: item }, { status: 201 });

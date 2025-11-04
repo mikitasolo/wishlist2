@@ -243,19 +243,14 @@ export default function AdminPanel() {
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="flex gap-2">
-                              {item.isBooked && (
-                                <span className="px-2 py-1 text-xs font-semibold rounded-full bg-amber-100 text-amber-800">
-                                  Booked
-                                </span>
-                              )}
-                              {item.isCompleted && (
-                                <span className="px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
-                                  Completed
-                                </span>
-                              )}
-                              {!item.isBooked && !item.isCompleted && (
+                              {item.status === 'available' && (
                                 <span className="px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
                                   Available
+                                </span>
+                              )}
+                              {item.status === 'completed' && (
+                                <span className="px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
+                                  Completed
                                 </span>
                               )}
                             </div>

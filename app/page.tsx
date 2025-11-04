@@ -12,7 +12,7 @@ export default function Home() {
   const router = useRouter();
   const [items, setItems] = useState<IItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<'all' | 'available' | 'booked' | 'completed'>('all');
+  const [filter, setFilter] = useState<'all' | 'available' | 'booked' | 'bookedByYou' | 'completed'>('all');
 
   useEffect(() => {
     fetchItems();
@@ -52,17 +52,19 @@ export default function Home() {
   };
 
   const filteredItems = items.filter((item) => {
-    if (filter === 'available') return !item.isBooked && !item.isCompleted;
-    if (filter === 'booked') return item.isBooked;
-    if (filter === 'completed') return item.isCompleted;
+    if (filter === 'available') return item.status === 'available';
+    if (filter === 'booked') return item.status === 'booked';
+    if (filter === 'bookedByYou') return item.status === 'booked' && item.bookedBy === session?.user?.id;
+    if (filter === 'completed') return item.status === 'completed';
     return true;
   });
 
   const stats = {
     total: items.length,
-    available: items.filter((item) => !item.isBooked && !item.isCompleted).length,
-    booked: items.filter((item) => item.isBooked).length,
-    completed: items.filter((item) => item.isCompleted).length,
+    available: items.filter((item) => item.status === 'available').length,
+    booked: items.filter((item) => item.status === 'booked').length,
+    bookedByYou: items.filter((item) => item.status === 'booked' && item.bookedBy === session?.user?.id).length,
+    completed: items.filter((item) => item.status === 'completed').length,
   };
 
   return (
@@ -131,8 +133,12 @@ export default function Home() {
             <p className="text-3xl font-bold text-blue-600">{stats.available}</p>
           </div>
           <div className="bg-white rounded-xl p-4 shadow-md">
-            <p className="text-sm text-gray-600 mb-1">Booked</p>
-            <p className="text-3xl font-bold text-amber-600">{stats.booked}</p>
+            <p className="text-sm text-gray-600 mb-1">
+              {session?.user && session.user.role !== 'admin' ? 'Booked by You' : 'Booked'}
+            </p>
+            <p className="text-3xl font-bold text-amber-600">
+              {session?.user && session.user.role !== 'admin' ? stats.bookedByYou : stats.booked}
+            </p>
           </div>
           <div className="bg-white rounded-xl p-4 shadow-md">
             <p className="text-sm text-gray-600 mb-1">Completed</p>
@@ -162,16 +168,19 @@ export default function Home() {
           >
             Available
           </button>
-          <button
-            onClick={() => setFilter('booked')}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors whitespace-nowrap ${
-              filter === 'booked'
-                ? 'bg-amber-600 text-white'
-                : 'bg-white text-gray-700 hover:bg-gray-100'
-            }`}
-          >
-            Booked
-          </button>
+          {/* Show "Booked by You" filter for regular users */}
+          {session?.user && session.user.role !== 'admin' && (
+            <button
+              onClick={() => setFilter('bookedByYou')}
+              className={`px-4 py-2 rounded-lg font-medium transition-colors whitespace-nowrap ${
+                filter === 'bookedByYou'
+                  ? 'bg-amber-600 text-white'
+                  : 'bg-white text-gray-700 hover:bg-gray-100'
+              }`}
+            >
+              Booked by You
+            </button>
+          )}
           <button
             onClick={() => setFilter('completed')}
             className={`px-4 py-2 rounded-lg font-medium transition-colors whitespace-nowrap ${

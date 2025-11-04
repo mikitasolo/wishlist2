@@ -1,13 +1,13 @@
 import mongoose, { Schema, Model } from 'mongoose';
 
 export interface IItem {
-  _id?: string;
+  _id: string;
   name: string;
   imageUrl: string;
   price?: string;
   link?: string;
-  isCompleted: boolean;
-  isBooked: boolean;
+  status: 'available' | 'booked' | 'completed';
+  bookedBy?: string;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -28,15 +28,16 @@ const ItemSchema = new Schema<IItem>(
     link: { 
       type: String 
     },
-    isCompleted: { 
-      type: Boolean, 
-      required: true, 
-      default: false 
+    status: {
+      type: String,
+      enum: ['available', 'booked', 'completed'],
+      required: true,
+      default: 'available'
     },
-    isBooked: { 
-      type: Boolean, 
-      required: true, 
-      default: false 
+    bookedBy: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+      required: false
     },
   },
   {

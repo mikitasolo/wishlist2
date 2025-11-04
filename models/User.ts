@@ -1,7 +1,7 @@
 import mongoose, { Schema, Model } from 'mongoose';
 
 export interface IUser {
-  _id?: string;
+  _id: string;
   email: string;
   role: 'user' | 'admin';
   isInvited: boolean;

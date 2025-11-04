@@ -5,7 +5,7 @@ import connectDB from '@/lib/mongodb';
 import Item from '@/models/Item';
 
 // PATCH /api/items/[id] - Update an item
-// Authorized users can update isBooked/isCompleted
+// Regular users can book/unbook items (only their own bookings)
 // Admin users can update all fields
 export async function PATCH(
   request: NextRequest,
@@ -26,14 +26,47 @@ export async function PATCH(
     const body = await request.json();
     const { id } = params;
 
-    let updateData = body;
+    let updateData: any = {};
 
-    // If user is not admin, only allow updating isBooked and isCompleted
-    if (session.user.role !== 'admin') {
-      updateData = {
-        ...(body.isBooked !== undefined && { isBooked: body.isBooked }),
-        ...(body.isCompleted !== undefined && { isCompleted: body.isCompleted }),
-      };
+    // If user is admin, allow updating all fields
+    if (session.user.role === 'admin') {
+      updateData = body;
+    } else {
+      // Regular users can only update status (for booking/unbooking)
+      if (body.status !== undefined) {
+        const currentItem = await Item.findById(id);
+        
+        if (!currentItem) {
+          return NextResponse.json(
+            { success: false, error: 'Item not found' },
+            { status: 404 }
+          );
+        }
+
+        // Allow booking available items
+        if (body.status === 'booked' && currentItem.status === 'available') {
+          updateData.status = 'booked';
+          updateData.bookedBy = session.user.id;
+        }
+        // Allow unbooking only items booked by the current user
+        else if (body.status === 'available' && currentItem.status === 'booked') {
+          if (currentItem.bookedBy?.toString() !== session.user.id) {
+            return NextResponse.json(
+              { success: false, error: 'You can only unbook items you have booked' },
+              { status: 403 }
+            );
+          }
+          updateData.status = 'available';
+          updateData.bookedBy = null;
+        }
+        // Don't allow other status changes
+        else {
+          return NextResponse.json(
+            { success: false, error: 'Invalid status transition' },
+            { status: 400 }
+          );
+        }
+      }
 
       // If no valid fields to update
       if (Object.keys(updateData).length === 0) {

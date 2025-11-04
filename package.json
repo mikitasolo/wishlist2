@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "vercel:env": "vercel env pull",
-    "seed-admin": "tsx scripts/seed-admin.ts"
+    "migrate:status": "tsx scripts/migrate-item-status.ts"
   },
   "dependencies": {
     "react": "^18.2.0",
@@ -18,7 +18,8 @@
     "mongoose": "^8.0.0",
     "next-auth": "^4.24.5",
     "@auth/mongodb-adapter": "^3.11.1",
-    "nodemailer": "^7.0.10"
+    "nodemailer": "^7.0.10",
+    "dotenv": "^16.4.5"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
@@ -30,5 +31,6 @@
     "postcss": "^8.0.0",
     "tailwindcss": "^3.3.0",
     "tsx": "^4.7.0"
-  }
+  },
+  "packageManager": "yarn@1.22.22+sha1.ac34549e6aa8e7ead463a7407e1c7390f61a6610"
 }
