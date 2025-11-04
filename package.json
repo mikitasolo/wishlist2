@@ -7,8 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "vercel:env": "vercel env pull",
-    "migrate:status": "tsx scripts/migrate-item-status.ts"
+    "vercel:env": "vercel env pull"
   },
   "dependencies": {
     "react": "^18.2.0",

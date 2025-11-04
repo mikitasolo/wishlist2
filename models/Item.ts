@@ -1,18 +1,6 @@
-import mongoose, { Schema, Model } from 'mongoose';
+import mongoose, { Schema, Model, InferSchemaType } from 'mongoose';
 
-export interface IItem {
-  _id: string;
-  name: string;
-  imageUrl: string;
-  price?: string;
-  link?: string;
-  status: 'available' | 'booked' | 'completed';
-  bookedBy?: string;
-  createdAt?: Date;
-  updatedAt?: Date;
-}
-
-const ItemSchema = new Schema<IItem>(
+const ItemSchema = new Schema(
   {
     name: { 
       type: String, 
@@ -44,6 +32,14 @@ const ItemSchema = new Schema<IItem>(
     timestamps: true,
   }
 );
+
+// Infer type from schema
+type ItemSchemaType = InferSchemaType<typeof ItemSchema>;
+
+// Extend with additional fields that Mongoose adds
+export interface IItem extends ItemSchemaType {
+  _id: string;
+}
 
 const Item: Model<IItem> = mongoose.models.Item || mongoose.model<IItem>('Item', ItemSchema);
 

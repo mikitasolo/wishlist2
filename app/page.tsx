@@ -5,22 +5,46 @@ import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import WishlistItem from '@/components/WishlistItem';
 import AuthButton from '@/components/AuthButton';
+import { useToast } from '@/components/ToastProvider';
 import { IItem } from '@/models/Item';
 
 export default function Home() {
   const { data: session } = useSession();
   const router = useRouter();
+  const { showToast } = useToast();
   const [items, setItems] = useState<IItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'available' | 'booked' | 'bookedByYou' | 'completed'>('all');
 
   useEffect(() => {
     fetchItems();
+
+    // Poll for updates every 5 seconds when tab is active
+    const pollInterval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        fetchItems(true); // Silent fetch (don't show loading state)
+      }
+    }, 5000);
+
+    // Refresh when tab becomes visible again
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetchItems(true);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    // Cleanup
+    return () => {
+      clearInterval(pollInterval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const fetchItems = async () => {
+  const fetchItems = async (silent = false) => {
     try {
-      const response = await fetch('/api/items');
+      const response = await fetch('/api/items', { cache: 'no-store' });
       const data = await response.json();
       if (data.success) {
         setItems(data.data);
@@ -28,7 +52,9 @@ export default function Home() {
     } catch (error) {
       console.error('Error fetching items:', error);
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
   };
 
@@ -43,8 +69,13 @@ export default function Home() {
       });
 
       const data = await response.json();
+      
       if (data.success) {
         setItems(items.map((item) => (item._id === id ? data.data : item)));
+      } else if (response.status === 403 && data.error?.includes('archived')) {
+        // User has been archived - show message and reload to log them out
+        showToast(data.error, 'error');
+        setTimeout(() => window.location.reload(), 2000);
       }
     } catch (error) {
       console.error('Error updating item:', error);
@@ -75,7 +106,7 @@ export default function Home() {
           <div className="flex justify-between items-center mb-8">
             <div className="text-center flex-1">
               <h1 className="text-5xl font-bold text-gray-900 mb-4">
-                My Wishlist 🎁
+                My Wishlist
               </h1>
               <p className="text-xl text-gray-600">
                 {session?.user?.role === 'admin' 

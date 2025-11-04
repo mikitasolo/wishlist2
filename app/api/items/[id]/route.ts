@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import connectDB from '@/lib/mongodb';
 import Item from '@/models/Item';
+import User from '@/models/User';
 
 // PATCH /api/items/[id] - Update an item
 // Regular users can book/unbook items (only their own bookings)
@@ -23,6 +24,19 @@ export async function PATCH(
     }
 
     await connectDB();
+    
+    // Check if user is archived (for regular users, admins bypass this)
+    if (session.user.role !== 'admin') {
+      const currentUser = await User.findById(session.user.id);
+      
+      if (!currentUser || currentUser.isArchived) {
+        return NextResponse.json(
+          { success: false, error: 'Your account has been archived. Please contact admin.' },
+          { status: 403 }
+        );
+      }
+    }
+    
     const body = await request.json();
     const { id } = params;
 

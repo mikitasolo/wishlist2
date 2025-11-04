@@ -24,8 +24,8 @@ export const authOptions: NextAuthOptions = {
         await connectDB();
         const existingUser = await User.findOne({ email: user.email.toLowerCase() });
 
-        // Only allow sign in if user is invited
-        if (!existingUser || !existingUser.isInvited) {
+        // Only allow sign in if user is invited and not archived
+        if (!existingUser || !existingUser.isInvited || existingUser.isArchived) {
           return false;
         }
 
@@ -42,6 +42,11 @@ export const authOptions: NextAuthOptions = {
           const dbUser = await User.findOne({ email: user.email.toLowerCase() });
           
           if (dbUser) {
+            // If user is archived, invalidate the session
+            if (dbUser.isArchived) {
+              return null as any; // Return null to invalidate session
+            }
+            
             session.user.role = dbUser.role;
             session.user.id = dbUser._id?.toString();
           }

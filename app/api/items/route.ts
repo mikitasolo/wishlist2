@@ -17,7 +17,8 @@ export async function GET() {
     const filteredItems = items.map((item) => {
       const itemObj = item.toObject();
       
-      // Hide bookedBy from admin and non-authenticated users
+      // Never send bookedBy to client to prevent analysis
+      // Instead, for authenticated users, only indicate if THEY booked it
       if (!session?.user || session.user.role === 'admin') {
         // For admin and public: hide booking details completely
         if (itemObj.status === 'booked') {
@@ -30,8 +31,13 @@ export async function GET() {
         return { ...itemObj, bookedBy: undefined };
       }
       
-      // For regular authenticated users: keep all data (they need to see what they booked)
-      return itemObj;
+      // For regular authenticated users: show booking status but not the actual user ID
+      // Replace bookedBy with boolean isBookedByMe
+      const isBookedByMe = itemObj.bookedBy?.toString() === session.user.id;
+      return {
+        ...itemObj,
+        bookedBy: isBookedByMe ? session.user.id : undefined, // Only include if current user booked it
+      };
     });
     
     return NextResponse.json({ success: true, data: filteredItems }, { status: 200 });

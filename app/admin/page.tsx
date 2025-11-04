@@ -6,18 +6,24 @@ import { useEffect, useState } from 'react';
 import { IItem } from '@/models/Item';
 import { IUser } from '@/models/User';
 import AddItemModal from '@/components/AddItemModal';
+import EditItemModal from '@/components/EditItemModal';
+import ConfirmDialog from '@/components/ConfirmDialog';
+import { useToast } from '@/components/ToastProvider';
 
 export default function AdminPanel() {
   const { data: session, status } = useSession();
   const router = useRouter();
+  const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState<'items' | 'users'>('items');
   const [items, setItems] = useState<IItem[]>([]);
   const [users, setUsers] = useState<IUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [itemToEdit, setItemToEdit] = useState<IItem | null>(null);
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<'user' | 'admin'>('user');
   const [isInviting, setIsInviting] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<string | null>(null);
 
   useEffect(() => {
     if (status === 'loading') return;
@@ -27,8 +33,12 @@ export default function AdminPanel() {
       return;
     }
 
-    fetchData();
-  }, [session, status, router]);
+    // Only fetch once when component mounts and user is authenticated
+    if (items.length === 0 && users.length === 0) {
+      fetchData();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -78,26 +88,61 @@ export default function AdminPanel() {
       const data = await response.json();
       if (data.success) {
         setItems([data.data, ...items]);
+        showToast('Item added successfully', 'success');
+      } else {
+        showToast('Failed to add item', 'error');
       }
     } catch (error) {
       console.error('Error adding item:', error);
+      showToast('Failed to add item', 'error');
     }
   };
 
-  const handleDeleteItem = async (id: string) => {
-    if (!window.confirm('Are you sure you want to delete this item?')) return;
+  const handleEditItem = async (updates: Partial<IItem>) => {
+    if (!itemToEdit) return;
 
     try {
-      const response = await fetch(`/api/items/${id}`, {
+      const response = await fetch(`/api/items/${itemToEdit._id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(updates),
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        setItems(items.map((item) => (item._id === itemToEdit._id ? data.data : item)));
+        showToast('Item updated successfully', 'success');
+      } else {
+        showToast('Failed to update item', 'error');
+      }
+    } catch (error) {
+      console.error('Error updating item:', error);
+      showToast('Failed to update item', 'error');
+    }
+  };
+
+  const handleDeleteItem = async () => {
+    if (!itemToDelete) return;
+
+    try {
+      const response = await fetch(`/api/items/${itemToDelete}`, {
         method: 'DELETE',
       });
 
       const data = await response.json();
       if (data.success) {
-        setItems(items.filter((item) => item._id !== id));
+        setItems(items.filter((item) => item._id !== itemToDelete));
+        showToast('Item deleted successfully', 'success');
+      } else {
+        showToast('Failed to delete item', 'error');
       }
     } catch (error) {
       console.error('Error deleting item:', error);
+      showToast('Failed to delete item', 'error');
+    } finally {
+      setItemToDelete(null);
     }
   };
 
@@ -117,17 +162,44 @@ export default function AdminPanel() {
       const data = await response.json();
       if (data.success) {
         setUsers([data.data, ...users]);
+        const email = inviteEmail;
         setInviteEmail('');
         setInviteRole('user');
-        alert(`Invitation sent to ${inviteEmail}`);
+        showToast(`Invitation sent to ${email}`, 'success');
       } else {
-        alert(data.error || 'Failed to invite user');
+        showToast(data.error || 'Failed to invite user', 'error');
       }
     } catch (error) {
       console.error('Error inviting user:', error);
-      alert('Failed to invite user');
+      showToast('Failed to invite user', 'error');
     } finally {
       setIsInviting(false);
+    }
+  };
+
+  const handleToggleArchive = async (userId: string, currentStatus: boolean) => {
+    try {
+      const response = await fetch('/api/invite', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ userId, isArchived: !currentStatus }),
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        setUsers(users.map((user) => (user._id === userId ? data.data : user)));
+        showToast(
+          `User ${!currentStatus ? 'archived' : 'unarchived'} successfully`,
+          'success'
+        );
+      } else {
+        showToast(data.error || 'Failed to update user', 'error');
+      }
+    } catch (error) {
+      console.error('Error updating user:', error);
+      showToast('Failed to update user', 'error');
     }
   };
 
@@ -270,12 +342,20 @@ export default function AdminPanel() {
                             )}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                            <button
-                              onClick={() => handleDeleteItem(item._id!)}
-                              className="text-red-600 hover:text-red-900"
-                            >
-                              Delete
-                            </button>
+                            <div className="flex gap-3 justify-end">
+                              <button
+                                onClick={() => setItemToEdit(item)}
+                                className="text-primary-600 hover:text-primary-900"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                onClick={() => setItemToDelete(item._id)}
+                                className="text-red-600 hover:text-red-900"
+                              >
+                                Delete
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -337,18 +417,27 @@ export default function AdminPanel() {
                         Role
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Status
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Invited By
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Joined
                       </th>
+                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Actions
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
                     {users.map((user) => (
-                      <tr key={user._id} className="hover:bg-gray-50">
+                      <tr key={user._id} className={`hover:bg-gray-50 ${user.isArchived ? 'opacity-60' : ''}`}>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                           {user.email}
+                          {user.email === session?.user?.email && (
+                            <span className="ml-2 text-xs text-gray-500">(you)</span>
+                          )}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span
@@ -361,11 +450,36 @@ export default function AdminPanel() {
                             {user.role}
                           </span>
                         </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span
+                            className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                              user.isArchived
+                                ? 'bg-red-100 text-red-800'
+                                : 'bg-green-100 text-green-800'
+                            }`}
+                          >
+                            {user.isArchived ? 'Archived' : 'Active'}
+                          </span>
+                        </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                           {user.invitedBy || '-'}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                           {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : '-'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                          {user.email !== session?.user?.email && (
+                            <button
+                              onClick={() => handleToggleArchive(user._id, user.isArchived)}
+                              className={`${
+                                user.isArchived
+                                  ? 'text-green-600 hover:text-green-900'
+                                  : 'text-red-600 hover:text-red-900'
+                              }`}
+                            >
+                              {user.isArchived ? 'Unarchive' : 'Archive'}
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -382,6 +496,28 @@ export default function AdminPanel() {
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
         onAdd={handleAddItem}
+      />
+
+      {/* Edit Item Modal */}
+      {itemToEdit && (
+        <EditItemModal
+          isOpen={!!itemToEdit}
+          onClose={() => setItemToEdit(null)}
+          onSave={handleEditItem}
+          item={itemToEdit}
+        />
+      )}
+
+      {/* Delete Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={!!itemToDelete}
+        title="Delete Item"
+        message="Are you sure you want to delete this item? This action cannot be undone."
+        onConfirm={handleDeleteItem}
+        onCancel={() => setItemToDelete(null)}
+        confirmText="Delete"
+        cancelText="Cancel"
+        type="danger"
       />
     </div>
   );

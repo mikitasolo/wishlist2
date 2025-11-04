@@ -1,16 +1,6 @@
-import mongoose, { Schema, Model } from 'mongoose';
+import mongoose, { Schema, Model, InferSchemaType } from 'mongoose';
 
-export interface IUser {
-  _id: string;
-  email: string;
-  role: 'user' | 'admin';
-  isInvited: boolean;
-  invitedBy?: string; // Admin email who invited this user
-  createdAt?: Date;
-  updatedAt?: Date;
-}
-
-const UserSchema = new Schema<IUser>(
+const UserSchema = new Schema(
   {
     email: {
       type: String,
@@ -18,6 +8,10 @@ const UserSchema = new Schema<IUser>(
       unique: true,
       lowercase: true,
       trim: true,
+    },
+    emailVerified: {
+      type: Date,
+      required: false,
     },
     role: {
       type: String,
@@ -30,6 +24,11 @@ const UserSchema = new Schema<IUser>(
       default: false,
       required: true,
     },
+    isArchived: {
+      type: Boolean,
+      default: false,
+      required: true,
+    },
     invitedBy: {
       type: String,
     },
@@ -38,6 +37,14 @@ const UserSchema = new Schema<IUser>(
     timestamps: true,
   }
 );
+
+// Infer type from schema
+type UserSchemaType = InferSchemaType<typeof UserSchema>;
+
+// Extend with additional fields that Mongoose adds
+export interface IUser extends UserSchemaType {
+  _id: string;
+}
 
 const User: Model<IUser> = mongoose.models.User || mongoose.model<IUser>('User', UserSchema);
 

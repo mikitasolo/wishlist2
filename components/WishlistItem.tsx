@@ -15,7 +15,7 @@ export default function WishlistItem({ item, onUpdate, isAuthenticated }: Wishli
   const { data: session } = useSession();
   const [isUpdating, setIsUpdating] = useState(false);
 
-  const isBookedByCurrentUser = item.bookedBy && session?.user?.id && item.bookedBy === session.user.id;
+  const isBookedByCurrentUser = item.bookedBy && session?.user?.id && item.bookedBy.toString() === session.user.id;
   const isAdmin = session?.user?.role === 'admin';
 
   const handleToggleBooked = async () => {
@@ -34,12 +34,12 @@ export default function WishlistItem({ item, onUpdate, isAuthenticated }: Wishli
 
   return (
     <div
-      className={`relative bg-white rounded-xl shadow-lg overflow-hidden transition-all duration-300 hover:shadow-xl ${
+      className={`relative bg-white rounded-xl shadow-lg overflow-hidden transition-all duration-300 hover:shadow-xl flex flex-col ${
         isUpdating ? 'opacity-75' : ''
       } ${item.status === 'completed' ? 'ring-2 ring-green-400' : ''}`}
     >
       {/* Image */}
-      <div className="relative h-64 w-full bg-gray-100">
+      <div className="relative h-64 w-full bg-gray-100 flex-shrink-0">
         <Image
           src={item.imageUrl}
           alt={item.name}
@@ -69,20 +69,26 @@ export default function WishlistItem({ item, onUpdate, isAuthenticated }: Wishli
       </div>
 
       {/* Content */}
-      <div className="p-5">
-        <h3 className="text-lg font-bold text-gray-800 mb-2 line-clamp-2">
-          {item.name}
-        </h3>
-        
-        {item.price && (
-          <p className="text-xl font-semibold text-primary-600 mb-3">
-            {item.price}
-          </p>
-        )}
+      <div className="p-5 flex flex-col flex-grow">
+        {/* Top content that can vary in height */}
+        <div className="flex-grow">
+          <h3 
+            className="text-lg font-bold text-gray-800 mb-2 line-clamp-2"
+            title={item.name}
+          >
+            {item.name}
+          </h3>
+          
+          {item.price && (
+            <p className="text-xl font-semibold text-primary-600 mb-3">
+              {item.price}
+            </p>
+          )}
+        </div>
 
         {/* Action buttons - only shown for authenticated users */}
         {isAuthenticated && (
-          <div className="flex flex-wrap gap-2 mb-3">
+          <div className="flex flex-wrap gap-2 mb-3 mt-auto">
             {/* Book/Unbook button - only for non-admin users, and only when not completed */}
             {!isAdmin && item.status !== 'completed' && (
               <button
@@ -92,7 +98,7 @@ export default function WishlistItem({ item, onUpdate, isAuthenticated }: Wishli
                     ? 'bg-amber-500 text-white hover:bg-amber-600'
                     : item.status === 'booked'
                     ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    : 'bg-blue-500 text-white hover:bg-blue-600'
                 }`}
                 disabled={isUpdating || (item.status === 'booked' && !isBookedByCurrentUser)}
               >
@@ -121,25 +127,23 @@ export default function WishlistItem({ item, onUpdate, isAuthenticated }: Wishli
           </div>
         )}
 
-        {item.link && (
-          <a
-            href={item.link}
-            target="_blank"
-            rel="noopener noreferrer"
-            className={`block w-full bg-primary-600 text-white text-sm font-medium px-3 py-2 rounded-lg hover:bg-primary-700 transition-colors text-center ${
-              !isAuthenticated ? 'mt-0' : ''
-            }`}
-          >
-            View Item
-          </a>
-        )}
-
-        {/* Sign in prompt for public viewers */}
-        {!isAuthenticated && !item.link && (
-          <p className="text-sm text-gray-500 text-center italic">
-            Sign in to book this item
-          </p>
-        )}
+        {/* Link button or placeholder - always at bottom with consistent height */}
+        <div className={isAuthenticated ? '' : 'mt-auto'}>
+          {item.link ? (
+            <a
+              href={item.link}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block w-full bg-primary-600 text-white text-sm font-medium px-3 py-2 rounded-lg hover:bg-primary-700 transition-colors text-center"
+            >
+              View Item
+            </a>
+          ) : (
+            <p className="text-sm text-gray-500 text-center italic py-2">
+              Item has no link
+            </p>
+          )}
+        </div>
       </div>
     </div>
   );
