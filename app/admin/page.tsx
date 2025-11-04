@@ -456,6 +456,9 @@ export default function AdminPanel() {
                         Role
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Email Verified
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Status
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -487,6 +490,17 @@ export default function AdminPanel() {
                             }`}
                           >
                             {user.role}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span
+                            className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                              user.emailVerified
+                                ? 'bg-green-100 text-green-800'
+                                : 'bg-yellow-100 text-yellow-800'
+                            }`}
+                          >
+                            {user.emailVerified ? 'Verified' : 'Not Verified'}
                           </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
