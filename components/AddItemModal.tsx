@@ -8,7 +8,7 @@ interface AddItemModalProps {
   onAdd: (item: {
     name: string;
     imageUrl: string;
-    price?: string;
+    priceInCents?: number;
     link?: string;
   }) => Promise<void>;
 }
@@ -27,10 +27,13 @@ export default function AddItemModal({ isOpen, onClose, onAdd }: AddItemModalPro
     setIsSubmitting(true);
 
     try {
+      // Convert price from dollars to cents (only if price is provided)
+      const priceInCents = formData.price ? Math.round(parseFloat(formData.price) * 100) : undefined;
+      
       await onAdd({
         name: formData.name,
         imageUrl: formData.imageUrl,
-        price: formData.price || undefined,
+        priceInCents,
         link: formData.link || undefined,
       });
       
@@ -97,12 +100,14 @@ export default function AddItemModal({ isOpen, onClose, onAdd }: AddItemModalPro
               Price
             </label>
             <input
-              type="text"
+              type="number"
               id="price"
+              step="0.01"
+              min="0"
               value={formData.price}
               onChange={(e) => setFormData({ ...formData, price: e.target.value })}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
-              placeholder="$99.99"
+              placeholder="99.99"
               disabled={isSubmitting}
             />
           </div>

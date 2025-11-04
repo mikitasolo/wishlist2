@@ -10,8 +10,9 @@ const ItemSchema = new Schema(
       type: String, 
       required: true 
     },
-    price: { 
-      type: String 
+    priceInCents: { 
+      type: Number,
+      required: false
     },
     link: { 
       type: String 

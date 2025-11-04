@@ -73,7 +73,7 @@ export default function AdminPanel() {
   const handleAddItem = async (newItem: {
     name: string;
     imageUrl: string;
-    price?: string;
+    priceInCents?: number;
     link?: string;
   }) => {
     try {
@@ -329,17 +329,20 @@ export default function AdminPanel() {
                               <img
                                 src={item.imageUrl}
                                 alt={item.name}
-                                className="h-12 w-12 rounded-lg object-cover"
+                                className="h-12 w-12 rounded-lg object-cover flex-shrink-0"
                               />
-                              <div className="ml-4">
-                                <div className="text-sm font-medium text-gray-900">
+                              <div className="ml-4 min-w-0 max-w-xs">
+                                <div 
+                                  className="text-sm font-medium text-gray-900 truncate"
+                                  title={item.name}
+                                >
                                   {item.name}
                                 </div>
                               </div>
                             </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {item.price || '-'}
+                            {item.priceInCents != null ? `$${(item.priceInCents / 100).toFixed(2)}` : '-'}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <button

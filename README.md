@@ -284,7 +284,7 @@ wishlist2/
 {
   name: string          // Required - Item name
   imageUrl: string      // Required - Image URL
-  price?: string        // Optional - Price
+  priceInCents?: number // Optional - Price in cents (e.g., 9999 = $99.99)
   link?: string         // Optional - Product link
   isCompleted: boolean  // Default: false - Completion status
   isBooked: boolean     // Default: false - Booking status

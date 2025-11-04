@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
     const item = await Item.create({
       name: body.name,
       imageUrl: body.imageUrl,
-      price: body.price,
+      priceInCents: body.priceInCents,
       link: body.link,
       status: body.status || 'available',
       bookedBy: body.bookedBy || null,

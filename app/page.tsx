@@ -15,6 +15,7 @@ export default function Home() {
   const [items, setItems] = useState<IItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'available' | 'booked' | 'bookedByYou' | 'completed'>('all');
+  const [sortBy, setSortBy] = useState<'name-asc' | 'name-desc' | 'price-asc' | 'price-desc'>('name-asc');
 
   useEffect(() => {
     fetchItems();
@@ -88,6 +89,27 @@ export default function Home() {
     if (filter === 'bookedByYou') return item.status === 'booked' && item.bookedBy === session?.user?.id;
     if (filter === 'completed') return item.status === 'completed';
     return true;
+  });
+
+  const sortedItems = [...filteredItems].sort((a, b) => {
+    switch (sortBy) {
+      case 'name-asc':
+        return a.name.localeCompare(b.name);
+      case 'name-desc':
+        return b.name.localeCompare(a.name);
+      case 'price-asc':
+        // Items without price go to the end
+        if (a.priceInCents == null) return 1;
+        if (b.priceInCents == null) return -1;
+        return a.priceInCents - b.priceInCents;
+      case 'price-desc':
+        // Items without price go to the end
+        if (a.priceInCents == null) return 1;
+        if (b.priceInCents == null) return -1;
+        return b.priceInCents - a.priceInCents;
+      default:
+        return 0;
+    }
   });
 
   const stats = {
@@ -177,8 +199,10 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Filter Buttons */}
-        <div className="flex gap-2 overflow-x-auto pb-2 mb-8">
+        {/* Filter and Sort Controls */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+          {/* Filter Buttons */}
+          <div className="flex gap-2 overflow-x-auto pb-2 sm:pb-0">
           <button
             onClick={() => setFilter('all')}
             className={`px-4 py-2 rounded-lg font-medium transition-colors whitespace-nowrap ${
@@ -222,6 +246,25 @@ export default function Home() {
           >
             Completed
           </button>
+          </div>
+
+          {/* Sort Dropdown */}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <label htmlFor="sort" className="text-sm font-medium text-gray-700 whitespace-nowrap">
+              Sort by:
+            </label>
+            <select
+              id="sort"
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+              className="pl-3 pr-12 py-2 border border-gray-300 rounded-lg bg-white text-gray-700 font-medium focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none appearance-none bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20fill%3D%22none%22%20viewBox%3D%220%200%2020%2020%22%3E%3Cpath%20stroke%3D%22%236b7280%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20stroke-width%3D%221.5%22%20d%3D%22M6%208l4%204%204-4%22%2F%3E%3C%2Fsvg%3E')] bg-[length:1.5em_1.5em] bg-[right_0.5rem_center] bg-no-repeat"
+            >
+              <option value="name-asc">Name (A-Z)</option>
+              <option value="name-desc">Name (Z-A)</option>
+              <option value="price-asc">Price (Low to High)</option>
+              <option value="price-desc">Price (High to Low)</option>
+            </select>
+          </div>
         </div>
 
         {/* Items Grid */}
@@ -230,7 +273,7 @@ export default function Home() {
             <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
             <p className="mt-4 text-gray-600">Loading items...</p>
           </div>
-        ) : filteredItems.length === 0 ? (
+        ) : sortedItems.length === 0 ? (
           <div className="text-center py-20">
             <div className="text-6xl mb-4">📦</div>
             <h3 className="text-2xl font-semibold text-gray-800 mb-2">
@@ -244,7 +287,7 @@ export default function Home() {
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {filteredItems.map((item) => (
+            {sortedItems.map((item) => (
               <WishlistItem
                 key={item._id}
                 item={item}

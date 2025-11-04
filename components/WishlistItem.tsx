@@ -70,18 +70,21 @@ export default function WishlistItem({ item, onUpdate, isAuthenticated }: Wishli
 
       {/* Content */}
       <div className="p-5 flex flex-col flex-grow">
-        {/* Top content that can vary in height */}
+        {/* Item name - can vary in height */}
         <div className="flex-grow">
           <h3 
-            className="text-lg font-bold text-gray-800 mb-2 line-clamp-2"
+            className="text-lg font-bold text-gray-800 mb-3 line-clamp-2"
             title={item.name}
           >
             {item.name}
           </h3>
-          
-          {item.price && (
-            <p className="text-xl font-semibold text-primary-600 mb-3">
-              {item.price}
+        </div>
+
+        {/* Price - fixed position */}
+        <div className="mb-3 min-h-[32px] flex items-center">
+          {item.priceInCents != null && (
+            <p className="text-xl font-semibold text-primary-600">
+              ${(item.priceInCents / 100).toFixed(2)}
             </p>
           )}
         </div>
