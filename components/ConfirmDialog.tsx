@@ -70,22 +70,22 @@ export default function ConfirmDialog({
       onClick={handleBackdropClick}
     >
       <div 
-        className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 animate-scale-in"
+        className="bg-white rounded-xl shadow-2xl max-w-md w-full p-4 sm:p-6 animate-scale-in"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="text-xl font-bold text-gray-900 mb-3">{title}</h2>
-        <p className="text-gray-600 mb-6">{message}</p>
+        <h2 className="text-lg sm:text-xl font-bold text-gray-900 mb-2 sm:mb-3">{title}</h2>
+        <p className="text-sm sm:text-base text-gray-600 mb-4 sm:mb-6">{message}</p>
         
-        <div className="flex gap-3 justify-end">
+        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 justify-end">
           <button
             onClick={onCancel}
-            className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg font-medium hover:bg-gray-200 transition-colors cursor-pointer"
+            className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg text-sm sm:text-base font-medium hover:bg-gray-200 transition-colors cursor-pointer order-2 sm:order-1"
           >
             {cancelText}
           </button>
           <button
             onClick={onConfirm}
-            className={`px-4 py-2 text-white rounded-lg font-medium transition-colors cursor-pointer ${buttonColors[type]}`}
+            className={`px-4 py-2 text-white rounded-lg text-sm sm:text-base font-medium transition-colors cursor-pointer order-1 sm:order-2 ${buttonColors[type]}`}
           >
             {confirmText}
           </button>

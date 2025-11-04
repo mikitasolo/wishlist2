@@ -29,9 +29,9 @@ function AdminItemRow({
 
   return (
     <tr className="hover:bg-gray-50">
-      <td className="px-6 py-4 whitespace-nowrap">
+      <td className="px-3 sm:px-6 py-3 sm:py-4">
         <div className="flex items-center">
-          <div className="relative h-12 w-12 flex-shrink-0">
+          <div className="relative h-10 w-10 sm:h-12 sm:w-12 flex-shrink-0">
             {imageLoading && (
               <div className="absolute inset-0 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 animate-pulse rounded-lg" />
             )}
@@ -40,16 +40,16 @@ function AdminItemRow({
               alt={item.name}
               width={48}
               height={48}
-              className={`h-12 w-12 rounded-lg object-cover flex-shrink-0 transition-opacity duration-300 ${
+              className={`h-10 w-10 sm:h-12 sm:w-12 rounded-lg object-cover flex-shrink-0 transition-opacity duration-300 ${
                 imageLoading ? 'opacity-0' : 'opacity-100'
               }`}
               onLoad={() => setImageLoading(false)}
               onError={() => setImageLoading(false)}
             />
           </div>
-          <div className="ml-4 min-w-0 max-w-xs">
+          <div className="ml-2 sm:ml-4 min-w-0 max-w-xs">
             <div 
-              className="text-sm font-medium text-gray-900 truncate"
+              className="text-xs sm:text-sm font-medium text-gray-900 truncate"
               title={item.name}
             >
               {item.name}
@@ -57,15 +57,15 @@ function AdminItemRow({
           </div>
         </div>
       </td>
-      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+      <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-900">
         {formatPrice(item.priceInCents)}
       </td>
-      <td className="px-6 py-4 whitespace-nowrap">
+      <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
         <button
           onClick={onToggleComplete}
           className="group relative cursor-pointer"
         >
-          <div className="flex gap-2 items-center">
+          <div className="flex flex-col sm:flex-row gap-1 sm:gap-2 items-start sm:items-center">
             {item.status === 'available' && (
               <span className="px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800 group-hover:bg-blue-200 transition-colors">
                 Available
@@ -76,13 +76,13 @@ function AdminItemRow({
                 Completed
               </span>
             )}
-            <span className="text-xs text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity">
+            <span className="text-xs text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity hidden sm:inline">
               {item.status === 'completed' ? '→ Mark available' : '→ Mark completed'}
             </span>
           </div>
         </button>
       </td>
-      <td className="px-6 py-4 whitespace-nowrap text-sm">
+      <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm">
         {item.link ? (
           <a
             href={item.link}
@@ -96,8 +96,8 @@ function AdminItemRow({
           '-'
         )}
       </td>
-      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-        <div className="flex gap-3 justify-end">
+      <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-right text-xs sm:text-sm font-medium">
+        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 justify-end">
           <button
             onClick={onEdit}
             className="text-primary-600 hover:text-primary-900 cursor-pointer"
@@ -414,26 +414,26 @@ export default function AdminPanel() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-pink-100 to-white">
-      <div className="max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
+      <div className="max-w-7xl mx-auto px-4 py-4 sm:py-6 lg:py-8 sm:px-6 lg:px-8">
         {/* Header */}
-        <div className="flex justify-between items-center mb-8">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-6 sm:mb-8 gap-4">
           <div>
-            <h1 className="text-4xl font-bold text-gray-900 mb-2">Admin Panel</h1>
-            <p className="text-gray-600">Manage wishlist items and users</p>
+            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900 mb-1 sm:mb-2">Admin Panel</h1>
+            <p className="text-sm sm:text-base text-gray-600">Manage wishlist items and users</p>
           </div>
           <button
             onClick={() => router.push('/')}
-            className="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-medium hover:bg-gray-300 transition-colors cursor-pointer"
+            className="bg-gray-200 text-gray-700 px-3 sm:px-4 py-2 rounded-lg text-sm sm:text-base font-medium hover:bg-gray-300 transition-colors cursor-pointer w-full sm:w-auto"
           >
             ← Back to Wishlist
           </button>
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-4 mb-8 border-b border-gray-200">
+        <div className="flex gap-2 sm:gap-4 mb-6 sm:mb-8 border-b border-gray-200 overflow-x-auto">
           <button
             onClick={() => setActiveTab('items')}
-            className={`pb-3 px-4 font-medium transition-colors cursor-pointer ${
+            className={`pb-3 px-3 sm:px-4 text-sm sm:text-base font-medium transition-colors cursor-pointer whitespace-nowrap flex-shrink-0 ${
               activeTab === 'items'
                 ? 'text-primary-600 border-b-2 border-primary-600'
                 : 'text-gray-600 hover:text-gray-900'
@@ -443,7 +443,7 @@ export default function AdminPanel() {
           </button>
           <button
             onClick={() => setActiveTab('users')}
-            className={`pb-3 px-4 font-medium transition-colors cursor-pointer ${
+            className={`pb-3 px-3 sm:px-4 text-sm sm:text-base font-medium transition-colors cursor-pointer whitespace-nowrap flex-shrink-0 ${
               activeTab === 'users'
                 ? 'text-primary-600 border-b-2 border-primary-600'
                 : 'text-gray-600 hover:text-gray-900'
@@ -456,40 +456,40 @@ export default function AdminPanel() {
         {/* Items Tab */}
         {activeTab === 'items' && (
           <div>
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-semibold text-gray-900">Wishlist Items</h2>
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-4 sm:mb-6 gap-3 sm:gap-0">
+              <h2 className="text-xl sm:text-2xl font-semibold text-gray-900">Wishlist Items</h2>
               <button
                 onClick={() => setIsAddModalOpen(true)}
-                className="bg-primary-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-primary-700 transition-colors cursor-pointer"
+                className="bg-primary-600 text-white px-4 sm:px-6 py-2 rounded-lg text-sm sm:text-base font-medium hover:bg-primary-700 transition-colors cursor-pointer w-full sm:w-auto"
               >
                 + Add Item
               </button>
             </div>
 
             {items.length === 0 ? (
-              <div className="bg-white rounded-xl p-12 text-center">
-                <div className="text-6xl mb-4">📦</div>
-                <p className="text-gray-600">No items yet. Add your first item!</p>
+              <div className="bg-white rounded-xl p-8 sm:p-12 text-center">
+                <div className="text-4xl sm:text-6xl mb-4">📦</div>
+                <p className="text-sm sm:text-base text-gray-600">No items yet. Add your first item!</p>
               </div>
             ) : (
               <div className="bg-white rounded-xl shadow-md overflow-hidden">
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto -mx-4 sm:mx-0">
                   <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50">
                       <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Item
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Price
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Status
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Link
                         </th>
-                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th className="px-3 sm:px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Actions
                         </th>
                       </tr>
@@ -515,25 +515,25 @@ export default function AdminPanel() {
         {/* Users Tab */}
         {activeTab === 'users' && (
           <div>
-            <h2 className="text-2xl font-semibold text-gray-900 mb-6">Invite Users</h2>
+            <h2 className="text-xl sm:text-2xl font-semibold text-gray-900 mb-4 sm:mb-6">Invite Users</h2>
 
             {/* Invite Form */}
-            <div className="bg-white rounded-xl shadow-md p-6 mb-8">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Send Invitation</h3>
-              <form onSubmit={handleInviteUser} className="flex gap-4">
+            <div className="bg-white rounded-xl shadow-md p-4 sm:p-6 mb-6 sm:mb-8">
+              <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-3 sm:mb-4">Send Invitation</h3>
+              <form onSubmit={handleInviteUser} className="flex flex-col sm:flex-row gap-3 sm:gap-4">
                 <input
                   type="email"
                   value={inviteEmail}
                   onChange={(e) => setInviteEmail(e.target.value)}
                   placeholder="Email address"
                   required
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
+                  className="flex-1 px-3 sm:px-4 py-2 text-sm sm:text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
                   disabled={isInviting}
                 />
                 <select
                   value={inviteRole}
                   onChange={(e) => setInviteRole(e.target.value as 'user' | 'admin')}
-                  className="pl-3 pr-12 py-2 border border-gray-300 rounded-lg bg-white text-gray-700 font-medium focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none appearance-none bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20fill%3D%22none%22%20viewBox%3D%220%200%2020%2020%22%3E%3Cpath%20stroke%3D%22%236b7280%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20stroke-width%3D%221.5%22%20d%3D%22M6%208l4%204%204-4%22%2F%3E%3C%2Fsvg%3E')] bg-[length:1.5em_1.5em] bg-[right_0.5rem_center] bg-no-repeat"
+                  className="pl-3 pr-8 sm:pr-12 py-2 text-sm sm:text-base border border-gray-300 rounded-lg bg-white text-gray-700 font-medium focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none appearance-none bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20fill%3D%22none%22%20viewBox%3D%220%200%2020%2020%22%3E%3Cpath%20stroke%3D%22%236b7280%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20stroke-width%3D%221.5%22%20d%3D%22M6%208l4%204%204-4%22%2F%3E%3C%2Fsvg%3E')] bg-[length:1.5em_1.5em] bg-[right_0.5rem_center] bg-no-repeat"
                   disabled={isInviting}
                 >
                   <option value="user">User</option>
@@ -542,7 +542,7 @@ export default function AdminPanel() {
                 <button
                   type="submit"
                   disabled={isInviting}
-                  className="bg-primary-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-primary-700 transition-colors disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
+                  className="bg-primary-600 text-white px-4 sm:px-6 py-2 rounded-lg text-sm sm:text-base font-medium hover:bg-primary-700 transition-colors disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed w-full sm:w-auto"
                 >
                   {isInviting ? 'Inviting...' : 'Invite'}
                 </button>
@@ -551,29 +551,29 @@ export default function AdminPanel() {
 
             {/* Users List */}
             <div className="bg-white rounded-xl shadow-md overflow-hidden">
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto -mx-4 sm:mx-0">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Email
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Role
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">
                         Email Verified
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Status
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden lg:table-cell">
                         Invited By
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden lg:table-cell">
                         Joined
                       </th>
-                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-3 sm:px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Actions
                       </th>
                     </tr>
@@ -581,13 +581,15 @@ export default function AdminPanel() {
                   <tbody className="bg-white divide-y divide-gray-200">
                     {users.map((user) => (
                       <tr key={user._id} className={`hover:bg-gray-50 ${user.isArchived ? 'opacity-60' : ''}`}>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {user.email}
-                          {user.email === session?.user?.email && (
-                            <span className="ml-2 text-xs text-gray-500">(you)</span>
-                          )}
+                        <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-900">
+                          <div className="max-w-[150px] sm:max-w-none truncate">
+                            {user.email}
+                            {user.email === session?.user?.email && (
+                              <span className="ml-2 text-xs text-gray-500">(you)</span>
+                            )}
+                          </div>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
+                        <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
                           <span
                             className={`px-2 py-1 text-xs font-semibold rounded-full ${
                               user.role === 'admin'
@@ -598,7 +600,7 @@ export default function AdminPanel() {
                             {user.role}
                           </span>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
+                        <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap hidden md:table-cell">
                           <span
                             className={`px-2 py-1 text-xs font-semibold rounded-full ${
                               user.emailVerified
@@ -609,7 +611,7 @@ export default function AdminPanel() {
                             {user.emailVerified ? 'Verified' : 'Not Verified'}
                           </span>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
+                        <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
                           <span
                             className={`px-2 py-1 text-xs font-semibold rounded-full ${
                               user.isArchived
@@ -620,13 +622,13 @@ export default function AdminPanel() {
                             {user.isArchived ? 'Archived' : 'Active'}
                           </span>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-600 hidden lg:table-cell">
                           {user.invitedBy || '-'}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-600 hidden lg:table-cell">
                           {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : '-'}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                        <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-right text-xs sm:text-sm font-medium">
                           {user.email !== session?.user?.email && (
                             <button
                               onClick={() => handleToggleArchive(user._id, user.isArchived)}

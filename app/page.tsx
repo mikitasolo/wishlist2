@@ -113,15 +113,15 @@ export default function Home() {
 
   return (
     <main className="min-h-screen">
-      <div className="max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
+      <div className="max-w-7xl mx-auto px-4 py-4 sm:py-6 lg:py-8 sm:px-6 lg:px-8">
         {/* Header */}
-        <div className="mb-8">
-          <div className="flex justify-between items-center mb-8">
-            <div className="text-center flex-1">
-              <h1 className="text-5xl font-bold text-gray-900 mb-4">
+        <div className="mb-6 sm:mb-8">
+          <div className="relative flex flex-col sm:flex-row sm:justify-between sm:items-center mb-6 sm:mb-8 gap-4">
+            <div className="text-center sm:text-left flex-1">
+              <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-gray-900 mb-2 sm:mb-4">
                 My Wishlist
               </h1>
-              <p className="text-xl text-gray-600">
+              <p className="text-base sm:text-lg lg:text-xl text-gray-600">
                 {session?.user?.role === 'admin' 
                   ? 'Manage your wishlist items'
                   : session?.user 
@@ -129,19 +129,19 @@ export default function Home() {
                     : 'View wishlist items'}
               </p>
             </div>
-            <div className="absolute top-8 right-8">
+            <div className="flex justify-center sm:justify-end sm:absolute sm:top-0 sm:right-0">
               <AuthButton />
             </div>
           </div>
 
           {/* Public mode message */}
           {!session?.user && (
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-8">
-              <p className="text-sm text-blue-800 text-center">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 sm:p-4 mb-6 sm:mb-8">
+              <p className="text-xs sm:text-sm text-blue-800 text-center">
                 👋 You're viewing in <strong>public mode</strong>. 
                 <button 
                   onClick={() => router.push('/auth/signin')}
-                  className="ml-2 text-blue-600 font-semibold hover:underline cursor-pointer"
+                  className="ml-1 sm:ml-2 text-blue-600 font-semibold hover:underline cursor-pointer"
                 >
                   Sign in
                 </button>
@@ -152,12 +152,12 @@ export default function Home() {
 
           {/* Admin panel link */}
           {session?.user?.role === 'admin' && (
-            <div className="bg-primary-50 border border-primary-200 rounded-lg p-4 mb-8">
-              <p className="text-sm text-primary-800 text-center">
+            <div className="bg-primary-50 border border-primary-200 rounded-lg p-3 sm:p-4 mb-6 sm:mb-8">
+              <p className="text-xs sm:text-sm text-primary-800 text-center">
                 👑 You're signed in as <strong>admin</strong>. 
                 <button 
                   onClick={() => router.push('/admin')}
-                  className="ml-2 text-primary-600 font-semibold hover:underline cursor-pointer"
+                  className="ml-1 sm:ml-2 text-primary-600 font-semibold hover:underline cursor-pointer"
                 >
                   Go to Admin Panel
                 </button>
@@ -167,36 +167,36 @@ export default function Home() {
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-          <div className="bg-white rounded-xl p-4 shadow-md">
-            <p className="text-sm text-gray-600 mb-1">Total Items</p>
-            <p className="text-3xl font-bold text-gray-900">{stats.total}</p>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-6 sm:mb-8">
+          <div className="bg-white rounded-xl p-3 sm:p-4 shadow-md">
+            <p className="text-xs sm:text-sm text-gray-600 mb-1">Total Items</p>
+            <p className="text-2xl sm:text-3xl font-bold text-gray-900">{stats.total}</p>
           </div>
-          <div className="bg-white rounded-xl p-4 shadow-md">
-            <p className="text-sm text-gray-600 mb-1">Available</p>
-            <p className="text-3xl font-bold text-blue-600">{stats.available}</p>
+          <div className="bg-white rounded-xl p-3 sm:p-4 shadow-md">
+            <p className="text-xs sm:text-sm text-gray-600 mb-1">Available</p>
+            <p className="text-2xl sm:text-3xl font-bold text-blue-600">{stats.available}</p>
           </div>
-          <div className="bg-white rounded-xl p-4 shadow-md">
-            <p className="text-sm text-gray-600 mb-1">
+          <div className="bg-white rounded-xl p-3 sm:p-4 shadow-md">
+            <p className="text-xs sm:text-sm text-gray-600 mb-1">
               {session?.user && session.user.role !== 'admin' ? 'Booked by You' : 'Booked'}
             </p>
-            <p className="text-3xl font-bold text-amber-600">
+            <p className="text-2xl sm:text-3xl font-bold text-amber-600">
               {session?.user && session.user.role !== 'admin' ? stats.bookedByYou : stats.booked}
             </p>
           </div>
-          <div className="bg-white rounded-xl p-4 shadow-md">
-            <p className="text-sm text-gray-600 mb-1">Completed</p>
-            <p className="text-3xl font-bold text-green-600">{stats.completed}</p>
+          <div className="bg-white rounded-xl p-3 sm:p-4 shadow-md">
+            <p className="text-xs sm:text-sm text-gray-600 mb-1">Completed</p>
+            <p className="text-2xl sm:text-3xl font-bold text-green-600">{stats.completed}</p>
           </div>
         </div>
 
         {/* Filter and Sort Controls */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 mb-6 sm:mb-8">
           {/* Filter Buttons */}
-          <div className="flex gap-2 overflow-x-auto pb-2 sm:pb-0">
+          <div className="flex gap-2 overflow-x-auto pb-2 sm:pb-0 -mx-4 px-4 sm:mx-0 sm:px-0">
           <button
             onClick={() => setFilter('all')}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors whitespace-nowrap cursor-pointer ${
+            className={`px-3 sm:px-4 py-2 rounded-lg text-sm sm:text-base font-medium transition-colors whitespace-nowrap cursor-pointer flex-shrink-0 ${
               filter === 'all'
                 ? 'bg-primary-600 text-white'
                 : 'bg-white text-gray-700 hover:bg-gray-100'
@@ -206,7 +206,7 @@ export default function Home() {
           </button>
           <button
             onClick={() => setFilter('available')}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors whitespace-nowrap cursor-pointer ${
+            className={`px-3 sm:px-4 py-2 rounded-lg text-sm sm:text-base font-medium transition-colors whitespace-nowrap cursor-pointer flex-shrink-0 ${
               filter === 'available'
                 ? 'bg-blue-600 text-white'
                 : 'bg-white text-gray-700 hover:bg-gray-100'
@@ -218,7 +218,7 @@ export default function Home() {
           {session?.user && session.user.role !== 'admin' && (
             <button
               onClick={() => setFilter('bookedByYou')}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors whitespace-nowrap cursor-pointer ${
+              className={`px-3 sm:px-4 py-2 rounded-lg text-sm sm:text-base font-medium transition-colors whitespace-nowrap cursor-pointer flex-shrink-0 ${
                 filter === 'bookedByYou'
                   ? 'bg-amber-600 text-white'
                   : 'bg-white text-gray-700 hover:bg-gray-100'
@@ -229,7 +229,7 @@ export default function Home() {
           )}
           <button
             onClick={() => setFilter('completed')}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors whitespace-nowrap cursor-pointer ${
+            className={`px-3 sm:px-4 py-2 rounded-lg text-sm sm:text-base font-medium transition-colors whitespace-nowrap cursor-pointer flex-shrink-0 ${
               filter === 'completed'
                 ? 'bg-green-600 text-white'
                 : 'bg-white text-gray-700 hover:bg-gray-100'
@@ -241,14 +241,14 @@ export default function Home() {
 
           {/* Sort Dropdown */}
           <div className="flex items-center gap-2 flex-shrink-0">
-            <label htmlFor="sort" className="text-sm font-medium text-gray-700 whitespace-nowrap">
+            <label htmlFor="sort" className="text-xs sm:text-sm font-medium text-gray-700 whitespace-nowrap">
               Sort by:
             </label>
             <select
               id="sort"
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
-              className="pl-3 pr-12 py-2 border border-gray-300 rounded-lg bg-white text-gray-700 font-medium focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none appearance-none bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20fill%3D%22none%22%20viewBox%3D%220%200%2020%2020%22%3E%3Cpath%20stroke%3D%22%236b7280%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20stroke-width%3D%221.5%22%20d%3D%22M6%208l4%204%204-4%22%2F%3E%3C%2Fsvg%3E')] bg-[length:1.5em_1.5em] bg-[right_0.5rem_center] bg-no-repeat"
+              className="pl-3 pr-8 sm:pr-12 py-2 text-sm sm:text-base border border-gray-300 rounded-lg bg-white text-gray-700 font-medium focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none appearance-none bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20fill%3D%22none%22%20viewBox%3D%220%200%2020%2020%22%3E%3Cpath%20stroke%3D%22%236b7280%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20stroke-width%3D%221.5%22%20d%3D%22M6%208l4%204%204-4%22%2F%3E%3C%2Fsvg%3E')] bg-[length:1.5em_1.5em] bg-[right_0.5rem_center] bg-no-repeat"
             >
               <option value="name-asc">Name (A-Z)</option>
               <option value="name-desc">Name (Z-A)</option>
@@ -259,30 +259,30 @@ export default function Home() {
         </div>
 
         {/* Price Disclaimer */}
-        <p className="text-xs text-gray-500 text-center mb-6 italic">
+        <p className="text-xs text-gray-500 text-center mb-4 sm:mb-6 italic px-2">
           ⚠️ Prices are approximate and may not reflect actual current prices
         </p>
 
         {/* Items Grid */}
         {loading ? (
-          <div className="text-center py-20">
-            <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
-            <p className="mt-4 text-gray-600">Loading items...</p>
+          <div className="text-center py-12 sm:py-20">
+            <div className="inline-block animate-spin rounded-full h-10 w-10 sm:h-12 sm:w-12 border-b-2 border-primary-600"></div>
+            <p className="mt-4 text-sm sm:text-base text-gray-600">Loading items...</p>
           </div>
         ) : sortedItems.length === 0 ? (
-          <div className="text-center py-20">
-            <div className="text-6xl mb-4">📦</div>
-            <h3 className="text-2xl font-semibold text-gray-800 mb-2">
+          <div className="text-center py-12 sm:py-20">
+            <div className="text-4xl sm:text-6xl mb-4">📦</div>
+            <h3 className="text-xl sm:text-2xl font-semibold text-gray-800 mb-2">
               No items found
             </h3>
-            <p className="text-gray-600">
+            <p className="text-sm sm:text-base text-gray-600 px-4">
               {filter === 'all'
                 ? 'No wishlist items yet. Check back soon!'
                 : `No ${filter} items at the moment.`}
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
             {sortedItems.map((item) => (
               <WishlistItem
                 key={item._id}

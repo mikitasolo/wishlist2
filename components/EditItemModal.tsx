@@ -102,14 +102,14 @@ export default function EditItemModal({ isOpen, onClose, onSave, item }: EditIte
       onClick={handleBackdropClick}
     >
       <div 
-        className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto"
+        className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-4 sm:p-6 max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
         aria-labelledby="edit-item-title"
       >
-        <div className="flex justify-between items-center mb-6">
-          <h2 id="edit-item-title" className="text-2xl font-bold text-gray-800">Edit Item</h2>
+        <div className="flex justify-between items-center mb-4 sm:mb-6">
+          <h2 id="edit-item-title" className="text-xl sm:text-2xl font-bold text-gray-800">Edit Item</h2>
           <button
             onClick={onClose}
             className="text-gray-500 hover:text-gray-700 text-2xl leading-none cursor-pointer"

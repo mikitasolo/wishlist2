@@ -82,11 +82,11 @@ function WishlistItem({ item, onUpdate, isAuthenticated }: WishlistItemProps) {
       </div>
 
       {/* Content */}
-      <div className="p-5 flex flex-col flex-grow">
+      <div className="p-4 sm:p-5 flex flex-col flex-grow">
         {/* Item name - can vary in height */}
         <div className="flex-grow">
           <h3 
-            className="text-lg font-bold text-gray-800 mb-3 line-clamp-2"
+            className="text-base sm:text-lg font-bold text-gray-800 mb-2 sm:mb-3 line-clamp-2"
             title={item.name}
           >
             {item.name}
@@ -94,9 +94,9 @@ function WishlistItem({ item, onUpdate, isAuthenticated }: WishlistItemProps) {
         </div>
 
         {/* Price - fixed position */}
-        <div className="mb-3 min-h-[32px] flex items-center">
+        <div className="mb-2 sm:mb-3 min-h-[28px] sm:min-h-[32px] flex items-center">
           {item.priceInCents != null && (
-            <p className="text-xl font-semibold text-primary-600">
+            <p className="text-lg sm:text-xl font-semibold text-primary-600">
               {formatPrice(item.priceInCents)}
             </p>
           )}
