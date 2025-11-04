@@ -123,6 +123,34 @@ export default function AdminPanel() {
     }
   };
 
+  const handleToggleComplete = async (itemId: string, currentStatus: string) => {
+    try {
+      const newStatus = currentStatus === 'completed' ? 'available' : 'completed';
+      
+      const response = await fetch(`/api/items/${itemId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ status: newStatus }),
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        setItems(items.map((item) => (item._id === itemId ? data.data : item)));
+        showToast(
+          `Item ${newStatus === 'completed' ? 'completed' : 'marked as available'}`,
+          'success'
+        );
+      } else {
+        showToast('Failed to update item', 'error');
+      }
+    } catch (error) {
+      console.error('Error updating item:', error);
+      showToast('Failed to update item', 'error');
+    }
+  };
+
   const handleDeleteItem = async () => {
     if (!itemToDelete) return;
 
@@ -314,18 +342,26 @@ export default function AdminPanel() {
                             {item.price || '-'}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="flex gap-2">
-                              {item.status === 'available' && (
-                                <span className="px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
-                                  Available
+                            <button
+                              onClick={() => handleToggleComplete(item._id, item.status)}
+                              className="group relative"
+                            >
+                              <div className="flex gap-2 items-center">
+                                {item.status === 'available' && (
+                                  <span className="px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800 group-hover:bg-blue-200 transition-colors">
+                                    Available
+                                  </span>
+                                )}
+                                {item.status === 'completed' && (
+                                  <span className="px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800 group-hover:bg-green-200 transition-colors">
+                                    Completed
+                                  </span>
+                                )}
+                                <span className="text-xs text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  {item.status === 'completed' ? '→ Mark available' : '→ Mark completed'}
                                 </span>
-                              )}
-                              {item.status === 'completed' && (
-                                <span className="px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
-                                  Completed
-                                </span>
-                              )}
-                            </div>
+                              </div>
+                            </button>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm">
                             {item.link ? (
