@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { IItem } from '@/models/Item';
+import { centsToDollars, dollarsToCents } from '@/lib/utils/currency';
 
 interface EditItemModalProps {
   isOpen: boolean;
@@ -14,20 +15,54 @@ export default function EditItemModal({ isOpen, onClose, onSave, item }: EditIte
   const [formData, setFormData] = useState({
     name: item.name,
     imageUrl: item.imageUrl,
-    price: item.priceInCents ? (item.priceInCents / 100).toFixed(2) : '',
+    price: centsToDollars(item.priceInCents),
     link: item.link || '',
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const firstInputRef = useRef<HTMLInputElement>(null);
 
   // Update form when item changes
   useEffect(() => {
     setFormData({
       name: item.name,
       imageUrl: item.imageUrl,
-      price: item.priceInCents ? (item.priceInCents / 100).toFixed(2) : '',
+      price: centsToDollars(item.priceInCents),
       link: item.link || '',
     });
   }, [item]);
+
+  // Focus first input when modal opens
+  useEffect(() => {
+    if (isOpen && firstInputRef.current) {
+      setTimeout(() => firstInputRef.current?.focus(), 100);
+    }
+  }, [isOpen]);
+
+  // Handle Escape key press
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !isSubmitting) {
+        onClose();
+      }
+    };
+
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [isOpen, isSubmitting, onClose]);
+
+  // Prevent body scroll when modal is open
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [isOpen]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,7 +70,7 @@ export default function EditItemModal({ isOpen, onClose, onSave, item }: EditIte
 
     try {
       // Convert price from dollars to cents (only if price is provided)
-      const priceInCents = formData.price ? Math.round(parseFloat(formData.price) * 100) : undefined;
+      const priceInCents = formData.price ? dollarsToCents(formData.price) : undefined;
       
       await onSave({
         name: formData.name,
@@ -52,17 +87,34 @@ export default function EditItemModal({ isOpen, onClose, onSave, item }: EditIte
     }
   };
 
+  const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    // Only close if clicking the backdrop itself, not the modal content
+    if (e.target === e.currentTarget && !isSubmitting) {
+      onClose();
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto">
+    <div 
+      className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"
+      onClick={handleBackdropClick}
+    >
+      <div 
+        className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="edit-item-title"
+      >
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold text-gray-800">Edit Item</h2>
+          <h2 id="edit-item-title" className="text-2xl font-bold text-gray-800">Edit Item</h2>
           <button
             onClick={onClose}
-            className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
+            className="text-gray-500 hover:text-gray-700 text-2xl leading-none cursor-pointer"
             disabled={isSubmitting}
+            aria-label="Close modal"
           >
             ×
           </button>
@@ -77,11 +129,13 @@ export default function EditItemModal({ isOpen, onClose, onSave, item }: EditIte
               type="text"
               id="name"
               required
+              ref={firstInputRef}
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
               placeholder="Enter item name"
               disabled={isSubmitting}
+              aria-required="true"
             />
           </div>
 
@@ -137,14 +191,14 @@ export default function EditItemModal({ isOpen, onClose, onSave, item }: EditIte
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium"
+              className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium cursor-pointer"
               disabled={isSubmitting}
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="flex-1 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors font-medium disabled:opacity-50"
+              className="flex-1 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors font-medium disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
               disabled={isSubmitting}
             >
               {isSubmitting ? 'Saving...' : 'Save Changes'}

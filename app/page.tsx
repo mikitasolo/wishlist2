@@ -1,12 +1,14 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import WishlistItem from '@/components/WishlistItem';
 import AuthButton from '@/components/AuthButton';
 import { useToast } from '@/components/ToastProvider';
 import { IItem } from '@/models/Item';
+import { filterItems, sortItems, calculateStats, type FilterType, type SortType } from '@/lib/utils/itemFilters';
+import { useFetchItems, useUpdateItem } from '@/lib/hooks/useItems';
 
 export default function Home() {
   const { data: session } = useSession();
@@ -14,8 +16,26 @@ export default function Home() {
   const { showToast } = useToast();
   const [items, setItems] = useState<IItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<'all' | 'available' | 'booked' | 'bookedByYou' | 'completed'>('all');
-  const [sortBy, setSortBy] = useState<'name-asc' | 'name-desc' | 'price-asc' | 'price-desc'>('name-asc');
+  const [filter, setFilter] = useState<FilterType>('all');
+  const [sortBy, setSortBy] = useState<SortType>('name-asc');
+
+  const fetchItemsHook = useFetchItems();
+
+  const fetchItems = useCallback(async (silent = false) => {
+    try {
+      const data = await fetchItemsHook(silent);
+      setItems(data);
+    } catch (error) {
+      console.error('Error fetching items:', error);
+      if (!silent) {
+        showToast('Failed to load items', 'error');
+      }
+    } finally {
+      if (!silent) {
+        setLoading(false);
+      }
+    }
+  }, [fetchItemsHook, showToast]);
 
   useEffect(() => {
     fetchItems();
@@ -40,85 +60,56 @@ export default function Home() {
       clearInterval(pollInterval);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [fetchItems]);
 
-  const fetchItems = async (silent = false) => {
-    try {
-      const response = await fetch('/api/items', { cache: 'no-store' });
-      const data = await response.json();
-      if (data.success) {
-        setItems(data.data);
-      }
-    } catch (error) {
-      console.error('Error fetching items:', error);
-    } finally {
-      if (!silent) {
-        setLoading(false);
-      }
-    }
-  };
-
-  const handleUpdateItem = async (id: string, updates: Partial<IItem>) => {
-    try {
-      const response = await fetch(`/api/items/${id}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(updates),
-      });
-
-      const data = await response.json();
-      
-      if (data.success) {
-        setItems(items.map((item) => (item._id === id ? data.data : item)));
-      } else if (response.status === 403 && data.error?.includes('archived')) {
+  const updateItemHook = useUpdateItem(
+    (updatedItem) => {
+      // Success callback - update with server response
+      setItems((prevItems) =>
+        prevItems.map((item) => (item._id === updatedItem._id ? updatedItem : item))
+      );
+    },
+    (error) => {
+      // Error callback - rollback and show error
+      fetchItems(true);
+      if (error.includes('archived')) {
         // User has been archived - show message and reload to log them out
-        showToast(data.error, 'error');
+        showToast(error, 'error');
         setTimeout(() => window.location.reload(), 2000);
+      } else {
+        showToast(error, 'error');
       }
-    } catch (error) {
-      console.error('Error updating item:', error);
     }
-  };
+  );
 
-  const filteredItems = items.filter((item) => {
-    if (filter === 'available') return item.status === 'available';
-    if (filter === 'booked') return item.status === 'booked';
-    if (filter === 'bookedByYou') return item.status === 'booked' && item.bookedBy === session?.user?.id;
-    if (filter === 'completed') return item.status === 'completed';
-    return true;
-  });
+  const handleUpdateItem = useCallback(async (id: string, updates: Partial<IItem>) => {
+    // Optimistic update
+    setItems((prevItems) => {
+      const updated = prevItems.map((item) => (item._id === id ? { ...item, ...updates } : item));
+      return updated;
+    });
 
-  const sortedItems = [...filteredItems].sort((a, b) => {
-    switch (sortBy) {
-      case 'name-asc':
-        return a.name.localeCompare(b.name);
-      case 'name-desc':
-        return b.name.localeCompare(a.name);
-      case 'price-asc':
-        // Items without price go to the end
-        if (a.priceInCents == null) return 1;
-        if (b.priceInCents == null) return -1;
-        return a.priceInCents - b.priceInCents;
-      case 'price-desc':
-        // Items without price go to the end
-        if (a.priceInCents == null) return 1;
-        if (b.priceInCents == null) return -1;
-        return b.priceInCents - a.priceInCents;
-      default:
-        return 0;
-    }
-  });
+    // Call the hook - it will handle success/error via callbacks
+    await updateItemHook(id, updates);
+  }, [updateItemHook]);
 
-  const stats = {
-    total: items.length,
-    available: items.filter((item) => item.status === 'available').length,
-    booked: items.filter((item) => item.status === 'booked').length,
-    bookedByYou: items.filter((item) => item.status === 'booked' && item.bookedBy === session?.user?.id).length,
-    completed: items.filter((item) => item.status === 'completed').length,
-  };
+  // Optimized stats calculation using utility
+  const stats = useMemo(
+    () => calculateStats(items, session?.user?.id),
+    [items, session?.user?.id]
+  );
+
+  // Memoized filtered items using utility
+  const filteredItems = useMemo(
+    () => filterItems(items, filter, session?.user?.id),
+    [items, filter, session?.user?.id]
+  );
+
+  // Memoized sorted items using utility
+  const sortedItems = useMemo(
+    () => sortItems(filteredItems, sortBy),
+    [filteredItems, sortBy]
+  );
 
   return (
     <main className="min-h-screen">
@@ -150,7 +141,7 @@ export default function Home() {
                 👋 You're viewing in <strong>public mode</strong>. 
                 <button 
                   onClick={() => router.push('/auth/signin')}
-                  className="ml-2 text-blue-600 font-semibold hover:underline"
+                  className="ml-2 text-blue-600 font-semibold hover:underline cursor-pointer"
                 >
                   Sign in
                 </button>
@@ -166,7 +157,7 @@ export default function Home() {
                 👑 You're signed in as <strong>admin</strong>. 
                 <button 
                   onClick={() => router.push('/admin')}
-                  className="ml-2 text-primary-600 font-semibold hover:underline"
+                  className="ml-2 text-primary-600 font-semibold hover:underline cursor-pointer"
                 >
                   Go to Admin Panel
                 </button>
@@ -205,7 +196,7 @@ export default function Home() {
           <div className="flex gap-2 overflow-x-auto pb-2 sm:pb-0">
           <button
             onClick={() => setFilter('all')}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors whitespace-nowrap ${
+            className={`px-4 py-2 rounded-lg font-medium transition-colors whitespace-nowrap cursor-pointer ${
               filter === 'all'
                 ? 'bg-primary-600 text-white'
                 : 'bg-white text-gray-700 hover:bg-gray-100'
@@ -215,7 +206,7 @@ export default function Home() {
           </button>
           <button
             onClick={() => setFilter('available')}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors whitespace-nowrap ${
+            className={`px-4 py-2 rounded-lg font-medium transition-colors whitespace-nowrap cursor-pointer ${
               filter === 'available'
                 ? 'bg-blue-600 text-white'
                 : 'bg-white text-gray-700 hover:bg-gray-100'
@@ -227,7 +218,7 @@ export default function Home() {
           {session?.user && session.user.role !== 'admin' && (
             <button
               onClick={() => setFilter('bookedByYou')}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors whitespace-nowrap ${
+              className={`px-4 py-2 rounded-lg font-medium transition-colors whitespace-nowrap cursor-pointer ${
                 filter === 'bookedByYou'
                   ? 'bg-amber-600 text-white'
                   : 'bg-white text-gray-700 hover:bg-gray-100'
@@ -238,7 +229,7 @@ export default function Home() {
           )}
           <button
             onClick={() => setFilter('completed')}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors whitespace-nowrap ${
+            className={`px-4 py-2 rounded-lg font-medium transition-colors whitespace-nowrap cursor-pointer ${
               filter === 'completed'
                 ? 'bg-green-600 text-white'
                 : 'bg-white text-gray-700 hover:bg-gray-100'

@@ -2,13 +2,119 @@
 
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { IItem } from '@/models/Item';
 import { IUser } from '@/models/User';
 import AddItemModal from '@/components/AddItemModal';
 import EditItemModal from '@/components/EditItemModal';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import { useToast } from '@/components/ToastProvider';
+import { formatPrice } from '@/lib/utils/currency';
+import { useFetchItems, useCreateItem, useUpdateItem, useDeleteItem } from '@/lib/hooks/useItems';
+import Image from 'next/image';
+
+// Admin table row component with image loading state
+function AdminItemRow({
+  item,
+  onEdit,
+  onDelete,
+  onToggleComplete,
+}: {
+  item: IItem;
+  onEdit: () => void;
+  onDelete: () => void;
+  onToggleComplete: () => void;
+}) {
+  const [imageLoading, setImageLoading] = useState(true);
+
+  return (
+    <tr className="hover:bg-gray-50">
+      <td className="px-6 py-4 whitespace-nowrap">
+        <div className="flex items-center">
+          <div className="relative h-12 w-12 flex-shrink-0">
+            {imageLoading && (
+              <div className="absolute inset-0 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 animate-pulse rounded-lg" />
+            )}
+            <Image
+              src={item.imageUrl}
+              alt={item.name}
+              width={48}
+              height={48}
+              className={`h-12 w-12 rounded-lg object-cover flex-shrink-0 transition-opacity duration-300 ${
+                imageLoading ? 'opacity-0' : 'opacity-100'
+              }`}
+              onLoad={() => setImageLoading(false)}
+              onError={() => setImageLoading(false)}
+            />
+          </div>
+          <div className="ml-4 min-w-0 max-w-xs">
+            <div 
+              className="text-sm font-medium text-gray-900 truncate"
+              title={item.name}
+            >
+              {item.name}
+            </div>
+          </div>
+        </div>
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+        {formatPrice(item.priceInCents)}
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap">
+        <button
+          onClick={onToggleComplete}
+          className="group relative cursor-pointer"
+        >
+          <div className="flex gap-2 items-center">
+            {item.status === 'available' && (
+              <span className="px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800 group-hover:bg-blue-200 transition-colors">
+                Available
+              </span>
+            )}
+            {item.status === 'completed' && (
+              <span className="px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800 group-hover:bg-green-200 transition-colors">
+                Completed
+              </span>
+            )}
+            <span className="text-xs text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity">
+              {item.status === 'completed' ? '→ Mark available' : '→ Mark completed'}
+            </span>
+          </div>
+        </button>
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap text-sm">
+        {item.link ? (
+          <a
+            href={item.link}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-primary-600 hover:underline"
+          >
+            View
+          </a>
+        ) : (
+          '-'
+        )}
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+        <div className="flex gap-3 justify-end">
+          <button
+            onClick={onEdit}
+            className="text-primary-600 hover:text-primary-900 cursor-pointer"
+          >
+            Edit
+          </button>
+          <button
+            onClick={onDelete}
+            className="text-red-600 hover:text-red-900 cursor-pointer"
+          >
+            Delete
+          </button>
+        </div>
+      </td>
+    </tr>
+  );
+}
 
 export default function AdminPanel() {
   const { data: session, status } = useSession();
@@ -25,6 +131,76 @@ export default function AdminPanel() {
   const [isInviting, setIsInviting] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<string | null>(null);
 
+  // API hooks
+  const fetchItemsHook = useFetchItems();
+  
+  const createItemHook = useCreateItem(
+    (newItem) => {
+      // Success callback - optimistic update already done, just confirm
+      showToast('Item added successfully', 'success');
+    },
+    (error) => {
+      // Error callback - rollback optimistic update
+      setItems((prevItems) => prevItems.filter((item) => item._id !== 'temp-id'));
+      showToast(error, 'error');
+    }
+  );
+
+  const updateItemHook = useUpdateItem(
+    (updatedItem) => {
+      // Success callback - update with server response
+      setItems((prevItems) =>
+        prevItems.map((item) => (item._id === updatedItem._id ? updatedItem : item))
+      );
+      showToast('Item updated successfully', 'success');
+    },
+    (error) => {
+      // Error callback - rollback optimistic update
+      fetchItemsHook(true).then((data) => setItems(data));
+      showToast(error, 'error');
+    }
+  );
+
+  const deleteItemHook = useDeleteItem(
+    () => {
+      // Success callback - optimistic update already done, just confirm
+      showToast('Item deleted successfully', 'success');
+    },
+    (error) => {
+      // Error callback - rollback optimistic update
+      fetchItemsHook(true).then((data) => setItems(data));
+      showToast(error, 'error');
+    }
+  );
+
+  // Memoized fetch functions
+  const fetchItems = useCallback(async () => {
+    try {
+      const data = await fetchItemsHook(false);
+      setItems(data);
+    } catch (error) {
+      console.error('Error fetching items:', error);
+    }
+  }, [fetchItemsHook]);
+
+  const fetchUsers = useCallback(async () => {
+    try {
+      const response = await fetch('/api/invite');
+      const data = await response.json();
+      if (data.success) {
+        setUsers(data.data);
+      }
+    } catch (error) {
+      console.error('Error fetching users:', error);
+    }
+  }, []);
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    await Promise.all([fetchItems(), fetchUsers()]);
+    setLoading(false);
+  }, [fetchItems, fetchUsers]);
+
   useEffect(() => {
     if (status === 'loading') return;
     
@@ -38,145 +214,103 @@ export default function AdminPanel() {
       fetchData();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status]);
+  }, [status, router, session?.user]);
 
-  const fetchData = async () => {
-    setLoading(true);
-    await Promise.all([fetchItems(), fetchUsers()]);
-    setLoading(false);
-  };
-
-  const fetchItems = async () => {
-    try {
-      const response = await fetch('/api/items');
-      const data = await response.json();
-      if (data.success) {
-        setItems(data.data);
-      }
-    } catch (error) {
-      console.error('Error fetching items:', error);
-    }
-  };
-
-  const fetchUsers = async () => {
-    try {
-      const response = await fetch('/api/invite');
-      const data = await response.json();
-      if (data.success) {
-        setUsers(data.data);
-      }
-    } catch (error) {
-      console.error('Error fetching users:', error);
-    }
-  };
-
-  const handleAddItem = async (newItem: {
+  // Memoized handlers with optimistic updates
+  const handleAddItem = useCallback(async (newItem: {
     name: string;
     imageUrl: string;
     priceInCents?: number;
     link?: string;
   }) => {
-    try {
-      const response = await fetch('/api/items', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(newItem),
-      });
+    // Optimistic update - add temporary item
+    const tempItem: IItem = {
+      ...newItem,
+      _id: 'temp-id',
+      status: 'available',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    } as IItem;
+    setItems((prevItems) => [tempItem, ...prevItems]);
 
-      const data = await response.json();
-      if (data.success) {
-        setItems([data.data, ...items]);
-        showToast('Item added successfully', 'success');
-      } else {
-        showToast('Failed to add item', 'error');
-      }
-    } catch (error) {
-      console.error('Error adding item:', error);
-      showToast('Failed to add item', 'error');
+    // Call the hook - it will handle success/error via callbacks
+    const result = await createItemHook(newItem);
+    if (result) {
+      // Replace temp item with real item
+      setItems((prevItems) =>
+        prevItems.map((item) => (item._id === 'temp-id' ? result : item))
+      );
     }
-  };
+  }, [createItemHook]);
 
-  const handleEditItem = async (updates: Partial<IItem>) => {
+  const handleEditItem = useCallback(async (updates: Partial<IItem>) => {
     if (!itemToEdit) return;
 
-    try {
-      const response = await fetch(`/api/items/${itemToEdit._id}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(updates),
-      });
+    // Optimistic update
+    setItems((prevItems) =>
+      prevItems.map((item) =>
+        item._id === itemToEdit._id ? { ...item, ...updates } : item
+      )
+    );
 
-      const data = await response.json();
-      if (data.success) {
-        setItems(items.map((item) => (item._id === itemToEdit._id ? data.data : item)));
-        showToast('Item updated successfully', 'success');
-      } else {
-        showToast('Failed to update item', 'error');
-      }
-    } catch (error) {
-      console.error('Error updating item:', error);
-      showToast('Failed to update item', 'error');
-    }
-  };
+    // Call the hook - it will handle success/error via callbacks
+    await updateItemHook(itemToEdit._id!, updates);
+  }, [itemToEdit, updateItemHook]);
 
-  const handleToggleComplete = async (itemId: string, currentStatus: string) => {
-    try {
-      const newStatus = currentStatus === 'completed' ? 'available' : 'completed';
-      
-      const response = await fetch(`/api/items/${itemId}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ status: newStatus }),
-      });
+  const handleToggleComplete = useCallback(async (itemId: string, currentStatus: string) => {
+    const newStatus = currentStatus === 'completed' ? 'available' : 'completed';
+    
+    // Optimistic update
+    setItems((prevItems) =>
+      prevItems.map((item) =>
+        item._id === itemId ? { ...item, status: newStatus as 'available' | 'completed' } : item
+      )
+    );
 
-      const data = await response.json();
-      if (data.success) {
-        setItems(items.map((item) => (item._id === itemId ? data.data : item)));
-        showToast(
-          `Item ${newStatus === 'completed' ? 'completed' : 'marked as available'}`,
-          'success'
-        );
-      } else {
-        showToast('Failed to update item', 'error');
-      }
-    } catch (error) {
-      console.error('Error updating item:', error);
-      showToast('Failed to update item', 'error');
-    }
-  };
+    // Call the hook - it will handle success/error via callbacks
+    await updateItemHook(itemId, { status: newStatus });
+    
+    showToast(
+      `Item ${newStatus === 'completed' ? 'completed' : 'marked as available'}`,
+      'success'
+    );
+  }, [updateItemHook, showToast]);
 
-  const handleDeleteItem = async () => {
+  const handleDeleteItem = useCallback(async () => {
     if (!itemToDelete) return;
 
-    try {
-      const response = await fetch(`/api/items/${itemToDelete}`, {
-        method: 'DELETE',
-      });
+    // Optimistic update - remove item immediately
+    const itemToRemove = items.find((item) => item._id === itemToDelete);
+    setItems((prevItems) => prevItems.filter((item) => item._id !== itemToDelete));
+    setItemToDelete(null);
 
-      const data = await response.json();
-      if (data.success) {
-        setItems(items.filter((item) => item._id !== itemToDelete));
-        showToast('Item deleted successfully', 'success');
-      } else {
-        showToast('Failed to delete item', 'error');
-      }
-    } catch (error) {
-      console.error('Error deleting item:', error);
-      showToast('Failed to delete item', 'error');
-    } finally {
-      setItemToDelete(null);
+    // Call the hook - it will handle success/error via callbacks
+    const success = await deleteItemHook(itemToDelete);
+    if (!success && itemToRemove) {
+      // Rollback on error
+      setItems((prevItems) => [...prevItems, itemToRemove]);
     }
-  };
+  }, [itemToDelete, items, deleteItemHook]);
 
-  const handleInviteUser = async (e: React.FormEvent) => {
+  const handleInviteUser = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     setIsInviting(true);
+
+    // Optimistic update
+    const tempUser: IUser = {
+      _id: 'temp-id',
+      email: inviteEmail,
+      role: inviteRole,
+      emailVerified: undefined,
+      isArchived: false,
+      isInvited: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    } as IUser;
+    setUsers((prevUsers) => [tempUser, ...prevUsers]);
+    const email = inviteEmail;
+    setInviteEmail('');
+    setInviteRole('user');
 
     try {
       const response = await fetch('/api/invite', {
@@ -184,28 +318,39 @@ export default function AdminPanel() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ email: inviteEmail, role: inviteRole }),
+        body: JSON.stringify({ email, role: inviteRole }),
       });
 
       const data = await response.json();
       if (data.success) {
-        setUsers([data.data, ...users]);
-        const email = inviteEmail;
-        setInviteEmail('');
-        setInviteRole('user');
+        // Replace temp user with real user
+        setUsers((prevUsers) =>
+          prevUsers.map((user) => (user._id === 'temp-id' ? data.data : user))
+        );
         showToast(`Invitation sent to ${email}`, 'success');
       } else {
+        // Rollback on error
+        setUsers((prevUsers) => prevUsers.filter((user) => user._id !== 'temp-id'));
         showToast(data.error || 'Failed to invite user', 'error');
       }
     } catch (error) {
+      // Rollback on error
+      setUsers((prevUsers) => prevUsers.filter((user) => user._id !== 'temp-id'));
       console.error('Error inviting user:', error);
       showToast('Failed to invite user', 'error');
     } finally {
       setIsInviting(false);
     }
-  };
+  }, [inviteEmail, inviteRole, showToast]);
 
-  const handleToggleArchive = async (userId: string, currentStatus: boolean) => {
+  const handleToggleArchive = useCallback(async (userId: string, currentStatus: boolean) => {
+    // Optimistic update
+    setUsers((prevUsers) =>
+      prevUsers.map((user) =>
+        user._id === userId ? { ...user, isArchived: !currentStatus } : user
+      )
+    );
+
     try {
       const response = await fetch('/api/invite', {
         method: 'PATCH',
@@ -217,19 +362,47 @@ export default function AdminPanel() {
 
       const data = await response.json();
       if (data.success) {
-        setUsers(users.map((user) => (user._id === userId ? data.data : user)));
+        // Update with server response
+        setUsers((prevUsers) =>
+          prevUsers.map((user) => (user._id === userId ? data.data : user))
+        );
         showToast(
           `User ${!currentStatus ? 'archived' : 'unarchived'} successfully`,
           'success'
         );
       } else {
+        // Rollback on error
+        setUsers((prevUsers) =>
+          prevUsers.map((user) =>
+            user._id === userId ? { ...user, isArchived: currentStatus } : user
+          )
+        );
         showToast(data.error || 'Failed to update user', 'error');
       }
     } catch (error) {
+      // Rollback on error
+      setUsers((prevUsers) =>
+        prevUsers.map((user) =>
+          user._id === userId ? { ...user, isArchived: currentStatus } : user
+        )
+      );
       console.error('Error updating user:', error);
       showToast('Failed to update user', 'error');
     }
-  };
+  }, [showToast]);
+
+  // Memoized handlers for AdminItemRow callbacks
+  const handleEditClick = useCallback((item: IItem) => {
+    setItemToEdit(item);
+  }, []);
+
+  const handleDeleteClick = useCallback((itemId: string) => {
+    setItemToDelete(itemId);
+  }, []);
+
+  const handleToggleCompleteClick = useCallback((itemId: string, currentStatus: string) => {
+    handleToggleComplete(itemId, currentStatus);
+  }, [handleToggleComplete]);
 
   if (status === 'loading' || loading) {
     return (
@@ -250,7 +423,7 @@ export default function AdminPanel() {
           </div>
           <button
             onClick={() => router.push('/')}
-            className="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-medium hover:bg-gray-300 transition-colors"
+            className="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-medium hover:bg-gray-300 transition-colors cursor-pointer"
           >
             ← Back to Wishlist
           </button>
@@ -260,7 +433,7 @@ export default function AdminPanel() {
         <div className="flex gap-4 mb-8 border-b border-gray-200">
           <button
             onClick={() => setActiveTab('items')}
-            className={`pb-3 px-4 font-medium transition-colors ${
+            className={`pb-3 px-4 font-medium transition-colors cursor-pointer ${
               activeTab === 'items'
                 ? 'text-primary-600 border-b-2 border-primary-600'
                 : 'text-gray-600 hover:text-gray-900'
@@ -270,7 +443,7 @@ export default function AdminPanel() {
           </button>
           <button
             onClick={() => setActiveTab('users')}
-            className={`pb-3 px-4 font-medium transition-colors ${
+            className={`pb-3 px-4 font-medium transition-colors cursor-pointer ${
               activeTab === 'users'
                 ? 'text-primary-600 border-b-2 border-primary-600'
                 : 'text-gray-600 hover:text-gray-900'
@@ -287,7 +460,7 @@ export default function AdminPanel() {
               <h2 className="text-2xl font-semibold text-gray-900">Wishlist Items</h2>
               <button
                 onClick={() => setIsAddModalOpen(true)}
-                className="bg-primary-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-primary-700 transition-colors"
+                className="bg-primary-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-primary-700 transition-colors cursor-pointer"
               >
                 + Add Item
               </button>
@@ -323,80 +496,13 @@ export default function AdminPanel() {
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
                       {items.map((item) => (
-                        <tr key={item._id} className="hover:bg-gray-50">
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="flex items-center">
-                              <img
-                                src={item.imageUrl}
-                                alt={item.name}
-                                className="h-12 w-12 rounded-lg object-cover flex-shrink-0"
-                              />
-                              <div className="ml-4 min-w-0 max-w-xs">
-                                <div 
-                                  className="text-sm font-medium text-gray-900 truncate"
-                                  title={item.name}
-                                >
-                                  {item.name}
-                                </div>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {item.priceInCents != null ? `$${(item.priceInCents / 100).toFixed(2)}` : '-'}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <button
-                              onClick={() => handleToggleComplete(item._id, item.status)}
-                              className="group relative"
-                            >
-                              <div className="flex gap-2 items-center">
-                                {item.status === 'available' && (
-                                  <span className="px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800 group-hover:bg-blue-200 transition-colors">
-                                    Available
-                                  </span>
-                                )}
-                                {item.status === 'completed' && (
-                                  <span className="px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800 group-hover:bg-green-200 transition-colors">
-                                    Completed
-                                  </span>
-                                )}
-                                <span className="text-xs text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity">
-                                  {item.status === 'completed' ? '→ Mark available' : '→ Mark completed'}
-                                </span>
-                              </div>
-                            </button>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm">
-                            {item.link ? (
-                              <a
-                                href={item.link}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-primary-600 hover:underline"
-                              >
-                                View
-                              </a>
-                            ) : (
-                              '-'
-                            )}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                            <div className="flex gap-3 justify-end">
-                              <button
-                                onClick={() => setItemToEdit(item)}
-                                className="text-primary-600 hover:text-primary-900"
-                              >
-                                Edit
-                              </button>
-                              <button
-                                onClick={() => setItemToDelete(item._id)}
-                                className="text-red-600 hover:text-red-900"
-                              >
-                                Delete
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
+                        <AdminItemRow
+                          key={item._id}
+                          item={item}
+                          onEdit={() => handleEditClick(item)}
+                          onDelete={() => handleDeleteClick(item._id!)}
+                          onToggleComplete={() => handleToggleCompleteClick(item._id!, item.status)}
+                        />
                       ))}
                     </tbody>
                   </table>
@@ -436,7 +542,7 @@ export default function AdminPanel() {
                 <button
                   type="submit"
                   disabled={isInviting}
-                  className="bg-primary-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-primary-700 transition-colors disabled:opacity-50"
+                  className="bg-primary-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-primary-700 transition-colors disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
                 >
                   {isInviting ? 'Inviting...' : 'Invite'}
                 </button>
@@ -524,7 +630,7 @@ export default function AdminPanel() {
                           {user.email !== session?.user?.email && (
                             <button
                               onClick={() => handleToggleArchive(user._id, user.isArchived)}
-                              className={`${
+                              className={`cursor-pointer ${
                                 user.isArchived
                                   ? 'text-green-600 hover:text-green-900'
                                   : 'text-red-600 hover:text-red-900'

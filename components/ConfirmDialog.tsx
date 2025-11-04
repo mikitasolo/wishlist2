@@ -1,5 +1,7 @@
 'use client';
 
+import { useEffect } from 'react';
+
 interface ConfirmDialogProps {
   isOpen: boolean;
   title: string;
@@ -21,6 +23,39 @@ export default function ConfirmDialog({
   cancelText = 'Cancel',
   type = 'warning',
 }: ConfirmDialogProps) {
+  // Handle Escape key press
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onCancel();
+      }
+    };
+
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [isOpen, onCancel]);
+
+  // Prevent body scroll when dialog is open
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [isOpen]);
+
+  const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    // Only close if clicking the backdrop itself, not the dialog content
+    if (e.target === e.currentTarget) {
+      onCancel();
+    }
+  };
+
   if (!isOpen) return null;
 
   const buttonColors = {
@@ -30,21 +65,27 @@ export default function ConfirmDialog({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 animate-fade-in">
-      <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 animate-scale-in">
+    <div 
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 animate-fade-in"
+      onClick={handleBackdropClick}
+    >
+      <div 
+        className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 animate-scale-in"
+        onClick={(e) => e.stopPropagation()}
+      >
         <h2 className="text-xl font-bold text-gray-900 mb-3">{title}</h2>
         <p className="text-gray-600 mb-6">{message}</p>
         
         <div className="flex gap-3 justify-end">
           <button
             onClick={onCancel}
-            className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg font-medium hover:bg-gray-200 transition-colors"
+            className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg font-medium hover:bg-gray-200 transition-colors cursor-pointer"
           >
             {cancelText}
           </button>
           <button
             onClick={onConfirm}
-            className={`px-4 py-2 text-white rounded-lg font-medium transition-colors ${buttonColors[type]}`}
+            className={`px-4 py-2 text-white rounded-lg font-medium transition-colors cursor-pointer ${buttonColors[type]}`}
           >
             {confirmText}
           </button>
