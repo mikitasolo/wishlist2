@@ -267,6 +267,11 @@ export default function Home() {
           </div>
         </div>
 
+        {/* Price Disclaimer */}
+        <p className="text-xs text-gray-500 text-center mb-6 italic">
+          ⚠️ Prices are approximate and may not reflect actual current prices
+        </p>
+
         {/* Items Grid */}
         {loading ? (
           <div className="text-center py-20">
