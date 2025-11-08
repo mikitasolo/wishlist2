@@ -114,7 +114,7 @@ function WishlistItem({ item, onUpdate, isAuthenticated }: WishlistItemProps) {
                     ? 'bg-amber-500 text-white hover:bg-amber-600 cursor-pointer'
                     : item.status === 'booked'
                     ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                    : 'bg-blue-500 text-white hover:bg-blue-600 cursor-pointer'
+                    : 'bg-primary-600 text-white hover:bg-primary-700 cursor-pointer'
                 }`}
                 disabled={item.status === 'booked' && !isBookedByCurrentUser}
                 aria-label={

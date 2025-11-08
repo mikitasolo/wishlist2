@@ -59,7 +59,7 @@ function getEmailTemplate(options: {
             padding: 0;
             width: 100% !important;
             height: 100% !important;
-            background-color: #f5f5f5;
+            background-color: ${theme.primary50};
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
@@ -67,7 +67,7 @@ function getEmailTemplate(options: {
           
           .email-wrapper {
             width: 100%;
-            background-color: #f5f5f5;
+            background-color: ${theme.primary50};
             padding: 40px 0;
           }
           
@@ -77,7 +77,7 @@ function getEmailTemplate(options: {
             background-color: #ffffff;
             border-radius: 12px;
             overflow: hidden;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 4px 6px ${hexToRgba(theme.primary900, 0.1)};
           }
           
           .email-header {
@@ -96,14 +96,14 @@ function getEmailTemplate(options: {
           
           .email-body {
             padding: 40px 30px;
-            color: #333333;
+            color: rgb(${theme.foregroundRgb});
             line-height: 1.6;
             font-size: 16px;
           }
           
           .email-body h2 {
             margin: 0 0 20px 0;
-            color: #1a1a1a;
+            color: rgb(${theme.foregroundRgb});
             font-size: 24px;
             font-weight: 600;
             line-height: 1.3;
@@ -111,7 +111,8 @@ function getEmailTemplate(options: {
           
           .email-body p {
             margin: 0 0 16px 0;
-            color: #555555;
+            color: rgb(${theme.foregroundRgb});
+            opacity: 0.85;
           }
           
           .email-body p:last-child {
@@ -145,7 +146,7 @@ function getEmailTemplate(options: {
           .link-fallback {
             margin-top: 24px;
             padding: 16px;
-            background-color: #f8f9fa;
+            background-color: ${theme.primary50};
             border-radius: 8px;
             border-left: 4px solid ${theme.primary500};
           }
@@ -153,7 +154,8 @@ function getEmailTemplate(options: {
           .link-fallback p {
             margin: 0 0 8px 0;
             font-size: 14px;
-            color: #666666;
+            color: rgb(${theme.foregroundRgb});
+            opacity: 0.7;
           }
           
           .link-fallback a {
@@ -165,15 +167,16 @@ function getEmailTemplate(options: {
           
           .email-footer {
             padding: 30px;
-            background-color: #f8f9fa;
+            background-color: ${theme.primary50};
             text-align: center;
-            border-top: 1px solid #e9ecef;
+            border-top: 1px solid ${theme.primary200};
           }
           
           .email-footer p {
             margin: 0 0 8px 0;
             font-size: 13px;
-            color: #888888;
+            color: rgb(${theme.foregroundRgb});
+            opacity: 0.6;
             line-height: 1.5;
           }
           
