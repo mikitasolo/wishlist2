@@ -29,7 +29,7 @@ export interface ThemeConfig {
 }
 
 /**
- * Get theme configuration from environment variables
+ * Get theme configuration from THEME environment variable (JSON string)
  * Note: Environment variable validation is handled by validateEnvVars() in lib/env.ts
  * 
  * NOTE: This function should only be called server-side.
@@ -44,23 +44,43 @@ export function getThemeConfig(): ThemeConfig {
     );
   }
   
-  return {
-    primary50: process.env.THEME_PRIMARY_50!,
-    primary100: process.env.THEME_PRIMARY_100!,
-    primary200: process.env.THEME_PRIMARY_200!,
-    primary300: process.env.THEME_PRIMARY_300!,
-    primary400: process.env.THEME_PRIMARY_400!,
-    primary500: process.env.THEME_PRIMARY_500!,
-    primary600: process.env.THEME_PRIMARY_600!,
-    primary700: process.env.THEME_PRIMARY_700!,
-    primary800: process.env.THEME_PRIMARY_800!,
-    primary900: process.env.THEME_PRIMARY_900!,
-    backgroundStartRgb: process.env.THEME_BACKGROUND_START_RGB!,
-    backgroundEndRgb: process.env.THEME_BACKGROUND_END_RGB!,
-    foregroundRgb: process.env.THEME_FOREGROUND_RGB!,
-    siteTitle: process.env.SITE_TITLE!,
-    siteDescription: process.env.SITE_DESCRIPTION!,
-  };
+  const themeJson = process.env.THEME;
+  
+  if (!themeJson) {
+    throw new Error(
+      'THEME environment variable is required. ' +
+      'It should be a JSON string containing all theme configuration.'
+    );
+  }
+  
+  try {
+    const theme = JSON.parse(themeJson) as ThemeConfig;
+    
+    // Validate required fields
+    const requiredFields: (keyof ThemeConfig)[] = [
+      'primary50', 'primary100', 'primary200', 'primary300', 'primary400',
+      'primary500', 'primary600', 'primary700', 'primary800', 'primary900',
+      'backgroundStartRgb', 'backgroundEndRgb', 'foregroundRgb',
+      'siteTitle', 'siteDescription',
+    ];
+    
+    const missingFields = requiredFields.filter(field => !theme[field]);
+    
+    if (missingFields.length > 0) {
+      throw new Error(
+        `THEME JSON is missing required fields: ${missingFields.join(', ')}`
+      );
+    }
+    
+    return theme;
+  } catch (error: any) {
+    if (error instanceof SyntaxError) {
+      throw new Error(
+        `THEME environment variable contains invalid JSON: ${error.message}`
+      );
+    }
+    throw error;
+  }
 }
 
 /**

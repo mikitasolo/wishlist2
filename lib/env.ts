@@ -22,22 +22,8 @@ export interface EnvSchema {
   // Migrations
   MIGRATION_SECRET: string;
   
-  // Theme (15 variables)
-  THEME_PRIMARY_50: string;
-  THEME_PRIMARY_100: string;
-  THEME_PRIMARY_200: string;
-  THEME_PRIMARY_300: string;
-  THEME_PRIMARY_400: string;
-  THEME_PRIMARY_500: string;
-  THEME_PRIMARY_600: string;
-  THEME_PRIMARY_700: string;
-  THEME_PRIMARY_800: string;
-  THEME_PRIMARY_900: string;
-  THEME_BACKGROUND_START_RGB: string;
-  THEME_BACKGROUND_END_RGB: string;
-  THEME_FOREGROUND_RGB: string;
-  SITE_TITLE: string;
-  SITE_DESCRIPTION: string;
+  // Theme (JSON string containing all theme configuration)
+  THEME: string;
 }
 
 /**
@@ -48,23 +34,7 @@ const REQUIRED_ENV_VARS = {
   auth: ['NEXTAUTH_SECRET', 'NEXTAUTH_URL'],
   email: ['SMTP_HOST', 'SMTP_PORT', 'SMTP_SECURE', 'SMTP_USER', 'SMTP_PASSWORD', 'EMAIL_FROM'],
   migrations: ['MIGRATION_SECRET'],
-  theme: [
-    'THEME_PRIMARY_50',
-    'THEME_PRIMARY_100',
-    'THEME_PRIMARY_200',
-    'THEME_PRIMARY_300',
-    'THEME_PRIMARY_400',
-    'THEME_PRIMARY_500',
-    'THEME_PRIMARY_600',
-    'THEME_PRIMARY_700',
-    'THEME_PRIMARY_800',
-    'THEME_PRIMARY_900',
-    'THEME_BACKGROUND_START_RGB',
-    'THEME_BACKGROUND_END_RGB',
-    'THEME_FOREGROUND_RGB',
-    'SITE_TITLE',
-    'SITE_DESCRIPTION',
-  ],
+  theme: ['THEME'],
 } as const;
 
 /**
@@ -150,22 +120,8 @@ export function getEnvVars(): EnvSchema {
     // Migrations
     MIGRATION_SECRET: process.env.MIGRATION_SECRET!,
     
-    // Theme
-    THEME_PRIMARY_50: process.env.THEME_PRIMARY_50!,
-    THEME_PRIMARY_100: process.env.THEME_PRIMARY_100!,
-    THEME_PRIMARY_200: process.env.THEME_PRIMARY_200!,
-    THEME_PRIMARY_300: process.env.THEME_PRIMARY_300!,
-    THEME_PRIMARY_400: process.env.THEME_PRIMARY_400!,
-    THEME_PRIMARY_500: process.env.THEME_PRIMARY_500!,
-    THEME_PRIMARY_600: process.env.THEME_PRIMARY_600!,
-    THEME_PRIMARY_700: process.env.THEME_PRIMARY_700!,
-    THEME_PRIMARY_800: process.env.THEME_PRIMARY_800!,
-    THEME_PRIMARY_900: process.env.THEME_PRIMARY_900!,
-    THEME_BACKGROUND_START_RGB: process.env.THEME_BACKGROUND_START_RGB!,
-    THEME_BACKGROUND_END_RGB: process.env.THEME_BACKGROUND_END_RGB!,
-    THEME_FOREGROUND_RGB: process.env.THEME_FOREGROUND_RGB!,
-    SITE_TITLE: process.env.SITE_TITLE!,
-    SITE_DESCRIPTION: process.env.SITE_DESCRIPTION!,
+    // Theme (JSON string)
+    THEME: process.env.THEME!,
   };
 }
 
