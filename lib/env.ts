@@ -1,0 +1,142 @@
+/**
+ * Environment variable validation schema
+ * Validates all required environment variables at application startup
+ */
+
+export interface EnvSchema {
+  // Database
+  MONGODB_URI: string;
+  
+  // NextAuth
+  NEXTAUTH_SECRET: string;
+  NEXTAUTH_URL: string;
+  
+  // Email (SMTP)
+  SMTP_HOST: string;
+  SMTP_PORT: string;
+  SMTP_SECURE: string;
+  SMTP_USER: string;
+  SMTP_PASSWORD: string;
+  EMAIL_FROM: string;
+  
+  // Theme (15 variables)
+  THEME_PRIMARY_50: string;
+  THEME_PRIMARY_100: string;
+  THEME_PRIMARY_200: string;
+  THEME_PRIMARY_300: string;
+  THEME_PRIMARY_400: string;
+  THEME_PRIMARY_500: string;
+  THEME_PRIMARY_600: string;
+  THEME_PRIMARY_700: string;
+  THEME_PRIMARY_800: string;
+  THEME_PRIMARY_900: string;
+  THEME_BACKGROUND_START_RGB: string;
+  THEME_BACKGROUND_END_RGB: string;
+  THEME_FOREGROUND_RGB: string;
+  SITE_TITLE: string;
+  SITE_DESCRIPTION: string;
+}
+
+/**
+ * Required environment variables grouped by category
+ */
+const REQUIRED_ENV_VARS = {
+  database: ['MONGODB_URI'],
+  auth: ['NEXTAUTH_SECRET', 'NEXTAUTH_URL'],
+  email: ['SMTP_HOST', 'SMTP_PORT', 'SMTP_SECURE', 'SMTP_USER', 'SMTP_PASSWORD', 'EMAIL_FROM'],
+  theme: [
+    'THEME_PRIMARY_50',
+    'THEME_PRIMARY_100',
+    'THEME_PRIMARY_200',
+    'THEME_PRIMARY_300',
+    'THEME_PRIMARY_400',
+    'THEME_PRIMARY_500',
+    'THEME_PRIMARY_600',
+    'THEME_PRIMARY_700',
+    'THEME_PRIMARY_800',
+    'THEME_PRIMARY_900',
+    'THEME_BACKGROUND_START_RGB',
+    'THEME_BACKGROUND_END_RGB',
+    'THEME_FOREGROUND_RGB',
+    'SITE_TITLE',
+    'SITE_DESCRIPTION',
+  ],
+} as const;
+
+/**
+ * Validate all required environment variables
+ * Throws an error with detailed information if any are missing
+ */
+export function validateEnvVars(): void {
+  const missing: Record<string, string[]> = {};
+  
+  // Check each category
+  for (const [category, vars] of Object.entries(REQUIRED_ENV_VARS)) {
+    const categoryMissing: string[] = [];
+    
+    for (const envVar of vars) {
+      if (!process.env[envVar]) {
+        categoryMissing.push(envVar);
+      }
+    }
+    
+    if (categoryMissing.length > 0) {
+      missing[category] = categoryMissing;
+    }
+  }
+  
+  if (Object.keys(missing).length > 0) {
+    const errorMessages = Object.entries(missing).map(([category, vars]) => {
+      return `  ${category.toUpperCase()}:\n${vars.map(v => `    - ${v}`).join('\n')}`;
+    });
+    
+    throw new Error(
+      `Missing required environment variables:\n\n${errorMessages.join('\n\n')}\n\n` +
+      `Please set all required environment variables in your Vercel project settings or .env.local file.\n` +
+      `See README.md for setup instructions.`
+    );
+  }
+}
+
+/**
+ * Get validated environment variables
+ * Throws an error if any required variables are missing
+ */
+export function getEnvVars(): EnvSchema {
+  validateEnvVars();
+  
+  return {
+    // Database
+    MONGODB_URI: process.env.MONGODB_URI!,
+    
+    // NextAuth
+    NEXTAUTH_SECRET: process.env.NEXTAUTH_SECRET!,
+    NEXTAUTH_URL: process.env.NEXTAUTH_URL!,
+    
+    // Email
+    SMTP_HOST: process.env.SMTP_HOST!,
+    SMTP_PORT: process.env.SMTP_PORT!,
+    SMTP_SECURE: process.env.SMTP_SECURE!,
+    SMTP_USER: process.env.SMTP_USER!,
+    SMTP_PASSWORD: process.env.SMTP_PASSWORD!,
+    EMAIL_FROM: process.env.EMAIL_FROM!,
+    
+    // Theme
+    THEME_PRIMARY_50: process.env.THEME_PRIMARY_50!,
+    THEME_PRIMARY_100: process.env.THEME_PRIMARY_100!,
+    THEME_PRIMARY_200: process.env.THEME_PRIMARY_200!,
+    THEME_PRIMARY_300: process.env.THEME_PRIMARY_300!,
+    THEME_PRIMARY_400: process.env.THEME_PRIMARY_400!,
+    THEME_PRIMARY_500: process.env.THEME_PRIMARY_500!,
+    THEME_PRIMARY_600: process.env.THEME_PRIMARY_600!,
+    THEME_PRIMARY_700: process.env.THEME_PRIMARY_700!,
+    THEME_PRIMARY_800: process.env.THEME_PRIMARY_800!,
+    THEME_PRIMARY_900: process.env.THEME_PRIMARY_900!,
+    THEME_BACKGROUND_START_RGB: process.env.THEME_BACKGROUND_START_RGB!,
+    THEME_BACKGROUND_END_RGB: process.env.THEME_BACKGROUND_END_RGB!,
+    THEME_FOREGROUND_RGB: process.env.THEME_FOREGROUND_RGB!,
+    SITE_TITLE: process.env.SITE_TITLE!,
+    SITE_DESCRIPTION: process.env.SITE_DESCRIPTION!,
+  };
+}
+

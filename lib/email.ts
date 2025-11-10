@@ -1,14 +1,18 @@
 import nodemailer from 'nodemailer';
 import { getThemeConfig, hexToRgba } from './theme';
+import { getEnvVars } from './env';
+
+// Get validated environment variables
+const env = getEnvVars();
 
 // Create SMTP transporter
 const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: parseInt(process.env.SMTP_PORT || '587'),
-  secure: process.env.SMTP_SECURE === 'true', // true for 465, false for other ports
+  host: env.SMTP_HOST,
+  port: parseInt(env.SMTP_PORT),
+  secure: env.SMTP_SECURE === 'true', // true for 465, false for other ports
   auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASSWORD,
+    user: env.SMTP_USER,
+    pass: env.SMTP_PASSWORD,
   },
 });
 
@@ -27,7 +31,7 @@ function getEmailTemplate(options: {
   linkUrl?: string;
 }) {
   const theme = getThemeConfig();
-  const siteTitle = theme.siteTitle || 'Wishlist';
+  const siteTitle = theme.siteTitle;
   
   return `
     <!DOCTYPE html>
@@ -264,7 +268,7 @@ function getEmailTemplate(options: {
 
 export async function sendMagicLinkEmail(email: string, magicLink: string) {
   const theme = getThemeConfig();
-  const siteTitle = theme.siteTitle || 'Wishlist';
+  const siteTitle = theme.siteTitle;
   
   const html = getEmailTemplate({
     title: '🎁 Sign In',
@@ -280,7 +284,7 @@ export async function sendMagicLinkEmail(email: string, magicLink: string) {
   });
 
   const mailOptions = {
-    from: process.env.EMAIL_FROM || 'noreply@wishlist.app',
+    from: env.EMAIL_FROM,
     to: email,
     subject: `Sign in to ${siteTitle}`,
     html,
@@ -298,8 +302,8 @@ export async function sendMagicLinkEmail(email: string, magicLink: string) {
 
 export async function sendInvitationEmail(email: string, invitedBy: string) {
   const theme = getThemeConfig();
-  const siteTitle = theme.siteTitle || 'Wishlist';
-  const signInUrl = `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/auth/signin`;
+  const siteTitle = theme.siteTitle;
+  const signInUrl = `${env.NEXTAUTH_URL}/auth/signin`;
   
   const html = getEmailTemplate({
     title: '🎁 You\'ve Been Invited!',
@@ -314,7 +318,7 @@ export async function sendInvitationEmail(email: string, invitedBy: string) {
   });
 
   const mailOptions = {
-    from: process.env.EMAIL_FROM || 'noreply@wishlist.app',
+    from: env.EMAIL_FROM,
     to: email,
     subject: `You've been invited to ${siteTitle}!`,
     html,

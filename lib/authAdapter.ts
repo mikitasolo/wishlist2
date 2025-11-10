@@ -1,15 +1,12 @@
 import { MongoClient } from 'mongodb';
 import { MongoDBAdapter } from '@auth/mongodb-adapter';
 
+// MONGODB_URI is validated by validateEnvVars() in lib/env.ts
 const uri = process.env.MONGODB_URI as string;
 const options = {};
 
 let client: MongoClient;
 let clientPromise: Promise<MongoClient>;
-
-if (!uri) {
-  throw new Error('Please add your MongoDB URI to .env.local');
-}
 
 if (process.env.NODE_ENV === 'development') {
   // In development mode, use a global variable to preserve the client across hot reloads

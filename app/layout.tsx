@@ -5,9 +5,13 @@ import { ToastProvider } from '@/components/ToastProvider'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { ThemeProvider } from '@/components/ThemeProvider'
 import { getThemeConfig } from '@/lib/theme'
+import { validateEnvVars } from '@/lib/env'
 import './globals.css'
 
 const inter = Inter({ subsets: ['latin'] })
+
+// Validate all environment variables at startup
+validateEnvVars()
 
 // Get theme config for metadata (server-side)
 const theme = getThemeConfig()

@@ -4,13 +4,17 @@ import connectDB from './mongodb';
 import User from '@/models/User';
 import { sendMagicLinkEmail } from './email';
 import { adapter } from './authAdapter';
+import { getEnvVars } from './env';
+
+// Get validated environment variables
+const env = getEnvVars();
 
 export const authOptions: NextAuthOptions = {
   adapter,
   providers: [
     EmailProvider({
       server: '', // We'll use custom sendVerificationRequest
-      from: process.env.EMAIL_FROM || 'noreply@wishlist.app',
+      from: env.EMAIL_FROM,
       async sendVerificationRequest({ identifier: email, url }) {
         await sendMagicLinkEmail(email, url);
       },
@@ -65,6 +69,6 @@ export const authOptions: NextAuthOptions = {
   session: {
     strategy: 'database',
   },
-  secret: process.env.NEXTAUTH_SECRET,
+  secret: env.NEXTAUTH_SECRET,
 };
 

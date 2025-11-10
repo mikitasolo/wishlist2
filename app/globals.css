@@ -2,23 +2,25 @@
 
 @theme {
   /* Theme colors are injected via CSS variables from environment variables */
-  --color-primary-50: var(--theme-primary-50, #fdf2f8);
-  --color-primary-100: var(--theme-primary-100, #fce7f3);
-  --color-primary-200: var(--theme-primary-200, #fbcfe8);
-  --color-primary-300: var(--theme-primary-300, #f9a8d4);
-  --color-primary-400: var(--theme-primary-400, #f472b6);
-  --color-primary-500: var(--theme-primary-500, #ec4899);
-  --color-primary-600: var(--theme-primary-600, #db2777);
-  --color-primary-700: var(--theme-primary-700, #be185d);
-  --color-primary-800: var(--theme-primary-800, #9d174d);
-  --color-primary-900: var(--theme-primary-900, #831843);
+  /* All theme variables are required - no fallback defaults */
+  --color-primary-50: var(--theme-primary-50);
+  --color-primary-100: var(--theme-primary-100);
+  --color-primary-200: var(--theme-primary-200);
+  --color-primary-300: var(--theme-primary-300);
+  --color-primary-400: var(--theme-primary-400);
+  --color-primary-500: var(--theme-primary-500);
+  --color-primary-600: var(--theme-primary-600);
+  --color-primary-700: var(--theme-primary-700);
+  --color-primary-800: var(--theme-primary-800);
+  --color-primary-900: var(--theme-primary-900);
 }
 
 :root {
   /* Background and foreground colors are injected via CSS variables from environment variables */
-  --foreground-rgb: var(--theme-foreground-rgb, 0, 0, 0);
-  --background-start-rgb: var(--theme-background-start-rgb, 252, 231, 243);
-  --background-end-rgb: var(--theme-background-end-rgb, 255, 255, 255);
+  /* All theme variables are required - no fallback defaults */
+  --foreground-rgb: var(--theme-foreground-rgb);
+  --background-start-rgb: var(--theme-background-start-rgb);
+  --background-end-rgb: var(--theme-background-end-rgb);
 }
 
 body {

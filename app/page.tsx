@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import WishlistItem from '@/components/WishlistItem';
 import AuthButton from '@/components/AuthButton';
 import { useToast } from '@/components/ToastProvider';
+import { useTheme } from '@/components/ThemeProvider';
 import { IItem } from '@/models/Item';
 import { filterItems, sortItems, calculateStats, type FilterType, type SortType } from '@/lib/utils/itemFilters';
 import { useFetchItems, useUpdateItem } from '@/lib/hooks/useItems';
@@ -14,6 +15,7 @@ export default function Home() {
   const { data: session } = useSession();
   const router = useRouter();
   const { showToast } = useToast();
+  const { siteTitle } = useTheme();
   const [items, setItems] = useState<IItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<FilterType>('all');
@@ -119,7 +121,7 @@ export default function Home() {
           <div className="relative flex flex-col sm:flex-row sm:justify-between sm:items-center mb-6 sm:mb-8 gap-4">
             <div className="text-center sm:text-left flex-1">
               <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-gray-900 mb-2 sm:mb-4">
-                My Wishlist
+                {siteTitle}
               </h1>
               <p className="text-base sm:text-lg lg:text-xl text-gray-600">
                 {session?.user?.role === 'admin' 
