@@ -53,7 +53,7 @@ export default function RootLayout({
   return (
     <html lang="en" style={themeStyle}>
       <body className={inter.className}>
-        <ThemeProvider>
+        <ThemeProvider siteTitle={theme.siteTitle} siteDescription={theme.siteDescription}>
           <ErrorBoundary>
             <SessionProvider>
               <ToastProvider>{children}</ToastProvider>

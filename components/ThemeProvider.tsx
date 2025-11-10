@@ -1,7 +1,6 @@
 'use client';
 
 import { createContext, useContext } from 'react';
-import { getThemeConfig } from '@/lib/theme';
 
 /**
  * Theme context that provides theme configuration to client components
@@ -14,17 +13,20 @@ interface ThemeContextType {
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 /**
- * ThemeProvider component that ensures CSS variables are set client-side
- * This is a fallback in case server-side injection doesn't work
- * The main injection happens server-side in layout.tsx via inline styles on <html>
+ * ThemeProvider component that provides theme values to client components
+ * Theme values are passed from the server component (layout.tsx) to avoid hydration mismatches
  */
-export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  // Get theme config - this works because getThemeConfig reads from process.env
-  // which is available at build time in Next.js
-  const theme = getThemeConfig();
-  
+export function ThemeProvider({ 
+  children,
+  siteTitle,
+  siteDescription,
+}: { 
+  children: React.ReactNode;
+  siteTitle: string;
+  siteDescription: string;
+}) {
   return (
-    <ThemeContext.Provider value={{ siteTitle: theme.siteTitle, siteDescription: theme.siteDescription }}>
+    <ThemeContext.Provider value={{ siteTitle, siteDescription }}>
       {children}
     </ThemeContext.Provider>
   );

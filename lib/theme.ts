@@ -31,8 +31,18 @@ export interface ThemeConfig {
 /**
  * Get theme configuration from environment variables
  * Note: Environment variable validation is handled by validateEnvVars() in lib/env.ts
+ * 
+ * NOTE: This function should only be called server-side.
+ * For client components, use the useTheme() hook from ThemeProvider instead.
  */
 export function getThemeConfig(): ThemeConfig {
+  // Prevent accidental client-side usage
+  if (typeof window !== 'undefined') {
+    throw new Error(
+      'getThemeConfig() should only be called server-side. ' +
+      'Use useTheme() hook in client components instead.'
+    );
+  }
   
   return {
     primary50: process.env.THEME_PRIMARY_50!,

@@ -66,8 +66,19 @@ const REQUIRED_ENV_VARS = {
 /**
  * Validate all required environment variables
  * Throws an error with detailed information if any are missing
+ * 
+ * NOTE: This function should only be called server-side.
+ * Environment variables are not available in client components unless prefixed with NEXT_PUBLIC_
  */
 export function validateEnvVars(): void {
+  // Prevent accidental client-side usage
+  if (typeof window !== 'undefined') {
+    throw new Error(
+      'validateEnvVars() should only be called server-side. ' +
+      'Environment variables are not available in client components.'
+    );
+  }
+  
   const missing: Record<string, string[]> = {};
   
   // Check each category
@@ -101,8 +112,19 @@ export function validateEnvVars(): void {
 /**
  * Get validated environment variables
  * Throws an error if any required variables are missing
+ * 
+ * NOTE: This function should only be called server-side.
+ * Environment variables are not available in client components unless prefixed with NEXT_PUBLIC_
  */
 export function getEnvVars(): EnvSchema {
+  // Prevent accidental client-side usage
+  if (typeof window !== 'undefined') {
+    throw new Error(
+      'getEnvVars() should only be called server-side. ' +
+      'Environment variables are not available in client components.'
+    );
+  }
+  
   validateEnvVars();
   
   return {
