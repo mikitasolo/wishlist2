@@ -19,6 +19,9 @@ export interface EnvSchema {
   SMTP_PASSWORD: string;
   EMAIL_FROM: string;
   
+  // Migrations
+  MIGRATION_SECRET: string;
+  
   // Theme (15 variables)
   THEME_PRIMARY_50: string;
   THEME_PRIMARY_100: string;
@@ -44,6 +47,7 @@ const REQUIRED_ENV_VARS = {
   database: ['MONGODB_URI'],
   auth: ['NEXTAUTH_SECRET', 'NEXTAUTH_URL'],
   email: ['SMTP_HOST', 'SMTP_PORT', 'SMTP_SECURE', 'SMTP_USER', 'SMTP_PASSWORD', 'EMAIL_FROM'],
+  migrations: ['MIGRATION_SECRET'],
   theme: [
     'THEME_PRIMARY_50',
     'THEME_PRIMARY_100',
@@ -142,6 +146,9 @@ export function getEnvVars(): EnvSchema {
     SMTP_USER: process.env.SMTP_USER!,
     SMTP_PASSWORD: process.env.SMTP_PASSWORD!,
     EMAIL_FROM: process.env.EMAIL_FROM!,
+    
+    // Migrations
+    MIGRATION_SECRET: process.env.MIGRATION_SECRET!,
     
     // Theme
     THEME_PRIMARY_50: process.env.THEME_PRIMARY_50!,
