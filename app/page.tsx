@@ -1,117 +1,104 @@
 'use client';
 
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
-import WishlistItem from '@/components/WishlistItem';
+import Link from 'next/link';
 import AuthButton from '@/components/AuthButton';
+import UserSearch from '@/components/UserSearch';
+import CreateWishlistModal from '@/components/CreateWishlistModal';
+import WishlistCard from '@/components/WishlistCard';
 import { useToast } from '@/components/ToastProvider';
-import { useTheme } from '@/components/ThemeProvider';
-import { IItem } from '@/models/Item';
-import { filterItems, sortItems, calculateStats, type FilterType, type SortType } from '@/lib/utils/itemFilters';
-import { useFetchItems, useUpdateItem } from '@/lib/hooks/useItems';
+import { IWishlist } from '@/models/Wishlist';
 
 export default function Home() {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   const router = useRouter();
   const { showToast } = useToast();
-  const { siteTitle } = useTheme();
-  const [items, setItems] = useState<IItem[]>([]);
+  const [ownedWishlists, setOwnedWishlists] = useState<IWishlist[]>([]);
+  const [memberWishlists, setMemberWishlists] = useState<IWishlist[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<FilterType>('all');
-  const [sortBy, setSortBy] = useState<SortType>('name-asc');
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [activeTab, setActiveTab] = useState<'owned' | 'member'>('owned');
 
-  const fetchItemsHook = useFetchItems();
-
-  const fetchItems = useCallback(async (silent = false) => {
-    try {
-      const data = await fetchItemsHook(silent);
-      setItems(data);
-    } catch (error) {
-      console.error('Error fetching items:', error);
-      if (!silent) {
-        showToast('Failed to load items', 'error');
+  useEffect(() => {
+    async function fetchWishlists() {
+      if (status === 'loading') return;
+      
+      if (!session?.user) {
+        setLoading(false);
+        return;
       }
-    } finally {
-      if (!silent) {
+
+      try {
+        const response = await fetch('/api/wishlists', { cache: 'no-store' });
+        const result = await response.json();
+        
+        if (result.success) {
+          setOwnedWishlists(result.data?.owned || []);
+          setMemberWishlists(result.data?.member || []);
+        } else {
+          showToast('Failed to load wishlists', 'error');
+        }
+      } catch (error) {
+        console.error('Error fetching wishlists:', error);
+        showToast('Failed to load wishlists', 'error');
+      } finally {
         setLoading(false);
       }
     }
-  }, [fetchItemsHook, showToast]);
 
-  useEffect(() => {
-    fetchItems();
+    fetchWishlists();
+  }, [session, status, showToast]);
 
-    // Poll for updates every 5 seconds when tab is active
-    const pollInterval = setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        fetchItems(true); // Silent fetch (don't show loading state)
-      }
-    }, 5000);
 
-    // Refresh when tab becomes visible again
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        fetchItems(true);
-      }
-    };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
+  if (status === 'loading' || loading) {
+    return (
+      <main className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+          <p className="mt-4 text-sm text-gray-600">Loading...</p>
+        </div>
+      </main>
+    );
+  }
 
-    // Cleanup
-    return () => {
-      clearInterval(pollInterval);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [fetchItems]);
+  if (!session?.user) {
+    return (
+      <main className="min-h-screen flex items-center justify-center bg-gradient-to-b from-primary-100 to-white px-4">
+        <div className="max-w-md w-full">
+          <div className="text-center mb-8">
+            <Link href="/" className="inline-block text-6xl mb-4 hover:scale-110 transition-transform cursor-pointer">
+              🎁
+            </Link>
+            <h1 className="text-3xl font-bold text-gray-900 mb-4">Welcome to Wishlist</h1>
+            <p className="text-gray-600 mb-8">
+              Sign in to view and manage your wishlists
+            </p>
+          </div>
 
-  const updateItemHook = useUpdateItem(
-    (updatedItem) => {
-      // Success callback - update with server response
-      setItems((prevItems) =>
-        prevItems.map((item) => (item._id === updatedItem._id ? updatedItem : item))
-      );
-    },
-    (error) => {
-      // Error callback - rollback and show error
-      fetchItems(true);
-      if (error.includes('archived')) {
-        // User has been archived - show message and reload to log them out
-        showToast(error, 'error');
-        setTimeout(() => window.location.reload(), 2000);
-      } else {
-        showToast(error, 'error');
-      }
-    }
-  );
+          <div className="bg-white rounded-xl shadow-md p-6 mb-6">
+            <UserSearch />
+          </div>
 
-  const handleUpdateItem = useCallback(async (id: string, updates: Partial<IItem>) => {
-    // Optimistic update
-    setItems((prevItems) => {
-      const updated = prevItems.map((item) => (item._id === id ? { ...item, ...updates } : item));
-      return updated;
-    });
+          <div className="flex items-center gap-4 mb-6">
+            <div className="flex-1 h-px bg-gray-300"></div>
+            <span className="text-sm text-gray-500">or</span>
+            <div className="flex-1 h-px bg-gray-300"></div>
+          </div>
 
-    // Call the hook - it will handle success/error via callbacks
-    await updateItemHook(id, updates);
-  }, [updateItemHook]);
-
-  // Optimized stats calculation using utility
-  const stats = useMemo(
-    () => calculateStats(items, session?.user?.id),
-    [items, session?.user?.id]
-  );
-
-  // Memoized filtered items using utility
-  const filteredItems = useMemo(
-    () => filterItems(items, filter, session?.user?.id),
-    [items, filter, session?.user?.id]
-  );
-
-  // Memoized sorted items using utility
-  const sortedItems = useMemo(
-    () => sortItems(filteredItems, sortBy),
-    [filteredItems, sortBy]
-  );
+          <div className="text-center">
+            <button
+              onClick={() => router.push('/auth/signin')}
+              className="bg-primary-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-primary-700 transition-colors cursor-pointer"
+            >
+              Sign In
+            </button>
+          </div>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen">
@@ -120,183 +107,123 @@ export default function Home() {
         <div className="mb-6 sm:mb-8">
           <div className="relative flex flex-col sm:flex-row sm:justify-between sm:items-center mb-6 sm:mb-8 gap-4">
             <div className="text-center sm:text-left flex-1">
-              <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-gray-900 mb-2 sm:mb-4">
-                {siteTitle}
-              </h1>
+              <div className="flex flex-col items-center sm:items-start mb-2 sm:mb-4">
+                <Link href="/" className="text-4xl sm:text-5xl hover:scale-110 transition-transform cursor-pointer mb-2 sm:mb-3">
+                  🎁
+                </Link>
+                <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-gray-900">
+                  My Wishlists
+                </h1>
+              </div>
               <p className="text-base sm:text-lg lg:text-xl text-gray-600">
-                {session?.user?.role === 'admin' 
-                  ? 'Manage your wishlist items'
-                  : session?.user 
-                    ? 'Book items you plan to gift'
-                    : 'View wishlist items'}
+                Manage your wishlists and view items
               </p>
             </div>
-            <div className="flex justify-center sm:justify-end sm:absolute sm:top-0 sm:right-0">
+            <div className="flex flex-col sm:flex-row items-center sm:items-end gap-3 sm:gap-4 sm:absolute sm:top-0 sm:right-0">
+              <div className="w-full sm:w-auto">
+                <UserSearch />
+              </div>
               <AuthButton />
             </div>
           </div>
-
-          {/* Public mode message */}
-          {!session?.user && (
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 sm:p-4 mb-6 sm:mb-8">
-              <p className="text-xs sm:text-sm text-blue-800 text-center">
-                👋 You're viewing in <strong>public mode</strong>. 
-                <button 
-                  onClick={() => router.push('/auth/signin')}
-                  className="ml-1 sm:ml-2 text-blue-600 font-semibold hover:underline cursor-pointer"
-                >
-                  Sign in
-                </button>
-                {' '}to book items you plan to gift.
-              </p>
-            </div>
-          )}
-
-          {/* Admin panel link */}
-          {session?.user?.role === 'admin' && (
-            <div className="bg-primary-50 border border-primary-200 rounded-lg p-3 sm:p-4 mb-6 sm:mb-8">
-              <p className="text-xs sm:text-sm text-primary-800 text-center">
-                👑 You're signed in as <strong>admin</strong>. 
-                <button 
-                  onClick={() => router.push('/admin')}
-                  className="ml-1 sm:ml-2 text-primary-600 font-semibold hover:underline cursor-pointer"
-                >
-                  Go to Admin Panel
-                </button>
-              </p>
-            </div>
-          )}
         </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-6 sm:mb-8">
-          <div className="bg-white rounded-xl p-3 sm:p-4 shadow-md">
-            <p className="text-xs sm:text-sm text-gray-600 mb-1">Total Items</p>
-            <p className="text-2xl sm:text-3xl font-bold text-gray-900">{stats.total}</p>
-          </div>
-          <div className="bg-white rounded-xl p-3 sm:p-4 shadow-md">
-            <p className="text-xs sm:text-sm text-gray-600 mb-1">Available</p>
-            <p className="text-2xl sm:text-3xl font-bold text-blue-600">{stats.available}</p>
-          </div>
-          <div className="bg-white rounded-xl p-3 sm:p-4 shadow-md">
-            <p className="text-xs sm:text-sm text-gray-600 mb-1">
-              {session?.user && session.user.role !== 'admin' ? 'Booked by You' : 'Booked'}
-            </p>
-            <p className="text-2xl sm:text-3xl font-bold text-amber-600">
-              {session?.user && session.user.role !== 'admin' ? stats.bookedByYou : stats.booked}
-            </p>
-          </div>
-          <div className="bg-white rounded-xl p-3 sm:p-4 shadow-md">
-            <p className="text-xs sm:text-sm text-gray-600 mb-1">Completed</p>
-            <p className="text-2xl sm:text-3xl font-bold text-green-600">{stats.completed}</p>
-          </div>
+        {/* Create Wishlist Button */}
+        <div className="mb-6 sm:mb-8">
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="bg-primary-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-primary-700 transition-colors cursor-pointer"
+          >
+            + Create New Wishlist
+          </button>
         </div>
 
-        {/* Filter and Sort Controls */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 mb-6 sm:mb-8">
-          {/* Filter Buttons */}
-          <div className="flex gap-2 overflow-x-auto pb-2 sm:pb-0 -mx-4 px-4 sm:mx-0 sm:px-0">
-          <button
-            onClick={() => setFilter('all')}
-            className={`px-3 sm:px-4 py-2 rounded-lg text-sm sm:text-base font-medium transition-colors whitespace-nowrap cursor-pointer flex-shrink-0 ${
-              filter === 'all'
-                ? 'bg-primary-600 text-white'
-                : 'bg-white text-gray-700 hover:bg-gray-100'
-            }`}
-          >
-            All
-          </button>
-          <button
-            onClick={() => setFilter('available')}
-            className={`px-3 sm:px-4 py-2 rounded-lg text-sm sm:text-base font-medium transition-colors whitespace-nowrap cursor-pointer flex-shrink-0 ${
-              filter === 'available'
-                ? 'bg-blue-600 text-white'
-                : 'bg-white text-gray-700 hover:bg-gray-100'
-            }`}
-          >
-            Available
-          </button>
-          {/* Show "Booked by You" filter for regular users */}
-          {session?.user && session.user.role !== 'admin' && (
+        {/* Create Wishlist Modal */}
+        <CreateWishlistModal
+          isOpen={showCreateModal}
+          onClose={() => setShowCreateModal(false)}
+        />
+
+        {/* Tabs */}
+        <div className="mb-6 border-b border-gray-200">
+          <nav className="flex gap-4">
             <button
-              onClick={() => setFilter('bookedByYou')}
-              className={`px-3 sm:px-4 py-2 rounded-lg text-sm sm:text-base font-medium transition-colors whitespace-nowrap cursor-pointer flex-shrink-0 ${
-                filter === 'bookedByYou'
-                  ? 'bg-amber-600 text-white'
-                  : 'bg-white text-gray-700 hover:bg-gray-100'
+              onClick={() => setActiveTab('owned')}
+              className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors cursor-pointer ${
+                activeTab === 'owned'
+                  ? 'border-primary-600 text-primary-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
               }`}
             >
-              Booked by You
+              Created by Me
             </button>
-          )}
-          <button
-            onClick={() => setFilter('completed')}
-            className={`px-3 sm:px-4 py-2 rounded-lg text-sm sm:text-base font-medium transition-colors whitespace-nowrap cursor-pointer flex-shrink-0 ${
-              filter === 'completed'
-                ? 'bg-green-600 text-white'
-                : 'bg-white text-gray-700 hover:bg-gray-100'
-            }`}
-          >
-            Completed
-          </button>
-          </div>
-
-          {/* Sort Dropdown */}
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <label htmlFor="sort" className="text-xs sm:text-sm font-medium text-gray-700 whitespace-nowrap">
-              Sort by:
-            </label>
-            <select
-              id="sort"
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
-              className="pl-3 pr-8 sm:pr-12 py-2 text-sm sm:text-base border border-gray-300 rounded-lg bg-white text-gray-700 font-medium focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none appearance-none bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20fill%3D%22none%22%20viewBox%3D%220%200%2020%2020%22%3E%3Cpath%20stroke%3D%22%236b7280%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20stroke-width%3D%221.5%22%20d%3D%22M6%208l4%204%204-4%22%2F%3E%3C%2Fsvg%3E')] bg-[length:1.5em_1.5em] bg-[right_0.5rem_center] bg-no-repeat"
+            <button
+              onClick={() => setActiveTab('member')}
+              className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors cursor-pointer ${
+                activeTab === 'member'
+                  ? 'border-primary-600 text-primary-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
             >
-              <option value="name-asc">Name (A-Z)</option>
-              <option value="name-desc">Name (Z-A)</option>
-              <option value="price-asc">Price (Low to High)</option>
-              <option value="price-desc">Price (High to Low)</option>
-            </select>
-          </div>
+              Invited To
+            </button>
+          </nav>
         </div>
 
-        {/* Price Disclaimer */}
-        <p className="text-xs text-gray-500 text-center mb-4 sm:mb-6 italic px-2">
-          ⚠️ Prices are approximate and may not reflect actual current prices
-        </p>
+        {/* Owned Wishlists Tab */}
+        {activeTab === 'owned' && (
+          <>
+            {ownedWishlists.length === 0 ? (
+              <div className="text-center py-12 sm:py-20">
+                <div className="text-4xl sm:text-6xl mb-4">📋</div>
+                <h3 className="text-xl sm:text-2xl font-semibold text-gray-800 mb-2">
+                  No wishlists created yet
+                </h3>
+                <p className="text-sm sm:text-base text-gray-600">
+                  Create your first wishlist to get started
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
+                {ownedWishlists.map((wishlist) => (
+                  <WishlistCard
+                    key={wishlist._id.toString()}
+                    wishlist={wishlist}
+                    showOwner={false}
+                  />
+                ))}
+              </div>
+            )}
+          </>
+        )}
 
-        {/* Items Grid */}
-        {loading ? (
-          <div className="text-center py-12 sm:py-20">
-            <div className="inline-block animate-spin rounded-full h-10 w-10 sm:h-12 sm:w-12 border-b-2 border-primary-600"></div>
-            <p className="mt-4 text-sm sm:text-base text-gray-600">Loading items...</p>
-          </div>
-        ) : sortedItems.length === 0 ? (
-          <div className="text-center py-12 sm:py-20">
-            <div className="text-4xl sm:text-6xl mb-4">📦</div>
-            <h3 className="text-xl sm:text-2xl font-semibold text-gray-800 mb-2">
-              No items found
-            </h3>
-            <p className="text-sm sm:text-base text-gray-600 px-4">
-              {filter === 'all'
-                ? 'No wishlist items yet. Check back soon!'
-                : `No ${filter} items at the moment.`}
-            </p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
-            {sortedItems.map((item) => (
-              <WishlistItem
-                key={item._id}
-                item={item}
-                onUpdate={handleUpdateItem}
-                isAuthenticated={!!session?.user}
-              />
-            ))}
-          </div>
+        {/* Member Wishlists Tab */}
+        {activeTab === 'member' && (
+          <>
+            {memberWishlists.length === 0 ? (
+              <div className="text-center py-12 sm:py-20">
+                <div className="text-4xl sm:text-6xl mb-4">📋</div>
+                <h3 className="text-xl sm:text-2xl font-semibold text-gray-800 mb-2">
+                  No invitations yet
+                </h3>
+                <p className="text-sm sm:text-base text-gray-600">
+                  Wait for someone to invite you to their wishlist
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
+                {memberWishlists.map((wishlist) => (
+                  <WishlistCard
+                    key={wishlist._id.toString()}
+                    wishlist={wishlist}
+                    showOwner={true}
+                  />
+                ))}
+              </div>
+            )}
+          </>
         )}
       </div>
     </main>
   );
 }
-

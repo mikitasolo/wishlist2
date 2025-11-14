@@ -1,7 +1,12 @@
-import mongoose, { Schema, Model, InferSchemaType } from 'mongoose';
+import mongoose, { Schema, Model } from 'mongoose';
 
 const ItemSchema = new Schema(
   {
+    wishlist: {
+      type: Schema.Types.ObjectId,
+      ref: 'Wishlist',
+      required: true,
+    },
     name: { 
       type: String, 
       required: true 
@@ -34,15 +39,23 @@ const ItemSchema = new Schema(
   }
 );
 
-// Infer type from schema
-type ItemSchemaType = InferSchemaType<typeof ItemSchema>;
+// Index for faster lookups
+ItemSchema.index({ wishlist: 1 });
 
-// Extend with additional fields that Mongoose adds
-export interface IItem extends ItemSchemaType {
-  _id: string;
+// Base document type
+export interface IItem {
+  _id: mongoose.Types.ObjectId;
+  wishlist: mongoose.Types.ObjectId;
+  name: string;
+  imageUrl: string;
+  priceInCents?: number | null;
+  link?: string | null;
+  status: 'available' | 'booked' | 'completed';
+  bookedBy?: mongoose.Types.ObjectId | null;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 const Item: Model<IItem> = mongoose.models.Item || mongoose.model<IItem>('Item', ItemSchema);
 
 export default Item;
-

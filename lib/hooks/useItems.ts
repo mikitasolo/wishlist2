@@ -62,17 +62,17 @@ export function useCreateItem(
   onSuccess?: (newItem: IItem) => void,
   onError?: (error: string) => void
 ) {
-  return useCallback(async (newItem: {
+  return useCallback(async (wishlistId: string, newItem: {
     name: string;
     imageUrl: string;
     priceInCents?: number;
     link?: string;
   }): Promise<IItem | null> => {
-    const requestKey = createRequestKey('/api/items', 'POST', newItem);
+    const requestKey = createRequestKey(`/api/wishlists/${wishlistId}/items`, 'POST', newItem);
     
     try {
       const data = await deduplicateRequest(requestKey, async () => {
-        const response = await fetch('/api/items', {
+        const response = await fetch(`/api/wishlists/${wishlistId}/items`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -138,12 +138,12 @@ export function useDeleteItem(
  * Hook for fetching items
  */
 export function useFetchItems() {
-  return useCallback(async (silent = false): Promise<IItem[]> => {
-    const requestKey = createRequestKey('/api/items', 'GET');
+  return useCallback(async (wishlistId: string): Promise<IItem[]> => {
+    const requestKey = createRequestKey(`/api/wishlists/${wishlistId}/items`, 'GET');
     
     try {
       const data = await deduplicateRequest(requestKey, async () => {
-        const response = await fetch('/api/items', { cache: 'no-store' });
+        const response = await fetch(`/api/wishlists/${wishlistId}/items`, { cache: 'no-store' });
         const result: ApiResponse<IItem[]> = await response.json();
         
         if (!result.success) {

@@ -6,16 +6,16 @@ import User from '@/models/User';
 import Session from '@/models/Session';
 import { sendInvitationEmail } from '@/lib/email';
 
-// POST /api/invite - Invite a new user (admin only)
+// POST /api/invite - Invite a new user
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
 
-    // Check if user is authenticated and is admin
-    if (!session?.user || session.user.role !== 'admin') {
+    // Check if user is authenticated
+    if (!session?.user) {
       return NextResponse.json(
-        { success: false, error: 'Unauthorized - Admin access required' },
-        { status: 403 }
+        { success: false, error: 'Unauthorized - Please sign in' },
+        { status: 401 }
       );
     }
 
@@ -43,13 +43,10 @@ export async function POST(request: NextRequest) {
     // Create invited user
     const user = await User.create({
       email: email.toLowerCase(),
-      role,
-      isInvited: true,
-      invitedBy: session.user.email,
     });
 
     // Send invitation email
-    await sendInvitationEmail(email, session.user.email || 'Admin');
+    await sendInvitationEmail(email, session.user.email);
 
     return NextResponse.json({ success: true, data: user }, { status: 201 });
   } catch (error) {
@@ -61,16 +58,16 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// GET /api/invite - Get all invited users (admin only)
+// GET /api/invite - Get all invited users
 export async function GET() {
   try {
     const session = await getServerSession(authOptions);
 
-    // Check if user is authenticated and is admin
-    if (!session?.user || session.user.role !== 'admin') {
+    // Check if user is authenticated
+    if (!session?.user) {
       return NextResponse.json(
-        { success: false, error: 'Unauthorized - Admin access required' },
-        { status: 403 }
+        { success: false, error: 'Unauthorized - Please sign in' },
+        { status: 401 }
       );
     }
 
@@ -87,16 +84,16 @@ export async function GET() {
   }
 }
 
-// PATCH /api/invite - Update user (archive/unarchive) (admin only)
+// PATCH /api/invite - Update user (archive/unarchive)
 export async function PATCH(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
 
-    // Check if user is authenticated and is admin
-    if (!session?.user || session.user.role !== 'admin') {
+    // Check if user is authenticated
+    if (!session?.user) {
       return NextResponse.json(
-        { success: false, error: 'Unauthorized - Admin access required' },
-        { status: 403 }
+        { success: false, error: 'Unauthorized - Please sign in' },
+        { status: 401 }
       );
     }
 
@@ -112,7 +109,7 @@ export async function PATCH(request: NextRequest) {
 
     await connectDB();
 
-    // Prevent admins from archiving themselves
+    // Prevent users from archiving themselves
     const userToUpdate = await User.findById(userId);
     if (userToUpdate?.email === session.user.email) {
       return NextResponse.json(

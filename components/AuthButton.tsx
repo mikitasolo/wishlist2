@@ -1,35 +1,54 @@
 'use client';
 
+import { useState } from 'react';
 import { signIn, signOut, useSession } from 'next-auth/react';
 
 export default function AuthButton() {
   const { data: session, status } = useSession();
+  const [isHovered, setIsHovered] = useState(false);
 
   if (status === 'loading') {
     return (
-      <div className="h-10 w-24 bg-gray-200 rounded-lg animate-pulse"></div>
+      <div className="h-10 w-10 bg-gray-200 rounded-full animate-pulse"></div>
     );
   }
 
   if (session?.user) {
     return (
-      <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-4">
-        <div className="text-center sm:text-left">
-          <span className="text-xs sm:text-sm text-gray-700 block sm:inline">
-            {session.user.email}
-          </span>
-          {session.user.role === 'admin' && (
-            <span className="ml-0 sm:ml-2 mt-1 sm:mt-0 inline-block px-2 py-1 bg-primary-600 text-white text-xs rounded-full">
-              Admin
-            </span>
-          )}
-        </div>
+      <div className="relative">
+        {/* User Icon Button */}
         <button
-          onClick={() => signOut()}
-          className="bg-gray-200 text-gray-700 px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium hover:bg-gray-300 transition-colors cursor-pointer w-full sm:w-auto"
+          onClick={() => setIsHovered(!isHovered)}
+          className="w-10 h-10 rounded-full bg-gray-200 text-gray-700 flex items-center justify-center hover:bg-gray-300 transition-colors cursor-pointer text-xl"
+          aria-label="User menu"
+          aria-expanded={isHovered}
         >
-          Sign Out
+          👤
         </button>
+
+        {/* Dropdown Menu */}
+        {isHovered && (
+          <>
+            {/* Backdrop - closes menu when clicking outside */}
+            <div 
+              className="fixed inset-0 z-40"
+              onClick={() => setIsHovered(false)}
+            />
+            <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-50">
+              <div className="px-4 py-2 border-b border-gray-200">
+                <p className="text-sm text-gray-700 break-words">
+                  {session.user.email}
+                </p>
+              </div>
+              <button
+                onClick={() => signOut()}
+                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors cursor-pointer"
+              >
+                Sign Out
+              </button>
+            </div>
+          </>
+        )}
       </div>
     );
   }

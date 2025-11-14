@@ -26,11 +26,13 @@ export const authOptions: NextAuthOptions = {
 
       try {
         await connectDB();
-        const existingUser = await User.findOne({ email: user.email.toLowerCase() });
+        let existingUser = await User.findOne({ email: user.email.toLowerCase() });
 
-        // Only allow sign in if user is invited and not archived
-        if (!existingUser || !existingUser.isInvited || existingUser.isArchived) {
-          return false;
+        // If user doesn't exist, create them (open registration)
+        if (!existingUser) {
+          existingUser = await User.create({
+            email: user.email.toLowerCase(),
+          });
         }
 
         return true;
@@ -46,13 +48,12 @@ export const authOptions: NextAuthOptions = {
           const dbUser = await User.findOne({ email: user.email.toLowerCase() });
           
           if (dbUser) {
-            // If user is archived, invalidate the session
-            if (dbUser.isArchived) {
-              return null as any; // Return null to invalidate session
-            }
-            
-            session.user.role = dbUser.role;
-            session.user.id = dbUser._id?.toString();
+            // Always set id and email when user exists
+            session.user.id = dbUser._id.toString();
+            session.user.email = user.email;
+          } else {
+            // This shouldn't happen, but handle gracefully
+            console.error('User not found in database during session callback:', user.email);
           }
         } catch (error) {
           console.error('Error in session callback:', error);

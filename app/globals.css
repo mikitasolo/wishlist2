@@ -1,26 +1,24 @@
 @import "tailwindcss";
 
 @theme {
-  /* Theme colors are injected via CSS variables from environment variables */
-  /* All theme variables are required - no fallback defaults */
-  --color-primary-50: var(--theme-primary-50);
-  --color-primary-100: var(--theme-primary-100);
-  --color-primary-200: var(--theme-primary-200);
-  --color-primary-300: var(--theme-primary-300);
-  --color-primary-400: var(--theme-primary-400);
-  --color-primary-500: var(--theme-primary-500);
-  --color-primary-600: var(--theme-primary-600);
-  --color-primary-700: var(--theme-primary-700);
-  --color-primary-800: var(--theme-primary-800);
-  --color-primary-900: var(--theme-primary-900);
+  /* Primary color palette (indigo) */
+  --color-primary-50: #eef2ff;
+  --color-primary-100: #e0e7ff;
+  --color-primary-200: #c7d2fe;
+  --color-primary-300: #a5b4fc;
+  --color-primary-400: #818cf8;
+  --color-primary-500: #6366f1;
+  --color-primary-600: #4f46e5;
+  --color-primary-700: #4338ca;
+  --color-primary-800: #3730a3;
+  --color-primary-900: #312e81;
 }
 
 :root {
-  /* Background and foreground colors are injected via CSS variables from environment variables */
-  /* All theme variables are required - no fallback defaults */
-  --foreground-rgb: var(--theme-foreground-rgb);
-  --background-start-rgb: var(--theme-background-start-rgb);
-  --background-end-rgb: var(--theme-background-end-rgb);
+  /* Background and foreground colors */
+  --foreground-rgb: 17, 24, 39; /* #111827 */
+  --background-start-rgb: 224, 242, 254; /* #e0f2fe - light blue */
+  --background-end-rgb: 255, 255, 255; /* #ffffff */
 }
 
 body {

@@ -9,10 +9,13 @@ import { formatPrice } from '@/lib/utils/currency';
 interface WishlistItemProps {
   item: IItem;
   onUpdate: (id: string, updates: Partial<IItem>) => Promise<void>;
+  onEdit?: (item: IItem) => void;
   isAuthenticated: boolean;
+  isOwner?: boolean;
+  isMember?: boolean;
 }
 
-function WishlistItem({ item, onUpdate, isAuthenticated }: WishlistItemProps) {
+function WishlistItem({ item, onUpdate, onEdit, isAuthenticated, isOwner = false, isMember = false }: WishlistItemProps) {
   const { data: session } = useSession();
   const [imageLoading, setImageLoading] = useState(true);
   
@@ -21,25 +24,25 @@ function WishlistItem({ item, onUpdate, isAuthenticated }: WishlistItemProps) {
     [item.bookedBy, session?.user?.id]
   );
   
-  const isAdmin = useMemo(
-    () => session?.user?.role === 'admin',
-    [session?.user?.role]
-  );
-
+  // For owners, items always show as available (bookings are hidden)
+  const displayStatus = isOwner && item.status === 'booked' ? 'available' : item.status;
+  
   const handleToggleBooked = useCallback(async () => {
+    if (isOwner) return; // Owners can't book items
     const newStatus = item.status === 'booked' ? 'available' : 'booked';
-    await onUpdate(item._id!, { status: newStatus });
-  }, [item.status, item._id, onUpdate]);
+    await onUpdate(item._id.toString(), { status: newStatus });
+  }, [item.status, item._id, onUpdate, isOwner]);
 
   const handleToggleCompleted = useCallback(async () => {
+    if (!isOwner) return; // Only owners can complete items
     const newStatus = item.status === 'completed' ? 'available' : 'completed';
-    await onUpdate(item._id!, { status: newStatus });
-  }, [item.status, item._id, onUpdate]);
+    await onUpdate(item._id.toString(), { status: newStatus });
+  }, [item.status, item._id, onUpdate, isOwner]);
 
   return (
     <div
       className={`relative bg-white rounded-xl shadow-lg overflow-hidden transition-all duration-300 hover:shadow-xl flex flex-col ${
-        item.status === 'completed' ? 'ring-2 ring-green-400' : ''
+        displayStatus === 'completed' ? 'ring-2 ring-green-400' : ''
       }`}
       role="article"
       aria-label={`Item: ${item.name}`}
@@ -63,17 +66,18 @@ function WishlistItem({ item, onUpdate, isAuthenticated }: WishlistItemProps) {
         
         {/* Status badges */}
         <div className="absolute top-3 right-3 flex flex-col gap-2">
-          {item.status === 'booked' && isBookedByCurrentUser && (
+          {/* Only show booking badges to members, not owners */}
+          {!isOwner && item.status === 'booked' && isBookedByCurrentUser && (
             <span className="bg-amber-500 text-white text-xs font-semibold px-3 py-1 rounded-full shadow-md">
               Booked by you
             </span>
           )}
-          {item.status === 'booked' && !isBookedByCurrentUser && (
+          {!isOwner && item.status === 'booked' && !isBookedByCurrentUser && (
             <span className="bg-amber-500 text-white text-xs font-semibold px-3 py-1 rounded-full shadow-md">
               Booked
             </span>
           )}
-          {item.status === 'completed' && (
+          {displayStatus === 'completed' && (
             <span className="bg-green-500 text-white text-xs font-semibold px-3 py-1 rounded-full shadow-md">
               Completed
             </span>
@@ -105,8 +109,8 @@ function WishlistItem({ item, onUpdate, isAuthenticated }: WishlistItemProps) {
         {/* Action buttons - only shown for authenticated users */}
         {isAuthenticated && (
           <div className="flex flex-wrap gap-2 mb-3 mt-auto">
-            {/* Book/Unbook button - only for non-admin users, and only when not completed */}
-            {!isAdmin && item.status !== 'completed' && (
+            {/* Book/Unbook button - only for members */}
+            {isMember && displayStatus !== 'completed' && (
               <button
                 onClick={handleToggleBooked}
                 className={`flex-1 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
@@ -133,19 +137,32 @@ function WishlistItem({ item, onUpdate, isAuthenticated }: WishlistItemProps) {
               </button>
             )}
             
-            {/* Complete/Uncomplete button - only for admin users */}
-            {isAdmin && (
-              <button
-                onClick={handleToggleCompleted}
-                className={`flex-1 px-3 py-2 text-sm font-medium rounded-lg transition-colors cursor-pointer ${
-                  item.status === 'completed'
-                    ? 'bg-green-500 text-white hover:bg-green-600'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-                aria-label={item.status === 'completed' ? 'Mark item as available' : 'Mark item as completed'}
-              >
-                {item.status === 'completed' ? 'Uncomplete' : 'Complete'}
-              </button>
+            {/* Owner buttons */}
+            {isOwner && (
+              <>
+                {/* Edit button - only for owners */}
+                {onEdit && (
+                  <button
+                    onClick={() => onEdit(item)}
+                    className="px-3 py-2 text-sm font-medium rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors cursor-pointer"
+                    aria-label="Edit item"
+                  >
+                    Edit
+                  </button>
+                )}
+                {/* Complete/Uncomplete button - only for owners */}
+                <button
+                  onClick={handleToggleCompleted}
+                  className={`flex-1 px-3 py-2 text-sm font-medium rounded-lg transition-colors cursor-pointer ${
+                    displayStatus === 'completed'
+                      ? 'bg-green-500 text-white hover:bg-green-600'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                  aria-label={displayStatus === 'completed' ? 'Mark item as available' : 'Mark item as completed'}
+                >
+                  {displayStatus === 'completed' ? 'Uncomplete' : 'Complete'}
+                </button>
+              </>
             )}
           </div>
         )}

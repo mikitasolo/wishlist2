@@ -3,6 +3,7 @@
 import { signIn } from 'next-auth/react';
 import { useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 
 function SignInForm() {
   const [email, setEmail] = useState('');
@@ -10,6 +11,7 @@ function SignInForm() {
   const [isSubmitted, setIsSubmitted] = useState(false);
   const searchParams = useSearchParams();
   const error = searchParams?.get('error');
+  const callbackUrl = searchParams?.get('callbackUrl') || '/';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -19,7 +21,7 @@ function SignInForm() {
       await signIn('email', {
         email,
         redirect: false,
-        callbackUrl: '/',
+        callbackUrl,
       });
       setIsSubmitted(true);
     } catch (error) {
@@ -50,15 +52,19 @@ function SignInForm() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-primary-100 to-white px-4">
       <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8">
         <div className="text-center mb-8">
-          <div className="text-6xl mb-4">🎁</div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Welcome Back</h1>
-          <p className="text-gray-600">Sign in to your wishlist account</p>
+          <Link href="/" className="inline-block text-6xl mb-4 hover:scale-110 transition-transform cursor-pointer">
+            🎁
+          </Link>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Sign In</h1>
+          <p className="text-gray-600">Enter your email to receive a magic link</p>
         </div>
 
-        {error === 'AccessDenied' && (
+        {error && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
             <p className="text-sm text-red-800">
-              You don't have access to this wishlist. Please contact the admin for an invitation.
+              {error === 'AccessDenied' 
+                ? 'Access denied. Please try again.'
+                : 'An error occurred. Please try again.'}
             </p>
           </div>
         )}
@@ -83,14 +89,14 @@ function SignInForm() {
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full bg-primary-600 text-white py-3 rounded-lg font-medium hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full bg-primary-600 text-white py-3 rounded-lg font-medium hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
           >
             {isLoading ? 'Sending link...' : 'Send magic link'}
           </button>
         </form>
 
         <p className="mt-6 text-center text-sm text-gray-500">
-          We'll send you a magic link to sign in without a password
+          New users will automatically have an account created. No password needed!
         </p>
       </div>
     </div>

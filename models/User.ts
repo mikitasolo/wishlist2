@@ -1,4 +1,4 @@
-import mongoose, { Schema, Model, InferSchemaType } from 'mongoose';
+import mongoose, { Schema, Model } from 'mongoose';
 
 const UserSchema = new Schema(
   {
@@ -13,37 +13,19 @@ const UserSchema = new Schema(
       type: Date,
       required: false,
     },
-    role: {
-      type: String,
-      enum: ['user', 'admin'],
-      default: 'user',
-      required: true,
-    },
-    isInvited: {
-      type: Boolean,
-      default: false,
-      required: true,
-    },
-    isArchived: {
-      type: Boolean,
-      default: false,
-      required: true,
-    },
-    invitedBy: {
-      type: String,
-    },
   },
   {
     timestamps: true,
   }
 );
 
-// Infer type from schema
-type UserSchemaType = InferSchemaType<typeof UserSchema>;
-
-// Extend with additional fields that Mongoose adds
-export interface IUser extends UserSchemaType {
-  _id: string;
+// Base document type
+export interface IUser {
+  _id: mongoose.Types.ObjectId;
+  email: string;
+  emailVerified?: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 const User: Model<IUser> = mongoose.models.User || mongoose.model<IUser>('User', UserSchema);

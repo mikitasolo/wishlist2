@@ -3,12 +3,12 @@
  * Prevents duplicate concurrent API calls
  */
 
-interface PendingRequest {
-  promise: Promise<any>;
+interface PendingRequest<T> {
+  promise: Promise<T>;
   timestamp: number;
 }
 
-const pendingRequests = new Map<string, PendingRequest>();
+const pendingRequests = new Map<string, PendingRequest<unknown>>();
 const REQUEST_TIMEOUT = 30000; // 30 seconds
 
 /**
@@ -28,7 +28,7 @@ export async function deduplicateRequest<T>(
     // Check if request is still valid (not too old)
     const age = Date.now() - existing.timestamp;
     if (age < REQUEST_TIMEOUT) {
-      return existing.promise;
+      return existing.promise as Promise<T>;
     } else {
       // Request is too old, remove it
       pendingRequests.delete(key);

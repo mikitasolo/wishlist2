@@ -1,4 +1,4 @@
-import mongoose, { Schema, Model, InferSchemaType } from 'mongoose';
+import mongoose, { Schema, Model } from 'mongoose';
 
 const SessionSchema = new Schema(
   {
@@ -22,12 +22,14 @@ const SessionSchema = new Schema(
   }
 );
 
-// Infer type from schema
-type SessionSchemaType = InferSchemaType<typeof SessionSchema>;
-
-// Extend with additional fields that Mongoose adds
-export interface ISession extends SessionSchemaType {
-  _id: string;
+// Base document type
+export interface ISession {
+  _id: mongoose.Types.ObjectId;
+  sessionToken: string;
+  userId: mongoose.Types.ObjectId;
+  expires: Date;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 const Session: Model<ISession> = mongoose.models.Session || mongoose.model<ISession>('Session', SessionSchema);

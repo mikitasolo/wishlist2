@@ -21,9 +21,6 @@ export interface EnvSchema {
   
   // Migrations
   MIGRATION_SECRET: string;
-  
-  // Theme (JSON string containing all theme configuration)
-  THEME: string;
 }
 
 /**
@@ -34,7 +31,6 @@ const REQUIRED_ENV_VARS = {
   auth: ['NEXTAUTH_SECRET', 'NEXTAUTH_URL'],
   email: ['SMTP_HOST', 'SMTP_PORT', 'SMTP_SECURE', 'SMTP_USER', 'SMTP_PASSWORD', 'EMAIL_FROM'],
   migrations: ['MIGRATION_SECRET'],
-  theme: ['THEME'],
 } as const;
 
 /**
@@ -119,9 +115,6 @@ export function getEnvVars(): EnvSchema {
     
     // Migrations
     MIGRATION_SECRET: process.env.MIGRATION_SECRET!,
-    
-    // Theme (JSON string)
-    THEME: process.env.THEME!,
   };
 }
 

@@ -1,6 +1,23 @@
 import nodemailer from 'nodemailer';
-import { getThemeConfig, hexToRgba } from './theme';
 import { getEnvVars } from './env';
+
+// Helper function to convert hex to rgba
+function hexToRgb(hex: string, alpha?: number): string {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  if (!result) {
+    return alpha !== undefined ? `rgba(0, 0, 0, ${alpha})` : '0, 0, 0';
+  }
+  
+  const r = parseInt(result[1], 16);
+  const g = parseInt(result[2], 16);
+  const b = parseInt(result[3], 16);
+  
+  if (alpha !== undefined) {
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+  
+  return `${r}, ${g}, ${b}`;
+}
 
 // Get validated environment variables
 const env = getEnvVars();
@@ -30,8 +47,14 @@ function getEmailTemplate(options: {
   showLinkFallback?: boolean;
   linkUrl?: string;
 }) {
-  const theme = getThemeConfig();
-  const siteTitle = theme.siteTitle;
+  const siteTitle = 'Wishlist';
+  
+  // Default colors (indigo)
+  const primaryColor = '#6366f1';
+  const foregroundColor = '#111827';
+  const primaryLight = hexToRgb(primaryColor, 0.1);
+  const primaryMedium = hexToRgb(primaryColor, 0.5);
+  const primaryDark = hexToRgb(primaryColor, 0.8);
   
   return `
     <!DOCTYPE html>
@@ -63,7 +86,7 @@ function getEmailTemplate(options: {
             padding: 0;
             width: 100% !important;
             height: 100% !important;
-            background-color: ${theme.primary50};
+            background-color: ${primaryLight};
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
@@ -71,7 +94,7 @@ function getEmailTemplate(options: {
           
           .email-wrapper {
             width: 100%;
-            background-color: ${theme.primary50};
+            background-color: ${primaryLight};
             padding: 40px 0;
           }
           
@@ -81,11 +104,11 @@ function getEmailTemplate(options: {
             background-color: #ffffff;
             border-radius: 12px;
             overflow: hidden;
-            box-shadow: 0 4px 6px ${hexToRgba(theme.primary900, 0.1)};
+            box-shadow: 0 4px 6px ${hexToRgb(primaryColor, 0.1)};
           }
           
           .email-header {
-            background: linear-gradient(135deg, ${theme.primary500} 0%, ${theme.primary700} 100%);
+            background: ${primaryColor};
             padding: 40px 30px;
             text-align: center;
           }
@@ -100,14 +123,14 @@ function getEmailTemplate(options: {
           
           .email-body {
             padding: 40px 30px;
-            color: rgb(${theme.foregroundRgb});
+            color: ${foregroundColor};
             line-height: 1.6;
             font-size: 16px;
           }
           
           .email-body h2 {
             margin: 0 0 20px 0;
-            color: rgb(${theme.foregroundRgb});
+            color: ${foregroundColor};
             font-size: 24px;
             font-weight: 600;
             line-height: 1.3;
@@ -115,7 +138,7 @@ function getEmailTemplate(options: {
           
           .email-body p {
             margin: 0 0 16px 0;
-            color: rgb(${theme.foregroundRgb});
+            color: ${foregroundColor};
             opacity: 0.85;
           }
           
@@ -131,39 +154,39 @@ function getEmailTemplate(options: {
           .email-button {
             display: inline-block;
             padding: 16px 32px;
-            background: linear-gradient(135deg, ${theme.primary600} 0%, ${theme.primary700} 100%);
+            background: ${primaryColor};
             color: #ffffff !important;
             text-decoration: none;
             border-radius: 8px;
             font-weight: 600;
             font-size: 16px;
-            box-shadow: 0 4px 12px ${hexToRgba(theme.primary600, 0.3)};
+            box-shadow: 0 4px 12px ${hexToRgb(primaryColor, 0.3)};
             transition: all 0.3s ease;
           }
           
           .email-button:hover {
-            background: linear-gradient(135deg, ${theme.primary700} 0%, ${theme.primary800} 100%);
-            box-shadow: 0 6px 16px ${hexToRgba(theme.primary700, 0.4)};
+            background: ${primaryDark};
+            box-shadow: 0 6px 16px ${hexToRgb(primaryColor, 0.4)};
             transform: translateY(-2px);
           }
           
           .link-fallback {
             margin-top: 24px;
             padding: 16px;
-            background-color: ${theme.primary50};
+            background-color: ${primaryLight};
             border-radius: 8px;
-            border-left: 4px solid ${theme.primary500};
+            border-left: 4px solid ${primaryColor};
           }
           
           .link-fallback p {
             margin: 0 0 8px 0;
             font-size: 14px;
-            color: rgb(${theme.foregroundRgb});
+            color: ${foregroundColor};
             opacity: 0.7;
           }
           
           .link-fallback a {
-            color: ${theme.primary600};
+            color: ${primaryColor};
             word-break: break-all;
             text-decoration: none;
             font-size: 14px;
@@ -171,15 +194,15 @@ function getEmailTemplate(options: {
           
           .email-footer {
             padding: 30px;
-            background-color: ${theme.primary50};
+            background-color: ${primaryLight};
             text-align: center;
-            border-top: 1px solid ${theme.primary200};
+            border-top: 1px solid ${primaryMedium};
           }
           
           .email-footer p {
             margin: 0 0 8px 0;
             font-size: 13px;
-            color: rgb(${theme.foregroundRgb});
+            color: ${foregroundColor};
             opacity: 0.6;
             line-height: 1.5;
           }
@@ -267,8 +290,7 @@ function getEmailTemplate(options: {
 }
 
 export async function sendMagicLinkEmail(email: string, magicLink: string) {
-  const theme = getThemeConfig();
-  const siteTitle = theme.siteTitle;
+  const siteTitle = 'Wishlist';
   
   const html = getEmailTemplate({
     title: '🎁 Sign In',
@@ -301,8 +323,7 @@ export async function sendMagicLinkEmail(email: string, magicLink: string) {
 }
 
 export async function sendInvitationEmail(email: string, invitedBy: string) {
-  const theme = getThemeConfig();
-  const siteTitle = theme.siteTitle;
+  const siteTitle = 'Wishlist';
   const signInUrl = `${env.NEXTAUTH_URL}/auth/signin`;
   
   const html = getEmailTemplate({
@@ -330,6 +351,44 @@ export async function sendInvitationEmail(email: string, invitedBy: string) {
     console.log('Invitation email sent to:', email);
   } catch (error) {
     console.error('Error sending invitation email:', error);
+    throw error;
+  }
+}
+
+export async function sendWishlistInvitationEmail(
+  email: string,
+  wishlistName: string,
+  invitedBy: string,
+  wishlistId: string
+) {
+  const siteTitle = 'Wishlist';
+  const signInUrl = `${env.NEXTAUTH_URL}/auth/signin?callbackUrl=${encodeURIComponent(`/wishlists/${wishlistId}`)}`;
+  
+  const html = getEmailTemplate({
+    title: '🎁 Wishlist Invitation',
+    greeting: `Hello!`,
+    content: `
+      <p><strong>${invitedBy}</strong> has invited you to join their wishlist: <strong>${wishlistName}</strong>!</p>
+      <p>You can now sign in to view the wishlist and book items you'd like to gift. No password needed—just use your email address to get started.</p>
+    `,
+    buttonText: 'Sign In Now',
+    buttonUrl: signInUrl,
+    footerText: `When you sign in, use this email address: <strong>${email}</strong>`,
+  });
+
+  const mailOptions = {
+    from: env.EMAIL_FROM,
+    to: email,
+    subject: `You've been invited to ${wishlistName} on ${siteTitle}!`,
+    html,
+    text: `Wishlist Invitation\n\n${invitedBy} has invited you to join their wishlist: ${wishlistName}.\n\nSign in at: ${signInUrl}\n\nWhen you sign in, use this email address: ${email}`,
+  };
+
+  try {
+    await transporter.sendMail(mailOptions);
+    console.log('Wishlist invitation email sent to:', email);
+  } catch (error) {
+    console.error('Error sending wishlist invitation email:', error);
     throw error;
   }
 }
