@@ -15,7 +15,7 @@ import { IWishlist } from '@/models/Wishlist';
 import { filterItems, sortItems, calculateStats, type FilterType, type SortType } from '@/lib/utils/itemFilters';
 import { useFetchItems, useUpdateItem, useCreateItem } from '@/lib/hooks/useItems';
 
-type TabType = 'items' | 'users';
+type TabType = 'items' | 'users' | 'settings';
 
 interface WishlistMember {
   _id: string;
@@ -48,6 +48,12 @@ export default function WishlistDetail() {
   const [showAddItemModal, setShowAddItemModal] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
   const [isInviting, setIsInviting] = useState(false);
+  const [settingsForm, setSettingsForm] = useState({
+    name: '',
+    description: '',
+    isPublic: true,
+  });
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
 
   const fetchItemsHook = useFetchItems();
 
@@ -64,6 +70,11 @@ export default function WishlistDetail() {
           const w = result.data as IWishlist & { userRole?: 'owner' | 'member' | null; ownerEmail?: string | null };
           setWishlist(w);
           setOwnerEmail(w.ownerEmail || null);
+          setSettingsForm({
+            name: w.name,
+            description: w.description || '',
+            isPublic: w.isPublic,
+          });
           
           // Check user role from API response
           const userRole = w.userRole;
@@ -390,16 +401,28 @@ export default function WishlistDetail() {
               Items
             </button>
             {isOwner && (
-              <button
-                onClick={() => setActiveTab('users')}
-                className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors cursor-pointer ${
-                  activeTab === 'users'
-                    ? 'border-primary-600 text-primary-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                Users
-              </button>
+              <>
+                <button
+                  onClick={() => setActiveTab('users')}
+                  className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors cursor-pointer ${
+                    activeTab === 'users'
+                      ? 'border-primary-600 text-primary-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  Users
+                </button>
+                <button
+                  onClick={() => setActiveTab('settings')}
+                  className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors cursor-pointer ${
+                    activeTab === 'settings'
+                      ? 'border-primary-600 text-primary-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  Settings
+                </button>
+              </>
             )}
           </nav>
         </div>
@@ -621,6 +644,121 @@ export default function WishlistDetail() {
                   );
                 })}
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Settings Tab */}
+        {activeTab === 'settings' && isOwner && (
+          <div className="space-y-6">
+            <div className="bg-white rounded-xl p-6 shadow-md">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Wishlist Settings</h3>
+              
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  setIsSavingSettings(true);
+
+                  try {
+                    const response = await fetch(`/api/wishlists/${wishlistId}`, {
+                      method: 'PATCH',
+                      headers: {
+                        'Content-Type': 'application/json',
+                      },
+                      body: JSON.stringify(settingsForm),
+                    });
+
+                    const result = await response.json();
+
+                    if (result.success) {
+                      setWishlist(result.data);
+                      showToast('Wishlist updated successfully', 'success');
+                    } else {
+                      showToast(result.error || 'Failed to update wishlist', 'error');
+                    }
+                  } catch (error) {
+                    console.error('Error updating wishlist:', error);
+                    showToast('Failed to update wishlist', 'error');
+                  } finally {
+                    setIsSavingSettings(false);
+                  }
+                }}
+                className="space-y-4"
+              >
+                <div>
+                  <label htmlFor="settings-name" className="block text-sm font-medium text-gray-700 mb-1">
+                    Wishlist Name *
+                  </label>
+                  <input
+                    type="text"
+                    id="settings-name"
+                    required
+                    value={settingsForm.name}
+                    onChange={(e) => setSettingsForm({ ...settingsForm, name: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
+                    disabled={isSavingSettings}
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="settings-description" className="block text-sm font-medium text-gray-700 mb-1">
+                    Description
+                  </label>
+                  <textarea
+                    id="settings-description"
+                    value={settingsForm.description}
+                    onChange={(e) => setSettingsForm({ ...settingsForm, description: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
+                    rows={3}
+                    disabled={isSavingSettings}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Visibility
+                  </label>
+                  <p className="text-xs text-gray-500 mb-2">
+                    Controls whether the wishlist will be visible on your profile page for non-members
+                  </p>
+                  <div className="flex items-center justify-between p-1 bg-gray-100 rounded-lg">
+                    <button
+                      type="button"
+                      onClick={() => setSettingsForm({ ...settingsForm, isPublic: true })}
+                      disabled={isSavingSettings}
+                      className={`flex-1 px-4 py-2 text-sm font-medium rounded-md transition-all cursor-pointer ${
+                        settingsForm.isPublic
+                          ? 'bg-white text-gray-900 shadow-sm'
+                          : 'text-gray-600 hover:text-gray-900'
+                      }`}
+                    >
+                      Public
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSettingsForm({ ...settingsForm, isPublic: false })}
+                      disabled={isSavingSettings}
+                      className={`flex-1 px-4 py-2 text-sm font-medium rounded-md transition-all cursor-pointer ${
+                        !settingsForm.isPublic
+                          ? 'bg-white text-gray-900 shadow-sm'
+                          : 'text-gray-600 hover:text-gray-900'
+                      }`}
+                    >
+                      Private
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex gap-3 pt-4">
+                  <button
+                    type="submit"
+                    disabled={isSavingSettings}
+                    className="px-6 py-2 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    {isSavingSettings ? 'Saving...' : 'Save Changes'}
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         )}
