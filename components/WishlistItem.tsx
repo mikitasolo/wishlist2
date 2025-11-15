@@ -43,29 +43,58 @@ function WishlistItem({ item, onUpdate, onEdit, isAuthenticated, isOwner = false
     <div
       className={`relative bg-white rounded-xl shadow-lg overflow-hidden transition-all duration-300 hover:shadow-xl flex flex-col ${
         displayStatus === 'completed' ? 'ring-2 ring-green-400' : ''
+      } ${
+        item.status === 'draft' ? 'border-2 border-gray-300 border-dashed' : ''
       }`}
       role="article"
       aria-label={`Item: ${item.name}`}
     >
       {/* Image */}
       <div className="relative h-64 w-full bg-gray-100 flex-shrink-0">
-        {imageLoading && (
+        {imageLoading && item.imageUrl && (
           <div className="absolute inset-0 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 animate-pulse" />
         )}
-        <Image
-          src={item.imageUrl}
-          alt={item.name}
-          fill
-          className={`object-cover transition-opacity duration-300 ${
-            imageLoading ? 'opacity-0' : 'opacity-100'
-          }`}
-          sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-          onLoad={() => setImageLoading(false)}
-          onError={() => setImageLoading(false)}
-        />
+        {item.imageUrl ? (
+          <Image
+            src={item.imageUrl}
+            alt={item.name}
+            fill
+            className={`object-cover transition-opacity duration-300 ${
+              imageLoading ? 'opacity-0' : 'opacity-100'
+            }`}
+            sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+            onLoad={() => setImageLoading(false)}
+            onError={() => setImageLoading(false)}
+          />
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center bg-gray-200">
+            <div className="text-center text-gray-400">
+              <svg
+                className="w-16 h-16 mx-auto mb-2"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                />
+              </svg>
+              <p className="text-xs font-medium">No Image</p>
+            </div>
+          </div>
+        )}
         
         {/* Status badges */}
         <div className="absolute top-3 right-3 flex flex-col gap-2">
+          {item.status === 'draft' && (
+            <span className="bg-gray-500 text-white text-xs font-semibold px-3 py-1 rounded-full shadow-md">
+              Draft
+            </span>
+          )}
           {/* Only show booking badges to members, not owners */}
           {!isOwner && item.status === 'booked' && isBookedByCurrentUser && (
             <span className="bg-amber-500 text-white text-xs font-semibold px-3 py-1 rounded-full shadow-md">
@@ -144,24 +173,28 @@ function WishlistItem({ item, onUpdate, onEdit, isAuthenticated, isOwner = false
                 {onEdit && (
                   <button
                     onClick={() => onEdit(item)}
-                    className="px-3 py-2 text-sm font-medium rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors cursor-pointer"
+                    className={`px-3 py-2 text-sm font-medium rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors cursor-pointer ${
+                      item.status === 'draft' ? 'flex-1' : ''
+                    }`}
                     aria-label="Edit item"
                   >
                     Edit
                   </button>
                 )}
-                {/* Complete/Uncomplete button - only for owners */}
-                <button
-                  onClick={handleToggleCompleted}
-                  className={`flex-1 px-3 py-2 text-sm font-medium rounded-lg transition-colors cursor-pointer ${
-                    displayStatus === 'completed'
-                      ? 'bg-green-500 text-white hover:bg-green-600'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                  aria-label={displayStatus === 'completed' ? 'Mark item as available' : 'Mark item as completed'}
-                >
-                  {displayStatus === 'completed' ? 'Uncomplete' : 'Complete'}
-                </button>
+                {/* Complete/Uncomplete button - only for owners, not for draft items */}
+                {item.status !== 'draft' && (
+                  <button
+                    onClick={handleToggleCompleted}
+                    className={`flex-1 px-3 py-2 text-sm font-medium rounded-lg transition-colors cursor-pointer ${
+                      displayStatus === 'completed'
+                        ? 'bg-green-500 text-white hover:bg-green-600'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                    aria-label={displayStatus === 'completed' ? 'Mark item as available' : 'Mark item as completed'}
+                  >
+                    {displayStatus === 'completed' ? 'Uncomplete' : 'Complete'}
+                  </button>
+                )}
               </>
             )}
           </div>

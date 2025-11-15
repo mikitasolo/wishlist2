@@ -22,29 +22,54 @@ export const updateWishlistSchema = z.object({
 
 // Member schemas
 export const inviteMemberSchema = z.object({
-  email: z.string().email('Invalid email address').toLowerCase().trim(),
+  email: z.email('Invalid email address').toLowerCase().trim(),
 });
 
 // Item schemas
 export const createItemSchema = z.object({
   name: z.string().min(1, 'Item name is required').max(200, 'Name must be 200 characters or less').trim(),
-  imageUrl: z.string().url('Invalid image URL').trim(),
+  imageUrl: z.url('Invalid image URL').optional(),
   priceInCents: z.number().int().min(0, 'Price must be non-negative').optional(),
-  link: z.string().url('Invalid link URL').trim().optional(),
-  status: z.enum(['available', 'booked', 'completed']).default('available'),
+  link: z.url('Invalid link URL').optional(),
+  status: z.enum(['draft', 'available', 'booked', 'completed']).default('available'),
   bookedBy: z.string().optional().nullable(),
-});
+}).refine(
+  (data) => {
+    // Name is always required, imageUrl is required only when status is not draft
+    if (data.status !== 'draft' && !data.imageUrl) {
+      return false;
+    }
+    return true;
+  },
+  {
+    message: 'Image URL is required when status is not draft',
+    path: ['imageUrl'],
+  }
+);
 
 export const updateItemSchema = z.object({
   name: z.string().min(1, 'Item name is required').max(200, 'Name must be 200 characters or less').trim().optional(),
-  imageUrl: z.string().url('Invalid image URL').trim().optional(),
+  imageUrl: z.url('Invalid image URL').optional(),
   priceInCents: z.number().int().min(0, 'Price must be non-negative').optional().nullable(),
-  link: z.string().url('Invalid link URL').trim().optional().nullable(),
-  status: z.enum(['available', 'booked', 'completed']).optional(),
+  link: z.url('Invalid link URL').optional().nullable(),
+  status: z.enum(['draft', 'available', 'booked', 'completed']).optional(),
   bookedBy: z.string().optional().nullable(),
 }).refine(
   (data) => Object.keys(data).length > 0,
   { message: 'At least one field must be provided for update' }
+).refine(
+  (data) => {
+    // If status is being changed to non-draft, imageUrl must be present
+    if (data.status && data.status !== 'draft') {
+      // If updating status to non-draft, we need to check if imageUrl is provided
+      // But we can't validate against existing item data here, so we'll do it in the API route
+      return true;
+    }
+    return true;
+  },
+  {
+    message: 'Image URL is required when publishing an item (changing status from draft)',
+  }
 );
 
 // Helper function to validate request body

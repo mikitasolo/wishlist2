@@ -66,12 +66,18 @@ export default function ConfirmDialog({
 
   return (
     <div 
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 animate-fade-in"
+      className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
       onClick={handleBackdropClick}
+      style={{
+        animation: 'fadeIn 0.2s ease-out',
+      }}
     >
       <div 
-        className="bg-white rounded-xl shadow-2xl max-w-md w-full p-4 sm:p-6 animate-scale-in"
+        className="bg-white rounded-xl shadow-2xl max-w-md w-full p-4 sm:p-6"
         onClick={(e) => e.stopPropagation()}
+        style={{
+          animation: 'scaleIn 0.2s ease-out',
+        }}
       >
         <h2 className="text-lg sm:text-xl font-bold text-gray-900 mb-2 sm:mb-3">{title}</h2>
         <p className="text-sm sm:text-base text-gray-600 mb-4 sm:mb-6">{message}</p>
@@ -93,7 +99,7 @@ export default function ConfirmDialog({
       </div>
 
       <style jsx global>{`
-        @keyframes fade-in {
+        @keyframes fadeIn {
           from {
             opacity: 0;
           }
@@ -102,7 +108,7 @@ export default function ConfirmDialog({
           }
         }
 
-        @keyframes scale-in {
+        @keyframes scaleIn {
           from {
             transform: scale(0.95);
             opacity: 0;
@@ -111,14 +117,6 @@ export default function ConfirmDialog({
             transform: scale(1);
             opacity: 1;
           }
-        }
-
-        .animate-fade-in {
-          animation: fade-in 0.2s ease-out;
-        }
-
-        .animate-scale-in {
-          animation: scale-in 0.2s ease-out;
         }
       `}</style>
     </div>

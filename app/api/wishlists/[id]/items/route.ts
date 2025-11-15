@@ -81,8 +81,16 @@ export async function GET(
       isMember = !!membership;
     }
 
+    // Filter out draft items for non-owners
+    const visibleItems = items.filter((item) => {
+      if (item.status === 'draft') {
+        return isOwner; // Only owners can see draft items
+      }
+      return true;
+    });
+
     // Filter items based on user role
-    const filteredItems = items.map((item) => {
+    const filteredItems = visibleItems.map((item) => {
       const itemObj = item.toObject();
 
       if (!session?.user) {

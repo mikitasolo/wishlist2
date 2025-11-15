@@ -9,11 +9,13 @@ const ItemSchema = new Schema(
     },
     name: { 
       type: String, 
-      required: true 
+      required: true
     },
     imageUrl: { 
       type: String, 
-      required: true 
+      required: function() {
+        return this.status !== 'draft';
+      }
     },
     priceInCents: { 
       type: Number,
@@ -24,7 +26,7 @@ const ItemSchema = new Schema(
     },
     status: {
       type: String,
-      enum: ['available', 'booked', 'completed'],
+      enum: ['draft', 'available', 'booked', 'completed'],
       required: true,
       default: 'available'
     },
@@ -47,10 +49,10 @@ export interface IItem {
   _id: mongoose.Types.ObjectId;
   wishlist: mongoose.Types.ObjectId;
   name: string;
-  imageUrl: string;
+  imageUrl?: string | null;
   priceInCents?: number | null;
   link?: string | null;
-  status: 'available' | 'booked' | 'completed';
+  status: 'draft' | 'available' | 'booked' | 'completed';
   bookedBy?: mongoose.Types.ObjectId | null;
   createdAt: Date;
   updatedAt: Date;

@@ -64,9 +64,10 @@ export function useCreateItem(
 ) {
   return useCallback(async (wishlistId: string, newItem: {
     name: string;
-    imageUrl: string;
+    imageUrl?: string;
     priceInCents?: number;
     link?: string;
+    status?: 'draft' | 'available';
   }): Promise<IItem | null> => {
     const requestKey = createRequestKey(`/api/wishlists/${wishlistId}/items`, 'POST', newItem);
     

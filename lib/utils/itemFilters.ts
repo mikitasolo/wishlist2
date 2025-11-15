@@ -4,7 +4,7 @@
 
 import { IItem } from '@/models/Item';
 
-export type FilterType = 'all' | 'available' | 'booked' | 'bookedByYou' | 'completed';
+export type FilterType = 'all' | 'draft' | 'available' | 'booked' | 'bookedByYou' | 'completed';
 
 /**
  * Filters items based on the specified filter type
@@ -17,6 +17,8 @@ export function filterItems(
   switch (filter) {
     case 'all':
       return items;
+    case 'draft':
+      return items.filter((item) => item.status === 'draft');
     case 'available':
       return items.filter((item) => item.status === 'available');
     case 'booked':
@@ -40,12 +42,14 @@ export function calculateStats(
   currentUserId?: string
 ): {
   total: number;
+  draft: number;
   available: number;
   booked: number;
   bookedByYou: number;
   completed: number;
 } {
   let total = 0;
+  let draft = 0;
   let available = 0;
   let booked = 0;
   let bookedByYou = 0;
@@ -53,7 +57,9 @@ export function calculateStats(
 
   for (const item of items) {
     total++;
-    if (item.status === 'available') {
+    if (item.status === 'draft') {
+      draft++;
+    } else if (item.status === 'available') {
       available++;
     } else if (item.status === 'booked') {
       booked++;
@@ -65,7 +71,7 @@ export function calculateStats(
     }
   }
 
-  return { total, available, booked, bookedByYou, completed };
+  return { total, draft, available, booked, bookedByYou, completed };
 }
 
 /**

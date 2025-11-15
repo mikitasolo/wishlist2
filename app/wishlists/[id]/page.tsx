@@ -9,11 +9,12 @@ import EditItemModal from '@/components/EditItemModal';
 import AddItemModal from '@/components/AddItemModal';
 import AuthButton from '@/components/AuthButton';
 import UserSearch from '@/components/UserSearch';
+import ConfirmDialog from '@/components/ConfirmDialog';
 import { useToast } from '@/components/ToastProvider';
 import { IItem } from '@/models/Item';
 import { IWishlist } from '@/models/Wishlist';
 import { filterItems, sortItems, calculateStats, type FilterType, type SortType } from '@/lib/utils/itemFilters';
-import { useFetchItems, useUpdateItem, useCreateItem } from '@/lib/hooks/useItems';
+import { useFetchItems, useUpdateItem, useCreateItem, useDeleteItem } from '@/lib/hooks/useItems';
 
 type TabType = 'items' | 'users' | 'settings';
 
@@ -54,6 +55,11 @@ export default function WishlistDetail() {
     isPublic: true,
   });
   const [isSavingSettings, setIsSavingSettings] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    type: 'member' | 'leave';
+    memberId?: string;
+    memberEmail?: string;
+  } | null>(null);
 
   const fetchItemsHook = useFetchItems();
 
@@ -188,11 +194,21 @@ export default function WishlistDetail() {
     }
   );
 
+  const deleteItemHook = useDeleteItem(
+    () => {
+      showToast('Item deleted successfully', 'success');
+    },
+    (error) => {
+      showToast(error, 'error');
+    }
+  );
+
   const handleCreateItem = useCallback(async (itemData: {
     name: string;
-    imageUrl: string;
+    imageUrl?: string;
     priceInCents?: number;
     link?: string;
+    status?: 'draft' | 'available';
   }) => {
     if (!wishlistId) return;
     const createFn = createItemHook;
@@ -217,6 +233,14 @@ export default function WishlistDetail() {
     await handleUpdateItem(itemId, updates);
     setItemToEdit(null);
   }, [itemToEdit, handleUpdateItem]);
+
+  const handleDeleteItem = useCallback(async () => {
+    if (!itemToEdit) return;
+    const itemId = itemToEdit._id.toString();
+    await deleteItemHook(itemId);
+    setItems((prevItems) => prevItems.filter((item) => item._id.toString() !== itemId));
+    setItemToEdit(null);
+  }, [itemToEdit, deleteItemHook]);
 
   const handleInviteUser = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
@@ -254,11 +278,19 @@ export default function WishlistDetail() {
     }
   }, [wishlistId, inviteEmail, showToast]);
 
-  const handleKickMember = useCallback(async (memberId: string, memberEmail: string) => {
-    if (!wishlistId || !confirm(`Are you sure you want to remove ${memberEmail} from this wishlist?`)) return;
+  const handleKickMember = useCallback((memberId: string, memberEmail: string) => {
+    setDeleteConfirm({
+      type: 'member',
+      memberId,
+      memberEmail,
+    });
+  }, []);
+
+  const confirmKickMember = useCallback(async () => {
+    if (!wishlistId || !deleteConfirm || deleteConfirm.type !== 'member' || !deleteConfirm.memberId) return;
 
     try {
-      const response = await fetch(`/api/wishlists/${wishlistId}/members/${memberId}`, {
+      const response = await fetch(`/api/wishlists/${wishlistId}/members/${deleteConfirm.memberId}`, {
         method: 'DELETE',
       });
 
@@ -278,11 +310,19 @@ export default function WishlistDetail() {
     } catch (error) {
       console.error('Error removing member:', error);
       showToast('Failed to remove member', 'error');
+    } finally {
+      setDeleteConfirm(null);
     }
-  }, [wishlistId, showToast]);
+  }, [wishlistId, deleteConfirm, showToast]);
 
-  const handleLeaveWishlist = useCallback(async () => {
-    if (!wishlistId || !confirm('Are you sure you want to leave this wishlist? All your bookings will be removed.')) return;
+  const handleLeaveWishlist = useCallback(() => {
+    setDeleteConfirm({
+      type: 'leave',
+    });
+  }, []);
+
+  const confirmLeaveWishlist = useCallback(async () => {
+    if (!wishlistId || !deleteConfirm || deleteConfirm.type !== 'leave') return;
 
     try {
       const response = await fetch(`/api/wishlists/${wishlistId}/members/me`, {
@@ -300,8 +340,10 @@ export default function WishlistDetail() {
     } catch (error) {
       console.error('Error leaving wishlist:', error);
       showToast('Failed to leave wishlist', 'error');
+    } finally {
+      setDeleteConfirm(null);
     }
-  }, [wishlistId, router, showToast]);
+  }, [wishlistId, deleteConfirm, router, showToast]);
 
   const stats = useMemo(
     () => calculateStats(items, session?.user?.id),
@@ -431,11 +473,17 @@ export default function WishlistDetail() {
         {activeTab === 'items' && (
           <>
             {/* Stats */}
-            <div className={`grid ${isMember ? 'grid-cols-2 md:grid-cols-4' : 'grid-cols-2 md:grid-cols-3'} gap-3 sm:gap-4 mb-6 sm:mb-8`}>
+            <div className={`grid ${isOwner ? 'grid-cols-2 md:grid-cols-4' : (isMember ? 'grid-cols-2 md:grid-cols-4' : 'grid-cols-2 md:grid-cols-3')} gap-3 sm:gap-4 mb-6 sm:mb-8`}>
               <div className="bg-white rounded-xl p-3 sm:p-4 shadow-md">
                 <p className="text-xs sm:text-sm text-gray-600 mb-1">Total Items</p>
                 <p className="text-2xl sm:text-3xl font-bold text-gray-900">{stats.total}</p>
               </div>
+              {isOwner && (
+                <div className="bg-white rounded-xl p-3 sm:p-4 shadow-md">
+                  <p className="text-xs sm:text-sm text-gray-600 mb-1">Draft</p>
+                  <p className="text-2xl sm:text-3xl font-bold text-gray-500">{stats.draft}</p>
+                </div>
+              )}
               <div className="bg-white rounded-xl p-3 sm:p-4 shadow-md">
                 <p className="text-xs sm:text-sm text-gray-600 mb-1">Available</p>
                 <p className="text-2xl sm:text-3xl font-bold text-blue-600">{stats.available}</p>
@@ -465,6 +513,18 @@ export default function WishlistDetail() {
                 >
                   All
                 </button>
+                {isOwner && (
+                  <button
+                    onClick={() => setFilter('draft')}
+                    className={`px-3 sm:px-4 py-2 rounded-lg text-sm sm:text-base font-medium transition-colors whitespace-nowrap cursor-pointer flex-shrink-0 ${
+                      filter === 'draft'
+                        ? 'bg-gray-600 text-white'
+                        : 'bg-white text-gray-700 hover:bg-gray-100'
+                    }`}
+                  >
+                    Draft
+                  </button>
+                )}
                 <button
                   onClick={() => setFilter('available')}
                   className={`px-3 sm:px-4 py-2 rounded-lg text-sm sm:text-base font-medium transition-colors whitespace-nowrap cursor-pointer flex-shrink-0 ${
@@ -779,7 +839,35 @@ export default function WishlistDetail() {
           isOpen={!!itemToEdit}
           onClose={() => setItemToEdit(null)}
           onSave={handleSaveEdit}
+          onDelete={handleDeleteItem}
           item={itemToEdit}
+        />
+      )}
+
+      {/* Confirmation Dialogs */}
+      {deleteConfirm && deleteConfirm.type === 'member' && deleteConfirm.memberEmail && (
+        <ConfirmDialog
+          isOpen={!!deleteConfirm}
+          title="Remove Member"
+          message={`Are you sure you want to remove ${deleteConfirm.memberEmail} from this wishlist?`}
+          onConfirm={confirmKickMember}
+          onCancel={() => setDeleteConfirm(null)}
+          confirmText="Remove"
+          cancelText="Cancel"
+          type="danger"
+        />
+      )}
+
+      {deleteConfirm && deleteConfirm.type === 'leave' && (
+        <ConfirmDialog
+          isOpen={!!deleteConfirm}
+          title="Leave Wishlist"
+          message="Are you sure you want to leave this wishlist? All your bookings will be removed."
+          onConfirm={confirmLeaveWishlist}
+          onCancel={() => setDeleteConfirm(null)}
+          confirmText="Leave"
+          cancelText="Cancel"
+          type="danger"
         />
       )}
     </main>
