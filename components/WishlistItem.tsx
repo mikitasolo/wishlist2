@@ -63,11 +63,28 @@ function WishlistItem({
     await onUpdate(item._id.toString(), { status: newStatus });
   }, [item.status, item._id, onUpdate, isOwner]);
 
+  // Determine border styling based on item status
+  const getBorderClass = () => {
+    if (item.status === 'draft') {
+      return 'border-2 border-gray-300 border-dashed';
+    }
+    if (item.status === 'proposed') {
+      return 'border-2 border-blue-500 border-dashed';
+    }
+    if (item.status === 'booked' && !isOwner && isBookedByCurrentUser) {
+      return 'border-2 border-green-700 border-dashed';
+    }
+    if (item.status === 'booked' && !isOwner && !isBookedByCurrentUser) {
+      return 'border-2 border-yellow-500 border-dashed';
+    }
+    return '';
+  };
+
   return (
     <div
       className={`relative bg-white rounded-xl shadow-lg overflow-hidden transition-all duration-300 hover:shadow-xl flex flex-col ${
         displayStatus === 'completed' ? 'ring-2 ring-green-400' : ''
-      } ${item.status === 'draft' ? 'border-2 border-gray-300 border-dashed' : ''}`}
+      } ${getBorderClass()}`}
       role="article"
       aria-label={`Item: ${item.name}`}
     >
@@ -155,18 +172,18 @@ function WishlistItem({
             </span>
           )}
           {item.status === 'proposed' && (
-            <span className="bg-yellow-500 text-white text-xs font-semibold px-3 py-1 rounded-full shadow-md">
+            <span className="bg-blue-500 text-white text-xs font-semibold px-3 py-1 rounded-full shadow-md">
               Proposed
             </span>
           )}
           {/* Only show booking badges to members, not owners */}
           {!isOwner && item.status === 'booked' && isBookedByCurrentUser && (
-            <span className="bg-amber-500 text-white text-xs font-semibold px-3 py-1 rounded-full shadow-md">
+            <span className="bg-green-700 text-white text-xs font-semibold px-3 py-1 rounded-full shadow-md">
               Booked by you
             </span>
           )}
           {!isOwner && item.status === 'booked' && !isBookedByCurrentUser && (
-            <span className="bg-amber-500 text-white text-xs font-semibold px-3 py-1 rounded-full shadow-md">
+            <span className="bg-yellow-500 text-white text-xs font-semibold px-3 py-1 rounded-full shadow-md">
               Booked
             </span>
           )}
@@ -209,7 +226,7 @@ function WishlistItem({
                 {isOwner && onReview && (
                   <button
                     onClick={() => onReview(item)}
-                    className="flex-1 px-3 py-2 text-sm font-medium rounded-lg bg-yellow-500 text-white hover:bg-yellow-600 transition-colors cursor-pointer"
+                    className="flex-1 px-3 py-2 text-sm font-medium rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors cursor-pointer"
                     aria-label="Review proposed item"
                   >
                     Review
@@ -234,10 +251,10 @@ function WishlistItem({
                 onClick={handleToggleBooked}
                 className={`flex-1 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
                   item.status === 'booked' && isBookedByCurrentUser
-                    ? 'bg-amber-500 text-white hover:bg-amber-600 cursor-pointer'
+                    ? 'bg-gray-300 text-gray-700 hover:bg-gray-400 cursor-pointer'
                     : item.status === 'booked'
                       ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                      : 'bg-primary-600 text-white hover:bg-primary-700 cursor-pointer'
+                      : 'bg-green-700 text-white hover:bg-green-800 cursor-pointer'
                 }`}
                 disabled={item.status === 'booked' && !isBookedByCurrentUser}
                 aria-label={

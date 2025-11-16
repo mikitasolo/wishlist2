@@ -141,15 +141,20 @@ export default function ItemForm({
           ) : (
             <p className="text-xs text-gray-500 mb-2">Draft items are not visible to others</p>
           )}
-          <div className="flex items-center justify-between p-1 bg-gray-100 rounded-lg">
+          <div className="relative flex items-center justify-between p-1 bg-gray-100 rounded-lg">
+            {/* Sliding indicator */}
+            <div
+              className={`absolute top-1 bottom-1 left-1 bg-white rounded-md shadow-sm transition-transform duration-300 ease-in-out ${
+                !formData.isDraft ? 'translate-x-0' : 'translate-x-[calc(100%+0.5rem)]'
+              }`}
+              style={{ width: 'calc(50% - 0.25rem)' }}
+            />
             <button
               type="button"
               onClick={() => setFormData({ ...formData, isDraft: false })}
               disabled={submitting}
-              className={`flex-1 px-4 py-2 text-sm font-medium rounded-md transition-all cursor-pointer ${
-                !formData.isDraft
-                  ? 'bg-white text-gray-900 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900'
+              className={`relative z-10 flex-1 px-4 py-2 text-sm font-medium rounded-md transition-colors duration-300 cursor-pointer ${
+                !formData.isDraft ? 'text-gray-900' : 'text-gray-600 hover:text-gray-900'
               }`}
             >
               Published
@@ -158,10 +163,8 @@ export default function ItemForm({
               type="button"
               onClick={() => setFormData({ ...formData, isDraft: true })}
               disabled={submitting}
-              className={`flex-1 px-4 py-2 text-sm font-medium rounded-md transition-all cursor-pointer ${
-                formData.isDraft
-                  ? 'bg-white text-gray-900 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900'
+              className={`relative z-10 flex-1 px-4 py-2 text-sm font-medium rounded-md transition-colors duration-300 cursor-pointer ${
+                formData.isDraft ? 'text-gray-900' : 'text-gray-600 hover:text-gray-900'
               }`}
             >
               Draft

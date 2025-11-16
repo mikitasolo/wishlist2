@@ -4,44 +4,64 @@
 
 import { IItem } from '@/models/Item';
 
-export type FilterType =
+export type FilterOption =
   | 'all'
   | 'draft'
   | 'available'
-  | 'booked'
-  | 'bookedByYou'
+  | 'bookedByMe'
+  | 'bookedByOthers'
   | 'completed'
   | 'proposed'
-  | 'proposedByYou';
+  | 'proposedByMe';
 
 /**
- * Filters items based on the specified filter type
+ * Filters items based on multiple selected filter options
+ * @param items - Array of items to filter
+ * @param selectedFilters - Array of selected filter options
+ * @param currentUserId - Current user ID for user-specific filters
+ * @param includeBookedInAvailable - If true, "available" filter includes both "available" and "booked" statuses
  */
-export function filterItems(items: IItem[], filter: FilterType, currentUserId?: string): IItem[] {
-  switch (filter) {
-    case 'all':
-      return items;
-    case 'draft':
-      return items.filter((item) => item.status === 'draft');
-    case 'available':
-      return items.filter((item) => item.status === 'available');
-    case 'booked':
-      return items.filter((item) => item.status === 'booked');
-    case 'bookedByYou':
-      return items.filter(
-        (item) => item.status === 'booked' && item.bookedBy?.toString() === currentUserId
-      );
-    case 'completed':
-      return items.filter((item) => item.status === 'completed');
-    case 'proposed':
-      return items.filter((item) => item.status === 'proposed');
-    case 'proposedByYou':
-      return items.filter(
-        (item) => item.status === 'proposed' && item.proposedBy?.toString() === currentUserId
-      );
-    default:
-      return items;
+export function filterItemsMulti(
+  items: IItem[],
+  selectedFilters: FilterOption[],
+  currentUserId?: string,
+  includeBookedInAvailable: boolean = false
+): IItem[] {
+  // If no filters selected or "all" is selected, return all items
+  if (selectedFilters.length === 0 || selectedFilters.includes('all')) {
+    return items;
   }
+
+  return items.filter((item) => {
+    return selectedFilters.some((filter) => {
+      switch (filter) {
+        case 'draft':
+          return item.status === 'draft';
+        case 'available':
+          if (includeBookedInAvailable) {
+            // For owner/non-member: "available" includes both available and booked
+            return item.status === 'available' || item.status === 'booked';
+          }
+          return item.status === 'available';
+        case 'bookedByMe':
+          return item.status === 'booked' && item.bookedBy?.toString() === currentUserId;
+        case 'bookedByOthers':
+          return (
+            item.status === 'booked' &&
+            item.bookedBy?.toString() !== currentUserId &&
+            item.bookedBy != null
+          );
+        case 'completed':
+          return item.status === 'completed';
+        case 'proposed':
+          return item.status === 'proposed';
+        case 'proposedByMe':
+          return item.status === 'proposed' && item.proposedBy?.toString() === currentUserId;
+        default:
+          return false;
+      }
+    });
+  });
 }
 
 /**
@@ -96,7 +116,13 @@ export function calculateStats(
 /**
  * Sorts items based on the specified sort type
  */
-export type SortType = 'name-asc' | 'name-desc' | 'price-asc' | 'price-desc';
+export type SortType =
+  | 'name-asc'
+  | 'name-desc'
+  | 'price-asc'
+  | 'price-desc'
+  | 'date-asc'
+  | 'date-desc';
 
 export function sortItems(items: IItem[], sortBy: SortType): IItem[] {
   return [...items].sort((a, b) => {
@@ -115,6 +141,18 @@ export function sortItems(items: IItem[], sortBy: SortType): IItem[] {
         if (a.priceInCents == null) return 1;
         if (b.priceInCents == null) return -1;
         return b.priceInCents - a.priceInCents;
+      case 'date-asc': {
+        // Oldest first
+        const dateA = a.createdAt instanceof Date ? a.createdAt : new Date(a.createdAt);
+        const dateB = b.createdAt instanceof Date ? b.createdAt : new Date(b.createdAt);
+        return dateA.getTime() - dateB.getTime();
+      }
+      case 'date-desc': {
+        // Newest first
+        const dateA = a.createdAt instanceof Date ? a.createdAt : new Date(a.createdAt);
+        const dateB = b.createdAt instanceof Date ? b.createdAt : new Date(b.createdAt);
+        return dateB.getTime() - dateA.getTime();
+      }
       default:
         return 0;
     }

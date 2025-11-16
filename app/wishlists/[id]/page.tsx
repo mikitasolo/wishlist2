@@ -16,12 +16,13 @@ import { useToast } from '@/components/ToastProvider';
 import { IItem } from '@/models/Item';
 import { IWishlist } from '@/models/Wishlist';
 import {
-  filterItems,
   sortItems,
   calculateStats,
-  type FilterType,
+  filterItemsMulti,
+  type FilterOption,
   type SortType,
 } from '@/lib/utils/itemFilters';
+import FilterDropdown from '@/components/FilterDropdown';
 import { useFetchItems, useUpdateItem, useCreateItem, useDeleteItem } from '@/lib/hooks/useItems';
 
 type TabType = 'items' | 'users' | 'settings';
@@ -51,7 +52,7 @@ export default function WishlistDetail() {
   const [isOwner, setIsOwner] = useState(false);
   const [isMember, setIsMember] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>('items');
-  const [filter, setFilter] = useState<FilterType>('all');
+  const [selectedFilters, setSelectedFilters] = useState<FilterOption[]>([]);
   const [sortBy, setSortBy] = useState<SortType>('name-asc');
   const [itemToEdit, setItemToEdit] = useState<IItem | null>(null);
   const [itemToReview, setItemToReview] = useState<IItem | null>(null);
@@ -72,6 +73,135 @@ export default function WishlistDetail() {
   } | null>(null);
 
   const fetchItemsHook = useFetchItems();
+
+  // Get filter options based on user role
+  const getFilterOptions = useCallback((): FilterOption[] => {
+    if (isOwner) {
+      return ['all', 'draft', 'available', 'completed', 'proposed'];
+    } else if (isMember) {
+      return ['all', 'available', 'bookedByMe', 'bookedByOthers', 'completed', 'proposedByMe'];
+    } else {
+      return ['all', 'available', 'completed'];
+    }
+  }, [isOwner, isMember]);
+
+  // Get default filter values based on user role
+  const getDefaultFilters = useCallback((): FilterOption[] => {
+    if (isOwner) {
+      return ['draft', 'available', 'proposed'];
+    } else if (isMember) {
+      return ['available', 'bookedByMe', 'proposedByMe'];
+    } else {
+      return ['available'];
+    }
+  }, [isOwner, isMember]);
+
+  // Get localStorage key based on user role
+  const getFilterStorageKey = useCallback((): string => {
+    if (isOwner) {
+      return 'wishlist-filters-owner';
+    } else if (isMember) {
+      return 'wishlist-filters-member';
+    } else {
+      return 'wishlist-filters-nonmember';
+    }
+  }, [isOwner, isMember]);
+
+  // Get localStorage key for sort (single key for all roles)
+  const getSortStorageKey = useCallback((): string => {
+    return 'wishlist-sort';
+  }, []);
+
+  // Load filters from localStorage or use defaults
+  // Only run after we've loaded the wishlist and determined the role
+  useEffect(() => {
+    // Wait until loading is complete and we have a wishlist
+    if (!wishlistId || loading || !wishlist) return;
+
+    const storageKey = getFilterStorageKey();
+    const stored = localStorage.getItem(storageKey);
+
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored) as FilterOption[];
+        const validOptions = getFilterOptions();
+        // Validate stored filters are still valid for current role
+        const validFilters = parsed.filter((f) => validOptions.includes(f));
+        if (validFilters.length > 0) {
+          setSelectedFilters(validFilters);
+          return;
+        }
+      } catch (e) {
+        // Invalid stored data, use defaults
+      }
+    }
+
+    // Use defaults if no stored value or invalid
+    setSelectedFilters(getDefaultFilters());
+  }, [
+    wishlistId,
+    loading,
+    wishlist,
+    isOwner,
+    isMember,
+    getFilterOptions,
+    getDefaultFilters,
+    getFilterStorageKey,
+  ]);
+
+  // Save filters to localStorage when they change
+  // Only save after initial load is complete to avoid overwriting with defaults
+  useEffect(() => {
+    // Don't save during initial load
+    if (!wishlistId || loading || !wishlist || selectedFilters.length === 0) return;
+
+    const storageKey = getFilterStorageKey();
+    localStorage.setItem(storageKey, JSON.stringify(selectedFilters));
+  }, [wishlistId, loading, wishlist, selectedFilters, getFilterStorageKey]);
+
+  // Load sort from localStorage or use default
+  // Only run after we've loaded the wishlist
+  useEffect(() => {
+    // Wait until loading is complete and we have a wishlist
+    if (!wishlistId || loading || !wishlist) return;
+
+    const storageKey = getSortStorageKey();
+    const stored = localStorage.getItem(storageKey);
+
+    if (stored) {
+      try {
+        const parsed = stored as SortType;
+        // Validate stored sort value is valid
+        const validSortTypes: SortType[] = [
+          'name-asc',
+          'name-desc',
+          'price-asc',
+          'price-desc',
+          'date-asc',
+          'date-desc',
+        ];
+        if (validSortTypes.includes(parsed)) {
+          setSortBy(parsed);
+          return;
+        }
+      } catch (e) {
+        // Invalid stored data, use default
+      }
+    }
+
+    // Use default if no stored value or invalid
+    setSortBy('name-asc');
+  }, [wishlistId, loading, wishlist, getSortStorageKey]);
+
+  // Save sort to localStorage when it changes
+  // Only save after initial load is complete
+  useEffect(() => {
+    // Don't save during initial load
+    if (!wishlistId || loading || !wishlist) return;
+
+    const storageKey = getSortStorageKey();
+    localStorage.setItem(storageKey, sortBy);
+  }, [wishlistId, loading, wishlist, sortBy, getSortStorageKey]);
 
   // Fetch wishlist and determine role
   useEffect(() => {
@@ -454,8 +584,14 @@ export default function WishlistDetail() {
   const stats = useMemo(() => calculateStats(items, session?.user?.id), [items, session?.user?.id]);
 
   const filteredItems = useMemo(
-    () => filterItems(items, filter, session?.user?.id),
-    [items, filter, session?.user?.id]
+    () =>
+      filterItemsMulti(
+        items,
+        selectedFilters,
+        session?.user?.id,
+        isOwner || (!isOwner && !isMember) // Include booked in "available" for owner and non-member
+      ),
+    [items, selectedFilters, session?.user?.id, isOwner, isMember]
   );
 
   const sortedItems = useMemo(() => sortItems(filteredItems, sortBy), [filteredItems, sortBy]);
@@ -628,86 +764,12 @@ export default function WishlistDetail() {
 
             {/* Filter and Sort Controls */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 mb-6 sm:mb-8">
-              <div className="flex gap-2 overflow-x-auto pb-2 sm:pb-0 -mx-4 px-4 sm:mx-0 sm:px-0">
-                <button
-                  onClick={() => setFilter('all')}
-                  className={`px-3 sm:px-4 py-2 rounded-lg text-sm sm:text-base font-medium transition-colors whitespace-nowrap cursor-pointer flex-shrink-0 ${
-                    filter === 'all'
-                      ? 'bg-primary-600 text-white'
-                      : 'bg-white text-gray-700 hover:bg-gray-100'
-                  }`}
-                >
-                  All
-                </button>
-                {isOwner && (
-                  <button
-                    onClick={() => setFilter('draft')}
-                    className={`px-3 sm:px-4 py-2 rounded-lg text-sm sm:text-base font-medium transition-colors whitespace-nowrap cursor-pointer flex-shrink-0 ${
-                      filter === 'draft'
-                        ? 'bg-gray-600 text-white'
-                        : 'bg-white text-gray-700 hover:bg-gray-100'
-                    }`}
-                  >
-                    Draft
-                  </button>
-                )}
-                <button
-                  onClick={() => setFilter('available')}
-                  className={`px-3 sm:px-4 py-2 rounded-lg text-sm sm:text-base font-medium transition-colors whitespace-nowrap cursor-pointer flex-shrink-0 ${
-                    filter === 'available'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-white text-gray-700 hover:bg-gray-100'
-                  }`}
-                >
-                  Available
-                </button>
-                {isMember && (
-                  <button
-                    onClick={() => setFilter('bookedByYou')}
-                    className={`px-3 sm:px-4 py-2 rounded-lg text-sm sm:text-base font-medium transition-colors whitespace-nowrap cursor-pointer flex-shrink-0 ${
-                      filter === 'bookedByYou'
-                        ? 'bg-amber-600 text-white'
-                        : 'bg-white text-gray-700 hover:bg-gray-100'
-                    }`}
-                  >
-                    Booked by You
-                  </button>
-                )}
-                <button
-                  onClick={() => setFilter('completed')}
-                  className={`px-3 sm:px-4 py-2 rounded-lg text-sm sm:text-base font-medium transition-colors whitespace-nowrap cursor-pointer flex-shrink-0 ${
-                    filter === 'completed'
-                      ? 'bg-green-600 text-white'
-                      : 'bg-white text-gray-700 hover:bg-gray-100'
-                  }`}
-                >
-                  Completed
-                </button>
-                {isOwner && (
-                  <button
-                    onClick={() => setFilter('proposed')}
-                    className={`px-3 sm:px-4 py-2 rounded-lg text-sm sm:text-base font-medium transition-colors whitespace-nowrap cursor-pointer flex-shrink-0 ${
-                      filter === 'proposed'
-                        ? 'bg-yellow-600 text-white'
-                        : 'bg-white text-gray-700 hover:bg-gray-100'
-                    }`}
-                  >
-                    Proposed
-                  </button>
-                )}
-                {isMember && stats.proposedByYou > 0 && (
-                  <button
-                    onClick={() => setFilter('proposedByYou')}
-                    className={`px-3 sm:px-4 py-2 rounded-lg text-sm sm:text-base font-medium transition-colors whitespace-nowrap cursor-pointer flex-shrink-0 ${
-                      filter === 'proposedByYou'
-                        ? 'bg-yellow-600 text-white'
-                        : 'bg-white text-gray-700 hover:bg-gray-100'
-                    }`}
-                  >
-                    Proposed by Me
-                  </button>
-                )}
-              </div>
+              <FilterDropdown
+                options={getFilterOptions()}
+                selectedFilters={selectedFilters}
+                onChange={setSelectedFilters}
+                label="Filter"
+              />
 
               <div className="flex items-center gap-2 flex-shrink-0">
                 <label
@@ -725,7 +787,9 @@ export default function WishlistDetail() {
                       value === 'name-asc' ||
                       value === 'name-desc' ||
                       value === 'price-asc' ||
-                      value === 'price-desc'
+                      value === 'price-desc' ||
+                      value === 'date-asc' ||
+                      value === 'date-desc'
                     ) {
                       setSortBy(value);
                     }
@@ -736,6 +800,8 @@ export default function WishlistDetail() {
                   <option value="name-desc">Name (Z-A)</option>
                   <option value="price-asc">Price (Low to High)</option>
                   <option value="price-desc">Price (High to Low)</option>
+                  <option value="date-asc">Date Created (Oldest First)</option>
+                  <option value="date-desc">Date Created (Newest First)</option>
                 </select>
               </div>
             </div>
@@ -768,9 +834,9 @@ export default function WishlistDetail() {
                   No items found
                 </h3>
                 <p className="text-sm sm:text-base text-gray-600 px-4">
-                  {filter === 'all'
+                  {selectedFilters.length === 0 || selectedFilters.includes('all')
                     ? 'No wishlist items yet.'
-                    : `No ${filter} items at the moment.`}
+                    : 'No items match the selected filters.'}
                 </p>
               </div>
             ) : (
@@ -972,14 +1038,21 @@ export default function WishlistDetail() {
                     Controls whether the wishlist will be visible on your profile page for
                     non-members
                   </p>
-                  <div className="flex items-center justify-between p-1 bg-gray-100 rounded-lg">
+                  <div className="relative flex items-center justify-between p-1 bg-gray-100 rounded-lg">
+                    {/* Sliding indicator */}
+                    <div
+                      className={`absolute top-1 bottom-1 left-1 bg-white rounded-md shadow-sm transition-transform duration-300 ease-in-out ${
+                        settingsForm.isPublic ? 'translate-x-0' : 'translate-x-[calc(100%+0.5rem)]'
+                      }`}
+                      style={{ width: 'calc(50% - 0.25rem)' }}
+                    />
                     <button
                       type="button"
                       onClick={() => setSettingsForm({ ...settingsForm, isPublic: true })}
                       disabled={isSavingSettings}
-                      className={`flex-1 px-4 py-2 text-sm font-medium rounded-md transition-all cursor-pointer ${
+                      className={`relative z-10 flex-1 px-4 py-2 text-sm font-medium rounded-md transition-colors duration-300 cursor-pointer ${
                         settingsForm.isPublic
-                          ? 'bg-white text-gray-900 shadow-sm'
+                          ? 'text-gray-900'
                           : 'text-gray-600 hover:text-gray-900'
                       }`}
                     >
@@ -989,9 +1062,9 @@ export default function WishlistDetail() {
                       type="button"
                       onClick={() => setSettingsForm({ ...settingsForm, isPublic: false })}
                       disabled={isSavingSettings}
-                      className={`flex-1 px-4 py-2 text-sm font-medium rounded-md transition-all cursor-pointer ${
+                      className={`relative z-10 flex-1 px-4 py-2 text-sm font-medium rounded-md transition-colors duration-300 cursor-pointer ${
                         !settingsForm.isPublic
-                          ? 'bg-white text-gray-900 shadow-sm'
+                          ? 'text-gray-900'
                           : 'text-gray-600 hover:text-gray-900'
                       }`}
                     >
