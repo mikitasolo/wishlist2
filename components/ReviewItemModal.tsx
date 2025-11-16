@@ -34,6 +34,10 @@ export default function ReviewItemModal({
     }
   }, [isOpen]);
 
+  // Use key prop to force ItemForm to remount when modal opens with a different item
+  // This ensures form state is reset when switching between items
+  const itemFormKey = isOpen ? `review-item-${item._id.toString()}` : undefined;
+
   const handleSubmit = async (data: {
     name: string;
     imageUrl?: string;
@@ -115,6 +119,7 @@ export default function ReviewItemModal({
           </div>
         </div>
         <ItemForm
+          key={itemFormKey}
           initialData={formData}
           onSubmit={handleSubmit}
           onCancel={onClose}
@@ -122,6 +127,7 @@ export default function ReviewItemModal({
           submittingLabel="Approving..."
           isSubmitting={isSubmitting || isDeleting}
           mode="review"
+          itemId={item._id.toString()}
           renderButtons={({ submitting, onCancel, submitLabel, submittingLabel }) => (
             <div className="flex flex-col gap-3 pt-4">
               <div className="flex gap-3">

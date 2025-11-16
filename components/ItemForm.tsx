@@ -35,6 +35,8 @@ interface ItemFormProps {
     submittingLabel: string;
   }) => React.ReactNode;
   mode?: 'create' | 'propose' | 'review';
+  // Optional: item ID to track when switching between different items
+  itemId?: string;
 }
 
 export default function ItemForm({
@@ -47,6 +49,7 @@ export default function ItemForm({
   firstInputRef: externalFirstInputRef,
   renderButtons,
   mode = 'create',
+  itemId,
 }: ItemFormProps) {
   const defaultInitialData: ItemFormData = {
     name: '',
@@ -63,12 +66,24 @@ export default function ItemForm({
   const firstInputRef = externalFirstInputRef || internalFirstInputRef;
   const submitting = externalIsSubmitting !== undefined ? externalIsSubmitting : isSubmitting;
 
-  // Update form when initialData changes (for edit mode)
+  // Track the last item ID we initialized from
+  // Only update form data on initial load or when switching to a different item
+  // Never update form data after initial set, even if item changes in DB (preserves user edits)
+  const lastInitializedItemIdRef = useRef<string | undefined>(undefined);
+
   useEffect(() => {
     if (initialData) {
-      setFormData(initialData);
+      const currentItemId = itemId || JSON.stringify(initialData);
+      const isDifferentItem = lastInitializedItemIdRef.current !== currentItemId;
+      const isFirstTime = !lastInitializedItemIdRef.current;
+
+      // Only update on first initialization or when switching to a different item
+      if (isFirstTime || isDifferentItem) {
+        setFormData(initialData);
+        lastInitializedItemIdRef.current = currentItemId;
+      }
     }
-  }, [initialData]);
+  }, [initialData, itemId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -102,6 +117,7 @@ export default function ItemForm({
       // Reset form only if not using external state
       if (!initialData) {
         setFormData(defaultInitialData);
+        lastInitializedItemIdRef.current = undefined;
       }
     } catch (error) {
       console.error('Error submitting form:', error);

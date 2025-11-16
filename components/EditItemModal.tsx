@@ -34,6 +34,10 @@ export default function EditItemModal({
     }
   }, [isOpen]);
 
+  // Use key prop to force ItemForm to remount when modal opens with a different item
+  // This ensures form state is reset when switching between items
+  const itemFormKey = isOpen ? `edit-item-${item._id.toString()}` : undefined;
+
   const handleSubmit = async (data: {
     name: string;
     imageUrl?: string;
@@ -111,6 +115,7 @@ export default function EditItemModal({
           </div>
         )}
         <ItemForm
+          key={itemFormKey}
           initialData={itemToFormData(item)}
           onSubmit={handleSubmit}
           onCancel={onClose}
@@ -118,6 +123,7 @@ export default function EditItemModal({
           submittingLabel="Saving..."
           isSubmitting={isSubmitting || isDeleting}
           mode={item.status === 'proposed' ? 'propose' : 'create'}
+          itemId={item._id.toString()}
           renderButtons={({ submitting, onCancel, submitLabel, submittingLabel }) => (
             <div className="flex flex-col gap-3 pt-4">
               <div className="flex gap-3">
