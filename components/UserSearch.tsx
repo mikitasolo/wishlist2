@@ -18,9 +18,12 @@ export default function UserSearch() {
 
     setIsSearching(true);
     try {
-      const response = await fetch(`/api/users/search?email=${encodeURIComponent(searchEmail.trim())}`, {
-        cache: 'no-store',
-      });
+      const response = await fetch(
+        `/api/users/search?email=${encodeURIComponent(searchEmail.trim())}`,
+        {
+          cache: 'no-store',
+        }
+      );
       const result = await response.json();
 
       if (result.success && result.data) {
@@ -50,17 +53,16 @@ export default function UserSearch() {
         value={searchEmail}
         onChange={(e) => setSearchEmail(e.target.value)}
         placeholder="Search user by email..."
-        className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
+        className="h-10 flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
         disabled={isSearching}
       />
       <button
         type="submit"
         disabled={isSearching || !searchEmail.trim()}
-        className="px-4 py-2 text-sm bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap"
+        className="h-10 px-4 py-2 text-sm bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap"
       >
         {isSearching ? 'Searching...' : 'Search'}
       </button>
     </form>
   );
 }
-

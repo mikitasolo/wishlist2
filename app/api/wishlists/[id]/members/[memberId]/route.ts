@@ -25,7 +25,7 @@ async function checkOwnerAccess(
 // Helper function to unbook all items for a user in a wishlist
 async function unbookAllItemsForUser(wishlistId: string, userId: string): Promise<void> {
   await connectDB();
-  
+
   // Find all items in this wishlist booked by the user
   await Item.updateMany(
     {
@@ -70,18 +70,12 @@ export async function DELETE(
 
     const membership = await WishlistMember.findById(memberId);
     if (!membership) {
-      return NextResponse.json(
-        { success: false, error: 'Membership not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ success: false, error: 'Membership not found' }, { status: 404 });
     }
 
     // Verify membership belongs to this wishlist
     if (membership.wishlist.toString() !== id) {
-      return NextResponse.json(
-        { success: false, error: 'Membership not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ success: false, error: 'Membership not found' }, { status: 404 });
     }
 
     const membershipUserId = membership.user.toString();
@@ -94,7 +88,6 @@ export async function DELETE(
       );
     }
 
-
     // Remove all bookings by this user
     await unbookAllItemsForUser(id, membershipUserId);
 
@@ -104,10 +97,6 @@ export async function DELETE(
     return NextResponse.json({ success: true, data: {} }, { status: 200 });
   } catch (error) {
     console.error('Error removing member:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to remove member' },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: 'Failed to remove member' }, { status: 500 });
   }
 }
-

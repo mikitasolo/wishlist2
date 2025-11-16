@@ -7,15 +7,15 @@ function hexToRgb(hex: string, alpha?: number): string {
   if (!result) {
     return alpha !== undefined ? `rgba(0, 0, 0, ${alpha})` : '0, 0, 0';
   }
-  
+
   const r = parseInt(result[1], 16);
   const g = parseInt(result[2], 16);
   const b = parseInt(result[3], 16);
-  
+
   if (alpha !== undefined) {
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
   }
-  
+
   return `${r}, ${g}, ${b}`;
 }
 
@@ -33,7 +33,6 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-
 /**
  * Generate beautiful HTML email template
  */
@@ -48,14 +47,14 @@ function getEmailTemplate(options: {
   linkUrl?: string;
 }) {
   const siteTitle = 'Wishlist';
-  
+
   // Default colors (indigo)
   const primaryColor = '#6366f1';
   const foregroundColor = '#111827';
   const primaryLight = hexToRgb(primaryColor, 0.1);
   const primaryMedium = hexToRgb(primaryColor, 0.5);
   const primaryDark = hexToRgb(primaryColor, 0.8);
-  
+
   return `
     <!DOCTYPE html>
     <html lang="en">
@@ -262,18 +261,26 @@ function getEmailTemplate(options: {
               <h2>${options.greeting}</h2>
               ${options.content}
               
-              ${options.buttonText && options.buttonUrl ? `
+              ${
+                options.buttonText && options.buttonUrl
+                  ? `
                 <div class="button-container">
                   <a href="${options.buttonUrl}" class="email-button">${options.buttonText}</a>
                 </div>
-              ` : ''}
+              `
+                  : ''
+              }
               
-              ${options.showLinkFallback && options.linkUrl ? `
+              ${
+                options.showLinkFallback && options.linkUrl
+                  ? `
                 <div class="link-fallback">
                   <p><strong>Or copy and paste this link into your browser:</strong></p>
                   <a href="${options.linkUrl}">${options.linkUrl}</a>
                 </div>
-              ` : ''}
+              `
+                  : ''
+              }
             </div>
             
             <!-- Footer -->
@@ -291,7 +298,7 @@ function getEmailTemplate(options: {
 
 export async function sendMagicLinkEmail(email: string, magicLink: string) {
   const siteTitle = 'Wishlist';
-  
+
   const html = getEmailTemplate({
     title: '🎁 Sign In',
     greeting: 'Hello!',
@@ -325,9 +332,9 @@ export async function sendMagicLinkEmail(email: string, magicLink: string) {
 export async function sendInvitationEmail(email: string, invitedBy: string) {
   const siteTitle = 'Wishlist';
   const signInUrl = `${env.NEXTAUTH_URL}/auth/signin`;
-  
+
   const html = getEmailTemplate({
-    title: '🎁 You\'ve Been Invited!',
+    title: "🎁 You've Been Invited!",
     greeting: `Hello!`,
     content: `
       <p><strong>${invitedBy}</strong> has invited you to join <strong>${siteTitle}</strong>!</p>
@@ -363,7 +370,7 @@ export async function sendWishlistInvitationEmail(
 ) {
   const siteTitle = 'Wishlist';
   const signInUrl = `${env.NEXTAUTH_URL}/auth/signin?callbackUrl=${encodeURIComponent(`/wishlists/${wishlistId}`)}`;
-  
+
   const html = getEmailTemplate({
     title: '🎁 Wishlist Invitation',
     greeting: `Hello!`,

@@ -6,11 +6,11 @@
 export interface EnvSchema {
   // Database
   MONGODB_URI: string;
-  
+
   // NextAuth
   NEXTAUTH_SECRET: string;
   NEXTAUTH_URL: string;
-  
+
   // Email (SMTP)
   SMTP_HOST: string;
   SMTP_PORT: string;
@@ -18,7 +18,7 @@ export interface EnvSchema {
   SMTP_USER: string;
   SMTP_PASSWORD: string;
   EMAIL_FROM: string;
-  
+
   // Migrations
   MIGRATION_SECRET: string;
 }
@@ -36,7 +36,7 @@ const REQUIRED_ENV_VARS = {
 /**
  * Validate all required environment variables
  * Throws an error with detailed information if any are missing
- * 
+ *
  * NOTE: This function should only be called server-side.
  * Environment variables are not available in client components unless prefixed with NEXT_PUBLIC_
  */
@@ -45,36 +45,36 @@ export function validateEnvVars(): void {
   if (typeof window !== 'undefined') {
     throw new Error(
       'validateEnvVars() should only be called server-side. ' +
-      'Environment variables are not available in client components.'
+        'Environment variables are not available in client components.'
     );
   }
-  
+
   const missing: Record<string, string[]> = {};
-  
+
   // Check each category
   for (const [category, vars] of Object.entries(REQUIRED_ENV_VARS)) {
     const categoryMissing: string[] = [];
-    
+
     for (const envVar of vars) {
       if (!process.env[envVar]) {
         categoryMissing.push(envVar);
       }
     }
-    
+
     if (categoryMissing.length > 0) {
       missing[category] = categoryMissing;
     }
   }
-  
+
   if (Object.keys(missing).length > 0) {
     const errorMessages = Object.entries(missing).map(([category, vars]) => {
-      return `  ${category.toUpperCase()}:\n${vars.map(v => `    - ${v}`).join('\n')}`;
+      return `  ${category.toUpperCase()}:\n${vars.map((v) => `    - ${v}`).join('\n')}`;
     });
-    
+
     throw new Error(
       `Missing required environment variables:\n\n${errorMessages.join('\n\n')}\n\n` +
-      `Please set all required environment variables in your Vercel project settings or .env.local file.\n` +
-      `See README.md for setup instructions.`
+        `Please set all required environment variables in your Vercel project settings or .env.local file.\n` +
+        `See README.md for setup instructions.`
     );
   }
 }
@@ -82,7 +82,7 @@ export function validateEnvVars(): void {
 /**
  * Get validated environment variables
  * Throws an error if any required variables are missing
- * 
+ *
  * NOTE: This function should only be called server-side.
  * Environment variables are not available in client components unless prefixed with NEXT_PUBLIC_
  */
@@ -91,20 +91,20 @@ export function getEnvVars(): EnvSchema {
   if (typeof window !== 'undefined') {
     throw new Error(
       'getEnvVars() should only be called server-side. ' +
-      'Environment variables are not available in client components.'
+        'Environment variables are not available in client components.'
     );
   }
-  
+
   validateEnvVars();
-  
+
   return {
     // Database
     MONGODB_URI: process.env.MONGODB_URI!,
-    
+
     // NextAuth
     NEXTAUTH_SECRET: process.env.NEXTAUTH_SECRET!,
     NEXTAUTH_URL: process.env.NEXTAUTH_URL!,
-    
+
     // Email
     SMTP_HOST: process.env.SMTP_HOST!,
     SMTP_PORT: process.env.SMTP_PORT!,
@@ -112,9 +112,8 @@ export function getEnvVars(): EnvSchema {
     SMTP_USER: process.env.SMTP_USER!,
     SMTP_PASSWORD: process.env.SMTP_PASSWORD!,
     EMAIL_FROM: process.env.EMAIL_FROM!,
-    
+
     // Migrations
     MIGRATION_SECRET: process.env.MIGRATION_SECRET!,
   };
 }
-

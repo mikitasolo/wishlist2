@@ -22,7 +22,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const showToast = useCallback((message: string, type: ToastType = 'info') => {
     const id = Math.random().toString(36).substr(2, 9);
     const newToast = { id, message, type };
-    
+
     setToasts((prev) => [...prev, newToast]);
 
     // Auto-remove after 4 seconds
@@ -38,7 +38,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={{ showToast }}>
       {children}
-      
+
       {/* Toast Container */}
       <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 pointer-events-none">
         {toasts.map((toast) => (
@@ -48,8 +48,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               toast.type === 'success'
                 ? 'bg-green-500 text-white'
                 : toast.type === 'error'
-                ? 'bg-red-500 text-white'
-                : 'bg-blue-500 text-white'
+                  ? 'bg-red-500 text-white'
+                  : 'bg-blue-500 text-white'
             }`}
             onClick={() => removeToast(toast.id)}
           >
@@ -100,4 +100,3 @@ export function useToast() {
   }
   return context;
 }
-

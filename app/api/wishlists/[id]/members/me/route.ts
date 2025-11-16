@@ -9,7 +9,7 @@ import Item from '@/models/Item';
 // Helper function to unbook all items for a user in a wishlist
 async function unbookAllItemsForUser(wishlistId: string, userId: string): Promise<void> {
   await connectDB();
-  
+
   // Find all items in this wishlist booked by the user
   await Item.updateMany(
     {
@@ -47,10 +47,7 @@ export async function DELETE(
     // Check if wishlist exists
     const wishlist = await Wishlist.findById(wishlistId);
     if (!wishlist) {
-      return NextResponse.json(
-        { success: false, error: 'Wishlist not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
     }
 
     // Prevent owner from leaving (they should delete the wishlist instead)
@@ -89,4 +86,3 @@ export async function DELETE(
     );
   }
 }
-

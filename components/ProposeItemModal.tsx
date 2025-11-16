@@ -72,4 +72,3 @@ export default function ProposeItemModal({ isOpen, onClose, onPropose }: Propose
     </BaseModal>
   );
 }
-

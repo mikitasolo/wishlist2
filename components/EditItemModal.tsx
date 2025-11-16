@@ -14,7 +14,13 @@ interface EditItemModalProps {
   item: IItem;
 }
 
-export default function EditItemModal({ isOpen, onClose, onSave, onDelete, item }: EditItemModalProps) {
+export default function EditItemModal({
+  isOpen,
+  onClose,
+  onSave,
+  onDelete,
+  item,
+}: EditItemModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -98,7 +104,8 @@ export default function EditItemModal({ isOpen, onClose, onSave, onDelete, item 
                 />
               </svg>
               <p className="text-sm text-blue-800">
-                You can edit this proposed item. The status cannot be changed until the owner reviews it.
+                You can edit this proposed item. The status cannot be changed until the owner
+                reviews it.
               </p>
             </div>
           </div>
@@ -161,4 +168,3 @@ export default function EditItemModal({ isOpen, onClose, onSave, onDelete, item 
     </>
   );
 }
-

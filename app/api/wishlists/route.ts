@@ -11,7 +11,7 @@ import { createWishlistSchema, validateRequestBody } from '@/lib/validations';
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
-    
+
     await connectDB();
 
     if (!session?.user) {
@@ -23,10 +23,7 @@ export async function GET(request: NextRequest) {
 
     const user = await User.findById(session.user.id);
     if (!user) {
-      return NextResponse.json(
-        { success: false, error: 'User not found' },
-        { status: 403 }
-      );
+      return NextResponse.json({ success: false, error: 'User not found' }, { status: 403 });
     }
 
     // Get all wishlists owned by user, sorted by creation date
@@ -34,39 +31,46 @@ export async function GET(request: NextRequest) {
 
     // Get all wishlists where user is a member (not owner)
     const memberships = await WishlistMember.find({ user: user._id });
-    const wishlistIds = memberships.map(m => m.wishlist);
-    const memberWishlists = await Wishlist.find({ _id: { $in: wishlistIds } }).sort({ createdAt: -1 });
-    
+    const wishlistIds = memberships.map((m) => m.wishlist);
+    const memberWishlists = await Wishlist.find({ _id: { $in: wishlistIds } }).sort({
+      createdAt: -1,
+    });
+
     // Filter out owned wishlists from member wishlists (in case user is both owner and member)
-    const ownedWishlistIds = new Set(ownedWishlists.map(w => w._id.toString()));
-    const memberOnlyWishlists = memberWishlists.filter(w => !ownedWishlistIds.has(w._id.toString()));
+    const ownedWishlistIds = new Set(ownedWishlists.map((w) => w._id.toString()));
+    const memberOnlyWishlists = memberWishlists.filter(
+      (w) => !ownedWishlistIds.has(w._id.toString())
+    );
 
     // Get owner emails for all wishlists
     const allWishlistOwners = new Set([
-      ...ownedWishlists.map(w => w.owner.toString()),
-      ...memberOnlyWishlists.map(w => w.owner.toString()),
+      ...ownedWishlists.map((w) => w.owner.toString()),
+      ...memberOnlyWishlists.map((w) => w.owner.toString()),
     ]);
     const owners = await User.find({ _id: { $in: Array.from(allWishlistOwners) } }).select('email');
-    const ownerMap = new Map(owners.map(o => [o._id.toString(), o.email]));
+    const ownerMap = new Map(owners.map((o) => [o._id.toString(), o.email]));
 
     // Add owner email to wishlists
-    const ownedWithOwnerEmail = ownedWishlists.map(w => ({
+    const ownedWithOwnerEmail = ownedWishlists.map((w) => ({
       ...w.toObject(),
       ownerEmail: ownerMap.get(w.owner.toString()) || null,
     }));
 
-    const memberWithOwnerEmail = memberOnlyWishlists.map(w => ({
+    const memberWithOwnerEmail = memberOnlyWishlists.map((w) => ({
       ...w.toObject(),
       ownerEmail: ownerMap.get(w.owner.toString()) || null,
     }));
 
-    return NextResponse.json({ 
-      success: true, 
-      data: {
-        owned: ownedWithOwnerEmail,
-        member: memberWithOwnerEmail,
-      }
-    }, { status: 200 });
+    return NextResponse.json(
+      {
+        success: true,
+        data: {
+          owned: ownedWithOwnerEmail,
+          member: memberWithOwnerEmail,
+        },
+      },
+      { status: 200 }
+    );
   } catch (error) {
     console.error('Error fetching wishlists:', error);
     return NextResponse.json(
@@ -89,13 +93,10 @@ export async function POST(request: NextRequest) {
     }
 
     await connectDB();
-    
+
     const user = await User.findById(session.user.id);
     if (!user) {
-      return NextResponse.json(
-        { success: false, error: 'User not found' },
-        { status: 403 }
-      );
+      return NextResponse.json({ success: false, error: 'User not found' }, { status: 403 });
     }
 
     // Validate request body
@@ -126,4 +127,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

@@ -46,7 +46,7 @@ export const authOptions: NextAuthOptions = {
         try {
           await connectDB();
           const dbUser = await User.findOne({ email: user.email.toLowerCase() });
-          
+
           if (dbUser) {
             // Always set id and email when user exists
             session.user.id = dbUser._id.toString();
@@ -72,4 +72,3 @@ export const authOptions: NextAuthOptions = {
   },
   secret: env.NEXTAUTH_SECRET,
 };
-

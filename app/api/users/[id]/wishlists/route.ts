@@ -8,10 +8,7 @@ import User from '@/models/User';
 
 // GET /api/users/[id]/wishlists - Get wishlists for a specific user
 // Returns: public wishlists + wishlists the current user has access to
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getServerSession(authOptions);
     const { id: userId } = await params;
@@ -21,10 +18,7 @@ export async function GET(
     // Check if target user exists
     const targetUser = await User.findById(userId);
     if (!targetUser) {
-      return NextResponse.json(
-        { success: false, error: 'User not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
     }
 
     // Get all public wishlists owned by this user (always visible)
@@ -42,7 +36,7 @@ export async function GET(
       const memberships = await WishlistMember.find({
         user: currentUserId,
       });
-      const wishlistIds = memberships.map(m => m.wishlist.toString());
+      const wishlistIds = memberships.map((m) => m.wishlist.toString());
 
       // Get private wishlists owned by target user where current user is a member
       privateWishlists = await Wishlist.find({
@@ -64,20 +58,20 @@ export async function GET(
       const currentUserId = session.user.id;
       const memberships = await WishlistMember.find({
         user: currentUserId,
-        wishlist: { $in: uniqueWishlists.map(w => w._id) },
+        wishlist: { $in: uniqueWishlists.map((w) => w._id) },
       });
-      memberships.forEach(m => {
+      memberships.forEach((m) => {
         membershipMap.set(m.wishlist.toString(), true);
       });
     }
 
     // Get owner emails for all wishlists
-    const ownerIds = uniqueWishlists.map(w => w.owner.toString());
+    const ownerIds = uniqueWishlists.map((w) => w.owner.toString());
     const owners = await User.find({ _id: { $in: ownerIds } }).select('email');
-    const ownerMap = new Map(owners.map(o => [o._id.toString(), o.email]));
+    const ownerMap = new Map(owners.map((o) => [o._id.toString(), o.email]));
 
     // Add membership status and owner email to each wishlist
-    const wishlistsWithMembership = uniqueWishlists.map(wishlist => ({
+    const wishlistsWithMembership = uniqueWishlists.map((wishlist) => ({
       ...wishlist.toObject(),
       isMember: membershipMap.get(wishlist._id.toString()) || false,
       ownerEmail: ownerMap.get(wishlist.owner.toString()) || null,
@@ -99,4 +93,3 @@ export async function GET(
     );
   }
 }
-

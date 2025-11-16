@@ -4,16 +4,20 @@
 
 import { IItem } from '@/models/Item';
 
-export type FilterType = 'all' | 'draft' | 'available' | 'booked' | 'bookedByYou' | 'completed' | 'proposed' | 'proposedByYou';
+export type FilterType =
+  | 'all'
+  | 'draft'
+  | 'available'
+  | 'booked'
+  | 'bookedByYou'
+  | 'completed'
+  | 'proposed'
+  | 'proposedByYou';
 
 /**
  * Filters items based on the specified filter type
  */
-export function filterItems(
-  items: IItem[],
-  filter: FilterType,
-  currentUserId?: string
-): IItem[] {
+export function filterItems(items: IItem[], filter: FilterType, currentUserId?: string): IItem[] {
   switch (filter) {
     case 'all':
       return items;
@@ -116,4 +120,3 @@ export function sortItems(items: IItem[], sortBy: SortType): IItem[] {
     }
   });
 }
-

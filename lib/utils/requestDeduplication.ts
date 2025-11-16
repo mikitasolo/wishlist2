@@ -18,13 +18,10 @@ const REQUEST_TIMEOUT = 30000; // 30 seconds
  * @param requestFn - Function that returns a promise for the request
  * @returns Promise that resolves when request completes
  */
-export async function deduplicateRequest<T>(
-  key: string,
-  requestFn: () => Promise<T>
-): Promise<T> {
+export async function deduplicateRequest<T>(key: string, requestFn: () => Promise<T>): Promise<T> {
   // Check if there's already a pending request
   const existing = pendingRequests.get(key);
-  
+
   if (existing) {
     // Check if request is still valid (not too old)
     const age = Date.now() - existing.timestamp;
@@ -74,4 +71,3 @@ export function createRequestKey(url: string, method: string = 'GET', body?: unk
 export function clearPendingRequests(): void {
   pendingRequests.clear();
 }
-

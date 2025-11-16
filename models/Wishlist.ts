@@ -45,4 +45,3 @@ const Wishlist: Model<IWishlist> =
   mongoose.models.Wishlist || mongoose.model<IWishlist>('Wishlist', WishlistSchema);
 
 export default Wishlist;
-

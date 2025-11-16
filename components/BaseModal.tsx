@@ -19,7 +19,6 @@ export default function BaseModal({
   children,
   isSubmitting = false,
 }: BaseModalProps) {
-
   // Handle Escape key press
   useEffect(() => {
     if (!isOpen) return;
@@ -85,4 +84,3 @@ export default function BaseModal({
     </div>
   );
 }
-

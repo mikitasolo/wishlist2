@@ -14,7 +14,13 @@ interface ReviewItemModalProps {
   item: IItem;
 }
 
-export default function ReviewItemModal({ isOpen, onClose, onApprove, onDelete, item }: ReviewItemModalProps) {
+export default function ReviewItemModal({
+  isOpen,
+  onClose,
+  onApprove,
+  onDelete,
+  item,
+}: ReviewItemModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -103,7 +109,8 @@ export default function ReviewItemModal({ isOpen, onClose, onApprove, onDelete, 
               />
             </svg>
             <p className="text-sm text-yellow-800">
-              Review this proposed item. You can edit any fields, select the status (Published or Draft), and then approve or delete it.
+              Review this proposed item. You can edit any fields, select the status (Published or
+              Draft), and then approve or delete it.
             </p>
           </div>
         </div>
@@ -165,4 +172,3 @@ export default function ReviewItemModal({ isOpen, onClose, onApprove, onDelete, 
     </>
   );
 }
-

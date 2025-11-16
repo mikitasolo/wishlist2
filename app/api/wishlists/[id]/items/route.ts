@@ -46,10 +46,7 @@ async function checkWishlistAccess(
 
 // GET /api/wishlists/[id]/items - Get all items for a wishlist
 // Admin and public users don't see bookedBy to avoid spoiling surprises
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getServerSession(authOptions);
     const { id: wishlistId } = await params;
@@ -57,10 +54,7 @@ export async function GET(
     await connectDB();
 
     // Check access to wishlist
-    const { hasAccess, wishlist } = await checkWishlistAccess(
-      wishlistId,
-      session?.user?.id
-    );
+    const { hasAccess, wishlist } = await checkWishlistAccess(wishlistId, session?.user?.id);
 
     if (!hasAccess || !wishlist) {
       return NextResponse.json(
@@ -112,8 +106,8 @@ export async function GET(
             proposedBy: undefined,
           };
         }
-        return { 
-          ...itemObj, 
+        return {
+          ...itemObj,
           bookedBy: undefined,
           proposedBy: undefined,
         };
@@ -130,8 +124,8 @@ export async function GET(
             proposedBy: undefined, // Hide who proposed the item
           };
         }
-        return { 
-          ...itemObj, 
+        return {
+          ...itemObj,
           bookedBy: undefined,
           proposedBy: undefined, // Hide who proposed the item
         };
@@ -160,8 +154,8 @@ export async function GET(
           proposedBy: undefined,
         };
       }
-      return { 
-        ...itemObj, 
+      return {
+        ...itemObj,
         bookedBy: undefined,
         proposedBy: undefined,
       };
@@ -170,20 +164,14 @@ export async function GET(
     return NextResponse.json({ success: true, data: filteredItems }, { status: 200 });
   } catch (error) {
     console.error('Error fetching items:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to fetch items' },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: 'Failed to fetch items' }, { status: 500 });
   }
 }
 
 // POST /api/wishlists/[id]/items - Create a new item
 // Owners can create items with any status (draft/available)
 // Members can only create items with 'proposed' status
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getServerSession(authOptions);
 
@@ -199,14 +187,11 @@ export async function POST(
 
     const wishlist = await Wishlist.findById(wishlistId);
     if (!wishlist) {
-      return NextResponse.json(
-        { success: false, error: 'Wishlist not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
     }
 
     const isOwner = wishlist.owner.toString() === session.user.id;
-    
+
     // Check if user is owner or member
     let isMember = false;
     if (!isOwner) {
@@ -284,10 +269,6 @@ export async function POST(
     return NextResponse.json({ success: true, data: item }, { status: 201 });
   } catch (error) {
     console.error('Error creating item:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to create item' },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: 'Failed to create item' }, { status: 500 });
   }
 }
-

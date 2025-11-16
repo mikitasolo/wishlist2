@@ -1,15 +1,15 @@
-import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
-import SessionProvider from '@/components/SessionProvider'
-import { ToastProvider } from '@/components/ToastProvider'
-import { ErrorBoundary } from '@/components/ErrorBoundary'
-import { validateEnvVars } from '@/lib/env'
-import './globals.css'
+import type { Metadata } from 'next';
+import { Inter } from 'next/font/google';
+import SessionProvider from '@/components/SessionProvider';
+import { ToastProvider } from '@/components/ToastProvider';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { validateEnvVars } from '@/lib/env';
+import './globals.css';
 
-const inter = Inter({ subsets: ['latin'] })
+const inter = Inter({ subsets: ['latin'] });
 
 // Validate all environment variables at startup
-validateEnvVars()
+validateEnvVars();
 
 export const metadata: Metadata = {
   title: 'Wishlist',
@@ -21,13 +21,9 @@ export const metadata: Metadata = {
       },
     ],
   },
-}
+};
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
       <body className={inter.className}>
@@ -38,5 +34,5 @@ export default function RootLayout({
         </ErrorBoundary>
       </body>
     </html>
-  )
+  );
 }

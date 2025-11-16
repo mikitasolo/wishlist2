@@ -1,8 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useSession } from 'next-auth/react';
-import { useRouter } from 'next/navigation';
+import { useSession, signIn } from 'next-auth/react';
 import Link from 'next/link';
 import AuthButton from '@/components/AuthButton';
 import UserSearch from '@/components/UserSearch';
@@ -13,7 +12,6 @@ import { IWishlist } from '@/models/Wishlist';
 
 export default function Home() {
   const { data: session, status } = useSession();
-  const router = useRouter();
   const { showToast } = useToast();
   const [ownedWishlists, setOwnedWishlists] = useState<IWishlist[]>([]);
   const [memberWishlists, setMemberWishlists] = useState<IWishlist[]>([]);
@@ -24,7 +22,7 @@ export default function Home() {
   useEffect(() => {
     async function fetchWishlists() {
       if (status === 'loading') return;
-      
+
       if (!session?.user) {
         setLoading(false);
         return;
@@ -33,7 +31,7 @@ export default function Home() {
       try {
         const response = await fetch('/api/wishlists', { cache: 'no-store' });
         const result = await response.json();
-        
+
         if (result.success) {
           setOwnedWishlists(result.data?.owned || []);
           setMemberWishlists(result.data?.member || []);
@@ -51,7 +49,6 @@ export default function Home() {
     fetchWishlists();
   }, [session, status, showToast]);
 
-
   if (status === 'loading' || loading) {
     return (
       <main className="min-h-screen flex items-center justify-center">
@@ -65,35 +62,89 @@ export default function Home() {
 
   if (!session?.user) {
     return (
-      <main className="min-h-screen flex items-center justify-center bg-gradient-to-b from-primary-100 to-white px-4">
-        <div className="max-w-md w-full">
-          <div className="text-center mb-8">
-            <Link href="/" className="inline-block text-6xl mb-4 hover:scale-110 transition-transform cursor-pointer">
-              🎁
-            </Link>
-            <h1 className="text-3xl font-bold text-gray-900 mb-4">Welcome to Wishlist</h1>
-            <p className="text-gray-600 mb-8">
-              Sign in to view and manage your wishlists
-            </p>
-          </div>
+      <main className="min-h-screen bg-gradient-to-b from-primary-100 to-white">
+        <div className="max-w-7xl mx-auto px-4 py-4 sm:py-6 lg:py-8 sm:px-6 lg:px-8">
+          {/* Landing Section */}
+          <div className="max-w-5xl mx-auto">
+            {/* Hero Section */}
+            <div className="text-center mb-12 sm:mb-16">
+              <Link
+                href="/"
+                className="inline-block text-6xl sm:text-7xl mb-6 hover:scale-110 transition-transform cursor-pointer"
+              >
+                🎁
+              </Link>
+              <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-gray-900 mb-4 sm:mb-6">
+                Never forget what you want
+              </h1>
+              <p className="text-lg sm:text-xl text-gray-600 mb-8 max-w-2xl mx-auto">
+                Organize your wishes, share with loved ones, and make gift-giving easier for
+                everyone
+              </p>
+            </div>
 
-          <div className="bg-white rounded-xl shadow-md p-6 mb-6">
-            <UserSearch />
-          </div>
+            {/* Features Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8 mb-12 sm:mb-16">
+              <div className="bg-white rounded-xl shadow-md p-6 sm:p-8 text-center hover:shadow-lg transition-shadow">
+                <div className="text-5xl sm:text-6xl mb-4">📝</div>
+                <h3 className="text-xl sm:text-2xl font-semibold text-gray-900 mb-3">
+                  Create Wishlists
+                </h3>
+                <p className="text-gray-600 text-sm sm:text-base">
+                  Organize your wishes into multiple wishlists for different occasions or purposes
+                </p>
+              </div>
 
-          <div className="flex items-center gap-4 mb-6">
-            <div className="flex-1 h-px bg-gray-300"></div>
-            <span className="text-sm text-gray-500">or</span>
-            <div className="flex-1 h-px bg-gray-300"></div>
-          </div>
+              <div className="bg-white rounded-xl shadow-md p-6 sm:p-8 text-center hover:shadow-lg transition-shadow">
+                <div className="text-5xl sm:text-6xl mb-4">👥</div>
+                <h3 className="text-xl sm:text-2xl font-semibold text-gray-900 mb-3">
+                  Share & Collaborate
+                </h3>
+                <p className="text-gray-600 text-sm sm:text-base">
+                  Invite friends and family to view your wishlists and let them propose items
+                </p>
+              </div>
 
-          <div className="text-center">
-            <button
-              onClick={() => router.push('/auth/signin')}
-              className="bg-primary-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-primary-700 transition-colors cursor-pointer"
-            >
-              Sign In
-            </button>
+              <div className="bg-white rounded-xl shadow-md p-6 sm:p-8 text-center hover:shadow-lg transition-shadow">
+                <div className="text-5xl sm:text-6xl mb-4">🎯</div>
+                <h3 className="text-xl sm:text-2xl font-semibold text-gray-900 mb-3">
+                  Track Items
+                </h3>
+                <p className="text-gray-600 text-sm sm:text-base">
+                  Keep track of item availability, prices, and links all in one place
+                </p>
+              </div>
+            </div>
+
+            {/* CTA Section */}
+            <div className="text-center bg-gradient-to-r from-primary-500 to-primary-600 rounded-xl shadow-lg p-8 sm:p-12 text-white mb-12 sm:mb-16">
+              <h3 className="text-2xl sm:text-3xl font-bold mb-4">Ready to get started?</h3>
+              <p className="text-lg sm:text-xl mb-2 opacity-90">
+                Sign up in seconds - no password needed!
+              </p>
+              <p className="text-base sm:text-lg mb-6 opacity-80">
+                ✨ Just enter your email and we'll send you a magic link to sign in
+              </p>
+              <button
+                onClick={() => signIn()}
+                className="bg-white text-primary-600 px-6 py-3 rounded-lg font-medium hover:bg-gray-100 transition-colors cursor-pointer inline-block"
+              >
+                Sign In / Sign Up
+              </button>
+            </div>
+
+            {/* User Search Section */}
+            <div className="bg-white rounded-xl shadow-md p-6 sm:p-8 mb-8">
+              <h3 className="text-xl sm:text-2xl font-semibold text-gray-900 mb-4 text-center">
+                Find someone's wishlist
+              </h3>
+              <p className="text-gray-600 mb-6 text-center text-sm sm:text-base">
+                Search for users to view their public wishlists
+              </p>
+              <div className="max-w-md mx-auto">
+                <UserSearch />
+              </div>
+            </div>
           </div>
         </div>
       </main>
@@ -108,7 +159,10 @@ export default function Home() {
           <div className="relative flex flex-col sm:flex-row sm:justify-between sm:items-center mb-6 sm:mb-8 gap-4">
             <div className="text-center sm:text-left flex-1">
               <div className="flex flex-col items-center sm:items-start mb-2 sm:mb-4">
-                <Link href="/" className="text-4xl sm:text-5xl hover:scale-110 transition-transform cursor-pointer mb-2 sm:mb-3">
+                <Link
+                  href="/"
+                  className="text-4xl sm:text-5xl hover:scale-110 transition-transform cursor-pointer mb-2 sm:mb-3"
+                >
                   🎁
                 </Link>
                 <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-gray-900">
@@ -139,10 +193,7 @@ export default function Home() {
         </div>
 
         {/* Create Wishlist Modal */}
-        <CreateWishlistModal
-          isOpen={showCreateModal}
-          onClose={() => setShowCreateModal(false)}
-        />
+        <CreateWishlistModal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} />
 
         {/* Tabs */}
         <div className="mb-6 border-b border-gray-200">

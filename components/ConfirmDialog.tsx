@@ -65,14 +65,14 @@ export default function ConfirmDialog({
   };
 
   return (
-    <div 
+    <div
       className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
       onClick={handleBackdropClick}
       style={{
         animation: 'fadeIn 0.2s ease-out',
       }}
     >
-      <div 
+      <div
         className="bg-white rounded-xl shadow-2xl max-w-md w-full p-4 sm:p-6"
         onClick={(e) => e.stopPropagation()}
         style={{
@@ -81,7 +81,7 @@ export default function ConfirmDialog({
       >
         <h2 className="text-lg sm:text-xl font-bold text-gray-900 mb-2 sm:mb-3">{title}</h2>
         <p className="text-sm sm:text-base text-gray-600 mb-4 sm:mb-6">{message}</p>
-        
+
         <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 justify-end">
           <button
             onClick={onCancel}
@@ -122,4 +122,3 @@ export default function ConfirmDialog({
     </div>
   );
 }
-

@@ -8,4 +8,3 @@ declare module 'next-auth' {
     };
   }
 }
-

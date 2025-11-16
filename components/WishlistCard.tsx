@@ -8,10 +8,7 @@ interface WishlistCardProps {
   showOwner?: boolean;
 }
 
-export default function WishlistCard({ 
-  wishlist, 
-  showOwner = false,
-}: WishlistCardProps) {
+export default function WishlistCard({ wishlist, showOwner = false }: WishlistCardProps) {
   const ownerEmail = wishlist.ownerEmail || 'Unknown';
 
   return (
@@ -20,14 +17,8 @@ export default function WishlistCard({
       className="bg-white rounded-xl px-6 py-4 shadow-md hover:shadow-lg transition-shadow cursor-pointer"
     >
       <div>
-        <h3 className="text-lg font-semibold text-gray-900 mb-1">
-          {wishlist.name}
-        </h3>
-        {showOwner && (
-          <p className="text-sm text-gray-500 mb-3">
-            by {ownerEmail}
-          </p>
-        )}
+        <h3 className="text-lg font-semibold text-gray-900 mb-1">{wishlist.name}</h3>
+        {showOwner && <p className="text-sm text-gray-500 mb-3">by {ownerEmail}</p>}
         <div className="flex items-center justify-between text-xs text-gray-500">
           <span>{wishlist.isPublic ? 'Public' : 'Private'}</span>
           {wishlist.isMember && (
@@ -38,4 +29,3 @@ export default function WishlistCard({
     </Link>
   );
 }
-

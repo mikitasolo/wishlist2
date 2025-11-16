@@ -24,10 +24,7 @@ async function checkOwnerAccess(
 }
 
 // GET /api/wishlists/[id]/members - Get all members of a wishlist
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getServerSession(authOptions);
     const { id } = await params;
@@ -44,10 +41,7 @@ export async function GET(
     // Check if user has access to this wishlist (owner or member)
     const wishlist = await Wishlist.findById(id);
     if (!wishlist) {
-      return NextResponse.json(
-        { success: false, error: 'Wishlist not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
     }
 
     const isOwner = wishlist.owner.toString() === session.user.id;
@@ -75,22 +69,20 @@ export async function GET(
     }
 
     // Get all members (excluding owner)
-    const members = await WishlistMember.find({ wishlist: id })
-      .sort({ createdAt: -1 })
-      .lean();
+    const members = await WishlistMember.find({ wishlist: id }).sort({ createdAt: -1 }).lean();
 
     // Fetch user details for each member
     const memberUsers = await User.find({
-      _id: { $in: members.map(m => m.user) }
+      _id: { $in: members.map((m) => m.user) },
     }).select('email');
 
-    const userMap = new Map(memberUsers.map(u => [u._id.toString(), u]));
+    const userMap = new Map(memberUsers.map((u) => [u._id.toString(), u]));
 
     const membersWithUsers = members
-      .map(member => {
+      .map((member) => {
         const user = userMap.get(member.user.toString());
         if (!user) return null; // Skip if user not found
-        
+
         return {
           _id: member._id,
           wishlist: member.wishlist,
@@ -118,18 +110,12 @@ export async function GET(
     );
   } catch (error) {
     console.error('Error fetching members:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to fetch members' },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: 'Failed to fetch members' }, { status: 500 });
   }
 }
 
 // POST /api/wishlists/[id]/members - Invite a user to a wishlist
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getServerSession(authOptions);
     const { id } = await params;
@@ -200,12 +186,7 @@ export async function POST(
     });
 
     // Send invitation email
-    await sendWishlistInvitationEmail(
-      email,
-      wishlist.name,
-      session.user.email,
-      id
-    );
+    await sendWishlistInvitationEmail(email, wishlist.name, session.user.email, id);
 
     // Fetch user details for response
     const membershipUser = await User.findById(membership.user).select('email');
@@ -218,10 +199,6 @@ export async function POST(
     return NextResponse.json({ success: true, data: responseData }, { status: 201 });
   } catch (error) {
     console.error('Error inviting member:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to invite member' },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: 'Failed to invite member' }, { status: 500 });
   }
 }
-

@@ -32,7 +32,7 @@ export interface ISession {
   updatedAt: Date;
 }
 
-const Session: Model<ISession> = mongoose.models.Session || mongoose.model<ISession>('Session', SessionSchema);
+const Session: Model<ISession> =
+  mongoose.models.Session || mongoose.model<ISession>('Session', SessionSchema);
 
 export default Session;
-

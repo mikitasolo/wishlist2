@@ -7,40 +7,40 @@ const ItemSchema = new Schema(
       ref: 'Wishlist',
       required: true,
     },
-    name: { 
-      type: String, 
-      required: true
+    name: {
+      type: String,
+      required: true,
     },
-    imageUrl: { 
-      type: String, 
-      required: false
+    imageUrl: {
+      type: String,
+      required: false,
     },
-    priceInCents: { 
+    priceInCents: {
       type: Number,
-      required: false
+      required: false,
     },
-    link: { 
-      type: String 
+    link: {
+      type: String,
     },
     notes: {
       type: String,
-      maxlength: 100
+      maxlength: 100,
     },
     status: {
       type: String,
       enum: ['draft', 'available', 'booked', 'completed', 'proposed'],
       required: true,
-      default: 'available'
+      default: 'available',
     },
     bookedBy: {
       type: Schema.Types.ObjectId,
       ref: 'User',
-      required: false
+      required: false,
     },
     proposedBy: {
       type: Schema.Types.ObjectId,
       ref: 'User',
-      required: false
+      required: false,
     },
   },
   {

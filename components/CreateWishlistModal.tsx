@@ -104,11 +104,11 @@ export default function CreateWishlistModal({ isOpen, onClose }: CreateWishlistM
   if (!isOpen) return null;
 
   return (
-    <div 
+    <div
       className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"
       onClick={handleBackdropClick}
     >
-      <div 
+      <div
         className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-4 sm:p-6 max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
@@ -116,7 +116,9 @@ export default function CreateWishlistModal({ isOpen, onClose }: CreateWishlistM
         aria-labelledby="create-wishlist-title"
       >
         <div className="flex justify-between items-center mb-4 sm:mb-6">
-          <h2 id="create-wishlist-title" className="text-xl sm:text-2xl font-bold text-gray-800">Create New Wishlist</h2>
+          <h2 id="create-wishlist-title" className="text-xl sm:text-2xl font-bold text-gray-800">
+            Create New Wishlist
+          </h2>
           <button
             onClick={onClose}
             className="text-gray-500 hover:text-gray-700 text-2xl leading-none cursor-pointer"
@@ -162,9 +164,7 @@ export default function CreateWishlistModal({ isOpen, onClose }: CreateWishlistM
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Visibility
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Visibility</label>
             <p className="text-xs text-gray-500 mb-2">
               Controls whether the wishlist will be visible on your profile page for non-members
             </p>
@@ -218,4 +218,3 @@ export default function CreateWishlistModal({ isOpen, onClose }: CreateWishlistM
     </div>
   );
 }
-

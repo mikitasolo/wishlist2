@@ -16,29 +16,41 @@ interface WishlistItemProps {
   isMember?: boolean;
 }
 
-function WishlistItem({ item, onUpdate, onEdit, onReview, isAuthenticated, isOwner = false, isMember = false }: WishlistItemProps) {
+function WishlistItem({
+  item,
+  onUpdate,
+  onEdit,
+  onReview,
+  isAuthenticated,
+  isOwner = false,
+  isMember = false,
+}: WishlistItemProps) {
   const { data: session } = useSession();
   const [imageLoading, setImageLoading] = useState(true);
   const [showNotes, setShowNotes] = useState(false);
-  
+
   // Reset showNotes when item changes
   useEffect(() => {
     setShowNotes(false);
   }, [item._id]);
-  
+
   const isBookedByCurrentUser = useMemo(
     () => item.bookedBy && session?.user?.id && item.bookedBy.toString() === session.user.id,
     [item.bookedBy, session?.user?.id]
   );
-  
+
   const isProposedByCurrentUser = useMemo(
-    () => item.status === 'proposed' && item.proposedBy && session?.user?.id && item.proposedBy.toString() === session.user.id,
+    () =>
+      item.status === 'proposed' &&
+      item.proposedBy &&
+      session?.user?.id &&
+      item.proposedBy.toString() === session.user.id,
     [item.status, item.proposedBy, session?.user?.id]
   );
-  
+
   // For owners, items always show as available (bookings are hidden)
   const displayStatus = isOwner && item.status === 'booked' ? 'available' : item.status;
-  
+
   const handleToggleBooked = useCallback(async () => {
     if (isOwner) return; // Owners can't book items
     const newStatus = item.status === 'booked' ? 'available' : 'booked';
@@ -55,9 +67,7 @@ function WishlistItem({ item, onUpdate, onEdit, onReview, isAuthenticated, isOwn
     <div
       className={`relative bg-white rounded-xl shadow-lg overflow-hidden transition-all duration-300 hover:shadow-xl flex flex-col ${
         displayStatus === 'completed' ? 'ring-2 ring-green-400' : ''
-      } ${
-        item.status === 'draft' ? 'border-2 border-gray-300 border-dashed' : ''
-      }`}
+      } ${item.status === 'draft' ? 'border-2 border-gray-300 border-dashed' : ''}`}
       role="article"
       aria-label={`Item: ${item.name}`}
     >
@@ -136,7 +146,7 @@ function WishlistItem({ item, onUpdate, onEdit, onReview, isAuthenticated, isOwn
             )}
           </>
         )}
-        
+
         {/* Status badges */}
         <div className="absolute top-3 right-3 flex flex-col gap-2">
           {item.status === 'draft' && (
@@ -172,7 +182,7 @@ function WishlistItem({ item, onUpdate, onEdit, onReview, isAuthenticated, isOwn
       <div className="p-4 sm:p-5 flex flex-col flex-grow">
         {/* Item name - can vary in height */}
         <div className="flex-grow">
-          <h3 
+          <h3
             className="text-base sm:text-lg font-bold text-gray-800 mb-2 sm:mb-3 line-clamp-2"
             title={item.name}
           >
@@ -217,7 +227,7 @@ function WishlistItem({ item, onUpdate, onEdit, onReview, isAuthenticated, isOwn
                 )}
               </>
             )}
-            
+
             {/* Book/Unbook button - only for members, not for proposed items */}
             {isMember && displayStatus !== 'completed' && item.status !== 'proposed' && (
               <button
@@ -226,26 +236,26 @@ function WishlistItem({ item, onUpdate, onEdit, onReview, isAuthenticated, isOwn
                   item.status === 'booked' && isBookedByCurrentUser
                     ? 'bg-amber-500 text-white hover:bg-amber-600 cursor-pointer'
                     : item.status === 'booked'
-                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                    : 'bg-primary-600 text-white hover:bg-primary-700 cursor-pointer'
+                      ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                      : 'bg-primary-600 text-white hover:bg-primary-700 cursor-pointer'
                 }`}
                 disabled={item.status === 'booked' && !isBookedByCurrentUser}
                 aria-label={
                   item.status === 'booked' && isBookedByCurrentUser
                     ? 'Unbook this item'
                     : item.status === 'booked'
-                    ? 'This item is already booked'
-                    : 'Book this item'
+                      ? 'This item is already booked'
+                      : 'Book this item'
                 }
               >
                 {item.status === 'booked' && isBookedByCurrentUser
                   ? 'Unbook'
                   : item.status === 'booked'
-                  ? 'Booked'
-                  : 'Book'}
+                    ? 'Booked'
+                    : 'Book'}
               </button>
             )}
-            
+
             {/* Owner buttons - not for proposed items */}
             {isOwner && item.status !== 'proposed' && (
               <>
@@ -270,7 +280,11 @@ function WishlistItem({ item, onUpdate, onEdit, onReview, isAuthenticated, isOwn
                         ? 'bg-green-500 text-white hover:bg-green-600'
                         : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                     }`}
-                    aria-label={displayStatus === 'completed' ? 'Mark item as available' : 'Mark item as completed'}
+                    aria-label={
+                      displayStatus === 'completed'
+                        ? 'Mark item as available'
+                        : 'Mark item as completed'
+                    }
                   >
                     {displayStatus === 'completed' ? 'Uncomplete' : 'Complete'}
                   </button>
@@ -293,9 +307,7 @@ function WishlistItem({ item, onUpdate, onEdit, onReview, isAuthenticated, isOwn
               View Item
             </a>
           ) : (
-            <p className="text-sm text-gray-500 text-center italic py-2">
-              Item has no link
-            </p>
+            <p className="text-sm text-gray-500 text-center italic py-2">Item has no link</p>
           )}
         </div>
       </div>

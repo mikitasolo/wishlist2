@@ -23,10 +23,7 @@ export async function POST(request: NextRequest) {
     const { email, role = 'user' } = body;
 
     if (!email) {
-      return NextResponse.json(
-        { success: false, error: 'Email is required' },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, error: 'Email is required' }, { status: 400 });
     }
 
     await connectDB();
@@ -34,10 +31,7 @@ export async function POST(request: NextRequest) {
     // Check if user already exists
     const existingUser = await User.findOne({ email: email.toLowerCase() });
     if (existingUser) {
-      return NextResponse.json(
-        { success: false, error: 'User already invited' },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, error: 'User already invited' }, { status: 400 });
     }
 
     // Create invited user
@@ -51,10 +45,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, data: user }, { status: 201 });
   } catch (error) {
     console.error('Error inviting user:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to invite user' },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: 'Failed to invite user' }, { status: 500 });
   }
 }
 
@@ -77,10 +68,7 @@ export async function GET() {
     return NextResponse.json({ success: true, data: users }, { status: 200 });
   } catch (error) {
     console.error('Error fetching users:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to fetch users' },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: 'Failed to fetch users' }, { status: 500 });
   }
 }
 
@@ -101,10 +89,7 @@ export async function PATCH(request: NextRequest) {
     const { userId, isArchived } = body;
 
     if (!userId) {
-      return NextResponse.json(
-        { success: false, error: 'User ID is required' },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, error: 'User ID is required' }, { status: 400 });
     }
 
     await connectDB();
@@ -118,17 +103,10 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    const user = await User.findByIdAndUpdate(
-      userId,
-      { isArchived },
-      { new: true }
-    );
+    const user = await User.findByIdAndUpdate(userId, { isArchived }, { new: true });
 
     if (!user) {
-      return NextResponse.json(
-        { success: false, error: 'User not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
     }
 
     // If archiving (not unarchiving), delete all active sessions for this user
@@ -146,10 +124,6 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ success: true, data: user }, { status: 200 });
   } catch (error) {
     console.error('Error updating user:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to update user' },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: 'Failed to update user' }, { status: 500 });
   }
 }
-

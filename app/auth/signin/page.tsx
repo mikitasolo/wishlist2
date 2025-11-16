@@ -52,7 +52,10 @@ function SignInForm() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-primary-100 to-white px-4">
       <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8">
         <div className="text-center mb-8">
-          <Link href="/" className="inline-block text-6xl mb-4 hover:scale-110 transition-transform cursor-pointer">
+          <Link
+            href="/"
+            className="inline-block text-6xl mb-4 hover:scale-110 transition-transform cursor-pointer"
+          >
             🎁
           </Link>
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Sign In</h1>
@@ -62,7 +65,7 @@ function SignInForm() {
         {error && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
             <p className="text-sm text-red-800">
-              {error === 'AccessDenied' 
+              {error === 'AccessDenied'
                 ? 'Access denied. Please try again.'
                 : 'An error occurred. Please try again.'}
             </p>
@@ -105,15 +108,16 @@ function SignInForm() {
 
 export default function SignIn() {
   return (
-    <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-pink-100 to-white px-4">
-        <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-pink-100 to-white px-4">
+          <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center">
+            <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+          </div>
         </div>
-      </div>
-    }>
+      }
+    >
       <SignInForm />
     </Suspense>
   );
 }
-

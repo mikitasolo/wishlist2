@@ -8,7 +8,6 @@ A beautiful, modern wishlist application built with Next.js, React, TypeScript, 
   - **Public**: View-only access (no sign-in required)
   - **Authorized**: Book/unbook items with magic link authentication
   - **Admin**: Full CRUD operations + user management
-  
 - 🎁 View wishlist items with beautiful card layout
 - 🖼️ Display items with images, prices, and product links
 - 📌 Book items (mark as reserved for gift-giving)
@@ -88,6 +87,7 @@ EMAIL_FROM=noreply@yourdomain.com  # Must be verified in Brevo
 ```
 
 **To generate NEXTAUTH_SECRET:**
+
 ```bash
 openssl rand -base64 32
 ```
@@ -139,15 +139,15 @@ git push origin main
 
 In your Vercel project settings → Environment Variables, add:
 
-| Variable | Value | Environment |
-|----------|-------|-------------|
-| `MONGODB_URI` | Your MongoDB connection string | Production, Preview, Development |
-| `NEXTAUTH_SECRET` | Your generated secret | Production, Preview, Development |
-| `NEXTAUTH_URL` | Your production URL (e.g., `https://wishlist.vercel.app`) | Production |
-| `NEXTAUTH_URL` | Auto-generated preview URL | Preview |
-| `NEXTAUTH_URL` | `http://localhost:3000` | Development |
-| `BREVO_API_KEY` | Your Brevo API key | Production, Preview, Development |
-| `EMAIL_FROM` | Your verified sender email | Production, Preview, Development |
+| Variable          | Value                                                     | Environment                      |
+| ----------------- | --------------------------------------------------------- | -------------------------------- |
+| `MONGODB_URI`     | Your MongoDB connection string                            | Production, Preview, Development |
+| `NEXTAUTH_SECRET` | Your generated secret                                     | Production, Preview, Development |
+| `NEXTAUTH_URL`    | Your production URL (e.g., `https://wishlist.vercel.app`) | Production                       |
+| `NEXTAUTH_URL`    | Auto-generated preview URL                                | Preview                          |
+| `NEXTAUTH_URL`    | `http://localhost:3000`                                   | Development                      |
+| `BREVO_API_KEY`   | Your Brevo API key                                        | Production, Preview, Development |
+| `EMAIL_FROM`      | Your verified sender email                                | Production, Preview, Development |
 
 ### 4. Create admin user in production
 
@@ -250,31 +250,32 @@ wishlist2/
 
 ### Authentication
 
-| Endpoint | Method | Description | Auth Required |
-|----------|--------|-------------|---------------|
-| `/api/auth/signin` | POST | Sign in with email | No |
-| `/api/auth/signout` | POST | Sign out | Yes |
-| `/api/auth/callback/email` | GET | Magic link callback | No |
+| Endpoint                   | Method | Description         | Auth Required |
+| -------------------------- | ------ | ------------------- | ------------- |
+| `/api/auth/signin`         | POST   | Sign in with email  | No            |
+| `/api/auth/signout`        | POST   | Sign out            | Yes           |
+| `/api/auth/callback/email` | GET    | Magic link callback | No            |
 
 ### Items
 
-| Endpoint | Method | Description | Auth Required |
-|----------|--------|-------------|---------------|
-| `/api/items` | GET | Get all items | No (public) |
-| `/api/items` | POST | Create item | Admin only |
-| `/api/items/[id]` | PATCH | Update item | Yes (limited for users) |
-| `/api/items/[id]` | DELETE | Delete item | Admin only |
+| Endpoint          | Method | Description   | Auth Required           |
+| ----------------- | ------ | ------------- | ----------------------- |
+| `/api/items`      | GET    | Get all items | No (public)             |
+| `/api/items`      | POST   | Create item   | Admin only              |
+| `/api/items/[id]` | PATCH  | Update item   | Yes (limited for users) |
+| `/api/items/[id]` | DELETE | Delete item   | Admin only              |
 
 **PATCH permissions:**
+
 - **Users**: Can only update `isBooked` and `isCompleted`
 - **Admins**: Can update all fields
 
 ### User Management
 
-| Endpoint | Method | Description | Auth Required |
-|----------|--------|-------------|---------------|
-| `/api/invite` | POST | Invite new user | Admin only |
-| `/api/invite` | GET | List all users | Admin only |
+| Endpoint      | Method | Description     | Auth Required |
+| ------------- | ------ | --------------- | ------------- |
+| `/api/invite` | POST   | Invite new user | Admin only    |
+| `/api/invite` | GET    | List all users  | Admin only    |
 
 ## 📝 Data Models
 

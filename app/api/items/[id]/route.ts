@@ -12,10 +12,7 @@ import { updateItemSchema, validateRequestBody } from '@/lib/validations';
 // PATCH /api/items/[id] - Update an item
 // Regular members can book/unbook items (only their own bookings)
 // Wishlist owner can update all fields
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getServerSession(authOptions);
 
@@ -28,31 +25,22 @@ export async function PATCH(
     }
 
     await connectDB();
-    
+
     const currentUser = await User.findById(session.user.id);
     if (!currentUser) {
-      return NextResponse.json(
-        { success: false, error: 'User not found' },
-        { status: 403 }
-      );
+      return NextResponse.json({ success: false, error: 'User not found' }, { status: 403 });
     }
-    
+
     const { id } = await params;
 
     const currentItem = await Item.findById(id);
     if (!currentItem) {
-      return NextResponse.json(
-        { success: false, error: 'Item not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ success: false, error: 'Item not found' }, { status: 404 });
     }
 
     const wishlist = await Wishlist.findById(currentItem.wishlist);
     if (!wishlist) {
-      return NextResponse.json(
-        { success: false, error: 'Wishlist not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
     }
 
     // Check if user has access to this wishlist
@@ -82,7 +70,19 @@ export async function PATCH(
     }
 
     const validatedData = validation.data;
-    let updateData: Partial<Pick<IItem, 'name' | 'imageUrl' | 'priceInCents' | 'link' | 'notes' | 'status' | 'bookedBy' | 'proposedBy'>> = {};
+    let updateData: Partial<
+      Pick<
+        IItem,
+        | 'name'
+        | 'imageUrl'
+        | 'priceInCents'
+        | 'link'
+        | 'notes'
+        | 'status'
+        | 'bookedBy'
+        | 'proposedBy'
+      >
+    > = {};
 
     // Handle proposed items
     if (currentItem.status === 'proposed') {
@@ -90,7 +90,8 @@ export async function PATCH(
       if (isOwner) {
         if (validatedData.name !== undefined) updateData.name = validatedData.name;
         if (validatedData.imageUrl !== undefined) updateData.imageUrl = validatedData.imageUrl;
-        if (validatedData.priceInCents !== undefined) updateData.priceInCents = validatedData.priceInCents ?? null;
+        if (validatedData.priceInCents !== undefined)
+          updateData.priceInCents = validatedData.priceInCents ?? null;
         if (validatedData.link !== undefined) updateData.link = validatedData.link ?? null;
         if (validatedData.notes !== undefined) updateData.notes = validatedData.notes ?? null;
         if (validatedData.status !== undefined) {
@@ -110,7 +111,8 @@ export async function PATCH(
       else if (isProposer) {
         if (validatedData.name !== undefined) updateData.name = validatedData.name;
         if (validatedData.imageUrl !== undefined) updateData.imageUrl = validatedData.imageUrl;
-        if (validatedData.priceInCents !== undefined) updateData.priceInCents = validatedData.priceInCents ?? null;
+        if (validatedData.priceInCents !== undefined)
+          updateData.priceInCents = validatedData.priceInCents ?? null;
         if (validatedData.link !== undefined) updateData.link = validatedData.link ?? null;
         if (validatedData.notes !== undefined) updateData.notes = validatedData.notes ?? null;
         // Proposers cannot change status of proposed items
@@ -131,7 +133,8 @@ export async function PATCH(
     else if (isOwner) {
       if (validatedData.name !== undefined) updateData.name = validatedData.name;
       if (validatedData.imageUrl !== undefined) updateData.imageUrl = validatedData.imageUrl;
-      if (validatedData.priceInCents !== undefined) updateData.priceInCents = validatedData.priceInCents ?? null;
+      if (validatedData.priceInCents !== undefined)
+        updateData.priceInCents = validatedData.priceInCents ?? null;
       if (validatedData.link !== undefined) updateData.link = validatedData.link ?? null;
       if (validatedData.notes !== undefined) updateData.notes = validatedData.notes ?? null;
       if (validatedData.status !== undefined) {
@@ -142,7 +145,7 @@ export async function PATCH(
         }
       }
       if (validatedData.bookedBy !== undefined) {
-        updateData.bookedBy = validatedData.bookedBy 
+        updateData.bookedBy = validatedData.bookedBy
           ? new mongoose.Types.ObjectId(validatedData.bookedBy)
           : null;
       }
@@ -190,19 +193,13 @@ export async function PATCH(
     );
 
     if (!item) {
-      return NextResponse.json(
-        { success: false, error: 'Item not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ success: false, error: 'Item not found' }, { status: 404 });
     }
 
     return NextResponse.json({ success: true, data: item }, { status: 200 });
   } catch (error) {
     console.error('Error updating item:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to update item' },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: 'Failed to update item' }, { status: 500 });
   }
 }
 
@@ -228,22 +225,17 @@ export async function DELETE(
 
     const item = await Item.findById(id);
     if (!item) {
-      return NextResponse.json(
-        { success: false, error: 'Item not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ success: false, error: 'Item not found' }, { status: 404 });
     }
 
     const wishlist = await Wishlist.findById(item.wishlist);
     if (!wishlist) {
-      return NextResponse.json(
-        { success: false, error: 'Wishlist not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
     }
 
     const isOwner = wishlist.owner.toString() === session.user.id;
-    const isProposer = item.status === 'proposed' && item.proposedBy?.toString() === session.user.id;
+    const isProposer =
+      item.status === 'proposed' && item.proposedBy?.toString() === session.user.id;
 
     // Check if user is owner or proposer
     if (!isOwner && !isProposer) {
@@ -258,10 +250,6 @@ export async function DELETE(
     return NextResponse.json({ success: true, data: {} }, { status: 200 });
   } catch (error) {
     console.error('Error deleting item:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to delete item' },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: 'Failed to delete item' }, { status: 500 });
   }
 }
-

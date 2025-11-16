@@ -45,4 +45,3 @@ const WishlistMember: Model<IWishlistMember> =
   mongoose.model<IWishlistMember>('WishlistMember', WishlistMemberSchema);
 
 export default WishlistMember;
-

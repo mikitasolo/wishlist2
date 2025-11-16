@@ -15,7 +15,13 @@ import ConfirmDialog from '@/components/ConfirmDialog';
 import { useToast } from '@/components/ToastProvider';
 import { IItem } from '@/models/Item';
 import { IWishlist } from '@/models/Wishlist';
-import { filterItems, sortItems, calculateStats, type FilterType, type SortType } from '@/lib/utils/itemFilters';
+import {
+  filterItems,
+  sortItems,
+  calculateStats,
+  type FilterType,
+  type SortType,
+} from '@/lib/utils/itemFilters';
 import { useFetchItems, useUpdateItem, useCreateItem, useDeleteItem } from '@/lib/hooks/useItems';
 
 type TabType = 'items' | 'users' | 'settings';
@@ -36,7 +42,7 @@ export default function WishlistDetail() {
   const params = useParams();
   const { showToast } = useToast();
   const wishlistId = typeof params?.id === 'string' ? params.id : null;
-  
+
   const [wishlist, setWishlist] = useState<IWishlist | null>(null);
   const [ownerEmail, setOwnerEmail] = useState<string | null>(null);
   const [items, setItems] = useState<IItem[]>([]);
@@ -75,7 +81,7 @@ export default function WishlistDetail() {
       try {
         const response = await fetch(`/api/wishlists/${wishlistId}`, { cache: 'no-store' });
         const result = await response.json();
-        
+
         if (result.success && result.data) {
           const w = result.data;
           // Type guard to check if data has extended properties
@@ -83,19 +89,24 @@ export default function WishlistDetail() {
             // Type guard function to check if it's an IWishlist
             const wishlistData = w as IWishlist;
             setWishlist(wishlistData);
-            
+
             // Check for extended properties
             const hasExtendedProps = 'userRole' in w || 'ownerEmail' in w;
             if (hasExtendedProps) {
-              const extendedWishlist = w as IWishlist & { userRole?: 'owner' | 'member' | null; ownerEmail?: string | null };
-              setOwnerEmail('ownerEmail' in extendedWishlist ? extendedWishlist.ownerEmail || null : null);
-              
+              const extendedWishlist = w as IWishlist & {
+                userRole?: 'owner' | 'member' | null;
+                ownerEmail?: string | null;
+              };
+              setOwnerEmail(
+                'ownerEmail' in extendedWishlist ? extendedWishlist.ownerEmail || null : null
+              );
+
               // Check user role from API response
               const userRole = 'userRole' in extendedWishlist ? extendedWishlist.userRole : null;
               setIsOwner(userRole === 'owner');
               setIsMember(userRole === 'member');
             }
-            
+
             setSettingsForm({
               name: wishlistData.name,
               description: wishlistData.description || '',
@@ -128,7 +139,7 @@ export default function WishlistDetail() {
       try {
         const response = await fetch(`/api/wishlists/${wishlistId}/members`, { cache: 'no-store' });
         const result = await response.json();
-        
+
         if (result.success) {
           setMembers(result.data || []);
         }
@@ -142,24 +153,26 @@ export default function WishlistDetail() {
     }
   }, [wishlistId, isOwner, activeTab]);
 
+  const fetchItems = useCallback(
+    async (silent = false) => {
+      if (!wishlistId) return;
 
-  const fetchItems = useCallback(async (silent = false) => {
-    if (!wishlistId) return;
-
-    try {
-      const data = await fetchItemsHook(wishlistId);
-      setItems(data);
-    } catch (error) {
-      console.error('Error fetching items:', error);
-      if (!silent) {
-        showToast('Failed to load items', 'error');
+      try {
+        const data = await fetchItemsHook(wishlistId);
+        setItems(data);
+      } catch (error) {
+        console.error('Error fetching items:', error);
+        if (!silent) {
+          showToast('Failed to load items', 'error');
+        }
+      } finally {
+        if (!silent) {
+          setLoading(false);
+        }
       }
-    } finally {
-      if (!silent) {
-        setLoading(false);
-      }
-    }
-  }, [fetchItemsHook, wishlistId, showToast]);
+    },
+    [fetchItemsHook, wishlistId, showToast]
+  );
 
   useEffect(() => {
     if (wishlistId && activeTab === 'items') {
@@ -219,67 +232,79 @@ export default function WishlistDetail() {
     }
   );
 
-  const handleCreateItem = useCallback(async (itemData: {
-    name: string;
-    imageUrl?: string;
-    priceInCents?: number;
-    link?: string;
-    notes?: string;
-    status?: 'draft' | 'available';
-  }) => {
-    if (!wishlistId) return;
-    const createFn = createItemHook;
-    await createFn(wishlistId, itemData);
-    setShowAddItemModal(false);
-  }, [createItemHook, wishlistId]);
+  const handleCreateItem = useCallback(
+    async (itemData: {
+      name: string;
+      imageUrl?: string;
+      priceInCents?: number;
+      link?: string;
+      notes?: string;
+      status?: 'draft' | 'available';
+    }) => {
+      if (!wishlistId) return;
+      const createFn = createItemHook;
+      await createFn(wishlistId, itemData);
+      setShowAddItemModal(false);
+    },
+    [createItemHook, wishlistId]
+  );
 
-  const handleUpdateItem = useCallback(async (id: string, updates: Partial<IItem>) => {
-    setItems((prevItems) =>
-      prevItems.map((item) => (item._id.toString() === id ? { ...item, ...updates } : item))
-    );
-    await updateItemHook(id, updates);
-  }, [updateItemHook]);
+  const handleUpdateItem = useCallback(
+    async (id: string, updates: Partial<IItem>) => {
+      setItems((prevItems) =>
+        prevItems.map((item) => (item._id.toString() === id ? { ...item, ...updates } : item))
+      );
+      await updateItemHook(id, updates);
+    },
+    [updateItemHook]
+  );
 
-  const handleProposeItem = useCallback(async (itemData: {
-    name: string;
-    imageUrl?: string;
-    priceInCents?: number;
-    link?: string;
-    notes?: string;
-    status: 'proposed';
-  }) => {
-    if (!wishlistId) return;
-    try {
-      const response = await fetch(`/api/wishlists/${wishlistId}/items`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(itemData),
-      });
+  const handleProposeItem = useCallback(
+    async (itemData: {
+      name: string;
+      imageUrl?: string;
+      priceInCents?: number;
+      link?: string;
+      notes?: string;
+      status: 'proposed';
+    }) => {
+      if (!wishlistId) return;
+      try {
+        const response = await fetch(`/api/wishlists/${wishlistId}/items`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(itemData),
+        });
 
-      const result = await response.json();
+        const result = await response.json();
 
-      if (result.success) {
-        setItems((prevItems) => [result.data, ...prevItems]);
-        showToast('Item proposed successfully', 'success');
-        setShowProposeItemModal(false);
-      } else {
-        showToast(result.error || 'Failed to propose item', 'error');
+        if (result.success) {
+          setItems((prevItems) => [result.data, ...prevItems]);
+          showToast('Item proposed successfully', 'success');
+          setShowProposeItemModal(false);
+        } else {
+          showToast(result.error || 'Failed to propose item', 'error');
+        }
+      } catch (error) {
+        console.error('Error proposing item:', error);
+        showToast('Failed to propose item', 'error');
       }
-    } catch (error) {
-      console.error('Error proposing item:', error);
-      showToast('Failed to propose item', 'error');
-    }
-  }, [wishlistId, showToast]);
+    },
+    [wishlistId, showToast]
+  );
 
-  const handleReviewItem = useCallback(async (updates: Partial<IItem> & { status: 'draft' | 'available' }) => {
-    if (!itemToReview) return;
-    const itemId = itemToReview._id.toString();
-    await handleUpdateItem(itemId, updates);
-    setItemToReview(null);
-    showToast('Item approved successfully', 'success');
-  }, [itemToReview, handleUpdateItem, showToast]);
+  const handleReviewItem = useCallback(
+    async (updates: Partial<IItem> & { status: 'draft' | 'available' }) => {
+      if (!itemToReview) return;
+      const itemId = itemToReview._id.toString();
+      await handleUpdateItem(itemId, updates);
+      setItemToReview(null);
+      showToast('Item approved successfully', 'success');
+    },
+    [itemToReview, handleUpdateItem, showToast]
+  );
 
   const handleDeleteProposedItem = useCallback(async () => {
     if (!itemToReview) return;
@@ -294,12 +319,15 @@ export default function WishlistDetail() {
     setItemToEdit(item);
   }, []);
 
-  const handleSaveEdit = useCallback(async (updates: Partial<IItem>) => {
-    if (!itemToEdit) return;
-    const itemId = itemToEdit._id.toString();
-    await handleUpdateItem(itemId, updates);
-    setItemToEdit(null);
-  }, [itemToEdit, handleUpdateItem]);
+  const handleSaveEdit = useCallback(
+    async (updates: Partial<IItem>) => {
+      if (!itemToEdit) return;
+      const itemId = itemToEdit._id.toString();
+      await handleUpdateItem(itemId, updates);
+      setItemToEdit(null);
+    },
+    [itemToEdit, handleUpdateItem]
+  );
 
   const handleDeleteItem = useCallback(async () => {
     if (!itemToEdit) return;
@@ -309,41 +337,46 @@ export default function WishlistDetail() {
     setItemToEdit(null);
   }, [itemToEdit, deleteItemHook]);
 
-  const handleInviteUser = useCallback(async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!wishlistId || !inviteEmail.trim()) return;
+  const handleInviteUser = useCallback(
+    async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!wishlistId || !inviteEmail.trim()) return;
 
-    setIsInviting(true);
-    try {
-      const response = await fetch(`/api/wishlists/${wishlistId}/members`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email: inviteEmail.trim() }),
-      });
+      setIsInviting(true);
+      try {
+        const response = await fetch(`/api/wishlists/${wishlistId}/members`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ email: inviteEmail.trim() }),
+        });
 
-      const result = await response.json();
+        const result = await response.json();
 
-      if (result.success) {
-        showToast('Invitation sent successfully', 'success');
-        setInviteEmail('');
-        // Refresh members list
-        const membersResponse = await fetch(`/api/wishlists/${wishlistId}/members`, { cache: 'no-store' });
-        const membersResult = await membersResponse.json();
-        if (membersResult.success) {
-          setMembers(membersResult.data || []);
+        if (result.success) {
+          showToast('Invitation sent successfully', 'success');
+          setInviteEmail('');
+          // Refresh members list
+          const membersResponse = await fetch(`/api/wishlists/${wishlistId}/members`, {
+            cache: 'no-store',
+          });
+          const membersResult = await membersResponse.json();
+          if (membersResult.success) {
+            setMembers(membersResult.data || []);
+          }
+        } else {
+          showToast(result.error || 'Failed to send invitation', 'error');
         }
-      } else {
-        showToast(result.error || 'Failed to send invitation', 'error');
+      } catch (error) {
+        console.error('Error inviting user:', error);
+        showToast('Failed to send invitation', 'error');
+      } finally {
+        setIsInviting(false);
       }
-    } catch (error) {
-      console.error('Error inviting user:', error);
-      showToast('Failed to send invitation', 'error');
-    } finally {
-      setIsInviting(false);
-    }
-  }, [wishlistId, inviteEmail, showToast]);
+    },
+    [wishlistId, inviteEmail, showToast]
+  );
 
   const handleKickMember = useCallback((memberId: string, memberEmail: string) => {
     setDeleteConfirm({
@@ -354,19 +387,25 @@ export default function WishlistDetail() {
   }, []);
 
   const confirmKickMember = useCallback(async () => {
-    if (!wishlistId || !deleteConfirm || deleteConfirm.type !== 'member' || !deleteConfirm.memberId) return;
+    if (!wishlistId || !deleteConfirm || deleteConfirm.type !== 'member' || !deleteConfirm.memberId)
+      return;
 
     try {
-      const response = await fetch(`/api/wishlists/${wishlistId}/members/${deleteConfirm.memberId}`, {
-        method: 'DELETE',
-      });
+      const response = await fetch(
+        `/api/wishlists/${wishlistId}/members/${deleteConfirm.memberId}`,
+        {
+          method: 'DELETE',
+        }
+      );
 
       const result = await response.json();
 
       if (result.success) {
         showToast('Member removed successfully', 'success');
         // Refresh members list
-        const membersResponse = await fetch(`/api/wishlists/${wishlistId}/members`, { cache: 'no-store' });
+        const membersResponse = await fetch(`/api/wishlists/${wishlistId}/members`, {
+          cache: 'no-store',
+        });
         const membersResult = await membersResponse.json();
         if (membersResult.success) {
           setMembers(membersResult.data || []);
@@ -412,20 +451,14 @@ export default function WishlistDetail() {
     }
   }, [wishlistId, deleteConfirm, router, showToast]);
 
-  const stats = useMemo(
-    () => calculateStats(items, session?.user?.id),
-    [items, session?.user?.id]
-  );
+  const stats = useMemo(() => calculateStats(items, session?.user?.id), [items, session?.user?.id]);
 
   const filteredItems = useMemo(
     () => filterItems(items, filter, session?.user?.id),
     [items, filter, session?.user?.id]
   );
 
-  const sortedItems = useMemo(
-    () => sortItems(filteredItems, sortBy),
-    [filteredItems, sortBy]
-  );
+  const sortedItems = useMemo(() => sortItems(filteredItems, sortBy), [filteredItems, sortBy]);
 
   if (loading) {
     return (
@@ -459,19 +492,23 @@ export default function WishlistDetail() {
           <div className="relative flex flex-col sm:flex-row sm:justify-between sm:items-center mb-6 sm:mb-8 gap-4">
             <div className="text-center sm:text-left flex-1">
               <div className="flex flex-col items-center sm:items-start mb-2 sm:mb-4">
-                <Link href="/" className="text-4xl sm:text-5xl hover:scale-110 transition-transform cursor-pointer mb-2 sm:mb-3">
+                <Link
+                  href="/"
+                  className="text-4xl sm:text-5xl hover:scale-110 transition-transform cursor-pointer mb-2 sm:mb-3"
+                >
                   🎁
                 </Link>
                 <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-gray-900">
                   {wishlist.name}
                   {ownerEmail && (
                     <>
-                      {' '}by{' '}
+                      {' '}
+                      by{' '}
                       {isOwner ? (
                         <span className="text-gray-500">you</span>
                       ) : (
-                        <Link 
-                          href={`/users/${wishlist.owner}`} 
+                        <Link
+                          href={`/users/${wishlist.owner}`}
                           className="text-primary-600 hover:text-primary-700 hover:underline cursor-pointer"
                         >
                           {ownerEmail}
@@ -540,7 +577,9 @@ export default function WishlistDetail() {
         {activeTab === 'items' && (
           <>
             {/* Stats */}
-            <div className={`grid ${isOwner ? 'grid-cols-2 md:grid-cols-4 lg:grid-cols-5' : (isMember ? 'grid-cols-2 md:grid-cols-4 lg:grid-cols-5' : 'grid-cols-2 md:grid-cols-3')} gap-3 sm:gap-4 mb-6 sm:mb-8`}>
+            <div
+              className={`grid ${isOwner ? 'grid-cols-2 md:grid-cols-4 lg:grid-cols-5' : isMember ? 'grid-cols-2 md:grid-cols-4 lg:grid-cols-5' : 'grid-cols-2 md:grid-cols-3'} gap-3 sm:gap-4 mb-6 sm:mb-8`}
+            >
               <div className="bg-white rounded-xl p-3 sm:p-4 shadow-md">
                 <p className="text-xs sm:text-sm text-gray-600 mb-1">Total Items</p>
                 <p className="text-2xl sm:text-3xl font-bold text-gray-900">{stats.total}</p>
@@ -553,7 +592,9 @@ export default function WishlistDetail() {
                   </div>
                   <div className="bg-white rounded-xl p-3 sm:p-4 shadow-md">
                     <p className="text-xs sm:text-sm text-gray-600 mb-1">Proposed</p>
-                    <p className="text-2xl sm:text-3xl font-bold text-yellow-600">{stats.proposed}</p>
+                    <p className="text-2xl sm:text-3xl font-bold text-yellow-600">
+                      {stats.proposed}
+                    </p>
                   </div>
                 </>
               )}
@@ -565,12 +606,16 @@ export default function WishlistDetail() {
                 <>
                   <div className="bg-white rounded-xl p-3 sm:p-4 shadow-md">
                     <p className="text-xs sm:text-sm text-gray-600 mb-1">Booked by You</p>
-                    <p className="text-2xl sm:text-3xl font-bold text-amber-600">{stats.bookedByYou}</p>
+                    <p className="text-2xl sm:text-3xl font-bold text-amber-600">
+                      {stats.bookedByYou}
+                    </p>
                   </div>
                   {stats.proposedByYou > 0 && (
                     <div className="bg-white rounded-xl p-3 sm:p-4 shadow-md">
                       <p className="text-xs sm:text-sm text-gray-600 mb-1">Proposed by You</p>
-                      <p className="text-2xl sm:text-3xl font-bold text-yellow-600">{stats.proposedByYou}</p>
+                      <p className="text-2xl sm:text-3xl font-bold text-yellow-600">
+                        {stats.proposedByYou}
+                      </p>
                     </div>
                   )}
                 </>
@@ -665,7 +710,10 @@ export default function WishlistDetail() {
               </div>
 
               <div className="flex items-center gap-2 flex-shrink-0">
-                <label htmlFor="sort" className="text-xs sm:text-sm font-medium text-gray-700 whitespace-nowrap">
+                <label
+                  htmlFor="sort"
+                  className="text-xs sm:text-sm font-medium text-gray-700 whitespace-nowrap"
+                >
                   Sort by:
                 </label>
                 <select
@@ -673,7 +721,12 @@ export default function WishlistDetail() {
                   value={sortBy}
                   onChange={(e) => {
                     const value = e.target.value;
-                    if (value === 'name-asc' || value === 'name-desc' || value === 'price-asc' || value === 'price-desc') {
+                    if (
+                      value === 'name-asc' ||
+                      value === 'name-desc' ||
+                      value === 'price-asc' ||
+                      value === 'price-desc'
+                    ) {
                       setSortBy(value);
                     }
                   }}
@@ -730,12 +783,17 @@ export default function WishlistDetail() {
                     onEdit={
                       // Owners can edit non-proposed items
                       // Proposers can edit their own proposed items
-                      (isOwner && item.status !== 'proposed') || 
-                      (item.status === 'proposed' && item.proposedBy?.toString() === session?.user?.id)
+                      (isOwner && item.status !== 'proposed') ||
+                      (item.status === 'proposed' &&
+                        item.proposedBy?.toString() === session?.user?.id)
                         ? handleEditItem
                         : undefined
                     }
-                    onReview={isOwner && item.status === 'proposed' ? () => setItemToReview(item) : undefined}
+                    onReview={
+                      isOwner && item.status === 'proposed'
+                        ? () => setItemToReview(item)
+                        : undefined
+                    }
                     isAuthenticated={!!session?.user}
                     isOwner={isOwner}
                     isMember={isMember}
@@ -782,7 +840,7 @@ export default function WishlistDetail() {
                   const memberUserId = String(member.user._id);
                   const isCurrentUser = memberUserId === session?.user?.id;
                   const isOwnerMember = member.role === 'owner';
-                  
+
                   return (
                     <div key={member._id} className="px-6 py-4 flex items-center justify-between">
                       <div className="flex-1">
@@ -839,7 +897,7 @@ export default function WishlistDetail() {
           <div className="space-y-6">
             <div className="bg-white rounded-xl p-6 shadow-md">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Wishlist Settings</h3>
-              
+
               <form
                 onSubmit={async (e) => {
                   e.preventDefault();
@@ -872,7 +930,10 @@ export default function WishlistDetail() {
                 className="space-y-4"
               >
                 <div>
-                  <label htmlFor="settings-name" className="block text-sm font-medium text-gray-700 mb-1">
+                  <label
+                    htmlFor="settings-name"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
                     Wishlist Name *
                   </label>
                   <input
@@ -887,13 +948,18 @@ export default function WishlistDetail() {
                 </div>
 
                 <div>
-                  <label htmlFor="settings-description" className="block text-sm font-medium text-gray-700 mb-1">
+                  <label
+                    htmlFor="settings-description"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
                     Description
                   </label>
                   <textarea
                     id="settings-description"
                     value={settingsForm.description}
-                    onChange={(e) => setSettingsForm({ ...settingsForm, description: e.target.value })}
+                    onChange={(e) =>
+                      setSettingsForm({ ...settingsForm, description: e.target.value })
+                    }
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
                     rows={3}
                     disabled={isSavingSettings}
@@ -901,11 +967,10 @@ export default function WishlistDetail() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Visibility
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Visibility</label>
                   <p className="text-xs text-gray-500 mb-2">
-                    Controls whether the wishlist will be visible on your profile page for non-members
+                    Controls whether the wishlist will be visible on your profile page for
+                    non-members
                   </p>
                   <div className="flex items-center justify-between p-1 bg-gray-100 rounded-lg">
                     <button
@@ -948,7 +1013,6 @@ export default function WishlistDetail() {
             </div>
           </div>
         )}
-
       </div>
 
       {/* Modals */}

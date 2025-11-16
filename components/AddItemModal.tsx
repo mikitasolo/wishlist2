@@ -71,4 +71,3 @@ export default function AddItemModal({ isOpen, onClose, onAdd }: AddItemModalPro
     </BaseModal>
   );
 }
-

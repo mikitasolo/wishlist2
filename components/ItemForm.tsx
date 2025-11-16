@@ -57,9 +57,7 @@ export default function ItemForm({
     isDraft: false,
   };
 
-  const [formData, setFormData] = useState<ItemFormData>(
-    initialData || defaultInitialData
-  );
+  const [formData, setFormData] = useState<ItemFormData>(initialData || defaultInitialData);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const internalFirstInputRef = useRef<HTMLInputElement>(null);
   const firstInputRef = externalFirstInputRef || internalFirstInputRef;
@@ -74,7 +72,8 @@ export default function ItemForm({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const currentSubmitting = externalIsSubmitting !== undefined ? externalIsSubmitting : isSubmitting;
+    const currentSubmitting =
+      externalIsSubmitting !== undefined ? externalIsSubmitting : isSubmitting;
     if (currentSubmitting) return;
 
     if (externalIsSubmitting === undefined) {
@@ -118,17 +117,13 @@ export default function ItemForm({
       {/* Status Toggle - hidden in propose mode */}
       {mode !== 'propose' && (
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Status
-          </label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
           {mode === 'review' ? (
             <p className="text-xs text-gray-500 mb-2">
               Select the status for this item after review
             </p>
           ) : (
-            <p className="text-xs text-gray-500 mb-2">
-              Draft items are not visible to others
-            </p>
+            <p className="text-xs text-gray-500 mb-2">Draft items are not visible to others</p>
           )}
           <div className="flex items-center justify-between p-1 bg-gray-100 rounded-lg">
             <button
@@ -267,9 +262,7 @@ export default function ItemForm({
           maxLength={100}
           disabled={submitting}
         />
-        <p className="text-xs text-gray-500 mt-1">
-          {formData.notes.length}/100 characters
-        </p>
+        <p className="text-xs text-gray-500 mt-1">{formData.notes.length}/100 characters</p>
       </div>
 
       {/* Submit and Cancel Buttons */}
@@ -314,4 +307,3 @@ export function itemToFormData(item: IItem): ItemFormData {
     isDraft: item.status === 'draft',
   };
 }
-

@@ -56,7 +56,9 @@ export default function UserWishlists() {
         }
 
         // Fetch wishlists
-        const wishlistsResponse = await fetch(`/api/users/${userId}/wishlists`, { cache: 'no-store' });
+        const wishlistsResponse = await fetch(`/api/users/${userId}/wishlists`, {
+          cache: 'no-store',
+        });
         if (!wishlistsResponse.ok) {
           throw new Error('Failed to fetch wishlists');
         }
@@ -96,7 +98,10 @@ export default function UserWishlists() {
           <div className="relative flex flex-col sm:flex-row sm:justify-between sm:items-center mb-6 sm:mb-8 gap-4">
             <div className="text-center sm:text-left flex-1">
               <div className="flex flex-col items-center sm:items-start mb-2 sm:mb-4">
-                <Link href="/" className="text-4xl sm:text-5xl hover:scale-110 transition-transform cursor-pointer mb-2 sm:mb-3">
+                <Link
+                  href="/"
+                  className="text-4xl sm:text-5xl hover:scale-110 transition-transform cursor-pointer mb-2 sm:mb-3"
+                >
                   🎁
                 </Link>
                 <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-gray-900">
@@ -130,11 +135,7 @@ export default function UserWishlists() {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
             {wishlists.map((wishlist) => (
-              <WishlistCard
-                key={wishlist._id.toString()}
-                wishlist={wishlist}
-                showOwner={true}
-              />
+              <WishlistCard key={wishlist._id.toString()} wishlist={wishlist} showOwner={true} />
             ))}
           </div>
         )}
@@ -142,4 +143,3 @@ export default function UserWishlists() {
     </main>
   );
 }
-

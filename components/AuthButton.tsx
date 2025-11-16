@@ -8,9 +8,7 @@ export default function AuthButton() {
   const [isHovered, setIsHovered] = useState(false);
 
   if (status === 'loading') {
-    return (
-      <div className="h-10 w-10 bg-gray-200 rounded-full animate-pulse"></div>
-    );
+    return <div className="h-10 w-10 bg-gray-200 rounded-full animate-pulse"></div>;
   }
 
   if (session?.user) {
@@ -30,15 +28,10 @@ export default function AuthButton() {
         {isHovered && (
           <>
             {/* Backdrop - closes menu when clicking outside */}
-            <div 
-              className="fixed inset-0 z-40"
-              onClick={() => setIsHovered(false)}
-            />
+            <div className="fixed inset-0 z-40" onClick={() => setIsHovered(false)} />
             <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-50">
               <div className="px-4 py-2 border-b border-gray-200">
-                <p className="text-sm text-gray-700 break-words">
-                  {session.user.email}
-                </p>
+                <p className="text-sm text-gray-700 break-words">{session.user.email}</p>
               </div>
               <button
                 onClick={() => signOut()}
@@ -56,10 +49,9 @@ export default function AuthButton() {
   return (
     <button
       onClick={() => signIn()}
-      className="bg-primary-600 text-white px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium hover:bg-primary-700 transition-colors cursor-pointer w-full sm:w-auto"
+      className="h-10 bg-primary-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors cursor-pointer w-full sm:w-auto"
     >
       Sign In
     </button>
   );
 }
-

@@ -12,7 +12,11 @@ async function checkWishlistPermission(
   wishlistId: string,
   userId: string,
   requireOwner: boolean = false
-): Promise<{ hasAccess: boolean; membership?: IWishlistMember | { role: 'owner' }; wishlist?: IWishlist }> {
+): Promise<{
+  hasAccess: boolean;
+  membership?: IWishlistMember | { role: 'owner' };
+  wishlist?: IWishlist;
+}> {
   await connectDB();
 
   const wishlist = await Wishlist.findById(wishlistId);
@@ -40,10 +44,7 @@ async function checkWishlistPermission(
 }
 
 // GET /api/wishlists/[id] - Get a specific wishlist
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getServerSession(authOptions);
     const { id } = await params;
@@ -52,10 +53,7 @@ export async function GET(
 
     const wishlist = await Wishlist.findById(id);
     if (!wishlist) {
-      return NextResponse.json(
-        { success: false, error: 'Wishlist not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
     }
 
     // Fetch owner email
@@ -72,23 +70,29 @@ export async function GET(
           user: session.user.id,
         });
         const isMember = !!membership && !isOwner;
-        
-        return NextResponse.json({ 
-          success: true, 
+
+        return NextResponse.json(
+          {
+            success: true,
+            data: {
+              ...wishlist.toObject(),
+              userRole: isOwner ? 'owner' : isMember ? 'member' : null,
+              ownerEmail,
+            },
+          },
+          { status: 200 }
+        );
+      }
+      return NextResponse.json(
+        {
+          success: true,
           data: {
             ...wishlist.toObject(),
-            userRole: isOwner ? 'owner' : isMember ? 'member' : null,
             ownerEmail,
-          }
-        }, { status: 200 });
-      }
-      return NextResponse.json({ 
-        success: true, 
-        data: {
-          ...wishlist.toObject(),
-          ownerEmail,
-        }
-      }, { status: 200 });
+          },
+        },
+        { status: 200 }
+      );
     }
 
     // Private wishlists require authentication
@@ -111,14 +115,17 @@ export async function GET(
     const isOwner = wishlist.owner.toString() === session.user.id;
     const isMember = !!membership && !isOwner;
 
-    return NextResponse.json({ 
-      success: true, 
-      data: {
-        ...wishlist.toObject(),
-        userRole: isOwner ? 'owner' : isMember ? 'member' : null,
-        ownerEmail,
-      }
-    }, { status: 200 });
+    return NextResponse.json(
+      {
+        success: true,
+        data: {
+          ...wishlist.toObject(),
+          userRole: isOwner ? 'owner' : isMember ? 'member' : null,
+          ownerEmail,
+        },
+      },
+      { status: 200 }
+    );
   } catch (error) {
     console.error('Error fetching wishlist:', error);
     return NextResponse.json(
@@ -129,10 +136,7 @@ export async function GET(
 }
 
 // PATCH /api/wishlists/[id] - Update a wishlist (owner only)
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getServerSession(authOptions);
 
@@ -209,10 +213,7 @@ export async function DELETE(
 
     const wishlist = await Wishlist.findById(id);
     if (!wishlist) {
-      return NextResponse.json(
-        { success: false, error: 'Wishlist not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
     }
 
     // Only owner can delete
@@ -238,4 +239,3 @@ export async function DELETE(
     );
   }
 }
-
