@@ -67,6 +67,7 @@ export function useCreateItem(
     imageUrl?: string;
     priceInCents?: number;
     link?: string;
+    notes?: string;
     status?: 'draft' | 'available';
   }): Promise<IItem | null> => {
     const requestKey = createRequestKey(`/api/wishlists/${wishlistId}/items`, 'POST', newItem);

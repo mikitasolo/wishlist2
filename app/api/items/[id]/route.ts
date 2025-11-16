@@ -80,7 +80,7 @@ export async function PATCH(
     }
 
     const validatedData = validation.data;
-    let updateData: Partial<Pick<IItem, 'name' | 'imageUrl' | 'priceInCents' | 'link' | 'status' | 'bookedBy'>> = {};
+    let updateData: Partial<Pick<IItem, 'name' | 'imageUrl' | 'priceInCents' | 'link' | 'notes' | 'status' | 'bookedBy'>> = {};
 
     // If user is wishlist owner, allow updating all fields
     if (isOwner) {
@@ -88,19 +88,8 @@ export async function PATCH(
       if (validatedData.imageUrl !== undefined) updateData.imageUrl = validatedData.imageUrl;
       if (validatedData.priceInCents !== undefined) updateData.priceInCents = validatedData.priceInCents ?? null;
       if (validatedData.link !== undefined) updateData.link = validatedData.link ?? null;
+      if (validatedData.notes !== undefined) updateData.notes = validatedData.notes ?? null;
       if (validatedData.status !== undefined) {
-        // Validate: if changing from draft to non-draft, imageUrl must be present
-        if (currentItem.status === 'draft' && validatedData.status !== 'draft') {
-          const finalImageUrl = validatedData.imageUrl !== undefined ? validatedData.imageUrl : currentItem.imageUrl;
-          
-          if (!finalImageUrl) {
-            return NextResponse.json(
-              { success: false, error: 'Image URL is required when publishing an item (changing status from draft)' },
-              { status: 400 }
-            );
-          }
-        }
-        
         updateData.status = validatedData.status;
         // If status is changing from 'booked' to something else, clear bookedBy
         if (currentItem.status === 'booked' && validatedData.status !== 'booked') {

@@ -13,9 +13,7 @@ const ItemSchema = new Schema(
     },
     imageUrl: { 
       type: String, 
-      required: function() {
-        return this.status !== 'draft';
-      }
+      required: false
     },
     priceInCents: { 
       type: Number,
@@ -23,6 +21,10 @@ const ItemSchema = new Schema(
     },
     link: { 
       type: String 
+    },
+    notes: {
+      type: String,
+      maxlength: 100
     },
     status: {
       type: String,
@@ -52,6 +54,7 @@ export interface IItem {
   imageUrl?: string | null;
   priceInCents?: number | null;
   link?: string | null;
+  notes?: string | null;
   status: 'draft' | 'available' | 'booked' | 'completed';
   bookedBy?: mongoose.Types.ObjectId | null;
   createdAt: Date;

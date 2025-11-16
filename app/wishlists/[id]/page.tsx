@@ -208,6 +208,7 @@ export default function WishlistDetail() {
     imageUrl?: string;
     priceInCents?: number;
     link?: string;
+    notes?: string;
     status?: 'draft' | 'available';
   }) => {
     if (!wishlistId) return;

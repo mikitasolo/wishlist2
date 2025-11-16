@@ -192,7 +192,7 @@ export async function POST(
       );
     }
 
-    const { name, imageUrl, priceInCents, link, status, bookedBy } = validation.data;
+    const { name, imageUrl, priceInCents, link, notes, status, bookedBy } = validation.data;
 
     const item = await Item.create({
       wishlist: wishlistId,
@@ -200,6 +200,7 @@ export async function POST(
       imageUrl,
       priceInCents,
       link,
+      notes,
       status: status || 'available',
       bookedBy: bookedBy || null,
     });
