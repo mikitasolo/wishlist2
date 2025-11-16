@@ -33,11 +33,18 @@ export default function AddItemModal({ isOpen, onClose, onAdd }: AddItemModalPro
     priceInCents?: number;
     link?: string;
     notes?: string;
-    status: 'draft' | 'available';
+    status: 'draft' | 'available' | 'proposed';
   }) => {
     setIsSubmitting(true);
     try {
-      await onAdd(data);
+      // In create mode, status will always be 'draft' or 'available', never 'proposed'
+      if (data.status === 'proposed') {
+        throw new Error('Cannot create item with proposed status');
+      }
+      await onAdd({
+        ...data,
+        status: data.status,
+      });
       onClose();
     } catch (error) {
       console.error('Error adding item:', error);

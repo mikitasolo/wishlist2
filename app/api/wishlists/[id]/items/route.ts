@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import connectDB from '@/lib/mongodb';
+import mongoose from 'mongoose';
 import Item from '@/models/Item';
 import Wishlist, { IWishlist } from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
@@ -82,9 +83,16 @@ export async function GET(
     }
 
     // Filter out draft items for non-owners
+    // Filter out proposed items except for owner and proposer
     const visibleItems = items.filter((item) => {
       if (item.status === 'draft') {
         return isOwner; // Only owners can see draft items
+      }
+      if (item.status === 'proposed') {
+        // Only owner and proposer can see proposed items
+        if (isOwner) return true;
+        if (session?.user && item.proposedBy?.toString() === session.user.id) return true;
+        return false;
       }
       return true;
     });
@@ -95,48 +103,68 @@ export async function GET(
 
       if (!session?.user) {
         // Public users: hide booking details completely
+        // Public users: hide proposedBy completely
         if (itemObj.status === 'booked') {
           return {
             ...itemObj,
             status: 'available', // Show as available to avoid spoiling
             bookedBy: undefined,
+            proposedBy: undefined,
           };
         }
-        return { ...itemObj, bookedBy: undefined };
+        return { 
+          ...itemObj, 
+          bookedBy: undefined,
+          proposedBy: undefined,
+        };
       }
 
       if (isOwner) {
         // Owner: CANNOT see which items are booked (hide booking info)
+        // Owner: CANNOT see who proposed items (hide proposedBy info)
         if (itemObj.status === 'booked') {
           return {
             ...itemObj,
             status: 'available', // Show as available
             bookedBy: undefined,
+            proposedBy: undefined, // Hide who proposed the item
           };
         }
-        return { ...itemObj, bookedBy: undefined };
+        return { 
+          ...itemObj, 
+          bookedBy: undefined,
+          proposedBy: undefined, // Hide who proposed the item
+        };
       }
 
       if (isMember) {
         // Member: CAN see which items are booked (status shows as 'booked')
         // Can see if THEY booked it (bookedBy shows their ID)
+        // Can see if THEY proposed it (proposedBy shows their ID)
         const isBookedByMe = itemObj.bookedBy?.toString() === session.user.id;
+        const isProposedByMe = itemObj.proposedBy?.toString() === session.user.id;
         return {
           ...itemObj,
           // Keep status as 'booked' so members can see which items are booked
           bookedBy: isBookedByMe ? session.user.id : undefined, // Only show if current user booked it
+          proposedBy: isProposedByMe ? session.user.id : undefined, // Only show if current user proposed it
         };
       }
 
-      // Not a member: hide booking details
+      // Not a member: hide booking details and proposedBy
       if (itemObj.status === 'booked') {
         return {
           ...itemObj,
           status: 'available',
           bookedBy: undefined,
+          proposedBy: undefined,
         };
       }
-      return { ...itemObj, bookedBy: undefined };
+      return { 
+        ...itemObj, 
+        bookedBy: undefined,
+        proposedBy: undefined,
+      };
     });
 
     return NextResponse.json({ success: true, data: filteredItems }, { status: 200 });
@@ -149,7 +177,9 @@ export async function GET(
   }
 }
 
-// POST /api/wishlists/[id]/items - Create a new item (wishlist owner only)
+// POST /api/wishlists/[id]/items - Create a new item
+// Owners can create items with any status (draft/available)
+// Members can only create items with 'proposed' status
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -167,7 +197,6 @@ export async function POST(
     await connectDB();
     const { id: wishlistId } = await params;
 
-    // Check if user is owner of this wishlist
     const wishlist = await Wishlist.findById(wishlistId);
     if (!wishlist) {
       return NextResponse.json(
@@ -176,9 +205,21 @@ export async function POST(
       );
     }
 
-    if (wishlist.owner.toString() !== session.user.id) {
+    const isOwner = wishlist.owner.toString() === session.user.id;
+    
+    // Check if user is owner or member
+    let isMember = false;
+    if (!isOwner) {
+      const membership = await WishlistMember.findOne({
+        wishlist: wishlistId,
+        user: session.user.id,
+      });
+      isMember = !!membership;
+    }
+
+    if (!isOwner && !isMember) {
       return NextResponse.json(
-        { success: false, error: 'Unauthorized - Owner access required' },
+        { success: false, error: 'Unauthorized - Owner or member access required' },
         { status: 403 }
       );
     }
@@ -194,7 +235,35 @@ export async function POST(
 
     const { name, imageUrl, priceInCents, link, notes, status, bookedBy } = validation.data;
 
-    const item = await Item.create({
+    // Members can only create proposed items
+    if (!isOwner && status !== 'proposed') {
+      return NextResponse.json(
+        { success: false, error: 'Members can only propose items (status must be "proposed")' },
+        { status: 403 }
+      );
+    }
+
+    // Owners cannot create proposed items (they create draft/available directly)
+    if (isOwner && status === 'proposed') {
+      return NextResponse.json(
+        { success: false, error: 'Owners cannot create proposed items' },
+        { status: 400 }
+      );
+    }
+
+    interface ItemCreateData {
+      wishlist: string;
+      name: string;
+      imageUrl?: string;
+      priceInCents?: number;
+      link?: string;
+      notes?: string;
+      status: string;
+      bookedBy: mongoose.Types.ObjectId | null;
+      proposedBy?: mongoose.Types.ObjectId;
+    }
+
+    const itemData: ItemCreateData = {
       wishlist: wishlistId,
       name,
       imageUrl,
@@ -202,8 +271,15 @@ export async function POST(
       link,
       notes,
       status: status || 'available',
-      bookedBy: bookedBy || null,
-    });
+      bookedBy: bookedBy ? new mongoose.Types.ObjectId(bookedBy) : null,
+    };
+
+    // Set proposedBy for proposed items
+    if (status === 'proposed') {
+      itemData.proposedBy = new mongoose.Types.ObjectId(session.user.id);
+    }
+
+    const item = await Item.create(itemData);
 
     return NextResponse.json({ success: true, data: item }, { status: 201 });
   } catch (error) {

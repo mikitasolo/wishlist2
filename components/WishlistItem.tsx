@@ -10,12 +10,13 @@ interface WishlistItemProps {
   item: IItem;
   onUpdate: (id: string, updates: Partial<IItem>) => Promise<void>;
   onEdit?: (item: IItem) => void;
+  onReview?: (item: IItem) => void;
   isAuthenticated: boolean;
   isOwner?: boolean;
   isMember?: boolean;
 }
 
-function WishlistItem({ item, onUpdate, onEdit, isAuthenticated, isOwner = false, isMember = false }: WishlistItemProps) {
+function WishlistItem({ item, onUpdate, onEdit, onReview, isAuthenticated, isOwner = false, isMember = false }: WishlistItemProps) {
   const { data: session } = useSession();
   const [imageLoading, setImageLoading] = useState(true);
   const [showNotes, setShowNotes] = useState(false);
@@ -28,6 +29,11 @@ function WishlistItem({ item, onUpdate, onEdit, isAuthenticated, isOwner = false
   const isBookedByCurrentUser = useMemo(
     () => item.bookedBy && session?.user?.id && item.bookedBy.toString() === session.user.id,
     [item.bookedBy, session?.user?.id]
+  );
+  
+  const isProposedByCurrentUser = useMemo(
+    () => item.status === 'proposed' && item.proposedBy && session?.user?.id && item.proposedBy.toString() === session.user.id,
+    [item.status, item.proposedBy, session?.user?.id]
   );
   
   // For owners, items always show as available (bookings are hidden)
@@ -138,6 +144,11 @@ function WishlistItem({ item, onUpdate, onEdit, isAuthenticated, isOwner = false
               Draft
             </span>
           )}
+          {item.status === 'proposed' && (
+            <span className="bg-yellow-500 text-white text-xs font-semibold px-3 py-1 rounded-full shadow-md">
+              Proposed
+            </span>
+          )}
           {/* Only show booking badges to members, not owners */}
           {!isOwner && item.status === 'booked' && isBookedByCurrentUser && (
             <span className="bg-amber-500 text-white text-xs font-semibold px-3 py-1 rounded-full shadow-md">
@@ -181,8 +192,34 @@ function WishlistItem({ item, onUpdate, onEdit, isAuthenticated, isOwner = false
         {/* Action buttons - only shown for authenticated users */}
         {isAuthenticated && (
           <div className="flex flex-wrap gap-2 mb-3 mt-auto">
-            {/* Book/Unbook button - only for members */}
-            {isMember && displayStatus !== 'completed' && (
+            {/* Proposed item actions */}
+            {item.status === 'proposed' && (
+              <>
+                {/* Review button for owners */}
+                {isOwner && onReview && (
+                  <button
+                    onClick={() => onReview(item)}
+                    className="flex-1 px-3 py-2 text-sm font-medium rounded-lg bg-yellow-500 text-white hover:bg-yellow-600 transition-colors cursor-pointer"
+                    aria-label="Review proposed item"
+                  >
+                    Review
+                  </button>
+                )}
+                {/* Edit button for proposer */}
+                {isProposedByCurrentUser && onEdit && (
+                  <button
+                    onClick={() => onEdit(item)}
+                    className="flex-1 px-3 py-2 text-sm font-medium rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors cursor-pointer"
+                    aria-label="Edit proposed item"
+                  >
+                    Edit
+                  </button>
+                )}
+              </>
+            )}
+            
+            {/* Book/Unbook button - only for members, not for proposed items */}
+            {isMember && displayStatus !== 'completed' && item.status !== 'proposed' && (
               <button
                 onClick={handleToggleBooked}
                 className={`flex-1 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
@@ -209,8 +246,8 @@ function WishlistItem({ item, onUpdate, onEdit, isAuthenticated, isOwner = false
               </button>
             )}
             
-            {/* Owner buttons */}
-            {isOwner && (
+            {/* Owner buttons - not for proposed items */}
+            {isOwner && item.status !== 'proposed' && (
               <>
                 {/* Edit button - only for owners */}
                 {onEdit && (

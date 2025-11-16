@@ -8,6 +8,7 @@ interface PendingRequest<T> {
   timestamp: number;
 }
 
+// Use a more specific type to avoid type assertions
 const pendingRequests = new Map<string, PendingRequest<unknown>>();
 const REQUEST_TIMEOUT = 30000; // 30 seconds
 
@@ -28,6 +29,8 @@ export async function deduplicateRequest<T>(
     // Check if request is still valid (not too old)
     const age = Date.now() - existing.timestamp;
     if (age < REQUEST_TIMEOUT) {
+      // We need to cast here because Map stores unknown, but we know the type matches
+      // This is safe because the same key always uses the same type T
       return existing.promise as Promise<T>;
     } else {
       // Request is too old, remove it

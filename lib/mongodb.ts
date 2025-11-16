@@ -1,7 +1,11 @@
 import mongoose from 'mongoose';
 
 // MONGODB_URI is validated by validateEnvVars() in lib/env.ts
-const MONGODB_URI = process.env.MONGODB_URI as string;
+const MONGODB_URI_ENV = process.env.MONGODB_URI;
+if (!MONGODB_URI_ENV) {
+  throw new Error('MONGODB_URI environment variable is not set');
+}
+const MONGODB_URI: string = MONGODB_URI_ENV;
 
 /**
  * Global is used here to maintain a cached connection across hot reloads

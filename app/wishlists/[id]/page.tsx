@@ -7,6 +7,8 @@ import Link from 'next/link';
 import WishlistItem from '@/components/WishlistItem';
 import EditItemModal from '@/components/EditItemModal';
 import AddItemModal from '@/components/AddItemModal';
+import ProposeItemModal from '@/components/ProposeItemModal';
+import ReviewItemModal from '@/components/ReviewItemModal';
 import AuthButton from '@/components/AuthButton';
 import UserSearch from '@/components/UserSearch';
 import ConfirmDialog from '@/components/ConfirmDialog';
@@ -33,7 +35,7 @@ export default function WishlistDetail() {
   const router = useRouter();
   const params = useParams();
   const { showToast } = useToast();
-  const wishlistId = params?.id as string;
+  const wishlistId = typeof params?.id === 'string' ? params.id : null;
   
   const [wishlist, setWishlist] = useState<IWishlist | null>(null);
   const [ownerEmail, setOwnerEmail] = useState<string | null>(null);
@@ -46,7 +48,9 @@ export default function WishlistDetail() {
   const [filter, setFilter] = useState<FilterType>('all');
   const [sortBy, setSortBy] = useState<SortType>('name-asc');
   const [itemToEdit, setItemToEdit] = useState<IItem | null>(null);
+  const [itemToReview, setItemToReview] = useState<IItem | null>(null);
   const [showAddItemModal, setShowAddItemModal] = useState(false);
+  const [showProposeItemModal, setShowProposeItemModal] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
   const [isInviting, setIsInviting] = useState(false);
   const [settingsForm, setSettingsForm] = useState({
@@ -72,20 +76,32 @@ export default function WishlistDetail() {
         const response = await fetch(`/api/wishlists/${wishlistId}`, { cache: 'no-store' });
         const result = await response.json();
         
-        if (result.success) {
-          const w = result.data as IWishlist & { userRole?: 'owner' | 'member' | null; ownerEmail?: string | null };
-          setWishlist(w);
-          setOwnerEmail(w.ownerEmail || null);
-          setSettingsForm({
-            name: w.name,
-            description: w.description || '',
-            isPublic: w.isPublic,
-          });
-          
-          // Check user role from API response
-          const userRole = w.userRole;
-          setIsOwner(userRole === 'owner');
-          setIsMember(userRole === 'member');
+        if (result.success && result.data) {
+          const w = result.data;
+          // Type guard to check if data has extended properties
+          if (typeof w === 'object' && w !== null && 'name' in w && 'owner' in w) {
+            // Type guard function to check if it's an IWishlist
+            const wishlistData = w as IWishlist;
+            setWishlist(wishlistData);
+            
+            // Check for extended properties
+            const hasExtendedProps = 'userRole' in w || 'ownerEmail' in w;
+            if (hasExtendedProps) {
+              const extendedWishlist = w as IWishlist & { userRole?: 'owner' | 'member' | null; ownerEmail?: string | null };
+              setOwnerEmail('ownerEmail' in extendedWishlist ? extendedWishlist.ownerEmail || null : null);
+              
+              // Check user role from API response
+              const userRole = 'userRole' in extendedWishlist ? extendedWishlist.userRole : null;
+              setIsOwner(userRole === 'owner');
+              setIsMember(userRole === 'member');
+            }
+            
+            setSettingsForm({
+              name: wishlistData.name,
+              description: wishlistData.description || '',
+              isPublic: wishlistData.isPublic,
+            });
+          }
         } else {
           showToast('Failed to load wishlist', 'error');
           router.push('/');
@@ -223,6 +239,56 @@ export default function WishlistDetail() {
     );
     await updateItemHook(id, updates);
   }, [updateItemHook]);
+
+  const handleProposeItem = useCallback(async (itemData: {
+    name: string;
+    imageUrl?: string;
+    priceInCents?: number;
+    link?: string;
+    notes?: string;
+    status: 'proposed';
+  }) => {
+    if (!wishlistId) return;
+    try {
+      const response = await fetch(`/api/wishlists/${wishlistId}/items`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(itemData),
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        setItems((prevItems) => [result.data, ...prevItems]);
+        showToast('Item proposed successfully', 'success');
+        setShowProposeItemModal(false);
+      } else {
+        showToast(result.error || 'Failed to propose item', 'error');
+      }
+    } catch (error) {
+      console.error('Error proposing item:', error);
+      showToast('Failed to propose item', 'error');
+    }
+  }, [wishlistId, showToast]);
+
+  const handleReviewItem = useCallback(async (updates: Partial<IItem> & { status: 'draft' | 'available' }) => {
+    if (!itemToReview) return;
+    const itemId = itemToReview._id.toString();
+    await handleUpdateItem(itemId, updates);
+    setItemToReview(null);
+    showToast('Item approved successfully', 'success');
+  }, [itemToReview, handleUpdateItem, showToast]);
+
+  const handleDeleteProposedItem = useCallback(async () => {
+    if (!itemToReview) return;
+    const itemId = itemToReview._id.toString();
+    await deleteItemHook(itemId);
+    setItems((prevItems) => prevItems.filter((item) => item._id.toString() !== itemId));
+    setItemToReview(null);
+    showToast('Proposed item deleted', 'success');
+  }, [itemToReview, deleteItemHook, showToast]);
 
   const handleEditItem = useCallback((item: IItem) => {
     setItemToEdit(item);
@@ -474,26 +540,40 @@ export default function WishlistDetail() {
         {activeTab === 'items' && (
           <>
             {/* Stats */}
-            <div className={`grid ${isOwner ? 'grid-cols-2 md:grid-cols-4' : (isMember ? 'grid-cols-2 md:grid-cols-4' : 'grid-cols-2 md:grid-cols-3')} gap-3 sm:gap-4 mb-6 sm:mb-8`}>
+            <div className={`grid ${isOwner ? 'grid-cols-2 md:grid-cols-4 lg:grid-cols-5' : (isMember ? 'grid-cols-2 md:grid-cols-4 lg:grid-cols-5' : 'grid-cols-2 md:grid-cols-3')} gap-3 sm:gap-4 mb-6 sm:mb-8`}>
               <div className="bg-white rounded-xl p-3 sm:p-4 shadow-md">
                 <p className="text-xs sm:text-sm text-gray-600 mb-1">Total Items</p>
                 <p className="text-2xl sm:text-3xl font-bold text-gray-900">{stats.total}</p>
               </div>
               {isOwner && (
-                <div className="bg-white rounded-xl p-3 sm:p-4 shadow-md">
-                  <p className="text-xs sm:text-sm text-gray-600 mb-1">Draft</p>
-                  <p className="text-2xl sm:text-3xl font-bold text-gray-500">{stats.draft}</p>
-                </div>
+                <>
+                  <div className="bg-white rounded-xl p-3 sm:p-4 shadow-md">
+                    <p className="text-xs sm:text-sm text-gray-600 mb-1">Draft</p>
+                    <p className="text-2xl sm:text-3xl font-bold text-gray-500">{stats.draft}</p>
+                  </div>
+                  <div className="bg-white rounded-xl p-3 sm:p-4 shadow-md">
+                    <p className="text-xs sm:text-sm text-gray-600 mb-1">Proposed</p>
+                    <p className="text-2xl sm:text-3xl font-bold text-yellow-600">{stats.proposed}</p>
+                  </div>
+                </>
               )}
               <div className="bg-white rounded-xl p-3 sm:p-4 shadow-md">
                 <p className="text-xs sm:text-sm text-gray-600 mb-1">Available</p>
                 <p className="text-2xl sm:text-3xl font-bold text-blue-600">{stats.available}</p>
               </div>
               {isMember && (
-                <div className="bg-white rounded-xl p-3 sm:p-4 shadow-md">
-                  <p className="text-xs sm:text-sm text-gray-600 mb-1">Booked by You</p>
-                  <p className="text-2xl sm:text-3xl font-bold text-amber-600">{stats.bookedByYou}</p>
-                </div>
+                <>
+                  <div className="bg-white rounded-xl p-3 sm:p-4 shadow-md">
+                    <p className="text-xs sm:text-sm text-gray-600 mb-1">Booked by You</p>
+                    <p className="text-2xl sm:text-3xl font-bold text-amber-600">{stats.bookedByYou}</p>
+                  </div>
+                  {stats.proposedByYou > 0 && (
+                    <div className="bg-white rounded-xl p-3 sm:p-4 shadow-md">
+                      <p className="text-xs sm:text-sm text-gray-600 mb-1">Proposed by You</p>
+                      <p className="text-2xl sm:text-3xl font-bold text-yellow-600">{stats.proposedByYou}</p>
+                    </div>
+                  )}
+                </>
               )}
               <div className="bg-white rounded-xl p-3 sm:p-4 shadow-md">
                 <p className="text-xs sm:text-sm text-gray-600 mb-1">Completed</p>
@@ -558,6 +638,30 @@ export default function WishlistDetail() {
                 >
                   Completed
                 </button>
+                {isOwner && (
+                  <button
+                    onClick={() => setFilter('proposed')}
+                    className={`px-3 sm:px-4 py-2 rounded-lg text-sm sm:text-base font-medium transition-colors whitespace-nowrap cursor-pointer flex-shrink-0 ${
+                      filter === 'proposed'
+                        ? 'bg-yellow-600 text-white'
+                        : 'bg-white text-gray-700 hover:bg-gray-100'
+                    }`}
+                  >
+                    Proposed
+                  </button>
+                )}
+                {isMember && stats.proposedByYou > 0 && (
+                  <button
+                    onClick={() => setFilter('proposedByYou')}
+                    className={`px-3 sm:px-4 py-2 rounded-lg text-sm sm:text-base font-medium transition-colors whitespace-nowrap cursor-pointer flex-shrink-0 ${
+                      filter === 'proposedByYou'
+                        ? 'bg-yellow-600 text-white'
+                        : 'bg-white text-gray-700 hover:bg-gray-100'
+                    }`}
+                  >
+                    Proposed by Me
+                  </button>
+                )}
               </div>
 
               <div className="flex items-center gap-2 flex-shrink-0">
@@ -567,7 +671,12 @@ export default function WishlistDetail() {
                 <select
                   id="sort"
                   value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    if (value === 'name-asc' || value === 'name-desc' || value === 'price-asc' || value === 'price-desc') {
+                      setSortBy(value);
+                    }
+                  }}
                   className="pl-3 pr-8 sm:pr-12 py-2 text-sm sm:text-base border border-gray-300 rounded-lg bg-white text-gray-700 font-medium focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none appearance-none bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20fill%3D%22none%22%20viewBox%3D%220%200%2020%2020%22%3E%3Cpath%20stroke%3D%22%236b7280%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20stroke-width%3D%221.5%22%20d%3D%22M6%208l4%204%204-4%22%2F%3E%3C%2Fsvg%3E')] bg-[length:1.5em_1.5em] bg-[right_0.5rem_center] bg-no-repeat cursor-pointer"
                 >
                   <option value="name-asc">Name (A-Z)</option>
@@ -579,16 +688,24 @@ export default function WishlistDetail() {
             </div>
 
             {/* Add Item Button */}
-            {isOwner && (
-              <div className="mb-6 sm:mb-8">
+            <div className="mb-6 sm:mb-8">
+              {isOwner && (
                 <button
                   onClick={() => setShowAddItemModal(true)}
                   className="px-4 py-2 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 transition-colors text-sm sm:text-base cursor-pointer"
                 >
                   + Add Item
                 </button>
-              </div>
-            )}
+              )}
+              {isMember && !isOwner && (
+                <button
+                  onClick={() => setShowProposeItemModal(true)}
+                  className="px-4 py-2 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 transition-colors text-sm sm:text-base cursor-pointer"
+                >
+                  + Propose Item
+                </button>
+              )}
+            </div>
 
             {/* Items Grid */}
             {sortedItems.length === 0 ? (
@@ -610,7 +727,15 @@ export default function WishlistDetail() {
                     key={item._id.toString()}
                     item={item}
                     onUpdate={handleUpdateItem}
-                    onEdit={isOwner ? handleEditItem : undefined}
+                    onEdit={
+                      // Owners can edit non-proposed items
+                      // Proposers can edit their own proposed items
+                      (isOwner && item.status !== 'proposed') || 
+                      (item.status === 'proposed' && item.proposedBy?.toString() === session?.user?.id)
+                        ? handleEditItem
+                        : undefined
+                    }
+                    onReview={isOwner && item.status === 'proposed' ? () => setItemToReview(item) : undefined}
                     isAuthenticated={!!session?.user}
                     isOwner={isOwner}
                     isMember={isMember}
@@ -835,6 +960,14 @@ export default function WishlistDetail() {
         />
       )}
 
+      {showProposeItemModal && (
+        <ProposeItemModal
+          isOpen={showProposeItemModal}
+          onClose={() => setShowProposeItemModal(false)}
+          onPropose={handleProposeItem}
+        />
+      )}
+
       {itemToEdit && (
         <EditItemModal
           isOpen={!!itemToEdit}
@@ -842,6 +975,16 @@ export default function WishlistDetail() {
           onSave={handleSaveEdit}
           onDelete={handleDeleteItem}
           item={itemToEdit}
+        />
+      )}
+
+      {itemToReview && (
+        <ReviewItemModal
+          isOpen={!!itemToReview}
+          onClose={() => setItemToReview(null)}
+          onApprove={handleReviewItem}
+          onDelete={handleDeleteProposedItem}
+          item={itemToReview}
         />
       )}
 

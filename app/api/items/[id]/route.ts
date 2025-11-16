@@ -61,7 +61,9 @@ export async function PATCH(
       wishlist: wishlist._id,
       user: session.user.id,
     });
-    const hasAccess = isOwner || !!membership;
+    const isMember = !!membership;
+    const isProposer = currentItem.proposedBy?.toString() === session.user.id;
+    const hasAccess = isOwner || isMember || isProposer;
 
     if (!hasAccess) {
       return NextResponse.json(
@@ -80,10 +82,53 @@ export async function PATCH(
     }
 
     const validatedData = validation.data;
-    let updateData: Partial<Pick<IItem, 'name' | 'imageUrl' | 'priceInCents' | 'link' | 'notes' | 'status' | 'bookedBy'>> = {};
+    let updateData: Partial<Pick<IItem, 'name' | 'imageUrl' | 'priceInCents' | 'link' | 'notes' | 'status' | 'bookedBy' | 'proposedBy'>> = {};
 
+    // Handle proposed items
+    if (currentItem.status === 'proposed') {
+      // Owner can review proposed items (change status and clear proposedBy)
+      if (isOwner) {
+        if (validatedData.name !== undefined) updateData.name = validatedData.name;
+        if (validatedData.imageUrl !== undefined) updateData.imageUrl = validatedData.imageUrl;
+        if (validatedData.priceInCents !== undefined) updateData.priceInCents = validatedData.priceInCents ?? null;
+        if (validatedData.link !== undefined) updateData.link = validatedData.link ?? null;
+        if (validatedData.notes !== undefined) updateData.notes = validatedData.notes ?? null;
+        if (validatedData.status !== undefined) {
+          // Owner can change from proposed to draft or available
+          if (validatedData.status === 'draft' || validatedData.status === 'available') {
+            updateData.status = validatedData.status;
+            updateData.proposedBy = null; // Clear proposedBy when approving
+          } else {
+            return NextResponse.json(
+              { success: false, error: 'Can only change proposed items to draft or available' },
+              { status: 400 }
+            );
+          }
+        }
+      }
+      // Proposer can edit their proposed items (but not change status)
+      else if (isProposer) {
+        if (validatedData.name !== undefined) updateData.name = validatedData.name;
+        if (validatedData.imageUrl !== undefined) updateData.imageUrl = validatedData.imageUrl;
+        if (validatedData.priceInCents !== undefined) updateData.priceInCents = validatedData.priceInCents ?? null;
+        if (validatedData.link !== undefined) updateData.link = validatedData.link ?? null;
+        if (validatedData.notes !== undefined) updateData.notes = validatedData.notes ?? null;
+        // Proposers cannot change status of proposed items
+        if (validatedData.status !== undefined && validatedData.status !== 'proposed') {
+          return NextResponse.json(
+            { success: false, error: 'You cannot change the status of a proposed item' },
+            { status: 403 }
+          );
+        }
+      } else {
+        return NextResponse.json(
+          { success: false, error: 'Only owner and proposer can edit proposed items' },
+          { status: 403 }
+        );
+      }
+    }
     // If user is wishlist owner, allow updating all fields
-    if (isOwner) {
+    else if (isOwner) {
       if (validatedData.name !== undefined) updateData.name = validatedData.name;
       if (validatedData.imageUrl !== undefined) updateData.imageUrl = validatedData.imageUrl;
       if (validatedData.priceInCents !== undefined) updateData.priceInCents = validatedData.priceInCents ?? null;
@@ -161,7 +206,9 @@ export async function PATCH(
   }
 }
 
-// DELETE /api/items/[id] - Delete an item (wishlist owner only)
+// DELETE /api/items/[id] - Delete an item
+// Owners can delete any item
+// Proposers can delete their own proposed items
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -195,10 +242,13 @@ export async function DELETE(
       );
     }
 
-    // Check if user is owner of this wishlist
-    if (wishlist.owner.toString() !== session.user.id) {
+    const isOwner = wishlist.owner.toString() === session.user.id;
+    const isProposer = item.status === 'proposed' && item.proposedBy?.toString() === session.user.id;
+
+    // Check if user is owner or proposer
+    if (!isOwner && !isProposer) {
       return NextResponse.json(
-        { success: false, error: 'Unauthorized - Owner access required' },
+        { success: false, error: 'Unauthorized - Owner or proposer access required' },
         { status: 403 }
       );
     }

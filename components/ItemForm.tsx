@@ -21,7 +21,7 @@ interface ItemFormProps {
     priceInCents?: number;
     link?: string;
     notes?: string;
-    status: 'draft' | 'available';
+    status: 'draft' | 'available' | 'proposed';
   }) => Promise<void>;
   onCancel: () => void;
   submitLabel?: string;
@@ -34,6 +34,7 @@ interface ItemFormProps {
     submitLabel: string;
     submittingLabel: string;
   }) => React.ReactNode;
+  mode?: 'create' | 'propose' | 'review';
 }
 
 export default function ItemForm({
@@ -45,6 +46,7 @@ export default function ItemForm({
   isSubmitting: externalIsSubmitting,
   firstInputRef: externalFirstInputRef,
   renderButtons,
+  mode = 'create',
 }: ItemFormProps) {
   const defaultInitialData: ItemFormData = {
     name: '',
@@ -82,13 +84,20 @@ export default function ItemForm({
     try {
       const priceInCents = formData.price ? dollarsToCents(formData.price) : undefined;
 
+      let status: 'draft' | 'available' | 'proposed';
+      if (mode === 'propose') {
+        status = 'proposed';
+      } else {
+        status = formData.isDraft ? 'draft' : 'available';
+      }
+
       await onSubmit({
         name: formData.name.trim(),
         imageUrl: formData.imageUrl.trim() || undefined,
         priceInCents,
         link: formData.link.trim() || undefined,
         notes: formData.notes.trim() || undefined,
-        status: formData.isDraft ? 'draft' : 'available',
+        status,
       });
 
       // Reset form only if not using external state
@@ -106,41 +115,73 @@ export default function ItemForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      {/* Status Toggle */}
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          Status
-        </label>
-        <p className="text-xs text-gray-500 mb-2">
-          Draft items are not visible to others
-        </p>
-        <div className="flex items-center justify-between p-1 bg-gray-100 rounded-lg">
-          <button
-            type="button"
-            onClick={() => setFormData({ ...formData, isDraft: false })}
-            disabled={submitting}
-            className={`flex-1 px-4 py-2 text-sm font-medium rounded-md transition-all cursor-pointer ${
-              !formData.isDraft
-                ? 'bg-white text-gray-900 shadow-sm'
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            Published
-          </button>
-          <button
-            type="button"
-            onClick={() => setFormData({ ...formData, isDraft: true })}
-            disabled={submitting}
-            className={`flex-1 px-4 py-2 text-sm font-medium rounded-md transition-all cursor-pointer ${
-              formData.isDraft
-                ? 'bg-white text-gray-900 shadow-sm'
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            Draft
-          </button>
+      {/* Status Toggle - hidden in propose mode */}
+      {mode !== 'propose' && (
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Status
+          </label>
+          {mode === 'review' ? (
+            <p className="text-xs text-gray-500 mb-2">
+              Select the status for this item after review
+            </p>
+          ) : (
+            <p className="text-xs text-gray-500 mb-2">
+              Draft items are not visible to others
+            </p>
+          )}
+          <div className="flex items-center justify-between p-1 bg-gray-100 rounded-lg">
+            <button
+              type="button"
+              onClick={() => setFormData({ ...formData, isDraft: false })}
+              disabled={submitting}
+              className={`flex-1 px-4 py-2 text-sm font-medium rounded-md transition-all cursor-pointer ${
+                !formData.isDraft
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Published
+            </button>
+            <button
+              type="button"
+              onClick={() => setFormData({ ...formData, isDraft: true })}
+              disabled={submitting}
+              className={`flex-1 px-4 py-2 text-sm font-medium rounded-md transition-all cursor-pointer ${
+                formData.isDraft
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Draft
+            </button>
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* Tip for propose mode */}
+      {mode === 'propose' && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <div className="flex items-start gap-2">
+            <svg
+              className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+            <p className="text-sm text-blue-800">
+              This item will appear in the wishlist after approval from the wishlist owner.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Item Name */}
       <div>

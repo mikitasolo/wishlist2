@@ -21,7 +21,7 @@ export default function UserWishlists() {
   const params = useParams();
   const router = useRouter();
   const { showToast } = useToast();
-  const userId = params?.id as string;
+  const userId = typeof params?.id === 'string' ? params.id : null;
 
   const [user, setUser] = useState<IUser | null>(null);
   const [wishlists, setWishlists] = useState<WishlistWithMembership[]>([]);

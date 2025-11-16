@@ -4,7 +4,7 @@
 
 import { IItem } from '@/models/Item';
 
-export type FilterType = 'all' | 'draft' | 'available' | 'booked' | 'bookedByYou' | 'completed';
+export type FilterType = 'all' | 'draft' | 'available' | 'booked' | 'bookedByYou' | 'completed' | 'proposed' | 'proposedByYou';
 
 /**
  * Filters items based on the specified filter type
@@ -25,10 +25,16 @@ export function filterItems(
       return items.filter((item) => item.status === 'booked');
     case 'bookedByYou':
       return items.filter(
-        (item) => item.status === 'booked' && item.bookedBy === currentUserId
+        (item) => item.status === 'booked' && item.bookedBy?.toString() === currentUserId
       );
     case 'completed':
       return items.filter((item) => item.status === 'completed');
+    case 'proposed':
+      return items.filter((item) => item.status === 'proposed');
+    case 'proposedByYou':
+      return items.filter(
+        (item) => item.status === 'proposed' && item.proposedBy?.toString() === currentUserId
+      );
     default:
       return items;
   }
@@ -47,6 +53,8 @@ export function calculateStats(
   booked: number;
   bookedByYou: number;
   completed: number;
+  proposed: number;
+  proposedByYou: number;
 } {
   let total = 0;
   let draft = 0;
@@ -54,6 +62,8 @@ export function calculateStats(
   let booked = 0;
   let bookedByYou = 0;
   let completed = 0;
+  let proposed = 0;
+  let proposedByYou = 0;
 
   for (const item of items) {
     total++;
@@ -63,15 +73,20 @@ export function calculateStats(
       available++;
     } else if (item.status === 'booked') {
       booked++;
-      if (item.bookedBy === currentUserId) {
+      if (item.bookedBy?.toString() === currentUserId) {
         bookedByYou++;
       }
     } else if (item.status === 'completed') {
       completed++;
+    } else if (item.status === 'proposed') {
+      proposed++;
+      if (item.proposedBy?.toString() === currentUserId) {
+        proposedByYou++;
+      }
     }
   }
 
-  return { total, draft, available, booked, bookedByYou, completed };
+  return { total, draft, available, booked, bookedByYou, completed, proposed, proposedByYou };
 }
 
 /**

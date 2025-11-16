@@ -34,7 +34,7 @@ export default function EditItemModal({ isOpen, onClose, onSave, onDelete, item 
     priceInCents?: number;
     link?: string;
     notes?: string;
-    status: 'draft' | 'available';
+    status: 'draft' | 'available' | 'proposed';
   }) => {
     setIsSubmitting(true);
     try {
@@ -44,8 +44,11 @@ export default function EditItemModal({ isOpen, onClose, onSave, onDelete, item 
         priceInCents: data.priceInCents,
         link: data.link,
         notes: data.notes,
-        status: data.status,
       };
+      // Don't change status for proposed items (proposers can't change status)
+      if (item.status !== 'proposed') {
+        updates.status = data.status;
+      }
       await onSave(updates);
       onClose();
     } catch (error) {
@@ -74,10 +77,32 @@ export default function EditItemModal({ isOpen, onClose, onSave, onDelete, item 
       <BaseModal
         isOpen={isOpen}
         onClose={onClose}
-        title="Edit Item"
+        title={item.status === 'proposed' ? 'Edit Proposed Item' : 'Edit Item'}
         titleId="edit-item-title"
         isSubmitting={isSubmitting || isDeleting}
       >
+        {item.status === 'proposed' && (
+          <div className="mb-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <div className="flex items-start gap-2">
+              <svg
+                className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+              <p className="text-sm text-blue-800">
+                You can edit this proposed item. The status cannot be changed until the owner reviews it.
+              </p>
+            </div>
+          </div>
+        )}
         <ItemForm
           initialData={itemToFormData(item)}
           onSubmit={handleSubmit}
@@ -85,6 +110,7 @@ export default function EditItemModal({ isOpen, onClose, onSave, onDelete, item 
           submitLabel="Save Changes"
           submittingLabel="Saving..."
           isSubmitting={isSubmitting || isDeleting}
+          mode={item.status === 'proposed' ? 'propose' : 'create'}
           renderButtons={({ submitting, onCancel, submitLabel, submittingLabel }) => (
             <div className="flex flex-col gap-3 pt-4">
               <div className="flex gap-3">

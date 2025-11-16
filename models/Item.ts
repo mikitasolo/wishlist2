@@ -28,11 +28,16 @@ const ItemSchema = new Schema(
     },
     status: {
       type: String,
-      enum: ['draft', 'available', 'booked', 'completed'],
+      enum: ['draft', 'available', 'booked', 'completed', 'proposed'],
       required: true,
       default: 'available'
     },
     bookedBy: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+      required: false
+    },
+    proposedBy: {
       type: Schema.Types.ObjectId,
       ref: 'User',
       required: false
@@ -55,8 +60,9 @@ export interface IItem {
   priceInCents?: number | null;
   link?: string | null;
   notes?: string | null;
-  status: 'draft' | 'available' | 'booked' | 'completed';
+  status: 'draft' | 'available' | 'booked' | 'completed' | 'proposed';
   bookedBy?: mongoose.Types.ObjectId | null;
+  proposedBy?: mongoose.Types.ObjectId | null;
   createdAt: Date;
   updatedAt: Date;
 }
