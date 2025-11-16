@@ -202,7 +202,7 @@ export default function AddItemModal({ isOpen, onClose, onAdd }: AddItemModalPro
 
           <div>
             <label htmlFor="price" className="block text-sm font-medium text-gray-700 mb-1">
-              Price
+              Price in $
             </label>
             <input
               type="number"

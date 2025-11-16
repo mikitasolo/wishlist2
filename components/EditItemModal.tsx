@@ -201,7 +201,7 @@ export default function EditItemModal({ isOpen, onClose, onSave, onDelete, item 
 
           <div>
             <label htmlFor="price" className="block text-sm font-medium text-gray-700 mb-1">
-              Price
+              Price in $
             </label>
             <input
               type="number"
