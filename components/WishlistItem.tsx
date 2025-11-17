@@ -82,40 +82,70 @@ function WishlistItem({
 
   return (
     <div
-      className={`relative bg-white rounded-xl shadow-lg overflow-hidden transition-all duration-300 hover:shadow-xl flex flex-col ${
+      className={`relative bg-white rounded-xl shadow-lg transition-all duration-300 hover:shadow-xl flex flex-col py-4 sm:p-5 ${
         displayStatus === 'completed' ? 'ring-2 ring-green-400' : ''
       } ${getBorderClass()}`}
       role="article"
       aria-label={`Item: ${item.name}`}
     >
-      {/* Image/Notes area */}
-      <div className="relative h-64 w-full bg-gray-100 flex-shrink-0">
-        {/* Notes icon button - top left */}
-        {item.notes && (
-          <button
-            onClick={() => setShowNotes(!showNotes)}
-            className="absolute top-3 left-3 z-10 bg-white/90 hover:bg-white rounded-full p-2 shadow-md transition-all cursor-pointer"
-            aria-label={showNotes ? 'Show image' : 'Show notes'}
+      {/* Notes icon button - positioned absolutely at top-left corner of card */}
+      {item.notes && (
+        <button
+          onClick={() => setShowNotes(!showNotes)}
+          className="absolute top-2 left-2 sm:top-3 sm:left-3 z-10 bg-white/90 hover:bg-white rounded-full p-2 shadow-md transition-all cursor-pointer"
+          aria-label={showNotes ? 'Show image' : 'Show notes'}
+        >
+          <svg
+            className={`w-5 h-5 transition-colors ${
+              showNotes ? 'text-primary-600' : 'text-gray-600'
+            }`}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+            xmlns="http://www.w3.org/2000/svg"
           >
-            <svg
-              className={`w-5 h-5 transition-colors ${
-                showNotes ? 'text-primary-600' : 'text-gray-600'
-              }`}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-              />
-            </svg>
-          </button>
-        )}
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+            />
+          </svg>
+        </button>
+      )}
 
+      {/* Status badges - positioned absolutely at top-right corner of card */}
+      <div className="absolute top-2 right-2 sm:top-3 sm:right-3 z-10 flex flex-col gap-2">
+        {item.status === 'draft' && (
+          <span className="bg-gray-500 text-white text-xs font-semibold px-3 py-1 rounded-full shadow-md">
+            Draft
+          </span>
+        )}
+        {item.status === 'proposed' && (
+          <span className="bg-blue-500 text-white text-xs font-semibold px-3 py-1 rounded-full shadow-md">
+            Proposed
+          </span>
+        )}
+        {/* Only show booking badges to members, not owners */}
+        {!isOwner && item.status === 'booked' && isBookedByCurrentUser && (
+          <span className="bg-green-700 text-white text-xs font-semibold px-3 py-1 rounded-full shadow-md">
+            Booked by you
+          </span>
+        )}
+        {!isOwner && item.status === 'booked' && !isBookedByCurrentUser && (
+          <span className="bg-yellow-500 text-white text-xs font-semibold px-3 py-1 rounded-full shadow-md">
+            Booked
+          </span>
+        )}
+        {displayStatus === 'completed' && (
+          <span className="bg-green-500 text-white text-xs font-semibold px-3 py-1 rounded-full shadow-md">
+            Completed
+          </span>
+        )}
+      </div>
+
+      {/* Image/Notes area */}
+      <div className="relative h-64 w-full bg-gray-100 flex-shrink-0 rounded-lg overflow-hidden mb-4">
         {/* Show notes or image */}
         {showNotes && item.notes ? (
           <div className="absolute inset-0 flex items-center justify-center bg-gray-50 p-4">
@@ -163,40 +193,10 @@ function WishlistItem({
             )}
           </>
         )}
-
-        {/* Status badges */}
-        <div className="absolute top-3 right-3 flex flex-col gap-2">
-          {item.status === 'draft' && (
-            <span className="bg-gray-500 text-white text-xs font-semibold px-3 py-1 rounded-full shadow-md">
-              Draft
-            </span>
-          )}
-          {item.status === 'proposed' && (
-            <span className="bg-blue-500 text-white text-xs font-semibold px-3 py-1 rounded-full shadow-md">
-              Proposed
-            </span>
-          )}
-          {/* Only show booking badges to members, not owners */}
-          {!isOwner && item.status === 'booked' && isBookedByCurrentUser && (
-            <span className="bg-green-700 text-white text-xs font-semibold px-3 py-1 rounded-full shadow-md">
-              Booked by you
-            </span>
-          )}
-          {!isOwner && item.status === 'booked' && !isBookedByCurrentUser && (
-            <span className="bg-yellow-500 text-white text-xs font-semibold px-3 py-1 rounded-full shadow-md">
-              Booked
-            </span>
-          )}
-          {displayStatus === 'completed' && (
-            <span className="bg-green-500 text-white text-xs font-semibold px-3 py-1 rounded-full shadow-md">
-              Completed
-            </span>
-          )}
-        </div>
       </div>
 
       {/* Content */}
-      <div className="p-4 sm:p-5 flex flex-col flex-grow">
+      <div className="flex flex-col flex-grow">
         {/* Item name - can vary in height */}
         <div className="flex-grow">
           <h3
