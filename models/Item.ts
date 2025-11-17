@@ -15,9 +15,23 @@ const ItemSchema = new Schema(
       type: String,
       required: false,
     },
-    priceInCents: {
-      type: Number,
-      required: false,
+    price: {
+      type: new Schema(
+        {
+          value: {
+            type: Number,
+            required: true,
+            // Value is stored in cents (integer) to avoid precision issues
+          },
+          currency: {
+            type: String,
+            required: true,
+            lowercase: true, // Store in lowercase to match rates format
+          },
+        },
+        { _id: false } // Don't create _id for nested subdocuments
+      ),
+      required: false, // Price object itself is optional, but if present, both value and currency are required
     },
     link: {
       type: String,
@@ -57,7 +71,10 @@ export interface IItem {
   wishlist: mongoose.Types.ObjectId;
   name: string;
   imageUrl?: string | null;
-  priceInCents?: number | null;
+  price?: {
+    value: number;
+    currency: string;
+  } | null;
   link?: string | null;
   notes?: string | null;
   status: 'draft' | 'available' | 'booked' | 'completed' | 'proposed';

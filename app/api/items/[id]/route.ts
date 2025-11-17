@@ -8,6 +8,7 @@ import User from '@/models/User';
 import Wishlist from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
 import { updateItemSchema, validateRequestBody } from '@/lib/validations';
+import { ensureCurrencyRatesUpToDate } from '@/lib/utils/currencyRates';
 
 // PATCH /api/items/[id] - Update an item
 // Regular members can book/unbook items (only their own bookings)
@@ -70,17 +71,29 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     }
 
     const validatedData = validation.data;
+
+    // Ensure currency rates are up to date for validation
+    const currencyRate = await ensureCurrencyRatesUpToDate();
+    const rates = currencyRate?.rates || new Map<string, number>();
+
+    // Validate currency exists in rates if price is being updated
+    if (validatedData.price && validatedData.price.currency) {
+      const currencyLower = validatedData.price.currency.toLowerCase(); // Already lowercase from validation, but ensure it
+      if (!rates.has(currencyLower)) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Currency '${validatedData.price.currency}' is not supported. Please use a supported currency code.`,
+          },
+          { status: 400 }
+        );
+      }
+    }
+
     let updateData: Partial<
       Pick<
         IItem,
-        | 'name'
-        | 'imageUrl'
-        | 'priceInCents'
-        | 'link'
-        | 'notes'
-        | 'status'
-        | 'bookedBy'
-        | 'proposedBy'
+        'name' | 'imageUrl' | 'price' | 'link' | 'notes' | 'status' | 'bookedBy' | 'proposedBy'
       >
     > = {};
 
@@ -90,8 +103,14 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       if (isOwner) {
         if (validatedData.name !== undefined) updateData.name = validatedData.name;
         if (validatedData.imageUrl !== undefined) updateData.imageUrl = validatedData.imageUrl;
-        if (validatedData.priceInCents !== undefined)
-          updateData.priceInCents = validatedData.priceInCents ?? null;
+        if (validatedData.price !== undefined) {
+          updateData.price = validatedData.price
+            ? {
+                value: validatedData.price.value, // Already in cents (integer)
+                currency: validatedData.price.currency.toLowerCase(),
+              }
+            : null;
+        }
         if (validatedData.link !== undefined) updateData.link = validatedData.link ?? null;
         if (validatedData.notes !== undefined) updateData.notes = validatedData.notes ?? null;
         if (validatedData.status !== undefined) {
@@ -111,8 +130,14 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       else if (isProposer) {
         if (validatedData.name !== undefined) updateData.name = validatedData.name;
         if (validatedData.imageUrl !== undefined) updateData.imageUrl = validatedData.imageUrl;
-        if (validatedData.priceInCents !== undefined)
-          updateData.priceInCents = validatedData.priceInCents ?? null;
+        if (validatedData.price !== undefined) {
+          updateData.price = validatedData.price
+            ? {
+                value: validatedData.price.value, // Already in cents (integer)
+                currency: validatedData.price.currency.toLowerCase(),
+              }
+            : null;
+        }
         if (validatedData.link !== undefined) updateData.link = validatedData.link ?? null;
         if (validatedData.notes !== undefined) updateData.notes = validatedData.notes ?? null;
         // Proposers cannot change status of proposed items
@@ -133,8 +158,14 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     else if (isOwner) {
       if (validatedData.name !== undefined) updateData.name = validatedData.name;
       if (validatedData.imageUrl !== undefined) updateData.imageUrl = validatedData.imageUrl;
-      if (validatedData.priceInCents !== undefined)
-        updateData.priceInCents = validatedData.priceInCents ?? null;
+      if (validatedData.price !== undefined) {
+        updateData.price = validatedData.price
+          ? {
+              value: validatedData.price.value,
+              currency: (validatedData.price.currency || 'usd').toLowerCase(),
+            }
+          : null;
+      }
       if (validatedData.link !== undefined) updateData.link = validatedData.link ?? null;
       if (validatedData.notes !== undefined) updateData.notes = validatedData.notes ?? null;
       if (validatedData.status !== undefined) {

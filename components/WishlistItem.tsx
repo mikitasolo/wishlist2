@@ -1,16 +1,16 @@
 'use client';
 
 import { memo, useMemo, useCallback, useState, useEffect } from 'react';
-import { IItem } from '@/models/Item';
+import { ApiItem } from '@/types/api';
 import Image from 'next/image';
 import { useSession } from 'next-auth/react';
-import { formatPrice } from '@/lib/utils/currency';
+import { formatPriceFromObject } from '@/lib/utils/currency';
 
 interface WishlistItemProps {
-  item: IItem;
-  onUpdate: (id: string, updates: Partial<IItem>) => Promise<void>;
-  onEdit?: (item: IItem) => void;
-  onReview?: (item: IItem) => void;
+  item: ApiItem;
+  onUpdate: (id: string, updates: Partial<ApiItem>) => Promise<void>;
+  onEdit?: (item: ApiItem) => void;
+  onReview?: (item: ApiItem) => void;
   isAuthenticated: boolean;
   isOwner?: boolean;
   isMember?: boolean;
@@ -35,7 +35,7 @@ function WishlistItem({
   }, [item._id]);
 
   const isBookedByCurrentUser = useMemo(
-    () => item.bookedBy && session?.user?.id && item.bookedBy.toString() === session.user.id,
+    () => item.bookedBy && session?.user?.id && item.bookedBy === session.user.id,
     [item.bookedBy, session?.user?.id]
   );
 
@@ -44,7 +44,7 @@ function WishlistItem({
       item.status === 'proposed' &&
       item.proposedBy &&
       session?.user?.id &&
-      item.proposedBy.toString() === session.user.id,
+      item.proposedBy === session.user.id,
     [item.status, item.proposedBy, session?.user?.id]
   );
 
@@ -54,13 +54,13 @@ function WishlistItem({
   const handleToggleBooked = useCallback(async () => {
     if (isOwner) return; // Owners can't book items
     const newStatus = item.status === 'booked' ? 'available' : 'booked';
-    await onUpdate(item._id.toString(), { status: newStatus });
+    await onUpdate(item._id, { status: newStatus });
   }, [item.status, item._id, onUpdate, isOwner]);
 
   const handleToggleCompleted = useCallback(async () => {
     if (!isOwner) return; // Only owners can complete items
     const newStatus = item.status === 'completed' ? 'available' : 'completed';
-    await onUpdate(item._id.toString(), { status: newStatus });
+    await onUpdate(item._id, { status: newStatus });
   }, [item.status, item._id, onUpdate, isOwner]);
 
   // Determine border styling based on item status
@@ -209,9 +209,9 @@ function WishlistItem({
 
         {/* Price - fixed position */}
         <div className="mb-2 sm:mb-3 min-h-[28px] sm:min-h-[32px] flex items-center">
-          {item.priceInCents != null && (
+          {item.price && (
             <p className="text-lg sm:text-xl font-semibold text-primary-600">
-              {formatPrice(item.priceInCents)}
+              {formatPriceFromObject(item.price)}
             </p>
           )}
         </div>

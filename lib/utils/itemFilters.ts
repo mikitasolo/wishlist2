@@ -2,7 +2,7 @@
  * Utility functions for filtering items
  */
 
-import { IItem } from '@/models/Item';
+import { ApiItem } from '@/types/api';
 
 export type FilterOption =
   | 'all'
@@ -22,11 +22,11 @@ export type FilterOption =
  * @param includeBookedInAvailable - If true, "available" filter includes both "available" and "booked" statuses
  */
 export function filterItemsMulti(
-  items: IItem[],
+  items: ApiItem[],
   selectedFilters: FilterOption[],
   currentUserId?: string,
   includeBookedInAvailable: boolean = false
-): IItem[] {
+): ApiItem[] {
   // If no filters selected or "all" is selected, return all items
   if (selectedFilters.length === 0 || selectedFilters.includes('all')) {
     return items;
@@ -44,19 +44,17 @@ export function filterItemsMulti(
           }
           return item.status === 'available';
         case 'bookedByMe':
-          return item.status === 'booked' && item.bookedBy?.toString() === currentUserId;
+          return item.status === 'booked' && item.bookedBy === currentUserId;
         case 'bookedByOthers':
           return (
-            item.status === 'booked' &&
-            item.bookedBy?.toString() !== currentUserId &&
-            item.bookedBy != null
+            item.status === 'booked' && item.bookedBy !== currentUserId && item.bookedBy != null
           );
         case 'completed':
           return item.status === 'completed';
         case 'proposed':
           return item.status === 'proposed';
         case 'proposedByMe':
-          return item.status === 'proposed' && item.proposedBy?.toString() === currentUserId;
+          return item.status === 'proposed' && item.proposedBy === currentUserId;
         default:
           return false;
       }
@@ -68,7 +66,7 @@ export function filterItemsMulti(
  * Calculates statistics for items in a single pass
  */
 export function calculateStats(
-  items: IItem[],
+  items: ApiItem[],
   currentUserId?: string
 ): {
   total: number;
@@ -97,14 +95,14 @@ export function calculateStats(
       available++;
     } else if (item.status === 'booked') {
       booked++;
-      if (item.bookedBy?.toString() === currentUserId) {
+      if (item.bookedBy === currentUserId) {
         bookedByYou++;
       }
     } else if (item.status === 'completed') {
       completed++;
     } else if (item.status === 'proposed') {
       proposed++;
-      if (item.proposedBy?.toString() === currentUserId) {
+      if (item.proposedBy === currentUserId) {
         proposedByYou++;
       }
     }
@@ -124,33 +122,41 @@ export type SortType =
   | 'date-asc'
   | 'date-desc';
 
-export function sortItems(items: IItem[], sortBy: SortType): IItem[] {
+export function sortItems(items: ApiItem[], sortBy: SortType): ApiItem[] {
   return [...items].sort((a, b) => {
     switch (sortBy) {
       case 'name-asc':
         return a.name.localeCompare(b.name);
       case 'name-desc':
         return b.name.localeCompare(a.name);
-      case 'price-asc':
+      case 'price-asc': {
         // Items without price go to the end
-        if (a.priceInCents == null) return 1;
-        if (b.priceInCents == null) return -1;
-        return a.priceInCents - b.priceInCents;
-      case 'price-desc':
+        // Use priceInUsdCents (enriched by API)
+        const aPrice = a.priceInUsdCents ?? null;
+        const bPrice = b.priceInUsdCents ?? null;
+        if (aPrice == null) return 1;
+        if (bPrice == null) return -1;
+        return aPrice - bPrice;
+      }
+      case 'price-desc': {
         // Items without price go to the end
-        if (a.priceInCents == null) return 1;
-        if (b.priceInCents == null) return -1;
-        return b.priceInCents - a.priceInCents;
+        // Use priceInUsdCents (enriched by API)
+        const aPrice = a.priceInUsdCents ?? null;
+        const bPrice = b.priceInUsdCents ?? null;
+        if (aPrice == null) return 1;
+        if (bPrice == null) return -1;
+        return bPrice - aPrice;
+      }
       case 'date-asc': {
         // Oldest first
-        const dateA = a.createdAt instanceof Date ? a.createdAt : new Date(a.createdAt);
-        const dateB = b.createdAt instanceof Date ? b.createdAt : new Date(b.createdAt);
+        const dateA = new Date(a.createdAt);
+        const dateB = new Date(b.createdAt);
         return dateA.getTime() - dateB.getTime();
       }
       case 'date-desc': {
         // Newest first
-        const dateA = a.createdAt instanceof Date ? a.createdAt : new Date(a.createdAt);
-        const dateB = b.createdAt instanceof Date ? b.createdAt : new Date(b.createdAt);
+        const dateA = new Date(a.createdAt);
+        const dateB = new Date(b.createdAt);
         return dateB.getTime() - dateA.getTime();
       }
       default:

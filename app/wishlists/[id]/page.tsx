@@ -13,7 +13,7 @@ import AuthButton from '@/components/AuthButton';
 import UserSearch from '@/components/UserSearch';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import { useToast } from '@/components/ToastProvider';
-import { IItem } from '@/models/Item';
+import { ApiItem } from '@/types/api';
 import { IWishlist } from '@/models/Wishlist';
 import {
   sortItems,
@@ -46,7 +46,7 @@ export default function WishlistDetail() {
 
   const [wishlist, setWishlist] = useState<IWishlist | null>(null);
   const [ownerEmail, setOwnerEmail] = useState<string | null>(null);
-  const [items, setItems] = useState<IItem[]>([]);
+  const [items, setItems] = useState<ApiItem[]>([]);
   const [members, setMembers] = useState<WishlistMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMembers, setLoadingMembers] = useState(false);
@@ -55,8 +55,8 @@ export default function WishlistDetail() {
   const [activeTab, setActiveTab] = useState<TabType>('items');
   const [selectedFilters, setSelectedFilters] = useState<FilterOption[]>([]);
   const [sortBy, setSortBy] = useState<SortType>('name-asc');
-  const [itemToEdit, setItemToEdit] = useState<IItem | null>(null);
-  const [itemToReview, setItemToReview] = useState<IItem | null>(null);
+  const [itemToEdit, setItemToEdit] = useState<ApiItem | null>(null);
+  const [itemToReview, setItemToReview] = useState<ApiItem | null>(null);
   const [showAddItemModal, setShowAddItemModal] = useState(false);
   const [showProposeItemModal, setShowProposeItemModal] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
@@ -349,18 +349,19 @@ export default function WishlistDetail() {
   );
 
   const updateItemHook = useUpdateItem(
-    (updatedItem) => {
-      setItems((prevItems) =>
-        prevItems.map((item) =>
-          item._id.toString() === updatedItem._id.toString() ? updatedItem : item
-        )
-      );
+    () => {
+      // Refetch items to get properly sorted and enriched list with priceInUsdCents
+      fetchItems(true);
     },
     (error) => {
       fetchItems(true);
       showToast(error, 'error');
     }
   );
+
+  // Update hook dependencies when fetchItems changes
+  // Note: updateItemHook is created by useUpdateItem hook, so we can't directly add dependencies
+  // But fetchItems is stable (useCallback), so this should work fine
 
   const deleteItemHook = useDeleteItem(
     () => {
@@ -375,7 +376,7 @@ export default function WishlistDetail() {
     async (itemData: {
       name: string;
       imageUrl?: string;
-      priceInCents?: number;
+      price?: { value: number; currency: string } | null;
       link?: string;
       notes?: string;
       status?: 'draft' | 'available';
@@ -389,10 +390,8 @@ export default function WishlistDetail() {
   );
 
   const handleUpdateItem = useCallback(
-    async (id: string, updates: Partial<IItem>) => {
-      setItems((prevItems) =>
-        prevItems.map((item) => (item._id.toString() === id ? { ...item, ...updates } : item))
-      );
+    async (id: string, updates: Partial<ApiItem>) => {
+      // Don't optimistically update - let the refetch handle it to maintain correct sorting
       await updateItemHook(id, updates);
     },
     [updateItemHook]
@@ -402,7 +401,7 @@ export default function WishlistDetail() {
     async (itemData: {
       name: string;
       imageUrl?: string;
-      priceInCents?: number;
+      price?: { value: number; currency: string } | null;
       link?: string;
       notes?: string;
       status: 'proposed';
@@ -435,9 +434,9 @@ export default function WishlistDetail() {
   );
 
   const handleReviewItem = useCallback(
-    async (updates: Partial<IItem> & { status: 'draft' | 'available' }) => {
+    async (updates: Partial<ApiItem> & { status: 'draft' | 'available' }) => {
       if (!itemToReview) return;
-      const itemId = itemToReview._id.toString();
+      const itemId = itemToReview._id;
       await handleUpdateItem(itemId, updates);
       setItemToReview(null);
       showToast('Item approved successfully', 'success');
@@ -447,21 +446,21 @@ export default function WishlistDetail() {
 
   const handleDeleteProposedItem = useCallback(async () => {
     if (!itemToReview) return;
-    const itemId = itemToReview._id.toString();
+    const itemId = itemToReview._id;
     await deleteItemHook(itemId);
-    setItems((prevItems) => prevItems.filter((item) => item._id.toString() !== itemId));
+    setItems((prevItems) => prevItems.filter((item) => item._id !== itemId));
     setItemToReview(null);
     showToast('Proposed item deleted', 'success');
   }, [itemToReview, deleteItemHook, showToast]);
 
-  const handleEditItem = useCallback((item: IItem) => {
+  const handleEditItem = useCallback((item: ApiItem) => {
     setItemToEdit(item);
   }, []);
 
   const handleSaveEdit = useCallback(
-    async (updates: Partial<IItem>) => {
+    async (updates: Partial<ApiItem>) => {
       if (!itemToEdit) return;
-      const itemId = itemToEdit._id.toString();
+      const itemId = itemToEdit._id;
       await handleUpdateItem(itemId, updates);
       setItemToEdit(null);
     },
@@ -470,9 +469,9 @@ export default function WishlistDetail() {
 
   const handleDeleteItem = useCallback(async () => {
     if (!itemToEdit) return;
-    const itemId = itemToEdit._id.toString();
+    const itemId = itemToEdit._id;
     await deleteItemHook(itemId);
-    setItems((prevItems) => prevItems.filter((item) => item._id.toString() !== itemId));
+    setItems((prevItems) => prevItems.filter((item) => item._id !== itemId));
     setItemToEdit(null);
   }, [itemToEdit, deleteItemHook]);
 
@@ -852,7 +851,7 @@ export default function WishlistDetail() {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
                 {sortedItems.map((item) => (
                   <WishlistItem
-                    key={item._id.toString()}
+                    key={item._id}
                     item={item}
                     onUpdate={handleUpdateItem}
                     onEdit={
@@ -1063,10 +1062,11 @@ export default function WishlistDetail() {
                   <div className="relative flex items-center justify-between p-1 bg-gray-100 rounded-lg">
                     {/* Sliding indicator */}
                     <div
-                      className={`absolute top-1 bottom-1 left-1 bg-white rounded-md shadow-sm transition-transform duration-300 ease-in-out ${
-                        settingsForm.isPublic ? 'translate-x-0' : 'translate-x-[calc(100%+0.5rem)]'
+                      className={`absolute top-1 bottom-1 bg-white rounded-md shadow-sm transition-all duration-300 ease-in-out ${
+                        settingsForm.isPublic
+                          ? 'left-1 right-[calc(50%+0.25rem)]'
+                          : 'left-[calc(50%+0.25rem)] right-1'
                       }`}
-                      style={{ width: 'calc(50% - 0.25rem)' }}
                     />
                     <button
                       type="button"

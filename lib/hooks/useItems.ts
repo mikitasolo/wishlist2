@@ -3,24 +3,18 @@
  */
 
 import { useCallback } from 'react';
-import { IItem } from '@/models/Item';
+import { ApiItem, ApiResponse } from '@/types/api';
 import { deduplicateRequest, createRequestKey } from '@/lib/utils/requestDeduplication';
-
-export interface ApiResponse<T> {
-  success: boolean;
-  data?: T;
-  error?: string;
-}
 
 /**
  * Hook for updating an item
  */
 export function useUpdateItem(
-  onSuccess?: (updatedItem: IItem) => void,
+  onSuccess?: (updatedItem: ApiItem) => void,
   onError?: (error: string) => void
 ) {
   return useCallback(
-    async (id: string, updates: Partial<IItem>): Promise<IItem | null> => {
+    async (id: string, updates: Partial<ApiItem>): Promise<ApiItem | null> => {
       const requestKey = createRequestKey(`/api/items/${id}`, 'PATCH', updates);
 
       try {
@@ -33,7 +27,7 @@ export function useUpdateItem(
             body: JSON.stringify(updates),
           });
 
-          const result: ApiResponse<IItem> = await response.json();
+          const result: ApiResponse<ApiItem> = await response.json();
 
           if (!result.success) {
             if (response.status === 403 && result.error?.includes('archived')) {
@@ -62,7 +56,7 @@ export function useUpdateItem(
  * Hook for creating an item
  */
 export function useCreateItem(
-  onSuccess?: (newItem: IItem) => void,
+  onSuccess?: (newItem: ApiItem) => void,
   onError?: (error: string) => void
 ) {
   return useCallback(
@@ -71,12 +65,12 @@ export function useCreateItem(
       newItem: {
         name: string;
         imageUrl?: string;
-        priceInCents?: number;
+        price?: { value: number; currency: string } | null;
         link?: string;
         notes?: string;
         status?: 'draft' | 'available';
       }
-    ): Promise<IItem | null> => {
+    ): Promise<ApiItem | null> => {
       const requestKey = createRequestKey(`/api/wishlists/${wishlistId}/items`, 'POST', newItem);
 
       try {
@@ -89,7 +83,7 @@ export function useCreateItem(
             body: JSON.stringify(newItem),
           });
 
-          const result: ApiResponse<IItem> = await response.json();
+          const result: ApiResponse<ApiItem> = await response.json();
 
           if (!result.success) {
             throw new Error(result.error || 'Failed to create item');
@@ -149,13 +143,13 @@ export function useDeleteItem(onSuccess?: () => void, onError?: (error: string) 
  * Hook for fetching items
  */
 export function useFetchItems() {
-  return useCallback(async (wishlistId: string): Promise<IItem[]> => {
+  return useCallback(async (wishlistId: string): Promise<ApiItem[]> => {
     const requestKey = createRequestKey(`/api/wishlists/${wishlistId}/items`, 'GET');
 
     try {
       const data = await deduplicateRequest(requestKey, async () => {
         const response = await fetch(`/api/wishlists/${wishlistId}/items`, { cache: 'no-store' });
-        const result: ApiResponse<IItem[]> = await response.json();
+        const result: ApiResponse<ApiItem[]> = await response.json();
 
         if (!result.success) {
           throw new Error(result.error || 'Failed to fetch items');

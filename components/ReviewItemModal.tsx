@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { IItem } from '@/models/Item';
+import { ApiItem } from '@/types/api';
 import BaseModal from './BaseModal';
 import ItemForm, { itemToFormData } from './ItemForm';
 import ConfirmDialog from './ConfirmDialog';
@@ -9,9 +9,9 @@ import ConfirmDialog from './ConfirmDialog';
 interface ReviewItemModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onApprove: (updates: Partial<IItem> & { status: 'draft' | 'available' }) => Promise<void>;
+  onApprove: (updates: Partial<ApiItem> & { status: 'draft' | 'available' }) => Promise<void>;
   onDelete?: () => Promise<void>;
-  item: IItem;
+  item: ApiItem;
 }
 
 export default function ReviewItemModal({
@@ -36,12 +36,12 @@ export default function ReviewItemModal({
 
   // Use key prop to force ItemForm to remount when modal opens with a different item
   // This ensures form state is reset when switching between items
-  const itemFormKey = isOpen ? `review-item-${item._id.toString()}` : undefined;
+  const itemFormKey = isOpen ? `review-item-${item._id}` : undefined;
 
   const handleSubmit = async (data: {
     name: string;
     imageUrl?: string;
-    priceInCents?: number;
+    price?: { value: number; currency: string } | null;
     link?: string;
     notes?: string;
     status: 'draft' | 'available' | 'proposed';
@@ -52,10 +52,10 @@ export default function ReviewItemModal({
       if (data.status === 'proposed') {
         throw new Error('Cannot approve item with proposed status');
       }
-      const updates: Partial<IItem> & { status: 'draft' | 'available' } = {
+      const updates: Partial<ApiItem> & { status: 'draft' | 'available' } = {
         name: data.name || undefined,
         imageUrl: data.imageUrl,
-        priceInCents: data.priceInCents,
+        price: data.price || null,
         link: data.link,
         notes: data.notes,
         status: data.status,
@@ -127,7 +127,7 @@ export default function ReviewItemModal({
           submittingLabel="Approving..."
           isSubmitting={isSubmitting || isDeleting}
           mode="review"
-          itemId={item._id.toString()}
+          itemId={item._id}
           renderButtons={({ submitting, onCancel, submitLabel, submittingLabel }) => (
             <div className="flex flex-col gap-3 pt-4">
               <div className="flex gap-3">

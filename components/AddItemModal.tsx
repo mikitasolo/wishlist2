@@ -10,7 +10,7 @@ interface AddItemModalProps {
   onAdd: (item: {
     name: string;
     imageUrl?: string;
-    priceInCents?: number;
+    price?: { value: number; currency: string } | null;
     link?: string;
     notes?: string;
     status?: 'draft' | 'available';
@@ -30,7 +30,7 @@ export default function AddItemModal({ isOpen, onClose, onAdd }: AddItemModalPro
   const handleSubmit = async (data: {
     name: string;
     imageUrl?: string;
-    priceInCents?: number;
+    price?: { value: number; currency: string } | null;
     link?: string;
     notes?: string;
     status: 'draft' | 'available' | 'proposed';

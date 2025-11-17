@@ -10,7 +10,7 @@ interface ProposeItemModalProps {
   onPropose: (item: {
     name: string;
     imageUrl?: string;
-    priceInCents?: number;
+    price?: { value: number; currency: string } | null;
     link?: string;
     notes?: string;
     status: 'proposed';
@@ -30,7 +30,7 @@ export default function ProposeItemModal({ isOpen, onClose, onPropose }: Propose
   const handleSubmit = async (data: {
     name: string;
     imageUrl?: string;
-    priceInCents?: number;
+    price?: { value: number; currency: string } | null;
     link?: string;
     notes?: string;
     status: 'draft' | 'available' | 'proposed';

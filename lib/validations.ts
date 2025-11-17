@@ -48,7 +48,16 @@ export const createItemSchema = z.object({
     .max(200, 'Name must be 200 characters or less')
     .trim(),
   imageUrl: z.url('Invalid image URL').optional(),
-  priceInCents: z.number().int().min(0, 'Price must be non-negative').optional(),
+  price: z
+    .object({
+      value: z
+        .number()
+        .int('Price value must be an integer (cents)')
+        .min(0, 'Price value must be non-negative'),
+      currency: z.string().min(1, 'Currency code is required').toLowerCase(),
+    })
+    .optional()
+    .nullable(), // Price object is optional, but if provided, both value and currency are required
   link: z.url('Invalid link URL').optional(),
   notes: z.string().max(100, 'Notes must be 100 characters or less').trim().optional(),
   status: z.enum(['draft', 'available', 'booked', 'completed', 'proposed']).default('available'),
@@ -65,7 +74,16 @@ export const updateItemSchema = z
       .trim()
       .optional(),
     imageUrl: z.url('Invalid image URL').optional(),
-    priceInCents: z.number().int().min(0, 'Price must be non-negative').optional().nullable(),
+    price: z
+      .object({
+        value: z
+          .number()
+          .int('Price value must be an integer (cents)')
+          .min(0, 'Price value must be non-negative'),
+        currency: z.string().min(1, 'Currency code is required').toLowerCase(),
+      })
+      .optional()
+      .nullable(), // Price object is optional, but if provided, both value and currency are required
     link: z.url('Invalid link URL').optional().nullable(),
     notes: z.string().max(100, 'Notes must be 100 characters or less').trim().optional().nullable(),
     status: z.enum(['draft', 'available', 'booked', 'completed', 'proposed']).optional(),

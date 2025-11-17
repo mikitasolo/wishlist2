@@ -181,9 +181,7 @@ export default function CreateWishlistModal({ isOpen, onClose }: CreateWishlistM
                 onClick={() => setFormData({ ...formData, isPublic: true })}
                 disabled={isSubmitting}
                 className={`relative z-10 flex-1 px-4 py-2 text-sm font-medium rounded-md transition-colors duration-300 cursor-pointer ${
-                  formData.isPublic
-                    ? 'text-gray-900'
-                    : 'text-gray-600 hover:text-gray-900'
+                  formData.isPublic ? 'text-gray-900' : 'text-gray-600 hover:text-gray-900'
                 }`}
               >
                 Public
@@ -193,9 +191,7 @@ export default function CreateWishlistModal({ isOpen, onClose }: CreateWishlistM
                 onClick={() => setFormData({ ...formData, isPublic: false })}
                 disabled={isSubmitting}
                 className={`relative z-10 flex-1 px-4 py-2 text-sm font-medium rounded-md transition-colors duration-300 cursor-pointer ${
-                  !formData.isPublic
-                    ? 'text-gray-900'
-                    : 'text-gray-600 hover:text-gray-900'
+                  !formData.isPublic ? 'text-gray-900' : 'text-gray-600 hover:text-gray-900'
                 }`}
               >
                 Private

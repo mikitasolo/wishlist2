@@ -7,6 +7,7 @@ import Item from '@/models/Item';
 import Wishlist, { IWishlist } from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
 import { createItemSchema, validateRequestBody } from '@/lib/validations';
+import { ensureCurrencyRatesUpToDate, convertToUsdCents } from '@/lib/utils/currencyRates';
 
 // Helper function to check wishlist access
 async function checkWishlistAccess(
@@ -63,6 +64,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       );
     }
 
+    // Ensure currency rates are up to date
+    const currencyRate = await ensureCurrencyRatesUpToDate();
+    const rates = currencyRate?.rates || new Map<string, number>();
+
     const items = await Item.find({ wishlist: wishlistId }).sort({ createdAt: -1 });
 
     // Check if user is owner or member
@@ -91,23 +96,34 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return true;
     });
 
-    // Filter items based on user role
+    // Filter items based on user role and enrich with priceInUsdCents
     const filteredItems = visibleItems.map((item) => {
       const itemObj = item.toObject();
+
+      // Calculate priceInUsdCents for sorting
+      let priceInUsdCents: number | null = null;
+      if (itemObj.price?.value && itemObj.price?.currency) {
+        priceInUsdCents = convertToUsdCents(itemObj.price.value, itemObj.price.currency, rates);
+      }
+
+      const enrichedItem = {
+        ...itemObj,
+        priceInUsdCents,
+      };
 
       if (!session?.user) {
         // Public users: hide booking details completely
         // Public users: hide proposedBy completely
         if (itemObj.status === 'booked') {
           return {
-            ...itemObj,
+            ...enrichedItem,
             status: 'available', // Show as available to avoid spoiling
             bookedBy: undefined,
             proposedBy: undefined,
           };
         }
         return {
-          ...itemObj,
+          ...enrichedItem,
           bookedBy: undefined,
           proposedBy: undefined,
         };
@@ -118,14 +134,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         // Owner: CANNOT see who proposed items (hide proposedBy info)
         if (itemObj.status === 'booked') {
           return {
-            ...itemObj,
+            ...enrichedItem,
             status: 'available', // Show as available
             bookedBy: undefined,
             proposedBy: undefined, // Hide who proposed the item
           };
         }
         return {
-          ...itemObj,
+          ...enrichedItem,
           bookedBy: undefined,
           proposedBy: undefined, // Hide who proposed the item
         };
@@ -138,7 +154,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         const isBookedByMe = itemObj.bookedBy?.toString() === session.user.id;
         const isProposedByMe = itemObj.proposedBy?.toString() === session.user.id;
         return {
-          ...itemObj,
+          ...enrichedItem,
           // Keep status as 'booked' so members can see which items are booked
           bookedBy: isBookedByMe ? session.user.id : undefined, // Only show if current user booked it
           proposedBy: isProposedByMe ? session.user.id : undefined, // Only show if current user proposed it
@@ -148,14 +164,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       // Not a member: hide booking details and proposedBy
       if (itemObj.status === 'booked') {
         return {
-          ...itemObj,
+          ...enrichedItem,
           status: 'available',
           bookedBy: undefined,
           proposedBy: undefined,
         };
       }
       return {
-        ...itemObj,
+        ...enrichedItem,
         bookedBy: undefined,
         proposedBy: undefined,
       };
@@ -218,7 +234,25 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       );
     }
 
-    const { name, imageUrl, priceInCents, link, notes, status, bookedBy } = validation.data;
+    const { name, imageUrl, price, link, notes, status, bookedBy } = validation.data;
+
+    // Ensure currency rates are up to date for validation
+    const currencyRate = await ensureCurrencyRatesUpToDate();
+    const rates = currencyRate?.rates || new Map<string, number>();
+
+    // Validate currency exists in rates if price is provided
+    if (price && price.currency) {
+      const currencyLower = price.currency.toLowerCase(); // Already lowercase from validation, but ensure it
+      if (!rates.has(currencyLower)) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Currency '${price.currency}' is not supported. Please use a supported currency code.`,
+          },
+          { status: 400 }
+        );
+      }
+    }
 
     // Members can only create proposed items
     if (!isOwner && status !== 'proposed') {
@@ -240,7 +274,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       wishlist: string;
       name: string;
       imageUrl?: string;
-      priceInCents?: number;
+      price?: {
+        value: number;
+        currency: string;
+      } | null;
       link?: string;
       notes?: string;
       status: string;
@@ -252,7 +289,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       wishlist: wishlistId,
       name,
       imageUrl,
-      priceInCents,
+      price: price
+        ? {
+            value: price.value, // Already in cents (integer)
+            currency: price.currency.toLowerCase(),
+          }
+        : null,
       link,
       notes,
       status: status || 'available',

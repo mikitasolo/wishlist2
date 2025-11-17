@@ -1,24 +1,50 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { IItem } from '@/models/Item';
-import { centsToDollars, dollarsToCents } from '@/lib/utils/currency';
+import { ApiItem } from '@/types/api';
 
 export interface ItemFormData {
   name: string;
   imageUrl: string;
   price: string;
+  currency: string;
   link: string;
   notes: string;
   isDraft: boolean;
 }
+
+// Common currencies list
+const COMMON_CURRENCIES = [
+  { code: 'USD', name: 'US Dollar' },
+  { code: 'EUR', name: 'Euro' },
+  { code: 'GBP', name: 'British Pound' },
+  { code: 'JPY', name: 'Japanese Yen' },
+  { code: 'CAD', name: 'Canadian Dollar' },
+  { code: 'AUD', name: 'Australian Dollar' },
+  { code: 'CHF', name: 'Swiss Franc' },
+  { code: 'CNY', name: 'Chinese Yuan' },
+  { code: 'INR', name: 'Indian Rupee' },
+  { code: 'BRL', name: 'Brazilian Real' },
+  { code: 'MXN', name: 'Mexican Peso' },
+  { code: 'KRW', name: 'South Korean Won' },
+  { code: 'SEK', name: 'Swedish Krona' },
+  { code: 'NOK', name: 'Norwegian Krone' },
+  { code: 'DKK', name: 'Danish Krone' },
+  { code: 'PLN', name: 'Polish Zloty' },
+  { code: 'RUB', name: 'Russian Ruble' },
+  { code: 'TRY', name: 'Turkish Lira' },
+  { code: 'ZAR', name: 'South African Rand' },
+  { code: 'NZD', name: 'New Zealand Dollar' },
+  { code: 'SGD', name: 'Singapore Dollar' },
+  { code: 'HKD', name: 'Hong Kong Dollar' },
+];
 
 interface ItemFormProps {
   initialData?: ItemFormData;
   onSubmit: (data: {
     name: string;
     imageUrl?: string;
-    priceInCents?: number;
+    price?: { value: number; currency: string } | null;
     link?: string;
     notes?: string;
     status: 'draft' | 'available' | 'proposed';
@@ -55,6 +81,7 @@ export default function ItemForm({
     name: '',
     imageUrl: '',
     price: '',
+    currency: 'USD', // Display uppercase in UI, but will be converted to lowercase on submit
     link: '',
     notes: '',
     isDraft: false,
@@ -96,7 +123,18 @@ export default function ItemForm({
     }
 
     try {
-      const priceInCents = formData.price ? dollarsToCents(formData.price) : undefined;
+      let price: { value: number; currency: string } | null = null;
+      if (formData.price) {
+        const priceValue = parseFloat(formData.price);
+        if (!isNaN(priceValue) && priceValue >= 0) {
+          // Convert dollars to cents (integer)
+          const priceInCents = Math.round(priceValue * 100);
+          price = {
+            value: priceInCents,
+            currency: (formData.currency || 'USD').toLowerCase(), // Store in lowercase to match rates
+          };
+        }
+      }
 
       let status: 'draft' | 'available' | 'proposed';
       if (mode === 'propose') {
@@ -108,7 +146,7 @@ export default function ItemForm({
       await onSubmit({
         name: formData.name.trim(),
         imageUrl: formData.imageUrl.trim() || undefined,
-        priceInCents,
+        price,
         link: formData.link.trim() || undefined,
         notes: formData.notes.trim() || undefined,
         status,
@@ -144,10 +182,11 @@ export default function ItemForm({
           <div className="relative flex items-center justify-between p-1 bg-gray-100 rounded-lg">
             {/* Sliding indicator */}
             <div
-              className={`absolute top-1 bottom-1 left-1 bg-white rounded-md shadow-sm transition-transform duration-300 ease-in-out ${
-                !formData.isDraft ? 'translate-x-0' : 'translate-x-[calc(100%+0.5rem)]'
+              className={`absolute top-1 bottom-1 bg-white rounded-md shadow-sm transition-all duration-300 ease-in-out ${
+                !formData.isDraft
+                  ? 'left-1 right-[calc(50%+0.25rem)]'
+                  : 'left-[calc(50%+0.25rem)] right-1'
               }`}
-              style={{ width: 'calc(50% - 0.25rem)' }}
             />
             <button
               type="button"
@@ -235,19 +274,34 @@ export default function ItemForm({
       {/* Price */}
       <div>
         <label htmlFor="price" className="block text-sm font-medium text-gray-700 mb-1">
-          Price in $
+          Price
         </label>
-        <input
-          type="number"
-          id="price"
-          step="0.01"
-          min="0"
-          value={formData.price}
-          onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
-          placeholder="99.99"
-          disabled={submitting}
-        />
+        <div className="flex gap-2">
+          <input
+            type="number"
+            id="price"
+            step="0.01"
+            min="0"
+            value={formData.price}
+            onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
+            placeholder="99.99"
+            disabled={submitting}
+          />
+          <select
+            id="currency"
+            value={formData.currency}
+            onChange={(e) => setFormData({ ...formData, currency: e.target.value })}
+            className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none bg-white"
+            disabled={submitting}
+          >
+            {COMMON_CURRENCIES.map((curr) => (
+              <option key={curr.code} value={curr.code}>
+                {curr.code}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {/* Product Link */}
@@ -315,12 +369,15 @@ export default function ItemForm({
   );
 }
 
-// Helper function to convert IItem to ItemFormData
-export function itemToFormData(item: IItem): ItemFormData {
+// Helper function to convert ApiItem to ItemFormData
+export function itemToFormData(item: ApiItem): ItemFormData {
+  // Convert cents to dollars for display
+  const priceInDollars = item.price?.value ? (item.price.value / 100).toFixed(2) : '';
   return {
     name: item.name,
     imageUrl: item.imageUrl || '',
-    price: centsToDollars(item.priceInCents),
+    price: priceInDollars,
+    currency: item.price?.currency?.toUpperCase() || 'USD', // Display uppercase in UI
     link: item.link || '',
     notes: item.notes || '',
     isDraft: item.status === 'draft',

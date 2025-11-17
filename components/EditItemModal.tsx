@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { IItem } from '@/models/Item';
+import { ApiItem } from '@/types/api';
 import BaseModal from './BaseModal';
 import ItemForm, { itemToFormData } from './ItemForm';
 import ConfirmDialog from './ConfirmDialog';
@@ -9,9 +9,9 @@ import ConfirmDialog from './ConfirmDialog';
 interface EditItemModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (updates: Partial<IItem>) => Promise<void>;
+  onSave: (updates: Partial<ApiItem>) => Promise<void>;
   onDelete?: () => Promise<void>;
-  item: IItem;
+  item: ApiItem;
 }
 
 export default function EditItemModal({
@@ -36,22 +36,22 @@ export default function EditItemModal({
 
   // Use key prop to force ItemForm to remount when modal opens with a different item
   // This ensures form state is reset when switching between items
-  const itemFormKey = isOpen ? `edit-item-${item._id.toString()}` : undefined;
+  const itemFormKey = isOpen ? `edit-item-${item._id}` : undefined;
 
   const handleSubmit = async (data: {
     name: string;
     imageUrl?: string;
-    priceInCents?: number;
+    price?: { value: number; currency: string } | null;
     link?: string;
     notes?: string;
     status: 'draft' | 'available' | 'proposed';
   }) => {
     setIsSubmitting(true);
     try {
-      const updates: Partial<IItem> = {
+      const updates: Partial<ApiItem> = {
         name: data.name || undefined,
         imageUrl: data.imageUrl,
-        priceInCents: data.priceInCents,
+        price: data.price || null,
         link: data.link,
         notes: data.notes,
       };
@@ -123,7 +123,7 @@ export default function EditItemModal({
           submittingLabel="Saving..."
           isSubmitting={isSubmitting || isDeleting}
           mode={item.status === 'proposed' ? 'propose' : 'create'}
-          itemId={item._id.toString()}
+          itemId={item._id}
           renderButtons={({ submitting, onCancel, submitLabel, submittingLabel }) => (
             <div className="flex flex-col gap-3 pt-4">
               <div className="flex gap-3">
