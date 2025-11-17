@@ -49,6 +49,7 @@ export default function WishlistDetail() {
   const [items, setItems] = useState<IItem[]>([]);
   const [members, setMembers] = useState<WishlistMember[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMembers, setLoadingMembers] = useState(false);
   const [isOwner, setIsOwner] = useState(false);
   const [isMember, setIsMember] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>('items');
@@ -242,17 +243,25 @@ export default function WishlistDetail() {
               description: wishlistData.description || '',
               isPublic: wishlistData.isPublic,
             });
+
+            // Only set loading to false after successfully setting the wishlist
+            // This prevents the "wishlist not found" flash
+            setLoading(false);
+          } else {
+            setLoading(false);
+            showToast('Failed to load wishlist', 'error');
+            router.push('/');
           }
         } else {
+          setLoading(false);
           showToast('Failed to load wishlist', 'error');
           router.push('/');
         }
       } catch (error) {
         console.error('Error fetching wishlist:', error);
+        setLoading(false);
         showToast('Failed to load wishlist', 'error');
         router.push('/');
-      } finally {
-        setLoading(false);
       }
     }
 
@@ -266,6 +275,7 @@ export default function WishlistDetail() {
     async function fetchMembers() {
       if (!wishlistId || !isOwner) return;
 
+      setLoadingMembers(true);
       try {
         const response = await fetch(`/api/wishlists/${wishlistId}/members`, { cache: 'no-store' });
         const result = await response.json();
@@ -275,6 +285,8 @@ export default function WishlistDetail() {
         }
       } catch (error) {
         console.error('Error fetching members:', error);
+      } finally {
+        setLoadingMembers(false);
       }
     }
 
@@ -295,11 +307,8 @@ export default function WishlistDetail() {
         if (!silent) {
           showToast('Failed to load items', 'error');
         }
-      } finally {
-        if (!silent) {
-          setLoading(false);
-        }
       }
+      // Note: Don't set loading to false here - it's only controlled by wishlist loading
     },
     [fetchItemsHook, wishlistId, showToast]
   );
@@ -901,59 +910,72 @@ export default function WishlistDetail() {
               <div className="px-6 py-4 border-b border-gray-200">
                 <h2 className="text-xl font-bold text-gray-900">Members</h2>
               </div>
-              <div className="divide-y divide-gray-200">
-                {members.map((member) => {
-                  const memberUserId = String(member.user._id);
-                  const isCurrentUser = memberUserId === session?.user?.id;
-                  const isOwnerMember = member.role === 'owner';
+              {loadingMembers ? (
+                <div className="px-6 py-12 flex items-center justify-center">
+                  <div className="text-center">
+                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+                    <p className="mt-4 text-sm text-gray-600">Loading members...</p>
+                  </div>
+                </div>
+              ) : members.length === 0 ? (
+                <div className="px-6 py-12 text-center">
+                  <p className="text-gray-600">No members yet.</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-gray-200">
+                  {members.map((member) => {
+                    const memberUserId = String(member.user._id);
+                    const isCurrentUser = memberUserId === session?.user?.id;
+                    const isOwnerMember = member.role === 'owner';
 
-                  return (
-                    <div key={member._id} className="px-6 py-4 flex items-center justify-between">
-                      <div className="flex-1">
+                    return (
+                      <div key={member._id} className="px-6 py-4 flex items-center justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <Link
+                              href={`/users/${memberUserId}`}
+                              className="font-medium text-gray-900 hover:text-primary-600 transition-colors cursor-pointer"
+                            >
+                              {member.user.email}
+                            </Link>
+                            {isOwnerMember && (
+                              <span className="px-2 py-1 text-xs font-semibold rounded-full bg-primary-100 text-primary-800">
+                                Owner
+                              </span>
+                            )}
+                            {!isOwnerMember && (
+                              <span className="px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-800">
+                                Member
+                              </span>
+                            )}
+                          </div>
+                        </div>
                         <div className="flex items-center gap-2">
-                          <Link
-                            href={`/users/${memberUserId}`}
-                            className="font-medium text-gray-900 hover:text-primary-600 transition-colors cursor-pointer"
-                          >
-                            {member.user.email}
-                          </Link>
-                          {isOwnerMember && (
-                            <span className="px-2 py-1 text-xs font-semibold rounded-full bg-primary-100 text-primary-800">
-                              Owner
-                            </span>
+                          {isOwnerMember && isCurrentUser && (
+                            <span className="text-sm text-gray-500">You</span>
                           )}
-                          {!isOwnerMember && (
-                            <span className="px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-800">
-                              Member
-                            </span>
+                          {isOwner && !isOwnerMember && (
+                            <button
+                              onClick={() => handleKickMember(member._id, member.user.email)}
+                              className="px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                            >
+                              Remove
+                            </button>
+                          )}
+                          {isMember && !isOwner && isCurrentUser && (
+                            <button
+                              onClick={handleLeaveWishlist}
+                              className="px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                            >
+                              Leave
+                            </button>
                           )}
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        {isOwnerMember && isCurrentUser && (
-                          <span className="text-sm text-gray-500">You</span>
-                        )}
-                        {isOwner && !isOwnerMember && (
-                          <button
-                            onClick={() => handleKickMember(member._id, member.user.email)}
-                            className="px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
-                          >
-                            Remove
-                          </button>
-                        )}
-                        {isMember && !isOwner && isCurrentUser && (
-                          <button
-                            onClick={handleLeaveWishlist}
-                            className="px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
-                          >
-                            Leave
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         )}
