@@ -13,10 +13,16 @@ export interface ItemFormData {
   isDraft: boolean;
 }
 
+// Most popular currencies (shown first)
+const POPULAR_CURRENCIES = ['USD', 'EUR', 'PLN', 'BYN', 'RUB'];
+
 // Common currencies list
 const COMMON_CURRENCIES = [
   { code: 'USD', name: 'US Dollar' },
   { code: 'EUR', name: 'Euro' },
+  { code: 'PLN', name: 'Polish Zloty' },
+  { code: 'BYN', name: 'Belarusian Ruble' },
+  { code: 'RUB', name: 'Russian Ruble' },
   { code: 'GBP', name: 'British Pound' },
   { code: 'JPY', name: 'Japanese Yen' },
   { code: 'CAD', name: 'Canadian Dollar' },
@@ -30,8 +36,6 @@ const COMMON_CURRENCIES = [
   { code: 'SEK', name: 'Swedish Krona' },
   { code: 'NOK', name: 'Norwegian Krone' },
   { code: 'DKK', name: 'Danish Krone' },
-  { code: 'PLN', name: 'Polish Zloty' },
-  { code: 'RUB', name: 'Russian Ruble' },
   { code: 'TRY', name: 'Turkish Lira' },
   { code: 'ZAR', name: 'South African Rand' },
   { code: 'NZD', name: 'New Zealand Dollar' },
@@ -89,9 +93,29 @@ export default function ItemForm({
 
   const [formData, setFormData] = useState<ItemFormData>(initialData || defaultInitialData);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCurrencyOpen, setIsCurrencyOpen] = useState(false);
+  const [currencySearch, setCurrencySearch] = useState('');
+  const currencyRef = useRef<HTMLDivElement>(null);
   const internalFirstInputRef = useRef<HTMLInputElement>(null);
   const firstInputRef = externalFirstInputRef || internalFirstInputRef;
   const submitting = externalIsSubmitting !== undefined ? externalIsSubmitting : isSubmitting;
+
+  // Close currency dropdown when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (currencyRef.current && !currencyRef.current.contains(event.target as Node)) {
+        setIsCurrencyOpen(false);
+        setCurrencySearch('');
+      }
+    }
+
+    if (isCurrencyOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [isCurrencyOpen]);
 
   // Track the last item ID we initialized from
   // Only update form data on initial load or when switching to a different item
@@ -288,19 +312,68 @@ export default function ItemForm({
             placeholder="99.99"
             disabled={submitting}
           />
-          <select
-            id="currency"
-            value={formData.currency}
-            onChange={(e) => setFormData({ ...formData, currency: e.target.value })}
-            className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none bg-white"
-            disabled={submitting}
-          >
-            {COMMON_CURRENCIES.map((curr) => (
-              <option key={curr.code} value={curr.code}>
-                {curr.code}
-              </option>
-            ))}
-          </select>
+          <div ref={currencyRef} className="relative flex-1">
+            <button
+              type="button"
+              onClick={() => !submitting && setIsCurrencyOpen(!isCurrencyOpen)}
+              disabled={submitting}
+              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none bg-white text-left w-full flex items-center justify-between"
+            >
+              <span>{formData.currency}</span>
+              <svg
+                className={`w-4 h-4 text-gray-500 transition-transform ${
+                  isCurrencyOpen ? 'rotate-180' : ''
+                }`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M19 9l-7 7-7-7"
+                />
+              </svg>
+            </button>
+            {isCurrencyOpen && (
+              <div className="absolute z-50 mt-1 w-full bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-hidden flex flex-col">
+                <div className="p-2 border-b border-gray-200">
+                  <input
+                    type="text"
+                    placeholder="Search currency..."
+                    value={currencySearch}
+                    onChange={(e) => setCurrencySearch(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none text-sm"
+                    autoFocus
+                  />
+                </div>
+                <div className="overflow-y-auto max-h-48">
+                  {COMMON_CURRENCIES.filter(
+                    (curr) =>
+                      curr.code.toLowerCase().includes(currencySearch.toLowerCase()) ||
+                      curr.name.toLowerCase().includes(currencySearch.toLowerCase())
+                  ).map((curr) => (
+                    <button
+                      key={curr.code}
+                      type="button"
+                      onClick={() => {
+                        setFormData({ ...formData, currency: curr.code });
+                        setIsCurrencyOpen(false);
+                        setCurrencySearch('');
+                      }}
+                      className={`w-full text-left px-4 py-2 hover:bg-gray-100 transition-colors ${
+                        formData.currency === curr.code ? 'bg-primary-50 text-primary-700' : ''
+                      } ${POPULAR_CURRENCIES.includes(curr.code) ? 'font-medium' : ''}`}
+                    >
+                      <span className="font-mono">{curr.code}</span>
+                      <span className="ml-2 text-gray-600 text-sm">{curr.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
