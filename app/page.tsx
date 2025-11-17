@@ -7,6 +7,7 @@ import AuthButton from '@/components/AuthButton';
 import UserSearch from '@/components/UserSearch';
 import CreateWishlistModal from '@/components/CreateWishlistModal';
 import WishlistCard from '@/components/WishlistCard';
+import Button from '@/components/Button';
 import { useToast } from '@/components/ToastProvider';
 import { IWishlist } from '@/models/Wishlist';
 
@@ -184,12 +185,9 @@ export default function Home() {
 
         {/* Create Wishlist Button */}
         <div className="mb-6 sm:mb-8">
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="bg-primary-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-primary-700 transition-colors cursor-pointer"
-          >
+          <Button onClick={() => setShowCreateModal(true)} size="lg">
             + Create New Wishlist
-          </button>
+          </Button>
         </div>
 
         {/* Create Wishlist Modal */}

@@ -12,6 +12,7 @@ import ReviewItemModal from '@/components/ReviewItemModal';
 import AuthButton from '@/components/AuthButton';
 import UserSearch from '@/components/UserSearch';
 import ConfirmDialog from '@/components/ConfirmDialog';
+import Button from '@/components/Button';
 import { useToast } from '@/components/ToastProvider';
 import { ApiItem } from '@/types/api';
 import { IWishlist } from '@/models/Wishlist';
@@ -68,10 +69,11 @@ export default function WishlistDetail() {
   });
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<{
-    type: 'member' | 'leave';
+    type: 'member' | 'leave' | 'wishlist';
     memberId?: string;
     memberEmail?: string;
   } | null>(null);
+  const [isDeletingWishlist, setIsDeletingWishlist] = useState(false);
 
   const fetchItemsHook = useFetchItems();
 
@@ -589,6 +591,38 @@ export default function WishlistDetail() {
     }
   }, [wishlistId, deleteConfirm, router, showToast]);
 
+  const handleDeleteWishlist = useCallback(() => {
+    setDeleteConfirm({
+      type: 'wishlist',
+    });
+  }, []);
+
+  const confirmDeleteWishlist = useCallback(async () => {
+    if (!wishlistId || !deleteConfirm || deleteConfirm.type !== 'wishlist') return;
+
+    setIsDeletingWishlist(true);
+    try {
+      const response = await fetch(`/api/wishlists/${wishlistId}`, {
+        method: 'DELETE',
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        showToast('Wishlist deleted successfully', 'success');
+        router.push('/');
+      } else {
+        showToast(result.error || 'Failed to delete wishlist', 'error');
+      }
+    } catch (error) {
+      console.error('Error deleting wishlist:', error);
+      showToast('Failed to delete wishlist', 'error');
+    } finally {
+      setDeleteConfirm(null);
+      setIsDeletingWishlist(false);
+    }
+  }, [wishlistId, deleteConfirm, router, showToast]);
+
   const stats = useMemo(() => calculateStats(items, session?.user?.id), [items, session?.user?.id]);
 
   const filteredItems = useMemo(
@@ -672,6 +706,15 @@ export default function WishlistDetail() {
               <div className="w-full sm:w-auto">
                 <UserSearch />
               </div>
+              {isMember && !isOwner && (
+                <Button
+                  variant="danger"
+                  onClick={handleLeaveWishlist}
+                  className="whitespace-nowrap"
+                >
+                  Leave Wishlist
+                </Button>
+              )}
               <AuthButton />
             </div>
           </div>
@@ -736,28 +779,26 @@ export default function WishlistDetail() {
                   </div>
                   <div className="bg-white rounded-xl p-3 sm:p-4 shadow-md">
                     <p className="text-xs sm:text-sm text-gray-600 mb-1">Proposed</p>
-                    <p className="text-2xl sm:text-3xl font-bold text-yellow-600">
-                      {stats.proposed}
-                    </p>
+                    <p className="text-2xl sm:text-3xl font-bold text-blue-500">{stats.proposed}</p>
                   </div>
                 </>
               )}
               <div className="bg-white rounded-xl p-3 sm:p-4 shadow-md">
                 <p className="text-xs sm:text-sm text-gray-600 mb-1">Available</p>
-                <p className="text-2xl sm:text-3xl font-bold text-blue-600">{stats.available}</p>
+                <p className="text-2xl sm:text-3xl font-bold text-gray-900">{stats.available}</p>
               </div>
               {isMember && (
                 <>
                   <div className="bg-white rounded-xl p-3 sm:p-4 shadow-md">
                     <p className="text-xs sm:text-sm text-gray-600 mb-1">Booked by You</p>
-                    <p className="text-2xl sm:text-3xl font-bold text-amber-600">
+                    <p className="text-2xl sm:text-3xl font-bold text-green-700">
                       {stats.bookedByYou}
                     </p>
                   </div>
                   {stats.proposedByYou > 0 && (
                     <div className="bg-white rounded-xl p-3 sm:p-4 shadow-md">
                       <p className="text-xs sm:text-sm text-gray-600 mb-1">Proposed by You</p>
-                      <p className="text-2xl sm:text-3xl font-bold text-yellow-600">
+                      <p className="text-2xl sm:text-3xl font-bold text-blue-500">
                         {stats.proposedByYou}
                       </p>
                     </div>
@@ -766,7 +807,7 @@ export default function WishlistDetail() {
               )}
               <div className="bg-white rounded-xl p-3 sm:p-4 shadow-md">
                 <p className="text-xs sm:text-sm text-gray-600 mb-1">Completed</p>
-                <p className="text-2xl sm:text-3xl font-bold text-green-600">{stats.completed}</p>
+                <p className="text-2xl sm:text-3xl font-bold text-green-400">{stats.completed}</p>
               </div>
             </div>
 
@@ -817,20 +858,14 @@ export default function WishlistDetail() {
             {/* Add Item Button */}
             <div className="mb-6 sm:mb-8">
               {isOwner && (
-                <button
-                  onClick={() => setShowAddItemModal(true)}
-                  className="px-4 py-2 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 transition-colors text-sm sm:text-base cursor-pointer"
-                >
+                <Button onClick={() => setShowAddItemModal(true)} size="md">
                   + Add Item
-                </button>
+                </Button>
               )}
               {isMember && !isOwner && (
-                <button
-                  onClick={() => setShowProposeItemModal(true)}
-                  className="px-4 py-2 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 transition-colors text-sm sm:text-base cursor-pointer"
-                >
+                <Button onClick={() => setShowProposeItemModal(true)} size="md">
                   + Propose Item
-                </button>
+                </Button>
               )}
             </div>
 
@@ -1105,6 +1140,22 @@ export default function WishlistDetail() {
                   </button>
                 </div>
               </form>
+
+              {/* Delete Wishlist Section */}
+              <div className="mt-8 pt-8 border-t border-gray-200">
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">Danger Zone</h3>
+                <p className="text-sm text-gray-600 mb-4">
+                  Once you delete a wishlist, there is no going back. All items and memberships will
+                  be permanently deleted.
+                </p>
+                <Button
+                  variant="danger"
+                  onClick={handleDeleteWishlist}
+                  disabled={isDeletingWishlist}
+                >
+                  {isDeletingWishlist ? 'Deleting...' : 'Delete Wishlist'}
+                </Button>
+              </div>
             </div>
           </div>
         )}
@@ -1169,6 +1220,19 @@ export default function WishlistDetail() {
           onConfirm={confirmLeaveWishlist}
           onCancel={() => setDeleteConfirm(null)}
           confirmText="Leave"
+          cancelText="Cancel"
+          type="danger"
+        />
+      )}
+
+      {deleteConfirm && deleteConfirm.type === 'wishlist' && (
+        <ConfirmDialog
+          isOpen={!!deleteConfirm}
+          title="Delete Wishlist"
+          message="Are you sure you want to delete this wishlist? This action cannot be undone. All items, memberships, and bookings will be permanently deleted."
+          onConfirm={confirmDeleteWishlist}
+          onCancel={() => setDeleteConfirm(null)}
+          confirmText="Delete"
           cancelText="Cancel"
           type="danger"
         />

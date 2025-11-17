@@ -7,11 +7,11 @@ import WishlistMember from '@/models/WishlistMember';
 import Item from '@/models/Item';
 
 // Helper function to unbook all items for a user in a wishlist
-async function unbookAllItemsForUser(wishlistId: string, userId: string): Promise<void> {
+async function unbookAllItemsForUser(wishlistId: string, userId: string): Promise<number> {
   await connectDB();
 
-  // Find all items in this wishlist booked by the user
-  await Item.updateMany(
+  // Find all items in this wishlist booked by the user and make them available
+  const result = await Item.updateMany(
     {
       wishlist: wishlistId,
       bookedBy: userId,
@@ -24,6 +24,8 @@ async function unbookAllItemsForUser(wishlistId: string, userId: string): Promis
       },
     }
   );
+
+  return result.modifiedCount;
 }
 
 // DELETE /api/wishlists/[id]/members/me - Leave a wishlist
@@ -72,12 +74,22 @@ export async function DELETE(
     }
 
     // Remove all bookings by this user
-    await unbookAllItemsForUser(wishlistId, session.user.id);
+    const unbookedCount = await unbookAllItemsForUser(wishlistId, session.user.id);
+    
+    if (unbookedCount > 0) {
+      console.log(`Unbooked ${unbookedCount} item(s) for user ${session.user.id} in wishlist ${wishlistId}`);
+    }
 
     // Remove membership
     await WishlistMember.findByIdAndDelete(membership._id);
 
-    return NextResponse.json({ success: true, data: {} }, { status: 200 });
+    return NextResponse.json(
+      { 
+        success: true, 
+        data: { unbookedItemsCount: unbookedCount } 
+      }, 
+      { status: 200 }
+    );
   } catch (error) {
     console.error('Error leaving wishlist:', error);
     return NextResponse.json(

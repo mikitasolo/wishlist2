@@ -5,6 +5,7 @@ import connectDB from '@/lib/mongodb';
 import Wishlist, { IWishlist } from '@/models/Wishlist';
 import WishlistMember, { IWishlistMember } from '@/models/WishlistMember';
 import User from '@/models/User';
+import Item from '@/models/Item';
 import { updateWishlistSchema, validateRequestBody } from '@/lib/validations';
 
 // Helper function to check if user has permission
@@ -223,6 +224,9 @@ export async function DELETE(
         { status: 403 }
       );
     }
+
+    // Delete all items in this wishlist
+    await Item.deleteMany({ wishlist: id });
 
     // Delete all memberships
     await WishlistMember.deleteMany({ wishlist: id });

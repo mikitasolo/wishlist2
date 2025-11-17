@@ -38,25 +38,18 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     await connectDB();
 
-    // Check if user has access to this wishlist (owner or member)
+    // Only owners can view members list
+    const { hasAccess } = await checkOwnerAccess(id, session.user.id);
+    if (!hasAccess) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized - Owner access required' },
+        { status: 403 }
+      );
+    }
+
     const wishlist = await Wishlist.findById(id);
     if (!wishlist) {
       return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
-    }
-
-    const isOwner = wishlist.owner.toString() === session.user.id;
-    const membership = await WishlistMember.findOne({
-      wishlist: id,
-      user: session.user.id,
-    });
-    const isMember = !!membership;
-
-    // Public wishlists can be viewed by anyone, private require membership
-    if (!wishlist.isPublic && !isOwner && !isMember) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized - No access to this wishlist' },
-        { status: 403 }
-      );
     }
 
     // Fetch owner separately
