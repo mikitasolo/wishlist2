@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import BaseModal from './BaseModal';
 import ItemForm from './ItemForm';
+import ConfirmDialog from './ConfirmDialog';
 
 interface ProposeItemModalProps {
   isOpen: boolean;
@@ -19,11 +20,15 @@ interface ProposeItemModalProps {
 
 export default function ProposeItemModal({ isOpen, onClose, onPropose }: ProposeItemModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [showConfirmClose, setShowConfirmClose] = useState(false);
 
   // Reset submitting state when modal closes
   useEffect(() => {
     if (!isOpen) {
       setIsSubmitting(false);
+      setHasUnsavedChanges(false);
+      setShowConfirmClose(false);
     }
   }, [isOpen]);
 
@@ -45,6 +50,7 @@ export default function ProposeItemModal({ isOpen, onClose, onPropose }: Propose
         ...data,
         status: 'proposed',
       });
+      setHasUnsavedChanges(false);
       onClose();
     } catch (error) {
       console.error('Error proposing item:', error);
@@ -53,22 +59,52 @@ export default function ProposeItemModal({ isOpen, onClose, onPropose }: Propose
     }
   };
 
+  const handleClose = () => {
+    if (hasUnsavedChanges) {
+      setShowConfirmClose(true);
+    } else {
+      onClose();
+    }
+  };
+
+  const handleConfirmClose = () => {
+    setShowConfirmClose(false);
+    setHasUnsavedChanges(false);
+    onClose();
+  };
+
   return (
-    <BaseModal
-      isOpen={isOpen}
-      onClose={onClose}
-      title="Propose New Item"
-      titleId="propose-item-title"
-      isSubmitting={isSubmitting}
-    >
-      <ItemForm
-        onSubmit={handleSubmit}
-        onCancel={onClose}
-        submitLabel="Propose Item"
-        submittingLabel="Proposing..."
+    <>
+      <BaseModal
+        isOpen={isOpen}
+        onClose={handleClose}
+        title="Propose New Item"
+        titleId="propose-item-title"
         isSubmitting={isSubmitting}
-        mode="propose"
+        shouldInterceptClose={() => hasUnsavedChanges}
+        onInterceptClose={() => setShowConfirmClose(true)}
+      >
+        <ItemForm
+          onSubmit={handleSubmit}
+          onCancel={handleClose}
+          submitLabel="Propose Item"
+          submittingLabel="Proposing..."
+          isSubmitting={isSubmitting}
+          mode="propose"
+          onFormChange={setHasUnsavedChanges}
+        />
+      </BaseModal>
+
+      <ConfirmDialog
+        isOpen={showConfirmClose}
+        title="Discard Changes?"
+        message="You have unsaved changes. Are you sure you want to close? All progress will be lost."
+        onConfirm={handleConfirmClose}
+        onCancel={() => setShowConfirmClose(false)}
+        confirmText="Discard"
+        cancelText="Cancel"
+        type="warning"
       />
-    </BaseModal>
+    </>
   );
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, ReactNode } from 'react';
+import { useEffect, useCallback, ReactNode } from 'react';
 
 interface BaseModalProps {
   isOpen: boolean;
@@ -9,6 +9,10 @@ interface BaseModalProps {
   titleId: string;
   children: ReactNode;
   isSubmitting?: boolean;
+  // Optional: function to check if close should be intercepted
+  shouldInterceptClose?: () => boolean;
+  // Optional: function to handle intercepted close (e.g., show confirmation)
+  onInterceptClose?: () => void;
 }
 
 export default function BaseModal({
@@ -18,20 +22,30 @@ export default function BaseModal({
   titleId,
   children,
   isSubmitting = false,
+  shouldInterceptClose,
+  onInterceptClose,
 }: BaseModalProps) {
+  const handleClose = useCallback(() => {
+    if (shouldInterceptClose && shouldInterceptClose() && onInterceptClose) {
+      onInterceptClose();
+    } else {
+      onClose();
+    }
+  }, [shouldInterceptClose, onInterceptClose, onClose]);
+
   // Handle Escape key press
   useEffect(() => {
     if (!isOpen) return;
 
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && !isSubmitting) {
-        onClose();
+        handleClose();
       }
     };
 
     document.addEventListener('keydown', handleEscape);
     return () => document.removeEventListener('keydown', handleEscape);
-  }, [isOpen, isSubmitting, onClose]);
+  }, [isOpen, isSubmitting, handleClose]);
 
   // Prevent body scroll when modal is open
   useEffect(() => {
@@ -48,7 +62,7 @@ export default function BaseModal({
   const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
     // Only close if clicking the backdrop itself, not the modal content
     if (e.target === e.currentTarget && !isSubmitting) {
-      onClose();
+      handleClose();
     }
   };
 
@@ -71,7 +85,7 @@ export default function BaseModal({
             {title}
           </h2>
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="text-gray-500 hover:text-gray-700 text-2xl leading-none cursor-pointer"
             disabled={isSubmitting}
             aria-label="Close modal"

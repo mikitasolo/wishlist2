@@ -1,35 +1,47 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useToast } from './ToastProvider';
+import ConfirmDialog from './ConfirmDialog';
 
 interface CreateWishlistModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
+const defaultFormData = {
+  name: '',
+  description: '',
+  isPublic: true,
+};
+
 export default function CreateWishlistModal({ isOpen, onClose }: CreateWishlistModalProps) {
   const router = useRouter();
   const { showToast } = useToast();
-  const [formData, setFormData] = useState({
-    name: '',
-    description: '',
-    isPublic: true,
-  });
+  const [formData, setFormData] = useState(defaultFormData);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [showConfirmClose, setShowConfirmClose] = useState(false);
   const firstInputRef = useRef<HTMLInputElement>(null);
 
   // Reset form when modal closes
   useEffect(() => {
     if (!isOpen) {
-      setFormData({
-        name: '',
-        description: '',
-        isPublic: true,
-      });
+      setFormData(defaultFormData);
+      setHasUnsavedChanges(false);
+      setShowConfirmClose(false);
     }
   }, [isOpen]);
+
+  // Check if form has changes
+  useEffect(() => {
+    const hasChanges =
+      formData.name !== defaultFormData.name ||
+      formData.description !== defaultFormData.description ||
+      formData.isPublic !== defaultFormData.isPublic;
+    setHasUnsavedChanges(hasChanges);
+  }, [formData]);
 
   // Focus first input when modal opens
   useEffect(() => {
@@ -37,20 +49,6 @@ export default function CreateWishlistModal({ isOpen, onClose }: CreateWishlistM
       setTimeout(() => firstInputRef.current?.focus(), 100);
     }
   }, [isOpen]);
-
-  // Handle Escape key press
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !isSubmitting) {
-        onClose();
-      }
-    };
-
-    document.addEventListener('keydown', handleEscape);
-    return () => document.removeEventListener('keydown', handleEscape);
-  }, [isOpen, isSubmitting, onClose]);
 
   // Prevent body scroll when modal is open
   useEffect(() => {
@@ -81,6 +79,7 @@ export default function CreateWishlistModal({ isOpen, onClose }: CreateWishlistM
 
       if (result.success) {
         showToast('Wishlist created successfully', 'success');
+        setHasUnsavedChanges(false);
         onClose();
         router.push(`/wishlists/${result.data._id}`);
       } else {
@@ -94,12 +93,40 @@ export default function CreateWishlistModal({ isOpen, onClose }: CreateWishlistM
     }
   };
 
+  const handleClose = useCallback(() => {
+    if (hasUnsavedChanges) {
+      setShowConfirmClose(true);
+    } else {
+      onClose();
+    }
+  }, [hasUnsavedChanges, onClose]);
+
+  const handleConfirmClose = () => {
+    setShowConfirmClose(false);
+    setHasUnsavedChanges(false);
+    onClose();
+  };
+
   const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
     // Only close if clicking the backdrop itself, not the modal content
     if (e.target === e.currentTarget && !isSubmitting) {
-      onClose();
+      handleClose();
     }
   };
+
+  // Handle Escape key press
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !isSubmitting) {
+        handleClose();
+      }
+    };
+
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [isOpen, isSubmitting, handleClose]);
 
   if (!isOpen) return null;
 
@@ -120,7 +147,7 @@ export default function CreateWishlistModal({ isOpen, onClose }: CreateWishlistM
             Create New Wishlist
           </h2>
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="text-gray-500 hover:text-gray-700 text-2xl leading-none cursor-pointer"
             disabled={isSubmitting}
             aria-label="Close modal"
@@ -202,7 +229,7 @@ export default function CreateWishlistModal({ isOpen, onClose }: CreateWishlistM
           <div className="flex gap-3 pt-4">
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleClose}
               className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium cursor-pointer"
               disabled={isSubmitting}
             >
@@ -218,6 +245,17 @@ export default function CreateWishlistModal({ isOpen, onClose }: CreateWishlistM
           </div>
         </form>
       </div>
+
+      <ConfirmDialog
+        isOpen={showConfirmClose}
+        title="Discard Changes?"
+        message="You have unsaved changes. Are you sure you want to close? All progress will be lost."
+        onConfirm={handleConfirmClose}
+        onCancel={() => setShowConfirmClose(false)}
+        confirmText="Discard"
+        cancelText="Cancel"
+        type="warning"
+      />
     </div>
   );
 }

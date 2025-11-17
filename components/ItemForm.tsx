@@ -67,6 +67,8 @@ interface ItemFormProps {
   mode?: 'create' | 'propose' | 'review';
   // Optional: item ID to track when switching between different items
   itemId?: string;
+  // Callback to notify parent when form has unsaved changes
+  onFormChange?: (hasChanges: boolean) => void;
 }
 
 export default function ItemForm({
@@ -80,6 +82,7 @@ export default function ItemForm({
   renderButtons,
   mode = 'create',
   itemId,
+  onFormChange,
 }: ItemFormProps) {
   const defaultInitialData: ItemFormData = {
     name: '',
@@ -99,6 +102,9 @@ export default function ItemForm({
   const internalFirstInputRef = useRef<HTMLInputElement>(null);
   const firstInputRef = externalFirstInputRef || internalFirstInputRef;
   const submitting = externalIsSubmitting !== undefined ? externalIsSubmitting : isSubmitting;
+
+  // Track initial data for comparison
+  const initialDataRef = useRef<ItemFormData>(initialData || defaultInitialData);
 
   // Close currency dropdown when clicking outside
   useEffect(() => {
@@ -131,10 +137,21 @@ export default function ItemForm({
       // Only update on first initialization or when switching to a different item
       if (isFirstTime || isDifferentItem) {
         setFormData(initialData);
+        initialDataRef.current = initialData;
         lastInitializedItemIdRef.current = currentItemId;
       }
+    } else {
+      initialDataRef.current = defaultInitialData;
     }
   }, [initialData, itemId]);
+
+  // Check if form has changes and notify parent
+  useEffect(() => {
+    if (!onFormChange) return;
+
+    const hasChanges = JSON.stringify(formData) !== JSON.stringify(initialDataRef.current);
+    onFormChange(hasChanges);
+  }, [formData, onFormChange]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -179,7 +196,11 @@ export default function ItemForm({
       // Reset form only if not using external state
       if (!initialData) {
         setFormData(defaultInitialData);
+        initialDataRef.current = defaultInitialData;
         lastInitializedItemIdRef.current = undefined;
+      } else {
+        // Update initial data ref to reflect successful submission
+        initialDataRef.current = formData;
       }
     } catch (error) {
       console.error('Error submitting form:', error);

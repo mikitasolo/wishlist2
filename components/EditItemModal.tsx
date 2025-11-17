@@ -24,6 +24,8 @@ export default function EditItemModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [showConfirmClose, setShowConfirmClose] = useState(false);
 
   // Reset states when modal closes
   useEffect(() => {
@@ -31,6 +33,8 @@ export default function EditItemModal({
       setIsSubmitting(false);
       setIsDeleting(false);
       setShowDeleteConfirm(false);
+      setHasUnsavedChanges(false);
+      setShowConfirmClose(false);
     }
   }, [isOpen]);
 
@@ -60,6 +64,7 @@ export default function EditItemModal({
         updates.status = data.status;
       }
       await onSave(updates);
+      setHasUnsavedChanges(false);
       onClose();
     } catch (error) {
       console.error('Error updating item:', error);
@@ -74,6 +79,7 @@ export default function EditItemModal({
     try {
       await onDelete();
       setShowDeleteConfirm(false);
+      setHasUnsavedChanges(false);
       onClose();
     } catch (error) {
       console.error('Error deleting item:', error);
@@ -82,14 +88,30 @@ export default function EditItemModal({
     }
   };
 
+  const handleClose = () => {
+    if (hasUnsavedChanges) {
+      setShowConfirmClose(true);
+    } else {
+      onClose();
+    }
+  };
+
+  const handleConfirmClose = () => {
+    setShowConfirmClose(false);
+    setHasUnsavedChanges(false);
+    onClose();
+  };
+
   return (
     <>
       <BaseModal
         isOpen={isOpen}
-        onClose={onClose}
+        onClose={handleClose}
         title={item.status === 'proposed' ? 'Edit Proposed Item' : 'Edit Item'}
         titleId="edit-item-title"
         isSubmitting={isSubmitting || isDeleting}
+        shouldInterceptClose={() => hasUnsavedChanges}
+        onInterceptClose={() => setShowConfirmClose(true)}
       >
         {item.status === 'proposed' && (
           <div className="mb-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
@@ -118,12 +140,13 @@ export default function EditItemModal({
           key={itemFormKey}
           initialData={itemToFormData(item)}
           onSubmit={handleSubmit}
-          onCancel={onClose}
+          onCancel={handleClose}
           submitLabel="Save Changes"
           submittingLabel="Saving..."
           isSubmitting={isSubmitting || isDeleting}
           mode={item.status === 'proposed' ? 'propose' : 'create'}
           itemId={item._id}
+          onFormChange={setHasUnsavedChanges}
           renderButtons={({ submitting, onCancel, submitLabel, submittingLabel }) => (
             <div className="flex flex-col gap-3 pt-4">
               <div className="flex gap-3">
@@ -171,6 +194,18 @@ export default function EditItemModal({
           type="danger"
         />
       )}
+
+      {/* Close Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={showConfirmClose}
+        title="Discard Changes?"
+        message="You have unsaved changes. Are you sure you want to close? All progress will be lost."
+        onConfirm={handleConfirmClose}
+        onCancel={() => setShowConfirmClose(false)}
+        confirmText="Discard"
+        cancelText="Cancel"
+        type="warning"
+      />
     </>
   );
 }

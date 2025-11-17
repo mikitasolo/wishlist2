@@ -24,6 +24,8 @@ export default function ReviewItemModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [showConfirmClose, setShowConfirmClose] = useState(false);
 
   // Reset states when modal closes
   useEffect(() => {
@@ -31,6 +33,8 @@ export default function ReviewItemModal({
       setIsSubmitting(false);
       setIsDeleting(false);
       setShowDeleteConfirm(false);
+      setHasUnsavedChanges(false);
+      setShowConfirmClose(false);
     }
   }, [isOpen]);
 
@@ -62,6 +66,7 @@ export default function ReviewItemModal({
         proposedBy: null, // Clear proposedBy when approving
       };
       await onApprove(updates);
+      setHasUnsavedChanges(false);
       onClose();
     } catch (error) {
       console.error('Error approving item:', error);
@@ -76,12 +81,27 @@ export default function ReviewItemModal({
     try {
       await onDelete();
       setShowDeleteConfirm(false);
+      setHasUnsavedChanges(false);
       onClose();
     } catch (error) {
       console.error('Error deleting item:', error);
     } finally {
       setIsDeleting(false);
     }
+  };
+
+  const handleClose = () => {
+    if (hasUnsavedChanges) {
+      setShowConfirmClose(true);
+    } else {
+      onClose();
+    }
+  };
+
+  const handleConfirmClose = () => {
+    setShowConfirmClose(false);
+    setHasUnsavedChanges(false);
+    onClose();
   };
 
   // Convert proposed item to form data (status will be set to available by default)
@@ -92,10 +112,12 @@ export default function ReviewItemModal({
     <>
       <BaseModal
         isOpen={isOpen}
-        onClose={onClose}
+        onClose={handleClose}
         title="Review Proposed Item"
         titleId="review-item-title"
         isSubmitting={isSubmitting || isDeleting}
+        shouldInterceptClose={() => hasUnsavedChanges}
+        onInterceptClose={() => setShowConfirmClose(true)}
       >
         <div className="mb-4 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
           <div className="flex items-start gap-2">
@@ -122,12 +144,13 @@ export default function ReviewItemModal({
           key={itemFormKey}
           initialData={formData}
           onSubmit={handleSubmit}
-          onCancel={onClose}
+          onCancel={handleClose}
           submitLabel="Approve Item"
           submittingLabel="Approving..."
           isSubmitting={isSubmitting || isDeleting}
           mode="review"
           itemId={item._id}
+          onFormChange={setHasUnsavedChanges}
           renderButtons={({ submitting, onCancel, submitLabel, submittingLabel }) => (
             <div className="flex flex-col gap-3 pt-4">
               <div className="flex gap-3">
@@ -175,6 +198,18 @@ export default function ReviewItemModal({
           type="danger"
         />
       )}
+
+      {/* Close Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={showConfirmClose}
+        title="Discard Changes?"
+        message="You have unsaved changes. Are you sure you want to close? All progress will be lost."
+        onConfirm={handleConfirmClose}
+        onCancel={() => setShowConfirmClose(false)}
+        confirmText="Discard"
+        cancelText="Cancel"
+        type="warning"
+      />
     </>
   );
 }
