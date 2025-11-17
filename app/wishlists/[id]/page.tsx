@@ -680,65 +680,70 @@ export default function WishlistDetail() {
       <div className="max-w-7xl mx-auto px-4 py-4 sm:py-6 lg:py-8 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="mb-6 sm:mb-8">
-          <div className="relative flex flex-col sm:flex-row sm:justify-between sm:items-center mb-6 sm:mb-8 gap-4">
-            <div className="text-center sm:text-left flex-1">
-              <div className="flex flex-col items-center sm:items-start mb-2 sm:mb-4">
-                <Link
-                  href="/"
-                  className="text-4xl sm:text-5xl hover:scale-110 transition-transform cursor-pointer mb-2 sm:mb-3"
-                >
-                  🎁
-                </Link>
-                <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-gray-900">
-                  {wishlist.name}
-                  {ownerEmail && (
-                    <>
-                      {' '}
-                      by{' '}
-                      {isOwner ? (
-                        <span className="text-gray-500">you</span>
-                      ) : (
-                        <Link
-                          href={`/users/${wishlist.owner}`}
-                          className="text-primary-600 hover:text-primary-700 hover:underline cursor-pointer"
-                        >
-                          {ownerEmail}
-                        </Link>
-                      )}
-                    </>
-                  )}
-                </h1>
+          <div className="relative mb-6 sm:mb-8">
+            {/* Top row: Logo and action buttons */}
+            <div className="flex items-center justify-between mb-4 gap-3">
+              <Link
+                href="/"
+                className="text-4xl sm:text-5xl hover:scale-110 transition-transform cursor-pointer flex-shrink-0"
+              >
+                🎁
+              </Link>
+              <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+                {isMember && !isOwner && (
+                  <Button
+                    variant="danger"
+                    onClick={handleLeaveWishlist}
+                    className="whitespace-nowrap text-xs sm:text-sm"
+                    size="sm"
+                  >
+                    Leave
+                  </Button>
+                )}
+                <AuthButton />
               </div>
+            </div>
+
+            {/* Title and description */}
+            <div className="mb-4">
+              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900 mb-2 break-words">
+                {wishlist.name}
+              </h1>
+              {ownerEmail && (
+                <p className="text-sm sm:text-base text-gray-600">
+                  by{' '}
+                  {isOwner ? (
+                    <span className="text-gray-500">you</span>
+                  ) : (
+                    <Link
+                      href={`/users/${wishlist.owner}`}
+                      className="text-primary-600 hover:text-primary-700 hover:underline cursor-pointer break-all"
+                    >
+                      {ownerEmail}
+                    </Link>
+                  )}
+                </p>
+              )}
               {wishlist.description && (
-                <p className="text-base sm:text-lg lg:text-xl text-gray-600">
+                <p className="text-sm sm:text-base lg:text-lg text-gray-600 mt-2 break-words">
                   {wishlist.description}
                 </p>
               )}
             </div>
-            <div className="flex flex-col sm:flex-row items-center sm:items-end gap-3 sm:gap-4 sm:absolute sm:top-0 sm:right-0">
-              <div className="w-full sm:w-auto">
-                <UserSearch />
-              </div>
-              {isMember && !isOwner && (
-                <Button
-                  variant="danger"
-                  onClick={handleLeaveWishlist}
-                  className="whitespace-nowrap"
-                >
-                  Leave Wishlist
-                </Button>
-              )}
-              <AuthButton />
+
+            {/* Search bar */}
+            <div className="w-full">
+              <UserSearch />
             </div>
           </div>
         </div>
 
         {/* Tabs */}
         <div className="mb-6 border-b border-gray-200">
-          <nav className="flex gap-4">
+          <nav className="flex gap-1 sm:gap-4 overflow-x-auto pb-2 -mb-2 scrollbar-hide">
             <button
               onClick={() => setActiveTab('items')}
-              className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors cursor-pointer ${
+              className={`px-3 sm:px-4 py-2 font-medium text-xs sm:text-sm border-b-2 transition-colors cursor-pointer whitespace-nowrap flex-shrink-0 ${
                 activeTab === 'items'
                   ? 'border-primary-600 text-primary-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700'
@@ -750,7 +755,7 @@ export default function WishlistDetail() {
               <>
                 <button
                   onClick={() => setActiveTab('users')}
-                  className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors cursor-pointer ${
+                  className={`px-3 sm:px-4 py-2 font-medium text-xs sm:text-sm border-b-2 transition-colors cursor-pointer whitespace-nowrap flex-shrink-0 ${
                     activeTab === 'users'
                       ? 'border-primary-600 text-primary-600'
                       : 'border-transparent text-gray-500 hover:text-gray-700'
@@ -760,7 +765,7 @@ export default function WishlistDetail() {
                 </button>
                 <button
                   onClick={() => setActiveTab('settings')}
-                  className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors cursor-pointer ${
+                  className={`px-3 sm:px-4 py-2 font-medium text-xs sm:text-sm border-b-2 transition-colors cursor-pointer whitespace-nowrap flex-shrink-0 ${
                     activeTab === 'settings'
                       ? 'border-primary-600 text-primary-600'
                       : 'border-transparent text-gray-500 hover:text-gray-700'
@@ -781,36 +786,38 @@ export default function WishlistDetail() {
               className={`grid ${isOwner ? 'grid-cols-2 md:grid-cols-4 lg:grid-cols-5' : isMember ? 'grid-cols-2 md:grid-cols-4 lg:grid-cols-5' : 'grid-cols-2 md:grid-cols-3'} gap-3 sm:gap-4 mb-6 sm:mb-8`}
             >
               <div className="bg-white rounded-xl p-3 sm:p-4 shadow-md">
-                <p className="text-xs sm:text-sm text-gray-600 mb-1">Total Items</p>
+                <p className="text-xs sm:text-sm text-gray-600 mb-1 truncate">Total Items</p>
                 <p className="text-2xl sm:text-3xl font-bold text-gray-900">{stats.total}</p>
               </div>
               {isOwner && (
                 <>
                   <div className="bg-white rounded-xl p-3 sm:p-4 shadow-md">
-                    <p className="text-xs sm:text-sm text-gray-600 mb-1">Draft</p>
+                    <p className="text-xs sm:text-sm text-gray-600 mb-1 truncate">Draft</p>
                     <p className="text-2xl sm:text-3xl font-bold text-gray-500">{stats.draft}</p>
                   </div>
                   <div className="bg-white rounded-xl p-3 sm:p-4 shadow-md">
-                    <p className="text-xs sm:text-sm text-gray-600 mb-1">Proposed</p>
+                    <p className="text-xs sm:text-sm text-gray-600 mb-1 truncate">Proposed</p>
                     <p className="text-2xl sm:text-3xl font-bold text-blue-500">{stats.proposed}</p>
                   </div>
                 </>
               )}
               <div className="bg-white rounded-xl p-3 sm:p-4 shadow-md">
-                <p className="text-xs sm:text-sm text-gray-600 mb-1">Available</p>
+                <p className="text-xs sm:text-sm text-gray-600 mb-1 truncate">Available</p>
                 <p className="text-2xl sm:text-3xl font-bold text-gray-900">{stats.available}</p>
               </div>
               {isMember && (
                 <>
                   <div className="bg-white rounded-xl p-3 sm:p-4 shadow-md">
-                    <p className="text-xs sm:text-sm text-gray-600 mb-1">Booked by You</p>
+                    <p className="text-xs sm:text-sm text-gray-600 mb-1 truncate">Booked by You</p>
                     <p className="text-2xl sm:text-3xl font-bold text-green-700">
                       {stats.bookedByYou}
                     </p>
                   </div>
                   {stats.proposedByYou > 0 && (
                     <div className="bg-white rounded-xl p-3 sm:p-4 shadow-md">
-                      <p className="text-xs sm:text-sm text-gray-600 mb-1">Proposed by You</p>
+                      <p className="text-xs sm:text-sm text-gray-600 mb-1 truncate">
+                        Proposed by You
+                      </p>
                       <p className="text-2xl sm:text-3xl font-bold text-blue-500">
                         {stats.proposedByYou}
                       </p>
@@ -819,21 +826,23 @@ export default function WishlistDetail() {
                 </>
               )}
               <div className="bg-white rounded-xl p-3 sm:p-4 shadow-md">
-                <p className="text-xs sm:text-sm text-gray-600 mb-1">Completed</p>
+                <p className="text-xs sm:text-sm text-gray-600 mb-1 truncate">Completed</p>
                 <p className="text-2xl sm:text-3xl font-bold text-green-400">{stats.completed}</p>
               </div>
             </div>
 
             {/* Filter and Sort Controls */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 mb-6 sm:mb-8">
-              <FilterDropdown
-                options={getFilterOptions()}
-                selectedFilters={selectedFilters}
-                onChange={setSelectedFilters}
-                label="Filter"
-              />
+              <div className="w-full sm:w-auto">
+                <FilterDropdown
+                  options={getFilterOptions()}
+                  selectedFilters={selectedFilters}
+                  onChange={setSelectedFilters}
+                  label="Filter"
+                />
+              </div>
 
-              <div className="flex items-center gap-2 flex-shrink-0">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 flex-shrink-0 w-full sm:w-auto">
                 <label
                   htmlFor="sort"
                   className="text-xs sm:text-sm font-medium text-gray-700 whitespace-nowrap"
@@ -856,7 +865,7 @@ export default function WishlistDetail() {
                       setSortBy(value);
                     }
                   }}
-                  className="pl-3 pr-8 sm:pr-12 py-2 text-sm sm:text-base border border-gray-300 rounded-lg bg-white text-gray-700 font-medium focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none appearance-none bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20fill%3D%22none%22%20viewBox%3D%220%200%2020%2020%22%3E%3Cpath%20stroke%3D%22%236b7280%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20stroke-width%3D%221.5%22%20d%3D%22M6%208l4%204%204-4%22%2F%3E%3C%2Fsvg%3E')] bg-[length:1.5em_1.5em] bg-[right_0.5rem_center] bg-no-repeat cursor-pointer"
+                  className="w-full sm:w-auto pl-3 pr-8 sm:pr-12 py-2 text-sm sm:text-base border border-gray-300 rounded-lg bg-white text-gray-700 font-medium focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none appearance-none bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20fill%3D%22none%22%20viewBox%3D%220%200%2020%2020%22%3E%3Cpath%20stroke%3D%22%236b7280%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20stroke-width%3D%221.5%22%20d%3D%22M6%208l4%204%204-4%22%2F%3E%3C%2Fsvg%3E')] bg-[length:1.5em_1.5em] bg-[right_0.5rem_center] bg-no-repeat cursor-pointer"
                 >
                   <option value="name-asc">Name (A-Z)</option>
                   <option value="name-desc">Name (Z-A)</option>
@@ -935,22 +944,27 @@ export default function WishlistDetail() {
         {activeTab === 'users' && (
           <div className="space-y-6">
             {isOwner && (
-              <div className="bg-white rounded-xl p-6 shadow-md">
+              <div className="bg-white rounded-xl p-4 sm:p-6 shadow-md">
                 <h2 className="text-xl font-bold text-gray-900 mb-4">Invite User</h2>
-                <form onSubmit={handleInviteUser} className="flex gap-2">
+                <form
+                  onSubmit={handleInviteUser}
+                  className="flex flex-col sm:flex-row gap-2"
+                  autoComplete="off"
+                >
                   <input
                     type="email"
                     value={inviteEmail}
                     onChange={(e) => setInviteEmail(e.target.value)}
                     placeholder="user@example.com"
                     required
-                    className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
+                    className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none text-sm sm:text-base"
                     disabled={isInviting}
+                    autoComplete="email"
                   />
                   <button
                     type="submit"
                     disabled={isInviting}
-                    className="px-6 py-2 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                    className="px-6 py-2 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer text-sm sm:text-base whitespace-nowrap"
                   >
                     {isInviting ? 'Inviting...' : 'Invite'}
                   </button>
@@ -959,18 +973,18 @@ export default function WishlistDetail() {
             )}
 
             <div className="bg-white rounded-xl shadow-md overflow-hidden">
-              <div className="px-6 py-4 border-b border-gray-200">
+              <div className="px-4 sm:px-6 py-4 border-b border-gray-200">
                 <h2 className="text-xl font-bold text-gray-900">Members</h2>
               </div>
               {loadingMembers ? (
-                <div className="px-6 py-12 flex items-center justify-center">
+                <div className="px-4 sm:px-6 py-12 flex items-center justify-center">
                   <div className="text-center">
                     <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
                     <p className="mt-4 text-sm text-gray-600">Loading members...</p>
                   </div>
                 </div>
               ) : members.length === 0 ? (
-                <div className="px-6 py-12 text-center">
+                <div className="px-4 sm:px-6 py-12 text-center">
                   <p className="text-gray-600">No members yet.</p>
                 </div>
               ) : (
@@ -981,35 +995,38 @@ export default function WishlistDetail() {
                     const isOwnerMember = member.role === 'owner';
 
                     return (
-                      <div key={member._id} className="px-6 py-4 flex items-center justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
+                      <div
+                        key={member._id}
+                        className="px-4 sm:px-6 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
                             <Link
                               href={`/users/${memberUserId}`}
-                              className="font-medium text-gray-900 hover:text-primary-600 transition-colors cursor-pointer"
+                              className="font-medium text-gray-900 hover:text-primary-600 transition-colors cursor-pointer break-words"
                             >
                               {member.user.email}
                             </Link>
                             {isOwnerMember && (
-                              <span className="px-2 py-1 text-xs font-semibold rounded-full bg-primary-100 text-primary-800">
+                              <span className="px-2 py-1 text-xs font-semibold rounded-full bg-primary-100 text-primary-800 whitespace-nowrap">
                                 Owner
                               </span>
                             )}
                             {!isOwnerMember && (
-                              <span className="px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-800">
+                              <span className="px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-800 whitespace-nowrap">
                                 Member
                               </span>
                             )}
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-shrink-0">
                           {isOwnerMember && isCurrentUser && (
-                            <span className="text-sm text-gray-500">You</span>
+                            <span className="text-sm text-gray-500 whitespace-nowrap">You</span>
                           )}
                           {isOwner && !isOwnerMember && (
                             <button
                               onClick={() => handleKickMember(member._id, member.user.email)}
-                              className="px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                              className="px-3 sm:px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer whitespace-nowrap"
                             >
                               Remove
                             </button>
@@ -1017,7 +1034,7 @@ export default function WishlistDetail() {
                           {isMember && !isOwner && isCurrentUser && (
                             <button
                               onClick={handleLeaveWishlist}
-                              className="px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                              className="px-3 sm:px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer whitespace-nowrap"
                             >
                               Leave
                             </button>
@@ -1068,6 +1085,7 @@ export default function WishlistDetail() {
                   }
                 }}
                 className="space-y-4"
+                autoComplete="off"
               >
                 <div>
                   <label
@@ -1084,6 +1102,7 @@ export default function WishlistDetail() {
                     onChange={(e) => setSettingsForm({ ...settingsForm, name: e.target.value })}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
                     disabled={isSavingSettings}
+                    autoComplete="off"
                   />
                 </div>
 
@@ -1103,6 +1122,7 @@ export default function WishlistDetail() {
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
                     rows={3}
                     disabled={isSavingSettings}
+                    autoComplete="off"
                   />
                 </div>
 
@@ -1148,11 +1168,11 @@ export default function WishlistDetail() {
                   </div>
                 </div>
 
-                <div className="flex gap-3 pt-4">
+                <div className="flex flex-col sm:flex-row gap-3 pt-4">
                   <button
                     type="submit"
                     disabled={isSavingSettings}
-                    className="px-6 py-2 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                    className="w-full sm:w-auto px-6 py-2 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer text-sm sm:text-base"
                   >
                     {isSavingSettings ? 'Saving...' : 'Save Changes'}
                   </button>
@@ -1160,9 +1180,11 @@ export default function WishlistDetail() {
               </form>
 
               {/* Delete Wishlist Section */}
-              <div className="mt-8 pt-8 border-t border-gray-200">
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">Danger Zone</h3>
-                <p className="text-sm text-gray-600 mb-4">
+              <div className="mt-6 sm:mt-8 pt-6 sm:pt-8 border-t border-gray-200">
+                <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-2">
+                  Danger Zone
+                </h3>
+                <p className="text-xs sm:text-sm text-gray-600 mb-4">
                   Once you delete a wishlist, there is no going back. All items and memberships will
                   be permanently deleted.
                 </p>
@@ -1170,6 +1192,8 @@ export default function WishlistDetail() {
                   variant="danger"
                   onClick={handleDeleteWishlist}
                   disabled={isDeletingWishlist}
+                  fullWidth
+                  className="sm:w-auto"
                 >
                   {isDeletingWishlist ? 'Deleting...' : 'Delete Wishlist'}
                 </Button>

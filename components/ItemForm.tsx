@@ -297,6 +297,7 @@ export default function ItemForm({
           placeholder="Enter item name"
           disabled={submitting}
           aria-required="true"
+          autoComplete="off"
         />
       </div>
 
@@ -313,6 +314,7 @@ export default function ItemForm({
           className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
           placeholder="https://example.com/image.jpg"
           disabled={submitting}
+          autoComplete="off"
         />
       </div>
 
@@ -332,6 +334,7 @@ export default function ItemForm({
             className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
             placeholder="99.99"
             disabled={submitting}
+            autoComplete="off"
           />
           <div ref={currencyRef} className="relative flex-1">
             <button
@@ -367,6 +370,7 @@ export default function ItemForm({
                     onChange={(e) => setCurrencySearch(e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none text-sm"
                     autoFocus
+                    autoComplete="off"
                   />
                 </div>
                 <div className="overflow-y-auto max-h-48">
@@ -411,6 +415,7 @@ export default function ItemForm({
           className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
           placeholder="https://example.com/product"
           disabled={submitting}
+          autoComplete="off"
         />
       </div>
 
@@ -428,6 +433,7 @@ export default function ItemForm({
           rows={3}
           maxLength={100}
           disabled={submitting}
+          autoComplete="off"
         />
         <p className="text-xs text-gray-500 mt-1">{formData.notes.length}/100 characters</p>
       </div>

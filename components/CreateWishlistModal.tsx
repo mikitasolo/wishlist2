@@ -156,7 +156,7 @@ export default function CreateWishlistModal({ isOpen, onClose }: CreateWishlistM
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off">
           <div>
             <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
               Wishlist Name *
@@ -172,6 +172,7 @@ export default function CreateWishlistModal({ isOpen, onClose }: CreateWishlistM
               placeholder="My Wishlist"
               disabled={isSubmitting}
               aria-required="true"
+              autoComplete="off"
             />
           </div>
 
@@ -187,6 +188,7 @@ export default function CreateWishlistModal({ isOpen, onClose }: CreateWishlistM
               placeholder="Optional description"
               rows={3}
               disabled={isSubmitting}
+              autoComplete="off"
             />
           </div>
 

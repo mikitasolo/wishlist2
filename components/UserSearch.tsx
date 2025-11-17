@@ -47,7 +47,7 @@ export default function UserSearch() {
   };
 
   return (
-    <form onSubmit={handleSearchUser} className="flex gap-2">
+    <form onSubmit={handleSearchUser} className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto" autoComplete="off">
       <input
         type="email"
         value={searchEmail}
@@ -55,6 +55,7 @@ export default function UserSearch() {
         placeholder="Search user by email..."
         className="h-10 flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
         disabled={isSearching}
+        autoComplete="email"
       />
       <button
         type="submit"

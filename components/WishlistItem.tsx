@@ -82,7 +82,7 @@ function WishlistItem({
 
   return (
     <div
-      className={`relative bg-white rounded-xl shadow-lg transition-all duration-300 hover:shadow-xl flex flex-col py-4 sm:p-5 ${
+      className={`relative bg-white rounded-xl shadow-lg transition-all duration-300 hover:shadow-xl flex flex-col p-4 sm:p-5 ${
         displayStatus === 'completed' ? 'ring-2 ring-green-400' : ''
       } ${getBorderClass()}`}
       role="article"

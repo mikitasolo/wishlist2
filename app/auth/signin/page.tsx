@@ -72,7 +72,7 @@ function SignInForm() {
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-6" autoComplete="off">
           <div>
             <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
               Email address
@@ -86,6 +86,7 @@ function SignInForm() {
               className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
               placeholder="you@example.com"
               disabled={isLoading}
+              autoComplete="email"
             />
           </div>
 

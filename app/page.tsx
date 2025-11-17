@@ -157,28 +157,33 @@ export default function Home() {
       <div className="max-w-7xl mx-auto px-4 py-4 sm:py-6 lg:py-8 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="mb-6 sm:mb-8">
-          <div className="relative flex flex-col sm:flex-row sm:justify-between sm:items-center mb-6 sm:mb-8 gap-4">
-            <div className="text-center sm:text-left flex-1">
-              <div className="flex flex-col items-center sm:items-start mb-2 sm:mb-4">
-                <Link
-                  href="/"
-                  className="text-4xl sm:text-5xl hover:scale-110 transition-transform cursor-pointer mb-2 sm:mb-3"
-                >
-                  🎁
-                </Link>
-                <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-gray-900">
-                  My Wishlists
-                </h1>
+          <div className="relative mb-6 sm:mb-8">
+            {/* Top row: Logo and action buttons */}
+            <div className="flex items-center justify-between mb-4 gap-3">
+              <Link
+                href="/"
+                className="text-4xl sm:text-5xl hover:scale-110 transition-transform cursor-pointer flex-shrink-0"
+              >
+                🎁
+              </Link>
+              <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+                <AuthButton />
               </div>
-              <p className="text-base sm:text-lg lg:text-xl text-gray-600">
+            </div>
+            
+            {/* Title and description */}
+            <div className="mb-4">
+              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900 mb-2 break-words">
+                My Wishlists
+              </h1>
+              <p className="text-sm sm:text-base lg:text-lg text-gray-600 break-words">
                 Manage your wishlists and view items
               </p>
             </div>
-            <div className="flex flex-col sm:flex-row items-center sm:items-end gap-3 sm:gap-4 sm:absolute sm:top-0 sm:right-0">
-              <div className="w-full sm:w-auto">
-                <UserSearch />
-              </div>
-              <AuthButton />
+            
+            {/* Search bar */}
+            <div className="w-full">
+              <UserSearch />
             </div>
           </div>
         </div>
@@ -195,10 +200,10 @@ export default function Home() {
 
         {/* Tabs */}
         <div className="mb-6 border-b border-gray-200">
-          <nav className="flex gap-4">
+          <nav className="flex gap-1 sm:gap-4 overflow-x-auto pb-2 -mb-2 scrollbar-hide">
             <button
               onClick={() => setActiveTab('owned')}
-              className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors cursor-pointer ${
+              className={`px-3 sm:px-4 py-2 font-medium text-xs sm:text-sm border-b-2 transition-colors cursor-pointer whitespace-nowrap flex-shrink-0 ${
                 activeTab === 'owned'
                   ? 'border-primary-600 text-primary-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700'
@@ -208,7 +213,7 @@ export default function Home() {
             </button>
             <button
               onClick={() => setActiveTab('member')}
-              className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors cursor-pointer ${
+              className={`px-3 sm:px-4 py-2 font-medium text-xs sm:text-sm border-b-2 transition-colors cursor-pointer whitespace-nowrap flex-shrink-0 ${
                 activeTab === 'member'
                   ? 'border-primary-600 text-primary-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700'

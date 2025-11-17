@@ -50,13 +50,30 @@ export default function BaseModal({
   // Prevent body scroll when modal is open
   useEffect(() => {
     if (isOpen) {
+      // Save the current scroll position
+      const scrollY = window.scrollY;
+      
+      // Prevent scrolling on body
       document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = 'unset';
+      document.body.style.position = 'fixed';
+      document.body.style.top = `-${scrollY}px`;
+      document.body.style.width = '100%';
+      
+      // Also prevent scrolling on html element (for better mobile support)
+      document.documentElement.style.overflow = 'hidden';
+      
+      return () => {
+        // Restore scrolling
+        document.body.style.overflow = '';
+        document.body.style.position = '';
+        document.body.style.top = '';
+        document.body.style.width = '';
+        document.documentElement.style.overflow = '';
+        
+        // Restore scroll position
+        window.scrollTo(0, scrollY);
+      };
     }
-    return () => {
-      document.body.style.overflow = 'unset';
-    };
   }, [isOpen]);
 
   const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -72,6 +89,7 @@ export default function BaseModal({
     <div
       className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"
       onClick={handleBackdropClick}
+      style={{ touchAction: 'none' }}
     >
       <div
         className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-4 sm:p-6 max-h-[90vh] overflow-y-auto"
@@ -79,6 +97,7 @@ export default function BaseModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
+        style={{ touchAction: 'pan-y' }}
       >
         <div className="flex justify-between items-center mb-4 sm:mb-6">
           <h2 id={titleId} className="text-xl sm:text-2xl font-bold text-gray-800">
