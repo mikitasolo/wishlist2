@@ -50,6 +50,7 @@ export default function WishlistDetail() {
   const [items, setItems] = useState<ApiItem[]>([]);
   const [members, setMembers] = useState<WishlistMember[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingItems, setLoadingItems] = useState(true);
   const [loadingMembers, setLoadingMembers] = useState(false);
   const [isOwner, setIsOwner] = useState(false);
   const [isMember, setIsMember] = useState(false);
@@ -301,6 +302,10 @@ export default function WishlistDetail() {
     async (silent = false) => {
       if (!wishlistId) return;
 
+      if (!silent) {
+        setLoadingItems(true);
+      }
+
       try {
         const data = await fetchItemsHook(wishlistId);
         setItems(data);
@@ -309,14 +314,19 @@ export default function WishlistDetail() {
         if (!silent) {
           showToast('Failed to load items', 'error');
         }
+      } finally {
+        if (!silent) {
+          setLoadingItems(false);
+        }
       }
-      // Note: Don't set loading to false here - it's only controlled by wishlist loading
     },
     [fetchItemsHook, wishlistId, showToast]
   );
 
   useEffect(() => {
     if (wishlistId && activeTab === 'items') {
+      // Reset loading state when switching to items tab
+      setLoadingItems(true);
       fetchItems();
 
       // Poll for updates every 5 seconds when tab is active
@@ -337,6 +347,9 @@ export default function WishlistDetail() {
         clearInterval(pollInterval);
         document.removeEventListener('visibilitychange', handleVisibilityChange);
       };
+    } else if (activeTab !== 'items') {
+      // Reset loading state when switching away from items tab
+      setLoadingItems(false);
     }
   }, [wishlistId, activeTab, fetchItems]);
 
@@ -870,7 +883,12 @@ export default function WishlistDetail() {
             </div>
 
             {/* Items Grid */}
-            {sortedItems.length === 0 ? (
+            {loadingItems ? (
+              <div className="text-center py-12 sm:py-20">
+                <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+                <p className="mt-4 text-sm text-gray-600">Loading items...</p>
+              </div>
+            ) : sortedItems.length === 0 ? (
               <div className="text-center py-12 sm:py-20">
                 <div className="text-4xl sm:text-6xl mb-4">📦</div>
                 <h3 className="text-xl sm:text-2xl font-semibold text-gray-800 mb-2">
