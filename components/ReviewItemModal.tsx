@@ -44,10 +44,10 @@ export default function ReviewItemModal({
 
   const handleSubmit = async (data: {
     name: string;
-    imageUrl?: string;
+    imageUrl?: string | null;
     price?: { value: number; currency: string } | null;
-    link?: string;
-    notes?: string;
+    link?: string | null;
+    notes?: string | null;
     status: 'draft' | 'available' | 'proposed';
   }) => {
     setIsSubmitting(true);
@@ -58,10 +58,11 @@ export default function ReviewItemModal({
       }
       const updates: Partial<ApiItem> & { status: 'draft' | 'available' } = {
         name: data.name || undefined,
-        imageUrl: data.imageUrl,
-        price: data.price || null,
-        link: data.link,
-        notes: data.notes,
+        // Include fields even if null to clear them
+        imageUrl: data.imageUrl !== undefined ? data.imageUrl : undefined,
+        price: data.price !== undefined ? data.price : undefined,
+        link: data.link !== undefined ? data.link : undefined,
+        notes: data.notes !== undefined ? data.notes : undefined,
         status: data.status,
         proposedBy: null, // Clear proposedBy when approving
       };

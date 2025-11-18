@@ -73,7 +73,7 @@ export const updateItemSchema = z
       .max(200, 'Name must be 200 characters or less')
       .trim()
       .optional(),
-    imageUrl: z.url('Invalid image URL').optional(),
+    imageUrl: z.url('Invalid image URL').optional().nullable(),
     price: z
       .object({
         value: z

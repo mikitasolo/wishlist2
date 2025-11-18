@@ -47,10 +47,10 @@ interface ItemFormProps {
   initialData?: ItemFormData;
   onSubmit: (data: {
     name: string;
-    imageUrl?: string;
+    imageUrl?: string | null;
     price?: { value: number; currency: string } | null;
-    link?: string;
-    notes?: string;
+    link?: string | null;
+    notes?: string | null;
     status: 'draft' | 'available' | 'proposed';
   }) => Promise<void>;
   onCancel: () => void;
@@ -184,12 +184,19 @@ export default function ItemForm({
         status = formData.isDraft ? 'draft' : 'available';
       }
 
+      // When editing (initialData exists), send null for empty fields to clear them
+      // When creating, use undefined to omit them
+      const isEditing = !!initialData;
+      const trimmedImageUrl = formData.imageUrl.trim();
+      const trimmedLink = formData.link.trim();
+      const trimmedNotes = formData.notes.trim();
+
       await onSubmit({
         name: formData.name.trim(),
-        imageUrl: formData.imageUrl.trim() || undefined,
+        imageUrl: isEditing ? trimmedImageUrl || null : trimmedImageUrl || undefined,
         price,
-        link: formData.link.trim() || undefined,
-        notes: formData.notes.trim() || undefined,
+        link: isEditing ? trimmedLink || null : trimmedLink || undefined,
+        notes: isEditing ? trimmedNotes || null : trimmedNotes || undefined,
         status,
       });
 

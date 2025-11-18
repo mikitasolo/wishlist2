@@ -10,10 +10,10 @@ interface AddItemModalProps {
   onClose: () => void;
   onAdd: (item: {
     name: string;
-    imageUrl?: string;
+    imageUrl?: string | null;
     price?: { value: number; currency: string } | null;
-    link?: string;
-    notes?: string;
+    link?: string | null;
+    notes?: string | null;
     status?: 'draft' | 'available';
   }) => Promise<void>;
 }
@@ -34,10 +34,10 @@ export default function AddItemModal({ isOpen, onClose, onAdd }: AddItemModalPro
 
   const handleSubmit = async (data: {
     name: string;
-    imageUrl?: string;
+    imageUrl?: string | null;
     price?: { value: number; currency: string } | null;
-    link?: string;
-    notes?: string;
+    link?: string | null;
+    notes?: string | null;
     status: 'draft' | 'available' | 'proposed';
   }) => {
     setIsSubmitting(true);

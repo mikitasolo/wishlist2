@@ -64,10 +64,10 @@ export function useCreateItem(
       wishlistId: string,
       newItem: {
         name: string;
-        imageUrl?: string;
+        imageUrl?: string | null;
         price?: { value: number; currency: string } | null;
-        link?: string;
-        notes?: string;
+        link?: string | null;
+        notes?: string | null;
         status?: 'draft' | 'available';
       }
     ): Promise<ApiItem | null> => {

@@ -390,10 +390,10 @@ export default function WishlistDetail() {
   const handleCreateItem = useCallback(
     async (itemData: {
       name: string;
-      imageUrl?: string;
+      imageUrl?: string | null;
       price?: { value: number; currency: string } | null;
-      link?: string;
-      notes?: string;
+      link?: string | null;
+      notes?: string | null;
       status?: 'draft' | 'available';
     }) => {
       if (!wishlistId) return;
@@ -415,10 +415,10 @@ export default function WishlistDetail() {
   const handleProposeItem = useCallback(
     async (itemData: {
       name: string;
-      imageUrl?: string;
+      imageUrl?: string | null;
       price?: { value: number; currency: string } | null;
-      link?: string;
-      notes?: string;
+      link?: string | null;
+      notes?: string | null;
       status: 'proposed';
     }) => {
       if (!wishlistId) return;
