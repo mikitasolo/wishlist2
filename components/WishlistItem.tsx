@@ -145,55 +145,102 @@ function WishlistItem({
       </div>
 
       {/* Image/Notes area */}
-      <div className="relative h-64 w-full bg-gray-100 flex-shrink-0 rounded-lg overflow-hidden mb-4">
-        {/* Show notes or image */}
-        {showNotes && item.notes ? (
-          <div className="absolute inset-0 flex items-center justify-center bg-gray-50 p-4">
-            <p className="text-base sm:text-lg text-gray-800 whitespace-pre-wrap break-words text-center">
-              {item.notes}
-            </p>
-          </div>
-        ) : (
-          <>
-            {imageLoading && item.imageUrl && (
-              <div className="absolute inset-0 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 animate-pulse" />
-            )}
-            {item.imageUrl ? (
-              <Image
-                src={item.imageUrl}
-                alt={item.name}
-                fill
-                className={`object-cover transition-opacity duration-300 ${
-                  imageLoading ? 'opacity-0' : 'opacity-100'
-                }`}
-                sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-                onLoad={() => setImageLoading(false)}
-                onError={() => setImageLoading(false)}
-              />
-            ) : (
-              <div className="absolute inset-0 flex items-center justify-center bg-gray-200">
-                <div className="text-center text-gray-400">
-                  <svg
-                    className="w-16 h-16 mx-auto mb-2"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                    xmlns="http://www.w3.org/2000/svg"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-                    />
-                  </svg>
-                  <p className="text-xs font-medium">No Image</p>
-                </div>
+      {item.link && !showNotes ? (
+        <a
+          href={item.link}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="relative h-64 w-full bg-gray-100 flex-shrink-0 rounded-lg overflow-hidden mb-4 block cursor-pointer hover:opacity-90 transition-opacity duration-200"
+          aria-label={`View ${item.name} product page`}
+        >
+          {imageLoading && item.imageUrl && (
+            <div className="absolute inset-0 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 animate-pulse" />
+          )}
+          {item.imageUrl ? (
+            <Image
+              src={item.imageUrl}
+              alt={item.name}
+              fill
+              className={`object-cover transition-opacity duration-300 ${
+                imageLoading ? 'opacity-0' : 'opacity-100'
+              }`}
+              sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+              onLoad={() => setImageLoading(false)}
+              onError={() => setImageLoading(false)}
+            />
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center bg-gray-200">
+              <div className="text-center text-gray-400">
+                <svg
+                  className="w-16 h-16 mx-auto mb-2"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                  />
+                </svg>
+                <p className="text-xs font-medium">No Image</p>
               </div>
-            )}
-          </>
-        )}
-      </div>
+            </div>
+          )}
+        </a>
+      ) : (
+        <div className="relative h-64 w-full bg-gray-100 flex-shrink-0 rounded-lg overflow-hidden mb-4">
+          {/* Show notes or image */}
+          {showNotes && item.notes ? (
+            <div className="absolute inset-0 flex items-center justify-center bg-gray-50 p-4">
+              <p className="text-base sm:text-lg text-gray-800 whitespace-pre-wrap break-words text-center">
+                {item.notes}
+              </p>
+            </div>
+          ) : (
+            <>
+              {imageLoading && item.imageUrl && (
+                <div className="absolute inset-0 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 animate-pulse" />
+              )}
+              {item.imageUrl ? (
+                <Image
+                  src={item.imageUrl}
+                  alt={item.name}
+                  fill
+                  className={`object-cover transition-opacity duration-300 ${
+                    imageLoading ? 'opacity-0' : 'opacity-100'
+                  }`}
+                  sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                  onLoad={() => setImageLoading(false)}
+                  onError={() => setImageLoading(false)}
+                />
+              ) : (
+                <div className="absolute inset-0 flex items-center justify-center bg-gray-200">
+                  <div className="text-center text-gray-400">
+                    <svg
+                      className="w-16 h-16 mx-auto mb-2"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                      xmlns="http://www.w3.org/2000/svg"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                      />
+                    </svg>
+                    <p className="text-xs font-medium">No Image</p>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
 
       {/* Content */}
       <div className="flex flex-col flex-grow">
