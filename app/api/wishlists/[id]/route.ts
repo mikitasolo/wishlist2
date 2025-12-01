@@ -8,13 +8,42 @@ import User from '@/models/User';
 import Item from '@/models/Item';
 import { updateWishlistSchema, validateRequestBody } from '@/lib/validations';
 
+// Helper function to check if user has admin or owner access
+async function checkAdminOrOwnerAccess(
+  wishlistId: string,
+  userId: string
+): Promise<{ hasAccess: boolean; wishlist?: IWishlist }> {
+  await connectDB();
+
+  const wishlist = await Wishlist.findById(wishlistId);
+  if (!wishlist) {
+    return { hasAccess: false };
+  }
+
+  // Owner always has access
+  if (wishlist.owner.toString() === userId) {
+    return { hasAccess: true, wishlist };
+  }
+
+  // Check if user is admin
+  const membership = await WishlistMember.findOne({
+    wishlist: wishlistId,
+    user: userId,
+    role: 'admin',
+  });
+
+  return { hasAccess: !!membership, wishlist };
+}
+
 // Helper function to check if user has permission
 async function checkWishlistPermission(
   wishlistId: string,
   userId: string,
-  requireOwner: boolean = false
+  requireOwner: boolean = false,
+  requireAdminOrOwner: boolean = false
 ): Promise<{
   hasAccess: boolean;
+  // membership can be IWishlistMember (role: 'admin' | 'member') or synthetic owner object
   membership?: IWishlistMember | { role: 'owner' };
   wishlist?: IWishlist;
 }> {
@@ -25,12 +54,12 @@ async function checkWishlistPermission(
     return { hasAccess: false };
   }
 
-  // Owner always has access
+  // Owner always has access (owner is stored in wishlist.owner, not in WishlistMember)
   if (wishlist.owner.toString() === userId) {
     return { hasAccess: true, wishlist, membership: { role: 'owner' } };
   }
 
-  // If owner is required, deny access
+  // If owner is required, deny access (only original owner)
   if (requireOwner) {
     return { hasAccess: false };
   }
@@ -41,7 +70,17 @@ async function checkWishlistPermission(
     user: userId,
   });
 
-  return { hasAccess: !!membership, membership: membership || undefined, wishlist };
+  if (!membership) {
+    return { hasAccess: false, wishlist };
+  }
+
+  // If admin or owner access is required, check role
+  if (requireAdminOrOwner) {
+    const hasAccess = membership.role === 'admin';
+    return { hasAccess, membership, wishlist };
+  }
+
+  return { hasAccess: true, membership, wishlist };
 }
 
 // GET /api/wishlists/[id] - Get a specific wishlist
@@ -70,14 +109,20 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           wishlist: id,
           user: session.user.id,
         });
-        const isMember = !!membership && !isOwner;
+
+        let userRole: 'owner' | 'admin' | 'member' | null = null;
+        if (isOwner) {
+          userRole = 'owner';
+        } else if (membership) {
+          userRole = membership.role === 'admin' ? 'admin' : 'member';
+        }
 
         return NextResponse.json(
           {
             success: true,
             data: {
               ...wishlist.toObject(),
-              userRole: isOwner ? 'owner' : isMember ? 'member' : null,
+              userRole,
               ownerEmail,
             },
           },
@@ -114,14 +159,19 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     // Add user role info to response
     const isOwner = wishlist.owner.toString() === session.user.id;
-    const isMember = !!membership && !isOwner;
+    let userRole: 'owner' | 'admin' | 'member' | null = null;
+    if (isOwner) {
+      userRole = 'owner';
+    } else if (membership) {
+      userRole = membership.role === 'admin' ? 'admin' : 'member';
+    }
 
     return NextResponse.json(
       {
         success: true,
         data: {
           ...wishlist.toObject(),
-          userRole: isOwner ? 'owner' : isMember ? 'member' : null,
+          userRole,
           ownerEmail,
         },
       },
@@ -151,15 +201,11 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     await connectDB();
     const { id } = await params;
 
-    const { hasAccess, membership, wishlist } = await checkWishlistPermission(
-      id,
-      session.user.id,
-      true // require owner
-    );
+    const { hasAccess, wishlist } = await checkAdminOrOwnerAccess(id, session.user.id);
 
     if (!hasAccess || !wishlist) {
       return NextResponse.json(
-        { success: false, error: 'Unauthorized - Owner access required' },
+        { success: false, error: 'Unauthorized - Admin or owner access required' },
         { status: 403 }
       );
     }

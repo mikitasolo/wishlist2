@@ -50,9 +50,10 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       wishlist: wishlist._id,
       user: session.user.id,
     });
+    const isAdmin = membership?.role === 'admin';
     const isMember = !!membership;
     const isProposer = currentItem.proposedBy?.toString() === session.user.id;
-    const hasAccess = isOwner || isMember || isProposer;
+    const hasAccess = isOwner || isAdmin || isMember || isProposer;
 
     if (!hasAccess) {
       return NextResponse.json(
@@ -99,8 +100,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     // Handle proposed items
     if (currentItem.status === 'proposed') {
-      // Owner can review proposed items (change status and clear proposedBy)
-      if (isOwner) {
+      // Owner and admin can review proposed items (change status and clear proposedBy)
+      if (isOwner || isAdmin) {
         if (validatedData.name !== undefined) updateData.name = validatedData.name;
         if (validatedData.imageUrl !== undefined) updateData.imageUrl = validatedData.imageUrl;
         if (validatedData.price !== undefined) {
@@ -154,8 +155,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         );
       }
     }
-    // If user is wishlist owner, allow updating all fields
-    else if (isOwner) {
+    // If user is wishlist owner or admin, allow updating all fields
+    else if (isOwner || isAdmin) {
       if (validatedData.name !== undefined) updateData.name = validatedData.name;
       if (validatedData.imageUrl !== undefined) updateData.imageUrl = validatedData.imageUrl;
       if (validatedData.price !== undefined) {
@@ -265,13 +266,18 @@ export async function DELETE(
     }
 
     const isOwner = wishlist.owner.toString() === session.user.id;
+    const membership = await WishlistMember.findOne({
+      wishlist: wishlist._id,
+      user: session.user.id,
+    });
+    const isAdmin = membership?.role === 'admin';
     const isProposer =
       item.status === 'proposed' && item.proposedBy?.toString() === session.user.id;
 
-    // Check if user is owner or proposer
-    if (!isOwner && !isProposer) {
+    // Check if user is owner, admin, or proposer
+    if (!isOwner && !isAdmin && !isProposer) {
       return NextResponse.json(
-        { success: false, error: 'Unauthorized - Owner or proposer access required' },
+        { success: false, error: 'Unauthorized - Owner, admin, or proposer access required' },
         { status: 403 }
       );
     }

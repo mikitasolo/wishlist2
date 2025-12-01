@@ -38,6 +38,7 @@ export const updateWishlistSchema = z
 // Member schemas
 export const inviteMemberSchema = z.object({
   email: z.email('Invalid email address').toLowerCase().trim(),
+  role: z.enum(['admin', 'member']).optional().default('member'),
 });
 
 // Item schemas

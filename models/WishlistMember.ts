@@ -14,7 +14,7 @@ const WishlistMemberSchema = new Schema(
     },
     role: {
       type: String,
-      enum: ['member'],
+      enum: ['admin', 'member'],
       required: true,
       default: 'member',
     },
@@ -35,7 +35,7 @@ export interface IWishlistMember {
   _id: mongoose.Types.ObjectId;
   wishlist: mongoose.Types.ObjectId;
   user: mongoose.Types.ObjectId;
-  role: 'member';
+  role: 'admin' | 'member';
   createdAt: Date;
   updatedAt: Date;
 }

@@ -5,9 +5,11 @@ import connectDB from '@/lib/mongodb';
 import Wishlist, { IWishlist } from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
 import Item from '@/models/Item';
+import { validateRequestBody } from '@/lib/validations';
+import { z } from 'zod';
 
-// Helper function to check if user has owner access
-async function checkOwnerAccess(
+// Helper function to check if user has admin or owner access
+async function checkAdminOrOwnerAccess(
   wishlistId: string,
   userId: string
 ): Promise<{ hasAccess: boolean; wishlist?: IWishlist }> {
@@ -18,8 +20,19 @@ async function checkOwnerAccess(
     return { hasAccess: false };
   }
 
-  // Only owner has access
-  return { hasAccess: wishlist.owner.toString() === userId, wishlist };
+  // Owner always has access
+  if (wishlist.owner.toString() === userId) {
+    return { hasAccess: true, wishlist };
+  }
+
+  // Check if user is admin
+  const membership = await WishlistMember.findOne({
+    wishlist: wishlistId,
+    user: userId,
+    role: 'admin',
+  });
+
+  return { hasAccess: !!membership, wishlist };
 }
 
 // Helper function to unbook all items for a user in a wishlist
@@ -42,6 +55,89 @@ async function unbookAllItemsForUser(wishlistId: string, userId: string): Promis
   );
 }
 
+const updateMemberRoleSchema = z.object({
+  role: z.enum(['admin', 'member']),
+});
+
+// PATCH /api/wishlists/[id]/members/[memberId] - Update member role
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string; memberId: string }> }
+) {
+  try {
+    const session = await getServerSession(authOptions);
+    const { id, memberId } = await params;
+
+    if (!session?.user) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized - Please sign in' },
+        { status: 401 }
+      );
+    }
+
+    await connectDB();
+
+    const { hasAccess } = await checkAdminOrOwnerAccess(id, session.user.id);
+    if (!hasAccess) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized - Admin or owner access required' },
+        { status: 403 }
+      );
+    }
+
+    // Validate request body
+    const validation = await validateRequestBody(request, updateMemberRoleSchema);
+    if (!validation.success) {
+      return NextResponse.json(
+        { success: false, error: validation.error },
+        { status: validation.status }
+      );
+    }
+
+    const { role } = validation.data;
+
+    const membership = await WishlistMember.findById(memberId);
+    if (!membership) {
+      return NextResponse.json({ success: false, error: 'Membership not found' }, { status: 404 });
+    }
+
+    // Verify membership belongs to this wishlist
+    if (membership.wishlist.toString() !== id) {
+      return NextResponse.json({ success: false, error: 'Membership not found' }, { status: 404 });
+    }
+
+    // Prevent changing role of original owner (they're always owner, not in WishlistMember)
+    const wishlist = await Wishlist.findById(id);
+    if (wishlist && wishlist.owner.toString() === membership.user.toString()) {
+      return NextResponse.json(
+        { success: false, error: 'Cannot change role of the original wishlist owner' },
+        { status: 400 }
+      );
+    }
+
+    // Update membership role (only 'admin' or 'member' allowed)
+    membership.role = role;
+    await membership.save();
+
+    // Fetch user details for response
+    const User = (await import('@/models/User')).default;
+    const membershipUser = await User.findById(membership.user).select('email');
+
+    const responseData = {
+      ...membership.toObject(),
+      user: membershipUser || membership.user,
+    };
+
+    return NextResponse.json({ success: true, data: responseData }, { status: 200 });
+  } catch (error) {
+    console.error('Error updating member role:', error);
+    return NextResponse.json(
+      { success: false, error: 'Failed to update member role' },
+      { status: 500 }
+    );
+  }
+}
+
 // DELETE /api/wishlists/[id]/members/[memberId] - Remove member from wishlist
 export async function DELETE(
   request: NextRequest,
@@ -60,10 +156,10 @@ export async function DELETE(
 
     await connectDB();
 
-    const { hasAccess } = await checkOwnerAccess(id, session.user.id);
+    const { hasAccess } = await checkAdminOrOwnerAccess(id, session.user.id);
     if (!hasAccess) {
       return NextResponse.json(
-        { success: false, error: 'Unauthorized - Owner access required' },
+        { success: false, error: 'Unauthorized - Admin or owner access required' },
         { status: 403 }
       );
     }
@@ -78,9 +174,18 @@ export async function DELETE(
       return NextResponse.json({ success: false, error: 'Membership not found' }, { status: 404 });
     }
 
+    // Prevent deleting the original owner (they're not in WishlistMember, but defensive check)
+    const wishlist = await Wishlist.findById(id);
+    if (wishlist && wishlist.owner.toString() === membership.user.toString()) {
+      return NextResponse.json(
+        { success: false, error: 'Cannot remove the original wishlist owner' },
+        { status: 400 }
+      );
+    }
+
     const membershipUserId = membership.user.toString();
 
-    // Prevent removing yourself (owners should use leave endpoint)
+    // Prevent removing yourself
     if (membershipUserId === session.user.id) {
       return NextResponse.json(
         { success: false, error: 'Cannot remove yourself. Leave the wishlist instead.' },
