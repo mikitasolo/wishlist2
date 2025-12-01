@@ -532,7 +532,7 @@ export default function WishlistDetail() {
         setIsInviting(false);
       }
     },
-    [wishlistId, inviteEmail, showToast]
+    [wishlistId, inviteEmail, inviteRole, showToast]
   );
 
   const handleKickMember = useCallback((memberId: string, memberEmail: string) => {
