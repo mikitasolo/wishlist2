@@ -8,8 +8,8 @@ import User from '@/models/User';
 import { sendWishlistInvitationEmail } from '@/lib/email';
 import { inviteMemberSchema, validateRequestBody } from '@/lib/validations';
 
-// Helper function to check if user has owner access
-async function checkOwnerAccess(
+// Helper function to check if user has admin or owner access
+async function checkAdminOrOwnerAccess(
   wishlistId: string,
   userId: string
 ): Promise<{ hasAccess: boolean; wishlist?: IWishlist }> {
@@ -20,7 +20,19 @@ async function checkOwnerAccess(
     return { hasAccess: false };
   }
 
-  return { hasAccess: wishlist.owner.toString() === userId, wishlist };
+  // Owner always has access
+  if (wishlist.owner.toString() === userId) {
+    return { hasAccess: true, wishlist };
+  }
+
+  // Check if user is admin
+  const membership = await WishlistMember.findOne({
+    wishlist: wishlistId,
+    user: userId,
+    role: 'admin',
+  });
+
+  return { hasAccess: !!membership, wishlist };
 }
 
 // GET /api/wishlists/[id]/members - Get all members of a wishlist
@@ -38,11 +50,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     await connectDB();
 
-    // Only owners can view members list
-    const { hasAccess } = await checkOwnerAccess(id, session.user.id);
+    // Only admins and owners can view members list
+    const { hasAccess } = await checkAdminOrOwnerAccess(id, session.user.id);
     if (!hasAccess) {
       return NextResponse.json(
-        { success: false, error: 'Unauthorized - Owner access required' },
+        { success: false, error: 'Unauthorized - Admin or owner access required' },
         { status: 403 }
       );
     }
@@ -52,7 +64,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
     }
 
-    // Fetch owner separately
+    // Fetch owner separately (owner is stored in wishlist.owner, not in WishlistMember)
     const owner = await User.findById(wishlist.owner);
     if (!owner) {
       return NextResponse.json(
@@ -61,17 +73,19 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       );
     }
 
-    // Get all members (excluding owner)
-    const members = await WishlistMember.find({ wishlist: id }).sort({ createdAt: -1 }).lean();
+    // Get all members from WishlistMember (only 'admin' and 'member' roles)
+    const allMembers = await WishlistMember.find({ wishlist: id }).sort({ createdAt: -1 }).lean();
 
-    // Fetch user details for each member
+    // Fetch user details for all members
+    const memberUserIds = allMembers.map((m) => m.user);
     const memberUsers = await User.find({
-      _id: { $in: members.map((m) => m.user) },
+      _id: { $in: memberUserIds },
     }).select('email');
 
     const userMap = new Map(memberUsers.map((u) => [u._id.toString(), u]));
 
-    const membersWithUsers = members
+    // Process all members from WishlistMember
+    const membersWithUsers = allMembers
       .map((member) => {
         const user = userMap.get(member.user.toString());
         if (!user) return null; // Skip if user not found
@@ -80,14 +94,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           _id: member._id,
           wishlist: member.wishlist,
           user,
-          role: member.role,
+          role: member.role, // 'admin' or 'member'
           createdAt: member.createdAt,
           updatedAt: member.updatedAt,
         };
       })
       .filter((m): m is NonNullable<typeof m> => m !== null);
 
-    // Add owner as first member with role 'owner'
+    // Always add original owner at the beginning (owner is never in WishlistMember)
     const ownerMember = {
       _id: owner._id,
       wishlist: wishlist._id,
@@ -122,10 +136,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     await connectDB();
 
-    const { hasAccess, wishlist } = await checkOwnerAccess(id, session.user.id);
+    const { hasAccess, wishlist } = await checkAdminOrOwnerAccess(id, session.user.id);
     if (!hasAccess || !wishlist) {
       return NextResponse.json(
-        { success: false, error: 'Unauthorized - Owner access required' },
+        { success: false, error: 'Unauthorized - Admin or owner access required' },
         { status: 403 }
       );
     }
@@ -139,7 +153,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       );
     }
 
-    const { email } = validation.data;
+    const { email, role = 'member' } = validation.data;
 
     // Find or create user
     let invitedUser = await User.findOne({ email: email.toLowerCase() });
@@ -171,11 +185,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       );
     }
 
-    // Create membership (always as member)
+    // Create membership with specified role
     const membership = await WishlistMember.create({
       wishlist: id,
       user: invitedUser._id,
-      role: 'member',
+      role,
     });
 
     // Send invitation email

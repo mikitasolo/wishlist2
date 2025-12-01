@@ -34,7 +34,7 @@ interface WishlistMember {
     _id: string;
     email: string;
   };
-  role: 'owner' | 'member';
+  role: 'owner' | 'admin' | 'member'; // 'owner' is only used when representing the original owner from wishlist.owner
   createdAt: string;
 }
 
@@ -53,6 +53,7 @@ export default function WishlistDetail() {
   const [loadingItems, setLoadingItems] = useState(true);
   const [loadingMembers, setLoadingMembers] = useState(false);
   const [isOwner, setIsOwner] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [isMember, setIsMember] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>('items');
   const [selectedFilters, setSelectedFilters] = useState<FilterOption[]>([]);
@@ -62,6 +63,7 @@ export default function WishlistDetail() {
   const [showAddItemModal, setShowAddItemModal] = useState(false);
   const [showProposeItemModal, setShowProposeItemModal] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteRole, setInviteRole] = useState<'admin' | 'member'>('member');
   const [isInviting, setIsInviting] = useState(false);
   const [settingsForm, setSettingsForm] = useState({
     name: '',
@@ -228,7 +230,7 @@ export default function WishlistDetail() {
             const hasExtendedProps = 'userRole' in w || 'ownerEmail' in w;
             if (hasExtendedProps) {
               const extendedWishlist = w as IWishlist & {
-                userRole?: 'owner' | 'member' | null;
+                userRole?: 'owner' | 'admin' | 'member' | null;
                 ownerEmail?: string | null;
               };
               setOwnerEmail(
@@ -238,7 +240,8 @@ export default function WishlistDetail() {
               // Check user role from API response
               const userRole = 'userRole' in extendedWishlist ? extendedWishlist.userRole : null;
               setIsOwner(userRole === 'owner');
-              setIsMember(userRole === 'member');
+              setIsAdmin(userRole === 'admin');
+              setIsMember(userRole === 'member' || userRole === 'admin');
             }
 
             setSettingsForm({
@@ -273,10 +276,10 @@ export default function WishlistDetail() {
     }
   }, [wishlistId, session, router, showToast]);
 
-  // Fetch members (only for owners)
+  // Fetch members (only for owners and admins)
   useEffect(() => {
     async function fetchMembers() {
-      if (!wishlistId || !isOwner) return;
+      if (!wishlistId || (!isOwner && !isAdmin)) return;
 
       setLoadingMembers(true);
       try {
@@ -293,10 +296,10 @@ export default function WishlistDetail() {
       }
     }
 
-    if (isOwner && activeTab === 'users') {
+    if ((isOwner || isAdmin) && activeTab === 'users') {
       fetchMembers();
     }
-  }, [wishlistId, isOwner, activeTab]);
+  }, [wishlistId, isOwner, isAdmin, activeTab]);
 
   const fetchItems = useCallback(
     async (silent = false) => {
@@ -502,7 +505,7 @@ export default function WishlistDetail() {
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ email: inviteEmail.trim() }),
+          body: JSON.stringify({ email: inviteEmail.trim(), role: inviteRole }),
         });
 
         const result = await response.json();
@@ -510,6 +513,7 @@ export default function WishlistDetail() {
         if (result.success) {
           showToast('Invitation sent successfully', 'success');
           setInviteEmail('');
+          setInviteRole('member');
           // Refresh members list
           const membersResponse = await fetch(`/api/wishlists/${wishlistId}/members`, {
             cache: 'no-store',
@@ -751,7 +755,7 @@ export default function WishlistDetail() {
             >
               Items
             </button>
-            {isOwner && (
+            {(isOwner || isAdmin) && (
               <>
                 <button
                   onClick={() => setActiveTab('users')}
@@ -789,7 +793,7 @@ export default function WishlistDetail() {
                 <p className="text-xs sm:text-sm text-gray-600 mb-1 truncate">Total Items</p>
                 <p className="text-2xl sm:text-3xl font-bold text-gray-900">{stats.total}</p>
               </div>
-              {isOwner && (
+              {(isOwner || isAdmin) && (
                 <>
                   <div className="bg-white rounded-xl p-3 sm:p-4 shadow-md">
                     <p className="text-xs sm:text-sm text-gray-600 mb-1 truncate">Draft</p>
@@ -879,12 +883,12 @@ export default function WishlistDetail() {
 
             {/* Add Item Button */}
             <div className="mb-6 sm:mb-8">
-              {isOwner && (
+              {(isOwner || isAdmin) && (
                 <Button onClick={() => setShowAddItemModal(true)} size="md">
                   + Add Item
                 </Button>
               )}
-              {isMember && !isOwner && (
+              {isMember && !isOwner && !isAdmin && (
                 <Button onClick={() => setShowProposeItemModal(true)} size="md">
                   + Propose Item
                 </Button>
@@ -917,21 +921,21 @@ export default function WishlistDetail() {
                     item={item}
                     onUpdate={handleUpdateItem}
                     onEdit={
-                      // Owners can edit non-proposed items
+                      // Owners and admins can edit non-proposed items
                       // Proposers can edit their own proposed items
-                      (isOwner && item.status !== 'proposed') ||
+                      ((isOwner || isAdmin) && item.status !== 'proposed') ||
                       (item.status === 'proposed' &&
                         item.proposedBy?.toString() === session?.user?.id)
                         ? handleEditItem
                         : undefined
                     }
                     onReview={
-                      isOwner && item.status === 'proposed'
+                      (isOwner || isAdmin) && item.status === 'proposed'
                         ? () => setItemToReview(item)
                         : undefined
                     }
                     isAuthenticated={!!session?.user}
-                    isOwner={isOwner}
+                    isOwner={isOwner || isAdmin}
                     isMember={isMember}
                   />
                 ))}
@@ -943,7 +947,7 @@ export default function WishlistDetail() {
         {/* Users Tab */}
         {activeTab === 'users' && (
           <div className="space-y-6">
-            {isOwner && (
+            {(isOwner || isAdmin) && (
               <div className="bg-white rounded-xl p-4 sm:p-6 shadow-md">
                 <h2 className="text-xl font-bold text-gray-900 mb-4">Invite User</h2>
                 <form
@@ -961,6 +965,15 @@ export default function WishlistDetail() {
                     disabled={isInviting}
                     autoComplete="email"
                   />
+                  <select
+                    value={inviteRole}
+                    onChange={(e) => setInviteRole(e.target.value as 'admin' | 'member')}
+                    className="pl-4 pr-8 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none appearance-none text-sm sm:text-base bg-white bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20fill%3D%22none%22%20viewBox%3D%220%200%2020%2020%22%3E%3Cpath%20stroke%3D%22%236b7280%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20stroke-width%3D%221.5%22%20d%3D%22M6%208l4%204%204-4%22%2F%3E%3C%2Fsvg%3E')] bg-[length:1.5em_1.5em] bg-[right_0.5rem_center] bg-no-repeat cursor-pointer"
+                    disabled={isInviting}
+                  >
+                    <option value="member">Member</option>
+                    <option value="admin">Admin</option>
+                  </select>
                   <button
                     type="submit"
                     disabled={isInviting}
@@ -992,7 +1005,13 @@ export default function WishlistDetail() {
                   {members.map((member) => {
                     const memberUserId = String(member.user._id);
                     const isCurrentUser = memberUserId === session?.user?.id;
-                    const isOwnerMember = member.role === 'owner';
+                    const isOriginalOwner = wishlist?.owner.toString() === memberUserId;
+                    // Role is only 'owner' if it's the original owner (from wishlist.owner), otherwise check membership role
+                    const memberRole = isOriginalOwner
+                      ? 'owner'
+                      : (member.role as 'admin' | 'member');
+                    const isAdminMember = memberRole === 'admin';
+                    const isRegularMember = memberRole === 'member';
 
                     return (
                       <div
@@ -1007,12 +1026,17 @@ export default function WishlistDetail() {
                             >
                               {member.user.email}
                             </Link>
-                            {isOwnerMember && (
+                            {isOriginalOwner && (
                               <span className="px-2 py-1 text-xs font-semibold rounded-full bg-primary-100 text-primary-800 whitespace-nowrap">
                                 Owner
                               </span>
                             )}
-                            {!isOwnerMember && (
+                            {isAdminMember && !isOriginalOwner && (
+                              <span className="px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800 whitespace-nowrap">
+                                Admin
+                              </span>
+                            )}
+                            {isRegularMember && (
                               <span className="px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-800 whitespace-nowrap">
                                 Member
                               </span>
@@ -1020,18 +1044,62 @@ export default function WishlistDetail() {
                           </div>
                         </div>
                         <div className="flex items-center gap-2 flex-shrink-0">
-                          {isOwnerMember && isCurrentUser && (
+                          {isCurrentUser && (
                             <span className="text-sm text-gray-500 whitespace-nowrap">You</span>
                           )}
-                          {isOwner && !isOwnerMember && (
-                            <button
-                              onClick={() => handleKickMember(member._id, member.user.email)}
-                              className="px-3 sm:px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer whitespace-nowrap"
-                            >
-                              Remove
-                            </button>
+                          {(isOwner || isAdmin) && !isOriginalOwner && (
+                            <>
+                              <select
+                                value={memberRole}
+                                onChange={async (e) => {
+                                  const newRole = e.target.value as 'admin' | 'member';
+                                  try {
+                                    const response = await fetch(
+                                      `/api/wishlists/${wishlistId}/members/${member._id}`,
+                                      {
+                                        method: 'PATCH',
+                                        headers: {
+                                          'Content-Type': 'application/json',
+                                        },
+                                        body: JSON.stringify({ role: newRole }),
+                                      }
+                                    );
+
+                                    const result = await response.json();
+
+                                    if (result.success) {
+                                      showToast('Member role updated successfully', 'success');
+                                      // Refresh members list
+                                      const membersResponse = await fetch(
+                                        `/api/wishlists/${wishlistId}/members`,
+                                        { cache: 'no-store' }
+                                      );
+                                      const membersResult = await membersResponse.json();
+                                      if (membersResult.success) {
+                                        setMembers(membersResult.data || []);
+                                      }
+                                    } else {
+                                      showToast(result.error || 'Failed to update role', 'error');
+                                    }
+                                  } catch (error) {
+                                    console.error('Error updating role:', error);
+                                    showToast('Failed to update role', 'error');
+                                  }
+                                }}
+                                className="pl-3 pr-8 py-1 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none appearance-none bg-white bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20fill%3D%22none%22%20viewBox%3D%220%200%2020%2020%22%3E%3Cpath%20stroke%3D%22%236b7280%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20stroke-width%3D%221.5%22%20d%3D%22M6%208l4%204%204-4%22%2F%3E%3C%2Fsvg%3E')] bg-[length:1.5em_1.5em] bg-[right_0.5rem_center] bg-no-repeat cursor-pointer"
+                              >
+                                <option value="member">Member</option>
+                                <option value="admin">Admin</option>
+                              </select>
+                              <button
+                                onClick={() => handleKickMember(member._id, member.user.email)}
+                                className="px-3 sm:px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer whitespace-nowrap"
+                              >
+                                Remove
+                              </button>
+                            </>
                           )}
-                          {isMember && !isOwner && isCurrentUser && (
+                          {isMember && !isOwner && !isAdmin && isCurrentUser && (
                             <button
                               onClick={handleLeaveWishlist}
                               className="px-3 sm:px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer whitespace-nowrap"
@@ -1050,7 +1118,7 @@ export default function WishlistDetail() {
         )}
 
         {/* Settings Tab */}
-        {activeTab === 'settings' && isOwner && (
+        {activeTab === 'settings' && (isOwner || isAdmin) && (
           <div className="space-y-6">
             <div className="bg-white rounded-xl p-6 shadow-md">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Wishlist Settings</h3>
@@ -1179,25 +1247,27 @@ export default function WishlistDetail() {
                 </div>
               </form>
 
-              {/* Delete Wishlist Section */}
-              <div className="mt-6 sm:mt-8 pt-6 sm:pt-8 border-t border-gray-200">
-                <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-2">
-                  Danger Zone
-                </h3>
-                <p className="text-xs sm:text-sm text-gray-600 mb-4">
-                  Once you delete a wishlist, there is no going back. All items and memberships will
-                  be permanently deleted.
-                </p>
-                <Button
-                  variant="danger"
-                  onClick={handleDeleteWishlist}
-                  disabled={isDeletingWishlist}
-                  fullWidth
-                  className="sm:w-auto"
-                >
-                  {isDeletingWishlist ? 'Deleting...' : 'Delete Wishlist'}
-                </Button>
-              </div>
+              {/* Delete Wishlist Section - Only for original owner */}
+              {isOwner && (
+                <div className="mt-6 sm:mt-8 pt-6 sm:pt-8 border-t border-gray-200">
+                  <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-2">
+                    Danger Zone
+                  </h3>
+                  <p className="text-xs sm:text-sm text-gray-600 mb-4">
+                    Once you delete a wishlist, there is no going back. All items and memberships
+                    will be permanently deleted.
+                  </p>
+                  <Button
+                    variant="danger"
+                    onClick={handleDeleteWishlist}
+                    disabled={isDeletingWishlist}
+                    fullWidth
+                    className="sm:w-auto"
+                  >
+                    {isDeletingWishlist ? 'Deleting...' : 'Delete Wishlist'}
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
         )}
