@@ -28,7 +28,7 @@ export interface EnvSchema {
  */
 const REQUIRED_ENV_VARS = {
   database: ['MONGODB_URI'],
-  auth: ['NEXTAUTH_SECRET', 'NEXTAUTH_URL'],
+  auth: ['NEXTAUTH_SECRET'],
   email: ['SMTP_HOST', 'SMTP_PORT', 'SMTP_SECURE', 'SMTP_USER', 'SMTP_PASSWORD', 'EMAIL_FROM'],
   migrations: ['MIGRATION_SECRET'],
 } as const;
@@ -66,6 +66,12 @@ export function validateEnvVars(): void {
     }
   }
 
+  // NEXTAUTH_URL can be derived from VERCEL_URL on Vercel deployments
+  if (!process.env.NEXTAUTH_URL && !process.env.VERCEL_URL) {
+    if (!missing['auth']) missing['auth'] = [];
+    missing['auth'].push('NEXTAUTH_URL (or deploy on Vercel where VERCEL_URL is automatic)');
+  }
+
   if (Object.keys(missing).length > 0) {
     const errorMessages = Object.entries(missing).map(([category, vars]) => {
       return `  ${category.toUpperCase()}:\n${vars.map((v) => `    - ${v}`).join('\n')}`;
@@ -97,13 +103,16 @@ export function getEnvVars(): EnvSchema {
 
   validateEnvVars();
 
+  const nextAuthUrl =
+    process.env.NEXTAUTH_URL || `https://${process.env.VERCEL_URL}`;
+
   return {
     // Database
     MONGODB_URI: process.env.MONGODB_URI!,
 
     // NextAuth
     NEXTAUTH_SECRET: process.env.NEXTAUTH_SECRET!,
-    NEXTAUTH_URL: process.env.NEXTAUTH_URL!,
+    NEXTAUTH_URL: nextAuthUrl,
 
     // Email
     SMTP_HOST: process.env.SMTP_HOST!,

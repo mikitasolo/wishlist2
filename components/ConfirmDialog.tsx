@@ -23,18 +23,20 @@ export default function ConfirmDialog({
   cancelText = 'Cancel',
   type = 'warning',
 }: ConfirmDialogProps) {
-  // Handle Escape key press
+  // Handle Escape key press — capture phase + stopImmediatePropagation
+  // so parent modals (BaseModal) don't also process the Escape
   useEffect(() => {
     if (!isOpen) return;
 
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        e.stopImmediatePropagation();
         onCancel();
       }
     };
 
-    document.addEventListener('keydown', handleEscape);
-    return () => document.removeEventListener('keydown', handleEscape);
+    document.addEventListener('keydown', handleEscape, { capture: true });
+    return () => document.removeEventListener('keydown', handleEscape, { capture: true });
   }, [isOpen, onCancel]);
 
   // Prevent body scroll when dialog is open

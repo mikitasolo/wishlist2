@@ -28,6 +28,7 @@ function WishlistItem({
   const { data: session } = useSession();
   const [imageLoading, setImageLoading] = useState(true);
   const [showNotes, setShowNotes] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
 
   // Reset showNotes when item changes
   useEffect(() => {
@@ -52,16 +53,26 @@ function WishlistItem({
   const displayStatus = isOwner && item.status === 'booked' ? 'available' : item.status;
 
   const handleToggleBooked = useCallback(async () => {
-    if (isOwner) return; // Owners can't book items
-    const newStatus = item.status === 'booked' ? 'available' : 'booked';
-    await onUpdate(item._id, { status: newStatus });
-  }, [item.status, item._id, onUpdate, isOwner]);
+    if (isOwner || isUpdating) return;
+    setIsUpdating(true);
+    try {
+      const newStatus = item.status === 'booked' ? 'available' : 'booked';
+      await onUpdate(item._id, { status: newStatus });
+    } finally {
+      setIsUpdating(false);
+    }
+  }, [item.status, item._id, onUpdate, isOwner, isUpdating]);
 
   const handleToggleCompleted = useCallback(async () => {
-    if (!isOwner) return; // Only owners can complete items
-    const newStatus = item.status === 'completed' ? 'available' : 'completed';
-    await onUpdate(item._id, { status: newStatus });
-  }, [item.status, item._id, onUpdate, isOwner]);
+    if (!isOwner || isUpdating) return;
+    setIsUpdating(true);
+    try {
+      const newStatus = item.status === 'completed' ? 'available' : 'completed';
+      await onUpdate(item._id, { status: newStatus });
+    } finally {
+      setIsUpdating(false);
+    }
+  }, [item.status, item._id, onUpdate, isOwner, isUpdating]);
 
   // Determine border styling based on item status
   const getBorderClass = () => {
@@ -297,13 +308,15 @@ function WishlistItem({
               <button
                 onClick={handleToggleBooked}
                 className={`flex-1 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
-                  item.status === 'booked' && isBookedByCurrentUser
-                    ? 'bg-gray-300 text-gray-700 hover:bg-gray-400 cursor-pointer'
-                    : item.status === 'booked'
-                      ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                      : 'bg-green-700 text-white hover:bg-green-800 cursor-pointer'
+                  isUpdating
+                    ? 'opacity-60 cursor-not-allowed'
+                    : item.status === 'booked' && isBookedByCurrentUser
+                      ? 'bg-gray-300 text-gray-700 hover:bg-gray-400 cursor-pointer'
+                      : item.status === 'booked'
+                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                        : 'bg-green-700 text-white hover:bg-green-800 cursor-pointer'
                 }`}
-                disabled={item.status === 'booked' && !isBookedByCurrentUser}
+                disabled={isUpdating || (item.status === 'booked' && !isBookedByCurrentUser)}
                 aria-label={
                   item.status === 'booked' && isBookedByCurrentUser
                     ? 'Unbook this item'
@@ -339,11 +352,14 @@ function WishlistItem({
                 {item.status !== 'draft' && (
                   <button
                     onClick={handleToggleCompleted}
-                    className={`flex-1 px-3 py-2 text-sm font-medium rounded-lg transition-colors cursor-pointer ${
-                      displayStatus === 'completed'
-                        ? 'bg-green-500 text-white hover:bg-green-600'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    className={`flex-1 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+                      isUpdating
+                        ? 'opacity-60 cursor-not-allowed'
+                        : displayStatus === 'completed'
+                          ? 'bg-green-500 text-white hover:bg-green-600 cursor-pointer'
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200 cursor-pointer'
                     }`}
+                    disabled={isUpdating}
                     aria-label={
                       displayStatus === 'completed'
                         ? 'Mark item as available'
