@@ -409,10 +409,21 @@ export default function WishlistDetail() {
 
   const handleUpdateItem = useCallback(
     async (id: string, updates: Partial<ApiItem>) => {
-      // Don't optimistically update - let the refetch handle it to maintain correct sorting
+      setItems((prevItems) =>
+        prevItems.map((item) => {
+          if (item._id !== id) return item;
+          const optimistic = { ...item, ...updates };
+          if (updates.status === 'booked' && session?.user?.id) {
+            optimistic.bookedBy = session.user.id;
+          } else if (updates.status === 'available' && item.status === 'booked') {
+            optimistic.bookedBy = null;
+          }
+          return optimistic;
+        })
+      );
       await updateItemHook(id, updates);
     },
-    [updateItemHook]
+    [updateItemHook, session?.user?.id]
   );
 
   const handleProposeItem = useCallback(
