@@ -24,7 +24,7 @@ export default function Home() {
     async function fetchWishlists() {
       if (status === 'loading') return;
 
-      if (!session?.user) {
+      if (status !== 'authenticated') {
         setLoading(false);
         return;
       }
@@ -48,7 +48,7 @@ export default function Home() {
     }
 
     fetchWishlists();
-  }, [session, status, showToast]);
+  }, [status, showToast]);
 
   if (status === 'loading' || loading) {
     return (

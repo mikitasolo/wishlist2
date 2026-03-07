@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
@@ -39,7 +39,7 @@ interface WishlistMember {
 }
 
 export default function WishlistDetail() {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   const router = useRouter();
   const params = useParams();
   const { showToast } = useToast();
@@ -77,6 +77,7 @@ export default function WishlistDetail() {
     memberEmail?: string;
   } | null>(null);
   const [isDeletingWishlist, setIsDeletingWishlist] = useState(false);
+  const settingsFormDirtyRef = useRef(false);
 
   const fetchItemsHook = useFetchItems();
 
@@ -244,11 +245,13 @@ export default function WishlistDetail() {
               setIsMember(userRole === 'member' || userRole === 'admin');
             }
 
-            setSettingsForm({
-              name: wishlistData.name,
-              description: wishlistData.description || '',
-              isPublic: wishlistData.isPublic,
-            });
+            if (!settingsFormDirtyRef.current) {
+              setSettingsForm({
+                name: wishlistData.name,
+                description: wishlistData.description || '',
+                isPublic: wishlistData.isPublic,
+              });
+            }
 
             // Only set loading to false after successfully setting the wishlist
             // This prevents the "wishlist not found" flash
@@ -271,10 +274,10 @@ export default function WishlistDetail() {
       }
     }
 
-    if (session !== undefined) {
+    if (status !== 'loading') {
       fetchWishlist();
     }
-  }, [wishlistId, session, router, showToast]);
+  }, [wishlistId, status, router, showToast]);
 
   // Fetch members (only for owners and admins)
   useEffect(() => {
@@ -1152,6 +1155,7 @@ export default function WishlistDetail() {
 
                     if (result.success) {
                       setWishlist(result.data);
+                      settingsFormDirtyRef.current = false;
                       showToast('Wishlist updated successfully', 'success');
                     } else {
                       showToast(result.error || 'Failed to update wishlist', 'error');
@@ -1178,7 +1182,10 @@ export default function WishlistDetail() {
                     id="settings-name"
                     required
                     value={settingsForm.name}
-                    onChange={(e) => setSettingsForm({ ...settingsForm, name: e.target.value })}
+                    onChange={(e) => {
+                      setSettingsForm({ ...settingsForm, name: e.target.value });
+                      settingsFormDirtyRef.current = true;
+                    }}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
                     disabled={isSavingSettings}
                     autoComplete="off"
@@ -1195,9 +1202,10 @@ export default function WishlistDetail() {
                   <textarea
                     id="settings-description"
                     value={settingsForm.description}
-                    onChange={(e) =>
-                      setSettingsForm({ ...settingsForm, description: e.target.value })
-                    }
+                    onChange={(e) => {
+                      setSettingsForm({ ...settingsForm, description: e.target.value });
+                      settingsFormDirtyRef.current = true;
+                    }}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
                     rows={3}
                     disabled={isSavingSettings}
@@ -1222,7 +1230,10 @@ export default function WishlistDetail() {
                     />
                     <button
                       type="button"
-                      onClick={() => setSettingsForm({ ...settingsForm, isPublic: true })}
+                      onClick={() => {
+                        setSettingsForm({ ...settingsForm, isPublic: true });
+                        settingsFormDirtyRef.current = true;
+                      }}
                       disabled={isSavingSettings}
                       className={`relative z-10 flex-1 px-4 py-2 text-sm font-medium rounded-md transition-colors duration-300 cursor-pointer ${
                         settingsForm.isPublic
@@ -1234,7 +1245,10 @@ export default function WishlistDetail() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setSettingsForm({ ...settingsForm, isPublic: false })}
+                      onClick={() => {
+                        setSettingsForm({ ...settingsForm, isPublic: false });
+                        settingsFormDirtyRef.current = true;
+                      }}
                       disabled={isSavingSettings}
                       className={`relative z-10 flex-1 px-4 py-2 text-sm font-medium rounded-md transition-colors duration-300 cursor-pointer ${
                         !settingsForm.isPublic
