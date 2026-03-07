@@ -743,7 +743,7 @@ export default function WishlistDetail() {
                 </p>
               )}
               {wishlist.description && (
-                <p className="text-sm sm:text-base lg:text-lg text-gray-600 mt-2 break-words">
+                <p className="text-sm sm:text-base lg:text-lg text-gray-600 mt-2 break-words whitespace-pre-line">
                   {wishlist.description}
                 </p>
               )}
