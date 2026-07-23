@@ -1,42 +1,298 @@
 @import 'tailwindcss';
 
+/* Drive Tailwind's `dark:` variant from our own `data-theme` attribute (set by
+   the appearance toggle) instead of the OS `prefers-color-scheme`. Without this
+   the two disagree — e.g. an OS set to dark would activate `dark:` utilities
+   even while the app is in light mode. */
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+/* ------------------------------------------------------------------ */
+/*  Design tokens — Apple-inspired system                              */
+/* ------------------------------------------------------------------ */
+
 @theme {
-  /* Primary color palette (indigo) */
-  --color-primary-50: #eef2ff;
-  --color-primary-100: #e0e7ff;
-  --color-primary-200: #c7d2fe;
-  --color-primary-300: #a5b4fc;
-  --color-primary-400: #818cf8;
-  --color-primary-500: #6366f1;
-  --color-primary-600: #4f46e5;
-  --color-primary-700: #4338ca;
-  --color-primary-800: #3730a3;
-  --color-primary-900: #312e81;
+  /* Primary palette — system indigo */
+  --color-primary-50: #eeeefe;
+  --color-primary-100: #deddff;
+  --color-primary-200: #c4c3ff;
+  --color-primary-300: #a3a1ff;
+  --color-primary-400: #8683ff;
+  --color-primary-500: #6d6bef;
+  --color-primary-600: #5e5ce6;
+  --color-primary-700: #4a48c9;
+  --color-primary-800: #3b39a3;
+  --color-primary-900: #302e80;
+
+  /* Radius scale — restrained, less rounded */
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.625rem;
+  --radius-2xl: 0.875rem;
+  --radius-3xl: 1.125rem;
+
+  /* SF-first type stack */
+  --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text',
+    'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
 }
 
+/* Semantic tokens → Tailwind color/shadow utilities, driven by the
+   CSS variables below so they flip with the OS theme.
+   e.g. `bg-surface`, `text-foreground`, `border-border`, `shadow-md`. */
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-hover: var(--surface-hover);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-ring: var(--ring);
+  --color-accent: var(--accent);
+  --color-accent2: var(--accent2);
+
+  /* Layered, Apple-style elevation */
+  --shadow-xs: 0 1px 2px var(--shadow-color-1);
+  --shadow-sm: 0 1px 2px var(--shadow-color-1), 0 1px 1px var(--shadow-color-1);
+  --shadow-md: 0 2px 8px -2px var(--shadow-color-1), 0 14px 32px -12px var(--shadow-color-2);
+  --shadow-lg: 0 10px 30px -8px var(--shadow-color-2), 0 40px 70px -30px var(--shadow-color-2);
+}
+
+/* Light theme — the default (applies unless [data-theme="dark"] is set) */
 :root {
-  /* Background and foreground colors */
-  --foreground-rgb: 17, 24, 39; /* #111827 */
-  --background-start-rgb: 224, 242, 254; /* #e0f2fe - light blue */
-  --background-end-rgb: 255, 255, 255; /* #ffffff */
+  --background: #f2f2f5;
+  --surface: #ffffff;
+  --surface-2: #f2f2f6;
+  --surface-hover: #f5f5f7;
+  --foreground: #1d1d1f;
+  --muted: #f2f2f6;
+  --muted-foreground: #6e6e73;
+  --border: rgb(0 0 0 / 0.1);
+  --border-strong: rgb(0 0 0 / 0.16);
+  --ring: #5e5ce6;
+  /* Accent text on light surfaces — noticeably darker than the brand-600 for
+     strong link/label contrast (brand-600 alone reads washed out on white). */
+  --accent: #3a38a6;
+  --accent2: #ff375f;
+  --shadow-color-1: rgb(20 20 43 / 0.08);
+  --shadow-color-2: rgb(20 20 43 / 0.14);
+
+  /* Subtle ambient tint behind content */
+  --bg-tint: radial-gradient(1100px 560px at 84% -8%, rgb(94 92 230 / 0.07), transparent 60%),
+    radial-gradient(820px 460px at 6% 2%, rgb(255 55 95 / 0.05), transparent 55%);
+
+  color-scheme: light;
+}
+
+/* Dark theme — opt-in only, via the appearance toggle ([data-theme="dark"]) */
+:root[data-theme='dark'] {
+  --background: #000000;
+  --surface: #1c1c1e;
+  --surface-2: #2c2c2e;
+  --surface-hover: #2c2c2e;
+  --foreground: #f5f5f7;
+  --muted: #2c2c2e;
+  --muted-foreground: #a1a1a6;
+  --border: rgb(255 255 255 / 0.12);
+  --border-strong: rgb(255 255 255 / 0.2);
+  --ring: #7d7bff;
+  /* On dark surfaces a lighter accent reads best */
+  --accent: #a3a1ff;
+  --accent2: #ff5277;
+  --shadow-color-1: rgb(0 0 0 / 0.5);
+  --shadow-color-2: rgb(0 0 0 / 0.6);
+
+  --bg-tint: radial-gradient(1100px 560px at 84% -8%, rgb(94 92 230 / 0.16), transparent 60%),
+    radial-gradient(820px 460px at 6% 2%, rgb(255 55 95 / 0.1), transparent 55%);
+
+  color-scheme: dark;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Base                                                               */
+/* ------------------------------------------------------------------ */
+
+* {
+  border-color: var(--border);
+}
+
+/* The canvas behind the body — what iOS shows in the overscroll/rubber-band
+   area at the top of the page. Matched to the header's *resting* color so that
+   area doesn't flash the page background (black in dark mode). The header is
+   `.glass` (72% surface over the page), so we recreate that same blend here
+   rather than using pure surface. */
+html {
+  background-color: color-mix(in srgb, var(--surface) 72%, var(--background));
 }
 
 body {
-  color: rgb(var(--foreground-rgb));
-  background: linear-gradient(
-    to bottom,
-    rgb(var(--background-start-rgb)),
-    rgb(var(--background-end-rgb))
-  );
+  color: var(--foreground);
+  background-color: var(--background);
+  background-image: var(--bg-tint);
+  background-attachment: fixed;
   min-height: 100vh;
+  font-family: var(--font-sans);
+  letter-spacing: -0.011em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* Hide scrollbar for mobile horizontal scrolling */
+/* Tighter tracking on headings, Apple-style */
+h1,
+h2,
+h3 {
+  letter-spacing: -0.025em;
+}
+
+/* Theme-aware form controls */
+input,
+textarea,
+select {
+  background-color: var(--surface);
+  color: var(--foreground);
+}
+input::placeholder,
+textarea::placeholder {
+  color: var(--muted-foreground);
+  opacity: 1;
+}
+
+/* Interactive controls get the pointer cursor (buttons don't by default) */
+button:not(:disabled),
+select:not(:disabled),
+[role='button']:not([aria-disabled='true']),
+[role='menuitem'],
+[role='switch'],
+summary,
+label[for] {
+  cursor: pointer;
+}
+
+/* Consistent, accessible focus rings for interactive controls */
+*:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* Form fields opt out of the accent focus ring (no blue border on focus) */
+input:focus,
+input:focus-visible,
+textarea:focus,
+textarea:focus-visible,
+select:focus,
+select:focus-visible {
+  outline: none;
+}
+
+/* Frosted "material" surface (nav, floating chrome) */
+.glass {
+  background: color-mix(in srgb, var(--surface) 72%, transparent);
+  backdrop-filter: saturate(180%) blur(22px);
+  -webkit-backdrop-filter: saturate(180%) blur(22px);
+}
+
+/* Hide scrollbar for horizontal scroll regions (tabs on mobile) */
 .scrollbar-hide {
-  -ms-overflow-style: none; /* IE and Edge */
-  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
 }
 
-.scrollbar-hide::-webkit-scrollbar {
-  display: none; /* Chrome, Safari and Opera */
+/* ------------------------------------------------------------------ */
+/*  Animations                                                         */
+/* ------------------------------------------------------------------ */
+
+@keyframes toast-in {
+  from {
+    transform: translateY(-12px) scale(0.98);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+.animate-toast-in {
+  animation: toast-in 0.28s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.animate-fade-in {
+  animation: fade-in 0.2s ease-out;
+}
+
+@keyframes dialog-in {
+  from {
+    transform: translateY(10px) scale(0.97);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+.animate-dialog-in {
+  animation: dialog-in 0.26s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+/* Skeleton shimmer */
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background-color: var(--surface-2);
+}
+.skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--foreground) 6%, transparent),
+    transparent
+  );
+  animation: shimmer 1.5s infinite;
+}
+
+/* Loading spinner. Track + head colors are set in one rule (deterministic
+   order) so it never collapses into a uniform ring the way combining
+   `border-{color}` with `border-t-{color}` utilities can. Colored via
+   currentColor, so `text-*` sets it; sized via width/height utilities. */
+@keyframes spinner-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.spinner {
+  display: inline-block;
+  flex-shrink: 0;
+  border-radius: 9999px;
+  border: 2px solid color-mix(in srgb, currentColor 22%, transparent);
+  border-top-color: currentColor;
+  animation: spinner-rotate 0.7s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-toast-in,
+  .animate-fade-in,
+  .animate-dialog-in,
+  .skeleton::after {
+    animation: none;
+  }
 }

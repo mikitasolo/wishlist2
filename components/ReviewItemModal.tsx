@@ -120,7 +120,7 @@ export default function ReviewItemModal({
         shouldInterceptClose={() => hasUnsavedChanges}
         onInterceptClose={() => setShowConfirmClose(true)}
       >
-        <div className="mb-4 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+        <div className="mb-4 border border-amber-500/20 bg-amber-500/10 rounded-lg p-4">
           <div className="flex items-start gap-2">
             <svg
               className="w-5 h-5 text-yellow-600 mt-0.5 flex-shrink-0"
@@ -135,7 +135,7 @@ export default function ReviewItemModal({
                 d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
               />
             </svg>
-            <p className="text-sm text-yellow-800">
+            <p className="text-sm text-amber-700 dark:text-amber-300">
               Review this proposed item. You can edit any fields, select the status (Published or
               Draft), and then approve or delete it.
             </p>
@@ -158,14 +158,14 @@ export default function ReviewItemModal({
                 <button
                   type="button"
                   onClick={onCancel}
-                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium cursor-pointer"
+                  className="flex-1 px-4 py-2 border border-border-strong text-foreground rounded-lg hover:bg-surface-hover transition-colors font-medium cursor-pointer"
                   disabled={submitting}
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors font-medium disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
+                  className="flex-1 px-4 py-2 border border-transparent bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors font-medium disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
                   disabled={submitting}
                 >
                   {submitting ? submittingLabel : submitLabel}
@@ -175,7 +175,7 @@ export default function ReviewItemModal({
                 <button
                   type="button"
                   onClick={() => setShowDeleteConfirm(true)}
-                  className="w-full px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
+                  className="w-full px-4 py-2 border border-transparent bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
                   disabled={submitting}
                 >
                   Delete Item

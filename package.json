@@ -9,17 +9,19 @@
     "lint": "next lint",
     "format": "prettier --write \"**/*.{js,jsx,ts,tsx,json,css,md}\"",
     "format:check": "prettier --check \"**/*.{js,jsx,ts,tsx,json,css,md}\"",
-    "vercel:env": "vercel env pull"
+    "vercel:env": "vercel env pull .env"
   },
   "dependencies": {
     "@auth/mongodb-adapter": "^3.11.1",
+    "@vercel/blob": "^2.6.1",
     "mongodb": "^6.20.0",
     "mongoose": "^8.19.2",
-    "next": "16.0.7",
+    "next": "16.2.11",
     "next-auth": "^4.24.13",
     "nodemailer": "^7.0.10",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "react-easy-crop": "^6.2.2",
     "zod": "^4.1.12"
   },
   "devDependencies": {

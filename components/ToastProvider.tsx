@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, useCallback, ReactNode } from 'react';
+import Icon, { IconName } from '@/components/Icon';
 
 type ToastType = 'success' | 'error' | 'info';
 
@@ -16,79 +17,62 @@ interface ToastContextType {
 
 const ToastContext = createContext<ToastContextType | undefined>(undefined);
 
+const config: Record<ToastType, { icon: IconName; chip: string }> = {
+  success: { icon: 'check-circle', chip: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400' },
+  error: { icon: 'alert', chip: 'bg-red-500/15 text-red-600 dark:text-red-400' },
+  info: { icon: 'info', chip: 'bg-primary-500/15 text-accent dark:text-primary-400' },
+};
+
+let counter = 0;
+
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
-
-  const showToast = useCallback((message: string, type: ToastType = 'info') => {
-    const id = Math.random().toString(36).substr(2, 9);
-    const newToast = { id, message, type };
-
-    setToasts((prev) => [...prev, newToast]);
-
-    // Auto-remove after 4 seconds
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((toast) => toast.id !== id));
-    }, 4000);
-  }, []);
 
   const removeToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((toast) => toast.id !== id));
   }, []);
 
+  const showToast = useCallback(
+    (message: string, type: ToastType = 'info') => {
+      const id = `toast-${counter++}`;
+      setToasts((prev) => [...prev, { id, message, type }]);
+      setTimeout(() => removeToast(id), 4000);
+    },
+    [removeToast]
+  );
+
   return (
     <ToastContext.Provider value={{ showToast }}>
       {children}
 
-      {/* Toast Container */}
-      <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 pointer-events-none">
-        {toasts.map((toast) => (
-          <div
-            key={toast.id}
-            className={`pointer-events-auto px-6 py-4 rounded-lg shadow-lg min-w-[300px] max-w-md animate-slide-in ${
-              toast.type === 'success'
-                ? 'bg-green-500 text-white'
-                : toast.type === 'error'
-                  ? 'bg-red-500 text-white'
-                  : 'bg-blue-500 text-white'
-            }`}
-            onClick={() => removeToast(toast.id)}
-          >
-            <div className="flex items-start gap-3">
-              <span className="text-xl flex-shrink-0">
-                {toast.type === 'success' ? '✓' : toast.type === 'error' ? '✕' : 'ℹ'}
+      <div className="pointer-events-none fixed left-1/2 top-4 z-[60] flex w-full max-w-md -translate-x-1/2 flex-col gap-2 px-4">
+        {toasts.map((toast) => {
+          const { icon, chip } = config[toast.type];
+          return (
+            <div
+              key={toast.id}
+              role="status"
+              className="animate-toast-in pointer-events-auto flex items-start gap-3 rounded-xl border border-border bg-surface px-4 py-3 shadow-lg"
+              onClick={() => removeToast(toast.id)}
+            >
+              <span className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg ${chip}`}>
+                <Icon name={icon} size={18} />
               </span>
-              <p className="flex-1 font-medium">{toast.message}</p>
+              <p className="flex-1 pt-0.5 text-sm font-medium text-foreground">{toast.message}</p>
               <button
                 onClick={(e) => {
                   e.stopPropagation();
                   removeToast(toast.id);
                 }}
-                className="text-white/80 hover:text-white flex-shrink-0"
+                className="flex-shrink-0 rounded-md p-0.5 text-muted-foreground transition-colors hover:text-foreground"
+                aria-label="Dismiss notification"
               >
-                ✕
+                <Icon name="close" size={16} />
               </button>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
-
-      {/* Animation styles */}
-      <style jsx global>{`
-        @keyframes slide-in {
-          from {
-            transform: translateY(-100%);
-            opacity: 0;
-          }
-          to {
-            transform: translateY(0);
-            opacity: 1;
-          }
-        }
-
-        .animate-slide-in {
-          animation: slide-in 0.3s ease-out;
-        }
-      `}</style>
     </ToastContext.Provider>
   );
 }

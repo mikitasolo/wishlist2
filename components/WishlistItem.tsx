@@ -2,9 +2,12 @@
 
 import { memo, useMemo, useCallback, useState, useEffect } from 'react';
 import { ApiItem } from '@/types/api';
-import Image from 'next/image';
 import { useSession } from 'next-auth/react';
 import { formatPriceFromObject } from '@/lib/utils/currency';
+import { coverGradient } from '@/lib/utils/cover';
+import Icon from '@/components/Icon';
+import BannerImage from '@/components/BannerImage';
+import ConfirmDialog from '@/components/ConfirmDialog';
 
 interface WishlistItemProps {
   item: ApiItem;
@@ -14,6 +17,8 @@ interface WishlistItemProps {
   isAuthenticated: boolean;
   isOwner?: boolean;
   isMember?: boolean;
+  /** Which price to display: the item's original currency, or the viewer's. */
+  priceMode?: 'original' | 'converted';
 }
 
 function WishlistItem({
@@ -24,11 +29,12 @@ function WishlistItem({
   isAuthenticated,
   isOwner = false,
   isMember = false,
+  priceMode = 'original',
 }: WishlistItemProps) {
   const { data: session } = useSession();
-  const [imageLoading, setImageLoading] = useState(true);
   const [showNotes, setShowNotes] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [showCompleteConfirm, setShowCompleteConfirm] = useState(false);
 
   // Reset showNotes when item changes
   useEffect(() => {
@@ -63,38 +69,49 @@ function WishlistItem({
     }
   }, [item.status, item._id, onUpdate, isOwner, isUpdating]);
 
-  const handleToggleCompleted = useCallback(async () => {
-    if (!isOwner || isUpdating) return;
-    setIsUpdating(true);
-    try {
-      const newStatus = item.status === 'completed' ? 'available' : 'completed';
-      await onUpdate(item._id, { status: newStatus });
-    } finally {
-      setIsUpdating(false);
-    }
-  }, [item.status, item._id, onUpdate, isOwner, isUpdating]);
+  const applyCompleted = useCallback(
+    async (newStatus: 'completed' | 'available') => {
+      setIsUpdating(true);
+      try {
+        await onUpdate(item._id, { status: newStatus });
+      } finally {
+        setIsUpdating(false);
+      }
+    },
+    [item._id, onUpdate]
+  );
 
-  // Determine border styling based on item status
+  const handleToggleCompleted = useCallback(() => {
+    if (!isOwner || isUpdating) return;
+    if (item.status === 'completed') {
+      // Un-completing is reversible → no confirmation needed
+      applyCompleted('available');
+    } else {
+      setShowCompleteConfirm(true);
+    }
+  }, [isOwner, isUpdating, item.status, applyCompleted]);
+
+  // Determine border styling based on item status (refined, tokenized)
   const getBorderClass = () => {
     if (item.status === 'draft') {
-      return 'border-2 border-gray-300 border-dashed';
+      return 'border-dashed border-border-strong';
     }
     if (item.status === 'proposed') {
-      return 'border-2 border-blue-500 border-dashed';
+      return 'border-primary-400 ring-1 ring-primary-400/40';
     }
     if (item.status === 'booked' && !isOwner && isBookedByCurrentUser) {
-      return 'border-2 border-green-700 border-dashed';
+      return 'border-emerald-500/60 ring-1 ring-emerald-500/30';
     }
     if (item.status === 'booked' && !isOwner && !isBookedByCurrentUser) {
-      return 'border-2 border-yellow-500 border-dashed';
+      return 'border-amber-500/60 ring-1 ring-amber-500/30';
     }
-    return '';
+    return 'border-border';
   };
 
   return (
     <div
-      className={`relative bg-white rounded-xl shadow-lg transition-all duration-300 hover:shadow-xl flex flex-col p-4 sm:p-5 ${
-        displayStatus === 'completed' ? 'ring-2 ring-green-400' : ''
+      className={`group relative flex flex-col rounded-3xl border bg-surface p-4 shadow-md transition-all duration-200 hover:shadow-lg sm:p-5 ${
+        displayStatus === 'completed' ? 'ring-1 ring-emerald-500/40' : ''
       } ${getBorderClass()}`}
       role="article"
       aria-label={`Item: ${item.name}`}
@@ -103,152 +120,86 @@ function WishlistItem({
       {item.notes && (
         <button
           onClick={() => setShowNotes(!showNotes)}
-          className="absolute top-2 left-2 sm:top-3 sm:left-3 z-10 bg-white/90 hover:bg-white rounded-full p-2 shadow-md transition-all cursor-pointer"
+          className="absolute left-2 top-2 z-10 flex h-9 w-9 items-center justify-center rounded-full border border-border bg-surface/90 shadow-sm backdrop-blur transition-all hover:bg-surface sm:left-3 sm:top-3"
           aria-label={showNotes ? 'Show image' : 'Show notes'}
+          title={showNotes ? 'Show image' : 'Show notes'}
         >
-          <svg
-            className={`w-5 h-5 transition-colors ${
-              showNotes ? 'text-primary-600' : 'text-gray-600'
-            }`}
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-            />
-          </svg>
+          <Icon
+            name={showNotes ? 'image' : 'info'}
+            size={18}
+            className={showNotes ? 'text-accent dark:text-primary-400' : 'text-muted-foreground'}
+          />
         </button>
       )}
 
       {/* Status badges - positioned absolutely at top-right corner of card */}
-      <div className="absolute top-2 right-2 sm:top-3 sm:right-3 z-10 flex flex-col gap-2">
+      <div className="absolute right-2 top-2 z-10 flex flex-col items-end gap-2 sm:right-3 sm:top-3">
         {item.status === 'draft' && (
-          <span className="bg-gray-500 text-white text-xs font-semibold px-3 py-1 rounded-full shadow-md">
+          <span className="rounded-full border border-border bg-surface/90 px-2.5 py-1 text-xs font-semibold text-muted-foreground shadow-sm backdrop-blur">
             Draft
           </span>
         )}
         {item.status === 'proposed' && (
-          <span className="bg-blue-500 text-white text-xs font-semibold px-3 py-1 rounded-full shadow-md">
+          <span className="rounded-full bg-primary-600 px-2.5 py-1 text-xs font-semibold text-white shadow-sm">
             Proposed
           </span>
         )}
         {/* Only show booking badges to members, not owners */}
         {!isOwner && item.status === 'booked' && isBookedByCurrentUser && (
-          <span className="bg-green-700 text-white text-xs font-semibold px-3 py-1 rounded-full shadow-md">
+          <span className="rounded-full bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white shadow-sm">
             Booked by you
           </span>
         )}
         {!isOwner && item.status === 'booked' && !isBookedByCurrentUser && (
-          <span className="bg-yellow-500 text-white text-xs font-semibold px-3 py-1 rounded-full shadow-md">
+          <span className="rounded-full bg-amber-500 px-2.5 py-1 text-xs font-semibold text-white shadow-sm">
             Booked
           </span>
         )}
         {displayStatus === 'completed' && (
-          <span className="bg-green-500 text-white text-xs font-semibold px-3 py-1 rounded-full shadow-md">
+          <span className="flex items-center gap-1 rounded-full bg-emerald-500 px-2.5 py-1 text-xs font-semibold text-white shadow-sm">
+            <Icon name="check" size={12} />
             Completed
           </span>
         )}
       </div>
 
-      {/* Image/Notes area */}
+      {/* Image/Notes area — gradient shows through when there's no image or it fails to load */}
       {item.link && !showNotes ? (
         <a
           href={item.link}
           target="_blank"
           rel="noopener noreferrer"
-          className="relative h-64 w-full bg-gray-100 flex-shrink-0 rounded-lg overflow-hidden mb-4 block cursor-pointer hover:opacity-90 transition-opacity duration-200"
+          className="relative mb-4 block aspect-square w-full flex-shrink-0 overflow-hidden rounded-2xl bg-surface-2 transition-opacity duration-200 hover:opacity-90"
+          style={{ background: item.imageUrl ? undefined : coverGradient(item._id) }}
           aria-label={`View ${item.name} product page`}
         >
-          {imageLoading && item.imageUrl && (
-            <div className="absolute inset-0 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 animate-pulse" />
-          )}
-          {item.imageUrl ? (
-            <Image
+          {item.imageUrl && (
+            <BannerImage
               src={item.imageUrl}
               alt={item.name}
-              fill
-              className={`object-cover transition-opacity duration-300 ${
-                imageLoading ? 'opacity-0' : 'opacity-100'
-              }`}
               sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-              onLoad={() => setImageLoading(false)}
-              onError={() => setImageLoading(false)}
             />
-          ) : (
-            <div className="absolute inset-0 flex items-center justify-center bg-gray-200">
-              <div className="text-center text-gray-400">
-                <svg
-                  className="w-16 h-16 mx-auto mb-2"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-                  />
-                </svg>
-                <p className="text-xs font-medium">No Image</p>
-              </div>
-            </div>
           )}
         </a>
       ) : (
-        <div className="relative h-64 w-full bg-gray-100 flex-shrink-0 rounded-lg overflow-hidden mb-4">
-          {/* Show notes or image */}
+        <div
+          className="relative mb-4 aspect-square w-full flex-shrink-0 overflow-hidden rounded-2xl bg-surface-2"
+          style={{ background: item.imageUrl && !showNotes ? undefined : coverGradient(item._id) }}
+        >
           {showNotes && item.notes ? (
-            <div className="absolute inset-0 flex items-center justify-center bg-gray-50 p-4">
-              <p className="text-base sm:text-lg text-gray-800 whitespace-pre-wrap break-words text-center">
+            <div className="absolute inset-0 flex items-center justify-center bg-surface-2 p-4">
+              <p className="whitespace-pre-wrap break-words text-center text-base text-foreground sm:text-lg">
                 {item.notes}
               </p>
             </div>
           ) : (
-            <>
-              {imageLoading && item.imageUrl && (
-                <div className="absolute inset-0 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 animate-pulse" />
-              )}
-              {item.imageUrl ? (
-                <Image
-                  src={item.imageUrl}
-                  alt={item.name}
-                  fill
-                  className={`object-cover transition-opacity duration-300 ${
-                    imageLoading ? 'opacity-0' : 'opacity-100'
-                  }`}
-                  sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-                  onLoad={() => setImageLoading(false)}
-                  onError={() => setImageLoading(false)}
-                />
-              ) : (
-                <div className="absolute inset-0 flex items-center justify-center bg-gray-200">
-                  <div className="text-center text-gray-400">
-                    <svg
-                      className="w-16 h-16 mx-auto mb-2"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                      xmlns="http://www.w3.org/2000/svg"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-                      />
-                    </svg>
-                    <p className="text-xs font-medium">No Image</p>
-                  </div>
-                </div>
-              )}
-            </>
+            item.imageUrl && (
+              <BannerImage
+                src={item.imageUrl}
+                alt={item.name}
+                sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+              />
+            )
           )}
         </div>
       )}
@@ -258,7 +209,7 @@ function WishlistItem({
         {/* Item name - can vary in height */}
         <div className="flex-grow">
           <h3
-            className="text-base sm:text-lg font-bold text-gray-800 mb-2 sm:mb-3 line-clamp-2"
+            className="mb-2 line-clamp-2 text-base font-semibold text-foreground sm:mb-3 sm:text-lg"
             title={item.name}
           >
             {item.name}
@@ -266,10 +217,12 @@ function WishlistItem({
         </div>
 
         {/* Price - fixed position */}
-        <div className="mb-2 sm:mb-3 min-h-[28px] sm:min-h-[32px] flex items-center">
+        <div className="mb-2 flex min-h-[28px] items-center sm:mb-3 sm:min-h-[32px]">
           {item.price && (
-            <p className="text-lg sm:text-xl font-semibold text-primary-600">
-              {formatPriceFromObject(item.price)}
+            <p className="text-lg font-semibold text-foreground sm:text-xl">
+              {formatPriceFromObject(
+                priceMode === 'converted' && item.priceConverted ? item.priceConverted : item.price
+              )}
             </p>
           )}
         </div>
@@ -284,9 +237,10 @@ function WishlistItem({
                 {isOwner && onReview && (
                   <button
                     onClick={() => onReview(item)}
-                    className="flex-1 px-3 py-2 text-sm font-medium rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors cursor-pointer"
+                    className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-primary-600 px-3 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-primary-700"
                     aria-label="Review proposed item"
                   >
+                    <Icon name="check-circle" size={16} />
                     Review
                   </button>
                 )}
@@ -294,9 +248,10 @@ function WishlistItem({
                 {isProposedByCurrentUser && onEdit && (
                   <button
                     onClick={() => onEdit(item)}
-                    className="flex-1 px-3 py-2 text-sm font-medium rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors cursor-pointer"
+                    className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-muted px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-surface-2"
                     aria-label="Edit proposed item"
                   >
+                    <Icon name="edit" size={16} />
                     Edit
                   </button>
                 )}
@@ -307,14 +262,14 @@ function WishlistItem({
             {isMember && displayStatus !== 'completed' && item.status !== 'proposed' && (
               <button
                 onClick={handleToggleBooked}
-                className={`flex-1 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+                className={`flex-1 rounded-xl px-3 py-2 text-sm font-medium shadow-sm transition-colors ${
                   isUpdating
-                    ? 'opacity-60 cursor-not-allowed'
+                    ? 'cursor-not-allowed opacity-60'
                     : item.status === 'booked' && isBookedByCurrentUser
-                      ? 'bg-gray-300 text-gray-700 hover:bg-gray-400 cursor-pointer'
+                      ? 'cursor-pointer bg-muted text-foreground shadow-none hover:bg-surface-2'
                       : item.status === 'booked'
-                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                        : 'bg-green-700 text-white hover:bg-green-800 cursor-pointer'
+                        ? 'cursor-not-allowed bg-muted text-muted-foreground shadow-none'
+                        : 'cursor-pointer bg-emerald-600 text-white hover:bg-emerald-700'
                 }`}
                 disabled={isUpdating || (item.status === 'booked' && !isBookedByCurrentUser)}
                 aria-label={
@@ -340,11 +295,12 @@ function WishlistItem({
                 {onEdit && (
                   <button
                     onClick={() => onEdit(item)}
-                    className={`px-3 py-2 text-sm font-medium rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors cursor-pointer ${
+                    className={`flex items-center justify-center gap-1.5 rounded-xl bg-muted px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-surface-2 ${
                       item.status === 'draft' ? 'flex-1' : ''
                     }`}
                     aria-label="Edit item"
                   >
+                    <Icon name="edit" size={16} />
                     Edit
                   </button>
                 )}
@@ -352,12 +308,12 @@ function WishlistItem({
                 {item.status !== 'draft' && (
                   <button
                     onClick={handleToggleCompleted}
-                    className={`flex-1 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+                    className={`flex-1 rounded-xl px-3 py-2 text-sm font-medium shadow-sm transition-colors ${
                       isUpdating
-                        ? 'opacity-60 cursor-not-allowed'
+                        ? 'cursor-not-allowed opacity-60'
                         : displayStatus === 'completed'
-                          ? 'bg-green-500 text-white hover:bg-green-600 cursor-pointer'
-                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200 cursor-pointer'
+                          ? 'cursor-pointer bg-emerald-500 text-white hover:bg-emerald-600'
+                          : 'cursor-pointer bg-muted text-foreground shadow-none hover:bg-surface-2'
                     }`}
                     disabled={isUpdating}
                     aria-label={
@@ -381,16 +337,33 @@ function WishlistItem({
               href={item.link}
               target="_blank"
               rel="noopener noreferrer"
-              className="block w-full bg-primary-600 text-white text-sm font-medium px-3 py-2 rounded-lg hover:bg-primary-700 transition-colors text-center cursor-pointer"
+              className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-primary-600 px-3 py-2 text-center text-sm font-medium text-white shadow-sm transition-colors hover:bg-primary-700"
               aria-label={`View ${item.name} product page`}
             >
-              View Item
+              <Icon name="external-link" size={16} />
+              View item
             </a>
           ) : (
-            <p className="text-sm text-gray-500 text-center italic py-2">Item has no link</p>
+            <p className="py-2 text-center text-sm italic text-muted-foreground">No link provided</p>
           )}
         </div>
       </div>
+
+      {showCompleteConfirm && (
+        <ConfirmDialog
+          isOpen
+          title="Mark as completed?"
+          message="This marks the item as completed on this wishlist."
+          confirmText="Complete"
+          cancelText="Cancel"
+          type="info"
+          onConfirm={() => {
+            setShowCompleteConfirm(false);
+            applyCompleted('completed');
+          }}
+          onCancel={() => setShowCompleteConfirm(false)}
+        />
+      )}
     </div>
   );
 }

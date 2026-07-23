@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import Icon from './Icon';
 
 export type FilterOption =
   | 'all'
@@ -96,33 +97,38 @@ export default function FilterDropdown({
 
   return (
     <div className="relative" ref={dropdownRef}>
-      <label className="text-xs sm:text-sm font-medium text-gray-700 whitespace-nowrap mb-2 block">
+      <label className="text-xs sm:text-sm font-medium text-foreground whitespace-nowrap mb-2 block">
         {label}:
       </label>
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full sm:w-auto min-w-[200px] pl-3 pr-8 sm:pr-12 py-2 text-sm sm:text-base border border-gray-300 rounded-lg bg-white text-gray-700 font-medium focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none appearance-none bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20fill%3D%22none%22%20viewBox%3D%220%200%2020%2020%22%3E%3Cpath%20stroke%3D%22%236b7280%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20stroke-width%3D%221.5%22%20d%3D%22M6%208l4%204%204-4%22%2F%3E%3C%2Fsvg%3E')] bg-[length:1.5em_1.5em] bg-[right_0.5rem_center] bg-no-repeat cursor-pointer text-left flex items-center justify-between"
+        className="flex h-9 w-full sm:w-auto min-w-[200px] items-center justify-between gap-2 rounded-xl border border-border-strong bg-surface px-3.5 text-sm font-medium text-foreground outline-none transition-colors hover:bg-surface-hover"
       >
         <span className="truncate">{displayText}</span>
+        <Icon
+          name="chevron-down"
+          size={16}
+          className={`flex-shrink-0 text-muted-foreground transition-transform ${isOpen ? 'rotate-180' : ''}`}
+        />
       </button>
 
       {isOpen && (
-        <div className="absolute z-50 mt-1 w-full sm:w-auto min-w-[200px] bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-auto">
+        <div className="absolute z-50 mt-2 w-full sm:w-auto min-w-[200px] bg-surface border border-border rounded-xl shadow-lg max-h-60 overflow-auto py-1.5">
           {options.map((option) => {
             const isSelected = option === 'all' ? isAllSelected : selectedFilters.includes(option);
             return (
               <label
                 key={option}
-                className="flex items-center px-4 py-2 hover:bg-gray-100 cursor-pointer"
+                className="flex items-center px-4 py-2 hover:bg-muted cursor-pointer"
               >
                 <input
                   type="checkbox"
                   checked={isSelected}
                   onChange={() => handleToggleFilter(option)}
-                  className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500 cursor-pointer"
+                  className="w-4 h-4 text-accent border-border-strong rounded cursor-pointer"
                 />
-                <span className="ml-3 text-sm text-gray-700">{getDisplayLabel(option)}</span>
+                <span className="ml-3 text-sm text-foreground">{getDisplayLabel(option)}</span>
               </label>
             );
           })}

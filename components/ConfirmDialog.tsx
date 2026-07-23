@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect } from 'react';
+import Icon, { IconName } from '@/components/Icon';
+import { useBodyScrollLock } from '@/lib/hooks/useBodyScrollLock';
 
 interface ConfirmDialogProps {
   isOpen: boolean;
@@ -39,17 +41,8 @@ export default function ConfirmDialog({
     return () => document.removeEventListener('keydown', handleEscape, { capture: true });
   }, [isOpen, onCancel]);
 
-  // Prevent body scroll when dialog is open
-  useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = 'unset';
-    }
-    return () => {
-      document.body.style.overflow = 'unset';
-    };
-  }, [isOpen]);
+  // Prevent body scroll while the dialog is open (shared, ref-counted lock)
+  useBodyScrollLock(isOpen);
 
   const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
     // Only close if clicking the backdrop itself, not the dialog content
@@ -60,67 +53,61 @@ export default function ConfirmDialog({
 
   if (!isOpen) return null;
 
-  const buttonColors = {
-    danger: 'bg-red-600 hover:bg-red-700',
-    warning: 'bg-amber-600 hover:bg-amber-700',
-    info: 'bg-blue-600 hover:bg-blue-700',
+  const accent: Record<NonNullable<ConfirmDialogProps['type']>, { icon: IconName; chip: string; button: string }> = {
+    danger: {
+      icon: 'trash',
+      chip: 'bg-red-500/15 text-red-600 dark:text-red-400',
+      button: 'bg-red-600 hover:bg-red-700 active:bg-red-800',
+    },
+    warning: {
+      icon: 'alert',
+      chip: 'bg-amber-500/15 text-amber-600 dark:text-amber-400',
+      button: 'bg-amber-600 hover:bg-amber-700 active:bg-amber-800',
+    },
+    info: {
+      icon: 'info',
+      chip: 'bg-primary-500/15 text-accent dark:text-primary-400',
+      button: 'bg-primary-600 hover:bg-primary-700 active:bg-primary-800',
+    },
   };
+  const { icon, chip, button } = accent[type];
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+      className="animate-fade-in fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm"
       onClick={handleBackdropClick}
-      style={{
-        animation: 'fadeIn 0.2s ease-out',
-      }}
     >
       <div
-        className="bg-white rounded-xl shadow-2xl max-w-md w-full p-4 sm:p-6"
+        className="animate-dialog-in w-full max-w-md rounded-2xl border border-border bg-surface p-5 shadow-lg sm:p-6"
         onClick={(e) => e.stopPropagation()}
-        style={{
-          animation: 'scaleIn 0.2s ease-out',
-        }}
+        role="alertdialog"
+        aria-modal="true"
       >
-        <h2 className="text-lg sm:text-xl font-bold text-gray-900 mb-2 sm:mb-3">{title}</h2>
-        <p className="text-sm sm:text-base text-gray-600 mb-4 sm:mb-6">{message}</p>
+        <div className="flex gap-4">
+          <span className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl ${chip}`}>
+            <Icon name={icon} size={22} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <h2 className="text-lg font-semibold tracking-tight text-foreground">{title}</h2>
+            <p className="mt-1.5 text-sm text-muted-foreground">{message}</p>
+          </div>
+        </div>
 
-        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 justify-end">
+        <div className="mt-6 flex flex-col justify-end gap-2 sm:flex-row sm:gap-3">
           <button
             onClick={onCancel}
-            className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg text-sm sm:text-base font-medium hover:bg-gray-200 transition-colors cursor-pointer order-2 sm:order-1"
+            className="order-2 h-10 rounded-xl bg-muted px-4 text-sm font-medium text-foreground transition-colors hover:bg-surface-2 sm:order-1"
           >
             {cancelText}
           </button>
           <button
             onClick={onConfirm}
-            className={`px-4 py-2 text-white rounded-lg text-sm sm:text-base font-medium transition-colors cursor-pointer order-1 sm:order-2 ${buttonColors[type]}`}
+            className={`order-1 h-10 rounded-xl px-4 text-sm font-medium text-white shadow-sm transition-colors sm:order-2 ${button}`}
           >
             {confirmText}
           </button>
         </div>
       </div>
-
-      <style jsx global>{`
-        @keyframes fadeIn {
-          from {
-            opacity: 0;
-          }
-          to {
-            opacity: 1;
-          }
-        }
-
-        @keyframes scaleIn {
-          from {
-            transform: scale(0.95);
-            opacity: 0;
-          }
-          to {
-            transform: scale(1);
-            opacity: 1;
-          }
-        }
-      `}</style>
     </div>
   );
 }

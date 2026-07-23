@@ -1,0 +1,54 @@
+import { NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
+import connectDB from '@/lib/mongodb';
+import Item from '@/models/Item';
+import Wishlist from '@/models/Wishlist';
+import { ensureCurrencyRatesUpToDate, convertToUsdCents } from '@/lib/utils/currencyRates';
+
+// GET /api/users/me/items - all items across the current user's OWNED wishlists.
+// Booking state is never revealed to the owner (booked folds into "available").
+export async function GET() {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+
+    await connectDB();
+
+    const wishlists = await Wishlist.find({ owner: session.user.id }).select('name slug');
+    const nameMap = new Map(wishlists.map((w) => [w._id.toString(), w.name]));
+    const slugMap = new Map(wishlists.map((w) => [w._id.toString(), w.slug ?? null]));
+
+    const items = await Item.find({ wishlist: { $in: wishlists.map((w) => w._id) } })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    // Rates for a currency-normalized value so price sorting is comparable
+    // across currencies (e.g. PLN vs USD).
+    const currencyRate = await ensureCurrencyRatesUpToDate();
+    const rates = currencyRate?.rates || new Map<string, number>();
+
+    const data = items.map((i) => ({
+      _id: i._id.toString(),
+      name: i.name,
+      imageUrl: i.imageUrl ?? null,
+      price: i.price ?? null,
+      priceInUsdCents:
+        i.price?.value && i.price?.currency
+          ? convertToUsdCents(i.price.value, i.price.currency, rates)
+          : null,
+      link: i.link ?? null,
+      status: i.status === 'booked' ? 'available' : i.status,
+      wishlistId: i.wishlist.toString(),
+      wishlistSlug: slugMap.get(i.wishlist.toString()) ?? null,
+      wishlistName: nameMap.get(i.wishlist.toString()) || 'Wishlist',
+    }));
+
+    return NextResponse.json({ success: true, data }, { status: 200 });
+  } catch (error) {
+    console.error('Error fetching items:', error);
+    return NextResponse.json({ success: false, error: 'Failed to fetch items' }, { status: 500 });
+  }
+}

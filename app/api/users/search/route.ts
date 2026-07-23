@@ -2,31 +2,35 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import User from '@/models/User';
 
-// GET /api/users/search?email=... - Search for a user by email (no auth required)
+// GET /api/users/search?username=... - Find a user by username (exact match).
+// Respects the target user's "searchable" privacy setting.
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
-    const email = searchParams.get('email');
+    const username = (searchParams.get('username') || searchParams.get('email') || '')
+      .toLowerCase()
+      .trim();
 
-    if (!email) {
+    if (!username) {
       return NextResponse.json(
-        { success: false, error: 'Email parameter is required' },
+        { success: false, error: 'Username parameter is required' },
         { status: 400 }
       );
     }
 
     await connectDB();
 
-    // Search for user by email (case-insensitive, exact match)
-    const user = await User.findOne({
-      email: email.toLowerCase().trim(),
-    }).select('_id email');
+    const user = await User.findOne({ username }).select('_id username privacy');
 
-    if (!user) {
+    // Treat non-searchable profiles as not found so their existence isn't leaked.
+    if (!user || user.privacy?.searchable === false) {
       return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
     }
 
-    return NextResponse.json({ success: true, data: user }, { status: 200 });
+    return NextResponse.json(
+      { success: true, data: { _id: user._id, username: user.username } },
+      { status: 200 }
+    );
   } catch (error) {
     console.error('Error searching for user:', error);
     return NextResponse.json(

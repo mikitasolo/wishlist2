@@ -115,7 +115,7 @@ export default function EditItemModal({
         onInterceptClose={() => setShowConfirmClose(true)}
       >
         {item.status === 'proposed' && (
-          <div className="mb-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <div className="mb-4 border border-blue-500/20 bg-blue-500/10 rounded-lg p-4">
             <div className="flex items-start gap-2">
               <svg
                 className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0"
@@ -130,7 +130,7 @@ export default function EditItemModal({
                   d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
                 />
               </svg>
-              <p className="text-sm text-blue-800">
+              <p className="text-sm text-blue-700 dark:text-blue-300">
                 You can edit this proposed item. The status cannot be changed until the owner
                 reviews it.
               </p>
@@ -154,14 +154,14 @@ export default function EditItemModal({
                 <button
                   type="button"
                   onClick={onCancel}
-                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium cursor-pointer"
+                  className="flex-1 px-4 py-2 border border-border-strong text-foreground rounded-lg hover:bg-surface-hover transition-colors font-medium cursor-pointer"
                   disabled={submitting}
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors font-medium disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
+                  className="flex-1 px-4 py-2 border border-transparent bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors font-medium disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
                   disabled={submitting}
                 >
                   {submitting ? submittingLabel : submitLabel}
@@ -171,7 +171,7 @@ export default function EditItemModal({
                 <button
                   type="button"
                   onClick={() => setShowDeleteConfirm(true)}
-                  className="w-full px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
+                  className="w-full px-4 py-2 border border-transparent bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
                   disabled={submitting}
                 >
                   Delete Item

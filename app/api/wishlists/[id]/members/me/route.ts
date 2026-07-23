@@ -5,6 +5,7 @@ import connectDB from '@/lib/mongodb';
 import Wishlist from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
 import Item from '@/models/Item';
+import { resolveWishlistId } from '@/lib/utils/wishlistSlug';
 
 // Helper function to unbook all items for a user in a wishlist
 async function unbookAllItemsForUser(wishlistId: string, userId: string): Promise<number> {
@@ -35,7 +36,11 @@ export async function DELETE(
 ) {
   try {
     const session = await getServerSession(authOptions);
-    const { id: wishlistId } = await params;
+    const { id: idParam } = await params;
+    const wishlistId = await resolveWishlistId(idParam);
+    if (!wishlistId) {
+      return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
+    }
 
     if (!session?.user) {
       return NextResponse.json(

@@ -12,7 +12,14 @@ export const createWishlistSchema = z.object({
     .max(100, 'Name must be 100 characters or less')
     .trim(),
   description: z.string().max(500, 'Description must be 500 characters or less').trim().optional(),
-  isPublic: z.boolean().default(true),
+  visibility: z.enum(['everyone', 'friends', 'private']).default('everyone'),
+  bannerUrl: z.url('Invalid image URL').optional().nullable().or(z.literal('')),
+  currency: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .regex(/^[A-Z]{3}$/, 'Invalid currency code')
+    .optional(),
 });
 
 export const updateWishlistSchema = z
@@ -29,17 +36,77 @@ export const updateWishlistSchema = z
       .trim()
       .optional()
       .nullable(),
-    isPublic: z.boolean().optional(),
+    visibility: z.enum(['everyone', 'friends', 'private']).optional(),
+    archived: z.boolean().optional(),
+    featured: z.boolean().optional(),
+    bannerUrl: z.url('Invalid image URL').optional().nullable().or(z.literal('')),
+    currency: z
+      .string()
+      .trim()
+      .toUpperCase()
+      .regex(/^[A-Z]{3}$/, 'Invalid currency code')
+      .optional(),
+    slug: z
+      .string()
+      .trim()
+      .toLowerCase()
+      .min(3, 'Slug must be at least 3 characters')
+      .max(60, 'Slug must be 60 characters or less')
+      .regex(
+        /^[a-z0-9]+(?:-[a-z0-9]+)*$/,
+        'Use lowercase letters, numbers, and single hyphens (no leading/trailing hyphen)'
+      )
+      .optional(),
   })
   .refine((data) => Object.keys(data).length > 0, {
     message: 'At least one field must be provided for update',
   });
 
-// Member schemas
-export const inviteMemberSchema = z.object({
-  email: z.email('Invalid email address').toLowerCase().trim(),
-  role: z.enum(['admin', 'member']).optional().default('member'),
-});
+// User / profile schemas
+export const USERNAME_REGEX = /^[a-z][a-z0-9_]{2,19}$/;
+
+export const usernameSchema = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .regex(
+    USERNAME_REGEX,
+    'Username must be 3–20 characters, start with a letter, and use only lowercase letters, numbers, or underscores'
+  );
+
+export const updateProfileSchema = z
+  .object({
+    username: usernameSchema.optional(),
+    image: z.url('Invalid image URL').nullable().or(z.literal('')).optional(),
+    bio: z.string().max(300, 'Bio must be 300 characters or less').trim().nullable().optional(),
+    defaultCurrency: z
+      .string()
+      .trim()
+      .toUpperCase()
+      .regex(/^[A-Z]{3}$/, 'Invalid currency code')
+      .optional(),
+    privacy: z
+      .object({
+        searchable: z.boolean().optional(),
+        whoCanInvite: z.enum(['everyone', 'friends', 'nobody']).optional(),
+        profileVisibility: z.enum(['everyone', 'friends']).optional(),
+      })
+      .optional(),
+  })
+  .refine((data) => Object.keys(data).length > 0, {
+    message: 'At least one field must be provided for update',
+  });
+
+// Member schemas — invite by email OR username
+export const inviteMemberSchema = z
+  .object({
+    email: z.email('Invalid email address').toLowerCase().trim().optional(),
+    username: usernameSchema.optional(),
+    role: z.enum(['admin', 'member']).optional().default('member'),
+  })
+  .refine((data) => !!data.email || !!data.username, {
+    message: 'Provide an email address or a username',
+  });
 
 // Item schemas
 export const createItemSchema = z.object({
@@ -90,6 +157,8 @@ export const updateItemSchema = z
     status: z.enum(['draft', 'available', 'booked', 'completed', 'proposed']).optional(),
     bookedBy: z.string().optional().nullable(),
     proposedBy: z.string().optional().nullable(),
+    // Booker-only: mark/unmark the reserved item as gifted (private tracker)
+    gifted: z.boolean().optional(),
   })
   .refine((data) => Object.keys(data).length > 0, {
     message: 'At least one field must be provided for update',

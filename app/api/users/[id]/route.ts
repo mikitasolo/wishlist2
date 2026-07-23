@@ -9,12 +9,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     await connectDB();
 
-    const user = await User.findById(userId).select('email');
+    const user = await User.findById(userId).select('username');
     if (!user) {
       return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
     }
 
-    return NextResponse.json({ success: true, data: user }, { status: 200 });
+    return NextResponse.json(
+      { success: true, data: { _id: user._id, username: user.username } },
+      { status: 200 }
+    );
   } catch (error) {
     console.error('Error fetching user:', error);
     return NextResponse.json({ success: false, error: 'Failed to fetch user' }, { status: 500 });

@@ -5,6 +5,9 @@ import connectDB from '@/lib/mongodb';
 import Wishlist from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
 import User from '@/models/User';
+import Item from '@/models/Item';
+import mongoose from 'mongoose';
+import { areFriends } from '@/lib/utils/friends';
 
 // GET /api/users/[id]/wishlists - Get wishlists for a specific user
 // Returns: public wishlists + wishlists the current user has access to
@@ -21,39 +24,55 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
     }
 
-    // Get all public wishlists owned by this user (always visible)
-    const publicWishlists = await Wishlist.find({
+    const viewerId = session?.user?.id || null;
+    const isSelf = viewerId === userId;
+    const isFriend = viewerId && !isSelf ? await areFriends(viewerId, userId) : false;
+
+    // Enforce profile visibility ("who can see your profile")
+    if (targetUser.privacy?.profileVisibility === 'friends' && !isSelf && !isFriend) {
+      return NextResponse.json(
+        { success: false, error: 'This profile is private', restricted: true },
+        { status: 403 }
+      );
+    }
+
+    // Visibility tiers the viewer may see on a profile (archived lists excluded)
+    const visibleTiers: ('everyone' | 'friends' | 'private')[] = ['everyone'];
+    if (isFriend || isSelf) visibleTiers.push('friends');
+    // Viewing your own profile shows everything, including private lists
+    if (isSelf) visibleTiers.push('private');
+
+    // Match by visibility tier, tolerating legacy docs that predate the field
+    // (no `visibility` + isPublic:true ⇒ treated as everyone).
+    const orClauses: Record<string, unknown>[] = [{ visibility: { $in: visibleTiers } }];
+    if (visibleTiers.includes('everyone')) {
+      orClauses.push({ visibility: { $exists: false }, isPublic: true });
+    }
+    const visibleWishlists = await Wishlist.find({
       owner: userId,
-      isPublic: true,
+      archived: { $ne: true },
+      $or: orClauses,
     });
 
-    // Get private wishlists the current user has access to (if authenticated)
-    let privateWishlists: typeof publicWishlists = [];
-    if (session?.user) {
-      const currentUserId = session.user.id;
-
-      // Get all memberships for the current user
-      const memberships = await WishlistMember.find({
-        user: currentUserId,
-      });
-      const wishlistIds = memberships.map((m) => m.wishlist.toString());
-
-      // Get private wishlists owned by target user where current user is a member
-      privateWishlists = await Wishlist.find({
+    // Plus any wishlist (any tier) where the viewer is an explicit member
+    let memberWishlists: typeof visibleWishlists = [];
+    if (viewerId) {
+      const memberships = await WishlistMember.find({ user: viewerId });
+      const wishlistIds = memberships.map((m) => m.wishlist);
+      memberWishlists = await Wishlist.find({
         _id: { $in: wishlistIds },
         owner: userId,
-        isPublic: false,
+        archived: { $ne: true },
       });
     }
 
-    // Merge: public wishlists + accessible private wishlists
-    const allWishlists = [...publicWishlists, ...privateWishlists];
+    const allWishlists = [...visibleWishlists, ...memberWishlists];
     const uniqueWishlists = Array.from(
       new Map(allWishlists.map((w) => [w._id.toString(), w])).values()
     );
 
-    // Get membership information for current user (if authenticated)
-    let membershipMap = new Map<string, boolean>();
+    // Get the viewer's role in each wishlist (if authenticated).
+    const roleMap = new Map<string, 'admin' | 'member'>();
     if (session?.user) {
       const currentUserId = session.user.id;
       const memberships = await WishlistMember.find({
@@ -61,20 +80,38 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         wishlist: { $in: uniqueWishlists.map((w) => w._id) },
       });
       memberships.forEach((m) => {
-        membershipMap.set(m.wishlist.toString(), true);
+        roleMap.set(m.wishlist.toString(), m.role);
       });
     }
 
-    // Get owner emails for all wishlists
+    // Get owner usernames for all wishlists
     const ownerIds = uniqueWishlists.map((w) => w.owner.toString());
-    const owners = await User.find({ _id: { $in: ownerIds } }).select('email');
-    const ownerMap = new Map(owners.map((o) => [o._id.toString(), o.email]));
+    const owners = await User.find({ _id: { $in: ownerIds } }).select('username image');
+    const ownerMap = new Map(owners.map((o) => [o._id.toString(), o]));
 
-    // Add membership status and owner email to each wishlist
+    // Privacy-safe item count: only "real" list items are counted
+    // (available / booked / completed). Draft and proposed items stay hidden,
+    // and booking state is never revealed (booked is folded into the total) —
+    // this keeps the count identical whether you view your own profile or
+    // someone else's, never spoiling which gifts have been reserved.
+    const visibleCounts = await Item.aggregate<{ _id: mongoose.Types.ObjectId; count: number }>([
+      {
+        $match: {
+          wishlist: { $in: uniqueWishlists.map((w) => w._id) },
+          status: { $in: ['available', 'booked', 'completed'] },
+        },
+      },
+      { $group: { _id: '$wishlist', count: { $sum: 1 } } },
+    ]);
+    const countMap = new Map(visibleCounts.map((c) => [c._id.toString(), c.count]));
+
+    // Add membership status, owner email and item count to each wishlist
     const wishlistsWithMembership = uniqueWishlists.map((wishlist) => ({
       ...wishlist.toObject(),
-      isMember: membershipMap.get(wishlist._id.toString()) || false,
-      ownerEmail: ownerMap.get(wishlist.owner.toString()) || null,
+      userRole: roleMap.get(wishlist._id.toString()) ?? null,
+      ownerUsername: ownerMap.get(wishlist.owner.toString())?.username || null,
+      ownerImage: ownerMap.get(wishlist.owner.toString())?.image ?? null,
+      itemCount: countMap.get(wishlist._id.toString()) ?? 0,
     }));
 
     // Sort by creation date (newest first)

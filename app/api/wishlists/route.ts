@@ -5,6 +5,9 @@ import connectDB from '@/lib/mongodb';
 import Wishlist from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
 import User from '@/models/User';
+import Item from '@/models/Item';
+import { generateUniqueWishlistSlug } from '@/lib/utils/wishlistSlug';
+import mongoose from 'mongoose';
 import { createWishlistSchema, validateRequestBody } from '@/lib/validations';
 
 // GET /api/wishlists - Get all wishlists user has access to
@@ -31,10 +34,13 @@ export async function GET(request: NextRequest) {
 
     // Get all wishlists where user is a member (not owner)
     const memberships = await WishlistMember.find({ user: user._id });
+    const roleMap = new Map(memberships.map((m) => [m.wishlist.toString(), m.role]));
     const wishlistIds = memberships.map((m) => m.wishlist);
-    const memberWishlists = await Wishlist.find({ _id: { $in: wishlistIds } }).sort({
-      createdAt: -1,
-    });
+    // Archived wishlists are hidden from members — only the owner still sees them.
+    const memberWishlists = await Wishlist.find({
+      _id: { $in: wishlistIds },
+      archived: { $ne: true },
+    }).sort({ createdAt: -1 });
 
     // Filter out owned wishlists from member wishlists (in case user is both owner and member)
     const ownedWishlistIds = new Set(ownedWishlists.map((w) => w._id.toString()));
@@ -47,18 +53,51 @@ export async function GET(request: NextRequest) {
       ...ownedWishlists.map((w) => w.owner.toString()),
       ...memberOnlyWishlists.map((w) => w.owner.toString()),
     ]);
-    const owners = await User.find({ _id: { $in: Array.from(allWishlistOwners) } }).select('email');
-    const ownerMap = new Map(owners.map((o) => [o._id.toString(), o.email]));
+    const owners = await User.find({ _id: { $in: Array.from(allWishlistOwners) } }).select(
+      'username image'
+    );
+    const ownerMap = new Map(owners.map((o) => [o._id.toString(), o]));
 
-    // Add owner email to wishlists
+    // Compute a privacy-safe item count per wishlist.
+    // We deliberately never expose booking state here (owners must not learn
+    // which of their items have been booked). `total` counts every item;
+    // `nonDraft` excludes owner-only draft items so members don't learn that
+    // hidden drafts exist. Owned lists use `total`; member lists use `nonDraft`.
+    const allWishlistIds = [
+      ...ownedWishlists.map((w) => w._id),
+      ...memberOnlyWishlists.map((w) => w._id),
+    ];
+    const countAgg = await Item.aggregate<{
+      _id: mongoose.Types.ObjectId;
+      total: number;
+      nonDraft: number;
+    }>([
+      { $match: { wishlist: { $in: allWishlistIds } } },
+      {
+        $group: {
+          _id: '$wishlist',
+          total: { $sum: 1 },
+          nonDraft: { $sum: { $cond: [{ $ne: ['$status', 'draft'] }, 1, 0] } },
+        },
+      },
+    ]);
+    const countMap = new Map(countAgg.map((c) => [c._id.toString(), c]));
+
+    // Add owner email + safe item count to wishlists
     const ownedWithOwnerEmail = ownedWishlists.map((w) => ({
       ...w.toObject(),
-      ownerEmail: ownerMap.get(w.owner.toString()) || null,
+      ownerUsername: ownerMap.get(w.owner.toString())?.username || null,
+      ownerImage: ownerMap.get(w.owner.toString())?.image ?? null,
+      itemCount: countMap.get(w._id.toString())?.total ?? 0,
     }));
 
     const memberWithOwnerEmail = memberOnlyWishlists.map((w) => ({
       ...w.toObject(),
-      ownerEmail: ownerMap.get(w.owner.toString()) || null,
+      ownerUsername: ownerMap.get(w.owner.toString())?.username || null,
+      ownerImage: ownerMap.get(w.owner.toString())?.image ?? null,
+      itemCount: countMap.get(w._id.toString())?.nonDraft ?? 0,
+      isMember: true,
+      userRole: roleMap.get(w._id.toString()) ?? 'member',
     }));
 
     return NextResponse.json(
@@ -108,14 +147,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { name, description, isPublic } = validation.data;
+    const { name, description, visibility, bannerUrl, currency } = validation.data;
 
-    // Create wishlist
+    // Create wishlist with a URL slug derived from its name.
+    const slug = await generateUniqueWishlistSlug(name);
     const wishlist = await Wishlist.create({
       name,
+      slug,
       description,
       owner: user._id,
-      isPublic,
+      visibility,
+      isPublic: visibility === 'everyone',
+      bannerUrl: bannerUrl || null,
+      currency: currency || user.defaultCurrency || 'USD',
     });
 
     return NextResponse.json({ success: true, data: wishlist }, { status: 201 });

@@ -1,6 +1,9 @@
 'use client';
 
 import { useEffect, useCallback, ReactNode } from 'react';
+import { createPortal } from 'react-dom';
+import Icon from '@/components/Icon';
+import { useBodyScrollLock } from '@/lib/hooks/useBodyScrollLock';
 
 interface BaseModalProps {
   isOpen: boolean;
@@ -47,34 +50,8 @@ export default function BaseModal({
     return () => document.removeEventListener('keydown', handleEscape);
   }, [isOpen, isSubmitting, handleClose]);
 
-  // Prevent body scroll when modal is open
-  useEffect(() => {
-    if (isOpen) {
-      // Save the current scroll position
-      const scrollY = window.scrollY;
-      
-      // Prevent scrolling on body
-      document.body.style.overflow = 'hidden';
-      document.body.style.position = 'fixed';
-      document.body.style.top = `-${scrollY}px`;
-      document.body.style.width = '100%';
-      
-      // Also prevent scrolling on html element (for better mobile support)
-      document.documentElement.style.overflow = 'hidden';
-      
-      return () => {
-        // Restore scrolling
-        document.body.style.overflow = '';
-        document.body.style.position = '';
-        document.body.style.top = '';
-        document.body.style.width = '';
-        document.documentElement.style.overflow = '';
-        
-        // Restore scroll position
-        window.scrollTo(0, scrollY);
-      };
-    }
-  }, [isOpen]);
+  // Prevent body scroll while the modal is open (shared, ref-counted lock)
+  useBodyScrollLock(isOpen);
 
   const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
     // Only close if clicking the backdrop itself, not the modal content
@@ -85,35 +62,48 @@ export default function BaseModal({
 
   if (!isOpen) return null;
 
-  return (
+  return createPortal(
+    // Height is pinned to the dynamic viewport (dvh) so the box always fits the
+    // *visible* area on mobile — where a `vh`/`inset-0`-sized box overflows behind
+    // the browser chrome. The dialog fills almost all of that with small margins,
+    // its header stays put, and the body scrolls internally.
     <div
-      className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"
+      className="animate-fade-in fixed left-0 right-0 top-0 z-50 flex h-[100dvh] items-center justify-center bg-slate-900/40 backdrop-blur-sm"
       onClick={handleBackdropClick}
-      style={{ touchAction: 'none' }}
+      style={{
+        paddingTop: 'max(0.75rem, env(safe-area-inset-top))',
+        paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))',
+        paddingLeft: 'max(0.75rem, env(safe-area-inset-left))',
+        paddingRight: 'max(0.75rem, env(safe-area-inset-right))',
+      }}
     >
       <div
-        className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-4 sm:p-6 max-h-[90vh] overflow-y-auto"
+        className="animate-dialog-in flex max-h-full w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-lg"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        style={{ touchAction: 'pan-y' }}
       >
-        <div className="flex justify-between items-center mb-4 sm:mb-6">
-          <h2 id={titleId} className="text-xl sm:text-2xl font-bold text-gray-800">
+        {/* Pinned header */}
+        <div className="flex flex-shrink-0 items-center justify-between gap-4 border-b border-border px-5 py-4 sm:px-6">
+          <h2 id={titleId} className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
             {title}
           </h2>
           <button
             onClick={handleClose}
-            className="text-gray-500 hover:text-gray-700 text-2xl leading-none cursor-pointer"
+            className="-mr-1 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed"
             disabled={isSubmitting}
             aria-label="Close modal"
           >
-            ×
+            <Icon name="close" size={20} />
           </button>
         </div>
-        {children}
+        {/* Scrollable body */}
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 sm:px-6">
+          {children}
+        </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

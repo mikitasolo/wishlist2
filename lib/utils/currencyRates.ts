@@ -122,20 +122,20 @@ export function convertToUsdCents(
 }
 
 /**
- * Gets currency rate for a specific currency
- * @param currency - Currency code (lowercase)
- * @param rates - Currency rates map from CurrencyRate model
- * @returns Exchange rate, or 1.0 for USD, or null if not found
+ * Converts a price from one currency to another (both in minor units/cents),
+ * routing through USD. Returns null if either rate is unavailable.
  */
-export function getCurrencyRate(currency: string, rates: Map<string, number>): number | null {
-  if (!currency || !rates) {
-    return null;
-  }
-
-  const currencyLower = currency.toLowerCase();
-  if (currencyLower === 'usd') {
-    return 1.0;
-  }
-
-  return rates.get(currencyLower) || null;
+export function convertCurrency(
+  value: number,
+  from: string,
+  to: string,
+  rates: Map<string, number>
+): number | null {
+  const usdCents = convertToUsdCents(value, from, rates);
+  if (usdCents == null) return null;
+  const toLower = to.toLowerCase();
+  if (toLower === 'usd') return usdCents;
+  const rate = rates.get(toLower);
+  if (!rate) return null;
+  return Math.round(usdCents * rate);
 }

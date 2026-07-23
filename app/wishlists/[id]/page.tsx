@@ -10,9 +10,20 @@ import AddItemModal from '@/components/AddItemModal';
 import ProposeItemModal from '@/components/ProposeItemModal';
 import ReviewItemModal from '@/components/ReviewItemModal';
 import AuthButton from '@/components/AuthButton';
-import UserSearch from '@/components/UserSearch';
+import AppHeader from '@/components/AppHeader';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import Button from '@/components/Button';
+import Icon from '@/components/Icon';
+import InviteMemberForm from '@/components/InviteMemberForm';
+import BannerImage from '@/components/BannerImage';
+import ShareButton from '@/components/ShareButton';
+import ImageUpload from '@/components/ImageUpload';
+import Select from '@/components/Select';
+import { SkeletonGrid, MemberRowSkeleton } from '@/components/Skeleton';
+import Avatar from '@/components/Avatar';
+import { coverGradient } from '@/lib/utils/cover';
+import { getVisibility, visibilityMeta, type Visibility } from '@/lib/utils/visibility';
+import { currencySelectOptions } from '@/lib/utils/currencies';
 import { useToast } from '@/components/ToastProvider';
 import { ApiItem } from '@/types/api';
 import { IWishlist } from '@/models/Wishlist';
@@ -26,16 +37,23 @@ import {
 import FilterDropdown from '@/components/FilterDropdown';
 import { useFetchItems, useUpdateItem, useCreateItem, useDeleteItem } from '@/lib/hooks/useItems';
 
-type TabType = 'items' | 'users' | 'settings';
-
 interface WishlistMember {
   _id: string;
   user: {
     _id: string;
-    email: string;
+    username?: string;
+    image?: string | null;
   };
   role: 'owner' | 'admin' | 'member'; // 'owner' is only used when representing the original owner from wishlist.owner
   createdAt: string;
+}
+
+interface PendingInvite {
+  _id: string;
+  role: 'admin' | 'member';
+  username: string | null;
+  image: string | null;
+  email: string | null;
 }
 
 export default function WishlistDetail() {
@@ -46,29 +64,39 @@ export default function WishlistDetail() {
   const wishlistId = typeof params?.id === 'string' ? params.id : null;
 
   const [wishlist, setWishlist] = useState<IWishlist | null>(null);
-  const [ownerEmail, setOwnerEmail] = useState<string | null>(null);
+  const [ownerUsername, setOwnerUsername] = useState<string | null>(null);
   const [items, setItems] = useState<ApiItem[]>([]);
   const [members, setMembers] = useState<WishlistMember[]>([]);
+  const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingItems, setLoadingItems] = useState(true);
   const [loadingMembers, setLoadingMembers] = useState(false);
   const [isOwner, setIsOwner] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isMember, setIsMember] = useState(false);
-  const [activeTab, setActiveTab] = useState<TabType>('items');
+  const [manageOpen, setManageOpen] = useState(false);
   const [selectedFilters, setSelectedFilters] = useState<FilterOption[]>([]);
   const [sortBy, setSortBy] = useState<SortType>('name-asc');
+  const [priceMode, setPriceMode] = useState<'original' | 'converted'>('original');
   const [itemToEdit, setItemToEdit] = useState<ApiItem | null>(null);
   const [itemToReview, setItemToReview] = useState<ApiItem | null>(null);
   const [showAddItemModal, setShowAddItemModal] = useState(false);
   const [showProposeItemModal, setShowProposeItemModal] = useState(false);
-  const [inviteEmail, setInviteEmail] = useState('');
-  const [inviteRole, setInviteRole] = useState<'admin' | 'member'>('member');
   const [isInviting, setIsInviting] = useState(false);
-  const [settingsForm, setSettingsForm] = useState({
+  const [settingsForm, setSettingsForm] = useState<{
+    name: string;
+    slug: string;
+    description: string;
+    visibility: Visibility;
+    bannerUrl: string;
+    currency: string;
+  }>({
     name: '',
+    slug: '',
     description: '',
-    isPublic: true,
+    visibility: 'everyone',
+    bannerUrl: '',
+    currency: 'USD',
   });
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<{
@@ -82,11 +110,13 @@ export default function WishlistDetail() {
   const fetchItemsHook = useFetchItems();
 
   // Get filter options based on user role
+  // Order matches the stat-card order rendered above the list, so the filter
+  // dropdown and the clickable cards line up one-to-one.
   const getFilterOptions = useCallback((): FilterOption[] => {
     if (isOwner) {
-      return ['all', 'draft', 'available', 'completed', 'proposed'];
+      return ['all', 'draft', 'proposed', 'available', 'completed'];
     } else if (isMember) {
-      return ['all', 'available', 'bookedByMe', 'bookedByOthers', 'completed', 'proposedByMe'];
+      return ['all', 'available', 'bookedByMe', 'bookedByOthers', 'proposedByMe', 'completed'];
     } else {
       return ['all', 'available', 'completed'];
     }
@@ -228,14 +258,14 @@ export default function WishlistDetail() {
             setWishlist(wishlistData);
 
             // Check for extended properties
-            const hasExtendedProps = 'userRole' in w || 'ownerEmail' in w;
+            const hasExtendedProps = 'userRole' in w || 'ownerUsername' in w;
             if (hasExtendedProps) {
               const extendedWishlist = w as IWishlist & {
                 userRole?: 'owner' | 'admin' | 'member' | null;
-                ownerEmail?: string | null;
+                ownerUsername?: string | null;
               };
-              setOwnerEmail(
-                'ownerEmail' in extendedWishlist ? extendedWishlist.ownerEmail || null : null
+              setOwnerUsername(
+                'ownerUsername' in extendedWishlist ? extendedWishlist.ownerUsername || null : null
               );
 
               // Check user role from API response
@@ -248,8 +278,11 @@ export default function WishlistDetail() {
             if (!settingsFormDirtyRef.current) {
               setSettingsForm({
                 name: wishlistData.name,
+                slug: wishlistData.slug || '',
                 description: wishlistData.description || '',
-                isPublic: wishlistData.isPublic,
+                visibility: getVisibility(wishlistData),
+                bannerUrl: wishlistData.bannerUrl || '',
+                currency: wishlistData.currency || 'USD',
               });
             }
 
@@ -279,7 +312,19 @@ export default function WishlistDetail() {
     }
   }, [wishlistId, status, router, showToast]);
 
-  // Fetch members (only for owners and admins)
+  // Refresh the pending-invites list (owner/admin only).
+  const refreshInvites = useCallback(async () => {
+    if (!wishlistId) return;
+    try {
+      const res = await fetch(`/api/wishlists/${wishlistId}/invites`, { cache: 'no-store' });
+      const result = await res.json();
+      if (result.success) setPendingInvites(result.data || []);
+    } catch {
+      /* ignore */
+    }
+  }, [wishlistId]);
+
+  // Fetch members + pending invites (only for owners and admins)
   useEffect(() => {
     async function fetchMembers() {
       if (!wishlistId || (!isOwner && !isAdmin)) return;
@@ -299,10 +344,11 @@ export default function WishlistDetail() {
       }
     }
 
-    if ((isOwner || isAdmin) && activeTab === 'users') {
+    if ((isOwner || isAdmin) && manageOpen) {
       fetchMembers();
+      refreshInvites();
     }
-  }, [wishlistId, isOwner, isAdmin, activeTab]);
+  }, [wishlistId, isOwner, isAdmin, manageOpen, refreshInvites]);
 
   const fetchItems = useCallback(
     async (silent = false) => {
@@ -330,7 +376,7 @@ export default function WishlistDetail() {
   );
 
   useEffect(() => {
-    if (wishlistId && activeTab === 'items') {
+    if (wishlistId && !manageOpen) {
       // Reset loading state when switching to items tab
       setLoadingItems(true);
       fetchItems();
@@ -353,11 +399,11 @@ export default function WishlistDetail() {
         clearInterval(pollInterval);
         document.removeEventListener('visibilitychange', handleVisibilityChange);
       };
-    } else if (activeTab !== 'items') {
+    } else if (manageOpen) {
       // Reset loading state when switching away from items tab
       setLoadingItems(false);
     }
-  }, [wishlistId, activeTab, fetchItems]);
+  }, [wishlistId, manageOpen, fetchItems]);
 
   const createItemHook = useCreateItem(
     (newItem) => {
@@ -507,10 +553,9 @@ export default function WishlistDetail() {
     setItemToEdit(null);
   }, [itemToEdit, deleteItemHook]);
 
-  const handleInviteUser = useCallback(
-    async (e: React.FormEvent) => {
-      e.preventDefault();
-      if (!wishlistId || !inviteEmail.trim()) return;
+  const handleInvite = useCallback(
+    async (payload: { email?: string; username?: string; role: 'admin' | 'member' }) => {
+      if (!wishlistId) return;
 
       setIsInviting(true);
       try {
@@ -519,23 +564,15 @@ export default function WishlistDetail() {
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ email: inviteEmail.trim(), role: inviteRole }),
+          body: JSON.stringify(payload),
         });
 
         const result = await response.json();
 
         if (result.success) {
-          showToast('Invitation sent successfully', 'success');
-          setInviteEmail('');
-          setInviteRole('member');
-          // Refresh members list
-          const membersResponse = await fetch(`/api/wishlists/${wishlistId}/members`, {
-            cache: 'no-store',
-          });
-          const membersResult = await membersResponse.json();
-          if (membersResult.success) {
-            setMembers(membersResult.data || []);
-          }
+          showToast('Invitation sent', 'success');
+          // Membership is created only when they accept — refresh pending invites.
+          await refreshInvites();
         } else {
           showToast(result.error || 'Failed to send invitation', 'error');
         }
@@ -546,7 +583,31 @@ export default function WishlistDetail() {
         setIsInviting(false);
       }
     },
-    [wishlistId, inviteEmail, inviteRole, showToast]
+    [wishlistId, showToast, refreshInvites]
+  );
+
+  const cancelInvite = useCallback(
+    async (inviteId: string) => {
+      if (!wishlistId) return;
+      // Optimistic removal.
+      setPendingInvites((prev) => prev.filter((i) => i._id !== inviteId));
+      try {
+        const res = await fetch(`/api/wishlists/${wishlistId}/invites/${inviteId}`, {
+          method: 'DELETE',
+        });
+        const result = await res.json();
+        if (result.success) {
+          showToast('Invitation cancelled', 'success');
+        } else {
+          showToast(result.error || 'Failed to cancel invitation', 'error');
+          refreshInvites();
+        }
+      } catch {
+        showToast('Failed to cancel invitation', 'error');
+        refreshInvites();
+      }
+    },
+    [wishlistId, showToast, refreshInvites]
   );
 
   const handleKickMember = useCallback((memberId: string, memberEmail: string) => {
@@ -669,184 +730,227 @@ export default function WishlistDetail() {
 
   const sortedItems = useMemo(() => sortItems(filteredItems, sortBy), [filteredItems, sortBy]);
 
+  // The viewer's preferred currency, for the "show prices in my currency" toggle.
+  const viewerCurrency = session?.user?.defaultCurrency || 'USD';
+
+  // Clicking a stat card narrows the list to that one status ('all' selects
+  // every option). The dropdown and the cards share getFilterOptions()' order.
+  const applyCardFilter = useCallback(
+    (key: FilterOption) => {
+      setSelectedFilters(key === 'all' ? [...getFilterOptions()] : [key]);
+    },
+    [getFilterOptions]
+  );
+
+  // Which card (if any) reflects the current filter selection, for highlighting.
+  const activeCardKey = useMemo<FilterOption | null>(() => {
+    const nonAll = getFilterOptions().filter((o) => o !== 'all');
+    if (nonAll.length > 0 && nonAll.every((o) => selectedFilters.includes(o))) return 'all';
+    if (selectedFilters.length === 1) return selectedFilters[0];
+    return null;
+  }, [selectedFilters, getFilterOptions]);
+
+  const cardMeta: Record<FilterOption, { label: string; value: number; valueClass: string }> = {
+    all: { label: 'Total Items', value: stats.total, valueClass: 'text-foreground' },
+    draft: { label: 'Draft', value: stats.draft, valueClass: 'text-muted-foreground' },
+    proposed: { label: 'Proposed', value: stats.proposed, valueClass: 'text-blue-500' },
+    available: { label: 'Available', value: stats.available, valueClass: 'text-foreground' },
+    bookedByMe: {
+      label: 'Booked by You',
+      value: stats.bookedByYou,
+      valueClass: 'text-green-600 dark:text-green-500',
+    },
+    bookedByOthers: {
+      label: 'Booked by Others',
+      value: Math.max(0, stats.booked - stats.bookedByYou),
+      valueClass: 'text-green-600 dark:text-green-500',
+    },
+    proposedByMe: {
+      label: 'Proposed by You',
+      value: stats.proposedByYou,
+      valueClass: 'text-blue-500',
+    },
+    completed: { label: 'Completed', value: stats.completed, valueClass: 'text-emerald-500' },
+  };
+
   if (loading) {
     return (
-      <main className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
-          <p className="mt-4 text-sm text-gray-600">Loading wishlist...</p>
-        </div>
-      </main>
+      <div className="min-h-screen">
+        <AppHeader actions={<AuthButton />} />
+        <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
+          {/* Cover hero skeleton */}
+          <div className="skeleton mb-6 h-[180px] rounded-3xl sm:h-[210px]" />
+          {/* Stats skeleton */}
+          <div className="mb-8 grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4 lg:grid-cols-5">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="skeleton h-[74px] rounded-xl" />
+            ))}
+          </div>
+          <SkeletonGrid count={8} variant="item" />
+        </main>
+      </div>
     );
   }
 
   if (!wishlist) {
     return (
-      <main className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <h2 className="text-2xl font-bold text-gray-900 mb-4">Wishlist not found</h2>
-          <Link href="/" className="text-primary-600 hover:underline">
-            Go back to wishlists
-          </Link>
-        </div>
-      </main>
+      <div className="min-h-screen">
+        <AppHeader actions={<AuthButton />} />
+        <main className="flex min-h-[60vh] items-center justify-center px-4">
+          <div className="text-center">
+            <span className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
+              <Icon name="package" size={28} />
+            </span>
+            <h2 className="mb-2 text-xl font-semibold text-foreground">Wishlist not found</h2>
+            <p className="mb-6 text-sm text-muted-foreground">
+              It may have been deleted or you don't have access.
+            </p>
+            <Link
+              href="/"
+              className="inline-flex h-10 items-center rounded-xl bg-primary-600 px-4 text-sm font-medium text-white shadow-sm transition-colors hover:bg-primary-700"
+            >
+              Back to wishlists
+            </Link>
+          </div>
+        </main>
+      </div>
     );
   }
 
   return (
-    <main className="min-h-screen">
-      <div className="max-w-7xl mx-auto px-4 py-4 sm:py-6 lg:py-8 sm:px-6 lg:px-8">
-        {/* Header */}
-        <div className="mb-6 sm:mb-8">
-          <div className="relative mb-6 sm:mb-8">
-            {/* Top row: Logo and action buttons */}
-            <div className="flex items-center justify-between mb-4 gap-3">
-              <Link
-                href="/"
-                className="text-4xl sm:text-5xl hover:scale-110 transition-transform cursor-pointer flex-shrink-0"
-              >
-                🎁
-              </Link>
-              <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
-                {isMember && !isOwner && (
-                  <Button
-                    variant="danger"
-                    onClick={handleLeaveWishlist}
-                    className="whitespace-nowrap text-xs sm:text-sm"
-                    size="sm"
+    <div className="min-h-screen">
+      <AppHeader actions={<AuthButton />} />
+      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
+        {/* Header: title + meta on the left, wishlist-scoped actions on the right.
+            The title used to sit on the banner; it moved here so the banner can shrink
+            into a side panel next to the stat cards below. */}
+        <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+          <div className="flex min-w-0 flex-1 items-baseline gap-3">
+            <h1 className="min-w-0 truncate text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
+              {wishlist.name}
+            </h1>
+            {ownerUsername && (
+              <span className="flex-shrink-0 whitespace-nowrap text-sm text-muted-foreground">
+                by{' '}
+                {isOwner ? (
+                  'you'
+                ) : (
+                  <Link
+                    href={`/users/${ownerUsername}`}
+                    className="font-semibold text-foreground underline-offset-2 hover:underline"
                   >
-                    Leave
-                  </Button>
+                    @{ownerUsername}
+                  </Link>
                 )}
-                <AuthButton />
-              </div>
-            </div>
-
-            {/* Title and description */}
-            <div className="mb-4">
-              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900 mb-2 break-words">
-                {wishlist.name}
-              </h1>
-              {ownerEmail && (
-                <p className="text-sm sm:text-base text-gray-600">
-                  by{' '}
-                  {isOwner ? (
-                    <span className="text-gray-500">you</span>
-                  ) : (
-                    <Link
-                      href={`/users/${wishlist.owner}`}
-                      className="text-primary-600 hover:text-primary-700 hover:underline cursor-pointer break-all"
-                    >
-                      {ownerEmail}
-                    </Link>
-                  )}
-                </p>
-              )}
-              {wishlist.description && (
-                <p className="text-sm sm:text-base lg:text-lg text-gray-600 mt-2 break-words whitespace-pre-line">
-                  {wishlist.description}
-                </p>
-              )}
-            </div>
-
-            {/* Search bar */}
-            <div className="w-full">
-              <UserSearch />
-            </div>
+              </span>
+            )}
+          </div>
+          <div className="flex flex-shrink-0 items-center gap-2">
+            <ShareButton />
+            {isMember && !isOwner && (
+              <button
+                onClick={handleLeaveWishlist}
+                className="inline-flex h-9 items-center gap-1.5 rounded-full border border-border bg-surface px-3.5 text-[13px] font-semibold text-foreground shadow-xs transition-colors hover:bg-surface-hover"
+              >
+                <Icon name="logout" size={15} />
+                Leave
+              </button>
+            )}
+            {(isOwner || isAdmin) && (
+              <button
+                onClick={() => setManageOpen((v) => !v)}
+                aria-label={manageOpen ? 'Back to items' : 'Manage wishlist'}
+                className="inline-flex h-9 items-center gap-1.5 rounded-full border border-border bg-surface px-3.5 text-[13px] font-semibold text-foreground shadow-xs transition-colors hover:bg-surface-hover"
+              >
+                <Icon name={manageOpen ? 'close' : 'settings'} size={15} />
+                {manageOpen ? 'Done' : 'Manage'}
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Tabs */}
-        <div className="mb-6 border-b border-gray-200">
-          <nav className="flex gap-1 sm:gap-4 overflow-x-auto pb-2 -mb-2 scrollbar-hide">
+        {/* Manage header (owner/admin) */}
+        {manageOpen && (isOwner || isAdmin) && (
+          <div className="mb-6 flex items-center gap-3">
             <button
-              onClick={() => setActiveTab('items')}
-              className={`px-3 sm:px-4 py-2 font-medium text-xs sm:text-sm border-b-2 transition-colors cursor-pointer whitespace-nowrap flex-shrink-0 ${
-                activeTab === 'items'
-                  ? 'border-primary-600 text-primary-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
+              onClick={() => setManageOpen(false)}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border bg-surface text-muted-foreground shadow-xs transition-colors hover:bg-surface-hover hover:text-foreground"
+              aria-label="Back to items"
             >
-              Items
+              <Icon name="chevron-down" size={18} className="rotate-90" />
             </button>
-            {(isOwner || isAdmin) && (
-              <>
-                <button
-                  onClick={() => setActiveTab('users')}
-                  className={`px-3 sm:px-4 py-2 font-medium text-xs sm:text-sm border-b-2 transition-colors cursor-pointer whitespace-nowrap flex-shrink-0 ${
-                    activeTab === 'users'
-                      ? 'border-primary-600 text-primary-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700'
-                  }`}
-                >
-                  Users
-                </button>
-                <button
-                  onClick={() => setActiveTab('settings')}
-                  className={`px-3 sm:px-4 py-2 font-medium text-xs sm:text-sm border-b-2 transition-colors cursor-pointer whitespace-nowrap flex-shrink-0 ${
-                    activeTab === 'settings'
-                      ? 'border-primary-600 text-primary-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700'
-                  }`}
-                >
-                  Settings
-                </button>
-              </>
-            )}
-          </nav>
-        </div>
+            <h2 className="text-xl font-semibold tracking-tight text-foreground">
+              Manage wishlist
+            </h2>
+          </div>
+        )}
 
         {/* Items Tab */}
-        {activeTab === 'items' && (
+        {!manageOpen && (
           <>
-            {/* Stats */}
+            {/* Image + description row */}
             <div
-              className={`grid ${isOwner ? 'grid-cols-2 md:grid-cols-4 lg:grid-cols-5' : isMember ? 'grid-cols-2 md:grid-cols-4 lg:grid-cols-5' : 'grid-cols-2 md:grid-cols-3'} gap-3 sm:gap-4 mb-6 sm:mb-8`}
+              className={`mb-6 grid gap-4 sm:mb-8 ${
+                wishlist.description
+                  ? 'sm:grid-cols-[minmax(0,26rem)_minmax(0,1fr)] sm:items-start'
+                  : 'sm:max-w-md'
+              }`}
             >
-              <div className="bg-white rounded-xl p-3 sm:p-4 shadow-md">
-                <p className="text-xs sm:text-sm text-gray-600 mb-1 truncate">Total Items</p>
-                <p className="text-2xl sm:text-3xl font-bold text-gray-900">{stats.total}</p>
+              <div
+                className="relative aspect-[16/9] overflow-hidden rounded-3xl border border-border bg-surface-2 shadow-md"
+                style={{
+                  background: wishlist.bannerUrl
+                    ? undefined
+                    : coverGradient(wishlist._id.toString()),
+                }}
+              >
+                {wishlist.bannerUrl && (
+                  <BannerImage src={wishlist.bannerUrl} alt="" priority sizes="(max-width: 1024px) 100vw, 26rem" />
+                )}
+                <span className="absolute right-3 top-3 inline-flex items-center gap-1.5 rounded-full border border-white/25 bg-white/20 px-2.5 py-1 text-[11.5px] font-semibold text-white backdrop-blur-md">
+                  <Icon name={visibilityMeta[getVisibility(wishlist)].icon} size={12} />
+                  {visibilityMeta[getVisibility(wishlist)].label}
+                </span>
               </div>
-              {(isOwner || isAdmin) && (
-                <>
-                  <div className="bg-white rounded-xl p-3 sm:p-4 shadow-md">
-                    <p className="text-xs sm:text-sm text-gray-600 mb-1 truncate">Draft</p>
-                    <p className="text-2xl sm:text-3xl font-bold text-gray-500">{stats.draft}</p>
-                  </div>
-                  <div className="bg-white rounded-xl p-3 sm:p-4 shadow-md">
-                    <p className="text-xs sm:text-sm text-gray-600 mb-1 truncate">Proposed</p>
-                    <p className="text-2xl sm:text-3xl font-bold text-blue-500">{stats.proposed}</p>
-                  </div>
-                </>
+              {wishlist.description && (
+                <div className="rounded-2xl border border-border bg-surface p-5">
+                  <p className="whitespace-pre-line break-words text-[15px] text-muted-foreground">
+                    {wishlist.description}
+                  </p>
+                </div>
               )}
-              <div className="bg-white rounded-xl p-3 sm:p-4 shadow-md">
-                <p className="text-xs sm:text-sm text-gray-600 mb-1 truncate">Available</p>
-                <p className="text-2xl sm:text-3xl font-bold text-gray-900">{stats.available}</p>
-              </div>
-              {isMember && (
-                <>
-                  <div className="bg-white rounded-xl p-3 sm:p-4 shadow-md">
-                    <p className="text-xs sm:text-sm text-gray-600 mb-1 truncate">Booked by You</p>
-                    <p className="text-2xl sm:text-3xl font-bold text-green-700">
-                      {stats.bookedByYou}
+            </div>
+
+            {/* Stat cards — full-width row; click to filter the list by that status */}
+            <div
+              className="mb-6 grid gap-3 sm:mb-8 sm:gap-4"
+              style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(8rem, 1fr))' }}
+            >
+              {getFilterOptions().map((key) => {
+                const meta = cardMeta[key];
+                const active = activeCardKey === key;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => applyCardFilter(key)}
+                    aria-pressed={active}
+                    title={`Show ${meta.label.toLowerCase()}`}
+                    className={`rounded-xl border bg-surface p-3 text-left shadow-sm transition-all sm:p-4 ${
+                      active
+                        ? 'border-accent ring-1 ring-accent'
+                        : 'border-border hover:border-border-strong hover:bg-surface-hover'
+                    }`}
+                  >
+                    <p className="mb-1 truncate text-xs text-muted-foreground sm:text-sm">
+                      {meta.label}
                     </p>
-                  </div>
-                  {stats.proposedByYou > 0 && (
-                    <div className="bg-white rounded-xl p-3 sm:p-4 shadow-md">
-                      <p className="text-xs sm:text-sm text-gray-600 mb-1 truncate">
-                        Proposed by You
-                      </p>
-                      <p className="text-2xl sm:text-3xl font-bold text-blue-500">
-                        {stats.proposedByYou}
-                      </p>
-                    </div>
-                  )}
-                </>
-              )}
-              <div className="bg-white rounded-xl p-3 sm:p-4 shadow-md">
-                <p className="text-xs sm:text-sm text-gray-600 mb-1 truncate">Completed</p>
-                <p className="text-2xl sm:text-3xl font-bold text-green-400">{stats.completed}</p>
-              </div>
+                    <p className={`text-2xl font-bold sm:text-3xl ${meta.valueClass}`}>
+                      {meta.value}
+                    </p>
+                  </button>
+                );
+              })}
             </div>
 
             {/* Filter and Sort Controls */}
@@ -861,37 +965,58 @@ export default function WishlistDetail() {
               </div>
 
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 flex-shrink-0 w-full sm:w-auto">
+                {session?.user && viewerCurrency && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs sm:text-sm font-medium text-foreground whitespace-nowrap">
+                      Prices:
+                    </span>
+                    <div className="relative flex flex-1 rounded-xl border border-border bg-surface-2 p-1 sm:flex-none">
+                      <span
+                        aria-hidden
+                        className="absolute bottom-1 top-1 rounded-lg bg-surface shadow-sm transition-[left] duration-300 ease-[cubic-bezier(0.2,0.7,0.2,1)]"
+                        style={{
+                          width: 'calc((100% - 0.5rem) / 2)',
+                          left: `calc(${priceMode === 'original' ? 0 : 1} * ((100% - 0.5rem) / 2) + 0.25rem)`,
+                        }}
+                      />
+                      {(['original', 'converted'] as const).map((m) => (
+                        <button
+                          key={m}
+                          type="button"
+                          onClick={() => setPriceMode(m)}
+                          className={`relative z-10 flex-1 whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ${
+                            priceMode === m
+                              ? 'text-foreground'
+                              : 'text-muted-foreground hover:text-foreground'
+                          }`}
+                        >
+                          {m === 'original' ? 'Original' : viewerCurrency}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <label
                   htmlFor="sort"
-                  className="text-xs sm:text-sm font-medium text-gray-700 whitespace-nowrap"
+                  className="text-xs sm:text-sm font-medium text-foreground whitespace-nowrap"
                 >
                   Sort by:
                 </label>
-                <select
-                  id="sort"
+                <Select
                   value={sortBy}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    if (
-                      value === 'name-asc' ||
-                      value === 'name-desc' ||
-                      value === 'price-asc' ||
-                      value === 'price-desc' ||
-                      value === 'date-asc' ||
-                      value === 'date-desc'
-                    ) {
-                      setSortBy(value);
-                    }
-                  }}
-                  className="w-full sm:w-auto pl-3 pr-8 sm:pr-12 py-2 text-sm sm:text-base border border-gray-300 rounded-lg bg-white text-gray-700 font-medium focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none appearance-none bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20fill%3D%22none%22%20viewBox%3D%220%200%2020%2020%22%3E%3Cpath%20stroke%3D%22%236b7280%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20stroke-width%3D%221.5%22%20d%3D%22M6%208l4%204%204-4%22%2F%3E%3C%2Fsvg%3E')] bg-[length:1.5em_1.5em] bg-[right_0.5rem_center] bg-no-repeat cursor-pointer"
-                >
-                  <option value="name-asc">Name (A-Z)</option>
-                  <option value="name-desc">Name (Z-A)</option>
-                  <option value="price-asc">Price (Low to High)</option>
-                  <option value="price-desc">Price (High to Low)</option>
-                  <option value="date-asc">Date Created (Oldest First)</option>
-                  <option value="date-desc">Date Created (Newest First)</option>
-                </select>
+                  onChange={(v) => setSortBy(v as SortType)}
+                  ariaLabel="Sort items by"
+                  menuAlign="right"
+                  triggerClassName="w-full sm:w-auto sm:min-w-[13rem]"
+                  options={[
+                    { value: 'name-asc', label: 'Name (A-Z)' },
+                    { value: 'name-desc', label: 'Name (Z-A)' },
+                    { value: 'price-asc', label: 'Price (Low to High)' },
+                    { value: 'price-desc', label: 'Price (High to Low)' },
+                    { value: 'date-asc', label: 'Date Created (Oldest First)' },
+                    { value: 'date-desc', label: 'Date Created (Newest First)' },
+                  ]}
+                />
               </div>
             </div>
 
@@ -911,17 +1036,14 @@ export default function WishlistDetail() {
 
             {/* Items Grid */}
             {loadingItems ? (
-              <div className="text-center py-12 sm:py-20">
-                <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
-                <p className="mt-4 text-sm text-gray-600">Loading items...</p>
-              </div>
+              <SkeletonGrid count={8} variant="item" />
             ) : sortedItems.length === 0 ? (
-              <div className="text-center py-12 sm:py-20">
-                <div className="text-4xl sm:text-6xl mb-4">📦</div>
-                <h3 className="text-xl sm:text-2xl font-semibold text-gray-800 mb-2">
-                  No items found
-                </h3>
-                <p className="text-sm sm:text-base text-gray-600 px-4">
+              <div className="flex flex-col items-center rounded-2xl border border-dashed border-border-strong py-16 text-center sm:py-20">
+                <span className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
+                  <Icon name="package" size={28} />
+                </span>
+                <h3 className="text-lg font-semibold text-foreground sm:text-xl">No items found</h3>
+                <p className="mx-auto mt-1.5 max-w-sm px-4 text-sm text-muted-foreground">
                   {selectedFilters.length === 0 || selectedFilters.includes('all')
                     ? 'No wishlist items yet.'
                     : 'No items match the selected filters.'}
@@ -951,6 +1073,7 @@ export default function WishlistDetail() {
                     isAuthenticated={!!session?.user}
                     isOwner={isOwner || isAdmin}
                     isMember={isMember}
+                    priceMode={priceMode}
                   />
                 ))}
               </div>
@@ -959,63 +1082,28 @@ export default function WishlistDetail() {
         )}
 
         {/* Users Tab */}
-        {activeTab === 'users' && (
+        {manageOpen && (
           <div className="space-y-6">
             {(isOwner || isAdmin) && (
-              <div className="bg-white rounded-xl p-4 sm:p-6 shadow-md">
-                <h2 className="text-xl font-bold text-gray-900 mb-4">Invite User</h2>
-                <form
-                  onSubmit={handleInviteUser}
-                  className="flex flex-col sm:flex-row gap-2"
-                  autoComplete="off"
-                >
-                  <input
-                    type="email"
-                    value={inviteEmail}
-                    onChange={(e) => setInviteEmail(e.target.value)}
-                    placeholder="user@example.com"
-                    required
-                    className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none text-sm sm:text-base"
-                    disabled={isInviting}
-                    autoComplete="email"
-                  />
-                  <select
-                    value={inviteRole}
-                    onChange={(e) => setInviteRole(e.target.value as 'admin' | 'member')}
-                    className="pl-4 pr-8 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none appearance-none text-sm sm:text-base bg-white bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20fill%3D%22none%22%20viewBox%3D%220%200%2020%2020%22%3E%3Cpath%20stroke%3D%22%236b7280%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20stroke-width%3D%221.5%22%20d%3D%22M6%208l4%204%204-4%22%2F%3E%3C%2Fsvg%3E')] bg-[length:1.5em_1.5em] bg-[right_0.5rem_center] bg-no-repeat cursor-pointer"
-                    disabled={isInviting}
-                  >
-                    <option value="member">Member</option>
-                    <option value="admin">Admin</option>
-                  </select>
-                  <button
-                    type="submit"
-                    disabled={isInviting}
-                    className="px-6 py-2 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer text-sm sm:text-base whitespace-nowrap"
-                  >
-                    {isInviting ? 'Inviting...' : 'Invite'}
-                  </button>
-                </form>
-              </div>
+              <InviteMemberForm onInvite={handleInvite} isInviting={isInviting} />
             )}
 
-            <div className="bg-white rounded-xl shadow-md overflow-hidden">
-              <div className="px-4 sm:px-6 py-4 border-b border-gray-200">
-                <h2 className="text-xl font-bold text-gray-900">Members</h2>
+            <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-sm">
+              <div className="px-4 sm:px-6 py-4 border-b border-border">
+                <h2 className="text-xl font-bold text-foreground">Members</h2>
               </div>
               {loadingMembers ? (
-                <div className="px-4 sm:px-6 py-12 flex items-center justify-center">
-                  <div className="text-center">
-                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
-                    <p className="mt-4 text-sm text-gray-600">Loading members...</p>
-                  </div>
+                <div className="divide-y divide-border">
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <MemberRowSkeleton key={i} />
+                  ))}
                 </div>
               ) : members.length === 0 ? (
                 <div className="px-4 sm:px-6 py-12 text-center">
-                  <p className="text-gray-600">No members yet.</p>
+                  <p className="text-muted-foreground">No members yet.</p>
                 </div>
               ) : (
-                <div className="divide-y divide-gray-200">
+                <div className="divide-y divide-border">
                   {members.map((member) => {
                     const memberUserId = String(member.user._id);
                     const isCurrentUser = memberUserId === session?.user?.id;
@@ -1030,28 +1118,33 @@ export default function WishlistDetail() {
                     return (
                       <div
                         key={member._id}
-                        className="px-4 sm:px-6 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
+                        className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6"
                       >
-                        <div className="flex-1 min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex min-w-0 flex-1 items-center gap-3">
+                          <Avatar
+                            name={member.user.username || 'user'}
+                            src={member.user.image}
+                            size="md"
+                          />
+                          <div className="flex min-w-0 flex-wrap items-center gap-2">
                             <Link
-                              href={`/users/${memberUserId}`}
-                              className="font-medium text-gray-900 hover:text-primary-600 transition-colors cursor-pointer break-words"
+                              href={`/users/${member.user.username || ''}`}
+                              className="break-words font-medium text-foreground transition-colors hover:text-accent dark:hover:text-primary-400"
                             >
-                              {member.user.email}
+                              @{member.user.username || 'user'}
                             </Link>
                             {isOriginalOwner && (
-                              <span className="px-2 py-1 text-xs font-semibold rounded-full bg-primary-100 text-primary-800 whitespace-nowrap">
+                              <span className="whitespace-nowrap rounded-full bg-primary-500/12 px-2 py-1 text-xs font-semibold text-primary-700 dark:text-primary-400">
                                 Owner
                               </span>
                             )}
                             {isAdminMember && !isOriginalOwner && (
-                              <span className="px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800 whitespace-nowrap">
+                              <span className="whitespace-nowrap rounded-full bg-blue-500/12 px-2 py-1 text-xs font-semibold text-blue-700 dark:text-blue-400">
                                 Admin
                               </span>
                             )}
                             {isRegularMember && (
-                              <span className="px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-800 whitespace-nowrap">
+                              <span className="px-2 py-1 text-xs font-semibold rounded-full bg-muted text-foreground whitespace-nowrap">
                                 Member
                               </span>
                             )}
@@ -1059,14 +1152,23 @@ export default function WishlistDetail() {
                         </div>
                         <div className="flex items-center gap-2 flex-shrink-0">
                           {isCurrentUser && (
-                            <span className="text-sm text-gray-500 whitespace-nowrap">You</span>
+                            <span className="text-sm text-muted-foreground whitespace-nowrap">
+                              You
+                            </span>
                           )}
                           {(isOwner || isAdmin) && !isOriginalOwner && (
                             <>
-                              <select
+                              <Select
                                 value={memberRole}
-                                onChange={async (e) => {
-                                  const newRole = e.target.value as 'admin' | 'member';
+                                ariaLabel="Member role"
+                                menuAlign="right"
+                                triggerClassName="w-28"
+                                options={[
+                                  { value: 'member', label: 'Member' },
+                                  { value: 'admin', label: 'Admin' },
+                                ]}
+                                onChange={async (v) => {
+                                  const newRole = v as 'admin' | 'member';
                                   try {
                                     const response = await fetch(
                                       `/api/wishlists/${wishlistId}/members/${member._id}`,
@@ -1100,14 +1202,12 @@ export default function WishlistDetail() {
                                     showToast('Failed to update role', 'error');
                                   }
                                 }}
-                                className="pl-3 pr-8 py-1 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none appearance-none bg-white bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20fill%3D%22none%22%20viewBox%3D%220%200%2020%2020%22%3E%3Cpath%20stroke%3D%22%236b7280%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20stroke-width%3D%221.5%22%20d%3D%22M6%208l4%204%204-4%22%2F%3E%3C%2Fsvg%3E')] bg-[length:1.5em_1.5em] bg-[right_0.5rem_center] bg-no-repeat cursor-pointer"
-                              >
-                                <option value="member">Member</option>
-                                <option value="admin">Admin</option>
-                              </select>
+                              />
                               <button
-                                onClick={() => handleKickMember(member._id, member.user.email)}
-                                className="px-3 sm:px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer whitespace-nowrap"
+                                onClick={() =>
+                                  handleKickMember(member._id, member.user.username || 'user')
+                                }
+                                className="px-3 sm:px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10 rounded-xl transition-colors cursor-pointer whitespace-nowrap"
                               >
                                 Remove
                               </button>
@@ -1116,7 +1216,7 @@ export default function WishlistDetail() {
                           {isMember && !isOwner && !isAdmin && isCurrentUser && (
                             <button
                               onClick={handleLeaveWishlist}
-                              className="px-3 sm:px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer whitespace-nowrap"
+                              className="px-3 sm:px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10 rounded-xl transition-colors cursor-pointer whitespace-nowrap"
                             >
                               Leave
                             </button>
@@ -1128,14 +1228,53 @@ export default function WishlistDetail() {
                 </div>
               )}
             </div>
+
+            {/* Pending invites */}
+            {(isOwner || isAdmin) && pendingInvites.length > 0 && (
+              <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-sm">
+                <div className="border-b border-border px-4 py-4 sm:px-6">
+                  <h2 className="text-xl font-bold text-foreground">Pending invites</h2>
+                </div>
+                <div className="divide-y divide-border">
+                  {pendingInvites.map((inv) => (
+                    <div
+                      key={inv._id}
+                      className="flex items-center justify-between gap-3 px-4 py-4 sm:px-6"
+                    >
+                      <div className="flex min-w-0 items-center gap-3">
+                        <Avatar
+                          name={inv.username || inv.email || 'invite'}
+                          src={inv.image}
+                          size="md"
+                        />
+                        <div className="min-w-0">
+                          <p className="truncate font-medium text-foreground">
+                            {inv.username ? `@${inv.username}` : inv.email}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Invited as {inv.role} · awaiting response
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => cancelInvite(inv._id)}
+                        className="flex-shrink-0 whitespace-nowrap rounded-xl px-3 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10 sm:px-4"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
         {/* Settings Tab */}
-        {activeTab === 'settings' && (isOwner || isAdmin) && (
-          <div className="space-y-6">
-            <div className="bg-white rounded-xl p-6 shadow-md">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Wishlist Settings</h3>
+        {manageOpen && (isOwner || isAdmin) && (
+          <div className="mt-6 space-y-6">
+            <div className="rounded-2xl border border-border bg-surface p-6 shadow-sm">
+              <h3 className="text-lg font-semibold text-foreground mb-4">Wishlist Settings</h3>
 
               <form
                 onSubmit={async (e) => {
@@ -1157,6 +1296,12 @@ export default function WishlistDetail() {
                       setWishlist(result.data);
                       settingsFormDirtyRef.current = false;
                       showToast('Wishlist updated successfully', 'success');
+                      // Keep the URL in sync when the slug changes (or upgrade
+                      // an id-based URL to the slug).
+                      const newSlug = result.data?.slug as string | undefined;
+                      if (newSlug && newSlug !== wishlistId) {
+                        router.replace(`/wishlists/${newSlug}`);
+                      }
                     } else {
                       showToast(result.error || 'Failed to update wishlist', 'error');
                     }
@@ -1173,7 +1318,7 @@ export default function WishlistDetail() {
                 <div>
                   <label
                     htmlFor="settings-name"
-                    className="block text-sm font-medium text-gray-700 mb-1"
+                    className="block text-sm font-medium text-foreground mb-1"
                   >
                     Wishlist Name *
                   </label>
@@ -1186,7 +1331,7 @@ export default function WishlistDetail() {
                       setSettingsForm({ ...settingsForm, name: e.target.value });
                       settingsFormDirtyRef.current = true;
                     }}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
+                    className="w-full px-4 py-2 border border-border-strong rounded-xl outline-none"
                     disabled={isSavingSettings}
                     autoComplete="off"
                   />
@@ -1194,8 +1339,40 @@ export default function WishlistDetail() {
 
                 <div>
                   <label
+                    htmlFor="settings-slug"
+                    className="block text-sm font-medium text-foreground mb-1"
+                  >
+                    Link
+                  </label>
+                  <div className="flex items-center gap-1.5 rounded-xl border border-border-strong bg-surface px-3.5 focus-within:border-border-strong">
+                    <span className="flex-shrink-0 text-sm text-muted-foreground">/wishlists/</span>
+                    <input
+                      type="text"
+                      id="settings-slug"
+                      value={settingsForm.slug}
+                      onChange={(e) => {
+                        setSettingsForm({
+                          ...settingsForm,
+                          slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''),
+                        });
+                        settingsFormDirtyRef.current = true;
+                      }}
+                      className="h-11 min-w-0 flex-1 border-0 bg-transparent text-[15px] outline-none"
+                      disabled={isSavingSettings}
+                      autoComplete="off"
+                      autoCapitalize="none"
+                      spellCheck={false}
+                    />
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    The wishlist&apos;s web address. Lowercase letters, numbers, and hyphens.
+                  </p>
+                </div>
+
+                <div>
+                  <label
                     htmlFor="settings-description"
-                    className="block text-sm font-medium text-gray-700 mb-1"
+                    className="block text-sm font-medium text-foreground mb-1"
                   >
                     Description
                   </label>
@@ -1206,7 +1383,7 @@ export default function WishlistDetail() {
                       setSettingsForm({ ...settingsForm, description: e.target.value });
                       settingsFormDirtyRef.current = true;
                     }}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
+                    className="w-full px-4 py-2 border border-border-strong rounded-xl outline-none"
                     rows={3}
                     disabled={isSavingSettings}
                     autoComplete="off"
@@ -1214,71 +1391,187 @@ export default function WishlistDetail() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Visibility</label>
-                  <p className="text-xs text-gray-500 mb-2">
-                    Controls whether the wishlist will be visible on your profile page for
-                    non-members
+                  <label className="mb-1 block text-sm font-medium text-foreground">Currency</label>
+                  <Select
+                    value={settingsForm.currency}
+                    onChange={(v) => {
+                      setSettingsForm({ ...settingsForm, currency: v });
+                      settingsFormDirtyRef.current = true;
+                    }}
+                    options={currencySelectOptions}
+                    ariaLabel="Wishlist currency"
+                    size="md"
+                    triggerClassName="w-full"
+                    disabled={isSavingSettings}
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Default currency for prices in this wishlist.
                   </p>
-                  <div className="relative flex items-center justify-between p-1 bg-gray-100 rounded-lg">
-                    {/* Sliding indicator */}
-                    <div
-                      className={`absolute top-1 bottom-1 bg-white rounded-md shadow-sm transition-all duration-300 ease-in-out ${
-                        settingsForm.isPublic
-                          ? 'left-1 right-[calc(50%+0.25rem)]'
-                          : 'left-[calc(50%+0.25rem)] right-1'
-                      }`}
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-foreground">
+                    Banner image <span className="text-muted-foreground">(optional)</span>
+                  </label>
+                  <ImageUpload
+                    value={settingsForm.bannerUrl || null}
+                    onChange={(url) => {
+                      setSettingsForm({ ...settingsForm, bannerUrl: url ?? '' });
+                      settingsFormDirtyRef.current = true;
+                    }}
+                    disabled={isSavingSettings}
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Used as the cover instead of the gradient. Remove it to use the gradient.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-foreground">
+                    Visibility
+                  </label>
+                  <p className="mb-2 text-xs text-muted-foreground">
+                    {settingsForm.visibility === 'everyone'
+                      ? 'Anyone can find and view this wishlist.'
+                      : settingsForm.visibility === 'friends'
+                        ? 'Only your friends (mutual follows) and members can view it.'
+                        : 'Only you and people you invite can view it.'}
+                  </p>
+                  <div className="relative flex rounded-xl border border-border bg-surface-2 p-1">
+                    <span
+                      aria-hidden
+                      className="absolute bottom-1 top-1 rounded-lg bg-surface shadow-sm transition-[left] duration-300 ease-[cubic-bezier(0.2,0.7,0.2,1)]"
+                      style={{
+                        width: 'calc((100% - 0.5rem) / 3)',
+                        left: `calc(${['everyone', 'friends', 'private'].indexOf(settingsForm.visibility)} * ((100% - 0.5rem) / 3) + 0.25rem)`,
+                      }}
                     />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSettingsForm({ ...settingsForm, isPublic: true });
-                        settingsFormDirtyRef.current = true;
-                      }}
-                      disabled={isSavingSettings}
-                      className={`relative z-10 flex-1 px-4 py-2 text-sm font-medium rounded-md transition-colors duration-300 cursor-pointer ${
-                        settingsForm.isPublic
-                          ? 'text-gray-900'
-                          : 'text-gray-600 hover:text-gray-900'
-                      }`}
-                    >
-                      Public
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSettingsForm({ ...settingsForm, isPublic: false });
-                        settingsFormDirtyRef.current = true;
-                      }}
-                      disabled={isSavingSettings}
-                      className={`relative z-10 flex-1 px-4 py-2 text-sm font-medium rounded-md transition-colors duration-300 cursor-pointer ${
-                        !settingsForm.isPublic
-                          ? 'text-gray-900'
-                          : 'text-gray-600 hover:text-gray-900'
-                      }`}
-                    >
-                      Private
-                    </button>
+                    {(['everyone', 'friends', 'private'] as Visibility[]).map((v) => (
+                      <button
+                        key={v}
+                        type="button"
+                        onClick={() => {
+                          setSettingsForm({ ...settingsForm, visibility: v });
+                          settingsFormDirtyRef.current = true;
+                        }}
+                        disabled={isSavingSettings}
+                        className={`relative z-10 flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-semibold transition-colors ${
+                          settingsForm.visibility === v
+                            ? 'text-foreground'
+                            : 'text-muted-foreground hover:text-foreground'
+                        }`}
+                      >
+                        <Icon name={visibilityMeta[v].icon} size={14} />
+                        {v === 'private' ? 'Only me' : visibilityMeta[v].label}
+                      </button>
+                    ))}
                   </div>
                 </div>
 
                 <div className="flex flex-col sm:flex-row gap-3 pt-4">
-                  <button
-                    type="submit"
-                    disabled={isSavingSettings}
-                    className="w-full sm:w-auto px-6 py-2 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer text-sm sm:text-base"
-                  >
+                  <Button type="submit" disabled={isSavingSettings} fullWidth className="sm:w-auto">
                     {isSavingSettings ? 'Saving...' : 'Save Changes'}
-                  </button>
+                  </Button>
                 </div>
               </form>
 
+              {/* Archive Section */}
+              <div className="mt-6 border-t border-border pt-6 sm:mt-8 sm:pt-8">
+                <h3 className="mb-2 text-base font-semibold text-foreground sm:text-lg">
+                  {wishlist.archived ? 'Unarchive wishlist' : 'Archive wishlist'}
+                </h3>
+                <p className="mb-4 text-xs text-muted-foreground sm:text-sm">
+                  {wishlist.archived
+                    ? 'This wishlist is archived and tucked away in a separate section. Unarchive it to bring it back.'
+                    : 'Hide this wishlist from the top of your dashboard without deleting anything. You can unarchive it anytime.'}
+                </p>
+                <Button
+                  variant="secondary"
+                  onClick={async () => {
+                    try {
+                      const res = await fetch(`/api/wishlists/${wishlistId}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ archived: !wishlist.archived }),
+                      });
+                      const result = await res.json();
+                      if (result.success) {
+                        setWishlist((prev) =>
+                          prev ? { ...prev, archived: !wishlist.archived } : prev
+                        );
+                        showToast(
+                          wishlist.archived ? 'Wishlist unarchived' : 'Wishlist archived',
+                          'success'
+                        );
+                      } else {
+                        showToast(result.error || 'Failed to update wishlist', 'error');
+                      }
+                    } catch {
+                      showToast('Failed to update wishlist', 'error');
+                    }
+                  }}
+                  className="sm:w-auto"
+                  fullWidth
+                >
+                  <Icon name="package" size={16} />
+                  {wishlist.archived ? 'Unarchive' : 'Archive'}
+                </Button>
+              </div>
+
+              {/* Featured Section - owner only */}
+              {isOwner && (
+                <div className="mt-6 border-t border-border pt-6 sm:mt-8 sm:pt-8">
+                  <h3 className="mb-2 text-base font-semibold text-foreground sm:text-lg">
+                    {wishlist.featured ? 'Featured on your dashboard' : 'Feature on your dashboard'}
+                  </h3>
+                  <p className="mb-4 text-xs text-muted-foreground sm:text-sm">
+                    {wishlist.featured
+                      ? 'This list is pinned as the highlight at the top of your dashboard.'
+                      : 'Pin this list as the highlight at the top of your dashboard. Otherwise your list with the most items is featured automatically.'}
+                  </p>
+                  <Button
+                    variant="secondary"
+                    onClick={async () => {
+                      try {
+                        const res = await fetch(`/api/wishlists/${wishlistId}`, {
+                          method: 'PATCH',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ featured: !wishlist.featured }),
+                        });
+                        const result = await res.json();
+                        if (result.success) {
+                          setWishlist((prev) =>
+                            prev ? { ...prev, featured: !wishlist.featured } : prev
+                          );
+                          showToast(
+                            wishlist.featured
+                              ? 'Removed from your dashboard highlight'
+                              : 'Featured on your dashboard',
+                            'success'
+                          );
+                        } else {
+                          showToast(result.error || 'Failed to update wishlist', 'error');
+                        }
+                      } catch {
+                        showToast('Failed to update wishlist', 'error');
+                      }
+                    }}
+                    fullWidth
+                    className="sm:w-auto"
+                  >
+                    <Icon name="sparkles" size={16} />
+                    {wishlist.featured ? 'Unfeature' : 'Feature this list'}
+                  </Button>
+                </div>
+              )}
+
               {/* Delete Wishlist Section - Only for original owner */}
               {isOwner && (
-                <div className="mt-6 sm:mt-8 pt-6 sm:pt-8 border-t border-gray-200">
-                  <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-2">
+                <div className="mt-6 sm:mt-8 pt-6 sm:pt-8 border-t border-border">
+                  <h3 className="text-base sm:text-lg font-semibold text-foreground mb-2">
                     Danger Zone
                   </h3>
-                  <p className="text-xs sm:text-sm text-gray-600 mb-4">
+                  <p className="text-xs sm:text-sm text-muted-foreground mb-4">
                     Once you delete a wishlist, there is no going back. All items and memberships
                     will be permanently deleted.
                   </p>
@@ -1296,7 +1589,7 @@ export default function WishlistDetail() {
             </div>
           </div>
         )}
-      </div>
+      </main>
 
       {/* Modals */}
       {showAddItemModal && (
@@ -1374,6 +1667,6 @@ export default function WishlistDetail() {
           type="danger"
         />
       )}
-    </main>
+    </div>
   );
 }

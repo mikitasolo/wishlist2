@@ -6,8 +6,14 @@ import mongoose from 'mongoose';
 import Item from '@/models/Item';
 import Wishlist, { IWishlist } from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
+import User from '@/models/User';
 import { createItemSchema, validateRequestBody } from '@/lib/validations';
-import { ensureCurrencyRatesUpToDate, convertToUsdCents } from '@/lib/utils/currencyRates';
+import {
+  ensureCurrencyRatesUpToDate,
+  convertToUsdCents,
+  convertCurrency,
+} from '@/lib/utils/currencyRates';
+import { resolveWishlistId } from '@/lib/utils/wishlistSlug';
 
 // Helper function to check wishlist access
 async function checkWishlistAccess(
@@ -50,7 +56,11 @@ async function checkWishlistAccess(
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getServerSession(authOptions);
-    const { id: wishlistId } = await params;
+    const { id: idParam } = await params;
+    const wishlistId = await resolveWishlistId(idParam);
+    if (!wishlistId) {
+      return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
+    }
 
     await connectDB();
 
@@ -67,6 +77,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // Ensure currency rates are up to date
     const currencyRate = await ensureCurrencyRatesUpToDate();
     const rates = currencyRate?.rates || new Map<string, number>();
+
+    // The signed-in viewer's preferred currency, for the "show in my currency" toggle.
+    let viewerCurrency: string | null = null;
+    if (session?.user) {
+      const viewer = await User.findById(session.user.id).select('defaultCurrency');
+      viewerCurrency = viewer?.defaultCurrency || 'USD';
+    }
 
     const items = await Item.find({ wishlist: wishlistId }).sort({ createdAt: -1 });
 
@@ -108,9 +125,22 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         priceInUsdCents = convertToUsdCents(itemObj.price.value, itemObj.price.currency, rates);
       }
 
+      // Price converted to the viewer's preferred currency (for the display toggle).
+      let priceConverted: { value: number; currency: string } | null = null;
+      if (viewerCurrency && itemObj.price?.value && itemObj.price?.currency) {
+        const conv = convertCurrency(
+          itemObj.price.value,
+          itemObj.price.currency,
+          viewerCurrency,
+          rates
+        );
+        if (conv != null) priceConverted = { value: conv, currency: viewerCurrency };
+      }
+
       const enrichedItem = {
         ...itemObj,
         priceInUsdCents,
+        priceConverted,
       };
 
       if (!session?.user) {
@@ -201,7 +231,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     await connectDB();
-    const { id: wishlistId } = await params;
+    const { id: idParam } = await params;
+    const wishlistId = await resolveWishlistId(idParam);
+    if (!wishlistId) {
+      return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
+    }
 
     const wishlist = await Wishlist.findById(wishlistId);
     if (!wishlist) {

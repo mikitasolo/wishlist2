@@ -2,38 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import connectDB from '@/lib/mongodb';
-import Wishlist, { IWishlist } from '@/models/Wishlist';
+import Wishlist from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
 import Item from '@/models/Item';
 import { validateRequestBody } from '@/lib/validations';
+import { resolveWishlistId } from '@/lib/utils/wishlistSlug';
+import { isAdminOrOwner } from '@/lib/utils/wishlistAccess';
 import { z } from 'zod';
-
-// Helper function to check if user has admin or owner access
-async function checkAdminOrOwnerAccess(
-  wishlistId: string,
-  userId: string
-): Promise<{ hasAccess: boolean; wishlist?: IWishlist }> {
-  await connectDB();
-
-  const wishlist = await Wishlist.findById(wishlistId);
-  if (!wishlist) {
-    return { hasAccess: false };
-  }
-
-  // Owner always has access
-  if (wishlist.owner.toString() === userId) {
-    return { hasAccess: true, wishlist };
-  }
-
-  // Check if user is admin
-  const membership = await WishlistMember.findOne({
-    wishlist: wishlistId,
-    user: userId,
-    role: 'admin',
-  });
-
-  return { hasAccess: !!membership, wishlist };
-}
 
 // Helper function to unbook all items for a user in a wishlist
 async function unbookAllItemsForUser(wishlistId: string, userId: string): Promise<void> {
@@ -66,7 +41,11 @@ export async function PATCH(
 ) {
   try {
     const session = await getServerSession(authOptions);
-    const { id, memberId } = await params;
+    const { id: idParam, memberId } = await params;
+    const id = await resolveWishlistId(idParam);
+    if (!id) {
+      return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
+    }
 
     if (!session?.user) {
       return NextResponse.json(
@@ -77,7 +56,7 @@ export async function PATCH(
 
     await connectDB();
 
-    const { hasAccess } = await checkAdminOrOwnerAccess(id, session.user.id);
+    const hasAccess = await isAdminOrOwner(id, session.user.id);
     if (!hasAccess) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized - Admin or owner access required' },
@@ -145,7 +124,11 @@ export async function DELETE(
 ) {
   try {
     const session = await getServerSession(authOptions);
-    const { id, memberId } = await params;
+    const { id: idParam, memberId } = await params;
+    const id = await resolveWishlistId(idParam);
+    if (!id) {
+      return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
+    }
 
     if (!session?.user) {
       return NextResponse.json(
@@ -156,7 +139,7 @@ export async function DELETE(
 
     await connectDB();
 
-    const { hasAccess } = await checkAdminOrOwnerAccess(id, session.user.id);
+    const hasAccess = await isAdminOrOwner(id, session.user.id);
     if (!hasAccess) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized - Admin or owner access required' },

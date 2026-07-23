@@ -3,167 +3,88 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import connectDB from '@/lib/mongodb';
 import Wishlist, { IWishlist } from '@/models/Wishlist';
-import WishlistMember, { IWishlistMember } from '@/models/WishlistMember';
+import WishlistMember from '@/models/WishlistMember';
 import User from '@/models/User';
 import Item from '@/models/Item';
 import { updateWishlistSchema, validateRequestBody } from '@/lib/validations';
-
-// Helper function to check if user has admin or owner access
-async function checkAdminOrOwnerAccess(
-  wishlistId: string,
-  userId: string
-): Promise<{ hasAccess: boolean; wishlist?: IWishlist }> {
-  await connectDB();
-
-  const wishlist = await Wishlist.findById(wishlistId);
-  if (!wishlist) {
-    return { hasAccess: false };
-  }
-
-  // Owner always has access
-  if (wishlist.owner.toString() === userId) {
-    return { hasAccess: true, wishlist };
-  }
-
-  // Check if user is admin
-  const membership = await WishlistMember.findOne({
-    wishlist: wishlistId,
-    user: userId,
-    role: 'admin',
-  });
-
-  return { hasAccess: !!membership, wishlist };
-}
-
-// Helper function to check if user has permission
-async function checkWishlistPermission(
-  wishlistId: string,
-  userId: string,
-  requireOwner: boolean = false,
-  requireAdminOrOwner: boolean = false
-): Promise<{
-  hasAccess: boolean;
-  // membership can be IWishlistMember (role: 'admin' | 'member') or synthetic owner object
-  membership?: IWishlistMember | { role: 'owner' };
-  wishlist?: IWishlist;
-}> {
-  await connectDB();
-
-  const wishlist = await Wishlist.findById(wishlistId);
-  if (!wishlist) {
-    return { hasAccess: false };
-  }
-
-  // Owner always has access (owner is stored in wishlist.owner, not in WishlistMember)
-  if (wishlist.owner.toString() === userId) {
-    return { hasAccess: true, wishlist, membership: { role: 'owner' } };
-  }
-
-  // If owner is required, deny access (only original owner)
-  if (requireOwner) {
-    return { hasAccess: false };
-  }
-
-  // Check membership
-  const membership = await WishlistMember.findOne({
-    wishlist: wishlistId,
-    user: userId,
-  });
-
-  if (!membership) {
-    return { hasAccess: false, wishlist };
-  }
-
-  // If admin or owner access is required, check role
-  if (requireAdminOrOwner) {
-    const hasAccess = membership.role === 'admin';
-    return { hasAccess, membership, wishlist };
-  }
-
-  return { hasAccess: true, membership, wishlist };
-}
+import { areFriends } from '@/lib/utils/friends';
+import {
+  resolveWishlistId,
+  generateUniqueWishlistSlug,
+  isReservedWishlistSlug,
+} from '@/lib/utils/wishlistSlug';
+import { getAdminOrOwnerAccess } from '@/lib/utils/wishlistAccess';
 
 // GET /api/wishlists/[id] - Get a specific wishlist
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getServerSession(authOptions);
-    const { id } = await params;
+    const { id: idParam } = await params;
 
     await connectDB();
+
+    const id = await resolveWishlistId(idParam);
+    if (!id) {
+      return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
+    }
 
     const wishlist = await Wishlist.findById(id);
     if (!wishlist) {
       return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
     }
 
-    // Fetch owner email
-    const owner = await User.findById(wishlist.owner).select('email');
-    const ownerEmail = owner?.email || null;
+    // Lazily backfill a slug for legacy wishlists created before slugs existed.
+    if (!wishlist.slug) {
+      wishlist.slug = await generateUniqueWishlistSlug(wishlist.name);
+      await wishlist.save();
+    }
 
-    // Public wishlists can be viewed by anyone
-    if (wishlist.isPublic) {
-      // If user is authenticated, add role info
-      if (session?.user) {
-        const isOwner = wishlist.owner.toString() === session.user.id;
-        const membership = await WishlistMember.findOne({
-          wishlist: id,
-          user: session.user.id,
-        });
+    // Fetch owner's public username (never expose their email to viewers)
+    const owner = await User.findById(wishlist.owner).select('username');
+    const ownerUsername = owner?.username || null;
 
-        let userRole: 'owner' | 'admin' | 'member' | null = null;
-        if (isOwner) {
-          userRole = 'owner';
-        } else if (membership) {
-          userRole = membership.role === 'admin' ? 'admin' : 'member';
-        }
+    const visibility = wishlist.visibility || (wishlist.isPublic ? 'everyone' : 'private');
 
+    // Resolve the viewer's relationship to the wishlist
+    const isOwner = !!session?.user && wishlist.owner.toString() === session.user.id;
+
+    // Archived wishlists are visible to the owner only — hide from everyone else
+    // (return 404 so the URL doesn't even reveal that it exists).
+    if (wishlist.archived && !isOwner) {
+      return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
+    }
+
+    const membership =
+      session?.user && !isOwner
+        ? await WishlistMember.findOne({ wishlist: id, user: session.user.id })
+        : null;
+    let userRole: 'owner' | 'admin' | 'member' | null = null;
+    if (isOwner) userRole = 'owner';
+    else if (membership) userRole = membership.role === 'admin' ? 'admin' : 'member';
+
+    // Determine access by visibility tier
+    let hasAccess = false;
+    if (visibility === 'everyone') {
+      hasAccess = true;
+    } else {
+      // friends / private require a session
+      if (!session?.user) {
         return NextResponse.json(
-          {
-            success: true,
-            data: {
-              ...wishlist.toObject(),
-              userRole,
-              ownerEmail,
-            },
-          },
-          { status: 200 }
+          { success: false, error: 'Unauthorized - This wishlist is private' },
+          { status: 401 }
         );
       }
-      return NextResponse.json(
-        {
-          success: true,
-          data: {
-            ...wishlist.toObject(),
-            ownerEmail,
-          },
-        },
-        { status: 200 }
-      );
+      hasAccess = isOwner || !!membership;
+      if (!hasAccess && visibility === 'friends') {
+        hasAccess = await areFriends(session.user.id, wishlist.owner.toString());
+      }
     }
 
-    // Private wishlists require authentication
-    if (!session?.user) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized - This wishlist is private' },
-        { status: 401 }
-      );
-    }
-
-    const { hasAccess, membership } = await checkWishlistPermission(id, session.user.id);
     if (!hasAccess) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized - No access to this wishlist' },
         { status: 403 }
       );
-    }
-
-    // Add user role info to response
-    const isOwner = wishlist.owner.toString() === session.user.id;
-    let userRole: 'owner' | 'admin' | 'member' | null = null;
-    if (isOwner) {
-      userRole = 'owner';
-    } else if (membership) {
-      userRole = membership.role === 'admin' ? 'admin' : 'member';
     }
 
     return NextResponse.json(
@@ -172,7 +93,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         data: {
           ...wishlist.toObject(),
           userRole,
-          ownerEmail,
+          ownerUsername,
         },
       },
       { status: 200 }
@@ -199,9 +120,13 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     }
 
     await connectDB();
-    const { id } = await params;
+    const { id: idParam } = await params;
+    const id = await resolveWishlistId(idParam);
+    if (!id) {
+      return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
+    }
 
-    const { hasAccess, wishlist } = await checkAdminOrOwnerAccess(id, session.user.id);
+    const { hasAccess, wishlist } = await getAdminOrOwnerAccess(id, session.user.id);
 
     if (!hasAccess || !wishlist) {
       return NextResponse.json(
@@ -209,6 +134,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         { status: 403 }
       );
     }
+
+    const isOwner = wishlist.owner.toString() === session.user.id;
 
     // Validate request body
     const validation = await validateRequestBody(request, updateWishlistSchema);
@@ -219,11 +146,67 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       );
     }
 
-    const updateData: Partial<Pick<IWishlist, 'name' | 'description' | 'isPublic'>> = {};
+    const updateData: Partial<
+      Pick<
+        IWishlist,
+        | 'name'
+        | 'slug'
+        | 'description'
+        | 'isPublic'
+        | 'visibility'
+        | 'archived'
+        | 'featured'
+        | 'bannerUrl'
+        | 'currency'
+      >
+    > = {};
     const validatedData = validation.data;
     if (validatedData.name !== undefined) updateData.name = validatedData.name;
     if (validatedData.description !== undefined) updateData.description = validatedData.description;
-    if (validatedData.isPublic !== undefined) updateData.isPublic = validatedData.isPublic;
+    if (validatedData.bannerUrl !== undefined) updateData.bannerUrl = validatedData.bannerUrl || null;
+    if (validatedData.currency !== undefined) updateData.currency = validatedData.currency;
+
+    // Slug: validate reserved + uniqueness before applying.
+    if (validatedData.slug !== undefined && validatedData.slug !== wishlist.slug) {
+      const slug = validatedData.slug;
+      if (isReservedWishlistSlug(slug)) {
+        return NextResponse.json(
+          { success: false, error: 'That URL is reserved. Please choose another.' },
+          { status: 409 }
+        );
+      }
+      const taken = await Wishlist.exists({ slug, _id: { $ne: id } });
+      if (taken) {
+        return NextResponse.json(
+          { success: false, error: 'That URL is already taken.' },
+          { status: 409 }
+        );
+      }
+      updateData.slug = slug;
+    }
+    if (validatedData.visibility !== undefined) {
+      updateData.visibility = validatedData.visibility;
+      updateData.isPublic = validatedData.visibility === 'everyone';
+    }
+    if (validatedData.archived !== undefined) updateData.archived = validatedData.archived;
+
+    // "Featured" pins a list to the owner's dashboard hero. Only the owner may
+    // set it, and at most one of their lists can be featured at a time.
+    if (validatedData.featured !== undefined) {
+      if (!isOwner) {
+        return NextResponse.json(
+          { success: false, error: 'Only the owner can feature a wishlist' },
+          { status: 403 }
+        );
+      }
+      updateData.featured = validatedData.featured;
+      if (validatedData.featured === true) {
+        await Wishlist.updateMany(
+          { owner: session.user.id, _id: { $ne: id } },
+          { $set: { featured: false } }
+        );
+      }
+    }
 
     const updatedWishlist = await Wishlist.findByIdAndUpdate(id, updateData, {
       new: true,
@@ -256,7 +239,11 @@ export async function DELETE(
     }
 
     await connectDB();
-    const { id } = await params;
+    const { id: idParam } = await params;
+    const id = await resolveWishlistId(idParam);
+    if (!id) {
+      return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
+    }
 
     const wishlist = await Wishlist.findById(id);
     if (!wishlist) {

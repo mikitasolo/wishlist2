@@ -1,9 +1,17 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import { useToast } from './ToastProvider';
 import ConfirmDialog from './ConfirmDialog';
+import Icon from './Icon';
+import ImageUpload from './ImageUpload';
+import Select from './Select';
+import { visibilityMeta, type Visibility } from '@/lib/utils/visibility';
+import { currencySelectOptions } from '@/lib/utils/currencies';
+import { useBodyScrollLock } from '@/lib/hooks/useBodyScrollLock';
 
 interface CreateWishlistModalProps {
   isOpen: boolean;
@@ -13,11 +21,14 @@ interface CreateWishlistModalProps {
 const defaultFormData = {
   name: '',
   description: '',
-  isPublic: true,
+  visibility: 'everyone' as Visibility,
+  bannerUrl: '',
+  currency: 'USD',
 };
 
 export default function CreateWishlistModal({ isOpen, onClose }: CreateWishlistModalProps) {
   const router = useRouter();
+  const { data: session } = useSession();
   const { showToast } = useToast();
   const [formData, setFormData] = useState(defaultFormData);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -39,28 +50,22 @@ export default function CreateWishlistModal({ isOpen, onClose }: CreateWishlistM
     const hasChanges =
       formData.name !== defaultFormData.name ||
       formData.description !== defaultFormData.description ||
-      formData.isPublic !== defaultFormData.isPublic;
+      formData.visibility !== defaultFormData.visibility ||
+      formData.bannerUrl !== defaultFormData.bannerUrl;
     setHasUnsavedChanges(hasChanges);
   }, [formData]);
 
-  // Focus first input when modal opens
-  useEffect(() => {
-    if (isOpen && firstInputRef.current) {
-      setTimeout(() => firstInputRef.current?.focus(), 100);
-    }
-  }, [isOpen]);
-
-  // Prevent body scroll when modal is open
+  // Focus first input + prefill the currency from the user's default when opening.
   useEffect(() => {
     if (isOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = 'unset';
+      if (firstInputRef.current) setTimeout(() => firstInputRef.current?.focus(), 100);
+      const cur = session?.user?.defaultCurrency || 'USD';
+      setFormData((f) => ({ ...f, currency: cur }));
     }
-    return () => {
-      document.body.style.overflow = 'unset';
-    };
-  }, [isOpen]);
+  }, [isOpen, session?.user?.defaultCurrency]);
+
+  // Prevent body scroll while the modal is open (shared, ref-counted lock)
+  useBodyScrollLock(isOpen);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -81,7 +86,7 @@ export default function CreateWishlistModal({ isOpen, onClose }: CreateWishlistM
         showToast('Wishlist created successfully', 'success');
         setHasUnsavedChanges(false);
         onClose();
-        router.push(`/wishlists/${result.data._id}`);
+        router.push(`/wishlists/${result.data.slug ?? result.data._id}`);
       } else {
         showToast(result.error || 'Failed to create wishlist', 'error');
       }
@@ -130,35 +135,50 @@ export default function CreateWishlistModal({ isOpen, onClose }: CreateWishlistM
 
   if (!isOpen) return null;
 
-  return (
+  // Rendered in a portal on <body> so the fixed overlay escapes any ancestor
+  // with backdrop-filter/transform (e.g. the frosted header), which would
+  // otherwise become its positioning container and mis-place it on scroll.
+  return createPortal(
     <div
-      className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"
+      className="animate-fade-in fixed left-0 right-0 top-0 z-50 flex h-[100dvh] items-center justify-center bg-slate-900/40 backdrop-blur-sm"
       onClick={handleBackdropClick}
+      style={{
+        paddingTop: 'max(0.75rem, env(safe-area-inset-top))',
+        paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))',
+        paddingLeft: 'max(0.75rem, env(safe-area-inset-left))',
+        paddingRight: 'max(0.75rem, env(safe-area-inset-right))',
+      }}
     >
       <div
-        className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-4 sm:p-6 max-h-[90vh] overflow-y-auto"
+        className="animate-dialog-in flex max-h-full w-full max-w-md flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-lg"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
         aria-labelledby="create-wishlist-title"
       >
-        <div className="flex justify-between items-center mb-4 sm:mb-6">
-          <h2 id="create-wishlist-title" className="text-xl sm:text-2xl font-bold text-gray-800">
-            Create New Wishlist
+        {/* Pinned header */}
+        <div className="flex flex-shrink-0 items-center justify-between gap-4 border-b border-border px-5 py-4 sm:px-6">
+          <h2 id="create-wishlist-title" className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
+            Create new wishlist
           </h2>
           <button
             onClick={handleClose}
-            className="text-gray-500 hover:text-gray-700 text-2xl leading-none cursor-pointer"
+            className="-mr-1 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed"
             disabled={isSubmitting}
             aria-label="Close modal"
           >
-            ×
+            <Icon name="close" size={20} />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off">
+        {/* Scrollable body */}
+        <form
+          onSubmit={handleSubmit}
+          className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-5 py-5 sm:px-6"
+          autoComplete="off"
+        >
           <div>
-            <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="name" className="block text-sm font-medium text-foreground mb-1">
               Wishlist Name *
             </label>
             <input
@@ -168,7 +188,7 @@ export default function CreateWishlistModal({ isOpen, onClose }: CreateWishlistM
               ref={firstInputRef}
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
+              className="w-full px-4 py-2 border border-border-strong rounded-xl outline-none"
               placeholder="My Wishlist"
               disabled={isSubmitting}
               aria-required="true"
@@ -177,14 +197,14 @@ export default function CreateWishlistModal({ isOpen, onClose }: CreateWishlistM
           </div>
 
           <div>
-            <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="description" className="block text-sm font-medium text-foreground mb-1">
               Description
             </label>
             <textarea
               id="description"
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
+              className="w-full px-4 py-2 border border-border-strong rounded-xl outline-none"
               placeholder="Optional description"
               rows={3}
               disabled={isSubmitting}
@@ -193,38 +213,69 @@ export default function CreateWishlistModal({ isOpen, onClose }: CreateWishlistM
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Visibility</label>
-            <p className="text-xs text-gray-500 mb-2">
-              Controls whether the wishlist will be visible on your profile page for non-members
+            <label className="block text-sm font-medium text-foreground mb-1">Currency</label>
+            <Select
+              value={formData.currency}
+              onChange={(v) => setFormData({ ...formData, currency: v })}
+              options={currencySelectOptions}
+              ariaLabel="Wishlist currency"
+              size="md"
+              triggerClassName="w-full"
+              disabled={isSubmitting}
+            />
+            <p className="mt-1 text-xs text-muted-foreground">
+              Default currency for prices in this wishlist.
             </p>
-            <div className="relative flex items-center justify-between p-1 bg-gray-100 rounded-lg">
-              {/* Sliding indicator */}
-              <div
-                className={`absolute top-1 bottom-1 left-1 bg-white rounded-md shadow-sm transition-transform duration-300 ease-in-out ${
-                  formData.isPublic ? 'translate-x-0' : 'translate-x-[calc(100%+0.5rem)]'
-                }`}
-                style={{ width: 'calc(50% - 0.25rem)' }}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-1">
+              Banner image <span className="text-muted-foreground">(optional)</span>
+            </label>
+            <ImageUpload
+              value={formData.bannerUrl || null}
+              onChange={(url) => setFormData({ ...formData, bannerUrl: url ?? '' })}
+              disabled={isSubmitting}
+            />
+            <p className="mt-1 text-xs text-muted-foreground">
+              Used as the cover instead of the gradient.
+            </p>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium text-foreground">Visibility</label>
+            <p className="mb-2 text-xs text-muted-foreground">
+              {formData.visibility === 'everyone'
+                ? 'Anyone can find and view this wishlist.'
+                : formData.visibility === 'friends'
+                  ? 'Only your friends (mutual follows) and members can view it.'
+                  : 'Only you and people you invite can view it.'}
+            </p>
+            <div className="relative flex rounded-xl border border-border bg-surface-2 p-1">
+              <span
+                aria-hidden
+                className="absolute bottom-1 top-1 rounded-lg bg-surface shadow-sm transition-[left] duration-300 ease-[cubic-bezier(0.2,0.7,0.2,1)]"
+                style={{
+                  width: 'calc((100% - 0.5rem) / 3)',
+                  left: `calc(${['everyone', 'friends', 'private'].indexOf(formData.visibility)} * ((100% - 0.5rem) / 3) + 0.25rem)`,
+                }}
               />
-              <button
-                type="button"
-                onClick={() => setFormData({ ...formData, isPublic: true })}
-                disabled={isSubmitting}
-                className={`relative z-10 flex-1 px-4 py-2 text-sm font-medium rounded-md transition-colors duration-300 cursor-pointer ${
-                  formData.isPublic ? 'text-gray-900' : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                Public
-              </button>
-              <button
-                type="button"
-                onClick={() => setFormData({ ...formData, isPublic: false })}
-                disabled={isSubmitting}
-                className={`relative z-10 flex-1 px-4 py-2 text-sm font-medium rounded-md transition-colors duration-300 cursor-pointer ${
-                  !formData.isPublic ? 'text-gray-900' : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                Private
-              </button>
+              {(['everyone', 'friends', 'private'] as const).map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setFormData({ ...formData, visibility: v })}
+                  disabled={isSubmitting}
+                  className={`relative z-10 flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-semibold transition-colors ${
+                    formData.visibility === v
+                      ? 'text-foreground'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <Icon name={visibilityMeta[v].icon} size={14} />
+                  {v === 'private' ? 'Only me' : visibilityMeta[v].label}
+                </button>
+              ))}
             </div>
           </div>
 
@@ -232,14 +283,14 @@ export default function CreateWishlistModal({ isOpen, onClose }: CreateWishlistM
             <button
               type="button"
               onClick={handleClose}
-              className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium cursor-pointer"
+              className="flex-1 px-4 py-2 border border-border-strong text-foreground rounded-xl hover:bg-surface-hover transition-colors font-medium cursor-pointer"
               disabled={isSubmitting}
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="flex-1 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors font-medium disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
+              className="flex-1 px-4 py-2 border border-transparent bg-primary-600 text-white rounded-xl hover:bg-primary-700 transition-colors font-medium disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
               disabled={isSubmitting}
             >
               {isSubmitting ? 'Creating...' : 'Create Wishlist'}
@@ -258,6 +309,7 @@ export default function CreateWishlistModal({ isOpen, onClose }: CreateWishlistM
         cancelText="Cancel"
         type="warning"
       />
-    </div>
+    </div>,
+    document.body
   );
 }

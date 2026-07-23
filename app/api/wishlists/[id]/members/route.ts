@@ -2,44 +2,25 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import connectDB from '@/lib/mongodb';
-import Wishlist, { IWishlist } from '@/models/Wishlist';
+import Wishlist from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
+import WishlistInvite from '@/models/WishlistInvite';
 import User from '@/models/User';
 import { sendWishlistInvitationEmail } from '@/lib/email';
 import { inviteMemberSchema, validateRequestBody } from '@/lib/validations';
-
-// Helper function to check if user has admin or owner access
-async function checkAdminOrOwnerAccess(
-  wishlistId: string,
-  userId: string
-): Promise<{ hasAccess: boolean; wishlist?: IWishlist }> {
-  await connectDB();
-
-  const wishlist = await Wishlist.findById(wishlistId);
-  if (!wishlist) {
-    return { hasAccess: false };
-  }
-
-  // Owner always has access
-  if (wishlist.owner.toString() === userId) {
-    return { hasAccess: true, wishlist };
-  }
-
-  // Check if user is admin
-  const membership = await WishlistMember.findOne({
-    wishlist: wishlistId,
-    user: userId,
-    role: 'admin',
-  });
-
-  return { hasAccess: !!membership, wishlist };
-}
+import { areFriends } from '@/lib/utils/friends';
+import { resolveWishlistId } from '@/lib/utils/wishlistSlug';
+import { getAdminOrOwnerAccess } from '@/lib/utils/wishlistAccess';
 
 // GET /api/wishlists/[id]/members - Get all members of a wishlist
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getServerSession(authOptions);
-    const { id } = await params;
+    const { id: idParam } = await params;
+    const id = await resolveWishlistId(idParam);
+    if (!id) {
+      return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
+    }
 
     if (!session?.user) {
       return NextResponse.json(
@@ -51,7 +32,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     await connectDB();
 
     // Only admins and owners can view members list
-    const { hasAccess } = await checkAdminOrOwnerAccess(id, session.user.id);
+    const { hasAccess } = await getAdminOrOwnerAccess(id, session.user.id);
     if (!hasAccess) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized - Admin or owner access required' },
@@ -65,7 +46,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     // Fetch owner separately (owner is stored in wishlist.owner, not in WishlistMember)
-    const owner = await User.findById(wishlist.owner);
+    const owner = await User.findById(wishlist.owner).select('username image');
     if (!owner) {
       return NextResponse.json(
         { success: false, error: 'Wishlist owner not found' },
@@ -80,7 +61,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const memberUserIds = allMembers.map((m) => m.user);
     const memberUsers = await User.find({
       _id: { $in: memberUserIds },
-    }).select('email');
+    }).select('username image');
 
     const userMap = new Map(memberUsers.map((u) => [u._id.toString(), u]));
 
@@ -125,7 +106,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getServerSession(authOptions);
-    const { id } = await params;
+    const { id: idParam } = await params;
+    const id = await resolveWishlistId(idParam);
+    if (!id) {
+      return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
+    }
 
     if (!session?.user) {
       return NextResponse.json(
@@ -136,7 +121,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     await connectDB();
 
-    const { hasAccess, wishlist } = await checkAdminOrOwnerAccess(id, session.user.id);
+    const { hasAccess, wishlist } = await getAdminOrOwnerAccess(id, session.user.id);
     if (!hasAccess || !wishlist) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized - Admin or owner access required' },
@@ -153,57 +138,104 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       );
     }
 
-    const { email, role = 'member' } = validation.data;
+    const { email, username, role = 'member' } = validation.data;
 
-    // Find or create user
-    let invitedUser = await User.findOne({ email: email.toLowerCase() });
-    if (!invitedUser) {
-      // Create user account (they'll need to verify email)
-      invitedUser = await User.create({
-        email: email.toLowerCase(),
+    // Resolve the invitee by username or email. Email invites may target
+    // someone with no account yet — that's allowed; we match them after signup.
+    const normalizedEmail = email ? email.toLowerCase() : null;
+    const invitedUser = username
+      ? await User.findOne({ username })
+      : normalizedEmail
+        ? await User.findOne({ email: normalizedEmail })
+        : null;
+
+    if (!invitedUser && username) {
+      // Usernames only exist for real accounts — can't invite a stranger by one
+      return NextResponse.json(
+        { success: false, error: `No user found with the username @${username}` },
+        { status: 404 }
+      );
+    }
+
+    if (invitedUser) {
+      // Respect the invitee's "who can invite me" preference
+      const policy = invitedUser.privacy?.whoCanInvite ?? 'everyone';
+      if (policy === 'nobody') {
+        return NextResponse.json(
+          { success: false, error: 'This person isn’t accepting wishlist invites.' },
+          { status: 403 }
+        );
+      }
+      if (policy === 'friends') {
+        const friends = await areFriends(session.user.id, invitedUser._id.toString());
+        if (!friends) {
+          return NextResponse.json(
+            { success: false, error: 'This person only accepts invites from friends.' },
+            { status: 403 }
+          );
+        }
+      }
+
+      // Can't invite the owner or an existing member.
+      if (wishlist.owner.toString() === invitedUser._id.toString()) {
+        return NextResponse.json(
+          { success: false, error: 'This person already owns this wishlist' },
+          { status: 400 }
+        );
+      }
+      const existingMember = await WishlistMember.findOne({ wishlist: id, user: invitedUser._id });
+      if (existingMember) {
+        return NextResponse.json(
+          { success: false, error: 'This person is already a member' },
+          { status: 400 }
+        );
+      }
+      const existingInvite = await WishlistInvite.findOne({
+        wishlist: id,
+        invitedUser: invitedUser._id,
+        status: 'pending',
       });
+      if (existingInvite) {
+        return NextResponse.json(
+          { success: false, error: 'This person already has a pending invite' },
+          { status: 400 }
+        );
+      }
+    } else {
+      // Email invite with no account yet — just guard against duplicate invites.
+      const existingInvite = await WishlistInvite.findOne({
+        wishlist: id,
+        email: normalizedEmail,
+        status: 'pending',
+      });
+      if (existingInvite) {
+        return NextResponse.json(
+          { success: false, error: 'That email already has a pending invite' },
+          { status: 400 }
+        );
+      }
     }
 
-    // Prevent inviting owner (they're already the owner)
-    if (wishlist.owner.toString() === invitedUser._id.toString()) {
-      return NextResponse.json(
-        { success: false, error: 'User is already the owner of this wishlist' },
-        { status: 400 }
-      );
-    }
-
-    // Check if user is already a member
-    const existingMember = await WishlistMember.findOne({
+    // Create a pending invite (membership is created only when they accept).
+    const inviteEmail = invitedUser?.email ?? normalizedEmail;
+    const invite = await WishlistInvite.create({
       wishlist: id,
-      user: invitedUser._id,
-    });
-
-    if (existingMember) {
-      return NextResponse.json(
-        { success: false, error: 'User is already a member of this wishlist' },
-        { status: 400 }
-      );
-    }
-
-    // Create membership with specified role
-    const membership = await WishlistMember.create({
-      wishlist: id,
-      user: invitedUser._id,
+      invitedBy: session.user.id,
+      invitedUser: invitedUser?._id ?? null,
+      email: inviteEmail,
       role,
     });
 
-    // Send invitation email
-    await sendWishlistInvitationEmail(email, wishlist.name, session.user.email, id);
+    // Email the invitee a link to their invites page (inviter shown by username).
+    const inviterName = session.user.username || session.user.email?.split('@')[0] || 'Someone';
+    if (inviteEmail) {
+      await sendWishlistInvitationEmail(inviteEmail, wishlist.name, inviterName);
+    }
 
-    // Fetch user details for response
-    const membershipUser = await User.findById(membership.user).select('email');
-
-    const responseData = {
-      ...membership.toObject(),
-      user: membershipUser || membership.user,
-    };
-
-    return NextResponse.json({ success: true, data: responseData }, { status: 201 });
+    return NextResponse.json(
+      { success: true, data: { _id: invite._id, status: invite.status } },
+      { status: 201 }
+    );
   } catch (error) {
     console.error('Error inviting member:', error);
     return NextResponse.json({ success: false, error: 'Failed to invite member' }, { status: 500 });

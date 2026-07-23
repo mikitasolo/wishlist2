@@ -1,6 +1,7 @@
 'use client';
 
 import React, { Component, ReactNode } from 'react';
+import Icon from '@/components/Icon';
 
 interface ErrorBoundaryState {
   hasError: boolean;
@@ -35,11 +36,15 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
       }
 
       return (
-        <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-pink-100 to-white px-4">
-          <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center">
-            <div className="text-6xl mb-4">⚠️</div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-4">Something went wrong</h1>
-            <p className="text-gray-600 mb-6">
+        <div className="min-h-screen flex items-center justify-center bg-background px-4">
+          <div className="w-full max-w-md rounded-2xl border border-border bg-surface p-8 text-center shadow-lg">
+            <span className="mb-5 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-red-500/12 text-red-600 dark:text-red-400">
+              <Icon name="alert" size={28} />
+            </span>
+            <h1 className="mb-3 text-2xl font-bold tracking-tight text-foreground">
+              Something went wrong
+            </h1>
+            <p className="mb-6 text-muted-foreground">
               {this.state.error?.message || 'An unexpected error occurred'}
             </p>
             <button
@@ -47,9 +52,9 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
                 this.setState({ hasError: false, error: null });
                 window.location.reload();
               }}
-              className="bg-primary-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-primary-700 transition-colors cursor-pointer"
+              className="inline-flex h-11 cursor-pointer items-center rounded-lg bg-primary-600 px-6 font-medium text-white shadow-sm transition-colors hover:bg-primary-700"
             >
-              Reload Page
+              Reload page
             </button>
           </div>
         </div>

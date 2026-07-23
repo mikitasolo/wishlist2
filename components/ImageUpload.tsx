@@ -1,0 +1,266 @@
+'use client';
+
+import { useCallback, useEffect, useRef, useState } from 'react';
+import Icon from './Icon';
+import BannerImage from './BannerImage';
+import ImageCropModal from './ImageCropModal';
+
+interface ImageUploadProps {
+  value: string | null;
+  onChange: (url: string | null) => void;
+  disabled?: boolean;
+  /** Crop aspect ratio (width / height) matching where the image renders. */
+  aspect?: number;
+  /** Render as a compact circular control (avatars). Forces a 1:1 round crop. */
+  circle?: boolean;
+}
+
+/**
+ * Lets the user pick an image (drop / paste / click), crop it to the target
+ * aspect ratio, then uploads the cropped result to Vercel Blob (via /api/upload)
+ * and returns its URL through onChange.
+ */
+export default function ImageUpload({
+  value,
+  onChange,
+  disabled = false,
+  aspect = 16 / 9,
+  circle = false,
+}: ImageUploadProps) {
+  // Avatars crop square and display round.
+  const effectiveAspect = circle ? 1 : aspect;
+  const cropShape = circle ? 'round' : 'rect';
+  const [uploading, setUploading] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Open the cropper for a chosen file.
+  const handleFile = useCallback((file: File) => {
+    setError(null);
+    if (!file.type.startsWith('image/')) {
+      setError('Please choose an image file.');
+      return;
+    }
+    setPendingFile(file);
+  }, []);
+
+  const uploadBlob = useCallback(
+    async (blob: Blob) => {
+      setError(null);
+      setUploading(true);
+      try {
+        const fd = new FormData();
+        fd.append('file', blob, 'upload.webp');
+        const res = await fetch('/api/upload', { method: 'POST', body: fd });
+        const result = await res.json();
+        if (result.success) onChange(result.url);
+        else setError(result.error || 'Upload failed.');
+      } catch {
+        setError('Upload failed.');
+      } finally {
+        setUploading(false);
+      }
+    },
+    [onChange]
+  );
+
+  // Paste an image from the clipboard anywhere while this control is mounted.
+  useEffect(() => {
+    if (disabled) return;
+    const onPaste = (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        if (it.type.startsWith('image/')) {
+          const f = it.getAsFile();
+          if (f) {
+            e.preventDefault();
+            handleFile(f);
+            break;
+          }
+        }
+      }
+    };
+    document.addEventListener('paste', onPaste);
+    return () => document.removeEventListener('paste', onPaste);
+  }, [disabled, handleFile]);
+
+  const openPicker = () => {
+    if (!disabled && !uploading) inputRef.current?.click();
+  };
+
+  return (
+    <div>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        disabled={disabled}
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) handleFile(f);
+          e.target.value = ''; // allow re-selecting the same file
+        }}
+      />
+
+      {circle ? (
+        <div className="flex items-center gap-4">
+          <button
+            type="button"
+            onClick={openPicker}
+            onDragOver={(e) => {
+              e.preventDefault();
+              if (!disabled) setDragging(true);
+            }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragging(false);
+              const f = e.dataTransfer.files?.[0];
+              if (f) handleFile(f);
+            }}
+            disabled={disabled || uploading}
+            aria-label={value ? 'Replace photo' : 'Upload photo'}
+            className={`relative flex h-24 w-24 flex-shrink-0 items-center justify-center overflow-hidden rounded-full text-center transition-colors ${
+              value
+                ? 'border border-border bg-surface-2'
+                : dragging
+                  ? 'border-2 border-dashed border-primary-500 bg-primary-500/8'
+                  : 'border-2 border-dashed border-border-strong hover:bg-surface-hover'
+            } disabled:opacity-60`}
+          >
+            {value ? (
+              <BannerImage src={value} alt="Profile photo" sizes="96px" />
+            ) : (
+              <Icon name="image" size={24} className="text-muted-foreground" />
+            )}
+            {uploading && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black/40 text-white">
+                <span className="spinner h-6 w-6 text-white" />
+              </div>
+            )}
+          </button>
+          <div className="min-w-0">
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={openPicker}
+                disabled={disabled || uploading}
+                className="inline-flex h-9 items-center rounded-xl border border-border-strong bg-surface px-3.5 text-sm font-semibold text-foreground shadow-xs transition-colors hover:bg-surface-hover disabled:opacity-50"
+              >
+                {value ? 'Replace' : 'Upload'}
+              </button>
+              {value && (
+                <button
+                  type="button"
+                  onClick={() => onChange(null)}
+                  disabled={disabled || uploading}
+                  className="inline-flex h-9 items-center rounded-xl px-3.5 text-sm font-semibold text-red-600 transition-colors hover:bg-red-500/10 disabled:opacity-50 dark:text-red-400"
+                >
+                  Remove
+                </button>
+              )}
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Drag &amp; drop, paste, or click. PNG, JPG, WebP or GIF · up to 4MB.
+            </p>
+          </div>
+        </div>
+      ) : value ? (
+        <div
+          className="relative mx-auto w-full overflow-hidden rounded-xl border border-border bg-surface-2"
+          // Bound by WIDTH, not height: a `max-height` clamp fights `aspect-ratio` and the box
+          // goes off-ratio once the aspect-derived height would exceed it (a 1:1 in a wide modal,
+          // a 16:9 in a wide panel). Capping width at height-budget × aspect keeps the ratio exact
+          // for any aspect while holding the preview to ~18rem tall.
+          style={{ aspectRatio: String(aspect), maxWidth: `${18 * aspect}rem` }}
+        >
+          <BannerImage src={value} alt="Uploaded image" sizes="(max-width: 640px) 100vw, 40rem" />
+          <div className="absolute right-2 top-2 flex gap-1.5">
+            <button
+              type="button"
+              onClick={openPicker}
+              disabled={disabled || uploading}
+              className="rounded-lg bg-black/45 px-2.5 py-1 text-xs font-semibold text-white backdrop-blur-md transition-colors hover:bg-black/60 disabled:opacity-50"
+            >
+              Replace
+            </button>
+            <button
+              type="button"
+              onClick={() => onChange(null)}
+              disabled={disabled || uploading}
+              className="rounded-lg bg-black/45 px-2.5 py-1 text-xs font-semibold text-white backdrop-blur-md transition-colors hover:bg-black/60 disabled:opacity-50"
+            >
+              Remove
+            </button>
+          </div>
+          {uploading && (
+            <div className="absolute inset-0 flex items-center justify-center bg-black/40 text-white">
+              <span className="h-6 w-6 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+            </div>
+          )}
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={openPicker}
+          onDragOver={(e) => {
+            e.preventDefault();
+            if (!disabled) setDragging(true);
+          }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragging(false);
+            const f = e.dataTransfer.files?.[0];
+            if (f) handleFile(f);
+          }}
+          disabled={disabled || uploading}
+          // Same ratio-preserving bound as the filled preview (width-capped, not height-clamped).
+          style={{ aspectRatio: String(aspect), maxWidth: `${18 * aspect}rem` }}
+          className={`mx-auto flex w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 text-center transition-colors ${
+            dragging
+              ? 'border-primary-500 bg-primary-500/8'
+              : 'border-border-strong hover:bg-surface-hover'
+          } disabled:opacity-60`}
+        >
+          {uploading ? (
+            <>
+              <span className="spinner h-6 w-6 text-primary-600" />
+              <span className="text-sm text-muted-foreground">Uploading…</span>
+            </>
+          ) : (
+            <>
+              <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-surface-2 text-muted-foreground">
+                <Icon name="image" size={22} />
+              </span>
+              <span className="text-sm font-medium text-foreground">
+                Drag &amp; drop, paste, or click to upload
+              </span>
+              <span className="text-xs text-muted-foreground">PNG, JPG, WebP or GIF · up to 4MB</span>
+            </>
+          )}
+        </button>
+      )}
+
+      {error && <p className="mt-1.5 text-xs text-red-600 dark:text-red-400">{error}</p>}
+
+      {pendingFile && (
+        <ImageCropModal
+          file={pendingFile}
+          aspect={effectiveAspect}
+          cropShape={cropShape}
+          onCancel={() => setPendingFile(null)}
+          onCropped={(blob) => {
+            setPendingFile(null);
+            uploadBlob(blob);
+          }}
+        />
+      )}
+    </div>
+  );
+}

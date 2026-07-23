@@ -4,6 +4,7 @@ import { signIn } from 'next-auth/react';
 import { useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import Icon from '@/components/Icon';
 
 function SignInForm() {
   const [email, setEmail] = useState('');
@@ -33,14 +34,16 @@ function SignInForm() {
 
   if (isSubmitted) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-primary-100 to-white px-4">
-        <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center">
-          <div className="text-6xl mb-4">📧</div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-4">Check your email</h1>
-          <p className="text-gray-600 mb-4">
-            A sign in link has been sent to <strong>{email}</strong>
+      <div className="min-h-screen flex items-center justify-center bg-background px-4">
+        <div className="w-full max-w-md rounded-2xl border border-border bg-surface p-8 text-center shadow-lg">
+          <span className="mb-5 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-500/10 text-accent dark:text-primary-400">
+            <Icon name="mail" size={28} />
+          </span>
+          <h1 className="mb-3 text-2xl font-bold tracking-tight text-foreground">Check your email</h1>
+          <p className="mb-4 text-muted-foreground">
+            A sign in link has been sent to <strong className="text-foreground">{email}</strong>
           </p>
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-muted-foreground">
             Click the link in the email to sign in. You can close this window.
           </p>
         </div>
@@ -49,22 +52,23 @@ function SignInForm() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-primary-100 to-white px-4">
-      <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8">
-        <div className="text-center mb-8">
+    <div className="min-h-screen flex items-center justify-center bg-background px-4">
+      <div className="w-full max-w-md rounded-2xl border border-border bg-surface p-8 shadow-lg">
+        <div className="mb-8 text-center">
           <Link
             href="/"
-            className="inline-block text-6xl mb-4 hover:scale-110 transition-transform cursor-pointer"
+            className="mb-5 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-primary-500 to-primary-700 text-white shadow-sm transition-transform hover:scale-105"
+            aria-label="Wishlist home"
           >
-            🎁
+            <Icon name="gift" size={28} />
           </Link>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Sign In</h1>
-          <p className="text-gray-600">Enter your email to receive a magic link</p>
+          <h1 className="mb-2 text-2xl font-bold tracking-tight text-foreground">Welcome back</h1>
+          <p className="text-muted-foreground">Enter your email to receive a magic link</p>
         </div>
 
         {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-            <p className="text-sm text-red-800">
+          <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-500/30 dark:bg-red-500/10">
+            <p className="text-sm text-red-700 dark:text-red-400">
               {error === 'AccessDenied'
                 ? 'Access denied. Please try again.'
                 : 'An error occurred. Please try again.'}
@@ -74,7 +78,7 @@ function SignInForm() {
 
         <form onSubmit={handleSubmit} className="space-y-6" autoComplete="off">
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="email" className="block text-sm font-medium text-foreground mb-2">
               Email address
             </label>
             <input
@@ -83,7 +87,7 @@ function SignInForm() {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
+              className="w-full px-4 py-3 border border-border-strong rounded-lg outline-none"
               placeholder="you@example.com"
               disabled={isLoading}
               autoComplete="email"
@@ -99,7 +103,7 @@ function SignInForm() {
           </button>
         </form>
 
-        <p className="mt-6 text-center text-sm text-gray-500">
+        <p className="mt-6 text-center text-sm text-muted-foreground">
           New users will automatically have an account created. No password needed!
         </p>
       </div>
@@ -111,8 +115,8 @@ export default function SignIn() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-pink-100 to-white px-4">
-          <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center">
+        <div className="min-h-screen flex items-center justify-center bg-background px-4">
+          <div className="max-w-md w-full bg-surface rounded-2xl border border-border shadow-lg p-8 text-center">
             <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
           </div>
         </div>
