@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
+import { enforce } from '@/lib/rateLimit';
 import connectDB from '@/lib/mongodb';
 import User from '@/models/User';
 import Session from '@/models/Session';
@@ -17,6 +18,10 @@ export async function POST(request: NextRequest) {
         { status: 401 }
       );
     }
+
+    // This path sends email — throttle it under the invite budget.
+    const limited = await enforce('invite', session.user.id);
+    if (limited) return limited;
 
     const body = await request.json();
     const { email, role = 'user' } = body;

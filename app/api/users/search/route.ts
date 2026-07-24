@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
+import { enforce, clientIp } from '@/lib/rateLimit';
 import User from '@/models/User';
 
 // GET /api/users/search?username=... - Find a user by username (exact match).
 // Respects the target user's "searchable" privacy setting.
 export async function GET(request: NextRequest) {
   try {
+    // Public endpoint — key on IP to blunt scraping/enumeration.
+    const limited = await enforce('search', `ip:${clientIp(request.headers)}`);
+    if (limited) return limited;
+
     const searchParams = request.nextUrl.searchParams;
     const username = (searchParams.get('username') || searchParams.get('email') || '')
       .toLowerCase()

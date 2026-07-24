@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
+import { enforce, clientIp } from '@/lib/rateLimit';
 import User from '@/models/User';
 import Wishlist from '@/models/Wishlist';
 
 // GET /api/search?q=... - unified search over usernames + public wishlist names
 export async function GET(request: NextRequest) {
   try {
+    // Public endpoint — key on IP to blunt graph scraping.
+    const limited = await enforce('search', `ip:${clientIp(request.headers)}`);
+    if (limited) return limited;
+
     const q = (request.nextUrl.searchParams.get('q') || '').trim().toLowerCase();
     if (q.length < 1) {
       return NextResponse.json({ success: true, data: { users: [], wishlists: [] } });

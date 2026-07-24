@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { put } from '@vercel/blob';
 import sharp from 'sharp';
 import { auth } from '@/lib/auth';
+import { enforce } from '@/lib/rateLimit';
 import { getUserUploadBytes, USER_UPLOAD_QUOTA_BYTES } from '@/lib/utils/blob';
 
 // Max upload size. Vercel serverless functions cap the request body at ~4.5MB,
@@ -56,6 +57,10 @@ export async function POST(request: NextRequest) {
     if (!session?.user) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
+
+    // Blob storage/bandwidth costs money — cap uploads per user.
+    const limited = await enforce('upload', session.user.id);
+    if (limited) return limited;
 
     const form = await request.formData();
     const file = form.get('file');

@@ -76,8 +76,9 @@ and little else, or nothing.
   only support sites with good static metadata and set expectations in the UI.
 - **Bot blocking.** Realistic UA, timeouts, and a clear "couldn't read this page"
   message; don't hang the form.
-- **Abuse.** Per-user rate limit (it's already in the rate-limiting plan) since
-  this makes the server fetch arbitrary URLs.
+- **Abuse.** Per-user rate limit via `enforce()` in `lib/rateLimit.ts` (add a
+  `SPECS` entry, e.g. 10 / 10 min per user) since this makes the server fetch
+  arbitrary URLs.
 - **Residual SSRF.** Close the DNS-rebinding window by pinning the connection to
   the validated IP (custom lookup/dispatcher), not just checking DNS beforehand.
 
@@ -90,3 +91,15 @@ Captured for later; each still needs a real problem statement and design before 
 - **User tags / groups** (e.g. "family", "close friends"). Let a user bucket the people they follow/know, then act on a whole group at once — invite the group to co-manage a list, or scope visibility to a group. Open: overlaps with the existing `friends` axis and per-wishlist visibility; needs a clear model so it doesn't become a third confusing privacy dimension. Ties into invites and (future) occasions.
 - **Add someone else's item to your own wishlist.** "I want that too" — copy an item you saw on another list onto yours. Open: copy the snapshot vs. link back to the source; what happens when the source changes or is deleted; attribution/privacy. _Needs refinement._
 - **Share one item across multiple wishlists (1-to-many).** Today an item belongs to exactly one wishlist. Move to a model where the same item can appear on several of a user's lists (e.g. a "birthday" and a "general" list). Open: this is a data-model change (`Item.wishlist` → a join or an array); booking/reservation semantics when the same item is on multiple lists; how the owner edits it in one place. Larger refactor — scope carefully before starting.
+
+## Rate limiting — deferred hardening
+
+The app-level rate limiter (`lib/rateLimit.ts`, Upstash-backed) is implemented and applied to the abuse-prone routes. These complementary layers from the original plan were deliberately left out of that pass — each needs either an external account/infra step or ties into other work:
+
+- **Cloudflare Turnstile (or hCaptcha) on the sign-in form.** The cheapest big win against automated email-bombing, pairs with the per-email/IP sign-in limit. Deferred because it needs a Cloudflare account + site/secret keys and a widget in the sign-in UI (managed/invisible mode to keep friction near zero) plus server-side token verification.
+- **Vercel WAF coarse per-IP edge ceiling** (e.g. 100 req / 10 s). Absorbs floods before they reach functions. Pure dashboard/infra config, independent of app code.
+- **Per-target caps (not just per-actor rates).** E.g. at most _N pending invites per invitee_ across all inviters; same idea for follow notifications. Stops the _effect_ reaching a victim regardless of how many actors/IPs are used. Lean on the existing unique indexes for dedupe.
+- **Notification coalescing.** Collapse "X and 3 others followed you" so even lawful bursts don't flood the notification center; a spammer then produces one line, not fifty. Ties into the notification-center work.
+- **New-account friction.** Lower limits for accounts younger than ~24h (most abuse is throwaway accounts), relaxed automatically after age/activity.
+
+Limit values in `SPECS` are starting points — tune them from real traffic/logs once Upstash is live.

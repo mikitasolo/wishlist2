@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
+import { enforce } from '@/lib/rateLimit';
 import connectDB from '@/lib/mongodb';
 import mongoose from 'mongoose';
 import Item, { IItem } from '@/models/Item';
@@ -26,6 +27,10 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         { status: 401 }
       );
     }
+
+    // Covers edits and book/unbook toggles — curb toggle churn + notification noise.
+    const limited = await enforce('booking', session.user.id);
+    if (limited) return limited;
 
     await connectDB();
 

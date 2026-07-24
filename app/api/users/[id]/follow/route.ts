@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
+import { enforce } from '@/lib/rateLimit';
 import connectDB from '@/lib/mongodb';
 import User from '@/models/User';
 import Follow from '@/models/Follow';
@@ -12,6 +13,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (!session?.user) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
+
+    // Curb follow/unfollow churn and the notification spam it produces.
+    const limited = await enforce('follow', session.user.id);
+    if (limited) return limited;
+
     const { id: targetId } = await params;
     if (targetId === session.user.id) {
       return NextResponse.json(

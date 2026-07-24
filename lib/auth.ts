@@ -6,6 +6,7 @@ import { sendMagicLinkEmail } from './email';
 import { adapter } from './authAdapter';
 import { getEnvVars } from './env';
 import { generateUniqueUsername } from './utils/username';
+import { checkRateLimit, clientIp } from './rateLimit';
 
 // Get validated environment variables
 const env = getEnvVars();
@@ -32,7 +33,19 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         auth: { user: env.SMTP_USER, pass: env.SMTP_PASSWORD },
       },
       from: env.EMAIL_FROM,
-      async sendVerificationRequest({ identifier: email, url }) {
+      async sendVerificationRequest({ identifier: email, url, request }) {
+        // Rate limit the magic-link send — the top abuse target (email bombing
+        // a victim + SMTP cost/reputation). Key on BOTH the target email (so one
+        // attacker can't fan across IPs to bomb one address) and the client IP
+        // (so one host can't spray many addresses). Throwing aborts the send.
+        const target = email.toLowerCase();
+        const [emailOk, ipOk] = await Promise.all([
+          checkRateLimit('signinEmail', target),
+          checkRateLimit('signinIp', `ip:${clientIp(request.headers)}`),
+        ]);
+        if (!emailOk || !ipOk) {
+          throw new Error('Too many sign-in attempts. Please wait a few minutes and try again.');
+        }
         await sendMagicLinkEmail(email, url);
       },
     }),
