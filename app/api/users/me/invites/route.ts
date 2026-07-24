@@ -7,7 +7,7 @@ import WishlistInvite from '@/models/WishlistInvite';
 import User from '@/models/User';
 
 // GET /api/users/me/invites - pending wishlist invites addressed to the current
-// user (by account, or by an email with no account yet that matches theirs).
+// user's account.
 export async function GET() {
   try {
     const session = await getServerSession(authOptions);
@@ -16,11 +16,10 @@ export async function GET() {
     }
     await connectDB();
 
-    const me = await User.findById(session.user.id).select('email');
-    const or: Record<string, unknown>[] = [{ invitedUser: session.user.id }];
-    if (me?.email) or.push({ invitedUser: null, email: me.email.toLowerCase() });
-
-    const invites = await WishlistInvite.find({ status: 'pending', $or: or })
+    const invites = await WishlistInvite.find({
+      status: 'pending',
+      invitedUser: session.user.id,
+    })
       .sort({ createdAt: -1 })
       .lean();
 

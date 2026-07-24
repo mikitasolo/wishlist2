@@ -138,98 +138,74 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       );
     }
 
-    const { email, username, role = 'member' } = validation.data;
+    const { username, role = 'member' } = validation.data;
 
-    // Resolve the invitee by username or email. Email invites may target
-    // someone with no account yet — that's allowed; we match them after signup.
-    const normalizedEmail = email ? email.toLowerCase() : null;
-    const invitedUser = username
-      ? await User.findOne({ username })
-      : normalizedEmail
-        ? await User.findOne({ email: normalizedEmail })
-        : null;
-
-    if (!invitedUser && username) {
-      // Usernames only exist for real accounts — can't invite a stranger by one
+    // Invites always target an existing account, resolved by username.
+    const invitedUser = await User.findOne({ username }).select('email privacy');
+    if (!invitedUser) {
       return NextResponse.json(
         { success: false, error: `No user found with the username @${username}` },
         { status: 404 }
       );
     }
 
-    if (invitedUser) {
-      // Respect the invitee's "who can invite me" preference
-      const policy = invitedUser.privacy?.whoCanInvite ?? 'everyone';
-      if (policy === 'nobody') {
+    // Respect the invitee's "who can invite me" preference
+    const policy = invitedUser.privacy?.whoCanInvite ?? 'everyone';
+    if (policy === 'nobody') {
+      return NextResponse.json(
+        { success: false, error: 'This person isn’t accepting wishlist invites.' },
+        { status: 403 }
+      );
+    }
+    if (policy === 'friends') {
+      const friends = await areFriends(session.user.id, invitedUser._id.toString());
+      if (!friends) {
         return NextResponse.json(
-          { success: false, error: 'This person isn’t accepting wishlist invites.' },
+          { success: false, error: 'This person only accepts invites from friends.' },
           { status: 403 }
-        );
-      }
-      if (policy === 'friends') {
-        const friends = await areFriends(session.user.id, invitedUser._id.toString());
-        if (!friends) {
-          return NextResponse.json(
-            { success: false, error: 'This person only accepts invites from friends.' },
-            { status: 403 }
-          );
-        }
-      }
-
-      // Can't invite the owner or an existing member.
-      if (wishlist.owner.toString() === invitedUser._id.toString()) {
-        return NextResponse.json(
-          { success: false, error: 'This person already owns this wishlist' },
-          { status: 400 }
-        );
-      }
-      const existingMember = await WishlistMember.findOne({ wishlist: id, user: invitedUser._id });
-      if (existingMember) {
-        return NextResponse.json(
-          { success: false, error: 'This person is already a member' },
-          { status: 400 }
-        );
-      }
-      const existingInvite = await WishlistInvite.findOne({
-        wishlist: id,
-        invitedUser: invitedUser._id,
-        status: 'pending',
-      });
-      if (existingInvite) {
-        return NextResponse.json(
-          { success: false, error: 'This person already has a pending invite' },
-          { status: 400 }
-        );
-      }
-    } else {
-      // Email invite with no account yet — just guard against duplicate invites.
-      const existingInvite = await WishlistInvite.findOne({
-        wishlist: id,
-        email: normalizedEmail,
-        status: 'pending',
-      });
-      if (existingInvite) {
-        return NextResponse.json(
-          { success: false, error: 'That email already has a pending invite' },
-          { status: 400 }
         );
       }
     }
 
+    // Can't invite the owner or an existing member.
+    if (wishlist.owner.toString() === invitedUser._id.toString()) {
+      return NextResponse.json(
+        { success: false, error: 'This person already owns this wishlist' },
+        { status: 400 }
+      );
+    }
+    const existingMember = await WishlistMember.findOne({ wishlist: id, user: invitedUser._id });
+    if (existingMember) {
+      return NextResponse.json(
+        { success: false, error: 'This person is already a member' },
+        { status: 400 }
+      );
+    }
+    const existingInvite = await WishlistInvite.findOne({
+      wishlist: id,
+      invitedUser: invitedUser._id,
+      status: 'pending',
+    });
+    if (existingInvite) {
+      return NextResponse.json(
+        { success: false, error: 'This person already has a pending invite' },
+        { status: 400 }
+      );
+    }
+
     // Create a pending invite (membership is created only when they accept).
-    const inviteEmail = invitedUser?.email ?? normalizedEmail;
     const invite = await WishlistInvite.create({
       wishlist: id,
       invitedBy: session.user.id,
-      invitedUser: invitedUser?._id ?? null,
-      email: inviteEmail,
+      invitedUser: invitedUser._id,
       role,
     });
 
-    // Email the invitee a link to their invites page (inviter shown by username).
+    // Notify the invitee at their account email (fetched here, never stored on
+    // the invite) with a link to their invites page.
     const inviterName = session.user.username || session.user.email?.split('@')[0] || 'Someone';
-    if (inviteEmail) {
-      await sendWishlistInvitationEmail(inviteEmail, wishlist.name, inviterName);
+    if (invitedUser.email) {
+      await sendWishlistInvitationEmail(invitedUser.email, wishlist.name, inviterName);
     }
 
     return NextResponse.json(

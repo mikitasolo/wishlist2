@@ -51,21 +51,6 @@ const ItemSchema = new Schema(
       ref: 'User',
       required: false,
     },
-    // When the booker marks their reserved item as gifted, the item is marked
-    // `completed` and unassigned from `bookedBy` (same end state as the owner
-    // completing it). `giftedBy` + `giftedAt` keep a record so the gift still
-    // shows in that person's "Gifted" archive and they can undo it.
-    giftedAt: {
-      type: Date,
-      required: false,
-      default: null,
-    },
-    giftedBy: {
-      type: Schema.Types.ObjectId,
-      ref: 'User',
-      required: false,
-      default: null,
-    },
     proposedBy: {
       type: Schema.Types.ObjectId,
       ref: 'User',
@@ -95,8 +80,6 @@ export interface IItem {
   status: 'draft' | 'available' | 'booked' | 'completed' | 'proposed';
   bookedBy?: mongoose.Types.ObjectId | null;
   proposedBy?: mongoose.Types.ObjectId | null;
-  giftedAt?: Date | null;
-  giftedBy?: mongoose.Types.ObjectId | null;
   createdAt: Date;
   updatedAt: Date;
 }

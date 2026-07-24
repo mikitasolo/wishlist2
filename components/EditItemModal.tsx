@@ -60,10 +60,9 @@ export default function EditItemModal({
         link: data.link !== undefined ? data.link : undefined,
         notes: data.notes !== undefined ? data.notes : undefined,
       };
-      // Don't change status for proposed items (proposers can't change status)
-      if (item.status !== 'proposed') {
-        updates.status = data.status;
-      }
+      // Editing content never changes status — that would silently clobber a
+      // booking (owners can't see bookings). Publishing / moving to draft is a
+      // separate, explicit action on the item card.
       await onSave(updates);
       setHasUnsavedChanges(false);
       onClose();
@@ -114,29 +113,6 @@ export default function EditItemModal({
         shouldInterceptClose={() => hasUnsavedChanges}
         onInterceptClose={() => setShowConfirmClose(true)}
       >
-        {item.status === 'proposed' && (
-          <div className="mb-4 border border-blue-500/20 bg-blue-500/10 rounded-lg p-4">
-            <div className="flex items-start gap-2">
-              <svg
-                className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
-              </svg>
-              <p className="text-sm text-blue-700 dark:text-blue-300">
-                You can edit this proposed item. The status cannot be changed until the owner
-                reviews it.
-              </p>
-            </div>
-          </div>
-        )}
         <ItemForm
           key={itemFormKey}
           initialData={itemToFormData(item)}
@@ -145,7 +121,7 @@ export default function EditItemModal({
           submitLabel="Save Changes"
           submittingLabel="Saving..."
           isSubmitting={isSubmitting || isDeleting}
-          mode={item.status === 'proposed' ? 'propose' : 'create'}
+          mode={item.status === 'proposed' ? 'propose' : 'edit'}
           itemId={item._id}
           onFormChange={setHasUnsavedChanges}
           renderButtons={({ submitting, onCancel, submitLabel, submittingLabel }) => (

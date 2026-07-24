@@ -97,16 +97,11 @@ export const updateProfileSchema = z
     message: 'At least one field must be provided for update',
   });
 
-// Member schemas — invite by email OR username
-export const inviteMemberSchema = z
-  .object({
-    email: z.email('Invalid email address').toLowerCase().trim().optional(),
-    username: usernameSchema.optional(),
-    role: z.enum(['admin', 'member']).optional().default('member'),
-  })
-  .refine((data) => !!data.email || !!data.username, {
-    message: 'Provide an email address or a username',
-  });
+// Member schemas — invite an existing account by username
+export const inviteMemberSchema = z.object({
+  username: usernameSchema,
+  role: z.enum(['admin', 'member']).optional().default('member'),
+});
 
 // Item schemas
 export const createItemSchema = z.object({
@@ -157,8 +152,6 @@ export const updateItemSchema = z
     status: z.enum(['draft', 'available', 'booked', 'completed', 'proposed']).optional(),
     bookedBy: z.string().optional().nullable(),
     proposedBy: z.string().optional().nullable(),
-    // Booker-only: mark/unmark the reserved item as gifted (private tracker)
-    gifted: z.boolean().optional(),
   })
   .refine((data) => Object.keys(data).length > 0, {
     message: 'At least one field must be provided for update',

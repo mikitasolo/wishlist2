@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { signIn, signOut, useSession } from 'next-auth/react';
 import Avatar from '@/components/Avatar';
@@ -11,8 +11,42 @@ export default function AuthButton() {
   const { data: session, status } = useSession();
   const { theme, setTheme } = useTheme();
   const [open, setOpen] = useState(false);
+  const [hasInvites, setHasInvites] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  // Whether there are pending invitations, for the header dot indicator.
+  const checkInvites = useCallback(async () => {
+    try {
+      const res = await fetch('/api/users/me/invites', { cache: 'no-store' });
+      const json = await res.json();
+      if (json.success) setHasInvites((json.data?.length ?? 0) > 0);
+    } catch {
+      /* ignore — the dot is best-effort */
+    }
+  }, []);
+
+  // Refresh on mount and whenever the tab regains focus (no polling).
+  useEffect(() => {
+    if (status !== 'authenticated') {
+      setHasInvites(false);
+      return;
+    }
+    checkInvites();
+    const refresh = () => checkInvites();
+    window.addEventListener('focus', refresh);
+    // Fired by pages that change invites (e.g. accept/decline) for an instant update.
+    window.addEventListener('invites-changed', refresh);
+    return () => {
+      window.removeEventListener('focus', refresh);
+      window.removeEventListener('invites-changed', refresh);
+    };
+  }, [status, checkInvites]);
+
+  // Also re-check right when the menu is opened.
+  useEffect(() => {
+    if (open && status === 'authenticated') checkInvites();
+  }, [open, status, checkInvites]);
 
   // Close on outside click + Escape; move focus into menu when opened.
   useEffect(() => {
@@ -53,11 +87,19 @@ export default function AuthButton() {
         <button
           onClick={() => setOpen((v) => !v)}
           className="flex items-center gap-1.5 rounded-full py-1 pl-1 pr-2 text-sm font-semibold text-foreground transition-colors hover:bg-muted"
-          aria-label="Account menu"
+          aria-label={`Account menu${hasInvites ? ' — new invitations' : ''}`}
           aria-haspopup="menu"
           aria-expanded={open}
         >
-          <Avatar name={displayName} src={image} size="sm" />
+          <span className="relative">
+            <Avatar name={displayName} src={image} size="sm" />
+            {hasInvites && (
+              <span
+                className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-surface"
+                aria-hidden
+              />
+            )}
+          </span>
           <span className="max-w-[10rem] truncate">{displayName}</span>
           <Icon
             name="chevron-down"
@@ -110,6 +152,9 @@ export default function AuthButton() {
             >
               <Icon name="inbox" size={18} className="text-muted-foreground" />
               Invitations
+              {hasInvites && (
+                <span className="ml-auto h-2 w-2 rounded-full bg-red-500" aria-hidden />
+              )}
             </Link>
             <Link
               role="menuitem"

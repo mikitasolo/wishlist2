@@ -52,13 +52,13 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             <div
               key={toast.id}
               role="status"
-              className="animate-toast-in pointer-events-auto flex items-start gap-3 rounded-xl border border-border bg-surface px-4 py-3 shadow-lg"
+              className="animate-toast-in pointer-events-auto flex items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3 shadow-lg"
               onClick={() => removeToast(toast.id)}
             >
               <span className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg ${chip}`}>
                 <Icon name={icon} size={18} />
               </span>
-              <p className="flex-1 pt-0.5 text-sm font-medium text-foreground">{toast.message}</p>
+              <p className="flex-1 text-sm font-medium text-foreground">{toast.message}</p>
               <button
                 onClick={(e) => {
                   e.stopPropagation();

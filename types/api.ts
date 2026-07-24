@@ -20,7 +20,6 @@ export interface ApiItem {
     currency: string;
   } | null;
   priceInUsdCents?: number | null; // Enriched by API for sorting
-  priceConverted?: { value: number; currency: string } | null; // Price in the viewer's currency
   link?: string | null;
   notes?: string | null;
   status: 'draft' | 'available' | 'booked' | 'completed' | 'proposed';

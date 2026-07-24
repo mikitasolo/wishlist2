@@ -16,7 +16,8 @@ export function isReservedWishlistSlug(slug: string): boolean {
 export function slugifyName(name: string): string {
   return name
     .toLowerCase()
-    .normalize('NFKD') // decompose accents; combining marks fall out below
+    .normalize('NFKD') // decompose accents…
+    .replace(/[\u0300-\u036f]/g, '') // …then drop the combining marks
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 40)

@@ -90,13 +90,11 @@ export default function Home() {
 
   useEffect(() => {
     if (status !== 'authenticated') return;
-    fetch('/api/users/me/booked', { cache: 'no-store' })
+    fetch('/api/users/me/reservations', { cache: 'no-store' })
       .then((r) => r.json())
       .then((res) => {
         if (res.success) {
-          setReservedCount(
-            (res.data as { giftedAt: string | null }[]).filter((i) => !i.giftedAt).length
-          );
+          setReservedCount((res.data as unknown[]).length);
         }
       })
       .catch(() => {});

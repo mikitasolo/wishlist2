@@ -6,13 +6,8 @@ import mongoose from 'mongoose';
 import Item from '@/models/Item';
 import Wishlist, { IWishlist } from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
-import User from '@/models/User';
 import { createItemSchema, validateRequestBody } from '@/lib/validations';
-import {
-  ensureCurrencyRatesUpToDate,
-  convertToUsdCents,
-  convertCurrency,
-} from '@/lib/utils/currencyRates';
+import { ensureCurrencyRatesUpToDate, convertToUsdCents } from '@/lib/utils/currencyRates';
 import { resolveWishlistId } from '@/lib/utils/wishlistSlug';
 
 // Helper function to check wishlist access
@@ -78,13 +73,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const currencyRate = await ensureCurrencyRatesUpToDate();
     const rates = currencyRate?.rates || new Map<string, number>();
 
-    // The signed-in viewer's preferred currency, for the "show in my currency" toggle.
-    let viewerCurrency: string | null = null;
-    if (session?.user) {
-      const viewer = await User.findById(session.user.id).select('defaultCurrency');
-      viewerCurrency = viewer?.defaultCurrency || 'USD';
-    }
-
     const items = await Item.find({ wishlist: wishlistId }).sort({ createdAt: -1 });
 
     // Check if user is owner, admin, or member
@@ -125,22 +113,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         priceInUsdCents = convertToUsdCents(itemObj.price.value, itemObj.price.currency, rates);
       }
 
-      // Price converted to the viewer's preferred currency (for the display toggle).
-      let priceConverted: { value: number; currency: string } | null = null;
-      if (viewerCurrency && itemObj.price?.value && itemObj.price?.currency) {
-        const conv = convertCurrency(
-          itemObj.price.value,
-          itemObj.price.currency,
-          viewerCurrency,
-          rates
-        );
-        if (conv != null) priceConverted = { value: conv, currency: viewerCurrency };
-      }
-
       const enrichedItem = {
         ...itemObj,
         priceInUsdCents,
-        priceConverted,
       };
 
       if (!session?.user) {

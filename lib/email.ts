@@ -265,11 +265,11 @@ export async function sendWishlistInvitationEmail(
     greeting: `You’re invited to “${wishlistName}”`,
     content: `
       <p><strong>${invitedBy}</strong> invited you to their wishlist <strong>${wishlistName}</strong>.</p>
-      <p>Sign in to review the invitation — you can accept or decline it. No password needed, just use this email address.</p>
+      <p>Sign in to your account to review the invitation — you can accept or decline it.</p>
     `,
     buttonText: 'Review invitation',
     buttonUrl: invitesUrl,
-    footerText: `Sign in with <strong>${email}</strong>`,
+    footerText: `Invitation sent to <strong>${email}</strong>`,
   });
 
   const mailOptions = {
@@ -277,7 +277,7 @@ export async function sendWishlistInvitationEmail(
     to: email,
     subject: `You've been invited to ${wishlistName} on ${siteTitle}!`,
     html,
-    text: `Wishlist Invitation\n\n${invitedBy} has invited you to join their wishlist: ${wishlistName}.\n\nReview it at: ${invitesUrl}\n\nWhen you sign in, use this email address: ${email}`,
+    text: `Wishlist Invitation\n\n${invitedBy} has invited you to join their wishlist: ${wishlistName}.\n\nSign in to your account to accept or decline it: ${invitesUrl}`,
   };
 
   try {

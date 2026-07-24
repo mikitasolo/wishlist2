@@ -58,6 +58,8 @@ export default function InvitesPage() {
       const result = await res.json();
       if (result.success) {
         setInvites((prev) => prev.filter((i) => i._id !== invite._id));
+        // Let the header's invitation dot re-check immediately.
+        window.dispatchEvent(new Event('invites-changed'));
         if (action === 'accept') {
           showToast(`Joined “${invite.wishlistName}”`, 'success');
           router.push(`/wishlists/${result.data.wishlistSlug ?? result.data.wishlistId}`);

@@ -1,12 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import mongoose from 'mongoose';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import connectDB from '@/lib/mongodb';
 import Wishlist from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
 import WishlistInvite from '@/models/WishlistInvite';
-import User from '@/models/User';
 
 // PATCH /api/invites/[inviteId] - accept or decline a pending invite (invitee).
 export async function PATCH(
@@ -32,15 +30,8 @@ export async function PATCH(
       return NextResponse.json({ success: false, error: 'Invite not found' }, { status: 404 });
     }
 
-    // Verify the invite is addressed to this user (by account or matching email).
-    const me = await User.findById(session.user.id).select('email');
-    const isForMe =
-      invite.invitedUser?.toString() === session.user.id ||
-      (!invite.invitedUser &&
-        !!invite.email &&
-        !!me?.email &&
-        invite.email === me.email.toLowerCase());
-    if (!isForMe) {
+    // Verify the invite is addressed to this user's account.
+    if (invite.invitedUser?.toString() !== session.user.id) {
       return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
     }
 
@@ -75,7 +66,6 @@ export async function PATCH(
       }
     }
 
-    invite.invitedUser = new mongoose.Types.ObjectId(session.user.id);
     invite.status = 'accepted';
     await invite.save();
 

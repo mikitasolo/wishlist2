@@ -53,7 +53,6 @@ interface PendingInvite {
   role: 'admin' | 'member';
   username: string | null;
   image: string | null;
-  email: string | null;
 }
 
 export default function WishlistDetail() {
@@ -77,7 +76,9 @@ export default function WishlistDetail() {
   const [manageOpen, setManageOpen] = useState(false);
   const [selectedFilters, setSelectedFilters] = useState<FilterOption[]>([]);
   const [sortBy, setSortBy] = useState<SortType>('name-asc');
-  const [priceMode, setPriceMode] = useState<'original' | 'converted'>('original');
+  // 'original' shows each item's own currency; any code converts all prices to it.
+  const [priceCurrency, setPriceCurrency] = useState<string>('original');
+  const [rates, setRates] = useState<Record<string, number> | null>(null);
   const [itemToEdit, setItemToEdit] = useState<ApiItem | null>(null);
   const [itemToReview, setItemToReview] = useState<ApiItem | null>(null);
   const [showAddItemModal, setShowAddItemModal] = useState(false);
@@ -464,7 +465,12 @@ export default function WishlistDetail() {
           const optimistic = { ...item, ...updates };
           if (updates.status === 'booked' && session?.user?.id) {
             optimistic.bookedBy = session.user.id;
-          } else if (updates.status === 'available' && item.status === 'booked') {
+          } else if (
+            (updates.status === 'available' ||
+              updates.status === 'draft' ||
+              updates.status === 'completed') &&
+            item.status === 'booked'
+          ) {
             optimistic.bookedBy = null;
           }
           return optimistic;
@@ -554,7 +560,7 @@ export default function WishlistDetail() {
   }, [itemToEdit, deleteItemHook]);
 
   const handleInvite = useCallback(
-    async (payload: { email?: string; username?: string; role: 'admin' | 'member' }) => {
+    async (payload: { username: string; role: 'admin' | 'member' }) => {
       if (!wishlistId) return;
 
       setIsInviting(true);
@@ -730,8 +736,34 @@ export default function WishlistDetail() {
 
   const sortedItems = useMemo(() => sortItems(filteredItems, sortBy), [filteredItems, sortBy]);
 
-  // The viewer's preferred currency, for the "show prices in my currency" toggle.
+  // The viewer's preferred currency, offered near the top of the price selector.
   const viewerCurrency = session?.user?.defaultCurrency || 'USD';
+
+  // Exchange rates for the "show prices in…" selector (fetched once).
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/currency-rates', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((res) => {
+        if (!cancelled && res.success) setRates(res.data.rates as Record<string, number>);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Price-currency options: Original, then the viewer's default, then the rest.
+  const priceOptions = useMemo(() => {
+    const opts = [{ value: 'original', label: 'Original' }];
+    const def = currencySelectOptions.find((o) => o.value === viewerCurrency);
+    if (def) opts.push({ value: def.value, label: `${def.label} · your default` });
+    else opts.push({ value: viewerCurrency, label: `${viewerCurrency} · your default` });
+    for (const o of currencySelectOptions) {
+      if (o.value !== viewerCurrency) opts.push(o);
+    }
+    return opts;
+  }, [viewerCurrency]);
 
   // Clicking a stat card narrows the list to that one status ('all' selects
   // every option). The dropdown and the cards share getFilterOptions()' order.
@@ -965,35 +997,19 @@ export default function WishlistDetail() {
               </div>
 
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 flex-shrink-0 w-full sm:w-auto">
-                {session?.user && viewerCurrency && (
+                {session?.user && (
                   <div className="flex items-center gap-2">
                     <span className="text-xs sm:text-sm font-medium text-foreground whitespace-nowrap">
                       Prices:
                     </span>
-                    <div className="relative flex flex-1 rounded-xl border border-border bg-surface-2 p-1 sm:flex-none">
-                      <span
-                        aria-hidden
-                        className="absolute bottom-1 top-1 rounded-lg bg-surface shadow-sm transition-[left] duration-300 ease-[cubic-bezier(0.2,0.7,0.2,1)]"
-                        style={{
-                          width: 'calc((100% - 0.5rem) / 2)',
-                          left: `calc(${priceMode === 'original' ? 0 : 1} * ((100% - 0.5rem) / 2) + 0.25rem)`,
-                        }}
-                      />
-                      {(['original', 'converted'] as const).map((m) => (
-                        <button
-                          key={m}
-                          type="button"
-                          onClick={() => setPriceMode(m)}
-                          className={`relative z-10 flex-1 whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ${
-                            priceMode === m
-                              ? 'text-foreground'
-                              : 'text-muted-foreground hover:text-foreground'
-                          }`}
-                        >
-                          {m === 'original' ? 'Original' : viewerCurrency}
-                        </button>
-                      ))}
-                    </div>
+                    <Select
+                      value={priceCurrency}
+                      onChange={setPriceCurrency}
+                      options={priceOptions}
+                      ariaLabel="Show prices in"
+                      size="sm"
+                      triggerClassName="w-full sm:w-44"
+                    />
                   </div>
                 )}
                 <label
@@ -1073,7 +1089,8 @@ export default function WishlistDetail() {
                     isAuthenticated={!!session?.user}
                     isOwner={isOwner || isAdmin}
                     isMember={isMember}
-                    priceMode={priceMode}
+                    priceCurrency={priceCurrency}
+                    rates={rates}
                   />
                 ))}
               </div>
@@ -1242,14 +1259,10 @@ export default function WishlistDetail() {
                       className="flex items-center justify-between gap-3 px-4 py-4 sm:px-6"
                     >
                       <div className="flex min-w-0 items-center gap-3">
-                        <Avatar
-                          name={inv.username || inv.email || 'invite'}
-                          src={inv.image}
-                          size="md"
-                        />
+                        <Avatar name={inv.username || 'invite'} src={inv.image} size="md" />
                         <div className="min-w-0">
                           <p className="truncate font-medium text-foreground">
-                            {inv.username ? `@${inv.username}` : inv.email}
+                            {inv.username ? `@${inv.username}` : 'Invited user'}
                           </p>
                           <p className="text-xs text-muted-foreground">
                             Invited as {inv.role} · awaiting response

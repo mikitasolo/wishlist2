@@ -7,6 +7,7 @@ import Item, { IItem } from '@/models/Item';
 import User from '@/models/User';
 import Wishlist from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
+import Reservation from '@/models/Reservation';
 import { updateItemSchema, validateRequestBody } from '@/lib/validations';
 import { ensureCurrencyRatesUpToDate } from '@/lib/utils/currencyRates';
 
@@ -91,62 +92,10 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       }
     }
 
-    // Booker-only: mark the reserved item as gifted, or undo it.
-    //  - gift:   the booker has given the gift → complete the item and unassign
-    //            it (same end state as the owner completing it), recording
-    //            giftedBy/giftedAt so it stays in the booker's "Gifted" archive.
-    //  - undo:   restore it to "booked by me".
-    if (validatedData.gifted !== undefined) {
-      if (validatedData.gifted) {
-        if (
-          currentItem.status !== 'booked' ||
-          currentItem.bookedBy?.toString() !== session.user.id
-        ) {
-          return NextResponse.json(
-            { success: false, error: 'Only the person who reserved this item can mark it gifted' },
-            { status: 403 }
-          );
-        }
-        const updated = await Item.findByIdAndUpdate(
-          id,
-          {
-            $set: {
-              status: 'completed',
-              bookedBy: null,
-              giftedBy: new mongoose.Types.ObjectId(session.user.id),
-              giftedAt: new Date(),
-            },
-          },
-          { new: true, runValidators: true }
-        );
-        return NextResponse.json({ success: true, data: updated }, { status: 200 });
-      } else {
-        // Undo: only the person who gifted it can move it back to "booked by me".
-        // (bookedBy is also accepted to normalize legacy items marked gifted
-        // under the old private-marker model, which have no giftedBy.)
-        const isGifter = currentItem.giftedBy?.toString() === session.user.id;
-        const isLegacyBooker = currentItem.bookedBy?.toString() === session.user.id;
-        if (!isGifter && !isLegacyBooker) {
-          return NextResponse.json(
-            { success: false, error: 'Only the person who gifted this item can undo it' },
-            { status: 403 }
-          );
-        }
-        const updated = await Item.findByIdAndUpdate(
-          id,
-          {
-            $set: {
-              status: 'booked',
-              bookedBy: new mongoose.Types.ObjectId(session.user.id),
-              giftedBy: null,
-              giftedAt: null,
-            },
-          },
-          { new: true, runValidators: true }
-        );
-        return NextResponse.json({ success: true, data: updated }, { status: 200 });
-      }
-    }
+    // Booking side effect to run after the item update: a member booking an item
+    // creates their durable Reservation; unbooking removes it. Gifting is handled
+    // separately (on the Reservation, not the item) so it survives item changes.
+    let reservationAction: 'create' | 'delete' | null = null;
 
     let updateData: Partial<
       Pick<
@@ -159,8 +108,6 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         | 'status'
         | 'bookedBy'
         | 'proposedBy'
-        | 'giftedBy'
-        | 'giftedAt'
       >
     > = {};
 
@@ -237,15 +184,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       if (validatedData.notes !== undefined) updateData.notes = validatedData.notes ?? null;
       if (validatedData.status !== undefined) {
         updateData.status = validatedData.status;
-        // If status is changing from 'booked' to something else, clear bookedBy
+        // Moving away from 'booked' (including to 'completed') unassigns the booker.
         if (currentItem.status === 'booked' && validatedData.status !== 'booked') {
           updateData.bookedBy = null;
-        }
-        // Uncompleting a gifted item clears the gift record so it no longer
-        // lingers in someone's "Gifted" archive.
-        if (validatedData.status !== 'completed') {
-          updateData.giftedBy = null;
-          updateData.giftedAt = null;
         }
       }
       if (validatedData.bookedBy !== undefined) {
@@ -260,6 +201,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         if (validatedData.status === 'booked' && currentItem.status === 'available') {
           updateData.status = 'booked';
           updateData.bookedBy = new mongoose.Types.ObjectId(session.user.id);
+          reservationAction = 'create';
         }
         // Allow unbooking only items booked by the current user
         else if (validatedData.status === 'available' && currentItem.status === 'booked') {
@@ -271,6 +213,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
           }
           updateData.status = 'available';
           updateData.bookedBy = null;
+          reservationAction = 'delete';
         }
         // Don't allow other status changes
         else {
@@ -298,6 +241,30 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     if (!item) {
       return NextResponse.json({ success: false, error: 'Item not found' }, { status: 404 });
+    }
+
+    // Keep the gifter's durable Reservation in sync with their booking. Only the
+    // gifter's own book/unbook touches it; owner status changes never do, so the
+    // reservation (and the ability to log the gift) survives them.
+    if (reservationAction === 'create') {
+      await Reservation.findOneAndUpdate(
+        { gifter: session.user.id, item: item._id },
+        {
+          $set: {
+            gifter: session.user.id,
+            wishlist: wishlist._id,
+            item: item._id,
+            owner: wishlist.owner,
+            itemName: item.name,
+            itemImage: item.imageUrl ?? null,
+            itemPrice: item.price ?? null,
+            wishlistName: wishlist.name,
+          },
+        },
+        { upsert: true }
+      );
+    } else if (reservationAction === 'delete') {
+      await Reservation.deleteMany({ gifter: session.user.id, item: item._id });
     }
 
     return NextResponse.json({ success: true, data: item }, { status: 200 });

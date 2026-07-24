@@ -28,19 +28,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       .sort({ createdAt: -1 })
       .lean();
 
-    const userIds = invites.map((i) => i.invitedUser).filter(Boolean);
+    const userIds = invites.map((i) => i.invitedUser);
     const users = await User.find({ _id: { $in: userIds } }).select('username image');
     const byId = new Map(users.map((u) => [u._id.toString(), u]));
 
     const data = invites.map((i) => {
-      const u = i.invitedUser ? byId.get(i.invitedUser.toString()) : null;
+      const u = byId.get(i.invitedUser.toString());
       return {
         _id: i._id.toString(),
         role: i.role,
         username: u?.username ?? null,
         image: u?.image ?? null,
-        // Only surface the raw email for invites with no account yet.
-        email: i.invitedUser ? null : (i.email ?? null),
         createdAt: i.createdAt,
       };
     });

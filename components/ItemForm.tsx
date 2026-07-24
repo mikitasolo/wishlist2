@@ -36,7 +36,7 @@ interface ItemFormProps {
     submitLabel: string;
     submittingLabel: string;
   }) => React.ReactNode;
-  mode?: 'create' | 'propose' | 'review';
+  mode?: 'create' | 'propose' | 'review' | 'edit';
   // Optional: item ID to track when switching between different items
   itemId?: string;
   // Callback to notify parent when form has unsaved changes
@@ -149,6 +149,9 @@ export default function ItemForm({
         }
       }
 
+      // Status is only chosen in the form when creating or reviewing. When
+      // editing an existing item, status is managed separately (publish / move
+      // to draft actions) so a content edit never disturbs booking state.
       let status: 'draft' | 'available' | 'proposed';
       if (mode === 'propose') {
         status = 'proposed';
@@ -192,8 +195,9 @@ export default function ItemForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      {/* Status Toggle - hidden in propose mode */}
-      {mode !== 'propose' && (
+      {/* Status toggle — only when creating a new item or reviewing a proposal.
+          Editing never shows it; status is changed via publish / move-to-draft. */}
+      {(mode === 'create' || mode === 'review') && (
         <div>
           <label className="block text-sm font-medium text-foreground mb-1">Status</label>
           {mode === 'review' ? (

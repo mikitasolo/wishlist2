@@ -3,7 +3,7 @@
 import { memo, useMemo, useCallback, useState, useEffect } from 'react';
 import { ApiItem } from '@/types/api';
 import { useSession } from 'next-auth/react';
-import { formatPriceFromObject } from '@/lib/utils/currency';
+import { formatPriceFromObject, convertPrice } from '@/lib/utils/currency';
 import { coverGradient } from '@/lib/utils/cover';
 import Icon from '@/components/Icon';
 import BannerImage from '@/components/BannerImage';
@@ -17,8 +17,10 @@ interface WishlistItemProps {
   isAuthenticated: boolean;
   isOwner?: boolean;
   isMember?: boolean;
-  /** Which price to display: the item's original currency, or the viewer's. */
-  priceMode?: 'original' | 'converted';
+  /** Currency to display prices in: 'original' keeps the item's own currency. */
+  priceCurrency?: string;
+  /** Exchange rates (code → units per USD) for converting when a currency is picked. */
+  rates?: Record<string, number> | null;
 }
 
 function WishlistItem({
@@ -29,12 +31,14 @@ function WishlistItem({
   isAuthenticated,
   isOwner = false,
   isMember = false,
-  priceMode = 'original',
+  priceCurrency = 'original',
+  rates = null,
 }: WishlistItemProps) {
   const { data: session } = useSession();
   const [showNotes, setShowNotes] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [showCompleteConfirm, setShowCompleteConfirm] = useState(false);
+  const [showToDraftConfirm, setShowToDraftConfirm] = useState(false);
 
   // Reset showNotes when item changes
   useEffect(() => {
@@ -58,6 +62,14 @@ function WishlistItem({
   // For owners, items always show as available (bookings are hidden)
   const displayStatus = isOwner && item.status === 'booked' ? 'available' : item.status;
 
+  // Price to display: original currency, or converted to the picked currency
+  // (falling back to original if the rate isn't available yet).
+  const displayPrice = useMemo(() => {
+    if (!item.price) return null;
+    if (priceCurrency === 'original' || !rates) return item.price;
+    return convertPrice(item.price, priceCurrency, rates) ?? item.price;
+  }, [item.price, priceCurrency, rates]);
+
   const handleToggleBooked = useCallback(async () => {
     if (isOwner || isUpdating) return;
     setIsUpdating(true);
@@ -69,8 +81,8 @@ function WishlistItem({
     }
   }, [item.status, item._id, onUpdate, isOwner, isUpdating]);
 
-  const applyCompleted = useCallback(
-    async (newStatus: 'completed' | 'available') => {
+  const applyStatus = useCallback(
+    async (newStatus: 'completed' | 'available' | 'draft') => {
       setIsUpdating(true);
       try {
         await onUpdate(item._id, { status: newStatus });
@@ -85,11 +97,24 @@ function WishlistItem({
     if (!isOwner || isUpdating) return;
     if (item.status === 'completed') {
       // Un-completing is reversible → no confirmation needed
-      applyCompleted('available');
+      applyStatus('available');
     } else {
       setShowCompleteConfirm(true);
     }
-  }, [isOwner, isUpdating, item.status, applyCompleted]);
+  }, [isOwner, isUpdating, item.status, applyStatus]);
+
+  // Publishing a draft is safe (drafts aren't visible to anyone else yet).
+  const handlePublish = useCallback(() => {
+    if (!isOwner || isUpdating) return;
+    applyStatus('available');
+  }, [isOwner, isUpdating, applyStatus]);
+
+  // Moving a live item back to draft is dangerous: it may already be reserved
+  // (owners can't see that), and drafting it hides it and cancels the booking.
+  const handleMoveToDraft = useCallback(() => {
+    if (!isOwner || isUpdating) return;
+    setShowToDraftConfirm(true);
+  }, [isOwner, isUpdating]);
 
   // Determine border styling based on item status (refined, tokenized)
   const getBorderClass = () => {
@@ -163,7 +188,9 @@ function WishlistItem({
         )}
       </div>
 
-      {/* Image/Notes area — gradient shows through when there's no image or it fails to load */}
+      {/* Image / notes area — when notes are shown, the image stays visible
+          behind a frosted, dimmed layer so the text is easy to read on top.
+          Gradient shows through when there's no image (or it fails to load). */}
       {item.link && !showNotes ? (
         <a
           href={item.link}
@@ -184,22 +211,22 @@ function WishlistItem({
       ) : (
         <div
           className="relative mb-4 aspect-square w-full flex-shrink-0 overflow-hidden rounded-2xl bg-surface-2"
-          style={{ background: item.imageUrl && !showNotes ? undefined : coverGradient(item._id) }}
+          style={{ background: item.imageUrl ? undefined : coverGradient(item._id) }}
         >
-          {showNotes && item.notes ? (
-            <div className="absolute inset-0 flex items-center justify-center bg-surface-2 p-4">
-              <p className="whitespace-pre-wrap break-words text-center text-base text-foreground sm:text-lg">
+          {item.imageUrl && (
+            <BannerImage
+              src={item.imageUrl}
+              alt={item.name}
+              sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+            />
+          )}
+          {showNotes && item.notes && (
+            <div className="absolute inset-0 flex items-center justify-center p-4">
+              <div className="absolute inset-0 bg-black/45 backdrop-blur-md" aria-hidden />
+              <p className="relative max-h-full overflow-y-auto whitespace-pre-wrap break-words text-center text-base font-medium leading-relaxed text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.65)] sm:text-lg">
                 {item.notes}
               </p>
             </div>
-          ) : (
-            item.imageUrl && (
-              <BannerImage
-                src={item.imageUrl}
-                alt={item.name}
-                sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-              />
-            )
           )}
         </div>
       )}
@@ -218,11 +245,9 @@ function WishlistItem({
 
         {/* Price - fixed position */}
         <div className="mb-2 flex min-h-[28px] items-center sm:mb-3 sm:min-h-[32px]">
-          {item.price && (
+          {displayPrice && (
             <p className="text-lg font-semibold text-foreground sm:text-xl">
-              {formatPriceFromObject(
-                priceMode === 'converted' && item.priceConverted ? item.priceConverted : item.price
-              )}
+              {formatPriceFromObject(displayPrice)}
             </p>
           )}
         </div>
@@ -295,35 +320,68 @@ function WishlistItem({
                 {onEdit && (
                   <button
                     onClick={() => onEdit(item)}
-                    className={`flex items-center justify-center gap-1.5 rounded-xl bg-muted px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-surface-2 ${
-                      item.status === 'draft' ? 'flex-1' : ''
-                    }`}
+                    className="flex items-center justify-center gap-1.5 rounded-xl bg-muted px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-surface-2"
                     aria-label="Edit item"
                   >
                     <Icon name="edit" size={16} />
                     Edit
                   </button>
                 )}
-                {/* Complete/Uncomplete button - only for owners, not for draft items */}
-                {item.status !== 'draft' && (
+
+                {item.status === 'draft' ? (
+                  /* Draft: publish it (safe — nobody else can see it yet) */
                   <button
-                    onClick={handleToggleCompleted}
-                    className={`flex-1 rounded-xl px-3 py-2 text-sm font-medium shadow-sm transition-colors ${
+                    onClick={handlePublish}
+                    className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium shadow-sm transition-colors ${
                       isUpdating
                         ? 'cursor-not-allowed opacity-60'
-                        : displayStatus === 'completed'
-                          ? 'cursor-pointer bg-emerald-500 text-white hover:bg-emerald-600'
-                          : 'cursor-pointer bg-muted text-foreground shadow-none hover:bg-surface-2'
+                        : 'cursor-pointer bg-primary-600 text-white hover:bg-primary-700'
                     }`}
                     disabled={isUpdating}
-                    aria-label={
-                      displayStatus === 'completed'
-                        ? 'Mark item as available'
-                        : 'Mark item as completed'
-                    }
+                    aria-label="Publish item"
                   >
-                    {displayStatus === 'completed' ? 'Uncomplete' : 'Complete'}
+                    <Icon name="globe" size={16} />
+                    Publish
                   </button>
+                ) : (
+                  <>
+                    {/* Complete / Uncomplete */}
+                    <button
+                      onClick={handleToggleCompleted}
+                      className={`flex-1 rounded-xl px-3 py-2 text-sm font-medium shadow-sm transition-colors ${
+                        isUpdating
+                          ? 'cursor-not-allowed opacity-60'
+                          : displayStatus === 'completed'
+                            ? 'cursor-pointer bg-emerald-500 text-white hover:bg-emerald-600'
+                            : 'cursor-pointer bg-muted text-foreground shadow-none hover:bg-surface-2'
+                      }`}
+                      disabled={isUpdating}
+                      aria-label={
+                        displayStatus === 'completed'
+                          ? 'Mark item as available'
+                          : 'Mark item as completed'
+                      }
+                    >
+                      {displayStatus === 'completed' ? 'Uncomplete' : 'Complete'}
+                    </button>
+                    {/* Move to draft — only for live (non-completed) items; danger */}
+                    {displayStatus !== 'completed' && (
+                      <button
+                        onClick={handleMoveToDraft}
+                        className={`flex items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium transition-colors ${
+                          isUpdating
+                            ? 'cursor-not-allowed opacity-60'
+                            : 'cursor-pointer bg-muted text-muted-foreground hover:bg-surface-2 hover:text-foreground'
+                        }`}
+                        disabled={isUpdating}
+                        aria-label="Move item to draft"
+                        title="Move to draft"
+                      >
+                        <Icon name="note" size={16} />
+                        Draft
+                      </button>
+                    )}
+                  </>
                 )}
               </>
             )}
@@ -359,9 +417,25 @@ function WishlistItem({
           type="info"
           onConfirm={() => {
             setShowCompleteConfirm(false);
-            applyCompleted('completed');
+            applyStatus('completed');
           }}
           onCancel={() => setShowCompleteConfirm(false)}
+        />
+      )}
+
+      {showToDraftConfirm && (
+        <ConfirmDialog
+          isOpen
+          title="Move to draft?"
+          message="Draft items are hidden from everyone else. If someone has already reserved this item, moving it to draft will cancel their reservation. You can publish it again later."
+          confirmText="Move to draft"
+          cancelText="Cancel"
+          type="warning"
+          onConfirm={() => {
+            setShowToDraftConfirm(false);
+            applyStatus('draft');
+          }}
+          onCancel={() => setShowToDraftConfirm(false)}
         />
       )}
     </div>
