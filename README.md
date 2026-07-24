@@ -31,7 +31,7 @@ A modern wishlist app: create wishlists, share them, follow friends, and quietly
 
 ## 📋 Prerequisites
 
-- Node.js 20+
+- Node.js 24 (the runtime we build and deploy on; pinned via `package.json`'s `engines` field)
 - **pnpm** — the package manager (enable via `corepack enable`; the version is pinned in `package.json`'s `packageManager` field)
 - A MongoDB database (MongoDB Atlas recommended)
 - An SMTP provider for sending magic-link emails
