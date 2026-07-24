@@ -16,31 +16,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Installs the pnpm version from package.json's "packageManager" field.
-      - uses: pnpm/action-setup@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: pnpm
+          cache: npm
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: npm ci
 
       - name: Lint
-        run: pnpm lint
+        run: npm run lint
 
       - name: Format check
-        run: pnpm format:check
+        run: npm run format:check
 
       - name: Typecheck
-        run: pnpm exec tsc --noEmit
+        run: npx tsc --noEmit
 
       - name: Test
-        run: pnpm test
+        run: npm test
 
       - name: Build
-        run: pnpm build
+        run: npm run build
         # Several modules validate/read env at import time (lib/auth ->
         # getEnvVars, lib/mongodb). The build never connects to the DB or sends
         # mail, so dummy values are enough to let route modules import cleanly.

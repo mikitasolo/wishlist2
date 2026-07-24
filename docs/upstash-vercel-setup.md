@@ -34,10 +34,10 @@ Env vars are bound at build/deploy time. **Trigger a redeploy** (or push a commi
 Rate limiting doesn't need to run locally, but to test it:
 
 ```bash
-pnpm vercel:env      # = `vercel env pull .env` — pulls the linked project's env, including the Redis creds
+npm run vercel:env   # = `vercel env pull .env` — pulls the linked project's env, including the Redis creds
 ```
 
-…then restart `pnpm dev`. (Alternatively, copy the REST URL/token from the Upstash console into `.env.local`.) Without these, local limiting stays disabled — which is the intended default for dev.
+…then restart `npm run dev`. (Alternatively, copy the REST URL/token from the Upstash console into `.env.local`.) Without these, local limiting stays disabled — which is the intended default for dev.
 
 ## 5. Verify it's live
 
