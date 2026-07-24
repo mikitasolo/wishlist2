@@ -29,9 +29,7 @@ describe('ItemForm — status toggle visibility', () => {
   });
 
   it('shows the toggle when reviewing a proposal', () => {
-    render(
-      <ItemForm onSubmit={vi.fn()} onCancel={vi.fn()} mode="review" initialData={filled} />
-    );
+    render(<ItemForm onSubmit={vi.fn()} onCancel={vi.fn()} mode="review" initialData={filled} />);
     expect(screen.getByRole('button', { name: /published/i })).toBeInTheDocument();
   });
 
@@ -43,9 +41,7 @@ describe('ItemForm — status toggle visibility', () => {
   // Regression: editing an existing item must NOT expose a status toggle — sending
   // status on a content edit used to clobber a booking (owners can't see bookings).
   it('regression: hides the status toggle when editing', () => {
-    render(
-      <ItemForm onSubmit={vi.fn()} onCancel={vi.fn()} mode="edit" initialData={filled} />
-    );
+    render(<ItemForm onSubmit={vi.fn()} onCancel={vi.fn()} mode="edit" initialData={filled} />);
     expect(screen.queryByRole('button', { name: /published/i })).toBeNull();
     expect(screen.queryByRole('button', { name: /^draft$/i })).toBeNull();
   });
@@ -59,7 +55,9 @@ describe('ItemForm — create submission', () => {
     fireEvent.change(screen.getByLabelText(/item name/i), { target: { value: 'Gift' } });
     fireEvent.click(screen.getByRole('button', { name: /^submit$/i }));
     await waitFor(() =>
-      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ name: 'Gift', status: 'available' }))
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'Gift', status: 'available' })
+      )
     );
 
     onSubmit.mockClear();

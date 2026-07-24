@@ -103,8 +103,7 @@ export function getEnvVars(): EnvSchema {
 
   validateEnvVars();
 
-  const nextAuthUrl =
-    process.env.NEXTAUTH_URL || `https://${process.env.VERCEL_URL}`;
+  const nextAuthUrl = process.env.NEXTAUTH_URL || `https://${process.env.VERCEL_URL}`;
 
   return {
     // Database

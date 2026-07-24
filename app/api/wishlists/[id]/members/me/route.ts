@@ -80,19 +80,21 @@ export async function DELETE(
 
     // Remove all bookings by this user
     const unbookedCount = await unbookAllItemsForUser(wishlistId, session.user.id);
-    
+
     if (unbookedCount > 0) {
-      console.log(`Unbooked ${unbookedCount} item(s) for user ${session.user.id} in wishlist ${wishlistId}`);
+      console.log(
+        `Unbooked ${unbookedCount} item(s) for user ${session.user.id} in wishlist ${wishlistId}`
+      );
     }
 
     // Remove membership
     await WishlistMember.findByIdAndDelete(membership._id);
 
     return NextResponse.json(
-      { 
-        success: true, 
-        data: { unbookedItemsCount: unbookedCount } 
-      }, 
+      {
+        success: true,
+        data: { unbookedItemsCount: unbookedCount },
+      },
       { status: 200 }
     );
   } catch (error) {

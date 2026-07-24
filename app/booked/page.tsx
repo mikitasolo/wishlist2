@@ -159,8 +159,8 @@ export default function BookedPage() {
       <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
         <h1 className="text-3xl font-semibold tracking-tight text-foreground">Reserved by you</h1>
         <p className="mt-1 text-muted-foreground">
-          Gifts you’ve claimed across everyone’s wishlists. When you’ve given one, mark it as
-          gifted to keep it in your gift history.
+          Gifts you’ve claimed across everyone’s wishlists. When you’ve given one, mark it as gifted
+          to keep it in your gift history.
         </p>
 
         {loading ? (

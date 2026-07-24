@@ -185,7 +185,9 @@ export default function AuthButton() {
                     aria-checked={theme === t}
                     onClick={() => setTheme(t)}
                     className={`relative z-10 flex flex-1 items-center justify-center gap-1.5 rounded-lg py-1.5 text-sm font-semibold transition-colors ${
-                      theme === t ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
+                      theme === t
+                        ? 'text-foreground'
+                        : 'text-muted-foreground hover:text-foreground'
                     }`}
                   >
                     <Icon name={t === 'light' ? 'sun' : 'moon'} size={15} />

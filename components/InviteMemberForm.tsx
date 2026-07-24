@@ -112,9 +112,7 @@ export default function InviteMemberForm({ onInvite, isInviting }: InviteMemberF
                 <p className="px-4 py-3 text-sm text-muted-foreground">Searching…</p>
               )}
               {!loadingSuggest && suggestions.length === 0 && (
-                <p className="px-4 py-3 text-sm text-muted-foreground">
-                  No people match “{term}”.
-                </p>
+                <p className="px-4 py-3 text-sm text-muted-foreground">No people match “{term}”.</p>
               )}
               {suggestions.map((u) => (
                 <button

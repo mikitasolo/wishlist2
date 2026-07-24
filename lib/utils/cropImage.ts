@@ -19,11 +19,7 @@ function loadImage(src: string): Promise<HTMLImageElement> {
  * region. The output is capped at `maxWidth` to keep uploads small, and encoded
  * as WebP (falling back to PNG) so transparency is preserved.
  */
-export async function getCroppedBlob(
-  src: string,
-  crop: PixelCrop,
-  maxWidth = 1600
-): Promise<Blob> {
+export async function getCroppedBlob(src: string, crop: PixelCrop, maxWidth = 1600): Promise<Blob> {
   const image = await loadImage(src);
 
   const scale = crop.width > maxWidth ? maxWidth / crop.width : 1;

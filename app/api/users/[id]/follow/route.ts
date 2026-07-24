@@ -14,7 +14,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
     const { id: targetId } = await params;
     if (targetId === session.user.id) {
-      return NextResponse.json({ success: false, error: 'You can’t follow yourself' }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: 'You can’t follow yourself' },
+        { status: 400 }
+      );
     }
 
     await connectDB();

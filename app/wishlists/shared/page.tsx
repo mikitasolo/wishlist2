@@ -11,7 +11,11 @@ import { SkeletonGrid } from '@/components/Skeleton';
 import { useToast } from '@/components/ToastProvider';
 import { IWishlist } from '@/models/Wishlist';
 
-type Wishlist = IWishlist & { ownerUsername?: string | null; itemCount?: number; isMember?: boolean };
+type Wishlist = IWishlist & {
+  ownerUsername?: string | null;
+  itemCount?: number;
+  isMember?: boolean;
+};
 
 export default function SharedWishlistsPage() {
   const { status } = useSession();

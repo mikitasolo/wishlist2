@@ -89,7 +89,10 @@ export default function MultiSelectDropdown({
             <span className="ml-3 text-sm font-medium text-foreground">{allLabel}</span>
           </label>
           {options.map((o) => (
-            <label key={o.value} className="flex cursor-pointer items-center px-4 py-2 hover:bg-muted">
+            <label
+              key={o.value}
+              className="flex cursor-pointer items-center px-4 py-2 hover:bg-muted"
+            >
               <input
                 type="checkbox"
                 checked={selected.includes(o.value)}

@@ -12,7 +12,14 @@ export default function Logo({ className }: { className?: string }) {
       aria-hidden="true"
     >
       <defs>
-        <linearGradient id="wl-logo-grad" x1="12" y1="8" x2="52" y2="56" gradientUnits="userSpaceOnUse">
+        <linearGradient
+          id="wl-logo-grad"
+          x1="12"
+          y1="8"
+          x2="52"
+          y2="56"
+          gradientUnits="userSpaceOnUse"
+        >
           <stop stopColor="#8f8dff" />
           <stop offset="0.5" stopColor="#5e5ce6" />
           <stop offset="1" stopColor="#4644c0" />

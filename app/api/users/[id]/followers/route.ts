@@ -9,7 +9,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const { id } = await params;
     await connectDB();
 
-    const edges = await Follow.find({ following: id }).select('follower').sort({ createdAt: -1 }).lean();
+    const edges = await Follow.find({ following: id })
+      .select('follower')
+      .sort({ createdAt: -1 })
+      .lean();
     const ids = edges.map((e) => e.follower);
     const users = await User.find({ _id: { $in: ids } }).select('username image');
     // Preserve follow order (newest first)
@@ -26,6 +29,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     return NextResponse.json({ success: true, data }, { status: 200 });
   } catch (error) {
     console.error('Error fetching followers:', error);
-    return NextResponse.json({ success: false, error: 'Failed to fetch followers' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: 'Failed to fetch followers' },
+      { status: 500 }
+    );
   }
 }

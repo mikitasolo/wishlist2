@@ -86,7 +86,10 @@ export default function BaseModal({
       >
         {/* Pinned header */}
         <div className="flex flex-shrink-0 items-center justify-between gap-4 border-b border-border px-5 py-4 sm:px-6">
-          <h2 id={titleId} className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
+          <h2
+            id={titleId}
+            className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl"
+          >
             {title}
           </h2>
           <button

@@ -156,7 +156,9 @@ export default function GlobalSearch() {
                   className="flex w-full items-center gap-3 px-4 py-2 text-left transition-colors hover:bg-muted"
                 >
                   <Avatar name={u.username} src={u.image} size="sm" />
-                  <span className="truncate text-sm font-medium text-foreground">@{u.username}</span>
+                  <span className="truncate text-sm font-medium text-foreground">
+                    @{u.username}
+                  </span>
                 </button>
               ))}
             </div>
@@ -177,7 +179,9 @@ export default function GlobalSearch() {
                     <Icon name="gift" size={16} />
                   </span>
                   <span className="min-w-0">
-                    <span className="block truncate text-sm font-medium text-foreground">{w.name}</span>
+                    <span className="block truncate text-sm font-medium text-foreground">
+                      {w.name}
+                    </span>
                     {w.ownerUsername && (
                       <span className="block truncate text-xs text-muted-foreground">
                         @{w.ownerUsername}

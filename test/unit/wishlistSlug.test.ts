@@ -1,9 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  WISHLIST_SLUG_REGEX,
-  isReservedWishlistSlug,
-  slugifyName,
-} from '@/lib/utils/wishlistSlug';
+import { WISHLIST_SLUG_REGEX, isReservedWishlistSlug, slugifyName } from '@/lib/utils/wishlistSlug';
 
 describe('WISHLIST_SLUG_REGEX', () => {
   it('accepts lowercase alphanumeric words joined by single hyphens', () => {

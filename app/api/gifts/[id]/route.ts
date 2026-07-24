@@ -6,7 +6,10 @@ import GiftLog from '@/models/GiftLog';
 
 // DELETE /api/gifts/[id] - remove an entry from your own gift history (a mistake
 // you'd rather not keep). Only the gifter who owns the entry can delete it.
-export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user) {

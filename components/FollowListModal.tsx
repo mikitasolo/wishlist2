@@ -105,9 +105,7 @@ export default function FollowListModal({
                 tab === t ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
               }`}
             >
-              {t === 'followers'
-                ? `${followerCount} followers`
-                : `${followingCount} following`}
+              {t === 'followers' ? `${followerCount} followers` : `${followingCount} following`}
             </button>
           ))}
         </div>

@@ -352,9 +352,20 @@ export default function Home() {
                   >
                     <div
                       className="relative flex aspect-[16/9] flex-col justify-end bg-surface-2 p-6"
-                      style={{ background: featured.bannerUrl ? undefined : coverGradient(featured._id.toString()) }}
+                      style={{
+                        background: featured.bannerUrl
+                          ? undefined
+                          : coverGradient(featured._id.toString()),
+                      }}
                     >
-                      {featured.bannerUrl && <BannerImage src={featured.bannerUrl} alt="" priority sizes="(max-width: 1024px) 100vw, 640px" />}
+                      {featured.bannerUrl && (
+                        <BannerImage
+                          src={featured.bannerUrl}
+                          alt=""
+                          priority
+                          sizes="(max-width: 1024px) 100vw, 640px"
+                        />
+                      )}
                       <div className="absolute inset-0 bg-gradient-to-t from-black/35 to-transparent" />
                       <span className="relative text-xs font-bold uppercase tracking-widest text-white/85">
                         Featured

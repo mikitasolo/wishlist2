@@ -158,7 +158,10 @@ export default function CreateWishlistModal({ isOpen, onClose }: CreateWishlistM
       >
         {/* Pinned header */}
         <div className="flex flex-shrink-0 items-center justify-between gap-4 border-b border-border px-5 py-4 sm:px-6">
-          <h2 id="create-wishlist-title" className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
+          <h2
+            id="create-wishlist-title"
+            className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl"
+          >
             Create new wishlist
           </h2>
           <button

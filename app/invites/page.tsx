@@ -94,7 +94,9 @@ export default function InvitesPage() {
             <span className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
               <Icon name="inbox" size={28} />
             </span>
-            <h3 className="text-lg font-semibold text-foreground sm:text-xl">No pending invitations</h3>
+            <h3 className="text-lg font-semibold text-foreground sm:text-xl">
+              No pending invitations
+            </h3>
             <p className="mx-auto mt-1.5 max-w-sm px-4 text-sm text-muted-foreground">
               When someone invites you to a wishlist, it&apos;ll show up here.
             </p>
@@ -115,8 +117,8 @@ export default function InvitesPage() {
                   <div className="min-w-0">
                     <p className="truncate font-semibold text-foreground">{invite.wishlistName}</p>
                     <p className="truncate text-sm text-muted-foreground">
-                      {invite.invitedByUsername ? `@${invite.invitedByUsername}` : 'Someone'} invited
-                      you{invite.role === 'admin' ? ' as an admin' : ''}
+                      {invite.invitedByUsername ? `@${invite.invitedByUsername}` : 'Someone'}{' '}
+                      invited you{invite.role === 'admin' ? ' as an admin' : ''}
                     </p>
                   </div>
                 </div>

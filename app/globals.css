@@ -30,8 +30,9 @@
   --radius-3xl: 1.125rem;
 
   /* SF-first type stack */
-  --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text',
-    'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Segoe UI', Roboto,
+    Helvetica, Arial, sans-serif;
 }
 
 /* Semantic tokens → Tailwind color/shadow utilities, driven by the
@@ -78,7 +79,8 @@
   --shadow-color-2: rgb(20 20 43 / 0.14);
 
   /* Subtle ambient tint behind content */
-  --bg-tint: radial-gradient(1100px 560px at 84% -8%, rgb(94 92 230 / 0.07), transparent 60%),
+  --bg-tint:
+    radial-gradient(1100px 560px at 84% -8%, rgb(94 92 230 / 0.07), transparent 60%),
     radial-gradient(820px 460px at 6% 2%, rgb(255 55 95 / 0.05), transparent 55%);
 
   color-scheme: light;
@@ -102,7 +104,8 @@
   --shadow-color-1: rgb(0 0 0 / 0.5);
   --shadow-color-2: rgb(0 0 0 / 0.6);
 
-  --bg-tint: radial-gradient(1100px 560px at 84% -8%, rgb(94 92 230 / 0.16), transparent 60%),
+  --bg-tint:
+    radial-gradient(1100px 560px at 84% -8%, rgb(94 92 230 / 0.16), transparent 60%),
     radial-gradient(820px 460px at 6% 2%, rgb(255 55 95 / 0.1), transparent 55%);
 
   color-scheme: dark;

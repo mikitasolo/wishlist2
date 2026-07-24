@@ -206,7 +206,9 @@ export default function ItemForm({
               Select the status for this item after review
             </p>
           ) : (
-            <p className="text-xs text-muted-foreground mb-2">Draft items are not visible to others</p>
+            <p className="text-xs text-muted-foreground mb-2">
+              Draft items are not visible to others
+            </p>
           )}
           <div className="relative flex items-center justify-between p-1 bg-muted rounded-lg">
             {/* Sliding indicator */}
@@ -222,7 +224,9 @@ export default function ItemForm({
               onClick={() => setFormData({ ...formData, isDraft: false })}
               disabled={submitting}
               className={`relative z-10 flex-1 px-4 py-2 text-sm font-medium rounded-md transition-colors duration-300 cursor-pointer ${
-                !formData.isDraft ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
+                !formData.isDraft
+                  ? 'text-foreground'
+                  : 'text-muted-foreground hover:text-foreground'
               }`}
             >
               Published
@@ -368,7 +372,9 @@ export default function ItemForm({
                         setCurrencySearch('');
                       }}
                       className={`w-full text-left px-4 py-2 hover:bg-muted transition-colors ${
-                        formData.currency === curr.code ? 'bg-primary-500/12 text-primary-700 dark:text-primary-300' : ''
+                        formData.currency === curr.code
+                          ? 'bg-primary-500/12 text-primary-700 dark:text-primary-300'
+                          : ''
                       } ${POPULAR_CURRENCIES.includes(curr.code) ? 'font-medium' : ''}`}
                     >
                       <span className="font-mono">{curr.code}</span>

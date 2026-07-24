@@ -72,7 +72,11 @@ export async function PATCH(
     return NextResponse.json(
       {
         success: true,
-        data: { status: 'accepted', wishlistSlug: wishlist.slug ?? null, wishlistId: invite.wishlist.toString() },
+        data: {
+          status: 'accepted',
+          wishlistSlug: wishlist.slug ?? null,
+          wishlistId: invite.wishlist.toString(),
+        },
       },
       { status: 200 }
     );

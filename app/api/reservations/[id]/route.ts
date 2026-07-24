@@ -7,7 +7,10 @@ import Reservation from '@/models/Reservation';
 // DELETE /api/reservations/[id] - dismiss a reservation without logging a gift
 // (e.g. the owner completed it themselves and you never gave it). Removes it
 // from your "Reserved by you" list; does not touch the live item.
-export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user) {

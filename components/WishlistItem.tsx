@@ -402,7 +402,9 @@ function WishlistItem({
               View item
             </a>
           ) : (
-            <p className="py-2 text-center text-sm italic text-muted-foreground">No link provided</p>
+            <p className="py-2 text-center text-sm italic text-muted-foreground">
+              No link provided
+            </p>
           )}
         </div>
       </div>

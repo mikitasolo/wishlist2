@@ -18,7 +18,10 @@ interface ToastContextType {
 const ToastContext = createContext<ToastContextType | undefined>(undefined);
 
 const config: Record<ToastType, { icon: IconName; chip: string }> = {
-  success: { icon: 'check-circle', chip: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400' },
+  success: {
+    icon: 'check-circle',
+    chip: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400',
+  },
   error: { icon: 'alert', chip: 'bg-red-500/15 text-red-600 dark:text-red-400' },
   info: { icon: 'info', chip: 'bg-primary-500/15 text-accent dark:text-primary-400' },
 };
@@ -55,7 +58,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               className="animate-toast-in pointer-events-auto flex items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3 shadow-lg"
               onClick={() => removeToast(toast.id)}
             >
-              <span className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg ${chip}`}>
+              <span
+                className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg ${chip}`}
+              >
                 <Icon name={icon} size={18} />
               </span>
               <p className="flex-1 text-sm font-medium text-foreground">{toast.message}</p>

@@ -15,9 +15,7 @@ export async function GET() {
     }
     await connectDB();
 
-    const gifts = await GiftLog.find({ gifter: session.user.id })
-      .sort({ giftedAt: -1 })
-      .lean();
+    const gifts = await GiftLog.find({ gifter: session.user.id }).sort({ giftedAt: -1 }).lean();
 
     // Resolve current wishlist slugs for still-valid soft pointers (for links).
     const wishlistIds = Array.from(

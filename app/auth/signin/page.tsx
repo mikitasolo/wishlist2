@@ -39,7 +39,9 @@ function SignInForm() {
           <span className="mb-5 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-500/10 text-accent dark:text-primary-400">
             <Icon name="mail" size={28} />
           </span>
-          <h1 className="mb-3 text-2xl font-bold tracking-tight text-foreground">Check your email</h1>
+          <h1 className="mb-3 text-2xl font-bold tracking-tight text-foreground">
+            Check your email
+          </h1>
           <p className="mb-4 text-muted-foreground">
             A sign in link has been sent to <strong className="text-foreground">{email}</strong>
           </p>

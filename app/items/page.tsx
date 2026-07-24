@@ -37,7 +37,13 @@ const STATUS_BADGE: Partial<Record<MyItem['status'], { label: string; className:
 
 // Owner view: booked is folded into "available" by the API (never revealed).
 // Same order the stat cards render in, so cards ↔ dropdown line up.
-const STATUS_FILTER_OPTIONS: FilterOption[] = ['all', 'draft', 'proposed', 'available', 'completed'];
+const STATUS_FILTER_OPTIONS: FilterOption[] = [
+  'all',
+  'draft',
+  'proposed',
+  'available',
+  'completed',
+];
 
 // Same sort options as the wishlist page.
 const SORT_OPTIONS: SelectOption[] = [
@@ -213,7 +219,9 @@ export default function MyItemsPage() {
     <div className="min-h-screen">
       <AppHeader actions={<AuthButton />} />
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
-        <h1 className="text-3xl font-semibold tracking-tight text-foreground">Items in your lists</h1>
+        <h1 className="text-3xl font-semibold tracking-tight text-foreground">
+          Items in your lists
+        </h1>
         <p className="mt-1 text-muted-foreground">Everything across the wishlists you own.</p>
 
         {loading ? (

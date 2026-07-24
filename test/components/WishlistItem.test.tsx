@@ -174,12 +174,24 @@ describe('WishlistItem — price conversion', () => {
     const priced = item({ price: { value: 400, currency: 'pln' } }); // 4 PLN
 
     const { rerender } = render(
-      <WishlistItem item={priced} onUpdate={vi.fn()} isAuthenticated priceCurrency="original" rates={rates} />
+      <WishlistItem
+        item={priced}
+        onUpdate={vi.fn()}
+        isAuthenticated
+        priceCurrency="original"
+        rates={rates}
+      />
     );
     expect(screen.getByText('PLN 4.00')).toBeInTheDocument();
 
     rerender(
-      <WishlistItem item={priced} onUpdate={vi.fn()} isAuthenticated priceCurrency="usd" rates={rates} />
+      <WishlistItem
+        item={priced}
+        onUpdate={vi.fn()}
+        isAuthenticated
+        priceCurrency="usd"
+        rates={rates}
+      />
     );
     expect(screen.getByText('USD 1.00')).toBeInTheDocument();
   });

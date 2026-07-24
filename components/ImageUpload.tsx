@@ -241,7 +241,9 @@ export default function ImageUpload({
               <span className="text-sm font-medium text-foreground">
                 Drag &amp; drop, paste, or click to upload
               </span>
-              <span className="text-xs text-muted-foreground">PNG, JPG, WebP or GIF · up to 4MB</span>
+              <span className="text-xs text-muted-foreground">
+                PNG, JPG, WebP or GIF · up to 4MB
+              </span>
             </>
           )}
         </button>

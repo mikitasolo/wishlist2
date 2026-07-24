@@ -253,7 +253,9 @@ export default function UserProfile() {
             <span className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
               <Icon name="lock" size={28} />
             </span>
-            <h3 className="text-lg font-semibold text-foreground sm:text-xl">Wishlists are private</h3>
+            <h3 className="text-lg font-semibold text-foreground sm:text-xl">
+              Wishlists are private
+            </h3>
             <p className="mx-auto mt-1.5 max-w-sm px-4 text-sm text-muted-foreground">
               @{profile?.username} only shares their wishlists with friends. Follow each other to
               connect.
@@ -264,7 +266,9 @@ export default function UserProfile() {
             <span className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
               <Icon name="list" size={28} />
             </span>
-            <h3 className="text-lg font-semibold text-foreground sm:text-xl">No wishlists to show</h3>
+            <h3 className="text-lg font-semibold text-foreground sm:text-xl">
+              No wishlists to show
+            </h3>
             <p className="mx-auto mt-1.5 max-w-sm px-4 text-sm text-muted-foreground">
               This person has no wishlists you can view right now.
             </p>

@@ -24,7 +24,9 @@ export async function GET() {
 
     // Look up the live items (may be gone) and current wishlist slugs.
     const itemIds = reservations.map((r) => r.item);
-    const items = await Item.find({ _id: { $in: itemIds } }).select('status bookedBy').lean();
+    const items = await Item.find({ _id: { $in: itemIds } })
+      .select('status bookedBy')
+      .lean();
     const itemMap = new Map(items.map((i) => [i._id.toString(), i]));
 
     const wishlistIds = Array.from(new Set(reservations.map((r) => r.wishlist.toString())));

@@ -105,8 +105,16 @@ describe('sortItems', () => {
   // Regression: prices were sorted by raw minor units, so 3000 PLN sorted above
   // 2000 USD. Sorting must use the USD-normalised value (priceInUsdCents).
   it('regression: sorts by USD-normalised value, not raw amount', () => {
-    const pln3000 = item({ name: 'PLN 3000', price: { value: 300000, currency: 'pln' }, priceInUsdCents: 75000 }); // ~$750
-    const usd2000 = item({ name: 'USD 2000', price: { value: 200000, currency: 'usd' }, priceInUsdCents: 200000 }); // $2000
+    const pln3000 = item({
+      name: 'PLN 3000',
+      price: { value: 300000, currency: 'pln' },
+      priceInUsdCents: 75000,
+    }); // ~$750
+    const usd2000 = item({
+      name: 'USD 2000',
+      price: { value: 200000, currency: 'usd' },
+      priceInUsdCents: 200000,
+    }); // $2000
     expect(sortItems([usd2000, pln3000], 'price-asc').map((i) => i.name)).toEqual([
       'PLN 3000',
       'USD 2000',

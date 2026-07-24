@@ -5,9 +5,7 @@ import { ToastProvider, useToast } from '@/components/ToastProvider';
 
 function Trigger() {
   const { showToast } = useToast();
-  return (
-    <button onClick={() => showToast('Saved successfully', 'success')}>fire</button>
-  );
+  return <button onClick={() => showToast('Saved successfully', 'success')}>fire</button>;
 }
 
 beforeEach(() => cleanup());

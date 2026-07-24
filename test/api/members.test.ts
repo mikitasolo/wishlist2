@@ -6,7 +6,9 @@ vi.mock('@/lib/mongodb', () => ({ default: vi.fn().mockResolvedValue(undefined) 
 vi.mock('@/lib/auth', () => ({ authOptions: {} }));
 vi.mock('next-auth', () => ({ getServerSession: vi.fn() }));
 const sendEmail = vi.fn();
-vi.mock('@/lib/email', () => ({ sendWishlistInvitationEmail: (...a: unknown[]) => sendEmail(...a) }));
+vi.mock('@/lib/email', () => ({
+  sendWishlistInvitationEmail: (...a: unknown[]) => sendEmail(...a),
+}));
 
 import { getServerSession } from 'next-auth';
 import { POST } from '@/app/api/wishlists/[id]/members/route';

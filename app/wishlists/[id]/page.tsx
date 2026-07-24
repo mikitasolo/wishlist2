@@ -970,7 +970,12 @@ export default function WishlistDetail() {
                 }}
               >
                 {wishlist.bannerUrl && (
-                  <BannerImage src={wishlist.bannerUrl} alt="" priority sizes="(max-width: 1024px) 100vw, 26rem" />
+                  <BannerImage
+                    src={wishlist.bannerUrl}
+                    alt=""
+                    priority
+                    sizes="(max-width: 1024px) 100vw, 26rem"
+                  />
                 )}
                 <span className="absolute right-3 top-3 inline-flex items-center gap-1.5 rounded-full border border-white/25 bg-white/20 px-2.5 py-1 text-[11.5px] font-semibold text-white backdrop-blur-md">
                   <Icon name={visibilityMeta[getVisibility(wishlist)].icon} size={12} />

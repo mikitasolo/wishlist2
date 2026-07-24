@@ -28,9 +28,7 @@ export function isReservedUsername(name: string): boolean {
 
 /** Turn an email (or any string) into a valid username base. */
 function baseFromEmail(email: string): string {
-  let base = (email.split('@')[0] || '')
-    .toLowerCase()
-    .replace(/[^a-z0-9_]/g, '');
+  let base = (email.split('@')[0] || '').toLowerCase().replace(/[^a-z0-9_]/g, '');
   if (!/^[a-z]/.test(base)) base = `u${base}`;
   base = base.slice(0, 18);
   while (base.length < 3) base += '0';

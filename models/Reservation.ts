@@ -53,7 +53,6 @@ export interface IReservation {
 }
 
 const Reservation: Model<IReservation> =
-  mongoose.models.Reservation ||
-  mongoose.model<IReservation>('Reservation', ReservationSchema);
+  mongoose.models.Reservation || mongoose.model<IReservation>('Reservation', ReservationSchema);
 
 export default Reservation;

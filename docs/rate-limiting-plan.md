@@ -26,18 +26,18 @@ Decision: **Upstash for app-level limits + Vercel WAF for a coarse per-IP edge c
 
 Highest value first. "Limit" values are starting points to tune from logs.
 
-| Surface                                  | Route                                             | Risk                                                          | Limit (start)                                        | Key                     |
-| ---------------------------------------- | ------------------------------------------------- | ------------------------------------------------------------ | ---------------------------------------------------- | ----------------------- |
-| **Magic-link sign-in** (email send)      | `api/auth/[...nextauth]` (email provider)         | **Email bombing** a victim; SMTP cost/reputation. Top target. | 3 / 15 min per (email), 10 / 15 min per IP           | email **and** IP        |
-| **Image upload**                         | `api/upload`                                      | Blob storage cost, bandwidth                                 | 20 / 10 min per user                                 | user                    |
-| **Invites**                              | `api/invite`, `api/wishlists/[id]/invites`        | Spamming a user's Invitations list / notifications           | 30 / hour per user; + per-target cap (below)         | user (+ invited target) |
-| **Follows**                              | `api/users/[id]/follow`                           | Follow/unfollow churn, notification spam                     | 60 / hour per user                                   | user                    |
-| **Content creation** (wishlists, items)  | `api/wishlists`, `api/wishlists/[id]/items`       | Bulk junk content                                            | 60 / hour per user                                   | user                    |
-| **Booking toggle**                       | `api/items/[id]` (book/unbook)                    | Toggle churn, notification noise for the gifter view         | 60 / hour per user                                   | user                    |
-| **Username availability**                | `api/users/check-username`                        | Enumeration / scraping                                       | 30 / min per IP                                      | IP                      |
-| **Search & profile lookup**              | `api/search`, `api/users/search`, `by-username/*` | Scraping the user/wishlist graph                             | 60 / min per user-or-IP                              | user or IP              |
-| **Paste-a-link import** (when built)     | (future) `api/import/link`                        | SSRF amplification, outbound fetch abuse                     | 10 / 10 min per user                                 | user                    |
-| **Migration endpoints**                  | `api/migrations/*`                                | Secret brute force                                           | Already secret-gated + timing-safe; add 5 / min / IP | IP                      |
+| Surface                                 | Route                                             | Risk                                                          | Limit (start)                                        | Key                     |
+| --------------------------------------- | ------------------------------------------------- | ------------------------------------------------------------- | ---------------------------------------------------- | ----------------------- |
+| **Magic-link sign-in** (email send)     | `api/auth/[...nextauth]` (email provider)         | **Email bombing** a victim; SMTP cost/reputation. Top target. | 3 / 15 min per (email), 10 / 15 min per IP           | email **and** IP        |
+| **Image upload**                        | `api/upload`                                      | Blob storage cost, bandwidth                                  | 20 / 10 min per user                                 | user                    |
+| **Invites**                             | `api/invite`, `api/wishlists/[id]/invites`        | Spamming a user's Invitations list / notifications            | 30 / hour per user; + per-target cap (below)         | user (+ invited target) |
+| **Follows**                             | `api/users/[id]/follow`                           | Follow/unfollow churn, notification spam                      | 60 / hour per user                                   | user                    |
+| **Content creation** (wishlists, items) | `api/wishlists`, `api/wishlists/[id]/items`       | Bulk junk content                                             | 60 / hour per user                                   | user                    |
+| **Booking toggle**                      | `api/items/[id]` (book/unbook)                    | Toggle churn, notification noise for the gifter view          | 60 / hour per user                                   | user                    |
+| **Username availability**               | `api/users/check-username`                        | Enumeration / scraping                                        | 30 / min per IP                                      | IP                      |
+| **Search & profile lookup**             | `api/search`, `api/users/search`, `by-username/*` | Scraping the user/wishlist graph                              | 60 / min per user-or-IP                              | user or IP              |
+| **Paste-a-link import** (when built)    | (future) `api/import/link`                        | SSRF amplification, outbound fetch abuse                      | 10 / 10 min per user                                 | user                    |
+| **Migration endpoints**                 | `api/migrations/*`                                | Secret brute force                                            | Already secret-gated + timing-safe; add 5 / min / IP | IP                      |
 
 Coarse outer layer (Vercel WAF): a blanket per-IP ceiling (e.g. 100 req / 10 s) to absorb floods before they reach functions.
 
@@ -62,8 +62,16 @@ import { Redis } from '@upstash/redis';
 
 const redis = Redis.fromEnv();
 const limiters = {
-  signinEmail: new Ratelimit({ redis, limiter: Ratelimit.slidingWindow(3, '15 m'), prefix: 'rl:signin:email' }),
-  upload: new Ratelimit({ redis, limiter: Ratelimit.slidingWindow(20, '10 m'), prefix: 'rl:upload' }),
+  signinEmail: new Ratelimit({
+    redis,
+    limiter: Ratelimit.slidingWindow(3, '15 m'),
+    prefix: 'rl:signin:email',
+  }),
+  upload: new Ratelimit({
+    redis,
+    limiter: Ratelimit.slidingWindow(20, '10 m'),
+    prefix: 'rl:upload',
+  }),
   // ...one per row above
 };
 
@@ -73,7 +81,7 @@ export async function enforce(name: keyof typeof limiters, key: string) {
   if (success) return null;
   return NextResponse.json(
     { success: false, error: 'Too many requests. Please slow down.' },
-    { status: 429, headers: { 'Retry-After': String(Math.ceil((reset - Date.now()) / 1000)) } },
+    { status: 429, headers: { 'Retry-After': String(Math.ceil((reset - Date.now()) / 1000)) } }
   );
 }
 ```

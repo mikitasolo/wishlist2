@@ -45,9 +45,9 @@ export default function SettingsPage() {
   const [searchable, setSearchable] = useState(true);
   const [whoCanInvite, setWhoCanInvite] = useState<InvitePolicy>('everyone');
   const [profileVisibility, setProfileVisibility] = useState<ProfileVisibility>('everyone');
-  const [availability, setAvailability] = useState<'idle' | 'checking' | 'ok' | 'taken' | 'invalid'>(
-    'idle'
-  );
+  const [availability, setAvailability] = useState<
+    'idle' | 'checking' | 'ok' | 'taken' | 'invalid'
+  >('idle');
 
   useEffect(() => {
     if (status === 'unauthenticated') router.push('/');
@@ -107,7 +107,9 @@ export default function SettingsPage() {
           cache: 'no-store',
         });
         const result = await res.json();
-        setAvailability(result.available ? 'ok' : result.reason === 'invalid' ? 'invalid' : 'taken');
+        setAvailability(
+          result.available ? 'ok' : result.reason === 'invalid' ? 'invalid' : 'taken'
+        );
       } catch {
         setAvailability('idle');
       }
@@ -129,8 +131,7 @@ export default function SettingsPage() {
       profileVisibility !== initial.privacy.profileVisibility);
 
   const usernameChanged = !!initial && username.toLowerCase() !== initial.username;
-  const canSave =
-    dirty && !saving && (!usernameChanged || availability === 'ok');
+  const canSave = dirty && !saving && (!usernameChanged || availability === 'ok');
 
   async function handleSave() {
     if (!canSave) return;
@@ -218,10 +219,18 @@ export default function SettingsPage() {
             />
             {usernameChanged && (
               <span className="flex-shrink-0 text-sm">
-                {availability === 'checking' && <span className="text-muted-foreground">Checking…</span>}
-                {availability === 'ok' && <span className="text-emerald-600 dark:text-emerald-400">Available</span>}
-                {availability === 'taken' && <span className="text-red-600 dark:text-red-400">Taken</span>}
-                {availability === 'invalid' && <span className="text-red-600 dark:text-red-400">Invalid</span>}
+                {availability === 'checking' && (
+                  <span className="text-muted-foreground">Checking…</span>
+                )}
+                {availability === 'ok' && (
+                  <span className="text-emerald-600 dark:text-emerald-400">Available</span>
+                )}
+                {availability === 'taken' && (
+                  <span className="text-red-600 dark:text-red-400">Taken</span>
+                )}
+                {availability === 'invalid' && (
+                  <span className="text-red-600 dark:text-red-400">Invalid</span>
+                )}
               </span>
             )}
           </div>
@@ -258,7 +267,8 @@ export default function SettingsPage() {
               triggerClassName="w-full sm:w-80"
             />
             <p className="mt-1 text-xs text-muted-foreground">
-              Used as the default for new wishlists and to show others&apos; prices in your currency.
+              Used as the default for new wishlists and to show others&apos; prices in your
+              currency.
             </p>
           </div>
 
@@ -312,7 +322,6 @@ export default function SettingsPage() {
               />
             </div>
           </div>
-
         </section>
 
         <div className="flex justify-end">

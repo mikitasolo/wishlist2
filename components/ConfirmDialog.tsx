@@ -53,7 +53,10 @@ export default function ConfirmDialog({
 
   if (!isOpen) return null;
 
-  const accent: Record<NonNullable<ConfirmDialogProps['type']>, { icon: IconName; chip: string; button: string }> = {
+  const accent: Record<
+    NonNullable<ConfirmDialogProps['type']>,
+    { icon: IconName; chip: string; button: string }
+  > = {
     danger: {
       icon: 'trash',
       chip: 'bg-red-500/15 text-red-600 dark:text-red-400',
@@ -84,7 +87,9 @@ export default function ConfirmDialog({
         aria-modal="true"
       >
         <div className="flex gap-4">
-          <span className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl ${chip}`}>
+          <span
+            className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl ${chip}`}
+          >
             <Icon name={icon} size={22} />
           </span>
           <div className="min-w-0 flex-1">

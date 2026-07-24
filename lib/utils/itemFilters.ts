@@ -115,12 +115,7 @@ export function calculateStats(
  * Sorts items based on the specified sort type
  */
 export type SortType =
-  | 'name-asc'
-  | 'name-desc'
-  | 'price-asc'
-  | 'price-desc'
-  | 'date-asc'
-  | 'date-desc';
+  'name-asc' | 'name-desc' | 'price-asc' | 'price-desc' | 'date-asc' | 'date-desc';
 
 export function sortItems(items: ApiItem[], sortBy: SortType): ApiItem[] {
   return [...items].sort((a, b) => {
