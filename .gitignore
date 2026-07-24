@@ -24,11 +24,16 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# local env files
+# local env files (never commit real secrets)
 .env*
+# …but keep the placeholder example tracked
+!.env.example
 
 # vercel
 .vercel
+
+# editor
+.idea
 
 # typescript
 *.tsbuildinfo

@@ -1,5 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createHash, timingSafeEqual } from 'crypto';
 import connectDB from '@/lib/mongodb';
+
+/**
+ * Constant-time secret comparison.
+ *
+ * A plain `a !== b` short-circuits at the first differing byte, so the time it
+ * takes to reject a wrong secret leaks how long a correct prefix the attacker
+ * guessed — enough to reconstruct the secret byte-by-byte over many requests.
+ * We hash both sides to a fixed 32-byte digest first: that gives
+ * `timingSafeEqual` two equal-length buffers (it throws on length mismatch),
+ * and it avoids leaking the secret's length through a preliminary length check.
+ */
+function secretsMatch(provided: string | null, expected: string): boolean {
+  if (provided === null) return false;
+  const a = createHash('sha256').update(provided).digest();
+  const b = createHash('sha256').update(expected).digest();
+  return timingSafeEqual(a, b);
+}
 
 /** Whatever summary a migration wants to report back (counts, errors, etc.). */
 export type MigrationSummary = Record<string, unknown>;
@@ -33,7 +51,7 @@ export function createMigration(handler: MigrationHandler) {
         { status: 500 }
       );
     }
-    if (request.headers.get('X-Migration-Secret') !== expected) {
+    if (!secretsMatch(request.headers.get('X-Migration-Secret'), expected)) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized - Invalid migration secret' },
         { status: 401 }

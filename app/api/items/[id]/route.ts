@@ -10,6 +10,7 @@ import WishlistMember from '@/models/WishlistMember';
 import Reservation from '@/models/Reservation';
 import { updateItemSchema, validateRequestBody } from '@/lib/validations';
 import { ensureCurrencyRatesUpToDate } from '@/lib/utils/currencyRates';
+import { deleteOwnBlob } from '@/lib/utils/blob';
 
 // PATCH /api/items/[id] - Update an item
 // Regular members can book/unbook items (only their own bookings)
@@ -100,14 +101,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     let updateData: Partial<
       Pick<
         IItem,
-        | 'name'
-        | 'imageUrl'
-        | 'price'
-        | 'link'
-        | 'notes'
-        | 'status'
-        | 'bookedBy'
-        | 'proposedBy'
+        'name' | 'imageUrl' | 'price' | 'link' | 'notes' | 'status' | 'bookedBy' | 'proposedBy'
       >
     > = {};
 
@@ -267,6 +261,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       await Reservation.deleteMany({ gifter: session.user.id, item: item._id });
     }
 
+    // If this edit replaced or cleared the image, free the old uploaded blob.
+    // Only our own uploads are touched; pasted external URLs are left alone.
+    if (updateData.imageUrl !== undefined && currentItem.imageUrl !== updateData.imageUrl) {
+      await deleteOwnBlob(currentItem.imageUrl);
+    }
+
     return NextResponse.json({ success: true, data: item }, { status: 200 });
   } catch (error) {
     console.error('Error updating item:', error);
@@ -322,6 +322,9 @@ export async function DELETE(
     }
 
     await Item.findByIdAndDelete(id);
+
+    // Free the item's uploaded image, if it was one of ours.
+    await deleteOwnBlob(item.imageUrl);
 
     return NextResponse.json({ success: true, data: {} }, { status: 200 });
   } catch (error) {

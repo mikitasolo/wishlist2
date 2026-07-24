@@ -29,9 +29,32 @@ export default defineConfig({
     },
     coverage: {
       provider: 'v8',
-      reporter: ['text-summary', 'html'],
-      include: ['lib/**/*.ts', 'components/**/*.tsx', 'app/api/**/*.ts'],
-      exclude: ['**/*.d.ts', 'test/**'],
+      reporter: ['text', 'text-summary', 'html'],
+      // Measure the surface our harness can exercise directly: API route
+      // handlers, components, pure lib logic, and models. Full-page components
+      // (app/**/page.tsx) are covered by Playwright E2E, not unit tests, so
+      // they're intentionally out of scope here.
+      include: ['app/api/**/*.ts', 'components/**/*.tsx', 'lib/**/*.ts', 'models/**/*.ts'],
+      exclude: [
+        '**/*.d.ts',
+        'test/**',
+        // Infra with no branching logic of our own to cover.
+        'lib/mongodb.ts',
+        'lib/auth.ts',
+        'app/api/auth/**',
+      ],
+      thresholds: {
+        // A non-regression *ratchet*, set just under today's actuals — not an
+        // aspiration. Coverage can only go up from here without tripping CI.
+        // Lines/statements are low because several large client components and
+        // browser/canvas hooks (useItems, cropImage, useScrollLock) are
+        // exercised via Playwright E2E rather than unit tests. Raise these as
+        // real coverage grows; never lower them to make a change pass.
+        lines: 29,
+        statements: 29,
+        functions: 54,
+        branches: 69,
+      },
     },
     // mongodb-memory-server can take a moment to boot on first run.
     testTimeout: 30000,

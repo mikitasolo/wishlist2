@@ -6,6 +6,7 @@ import User from '@/models/User';
 import Follow from '@/models/Follow';
 import { updateProfileSchema, validateRequestBody } from '@/lib/validations';
 import { isReservedUsername } from '@/lib/utils/username';
+import { deleteOwnBlob } from '@/lib/utils/blob';
 
 // GET /api/users/me - current user's profile + privacy settings
 export async function GET() {
@@ -79,7 +80,11 @@ export async function PATCH(request: NextRequest) {
       user.username = username;
     }
 
+    // Remember the previous avatar so we can free it after a successful save if
+    // this update replaces or clears it (only our own uploads are deleted).
+    let previousAvatar: string | null | undefined;
     if (image !== undefined) {
+      previousAvatar = user.image;
       user.image = image || null;
     }
 
@@ -102,6 +107,10 @@ export async function PATCH(request: NextRequest) {
 
     await user.save();
 
+    if (previousAvatar && previousAvatar !== user.image) {
+      await deleteOwnBlob(previousAvatar);
+    }
+
     return NextResponse.json(
       {
         success: true,
@@ -119,6 +128,9 @@ export async function PATCH(request: NextRequest) {
     );
   } catch (error) {
     console.error('Error updating profile:', error);
-    return NextResponse.json({ success: false, error: 'Failed to update profile' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: 'Failed to update profile' },
+      { status: 500 }
+    );
   }
 }

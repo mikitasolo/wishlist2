@@ -8,6 +8,7 @@ import User from '@/models/User';
 import Item from '@/models/Item';
 import { updateWishlistSchema, validateRequestBody } from '@/lib/validations';
 import { areFriends } from '@/lib/utils/friends';
+import { deleteOwnBlob, deleteOwnBlobs } from '@/lib/utils/blob';
 import {
   resolveWishlistId,
   generateUniqueWishlistSlug,
@@ -163,7 +164,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const validatedData = validation.data;
     if (validatedData.name !== undefined) updateData.name = validatedData.name;
     if (validatedData.description !== undefined) updateData.description = validatedData.description;
-    if (validatedData.bannerUrl !== undefined) updateData.bannerUrl = validatedData.bannerUrl || null;
+    if (validatedData.bannerUrl !== undefined)
+      updateData.bannerUrl = validatedData.bannerUrl || null;
     if (validatedData.currency !== undefined) updateData.currency = validatedData.currency;
 
     // Slug: validate reserved + uniqueness before applying.
@@ -213,6 +215,11 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       runValidators: true,
     });
 
+    // Free the previous cover image if this edit replaced or cleared it.
+    if (updateData.bannerUrl !== undefined && wishlist.bannerUrl !== updateData.bannerUrl) {
+      await deleteOwnBlob(wishlist.bannerUrl);
+    }
+
     return NextResponse.json({ success: true, data: updatedWishlist }, { status: 200 });
   } catch (error) {
     console.error('Error updating wishlist:', error);
@@ -258,6 +265,10 @@ export async function DELETE(
       );
     }
 
+    // Collect uploaded item images before deleting the items, so we can free
+    // their blobs afterwards (otherwise they'd be orphaned in storage).
+    const items = await Item.find({ wishlist: id }).select('imageUrl').lean();
+
     // Delete all items in this wishlist
     await Item.deleteMany({ wishlist: id });
 
@@ -266,6 +277,9 @@ export async function DELETE(
 
     // Delete wishlist
     await Wishlist.findByIdAndDelete(id);
+
+    // Best-effort cleanup of our own uploaded blobs (item images + cover).
+    await deleteOwnBlobs([...items.map((i) => i.imageUrl), wishlist.bannerUrl]);
 
     return NextResponse.json({ success: true, data: {} }, { status: 200 });
   } catch (error) {

@@ -868,7 +868,7 @@ export default function WishlistDetail() {
             </span>
             <h2 className="mb-2 text-xl font-semibold text-foreground">Wishlist not found</h2>
             <p className="mb-6 text-sm text-muted-foreground">
-              It may have been deleted or you don't have access.
+              It may have been deleted or you don&apos;t have access.
             </p>
             <Link
               href="/"

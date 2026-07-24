@@ -107,7 +107,6 @@ export default function MyItemsPage() {
     }
     const storedSort = localStorage.getItem(LS_SORT) as SortType | null;
     if (storedSort && SORT_VALUES.includes(storedSort)) setSort(storedSort);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading]);
 
   // Restore the list filter once items (and therefore valid ids) are known;

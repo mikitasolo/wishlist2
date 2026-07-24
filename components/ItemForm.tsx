@@ -15,6 +15,17 @@ export interface ItemFormData {
   isDraft: boolean;
 }
 
+// Module-level constant (stable identity) so effects can depend on it safely.
+const DEFAULT_ITEM_FORM_DATA: ItemFormData = {
+  name: '',
+  imageUrl: '',
+  price: '',
+  currency: 'USD', // Display uppercase in UI; converted to lowercase on submit
+  link: '',
+  notes: '',
+  isDraft: false,
+};
+
 interface ItemFormProps {
   initialData?: ItemFormData;
   onSubmit: (data: {
@@ -56,17 +67,7 @@ export default function ItemForm({
   itemId,
   onFormChange,
 }: ItemFormProps) {
-  const defaultInitialData: ItemFormData = {
-    name: '',
-    imageUrl: '',
-    price: '',
-    currency: 'USD', // Display uppercase in UI, but will be converted to lowercase on submit
-    link: '',
-    notes: '',
-    isDraft: false,
-  };
-
-  const [formData, setFormData] = useState<ItemFormData>(initialData || defaultInitialData);
+  const [formData, setFormData] = useState<ItemFormData>(initialData || DEFAULT_ITEM_FORM_DATA);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCurrencyOpen, setIsCurrencyOpen] = useState(false);
   const [currencySearch, setCurrencySearch] = useState('');
@@ -76,7 +77,7 @@ export default function ItemForm({
   const submitting = externalIsSubmitting !== undefined ? externalIsSubmitting : isSubmitting;
 
   // Track initial data for comparison
-  const initialDataRef = useRef<ItemFormData>(initialData || defaultInitialData);
+  const initialDataRef = useRef<ItemFormData>(initialData || DEFAULT_ITEM_FORM_DATA);
 
   // Close currency dropdown when clicking outside
   useEffect(() => {
@@ -113,7 +114,7 @@ export default function ItemForm({
         lastInitializedItemIdRef.current = currentItemId;
       }
     } else {
-      initialDataRef.current = defaultInitialData;
+      initialDataRef.current = DEFAULT_ITEM_FORM_DATA;
     }
   }, [initialData, itemId]);
 
@@ -177,8 +178,8 @@ export default function ItemForm({
 
       // Reset form only if not using external state
       if (!initialData) {
-        setFormData(defaultInitialData);
-        initialDataRef.current = defaultInitialData;
+        setFormData(DEFAULT_ITEM_FORM_DATA);
+        initialDataRef.current = DEFAULT_ITEM_FORM_DATA;
         lastInitializedItemIdRef.current = undefined;
       } else {
         // Update initial data ref to reflect successful submission
