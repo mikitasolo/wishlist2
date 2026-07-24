@@ -14,6 +14,7 @@ A modern wishlist app: create wishlists, share them, follow friends, and quietly
 - **Multi-currency** prices with live conversion to any currency you pick.
 - **Profiles** with avatar, bio, follower/following counts, and privacy controls.
 - **Magic-link sign-in** (no passwords), image uploads, responsive Apple-inspired UI, light/dark themes.
+- **Rich link previews** — dynamic Open Graph / Twitter images for shared wishlist and profile links (privacy-aware: private/archived lists and friends-only bios never leak into a preview).
 
 ## 🛠️ Tech stack
 

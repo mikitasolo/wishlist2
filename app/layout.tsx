@@ -9,7 +9,14 @@ import './globals.css';
 // Validate all environment variables at startup
 validateEnvVars();
 
+// Base URL so per-page og:image / canonical URLs resolve to absolute links for
+// crawlers. Falls back to Vercel's deployment URL, then localhost in dev.
+const baseUrl =
+  process.env.NEXTAUTH_URL ||
+  (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000');
+
 export const metadata: Metadata = {
+  metadataBase: new URL(baseUrl),
   title: 'Wishlist',
   description: 'Create and share your wishlist',
 };
