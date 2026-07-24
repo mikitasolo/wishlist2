@@ -215,11 +215,10 @@ export default function Home() {
             ))}
           </div>
 
-          <div className="relative mb-16 overflow-hidden rounded-3xl p-10 text-center text-white shadow-lg sm:p-14">
-            <div
-              className="absolute inset-0 -z-10"
-              style={{ background: 'linear-gradient(135deg, #5e5ce6, #8a5cff 55%, #ff5c8a)' }}
-            />
+          <div
+            className="mb-16 overflow-hidden rounded-3xl p-10 text-center text-white shadow-lg sm:p-14"
+            style={{ background: 'linear-gradient(135deg, #5e5ce6, #8a5cff 55%, #ff5c8a)' }}
+          >
             <h3 className="text-2xl font-semibold sm:text-3xl">No passwords. Just a magic link.</h3>
             <p className="mx-auto mt-3 max-w-xl text-white/85">
               Enter your email and we’ll send you a secure sign-in link. Your account is created
