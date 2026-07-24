@@ -4,20 +4,20 @@ Working instructions for AI agents (and humans) contributing to this repo. Keep 
 
 ## Project
 
-A wishlist app: **Next.js 16 (App Router), React 19, TypeScript, MongoDB/Mongoose, NextAuth v5 / Auth.js (database sessions), Tailwind v4, Vercel Blob**. Package manager is **pnpm** (via `packageManager` + corepack). Path alias `@/*` maps to the repo root. (Note: `README.md` is partly out of date on versions — trust the code and `package.json`.)
+A wishlist app: **Next.js 16 (App Router), React 19, TypeScript, MongoDB/Mongoose, NextAuth v5 / Auth.js (database sessions), Tailwind v4, Vercel Blob**. Package manager is **npm**. Path alias `@/*` maps to the repo root. (Note: `README.md` is partly out of date on versions — trust the code and `package.json`.)
 
 ## Commands
 
 ```bash
-pnpm install         # install deps (use --frozen-lockfile in CI)
-pnpm dev             # local dev server
-pnpm build           # production build — must pass before done
-pnpm exec tsc --noEmit  # typecheck — must pass before done
-pnpm test            # run the full Vitest suite (unit + component + API)
-pnpm test:e2e        # Playwright end-to-end suite
-pnpm test:watch      # watch mode
-pnpm test:cov        # coverage report
-pnpm format          # prettier
+npm install          # install deps (use `npm ci` in CI)
+npm run dev          # local dev server
+npm run build        # production build — must pass before done
+npx tsc --noEmit     # typecheck — must pass before done
+npm test             # run the full Vitest suite (unit + component + API)
+npm run test:e2e     # Playwright end-to-end suite
+npm run test:watch   # watch mode
+npm run test:cov     # coverage report
+npm run format       # prettier
 ```
 
 ## Testing policy (required)
@@ -28,7 +28,7 @@ pnpm format          # prettier
 - **New/changed interactive component behavior** (conditional rendering, state, optimistic updates) → a component test. Skip purely presentational markup.
 - **New/changed API route with authorization or business rules** → an API test (in-memory Mongo + mocked session).
 - **Every bug you fix** → a regression test tagged with a `// regression:` comment citing the cause, so it can't silently come back.
-- Before considering work done: `pnpm test` **and** `pnpm exec tsc --noEmit` **and** `pnpm build` all pass.
+- Before considering work done: `npm test` **and** `npx tsc --noEmit` **and** `npm run build` all pass.
 
 Chase meaningful coverage of logic/authorization, not a headline line-coverage number.
 
@@ -42,7 +42,7 @@ Chase meaningful coverage of logic/authorization, not a headline line-coverage n
   - Mock `@/lib/email` / `@/lib/utils/currencyRates` when a route would otherwise send mail or hit the rates API.
   - `connectTestDB` / `disconnectTestDB` / `clearTestDB` from `test/db.ts` in `beforeAll` / `afterAll` / `beforeEach`.
 - Vitest config injects dummy env vars (see `vitest.config.ts`) so import-time env reads don't throw. Vitest only picks up `test/**/*.test.{ts,tsx}`; Playwright specs live in `e2e/**`.
-- `e2e/**` — Playwright (`pnpm test:e2e`). `e2e/global-setup.ts` starts an ephemeral MongoDB, seeds a user + a database session (writing a `authjs.session-token` storageState so the `authed` project is logged in without magic-link), then builds and starts the app; `global-teardown` stops both. Specs are `*.public.spec.ts` (signed-out) or `*.authed.spec.ts` (signed-in). Keep E2E to a few resilient smoke tests per flow — unit/component/API tests carry the detailed coverage.
+- `e2e/**` — Playwright (`npm run test:e2e`). `e2e/global-setup.ts` starts an ephemeral MongoDB, seeds a user + a database session (writing a `authjs.session-token` storageState so the `authed` project is logged in without magic-link), then builds and starts the app; `global-teardown` stops both. Specs are `*.public.spec.ts` (signed-out) or `*.authed.spec.ts` (signed-in). Keep E2E to a few resilient smoke tests per flow — unit/component/API tests carry the detailed coverage.
 
 ## Domain invariants — do not regress
 
@@ -65,7 +65,7 @@ These are correctness/privacy rules the product depends on:
 - TypeScript is `strict`. Keep it green.
 - **Uploads are sanitized and owned.** Every image is re-encoded with `sharp` on upload (`app/api/upload`), which strips EXIF/metadata and bakes in orientation. Blobs live under `uploads/<userId>/` and count against a per-user quota. When an image field (`Item.imageUrl`, `User.image`, `Wishlist.bannerUrl`) is replaced or its record deleted, free the old blob with the helpers in `lib/utils/blob.ts` — but **only ever delete our own blobs** (`isOwnBlob`); a user-pasted external image URL must never be deleted.
 - **Never push to a remote unless the user explicitly asks.** Committing is fine when the user requests it, but `git push` is always gated on an explicit request — never push as a side effect of finishing work, even after committing.
-- **`pnpm-workspace.yaml` `overrides` keep `pnpm audit` clean** by forcing patched `nodemailer`, `postcss`, and `sharp` across the whole tree — past `next-auth`'s peer cap on nodemailer and over Next's bundled postcss/sharp. Don't remove them without re-running `pnpm audit`. Drop the `nodemailer` override once `next-auth` widens its peer to `^9` (then we're back in supported range). Native builds are allowlisted in the same file under `allowBuilds` (pnpm blocks dependency build scripts by default) — add to it if a new native dep (e.g. sharp/esbuild-like) needs its install script.
+- **The `overrides` in `package.json` keep `npm audit` clean** by forcing patched `nodemailer`, `postcss`, and `sharp` across the whole tree — past `next-auth`'s peer cap on nodemailer and over Next's bundled postcss/sharp. Don't remove them without re-running `npm audit`. Drop the `nodemailer` override once `next-auth` widens its peer to `^9` (then we're back in supported range).
 - **Rate limiting goes through `enforce()` / `checkRateLimit()` in `lib/rateLimit.ts`** — never hand-roll an in-memory counter (Vercel's per-request instances don't share it). Add a new surface by adding a `SPECS` entry (tokens/window/policy) and calling `enforce('<name>', key)` right after the auth/access check, returning its response if non-null. Key **authed** writes on `session.user.id`; key **public** reads on `` `ip:${clientIp(request.headers)}` ``; key the sign-in email path on **both** email and IP. Choose `fail-open` for user-facing reads/writes and `fail-closed` for cost-bearing email sends. Limiting is **disabled** when `UPSTASH_REDIS_REST_URL`/`_TOKEN` are unset (dev/CI/tests) — tests inject a fake via `__setRateLimiters`, they don't need Redis.
 - **Never print, commit, or expose secrets** (`.env`, `.env.prod`). Only perform authorized DB operations.
 

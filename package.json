@@ -18,6 +18,11 @@
     "format:check": "prettier --check \"**/*.{js,jsx,ts,tsx,json,css,md}\"",
     "vercel:env": "vercel env pull .env"
   },
+  "overrides": {
+    "nodemailer": "^9.0.3",
+    "postcss": "^8.5.22",
+    "sharp": "^0.35.3"
+  },
   "dependencies": {
     "@auth/mongodb-adapter": "^3.11.1",
     "@upstash/ratelimit": "^2.0.8",
@@ -55,6 +60,5 @@
     "tailwindcss": "^4.1.16",
     "typescript": "^5.9.3",
     "vitest": "^3.2.7"
-  },
-  "packageManager": "pnpm@11.17.0"
+  }
 }
