@@ -10,6 +10,7 @@ import Reservation from '@/models/Reservation';
 import { updateItemSchema, validateRequestBody } from '@/lib/validations';
 import { ensureCurrencyRatesUpToDate } from '@/lib/utils/currencyRates';
 import { deleteOwnBlob } from '@/lib/utils/blob';
+import { createNotification } from '@/lib/notifications';
 
 // PATCH /api/items/[id] - Update an item
 // Regular members can book/unbook items (only their own bookings)
@@ -104,6 +105,10 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       >
     > = {};
 
+    // If an owner/admin approves a proposed item below, remember the proposer
+    // so we can notify them after the update succeeds.
+    let approvedProposer: mongoose.Types.ObjectId | null = null;
+
     // Handle proposed items
     if (currentItem.status === 'proposed') {
       // Owner and admin can review proposed items (change status and clear proposedBy)
@@ -125,6 +130,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
           if (validatedData.status === 'draft' || validatedData.status === 'available') {
             updateData.status = validatedData.status;
             updateData.proposedBy = null; // Clear proposedBy when approving
+            if (currentItem.proposedBy) approvedProposer = currentItem.proposedBy;
           } else {
             return NextResponse.json(
               { success: false, error: 'Can only change proposed items to draft or available' },
@@ -264,6 +270,19 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     // Only our own uploads are touched; pasted external URLs are left alone.
     if (updateData.imageUrl !== undefined && currentItem.imageUrl !== updateData.imageUrl) {
       await deleteOwnBlob(currentItem.imageUrl);
+    }
+
+    // Let the proposer know their item was accepted into the list.
+    if (approvedProposer) {
+      await createNotification({
+        user: approvedProposer,
+        type: 'proposal_approved',
+        actorUsername: null,
+        wishlist: wishlist._id,
+        wishlistName: wishlist.name,
+        wishlistSlug: wishlist.slug ?? null,
+        itemName: item.name,
+      });
     }
 
     return NextResponse.json({ success: true, data: item }, { status: 200 });

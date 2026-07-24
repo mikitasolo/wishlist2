@@ -48,6 +48,7 @@ These are correctness/privacy rules the product depends on:
 - **Owners never see booking status.** For the wishlist owner, `booked` folds into `available`; never reveal who booked what.
 - **Never expose user emails to other users.** Invite/notification emails are used server-side only.
 - **Invites are registered-users-only** (by username). There is no email-invite path; invites match `invitedUser`.
+- **Proposals are anonymous to the owner.** Owners/admins never see who proposed an item (`proposedBy` is hidden in the items API), and this extends to notifications: the `proposal` notification carries `actorUsername: null` and renders as "Someone proposed…". Never surface the proposer to the owner anywhere.
 - **Gifting is decoupled from the live item.** Booking creates a durable `Reservation` (survives owner status changes and leave/kick). Marking a gift writes a permanent `GiftLog` and deletes the reservation but **does not modify the owner's item**. Owner status changes (`complete`/`draft`/reopen) clear `bookedBy` but must **not** delete reservations.
 - **Editing an item never changes its status.** Status changes are explicit actions (publish / move-to-draft); a content edit must not clobber a booking.
 - **Archived wishlists are owner-only** — 404 for everyone else, including direct links.

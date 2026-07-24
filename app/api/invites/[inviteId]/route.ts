@@ -4,6 +4,7 @@ import connectDB from '@/lib/mongodb';
 import Wishlist from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
 import WishlistInvite from '@/models/WishlistInvite';
+import { createNotification } from '@/lib/notifications';
 
 // PATCH /api/invites/[inviteId] - accept or decline a pending invite (invitee).
 export async function PATCH(
@@ -41,7 +42,7 @@ export async function PATCH(
     }
 
     // Accept: create the membership (unless already owner/member), then mark accepted.
-    const wishlist = await Wishlist.findById(invite.wishlist).select('owner slug');
+    const wishlist = await Wishlist.findById(invite.wishlist).select('owner slug name');
     if (!wishlist) {
       invite.status = 'declined';
       await invite.save();
@@ -67,6 +68,16 @@ export async function PATCH(
 
     invite.status = 'accepted';
     await invite.save();
+
+    // Let the inviter know their invitation was accepted.
+    await createNotification({
+      user: invite.invitedBy,
+      type: 'invite_accepted',
+      actorUsername: session.user.username ?? null,
+      wishlist: invite.wishlist,
+      wishlistName: wishlist.name,
+      wishlistSlug: wishlist.slug ?? null,
+    });
 
     return NextResponse.json(
       {

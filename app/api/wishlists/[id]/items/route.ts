@@ -8,6 +8,7 @@ import WishlistMember from '@/models/WishlistMember';
 import { createItemSchema, validateRequestBody } from '@/lib/validations';
 import { ensureCurrencyRatesUpToDate, convertToUsdCents } from '@/lib/utils/currencyRates';
 import { resolveWishlistId } from '@/lib/utils/wishlistSlug';
+import { createNotification } from '@/lib/notifications';
 
 // Helper function to check wishlist access
 async function checkWishlistAccess(
@@ -319,6 +320,20 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     const item = await Item.create(itemData);
+
+    // Tell the owner a new item was proposed — anonymously: owners must never
+    // learn who proposed an item (they can't see proposedBy elsewhere either).
+    if (item.status === 'proposed') {
+      await createNotification({
+        user: wishlist.owner,
+        type: 'proposal',
+        actorUsername: null,
+        wishlist: wishlist._id,
+        wishlistName: wishlist.name,
+        wishlistSlug: wishlist.slug ?? null,
+        itemName: item.name,
+      });
+    }
 
     return NextResponse.json({ success: true, data: item }, { status: 201 });
   } catch (error) {

@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth';
 import connectDB from '@/lib/mongodb';
 import User from '@/models/User';
 import Follow from '@/models/Follow';
+import { createNotification } from '@/lib/notifications';
 
 // POST /api/users/[id]/follow - follow a user
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -26,11 +27,20 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     // Idempotent: unique index prevents duplicates
-    await Follow.updateOne(
+    const result = await Follow.updateOne(
       { follower: session.user.id, following: targetId },
       { $setOnInsert: { follower: session.user.id, following: targetId } },
       { upsert: true }
     );
+
+    // Only notify on a genuinely new follow, not on a repeat/idempotent call.
+    if (result.upsertedCount > 0) {
+      await createNotification({
+        user: targetId,
+        type: 'follow',
+        actorUsername: session.user.username ?? null,
+      });
+    }
 
     return NextResponse.json({ success: true }, { status: 200 });
   } catch (error) {

@@ -6,6 +6,7 @@ import WishlistMember from '@/models/WishlistMember';
 import WishlistInvite from '@/models/WishlistInvite';
 import User from '@/models/User';
 import { sendWishlistInvitationEmail } from '@/lib/email';
+import { createNotification } from '@/lib/notifications';
 import { inviteMemberSchema, validateRequestBody } from '@/lib/validations';
 import { areFriends } from '@/lib/utils/friends';
 import { resolveWishlistId } from '@/lib/utils/wishlistSlug';
@@ -206,6 +207,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (invitedUser.email) {
       await sendWishlistInvitationEmail(invitedUser.email, wishlist.name, inviterName);
     }
+
+    // In-app notification alongside the email.
+    await createNotification({
+      user: invitedUser._id,
+      type: 'wishlist_invite',
+      actorUsername: session.user.username ?? null,
+      wishlist: id,
+      wishlistName: wishlist.name,
+    });
 
     return NextResponse.json(
       { success: true, data: { _id: invite._id, status: invite.status } },

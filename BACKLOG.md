@@ -2,6 +2,20 @@
 
 Ideas we've discussed and deliberately deferred. Not scheduled — captured here so the design thinking isn't lost.
 
+## Roles — needs rethinking (higher priority)
+
+The current role model (owner / admin / member per wishlist) has gaps to close before it's solid:
+
+- **A user must not be able to change their own role.** Guard the members-update route so you can't escalate (or demote) yourself; role changes are something others with authority do to you, never to yourself.
+- **Rethink "owner" toward co-ownership.** Today a wishlist has exactly one `owner` (`Wishlist.owner`) and it surfaces only in that one person's profile. A **family wishlist** should be able to have several owners and appear in each of their profiles. This likely means promoting ownership from a single `owner` field to a role in `WishlistMember` (e.g. an `owner` role, or an `owners[]` set), and updating every `wishlist.owner`-based check (authorization, "my wishlists", profile listing, booking privacy) accordingly.
+
+**Open questions**
+
+- Migration path from the single `owner` field to multi-owner without breaking existing authorization checks (there are many `wishlist.owner.toString() === userId` sites).
+- Does co-ownership change the booking-privacy invariant? All owners must still never see booking status on the shared list.
+- How do "featured" / profile placement work when a list has several owners — featured per-owner?
+- Interaction with the deferred user tags/groups idea (invite a whole "family" group as co-owners).
+
 ## Group gifting
 
 Let several gifters split one expensive item instead of one person booking it whole.
