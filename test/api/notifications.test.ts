@@ -52,11 +52,13 @@ describe('GET /api/notifications', () => {
       read: true,
     });
     // Force deterministic ordering (auto timestamps can collide within a ms).
-    await Notification.updateOne(
+    // Go through the raw driver — the timestamps plugin makes createdAt
+    // immutable, so a model-level $set is ignored.
+    await Notification.collection.updateOne(
       { _id: older._id },
       { $set: { createdAt: new Date('2026-01-01') } }
     );
-    await Notification.updateOne(
+    await Notification.collection.updateOne(
       { _id: newer._id },
       { $set: { createdAt: new Date('2026-06-01') } }
     );
