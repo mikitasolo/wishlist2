@@ -39,8 +39,27 @@ describe('GET /api/notifications', () => {
   });
 
   it('returns only the current user’s notifications, newest first, with an unread count', async () => {
-    await Notification.create({ user: alice, type: 'follow', actorUsername: 'bob', read: false });
-    await Notification.create({ user: alice, type: 'follow', actorUsername: 'cara', read: true });
+    const older = await Notification.create({
+      user: alice,
+      type: 'follow',
+      actorUsername: 'bob',
+      read: false,
+    });
+    const newer = await Notification.create({
+      user: alice,
+      type: 'follow',
+      actorUsername: 'cara',
+      read: true,
+    });
+    // Force deterministic ordering (auto timestamps can collide within a ms).
+    await Notification.updateOne(
+      { _id: older._id },
+      { $set: { createdAt: new Date('2026-01-01') } }
+    );
+    await Notification.updateOne(
+      { _id: newer._id },
+      { $set: { createdAt: new Date('2026-06-01') } }
+    );
     // Belongs to bob — must not leak to alice.
     await Notification.create({ user: bob, type: 'follow', actorUsername: 'alice' });
 

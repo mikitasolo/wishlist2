@@ -28,18 +28,32 @@ export function ogGradient(seed: string): { from: string; to: string; css: strin
 }
 
 /**
+ * Race a promise against a timeout. OG images are fetched by crawlers and must
+ * render within the serverless function's duration limit — a hung DB connect or
+ * a slow upstream image would otherwise turn into a 500. On timeout the promise
+ * rejects so callers fall back to a fast, static card.
+ */
+export function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error('og-timeout')), ms)),
+  ]);
+}
+
+/**
  * Fetch a remote image and return it as a data URI for embedding in an OG image
  * (Satori can render a data: URI reliably). Returns null on any problem — a bad
- * fetch, a non-image response, or an oversized file — so callers can fall back
- * to a gradient instead of failing the whole image render.
+ * fetch, a slow/aborted request, a non-image response, or an oversized file —
+ * so callers can fall back to a gradient instead of failing the whole render.
  */
 export async function fetchImageDataUri(
   url: string | null | undefined,
-  maxBytes = 6 * 1024 * 1024
+  maxBytes = 6 * 1024 * 1024,
+  timeoutMs = 2500
 ): Promise<string | null> {
   if (!url) return null;
   try {
-    const res = await fetch(url);
+    const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
     if (!res.ok) return null;
     const type = res.headers.get('content-type') || '';
     if (!type.startsWith('image/')) return null;

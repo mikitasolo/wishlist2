@@ -1,37 +1,55 @@
 import { ImageResponse } from 'next/og';
 import connectDB from '@/lib/mongodb';
 import User from '@/models/User';
-import { ogGradient, fetchImageDataUri } from '@/lib/utils/og';
+import { ogGradient, fetchImageDataUri, withTimeout } from '@/lib/utils/og';
 
 export const alt = 'Profile on Wishlist';
 export const size = { width: 1200, height: 630 };
 export const contentType = 'image/png';
 
+// Bound data work so a slow DB/avatar can't turn the crawler image into a 500.
+const DATA_BUDGET_MS = 4000;
+
+interface CardData {
+  handle: string;
+  tagline: string;
+  initial: string;
+  avatar: string | null;
+}
+
 export default async function Image({ params }: { params: Promise<{ username: string }> }) {
   const { username } = await params;
 
-  let handle = 'Wishlist';
-  let tagline = 'Create and share your wishlist';
-  let initial = 'W';
-  let avatar: string | null = null;
+  let data: CardData = {
+    handle: 'Wishlist',
+    tagline: 'Create and share your wishlist',
+    initial: 'W',
+    avatar: null,
+  };
 
-  try {
+  async function gather(): Promise<CardData> {
     await connectDB();
     const u = await User.findOne({ username }).select('username image bio privacy').lean();
-    if (u) {
-      handle = `@${u.username}`;
-      initial = (u.username?.[0] || 'W').toUpperCase();
+    if (!u) return data;
+    // Bio is hidden from non-friends when profileVisibility is 'friends';
+    // crawlers are never friends, so only surface it for open profiles.
+    const bioVisible = u.privacy?.profileVisibility !== 'friends';
+    return {
+      handle: `@${u.username}`,
+      initial: (u.username?.[0] || 'W').toUpperCase(),
       // Username and avatar are always public.
-      avatar = await fetchImageDataUri(u.image);
-      // Bio is hidden from non-friends when profileVisibility is 'friends';
-      // crawlers are never friends, so only surface it for open profiles.
-      const bioVisible = u.privacy?.profileVisibility !== 'friends';
-      tagline = bioVisible && u.bio ? u.bio : 'on Wishlist';
-    }
-  } catch {
-    // generic card on failure
+      avatar: await fetchImageDataUri(u.image),
+      tagline: bioVisible && u.bio ? u.bio : 'on Wishlist',
+    };
   }
 
+  try {
+    data = await withTimeout(gather(), DATA_BUDGET_MS);
+  } catch {
+    // Timeout or lookup failure → fast generic card.
+  }
+
+  const { handle, tagline, initial, avatar } = data;
   const g = ogGradient(username || handle);
 
   return new ImageResponse(

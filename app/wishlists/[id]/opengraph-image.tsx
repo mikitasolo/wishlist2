@@ -4,12 +4,23 @@ import Wishlist from '@/models/Wishlist';
 import Item from '@/models/Item';
 import User from '@/models/User';
 import { resolveWishlistId } from '@/lib/utils/wishlistSlug';
-import { ogGradient, fetchImageDataUri } from '@/lib/utils/og';
+import { ogGradient, fetchImageDataUri, withTimeout } from '@/lib/utils/og';
 
 // Runs on the Node runtime (default) because it touches Mongoose.
 export const alt = 'Wishlist';
 export const size = { width: 1200, height: 630 };
 export const contentType = 'image/png';
+
+// Bound all data work so a slow DB/image can never make the crawler-facing
+// image time out into a 500.
+const DATA_BUDGET_MS = 4000;
+
+interface CardData {
+  title: string;
+  subtitle: string;
+  seed: string;
+  cover: string | null;
+}
 
 export default async function Image({ params }: { params: Promise<{ id: string }> }) {
   const { id: idOrSlug } = await params;
@@ -17,12 +28,14 @@ export default async function Image({ params }: { params: Promise<{ id: string }
   // Privacy: crawlers are unauthenticated, so only public, non-archived lists
   // reveal their name / owner / item count / cover. Everything else gets a
   // generic card.
-  let title = 'A wishlist';
-  let subtitle = 'on Wishlist';
-  let seed = idOrSlug;
-  let cover: string | null = null;
+  let data: CardData = {
+    title: 'A wishlist',
+    subtitle: 'on Wishlist',
+    seed: idOrSlug,
+    cover: null,
+  };
 
-  try {
+  async function gather(): Promise<CardData> {
     await connectDB();
     const wid = await resolveWishlistId(idOrSlug);
     const w = wid
@@ -30,28 +43,32 @@ export default async function Image({ params }: { params: Promise<{ id: string }
           .select('name owner visibility isPublic archived bannerUrl')
           .lean()
       : null;
-    if (w) {
-      seed = w._id.toString();
-      const isPublic = (w.visibility ? w.visibility === 'everyone' : w.isPublic) && !w.archived;
-      if (isPublic) {
-        const [owner, count, coverUri] = await Promise.all([
-          User.findById(w.owner).select('username').lean(),
-          Item.countDocuments({ wishlist: w._id, status: { $nin: ['draft', 'proposed'] } }),
-          fetchImageDataUri(w.bannerUrl),
-        ]);
-        title = w.name;
-        cover = coverUri;
-        const items = `${count} item${count === 1 ? '' : 's'}`;
-        subtitle = owner?.username ? `@${owner.username}’s wishlist · ${items}` : items;
-      } else {
-        title = 'A private wishlist';
-      }
-    }
-  } catch {
-    // Fall back to the generic card on any lookup failure.
+    if (!w) return data;
+    const seed = w._id.toString();
+    const isPublic = (w.visibility ? w.visibility === 'everyone' : w.isPublic) && !w.archived;
+    if (!isPublic) return { ...data, seed, title: 'A private wishlist' };
+    const [owner, count, cover] = await Promise.all([
+      User.findById(w.owner).select('username').lean(),
+      Item.countDocuments({ wishlist: w._id, status: { $nin: ['draft', 'proposed'] } }),
+      fetchImageDataUri(w.bannerUrl),
+    ]);
+    const items = `${count} item${count === 1 ? '' : 's'}`;
+    return {
+      seed,
+      title: w.name,
+      subtitle: owner?.username ? `@${owner.username}’s wishlist · ${items}` : items,
+      cover,
+    };
   }
 
-  const g = ogGradient(seed);
+  try {
+    data = await withTimeout(gather(), DATA_BUDGET_MS);
+  } catch {
+    // Timeout or lookup failure → fast generic card.
+  }
+
+  const { title, subtitle, cover } = data;
+  const g = ogGradient(data.seed);
 
   const Brand = (
     <div style={{ display: 'flex', alignItems: 'center', gap: 16, fontSize: 34, fontWeight: 700 }}>

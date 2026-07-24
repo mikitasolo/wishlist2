@@ -14,20 +14,30 @@ export async function generateMetadata({
     await connectDB();
     const u = await User.findOne({ username }).select('username bio privacy').lean();
     if (u) {
-      const title = `@${u.username} on Wishlist`;
+      const title = `@${u.username}`;
       const bioVisible = u.privacy?.profileVisibility !== 'friends';
-      const description = bioVisible && u.bio ? u.bio : `See @${u.username}’s wishlists.`;
+      // Prefer the bio when it's public and substantial; otherwise a sensible
+      // branded default that still reads well as a share/SERP snippet.
+      const description =
+        bioVisible && u.bio && u.bio.trim().length >= 20
+          ? u.bio.trim()
+          : `See @${u.username}’s wishlists on Wishlist and follow along to reserve gifts without spoiling the surprise.`;
       return {
         title,
         description,
-        openGraph: { title, description, type: 'profile' },
-        twitter: { card: 'summary_large_image', title, description },
+        openGraph: {
+          siteName: 'Wishlist',
+          title: `@${u.username} on Wishlist`,
+          description,
+          type: 'profile',
+        },
+        twitter: { card: 'summary_large_image', title: `@${u.username} on Wishlist`, description },
       };
     }
   } catch {
     // fall through
   }
-  return { title: 'Wishlist', description: 'Create and share your wishlist' };
+  return {};
 }
 
 export default function ProfileLayout({ children }: { children: React.ReactNode }) {

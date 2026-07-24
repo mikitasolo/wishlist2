@@ -25,13 +25,12 @@ export async function generateMetadata({
       if (isPublic) {
         const owner = await User.findById(w.owner).select('username').lean();
         const title = w.name;
-        const description = owner?.username
-          ? `@${owner.username}’s wishlist on Wishlist`
-          : 'A wishlist on Wishlist';
+        const by = owner?.username ? ` by @${owner.username}` : '';
+        const description = `Browse “${w.name}”${by} on Wishlist and quietly reserve a gift without spoiling the surprise for them.`;
         return {
           title,
           description,
-          openGraph: { title, description, type: 'website' },
+          openGraph: { siteName: 'Wishlist', title, description, type: 'website' },
           twitter: { card: 'summary_large_image', title, description },
         };
       }
@@ -39,7 +38,7 @@ export async function generateMetadata({
   } catch {
     // fall through to the generic default
   }
-  return { title: 'Wishlist', description: 'Create and share your wishlist' };
+  return {};
 }
 
 export default function WishlistLayout({ children }: { children: React.ReactNode }) {
