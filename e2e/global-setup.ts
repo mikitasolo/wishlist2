@@ -107,8 +107,10 @@ export default async function globalSetup(_config: FullConfig) {
     MIGRATION_SECRET: 'e2e-migration',
   };
 
-  await run('npm', ['run', 'build'], env);
-  const server = spawn('npm', ['run', 'start', '--', '-p', String(E2E_PORT)], {
+  // Call the local next binary directly (package-manager agnostic).
+  const nextBin = path.join(process.cwd(), 'node_modules', '.bin', 'next');
+  await run(nextBin, ['build'], env);
+  const server = spawn(nextBin, ['start', '-p', String(E2E_PORT)], {
     env,
     stdio: 'inherit',
   });

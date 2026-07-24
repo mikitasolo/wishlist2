@@ -30,7 +30,8 @@ A modern wishlist app: create wishlists, share them, follow friends, and quietly
 
 ## 📋 Prerequisites
 
-- Node.js 18+
+- Node.js 20+
+- **pnpm** — the package manager (enable via `corepack enable`; the version is pinned in `package.json`'s `packageManager` field)
 - A MongoDB database (MongoDB Atlas recommended)
 - An SMTP provider for sending magic-link emails
 - A Vercel Blob store (for image uploads)
@@ -40,9 +41,10 @@ A modern wishlist app: create wishlists, share them, follow friends, and quietly
 ```bash
 git clone <your-repo-url>
 cd wishlist2
-npm install
+corepack enable              # makes the pinned pnpm available
+pnpm install
 cp .env.example .env.local   # then fill in the values
-npm run dev
+pnpm dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000). Sign in from `/auth/signin` with your email and click the magic link. On first sign-in an account (with an auto-generated username) is created — there is no separate admin/seed step; roles are per-wishlist (owner / admin / member).
@@ -70,14 +72,15 @@ Copy `.env.example` to `.env.local` and fill in:
 ## 📜 Scripts
 
 ```bash
-npm run dev          # dev server
-npm run build        # production build
-npm run start        # run the production build
-npm run lint         # eslint (flat config)
-npm test             # full Vitest suite (unit + component + API)
-npm run test:watch   # tests in watch mode
-npm run test:cov     # tests with coverage
-npm run format       # prettier --write
+pnpm dev             # dev server
+pnpm build           # production build
+pnpm start           # run the production build
+pnpm lint            # eslint (flat config)
+pnpm test            # full Vitest suite (unit + component + API)
+pnpm test:e2e        # Playwright end-to-end suite
+pnpm test:watch      # tests in watch mode
+pnpm test:cov        # tests with coverage
+pnpm format          # prettier --write
 ```
 
 ## 🧪 Testing
@@ -87,11 +90,11 @@ Tests live in `test/` and run on Vitest:
 - `test/unit/**` — pure logic and Zod schemas (currency, slugs, filters, validation, …)
 - `test/components/**` — React Testing Library (jsdom)
 - `test/api/**` — route handlers against an in-memory MongoDB with a mocked session
-- `e2e/**` — Playwright end-to-end smoke tests (`npm run test:e2e`). `global-setup` boots an ephemeral MongoDB, seeds a signed-in session, builds and starts the app — no external services needed. Public and signed-in flows run as separate projects.
+- `e2e/**` — Playwright end-to-end smoke tests (`pnpm test:e2e`). `global-setup` boots an ephemeral MongoDB, seeds a signed-in session, builds and starts the app — no external services needed. Public and signed-in flows run as separate projects.
 
 **Every change that touches logic should add or update tests, and every bug fix should add a regression test.** See [AGENTS.md](AGENTS.md) for the full policy, the API-test harness pattern, and the domain invariants that must not regress.
 
-CI runs on every push to `main` and every pull request: `.github/workflows/ci.yml` does lint, typecheck, the full Vitest suite, and a production build; `.github/workflows/e2e.yml` runs the Playwright suite (kept separate since it downloads a browser and builds the app). Coverage (`npm run test:cov`) enforces a non-regression threshold floor configured in `vitest.config.ts`.
+CI runs on every push to `main` and every pull request: `.github/workflows/ci.yml` does lint, typecheck, the full Vitest suite, and a production build; `.github/workflows/e2e.yml` runs the Playwright suite (kept separate since it downloads a browser and builds the app). Coverage (`pnpm test:cov`) enforces a non-regression threshold floor configured in `vitest.config.ts`.
 
 ## 📁 Project structure
 

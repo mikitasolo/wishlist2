@@ -17,21 +17,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: pnpm/action-setup@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
+          cache: pnpm
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Install Playwright browser
-        run: npx playwright install --with-deps chromium
+        run: pnpm exec playwright install --with-deps chromium
 
       - name: Run E2E tests
         # global-setup boots an ephemeral MongoDB (mongodb-memory-server) and the
         # app itself, so no external services or secrets are needed.
-        run: npm run test:e2e
+        run: pnpm test:e2e
 
       - name: Upload report on failure
         if: failure()
