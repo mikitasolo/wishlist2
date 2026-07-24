@@ -26,3 +26,27 @@ export function ogGradient(seed: string): { from: string; to: string; css: strin
   const [from, to] = OG_GRADIENTS[hash(seed || 'wishlist') % OG_GRADIENTS.length];
   return { from, to, css: `linear-gradient(135deg, ${from}, ${to})` };
 }
+
+/**
+ * Fetch a remote image and return it as a data URI for embedding in an OG image
+ * (Satori can render a data: URI reliably). Returns null on any problem — a bad
+ * fetch, a non-image response, or an oversized file — so callers can fall back
+ * to a gradient instead of failing the whole image render.
+ */
+export async function fetchImageDataUri(
+  url: string | null | undefined,
+  maxBytes = 6 * 1024 * 1024
+): Promise<string | null> {
+  if (!url) return null;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const type = res.headers.get('content-type') || '';
+    if (!type.startsWith('image/')) return null;
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.length === 0 || buf.length > maxBytes) return null;
+    return `data:${type};base64,${buf.toString('base64')}`;
+  } catch {
+    return null;
+  }
+}

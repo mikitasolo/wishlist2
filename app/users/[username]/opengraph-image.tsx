@@ -1,7 +1,7 @@
 import { ImageResponse } from 'next/og';
 import connectDB from '@/lib/mongodb';
 import User from '@/models/User';
-import { ogGradient } from '@/lib/utils/og';
+import { ogGradient, fetchImageDataUri } from '@/lib/utils/og';
 
 export const alt = 'Profile on Wishlist';
 export const size = { width: 1200, height: 630 };
@@ -13,6 +13,7 @@ export default async function Image({ params }: { params: Promise<{ username: st
   let handle = 'Wishlist';
   let tagline = 'Create and share your wishlist';
   let initial = 'W';
+  let avatar: string | null = null;
 
   try {
     await connectDB();
@@ -20,6 +21,8 @@ export default async function Image({ params }: { params: Promise<{ username: st
     if (u) {
       handle = `@${u.username}`;
       initial = (u.username?.[0] || 'W').toUpperCase();
+      // Username and avatar are always public.
+      avatar = await fetchImageDataUri(u.image);
       // Bio is hidden from non-friends when profileVisibility is 'friends';
       // crawlers are never friends, so only surface it for open profiles.
       const bioVisible = u.privacy?.profileVisibility !== 'friends';
@@ -52,6 +55,7 @@ export default async function Image({ params }: { params: Promise<{ username: st
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
+          overflow: 'hidden',
           width: 180,
           height: 180,
           borderRadius: 999,
@@ -61,7 +65,17 @@ export default async function Image({ params }: { params: Promise<{ username: st
           fontWeight: 800,
         }}
       >
-        {initial}
+        {avatar ? (
+          <img
+            src={avatar}
+            alt=""
+            width={180}
+            height={180}
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+          />
+        ) : (
+          initial
+        )}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
         <div style={{ fontSize: 68, fontWeight: 800 }}>{handle}</div>

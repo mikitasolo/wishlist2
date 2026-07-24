@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer';
+import sharp from 'sharp';
 import { getEnvVars } from './env';
 
 // Get validated environment variables
@@ -14,6 +15,51 @@ const transporter = nodemailer.createTransport({
     pass: env.SMTP_PASSWORD,
   },
 });
+
+// The brand logo, mirroring app/icon.svg. Email clients render SVG poorly and
+// block remote images by default, so we rasterize it to a PNG and embed it as
+// an inline (CID) attachment — that renders everywhere without a network fetch.
+const LOGO_SVG = `<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="g" x1="12" y1="8" x2="52" y2="56" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#8f8dff"/><stop offset="0.5" stop-color="#5e5ce6"/><stop offset="1" stop-color="#4644c0"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="56" height="56" rx="17" fill="url(#g)"/>
+  <rect x="18.5" y="27" width="27" height="19" rx="4.5" fill="#fff"/>
+  <rect x="29.4" y="27" width="5.2" height="19" fill="#5e5ce6"/>
+  <path d="M32 27 21.5 20.5 23.6 28.5Z" fill="#fff"/>
+  <path d="M32 27 42.5 20.5 40.4 28.5Z" fill="#fff"/>
+  <circle cx="32" cy="26.4" r="2.8" fill="#fff"/>
+</svg>`;
+
+const LOGO_CID = 'wishlist-logo';
+
+let logoPngPromise: Promise<Buffer> | null = null;
+function getLogoPng(): Promise<Buffer> {
+  if (!logoPngPromise) {
+    // 2x (96px) for retina; rendered at 48px in the header.
+    logoPngPromise = sharp(Buffer.from(LOGO_SVG))
+      .resize(96, 96)
+      .png()
+      .toBuffer()
+      .catch((err) => {
+        logoPngPromise = null; // don't cache the failure — retry next send
+        throw err;
+      });
+  }
+  return logoPngPromise;
+}
+
+/** Inline logo attachment for an email, or null if it can't be produced. */
+async function logoAttachment() {
+  try {
+    return { filename: 'logo.png', content: await getLogoPng(), cid: LOGO_CID };
+  } catch (err) {
+    console.error('Could not render email logo, sending without it:', err);
+    return null;
+  }
+}
 
 /**
  * Generate beautiful HTML email template
@@ -72,12 +118,9 @@ function getEmailTemplate(options: {
           }
           .brand-badge {
             display: inline-block;
-            width: 54px;
-            height: 54px;
-            line-height: 54px;
-            border-radius: 16px;
-            background-color: rgba(255,255,255,0.18);
-            font-size: 27px;
+            width: 48px;
+            height: 48px;
+            border-radius: 14px;
             margin-bottom: 12px;
           }
           .brand-word {
@@ -149,7 +192,7 @@ function getEmailTemplate(options: {
         <div class="email-wrapper">
           <div class="email-container">
             <div class="email-header">
-              <span class="brand-badge">🎁</span>
+              <img src="cid:wishlist-logo" width="48" height="48" alt="Wishlist" class="brand-badge" />
               <p class="brand-word">${siteTitle}</p>
             </div>
 
@@ -201,12 +244,14 @@ export async function sendMagicLinkEmail(email: string, magicLink: string) {
     linkUrl: magicLink,
   });
 
+  const logo = await logoAttachment();
   const mailOptions = {
     from: env.EMAIL_FROM,
     to: email,
     subject: `Sign in to ${siteTitle}`,
     html,
     text: `Sign in to ${siteTitle}\n\nHello!\n\nClick the link below to sign in to your ${siteTitle} account:\n${magicLink}\n\nThis link will expire in 24 hours.\n\nIf you didn't request this email, you can safely ignore it.`,
+    attachments: logo ? [logo] : [],
   };
 
   try {
@@ -234,12 +279,14 @@ export async function sendInvitationEmail(email: string, invitedBy: string) {
     footerText: `Sign in with <strong>${email}</strong>`,
   });
 
+  const logo = await logoAttachment();
   const mailOptions = {
     from: env.EMAIL_FROM,
     to: email,
     subject: `You've been invited to ${siteTitle}!`,
     html,
     text: `You've been invited!\n\n${invitedBy} has invited you to join ${siteTitle}.\n\nSign in at: ${signInUrl}\n\nWhen you sign in, use this email address: ${email}`,
+    attachments: logo ? [logo] : [],
   };
 
   try {
@@ -272,12 +319,14 @@ export async function sendWishlistInvitationEmail(
     footerText: `Invitation sent to <strong>${email}</strong>`,
   });
 
+  const logo = await logoAttachment();
   const mailOptions = {
     from: env.EMAIL_FROM,
     to: email,
     subject: `You've been invited to ${wishlistName} on ${siteTitle}!`,
     html,
     text: `Wishlist Invitation\n\n${invitedBy} has invited you to join their wishlist: ${wishlistName}.\n\nSign in to your account to accept or decline it: ${invitesUrl}`,
+    attachments: logo ? [logo] : [],
   };
 
   try {
