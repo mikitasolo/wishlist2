@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { auth } from '@/lib/auth';
 import connectDB from '@/lib/mongodb';
 import WishlistInvite from '@/models/WishlistInvite';
 import { resolveWishlistId } from '@/lib/utils/wishlistSlug';
@@ -12,7 +11,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string; inviteId: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
     const { id: idParam, inviteId } = await params;
     const id = await resolveWishlistId(idParam);
     if (!id) {

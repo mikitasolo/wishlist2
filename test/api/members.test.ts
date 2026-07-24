@@ -3,20 +3,19 @@ import { NextRequest } from 'next/server';
 import { connectTestDB, disconnectTestDB, clearTestDB } from '../db';
 
 vi.mock('@/lib/mongodb', () => ({ default: vi.fn().mockResolvedValue(undefined) }));
-vi.mock('@/lib/auth', () => ({ authOptions: {} }));
-vi.mock('next-auth', () => ({ getServerSession: vi.fn() }));
+vi.mock('@/lib/auth', () => ({ auth: vi.fn() }));
 const sendEmail = vi.fn();
 vi.mock('@/lib/email', () => ({
   sendWishlistInvitationEmail: (...a: unknown[]) => sendEmail(...a),
 }));
 
-import { getServerSession } from 'next-auth';
+import { auth } from '@/lib/auth';
 import { POST } from '@/app/api/wishlists/[id]/members/route';
 import User from '@/models/User';
 import Wishlist from '@/models/Wishlist';
 import WishlistInvite from '@/models/WishlistInvite';
 
-const session = vi.mocked(getServerSession);
+const session = vi.mocked(auth);
 
 let ownerId: string;
 let wishlistId: string;

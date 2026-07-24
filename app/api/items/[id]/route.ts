@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { auth } from '@/lib/auth';
 import connectDB from '@/lib/mongodb';
 import mongoose from 'mongoose';
 import Item, { IItem } from '@/models/Item';
@@ -17,7 +16,7 @@ import { deleteOwnBlob } from '@/lib/utils/blob';
 // Wishlist owner can update all fields
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
 
     // Check if user is authenticated
     if (!session?.user) {
@@ -282,7 +281,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
 
     if (!session?.user) {
       return NextResponse.json(

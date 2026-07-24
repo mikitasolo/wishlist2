@@ -3,17 +3,16 @@ import { NextRequest } from 'next/server';
 import { connectTestDB, disconnectTestDB, clearTestDB } from '../db';
 
 vi.mock('@/lib/mongodb', () => ({ default: vi.fn().mockResolvedValue(undefined) }));
-vi.mock('@/lib/auth', () => ({ authOptions: {} }));
-vi.mock('next-auth', () => ({ getServerSession: vi.fn() }));
+vi.mock('@/lib/auth', () => ({ auth: vi.fn() }));
 
-import { getServerSession } from 'next-auth';
+import { auth } from '@/lib/auth';
 import { GET as BY_USERNAME } from '@/app/api/users/by-username/[username]/route';
 import { GET as USER_WISHLISTS } from '@/app/api/users/[id]/wishlists/route';
 import User from '@/models/User';
 import Follow from '@/models/Follow';
 import Wishlist from '@/models/Wishlist';
 
-const session = vi.mocked(getServerSession);
+const session = vi.mocked(auth);
 
 let targetId: string;
 let friendId: string;

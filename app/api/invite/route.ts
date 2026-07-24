@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { auth } from '@/lib/auth';
 import connectDB from '@/lib/mongodb';
 import User from '@/models/User';
 import Session from '@/models/Session';
@@ -9,7 +8,7 @@ import { sendInvitationEmail } from '@/lib/email';
 // POST /api/invite - Invite a new user
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
 
     // Check if user is authenticated
     if (!session?.user) {
@@ -52,7 +51,7 @@ export async function POST(request: NextRequest) {
 // GET /api/invite - Get all invited users
 export async function GET() {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
 
     // Check if user is authenticated
     if (!session?.user) {
@@ -75,7 +74,7 @@ export async function GET() {
 // PATCH /api/invite - Update user (archive/unarchive)
 export async function PATCH(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
 
     // Check if user is authenticated
     if (!session?.user) {

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { auth } from '@/lib/auth';
 import connectDB from '@/lib/mongodb';
 import User from '@/models/User';
 import Follow from '@/models/Follow';
@@ -23,7 +22,7 @@ export async function GET(
       return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
     }
 
-    const session = await getServerSession(authOptions);
+    const session = await auth();
 
     const [followerCount, followingCount] = await Promise.all([
       Follow.countDocuments({ following: user._id }),

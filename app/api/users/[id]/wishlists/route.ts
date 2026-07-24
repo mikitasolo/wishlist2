@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { auth } from '@/lib/auth';
 import connectDB from '@/lib/mongodb';
 import Wishlist from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
@@ -13,7 +12,7 @@ import { areFriends } from '@/lib/utils/friends';
 // Returns: public wishlists + wishlists the current user has access to
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
     const { id: userId } = await params;
 
     await connectDB();

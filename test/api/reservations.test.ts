@@ -3,10 +3,9 @@ import { NextRequest } from 'next/server';
 import { connectTestDB, disconnectTestDB, clearTestDB } from '../db';
 
 vi.mock('@/lib/mongodb', () => ({ default: vi.fn().mockResolvedValue(undefined) }));
-vi.mock('@/lib/auth', () => ({ authOptions: {} }));
-vi.mock('next-auth', () => ({ getServerSession: vi.fn() }));
+vi.mock('@/lib/auth', () => ({ auth: vi.fn() }));
 
-import { getServerSession } from 'next-auth';
+import { auth } from '@/lib/auth';
 import { POST as GIFT } from '@/app/api/reservations/[id]/gift/route';
 import { DELETE as DISMISS } from '@/app/api/reservations/[id]/route';
 import User from '@/models/User';
@@ -14,7 +13,7 @@ import Item from '@/models/Item';
 import Reservation from '@/models/Reservation';
 import GiftLog from '@/models/GiftLog';
 
-const session = vi.mocked(getServerSession);
+const session = vi.mocked(auth);
 
 let gifterId: string;
 let ownerId: string;

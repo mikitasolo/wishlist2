@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
 import { put } from '@vercel/blob';
 import sharp from 'sharp';
-import { authOptions } from '@/lib/auth';
+import { auth } from '@/lib/auth';
 import { getUserUploadBytes, USER_UPLOAD_QUOTA_BYTES } from '@/lib/utils/blob';
 
 // Max upload size. Vercel serverless functions cap the request body at ~4.5MB,
@@ -53,7 +52,7 @@ async function sanitizeImage(
 // POST /api/upload - upload an image to Vercel Blob, returns its public URL.
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
     if (!session?.user) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { auth } from '@/lib/auth';
 import connectDB from '@/lib/mongodb';
 import Wishlist from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
@@ -12,7 +11,7 @@ export async function PATCH(
   { params }: { params: Promise<{ inviteId: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
     if (!session?.user) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }

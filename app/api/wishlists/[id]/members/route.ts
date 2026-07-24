@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { auth } from '@/lib/auth';
 import connectDB from '@/lib/mongodb';
 import Wishlist from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
@@ -15,7 +14,7 @@ import { getAdminOrOwnerAccess } from '@/lib/utils/wishlistAccess';
 // GET /api/wishlists/[id]/members - Get all members of a wishlist
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
     const { id: idParam } = await params;
     const id = await resolveWishlistId(idParam);
     if (!id) {
@@ -105,7 +104,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 // POST /api/wishlists/[id]/members - Invite a user to a wishlist
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
     const { id: idParam } = await params;
     const id = await resolveWishlistId(idParam);
     if (!id) {

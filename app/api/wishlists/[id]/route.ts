@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { auth } from '@/lib/auth';
 import connectDB from '@/lib/mongodb';
 import Wishlist, { IWishlist } from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
@@ -19,7 +18,7 @@ import { getAdminOrOwnerAccess } from '@/lib/utils/wishlistAccess';
 // GET /api/wishlists/[id] - Get a specific wishlist
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
     const { id: idParam } = await params;
 
     await connectDB();
@@ -111,7 +110,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 // PATCH /api/wishlists/[id] - Update a wishlist (owner only)
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
 
     if (!session?.user) {
       return NextResponse.json(
@@ -236,7 +235,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
 
     if (!session?.user) {
       return NextResponse.json(

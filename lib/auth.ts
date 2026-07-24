@@ -1,5 +1,5 @@
-import { NextAuthOptions } from 'next-auth';
-import EmailProvider from 'next-auth/providers/email';
+import NextAuth from 'next-auth';
+import Nodemailer from 'next-auth/providers/nodemailer';
 import connectDB from './mongodb';
 import User from '@/models/User';
 import { sendMagicLinkEmail } from './email';
@@ -10,11 +10,27 @@ import { generateUniqueUsername } from './utils/username';
 // Get validated environment variables
 const env = getEnvVars();
 
-export const authOptions: NextAuthOptions = {
+// NextAuth v5 (Auth.js): a single config exports the route `handlers`, the
+// server-side `auth()` helper (replaces v4's getServerSession(authOptions)),
+// and the `signIn`/`signOut` server actions.
+export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter,
+  // Required outside Vercel's auto-detected environment (local, CI, self-host):
+  // trust the incoming Host header when deriving callback URLs.
+  trustHost: true,
   providers: [
-    EmailProvider({
-      server: '', // We'll use custom sendVerificationRequest
+    // v4's EmailProvider is `Nodemailer` in v5. Our custom sendVerificationRequest
+    // sends the mail via lib/email, so this transport is never actually dialed —
+    // but v5 validates that `server` is present at init, so we point it at the
+    // real SMTP config from env (harmless, and correct if the custom sender is
+    // ever removed).
+    Nodemailer({
+      server: {
+        host: env.SMTP_HOST,
+        port: Number(env.SMTP_PORT),
+        secure: env.SMTP_SECURE === 'true',
+        auth: { user: env.SMTP_USER, pass: env.SMTP_PASSWORD },
+      },
       from: env.EMAIL_FROM,
       async sendVerificationRequest({ identifier: email, url }) {
         await sendMagicLinkEmail(email, url);
@@ -46,7 +62,7 @@ export const authOptions: NextAuthOptions = {
       }
     },
     async session({ session, user }) {
-      if (session.user && user.email) {
+      if (session.user && user?.email) {
         try {
           await connectDB();
           const dbUser = await User.findOne({ email: user.email.toLowerCase() });
@@ -83,4 +99,4 @@ export const authOptions: NextAuthOptions = {
     strategy: 'database',
   },
   secret: env.NEXTAUTH_SECRET,
-};
+});

@@ -3,10 +3,9 @@ import { NextRequest } from 'next/server';
 import { connectTestDB, disconnectTestDB, clearTestDB } from '../db';
 
 vi.mock('@/lib/mongodb', () => ({ default: vi.fn().mockResolvedValue(undefined) }));
-vi.mock('@/lib/auth', () => ({ authOptions: {} }));
-vi.mock('next-auth', () => ({ getServerSession: vi.fn() }));
+vi.mock('@/lib/auth', () => ({ auth: vi.fn() }));
 
-import { getServerSession } from 'next-auth';
+import { auth } from '@/lib/auth';
 import { DELETE } from '@/app/api/wishlists/[id]/members/me/route';
 import User from '@/models/User';
 import Wishlist from '@/models/Wishlist';
@@ -14,7 +13,7 @@ import WishlistMember from '@/models/WishlistMember';
 import Item from '@/models/Item';
 import Reservation from '@/models/Reservation';
 
-const session = vi.mocked(getServerSession);
+const session = vi.mocked(auth);
 
 let memberId: string;
 let wishlistId: string;

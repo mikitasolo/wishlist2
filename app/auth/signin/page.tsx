@@ -19,7 +19,7 @@ function SignInForm() {
     setIsLoading(true);
 
     try {
-      await signIn('email', {
+      await signIn('nodemailer', {
         email,
         redirect: false,
         callbackUrl,

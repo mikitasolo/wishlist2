@@ -4,7 +4,7 @@ Working instructions for AI agents (and humans) contributing to this repo. Keep 
 
 ## Project
 
-A wishlist app: **Next.js 16 (App Router), React 19, TypeScript, MongoDB/Mongoose, next-auth v4 (database sessions), Tailwind v4, Vercel Blob**. Path alias `@/*` maps to the repo root. (Note: `README.md` is partly out of date on versions — trust the code and `package.json`.)
+A wishlist app: **Next.js 16 (App Router), React 19, TypeScript, MongoDB/Mongoose, NextAuth v5 / Auth.js (database sessions), Tailwind v4, Vercel Blob**. Path alias `@/*` maps to the repo root. (Note: `README.md` is partly out of date on versions — trust the code and `package.json`.)
 
 ## Commands
 
@@ -36,7 +36,7 @@ Chase meaningful coverage of logic/authorization, not a headline line-coverage n
 - `test/components/**` — React Testing Library; **add `// @vitest-environment jsdom`** as the first line.
 - `test/api/**` — route handlers against a real in-memory MongoDB. Pattern:
   - `vi.mock('@/lib/mongodb', ...)` → no-op `connectDB` (the shared mongoose connection from `test/db.ts` backs the models).
-  - `vi.mock('@/lib/auth', () => ({ authOptions: {} }))` and `vi.mock('next-auth', () => ({ getServerSession: vi.fn() }))` to control the session.
+  - `vi.mock('@/lib/auth', () => ({ auth: vi.fn() }))`, then `const session = vi.mocked(auth)` to control the session (NextAuth v5 — routes call `auth()`, not `getServerSession`).
   - Mock `@/lib/email` / `@/lib/utils/currencyRates` when a route would otherwise send mail or hit the rates API.
   - `connectTestDB` / `disconnectTestDB` / `clearTestDB` from `test/db.ts` in `beforeAll` / `afterAll` / `beforeEach`.
 - Vitest config injects dummy env vars (see `vitest.config.ts`) so import-time env reads don't throw.

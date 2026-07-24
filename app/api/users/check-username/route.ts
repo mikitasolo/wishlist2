@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { auth } from '@/lib/auth';
 import connectDB from '@/lib/mongodb';
 import User from '@/models/User';
 import { USERNAME_REGEX } from '@/lib/validations';
@@ -8,7 +7,7 @@ import { isReservedUsername } from '@/lib/utils/username';
 
 // GET /api/users/check-username?username=... - live availability check
 export async function GET(request: NextRequest) {
-  const session = await getServerSession(authOptions);
+  const session = await auth();
   if (!session?.user) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   }

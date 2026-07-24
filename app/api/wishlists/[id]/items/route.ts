@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { auth } from '@/lib/auth';
 import connectDB from '@/lib/mongodb';
 import mongoose from 'mongoose';
 import Item from '@/models/Item';
@@ -50,7 +49,7 @@ async function checkWishlistAccess(
 // Admin and public users don't see bookedBy to avoid spoiling surprises
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
     const { id: idParam } = await params;
     const wishlistId = await resolveWishlistId(idParam);
     if (!wishlistId) {
@@ -196,7 +195,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 // Members can only create items with 'proposed' status
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
 
     if (!session?.user) {
       return NextResponse.json(

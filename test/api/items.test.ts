@@ -5,14 +5,13 @@ import { connectTestDB, disconnectTestDB, clearTestDB } from '../db';
 // connectDB becomes a no-op; the in-memory mongoose connection backs the models.
 vi.mock('@/lib/mongodb', () => ({ default: vi.fn().mockResolvedValue(undefined) }));
 // Avoid pulling env/adapter/nodemailer via the real auth module.
-vi.mock('@/lib/auth', () => ({ authOptions: {} }));
-vi.mock('next-auth', () => ({ getServerSession: vi.fn() }));
+vi.mock('@/lib/auth', () => ({ auth: vi.fn() }));
 // Don't hit the DB/external API for currency rates.
 vi.mock('@/lib/utils/currencyRates', () => ({
   ensureCurrencyRatesUpToDate: vi.fn().mockResolvedValue({ rates: new Map([['usd', 1]]) }),
 }));
 
-import { getServerSession } from 'next-auth';
+import { auth } from '@/lib/auth';
 import { PATCH } from '@/app/api/items/[id]/route';
 import User from '@/models/User';
 import Wishlist from '@/models/Wishlist';
@@ -20,7 +19,7 @@ import WishlistMember from '@/models/WishlistMember';
 import Item from '@/models/Item';
 import Reservation from '@/models/Reservation';
 
-const session = vi.mocked(getServerSession);
+const session = vi.mocked(auth);
 
 function patch(id: string, body: unknown) {
   const req = new NextRequest('http://localhost/api/items/' + id, {

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { auth } from '@/lib/auth';
 import connectDB from '@/lib/mongodb';
 import Wishlist from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
@@ -40,7 +39,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string; memberId: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
     const { id: idParam, memberId } = await params;
     const id = await resolveWishlistId(idParam);
     if (!id) {
@@ -123,7 +122,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string; memberId: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
     const { id: idParam, memberId } = await params;
     const id = await resolveWishlistId(idParam);
     if (!id) {

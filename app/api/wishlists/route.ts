@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { auth } from '@/lib/auth';
 import connectDB from '@/lib/mongodb';
 import Wishlist from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
@@ -13,7 +12,7 @@ import { createWishlistSchema, validateRequestBody } from '@/lib/validations';
 // GET /api/wishlists - Get all wishlists user has access to
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
 
     await connectDB();
 
@@ -122,7 +121,7 @@ export async function GET(request: NextRequest) {
 // POST /api/wishlists - Create a new wishlist
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
 
     if (!session?.user) {
       return NextResponse.json(
