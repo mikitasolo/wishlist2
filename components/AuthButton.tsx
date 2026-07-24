@@ -91,7 +91,7 @@ export default function AuthButton() {
           aria-haspopup="menu"
           aria-expanded={open}
         >
-          <span className="relative">
+          <span className="relative inline-flex">
             <Avatar name={displayName} src={image} size="sm" />
             {hasInvites && (
               <span

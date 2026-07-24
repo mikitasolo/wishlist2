@@ -218,11 +218,33 @@ export default function MyItemsPage() {
         <p className="mt-1 text-muted-foreground">Everything across the wishlists you own.</p>
 
         {loading ? (
-          <div className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-            {Array.from({ length: 10 }).map((_, i) => (
-              <div key={i} className="skeleton h-56 rounded-2xl" />
-            ))}
-          </div>
+          <>
+            {/* Stat cards row */}
+            <div
+              className="mt-6 grid gap-3 sm:gap-4"
+              style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(8rem, 1fr))' }}
+            >
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="skeleton h-[70px] rounded-xl sm:h-[78px]" />
+              ))}
+            </div>
+            {/* Item grid — square image + small body, matching the real cards */}
+            <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+              {Array.from({ length: 10 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="flex flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-sm"
+                >
+                  <div className="skeleton aspect-square w-full" />
+                  <div className="flex flex-col gap-2 p-3">
+                    <div className="skeleton h-4 w-4/5 rounded-md" />
+                    <div className="skeleton h-3 w-1/3 rounded-md" />
+                    <div className="skeleton mt-1 h-3 w-1/2 rounded-md" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
         ) : items.length === 0 ? (
           <div className="mt-8 flex flex-col items-center rounded-3xl border border-dashed border-border-strong py-20 text-center">
             <span className="mb-5 inline-flex h-16 w-16 items-center justify-center rounded-3xl bg-primary-500/12 text-accent dark:text-primary-300">

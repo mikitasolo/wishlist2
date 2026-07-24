@@ -141,11 +141,17 @@ export default function UserProfile() {
       <div className="min-h-screen">
         <AppHeader actions={<AuthButton />} />
         <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
-          <div className="mb-8 flex items-center gap-4">
-            <div className="skeleton h-16 w-16 rounded-full" />
-            <div className="space-y-2">
-              <div className="skeleton h-6 w-56 rounded-md" />
-              <div className="skeleton h-4 w-32 rounded-md" />
+          <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-4">
+              <div className="skeleton h-16 w-16 rounded-full" />
+              <div className="space-y-2">
+                <div className="skeleton h-7 w-48 rounded-md" />
+                <div className="skeleton h-4 w-40 rounded-md" />
+              </div>
+            </div>
+            <div className="flex flex-shrink-0 items-center gap-2">
+              <div className="skeleton h-10 w-24 rounded-full" />
+              <div className="skeleton h-10 w-28 rounded-full" />
             </div>
           </div>
           <SkeletonGrid count={8} variant="wishlist" />

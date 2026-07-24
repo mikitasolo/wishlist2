@@ -294,10 +294,11 @@ export default function Home() {
 
         {loading ? (
           <>
-            {/* Bento skeleton */}
+            {/* Bento skeleton: featured card (col-span-2, row-span-2) + 4 stat tiles */}
             <div className="mb-12 grid grid-cols-2 gap-4 lg:grid-cols-4">
               <div className="skeleton col-span-2 min-h-[260px] rounded-3xl lg:row-span-2 lg:min-h-[300px]" />
-              <div className="skeleton col-span-2 h-[142px] rounded-3xl" />
+              <div className="skeleton h-[142px] rounded-3xl" />
+              <div className="skeleton h-[142px] rounded-3xl" />
               <div className="skeleton h-[142px] rounded-3xl" />
               <div className="skeleton h-[142px] rounded-3xl" />
             </div>

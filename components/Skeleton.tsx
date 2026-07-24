@@ -7,34 +7,41 @@ export function Skeleton({ className = '' }: { className?: string }) {
   return <div className={`skeleton rounded-md ${className}`} />;
 }
 
-/** Card skeleton matching WishlistCard proportions. */
+/** Card skeleton matching WishlistCard (cover band on top, then body). */
 export function WishlistCardSkeleton() {
   return (
-    <div className="rounded-2xl border border-border bg-surface p-5 shadow-sm">
-      <div className="mb-4 flex items-center gap-3">
-        <Skeleton className="h-10 w-10 rounded-full" />
-        <div className="flex-1 space-y-2">
-          <Skeleton className="h-4 w-3/4" />
-          <Skeleton className="h-3 w-1/2" />
+    <div className="flex flex-col overflow-hidden rounded-3xl border border-border bg-surface shadow-md">
+      {/* Cover band (16:9) */}
+      <div className="skeleton aspect-[16/9] w-full" />
+      {/* Body */}
+      <div className="flex flex-1 flex-col p-4 sm:p-5">
+        <Skeleton className="h-[18px] w-3/4" />
+        <Skeleton className="mt-2 h-3 w-full" />
+        <Skeleton className="mt-1.5 h-3 w-2/3" />
+        <div className="mt-4 flex items-center justify-between pt-3">
+          <div className="flex items-center gap-2">
+            <Skeleton className="h-6 w-6 rounded-full" />
+            <Skeleton className="h-3 w-20" />
+          </div>
+          <Skeleton className="h-3 w-12" />
         </div>
-      </div>
-      <Skeleton className="h-3 w-full" />
-      <div className="mt-4 flex items-center justify-between">
-        <Skeleton className="h-6 w-20 rounded-full" />
-        <Skeleton className="h-4 w-16" />
       </div>
     </div>
   );
 }
 
-/** Card skeleton matching WishlistItem proportions. */
+/** Card skeleton matching WishlistItem (square image, title, price, actions). */
 export function ItemCardSkeleton() {
   return (
-    <div className="flex flex-col rounded-2xl border border-border bg-surface p-4 shadow-sm sm:p-5">
-      <Skeleton className="mb-4 h-64 w-full rounded-xl" />
-      <Skeleton className="mb-3 h-5 w-4/5" />
-      <Skeleton className="mb-4 h-6 w-24" />
-      <Skeleton className="h-10 w-full rounded-lg" />
+    <div className="flex flex-col rounded-3xl border border-border bg-surface p-4 shadow-md sm:p-5">
+      <Skeleton className="mb-4 aspect-square w-full rounded-2xl" />
+      <Skeleton className="mb-2 h-5 w-4/5" />
+      <Skeleton className="mb-3 h-6 w-24" />
+      <div className="mb-3 flex gap-2">
+        <Skeleton className="h-9 flex-1 rounded-xl" />
+        <Skeleton className="h-9 flex-1 rounded-xl" />
+      </div>
+      <Skeleton className="h-9 w-full rounded-xl" />
     </div>
   );
 }

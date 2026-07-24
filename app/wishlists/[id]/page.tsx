@@ -351,6 +351,11 @@ export default function WishlistDetail() {
     }
   }, [wishlistId, isOwner, isAdmin, manageOpen, refreshInvites]);
 
+  // Timestamp of the most recent local mutation. A background poll whose read
+  // was in flight across a mutation is stale and must be discarded, otherwise it
+  // clobbers the optimistic state and the UI flickers.
+  const lastMutationAt = useRef(0);
+
   const fetchItems = useCallback(
     async (silent = false) => {
       if (!wishlistId) return;
@@ -359,8 +364,12 @@ export default function WishlistDetail() {
         setLoadingItems(true);
       }
 
+      const startedAt = Date.now();
       try {
         const data = await fetchItemsHook(wishlistId);
+        // Drop a poll result that raced with a mutation (started before the
+        // mutation settled) so it can't overwrite fresher local state.
+        if (silent && lastMutationAt.current > startedAt) return;
         setItems(data);
       } catch (error) {
         console.error('Error fetching items:', error);
@@ -416,20 +425,11 @@ export default function WishlistDetail() {
     }
   );
 
-  const updateItemHook = useUpdateItem(
-    () => {
-      // Refetch items to get properly sorted and enriched list with priceInUsdCents
-      fetchItems(true);
-    },
-    (error) => {
-      fetchItems(true);
-      showToast(error, 'error');
-    }
-  );
-
-  // Update hook dependencies when fetchItems changes
-  // Note: updateItemHook is created by useUpdateItem hook, so we can't directly add dependencies
-  // But fetchItems is stable (useCallback), so this should work fine
+  // No success refetch here — handleUpdateItem merges the server response into
+  // the single item, avoiding a full-list refetch that races with polling.
+  const updateItemHook = useUpdateItem(undefined, (error) => {
+    showToast(error, 'error');
+  });
 
   const deleteItemHook = useDeleteItem(
     () => {
@@ -459,6 +459,8 @@ export default function WishlistDetail() {
 
   const handleUpdateItem = useCallback(
     async (id: string, updates: Partial<ApiItem>) => {
+      lastMutationAt.current = Date.now();
+      // Optimistic: reflect the change immediately.
       setItems((prevItems) =>
         prevItems.map((item) => {
           if (item._id !== id) return item;
@@ -476,9 +478,23 @@ export default function WishlistDetail() {
           return optimistic;
         })
       );
-      await updateItemHook(id, updates);
+
+      const updated = await updateItemHook(id, updates);
+      // Mark the settle time so any poll that read across this mutation is dropped.
+      lastMutationAt.current = Date.now();
+
+      if (updated) {
+        // Merge authoritative server fields into just this item (keeps enriched
+        // fields like priceInUsdCents that the PATCH response doesn't include).
+        setItems((prevItems) =>
+          prevItems.map((item) => (item._id === id ? { ...item, ...updated } : item))
+        );
+      } else {
+        // Mutation failed — reconcile this list with the server.
+        fetchItems(true);
+      }
     },
-    [updateItemHook, session?.user?.id]
+    [updateItemHook, session?.user?.id, fetchItems]
   );
 
   const handleProposeItem = useCallback(
@@ -810,12 +826,29 @@ export default function WishlistDetail() {
       <div className="min-h-screen">
         <AppHeader actions={<AuthButton />} />
         <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
-          {/* Cover hero skeleton */}
-          <div className="skeleton mb-6 h-[180px] rounded-3xl sm:h-[210px]" />
-          {/* Stats skeleton */}
-          <div className="mb-8 grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4 lg:grid-cols-5">
+          {/* Header: title + author on the left, actions on the right */}
+          <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+            <div className="flex min-w-0 flex-1 items-baseline gap-3">
+              <div className="skeleton h-9 w-56 rounded-md sm:h-10" />
+              <div className="skeleton h-4 w-20 rounded-md" />
+            </div>
+            <div className="flex flex-shrink-0 items-center gap-2">
+              <div className="skeleton h-9 w-24 rounded-full" />
+              <div className="skeleton h-9 w-24 rounded-full" />
+            </div>
+          </div>
+          {/* Image + description row */}
+          <div className="mb-6 grid gap-4 sm:mb-8 sm:grid-cols-[minmax(0,26rem)_minmax(0,1fr)] sm:items-start">
+            <div className="skeleton aspect-[16/9] rounded-3xl" />
+            <div className="skeleton hidden h-full min-h-[8rem] rounded-2xl sm:block" />
+          </div>
+          {/* Stat cards (full-width auto-fit row) */}
+          <div
+            className="mb-6 grid gap-3 sm:mb-8 sm:gap-4"
+            style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(8rem, 1fr))' }}
+          >
             {Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="skeleton h-[74px] rounded-xl" />
+              <div key={i} className="skeleton h-[70px] rounded-xl sm:h-[78px]" />
             ))}
           </div>
           <SkeletonGrid count={8} variant="item" />

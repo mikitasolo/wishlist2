@@ -60,17 +60,21 @@ export default function Select({
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setOpen(false);
     };
-    // Close on scroll/resize rather than tracking, to avoid a stale position.
-    const close = () => setOpen(false);
+    // Keep the menu glued to the trigger on scroll/resize instead of closing.
+    // Scrolling the page moves the trigger → we follow it; scrolling the menu's
+    // own list (or the trigger staying put) just recomputes the same position.
+    const reposition = () => {
+      if (triggerRef.current) setRect(triggerRef.current.getBoundingClientRect());
+    };
     document.addEventListener('mousedown', onPointer);
     document.addEventListener('keydown', onKey);
-    window.addEventListener('scroll', close, true);
-    window.addEventListener('resize', close);
+    window.addEventListener('scroll', reposition, true);
+    window.addEventListener('resize', reposition);
     return () => {
       document.removeEventListener('mousedown', onPointer);
       document.removeEventListener('keydown', onKey);
-      window.removeEventListener('scroll', close, true);
-      window.removeEventListener('resize', close);
+      window.removeEventListener('scroll', reposition, true);
+      window.removeEventListener('resize', reposition);
     };
   }, [open]);
 
