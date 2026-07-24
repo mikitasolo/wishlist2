@@ -39,7 +39,8 @@ Chase meaningful coverage of logic/authorization, not a headline line-coverage n
   - `vi.mock('@/lib/auth', () => ({ auth: vi.fn() }))`, then `const session = vi.mocked(auth)` to control the session (NextAuth v5 — routes call `auth()`, not `getServerSession`).
   - Mock `@/lib/email` / `@/lib/utils/currencyRates` when a route would otherwise send mail or hit the rates API.
   - `connectTestDB` / `disconnectTestDB` / `clearTestDB` from `test/db.ts` in `beforeAll` / `afterAll` / `beforeEach`.
-- Vitest config injects dummy env vars (see `vitest.config.ts`) so import-time env reads don't throw.
+- Vitest config injects dummy env vars (see `vitest.config.ts`) so import-time env reads don't throw. Vitest only picks up `test/**/*.test.{ts,tsx}`; Playwright specs live in `e2e/**`.
+- `e2e/**` — Playwright (`npm run test:e2e`). `e2e/global-setup.ts` starts an ephemeral MongoDB, seeds a user + a database session (writing a `authjs.session-token` storageState so the `authed` project is logged in without magic-link), then builds and starts the app; `global-teardown` stops both. Specs are `*.public.spec.ts` (signed-out) or `*.authed.spec.ts` (signed-in). Keep E2E to a few resilient smoke tests per flow — unit/component/API tests carry the detailed coverage.
 
 ## Domain invariants — do not regress
 

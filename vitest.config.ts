@@ -9,6 +9,8 @@ export default defineConfig({
   },
   test: {
     globals: true,
+    // Vitest owns test/**; Playwright specs live in e2e/** (see playwright.config.ts).
+    include: ['test/**/*.test.{ts,tsx}'],
     // Default to node; component tests opt into jsdom via a
     // `// @vitest-environment jsdom` docblock at the top of the file.
     environment: 'node',

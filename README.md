@@ -87,10 +87,11 @@ Tests live in `test/` and run on Vitest:
 - `test/unit/**` — pure logic and Zod schemas (currency, slugs, filters, validation, …)
 - `test/components/**` — React Testing Library (jsdom)
 - `test/api/**` — route handlers against an in-memory MongoDB with a mocked session
+- `e2e/**` — Playwright end-to-end smoke tests (`npm run test:e2e`). `global-setup` boots an ephemeral MongoDB, seeds a signed-in session, builds and starts the app — no external services needed. Public and signed-in flows run as separate projects.
 
 **Every change that touches logic should add or update tests, and every bug fix should add a regression test.** See [AGENTS.md](AGENTS.md) for the full policy, the API-test harness pattern, and the domain invariants that must not regress.
 
-CI (`.github/workflows/ci.yml`) runs lint, typecheck, the full test suite, and a production build on every push to `main` and every pull request. Coverage (`npm run test:cov`) enforces a non-regression threshold floor configured in `vitest.config.ts`.
+CI runs on every push to `main` and every pull request: `.github/workflows/ci.yml` does lint, typecheck, the full Vitest suite, and a production build; `.github/workflows/e2e.yml` runs the Playwright suite (kept separate since it downloads a browser and builds the app). Coverage (`npm run test:cov`) enforces a non-regression threshold floor configured in `vitest.config.ts`.
 
 ## 📁 Project structure
 
