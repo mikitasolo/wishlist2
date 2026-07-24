@@ -11,6 +11,7 @@ A modern wishlist app: create wishlists, share them, follow friends, and quietly
 - **Reservations & gift history** — a durable record of what you're giving, decoupled from the owner's item (see [AGENTS.md](AGENTS.md) for the invariants).
 - **Invitations** to co-manage a wishlist (member/admin), registered-users-only, with accept/decline.
 - **Item proposals** — members can propose items for the owner to approve.
+- **Paste-a-link import** — paste a product URL and the item form auto-fills from the page's Open Graph metadata (title, image, price). The server-side fetch is SSRF-guarded.
 - **Multi-currency** prices with live conversion to any currency you pick.
 - **Profiles** with avatar, bio, follower/following counts, and privacy controls.
 - **Magic-link sign-in** (no passwords), image uploads, responsive Apple-inspired UI, light/dark themes.
