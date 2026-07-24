@@ -28,10 +28,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const isSelf = viewerId === userId;
     const isFriend = viewerId && !isSelf ? await areFriends(viewerId, userId) : false;
 
-    // Enforce profile visibility ("who can see your profile")
+    // Enforce wishlist-list visibility ("who can see your wishlists"). This only
+    // gates browsing the aggregate list on the profile; the profile itself stays
+    // visible, and each wishlist's own visibility still governs direct access.
     if (targetUser.privacy?.profileVisibility === 'friends' && !isSelf && !isFriend) {
       return NextResponse.json(
-        { success: false, error: 'This profile is private', restricted: true },
+        { success: false, error: 'These wishlists are private', restricted: true },
         { status: 403 }
       );
     }

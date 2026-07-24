@@ -296,7 +296,11 @@ export default function SettingsPage() {
           </div>
 
           <div className="mt-6">
-            <p className="text-sm font-medium text-foreground">Who can see your profile</p>
+            <p className="text-sm font-medium text-foreground">Who can see your wishlists</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Controls who can see your bio and browse your wishlists. Your username and avatar stay
+              visible so people can follow you. Each wishlist’s own visibility still applies.
+            </p>
             <div className="mt-2">
               <Segmented
                 value={profileVisibility}

@@ -17,7 +17,7 @@ export async function GET(
     await connectDB();
 
     const user = await User.findOne({ username: username.toLowerCase().trim() }).select(
-      'username image bio'
+      'username image bio privacy'
     );
     if (!user) {
       return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
@@ -36,6 +36,10 @@ export async function GET(
       follow = await getFollowInfo(session.user.id, user._id.toString());
     }
 
+    // Bio is part of what "friends only" hides — keep username/avatar public so
+    // people can still find and follow, but withhold the bio from non-friends.
+    const canSeeBio = isSelf || follow.isFriend || user.privacy?.profileVisibility !== 'friends';
+
     return NextResponse.json(
       {
         success: true,
@@ -43,7 +47,7 @@ export async function GET(
           _id: user._id,
           username: user.username,
           image: user.image ?? null,
-          bio: user.bio ?? null,
+          bio: canSeeBio ? (user.bio ?? null) : null,
           isSelf,
           followerCount,
           followingCount,
