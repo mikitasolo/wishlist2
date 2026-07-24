@@ -12,6 +12,7 @@ import BannerImage from '@/components/BannerImage';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import { formatPriceFromObject } from '@/lib/utils/currency';
 import { coverGradient } from '@/lib/utils/cover';
+import { partitionReservations, reservationNote } from '@/lib/utils/reservations';
 
 interface Price {
   value: number;
@@ -40,15 +41,6 @@ interface Gift {
   wishlistId: string | null;
   wishlistSlug: string | null;
   giftedAt: string;
-}
-
-/** A short hint when the owner has changed the item out from under the reservation. */
-function reservationNote(r: Reservation): string | null {
-  if (r.itemStatus === 'deleted') return 'Owner removed this item';
-  if (r.itemStatus === 'completed') return 'Owner marked this received';
-  if (r.itemStatus === 'draft') return 'Owner moved this to draft';
-  if (!r.stillReserved) return 'No longer reserved to you';
-  return null;
 }
 
 export default function BookedPage() {
@@ -190,74 +182,70 @@ export default function BookedPage() {
           </div>
         ) : (
           <div className="mt-8 space-y-12">
-            {/* Active reservations */}
-            <section>
-              <SectionHeading title="To give" count={reservations.length} />
-              {reservations.length === 0 ? (
-                <EmptyState
-                  icon="gift"
-                  title="Nothing reserved yet"
-                  body="When you reserve a gift on someone’s wishlist, it’ll show up here so you can keep track."
-                />
-              ) : (
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {reservations.map((r) => {
-                    const note = reservationNote(r);
-                    return (
-                      <div
-                        key={r._id}
-                        className="flex flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-sm"
-                      >
-                        <div className="flex gap-3 p-3">
-                          <Thumb src={r.itemImage} alt={r.itemName} seed={r._id} />
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-[15px] font-semibold text-foreground">
-                              {r.itemName}
-                            </p>
-                            {r.itemPrice && (
-                              <p className="text-sm font-medium text-muted-foreground">
-                                {formatPriceFromObject(r.itemPrice)}
-                              </p>
-                            )}
-                            <Link
-                              href={`/wishlists/${r.wishlistSlug ?? r.wishlistId}`}
-                              className="mt-0.5 inline-flex items-center gap-1 text-xs font-medium text-primary-600 dark:text-primary-300 hover:underline"
-                            >
-                              <Icon name="gift" size={12} />
-                              {r.wishlistName}
-                            </Link>
-                            {note && (
-                              <p className="mt-1 inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-400">
-                                <Icon name="info" size={11} />
-                                {note}
-                              </p>
-                            )}
-                          </div>
+            {reservations.length === 0 ? (
+              <EmptyState
+                icon="gift"
+                title="Nothing reserved yet"
+                body="When you reserve a gift on someone’s wishlist, it’ll show up here so you can keep track."
+              />
+            ) : (
+              (() => {
+                const { needsConfirm, active } = partitionReservations(reservations);
+                return (
+                  <>
+                    {/* Detached reservations: the item changed after it was reserved,
+                        so ask the gifter to resolve them. */}
+                    {needsConfirm.length > 0 && (
+                      <section>
+                        <SectionHeading
+                          title="Needs your confirmation"
+                          count={needsConfirm.length}
+                        />
+                        <p className="-mt-2 mb-4 px-1 text-sm text-muted-foreground">
+                          These changed after you reserved them. If you gave the gift, mark it so
+                          it’s saved to your history — otherwise dismiss it. Either way, the owner’s
+                          list isn’t affected.
+                        </p>
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                          {needsConfirm.map((r) => (
+                            <ReservationCard
+                              key={r._id}
+                              r={r}
+                              busy={busy === r._id}
+                              highlight
+                              onGift={() => setGiftConfirm(r._id)}
+                              onDismiss={() => setDismissConfirm(r._id)}
+                            />
+                          ))}
                         </div>
-                        <div className="flex gap-2 border-t border-border p-3">
-                          <button
-                            disabled={busy === r._id}
-                            onClick={() => setGiftConfirm(r._id)}
-                            className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-xl bg-primary-600 text-[13px] font-semibold text-white transition-colors hover:bg-primary-500 disabled:opacity-50"
-                          >
-                            <Icon name="check" size={15} />
-                            Mark as gifted
-                          </button>
-                          <button
-                            disabled={busy === r._id}
-                            onClick={() => setDismissConfirm(r._id)}
-                            className="flex h-9 items-center justify-center gap-1.5 rounded-xl bg-surface-2 px-3 text-[13px] font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
-                            title="Remove from reservations"
-                          >
-                            Dismiss
-                          </button>
+                      </section>
+                    )}
+
+                    {/* Active reservations */}
+                    <section>
+                      <SectionHeading title="To give" count={active.length} />
+                      {active.length === 0 ? (
+                        <p className="px-1 text-sm text-muted-foreground">
+                          Nothing actively reserved right now.
+                        </p>
+                      ) : (
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                          {active.map((r) => (
+                            <ReservationCard
+                              key={r._id}
+                              r={r}
+                              busy={busy === r._id}
+                              onGift={() => setGiftConfirm(r._id)}
+                              onDismiss={() => setDismissConfirm(r._id)}
+                            />
+                          ))}
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </section>
+                      )}
+                    </section>
+                  </>
+                );
+              })()
+            )}
 
             {/* Gift history */}
             {gifts.length > 0 && (
@@ -350,6 +338,72 @@ export default function BookedPage() {
           onCancel={() => setDeleteGiftConfirm(null)}
         />
       )}
+    </div>
+  );
+}
+
+function ReservationCard({
+  r,
+  busy,
+  highlight = false,
+  onGift,
+  onDismiss,
+}: {
+  r: Reservation;
+  busy: boolean;
+  highlight?: boolean;
+  onGift: () => void;
+  onDismiss: () => void;
+}) {
+  const note = reservationNote(r);
+  return (
+    <div
+      className={`flex flex-col overflow-hidden rounded-2xl border bg-surface shadow-sm ${
+        highlight ? 'border-amber-500/50 ring-1 ring-amber-500/30' : 'border-border'
+      }`}
+    >
+      <div className="flex gap-3 p-3">
+        <Thumb src={r.itemImage} alt={r.itemName} seed={r._id} />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[15px] font-semibold text-foreground">{r.itemName}</p>
+          {r.itemPrice && (
+            <p className="text-sm font-medium text-muted-foreground">
+              {formatPriceFromObject(r.itemPrice)}
+            </p>
+          )}
+          <Link
+            href={`/wishlists/${r.wishlistSlug ?? r.wishlistId}`}
+            className="mt-0.5 inline-flex items-center gap-1 text-xs font-medium text-primary-600 hover:underline dark:text-primary-300"
+          >
+            <Icon name="gift" size={12} />
+            {r.wishlistName}
+          </Link>
+          {note && (
+            <p className="mt-1 inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-400">
+              <Icon name="info" size={11} />
+              {note}
+            </p>
+          )}
+        </div>
+      </div>
+      <div className="flex gap-2 border-t border-border p-3">
+        <button
+          disabled={busy}
+          onClick={onGift}
+          className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-xl bg-primary-600 text-[13px] font-semibold text-white transition-colors hover:bg-primary-500 disabled:opacity-50"
+        >
+          <Icon name="check" size={15} />
+          Mark as gifted
+        </button>
+        <button
+          disabled={busy}
+          onClick={onDismiss}
+          className="flex h-9 items-center justify-center gap-1.5 rounded-xl bg-surface-2 px-3 text-[13px] font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+          title="Remove from reservations"
+        >
+          Dismiss
+        </button>
+      </div>
     </div>
   );
 }
