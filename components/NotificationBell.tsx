@@ -45,7 +45,8 @@ export default function NotificationBell() {
     <Link
       href="/notifications"
       aria-label={unread > 0 ? `Notifications — ${unread} unread` : 'Notifications'}
-      className="relative inline-flex h-10 w-10 items-center justify-center rounded-full text-foreground transition-colors hover:bg-muted"
+      title="Notifications"
+      className="relative flex h-10 w-10 items-center justify-center rounded-full border border-border bg-surface text-muted-foreground shadow-xs transition-colors hover:bg-surface-hover hover:text-foreground"
     >
       <Icon name="bell" size={20} />
       {unread > 0 && (

@@ -7,6 +7,7 @@ import Icon from '@/components/Icon';
 import Logo from '@/components/Logo';
 import GlobalSearch from '@/components/GlobalSearch';
 import CreateWishlistModal from '@/components/CreateWishlistModal';
+import NotificationBell from '@/components/NotificationBell';
 
 interface AppHeaderProps {
   /** Right-aligned actions (e.g. AuthButton, wishlist-scoped buttons). */
@@ -45,6 +46,7 @@ export default function AppHeader({ actions, search = true }: AppHeaderProps) {
               <Icon name="plus" size={18} />
             </button>
           )}
+          <NotificationBell />
           {actions}
         </div>
       </div>
