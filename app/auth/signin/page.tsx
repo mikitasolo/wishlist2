@@ -10,27 +10,51 @@ function SignInForm() {
   const [email, setEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const searchParams = useSearchParams();
   const error = searchParams?.get('error');
   const callbackUrl = searchParams?.get('callbackUrl') || '/';
 
+  // NextAuth deliberately returns a generic error code (not the server-side
+  // reason), so we can't tell a rate-limit from an SMTP failure here — this
+  // message covers both, and notably stops us falsely claiming a link was sent
+  // when the sign-in rate limit blocked the send.
+  const SEND_FAILED_MESSAGE =
+    "We couldn't send your magic link. If you've requested one a few times recently, wait a few minutes and try again.";
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
+    setSubmitError(null);
 
     try {
-      await signIn('nodemailer', {
+      // redirect:false → signIn resolves with { ok, error } instead of throwing,
+      // so we must inspect the result rather than assume success.
+      const result = await signIn('nodemailer', {
         email,
         redirect: false,
         callbackUrl,
       });
-      setIsSubmitted(true);
+      if (result?.error) {
+        setSubmitError(SEND_FAILED_MESSAGE);
+      } else {
+        setIsSubmitted(true);
+      }
     } catch (error) {
       console.error('Error signing in:', error);
+      setSubmitError(SEND_FAILED_MESSAGE);
     } finally {
       setIsLoading(false);
     }
   };
+
+  const bannerMessage = submitError
+    ? submitError
+    : error
+      ? error === 'AccessDenied'
+        ? 'Access denied. Please try again.'
+        : 'An error occurred. Please try again.'
+      : null;
 
   if (isSubmitted) {
     return (
@@ -68,13 +92,12 @@ function SignInForm() {
           <p className="text-muted-foreground">Enter your email to receive a magic link</p>
         </div>
 
-        {error && (
-          <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-500/30 dark:bg-red-500/10">
-            <p className="text-sm text-red-700 dark:text-red-400">
-              {error === 'AccessDenied'
-                ? 'Access denied. Please try again.'
-                : 'An error occurred. Please try again.'}
-            </p>
+        {bannerMessage && (
+          <div
+            role="alert"
+            className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-500/30 dark:bg-red-500/10"
+          >
+            <p className="text-sm text-red-700 dark:text-red-400">{bannerMessage}</p>
           </div>
         )}
 
