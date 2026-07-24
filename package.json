@@ -21,11 +21,11 @@
     "mongoose": "^8.19.2",
     "next": "16.2.11",
     "next-auth": "^5.0.0-beta.32",
-    "nodemailer": "^7.0.10",
+    "nodemailer": "^9.0.3",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-easy-crop": "^6.2.2",
-    "sharp": "^0.34.5",
+    "sharp": "^0.35.3",
     "zod": "^4.1.12"
   },
   "devDependencies": {
