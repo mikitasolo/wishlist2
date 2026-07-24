@@ -24,13 +24,14 @@ A modern wishlist app: create wishlists, share them, follow friends, and quietly
 - **Auth**: NextAuth v5 / Auth.js (`next-auth@5`) with the MongoDB adapter — **database sessions**, magic-link email (Nodemailer provider)
 - **Email**: SMTP via Nodemailer (works with Brevo, Postmark, Gmail, etc.)
 - **Image uploads**: Vercel Blob
+- **Rate limiting**: Upstash Redis (`@upstash/ratelimit`) — optional; disabled when unconfigured
 - **Styling**: Tailwind CSS v4
 - **Testing**: Vitest + Testing Library + `mongodb-memory-server`
 - **Deployment**: Vercel
 
 ## 📋 Prerequisites
 
-- Node.js 20+
+- Node.js 24 (the runtime we build and deploy on; pinned via `package.json`'s `engines` field)
 - **pnpm** — the package manager (enable via `corepack enable`; the version is pinned in `package.json`'s `packageManager` field)
 - A MongoDB database (MongoDB Atlas recommended)
 - An SMTP provider for sending magic-link emails
@@ -53,19 +54,21 @@ Open [http://localhost:3000](http://localhost:3000). Sign in from `/auth/signin`
 
 Copy `.env.example` to `.env.local` and fill in:
 
-| Variable                | Required | Description                                                                   |
-| ----------------------- | -------- | ----------------------------------------------------------------------------- |
-| `MONGODB_URI`           | yes      | Connection string **including the database name** in the path                 |
-| `NEXTAUTH_SECRET`       | yes      | Session secret — generate with `openssl rand -base64 32`                      |
-| `NEXTAUTH_URL`          | yes\*    | App URL (e.g. `http://localhost:3000`). \*Derived from `VERCEL_URL` on Vercel |
-| `SMTP_HOST`             | yes      | SMTP server host                                                              |
-| `SMTP_PORT`             | yes      | SMTP port (e.g. `587`)                                                        |
-| `SMTP_SECURE`           | yes      | `true` for port 465, otherwise `false`                                        |
-| `SMTP_USER`             | yes      | SMTP username                                                                 |
-| `SMTP_PASSWORD`         | yes      | SMTP password                                                                 |
-| `EMAIL_FROM`            | yes      | From address for outgoing mail                                                |
-| `MIGRATION_SECRET`      | yes      | Shared secret guarding migration endpoints                                    |
-| `BLOB_READ_WRITE_TOKEN` | yes      | Vercel Blob token (read implicitly by the Blob SDK) for image uploads         |
+| Variable                   | Required | Description                                                                   |
+| -------------------------- | -------- | ----------------------------------------------------------------------------- |
+| `MONGODB_URI`              | yes      | Connection string **including the database name** in the path                 |
+| `NEXTAUTH_SECRET`          | yes      | Session secret — generate with `openssl rand -base64 32`                      |
+| `NEXTAUTH_URL`             | yes\*    | App URL (e.g. `http://localhost:3000`). \*Derived from `VERCEL_URL` on Vercel |
+| `SMTP_HOST`                | yes      | SMTP server host                                                              |
+| `SMTP_PORT`                | yes      | SMTP port (e.g. `587`)                                                        |
+| `SMTP_SECURE`              | yes      | `true` for port 465, otherwise `false`                                        |
+| `SMTP_USER`                | yes      | SMTP username                                                                 |
+| `SMTP_PASSWORD`            | yes      | SMTP password                                                                 |
+| `EMAIL_FROM`               | yes      | From address for outgoing mail                                                |
+| `MIGRATION_SECRET`         | yes      | Shared secret guarding migration endpoints                                    |
+| `BLOB_READ_WRITE_TOKEN`    | yes      | Vercel Blob token (read implicitly by the Blob SDK) for image uploads         |
+| `UPSTASH_REDIS_REST_URL`   | no       | Upstash Redis REST URL for rate limiting. Unset ⇒ rate limiting disabled      |
+| `UPSTASH_REDIS_REST_TOKEN` | no       | Upstash Redis REST token (set together with the URL)                          |
 
 > ⚠️ Never commit real secrets. `.env*` is gitignored; only the placeholder `.env.example` is tracked.
 
@@ -116,7 +119,7 @@ types/          # shared TS types
 - `friends`-only profile visibility hides the bio and the browsable wishlist list from non-friends while keeping the profile discoverable.
 - Security headers (CSP, `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`, HSTS) are set for every route in `next.config.js`.
 - Migration endpoints compare their secret in constant time (`crypto.timingSafeEqual`) to avoid a timing side-channel.
-- A rate-limiting / anti-spam design (not yet implemented) lives in [docs/rate-limiting-plan.md](docs/rate-limiting-plan.md); deferred feature ideas are in [BACKLOG.md](BACKLOG.md).
+- **Rate limiting** (`lib/rateLimit.ts`) guards abuse-prone surfaces — magic-link sign-in (keyed on both email and IP), uploads, invites, follows, content creation, booking toggles, username checks, and public search/profile lookups. It uses Upstash Redis (`@upstash/ratelimit`), so counters are shared across Vercel's ephemeral function instances. When Upstash isn't configured, limiting is **disabled** (dev/CI); when configured but the store errors, it fails **open** for reads/writes but **closed** for the sign-in email path. To enable it, follow [docs/upstash-vercel-setup.md](docs/upstash-vercel-setup.md). Deferred hardening (Cloudflare Turnstile on sign-in, a Vercel WAF per-IP edge ceiling, notification coalescing, new-account friction) is tracked in [BACKLOG.md](BACKLOG.md).
 
 ## 📄 License
 
