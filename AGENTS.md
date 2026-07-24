@@ -61,7 +61,6 @@ These are correctness/privacy rules the product depends on:
 - Async UI mutations should be **optimistic** and resilient to the 5s polling on the wishlist page (see `handleUpdateItem`): update locally, merge the server response for the single item, and don't let a stale in-flight poll overwrite fresher local state.
 - TypeScript is `strict`. Keep it green.
 - **Uploads are sanitized and owned.** Every image is re-encoded with `sharp` on upload (`app/api/upload`), which strips EXIF/metadata and bakes in orientation. Blobs live under `uploads/<userId>/` and count against a per-user quota. When an image field (`Item.imageUrl`, `User.image`, `Wishlist.bannerUrl`) is replaced or its record deleted, free the old blob with the helpers in `lib/utils/blob.ts` — but **only ever delete our own blobs** (`isOwnBlob`); a user-pasted external image URL must never be deleted.
-- **Any server-side fetch of a user-supplied URL must go through the SSRF guard** in `lib/utils/ssrf.ts` (`fetchHtmlSafely` / `assertPublicUrl` + `assertResolvesPublic`): https/http only, no credentials, standard ports, public-IP-only (each redirect re-validated), with size/type/timeout caps. Never `fetch()` a user-provided URL directly.
 - **Never push to a remote unless the user explicitly asks.** Committing is fine when the user requests it, but `git push` is always gated on an explicit request — never push as a side effect of finishing work, even after committing.
 - **Never print, commit, or expose secrets** (`.env`, `.env.prod`). Only perform authorized DB operations.
 

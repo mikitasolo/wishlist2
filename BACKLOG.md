@@ -50,6 +50,37 @@ Attach items (or whole wishlists) to a dated event — birthday, holiday, weddin
 - Do occasions drive visibility (a list only visible in its occasion window) or are they purely organizational? MVP = organizational only.
 - Overlap with the "reopen repeatable item next year" flow already discussed for reservations.
 
+## Paste-a-link item import (attempted, reverted — needs rework)
+
+Paste a product URL and auto-fill the item form. A first version was built and
+reverted because extraction was unreliable in practice: many stores block bots,
+render prices client-side (so the server sees no price in the initial HTML), or
+don't expose Open Graph product tags — so imports often came back with a title
+and little else, or nothing.
+
+**What worked and is worth reusing** (see the reverted commit for the code):
+
+- An SSRF-safe server fetch: https/http only, no credentials, standard ports,
+  public-IP-only with every redirect re-validated, and size/type/timeout caps.
+  This part was solid and well-tested — resurrect it for any server-side fetch
+  of a user URL.
+- A dependency-free Open Graph / `<meta>` parser → title, image, price (cents).
+
+**What to solve before trying again**
+
+- **Better extraction.** Parse JSON-LD `Product`/`Offer` schema (where most real
+  prices live) in addition to OG tags; consider microdata. Fall back gracefully
+  and fill only what's found rather than failing.
+- **JS-rendered pages.** Static HTML misses a lot. Evaluate a rendering/scraping
+  service (or oEmbed/unfurl APIs) vs. the cost/complexity — or accept that we
+  only support sites with good static metadata and set expectations in the UI.
+- **Bot blocking.** Realistic UA, timeouts, and a clear "couldn't read this page"
+  message; don't hang the form.
+- **Abuse.** Per-user rate limit (it's already in the rate-limiting plan) since
+  this makes the server fetch arbitrary URLs.
+- **Residual SSRF.** Close the DNS-rebinding window by pinning the connection to
+  the validated IP (custom lookup/dispatcher), not just checking DNS beforehand.
+
 ## Rough ideas — needs refinement
 
 Captured for later; each still needs a real problem statement and design before it's worth building. Listed as prompts, not commitments.

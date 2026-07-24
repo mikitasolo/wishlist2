@@ -76,45 +76,6 @@ export default function ItemForm({
   const firstInputRef = externalFirstInputRef || internalFirstInputRef;
   const submitting = externalIsSubmitting !== undefined ? externalIsSubmitting : isSubmitting;
 
-  // Paste-a-link import (create/propose only).
-  const [importUrl, setImportUrl] = useState('');
-  const [importing, setImporting] = useState(false);
-  const [importError, setImportError] = useState<string | null>(null);
-
-  async function handleImport() {
-    const url = importUrl.trim();
-    if (!url) return;
-    setImporting(true);
-    setImportError(null);
-    try {
-      const res = await fetch('/api/import/link', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ url }),
-      });
-      const json = await res.json();
-      if (!json.success) {
-        setImportError(json.error || 'Could not import that link.');
-        return;
-      }
-      const d = json.data;
-      // Pre-fill without clobbering anything the user already typed.
-      setFormData((prev) => ({
-        ...prev,
-        name: prev.name || d.title || '',
-        imageUrl: prev.imageUrl || d.imageUrl || '',
-        link: d.link || prev.link || url,
-        notes: prev.notes || d.description || '',
-        price: prev.price || (d.price ? (d.price.value / 100).toString() : ''),
-        currency: !prev.price && d.price ? d.price.currency.toUpperCase() : prev.currency,
-      }));
-    } catch {
-      setImportError('Could not import that link.');
-    } finally {
-      setImporting(false);
-    }
-  }
-
   // Track initial data for comparison
   const initialDataRef = useRef<ItemFormData>(initialData || DEFAULT_ITEM_FORM_DATA);
 
@@ -235,48 +196,6 @@ export default function ItemForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      {/* Import from a link — paste a product URL to auto-fill (new items only). */}
-      {(mode === 'create' || mode === 'propose') && (
-        <div className="rounded-lg border border-border bg-surface-2/50 p-3">
-          <label htmlFor="import-url" className="block text-sm font-medium text-foreground mb-1">
-            Import from a link
-          </label>
-          <p className="text-xs text-muted-foreground mb-2">
-            Paste a product URL and we’ll try to fill in the details.
-          </p>
-          <div className="flex gap-2">
-            <input
-              id="import-url"
-              type="url"
-              inputMode="url"
-              value={importUrl}
-              onChange={(e) => {
-                setImportUrl(e.target.value);
-                setImportError(null);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  handleImport();
-                }
-              }}
-              placeholder="https://store.com/product"
-              disabled={importing || submitting}
-              className="flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary-500 focus:outline-none disabled:opacity-50"
-            />
-            <button
-              type="button"
-              onClick={handleImport}
-              disabled={importing || submitting || !importUrl.trim()}
-              className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary-500 disabled:opacity-50"
-            >
-              {importing ? 'Importing…' : 'Import'}
-            </button>
-          </div>
-          {importError && <p className="mt-1.5 text-xs text-red-600">{importError}</p>}
-        </div>
-      )}
-
       {/* Status toggle — only when creating a new item or reviewing a proposal.
           Editing never shows it; status is changed via publish / move-to-draft. */}
       {(mode === 'create' || mode === 'review') && (
