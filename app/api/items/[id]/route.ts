@@ -290,7 +290,42 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       });
     }
 
-    return NextResponse.json({ success: true, data: item }, { status: 200 });
+    // Sanitize the reply with the SAME privacy rules as GET /items so a PATCH
+    // can never leak what the list endpoint hides:
+    //  - proposals are anonymous to the owner (never return `proposedBy` to
+    //    anyone but the proposer themselves), and
+    //  - owners never see booking status (booked folds into available).
+    const itemObj = item.toObject();
+    const isProposedByMe = itemObj.proposedBy?.toString() === session.user.id;
+    const isBookedByMe = itemObj.bookedBy?.toString() === session.user.id;
+
+    let responseData;
+    if (isOwner || isAdmin) {
+      // Owner/admin: hide the proposer and any booking.
+      responseData = {
+        ...itemObj,
+        status: itemObj.status === 'booked' ? 'available' : itemObj.status,
+        bookedBy: undefined,
+        proposedBy: undefined,
+      };
+    } else if (isMember) {
+      // Members may see booking status, but only their own booking/proposal id.
+      responseData = {
+        ...itemObj,
+        bookedBy: isBookedByMe ? session.user.id : undefined,
+        proposedBy: isProposedByMe ? session.user.id : undefined,
+      };
+    } else {
+      // Any other authorized viewer (e.g. a proposer who isn't a member).
+      responseData = {
+        ...itemObj,
+        status: itemObj.status === 'booked' ? 'available' : itemObj.status,
+        bookedBy: undefined,
+        proposedBy: isProposedByMe ? session.user.id : undefined,
+      };
+    }
+
+    return NextResponse.json({ success: true, data: responseData }, { status: 200 });
   } catch (error) {
     console.error('Error updating item:', error);
     return NextResponse.json({ success: false, error: 'Failed to update item' }, { status: 500 });

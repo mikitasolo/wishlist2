@@ -160,3 +160,42 @@ describe('PATCH /api/items/[id] — publish / move to draft', () => {
     expect(await Reservation.findOne({ gifter: memberId, item: id })).not.toBeNull();
   });
 });
+
+describe('PATCH /api/items/[id] — proposal anonymity', () => {
+  async function makeProposed() {
+    const item = await Item.create({
+      wishlist: wishlistId,
+      name: 'Proposed',
+      status: 'proposed',
+      proposedBy: memberId,
+    });
+    return item._id.toString();
+  }
+
+  // regression: the PATCH reply must never leak the proposer to the owner —
+  // proposals are anonymous to the owner. GET hid `proposedBy`; this closes the
+  // single-item PATCH response, which returned the raw item.
+  it('does not return proposedBy to the owner when editing a proposed item', async () => {
+    const id = await makeProposed();
+    session.mockResolvedValue({ user: { id: ownerId } } as never);
+
+    const res = await patch(id, { name: 'Renamed by owner' });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.data.name).toBe('Renamed by owner');
+    expect(body.data.status).toBe('proposed'); // not approved, just edited
+    expect(body.data.proposedBy).toBeUndefined();
+    // The DB still records the proposer (only the response is sanitized).
+    expect((await Item.findById(id))?.proposedBy?.toString()).toBe(memberId);
+  });
+
+  it('lets the proposer see their own proposedBy in the reply', async () => {
+    const id = await makeProposed();
+    session.mockResolvedValue({ user: { id: memberId } } as never);
+
+    const res = await patch(id, { name: 'Edited by proposer' });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.data.proposedBy).toBe(memberId);
+  });
+});
