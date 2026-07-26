@@ -31,6 +31,7 @@ import {
   sortItems,
   calculateStats,
   filterItemsMulti,
+  searchItemsByName,
   type FilterOption,
   type SortType,
 } from '@/lib/utils/itemFilters';
@@ -76,6 +77,7 @@ export default function WishlistDetail() {
   const [manageOpen, setManageOpen] = useState(false);
   const [selectedFilters, setSelectedFilters] = useState<FilterOption[]>([]);
   const [sortBy, setSortBy] = useState<SortType>('name-asc');
+  const [searchQuery, setSearchQuery] = useState('');
   // 'original' shows each item's own currency; any code converts all prices to it.
   const [priceCurrency, setPriceCurrency] = useState<string>('original');
   const [rates, setRates] = useState<Record<string, number> | null>(null);
@@ -750,7 +752,15 @@ export default function WishlistDetail() {
     [items, selectedFilters, session?.user?.id, isOwner, isMember]
   );
 
-  const sortedItems = useMemo(() => sortItems(filteredItems, sortBy), [filteredItems, sortBy]);
+  const searchedItems = useMemo(
+    () => searchItemsByName(filteredItems, searchQuery),
+    [filteredItems, searchQuery]
+  );
+
+  const sortedItems = useMemo(() => sortItems(searchedItems, sortBy), [searchedItems, sortBy]);
+
+  // Clear the item search when switching to a different wishlist.
+  useEffect(() => setSearchQuery(''), [wishlistId]);
 
   // The viewer's preferred currency, offered near the top of the price selector.
   const viewerCurrency = session?.user?.defaultCurrency || 'USD';
@@ -1025,13 +1035,34 @@ export default function WishlistDetail() {
 
             {/* Filter and Sort Controls */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 mb-6 sm:mb-8">
-              <div className="w-full sm:w-auto">
+              <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
                 <FilterDropdown
                   options={getFilterOptions()}
                   selectedFilters={selectedFilters}
                   onChange={setSelectedFilters}
                   label="Filter"
                 />
+                <div className="flex min-w-0 items-center gap-2 rounded-full border border-border-strong bg-surface pl-3.5 pr-1.5 shadow-xs w-full sm:w-64">
+                  <Icon name="search" size={17} className="flex-shrink-0 text-muted-foreground" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search items by name…"
+                    aria-label="Search items by name"
+                    className="h-9 min-w-0 flex-1 border-0 bg-transparent text-sm outline-none"
+                  />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery('')}
+                      aria-label="Clear search"
+                      className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    >
+                      <Icon name="close" size={15} />
+                    </button>
+                  )}
+                </div>
               </div>
 
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 flex-shrink-0 w-full sm:w-auto">
@@ -1098,9 +1129,11 @@ export default function WishlistDetail() {
                 </span>
                 <h3 className="text-lg font-semibold text-foreground sm:text-xl">No items found</h3>
                 <p className="mx-auto mt-1.5 max-w-sm px-4 text-sm text-muted-foreground">
-                  {selectedFilters.length === 0 || selectedFilters.includes('all')
-                    ? 'No wishlist items yet.'
-                    : 'No items match the selected filters.'}
+                  {searchQuery.trim()
+                    ? `No items match “${searchQuery.trim()}”.`
+                    : selectedFilters.length === 0 || selectedFilters.includes('all')
+                      ? 'No wishlist items yet.'
+                      : 'No items match the selected filters.'}
                 </p>
               </div>
             ) : (

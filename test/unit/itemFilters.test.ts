@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { filterItemsMulti, calculateStats, sortItems } from '@/lib/utils/itemFilters';
+import {
+  filterItemsMulti,
+  calculateStats,
+  sortItems,
+  searchItemsByName,
+} from '@/lib/utils/itemFilters';
 import type { ApiItem } from '@/types/api';
 
 const ME = 'user-me';
@@ -119,5 +124,39 @@ describe('sortItems', () => {
       'PLN 3000',
       'USD 2000',
     ]);
+  });
+});
+
+describe('searchItemsByName', () => {
+  const items = [
+    item({ name: 'Sony Headphones' }),
+    item({ name: 'Coffee Grinder' }),
+    item({ name: 'Grinder Brush' }),
+  ];
+
+  it('returns all items for an empty or whitespace query', () => {
+    expect(searchItemsByName(items, '')).toHaveLength(3);
+    expect(searchItemsByName(items, '   ')).toHaveLength(3);
+  });
+
+  it('matches a case-insensitive substring anywhere in the name', () => {
+    expect(searchItemsByName(items, 'grinder').map((i) => i.name)).toEqual([
+      'Coffee Grinder',
+      'Grinder Brush',
+    ]);
+    expect(searchItemsByName(items, 'SONY').map((i) => i.name)).toEqual(['Sony Headphones']);
+  });
+
+  it('trims surrounding whitespace before matching', () => {
+    expect(searchItemsByName(items, '  coffee  ').map((i) => i.name)).toEqual(['Coffee Grinder']);
+  });
+
+  it('returns an empty array when nothing matches', () => {
+    expect(searchItemsByName(items, 'zzz')).toEqual([]);
+  });
+
+  it('does not throw on an item with no name', () => {
+    const nameless = [item({ name: undefined as unknown as string })];
+    expect(searchItemsByName(nameless, 'x')).toEqual([]);
   });
 });
