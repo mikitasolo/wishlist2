@@ -1033,11 +1033,11 @@ export default function WishlistDetail() {
               })}
             </div>
 
-            {/* Search, filter, sort & currency toolbar */}
-            <div className="mb-6 flex flex-col gap-3 sm:mb-8 sm:flex-row sm:flex-wrap sm:items-center">
-              {/* Search — grows to fill the row */}
-              <div className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-xl border border-border-strong bg-surface px-3.5 sm:min-w-[240px]">
-                <Icon name="search" size={17} className="flex-shrink-0 text-muted-foreground" />
+            {/* Search + controls */}
+            <div className="mb-6 flex flex-col gap-3 sm:mb-8 sm:gap-4">
+              {/* Search — its own full-width row */}
+              <div className="flex h-10 items-center gap-2 rounded-xl border border-border-strong bg-surface px-3.5">
+                <Icon name="search" size={18} className="flex-shrink-0 text-muted-foreground" />
                 <input
                   type="text"
                   value={searchQuery}
@@ -1058,25 +1058,30 @@ export default function WishlistDetail() {
                 )}
               </div>
 
-              {/* Filter · Sort · Currency — grouped, equal-height controls */}
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
-                <FilterDropdown
-                  options={getFilterOptions()}
-                  selectedFilters={selectedFilters}
-                  onChange={setSelectedFilters}
-                  label="Filter"
-                />
+              {/* Status · Sort · Currency — equal labelled fields */}
+              <div className="flex flex-col gap-3 sm:flex-row sm:gap-4">
+                <div className="flex flex-col gap-1.5 sm:flex-1">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Status
+                  </span>
+                  <FilterDropdown
+                    options={getFilterOptions()}
+                    selectedFilters={selectedFilters}
+                    onChange={setSelectedFilters}
+                    ariaLabel="Filter by status"
+                    className="w-full"
+                  />
+                </div>
 
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-muted-foreground whitespace-nowrap">
+                <div className="flex flex-col gap-1.5 sm:flex-1">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                     Sort
                   </span>
                   <Select
                     value={sortBy}
                     onChange={(v) => setSortBy(v as SortType)}
                     ariaLabel="Sort items by"
-                    menuAlign="right"
-                    triggerClassName="min-w-0 flex-1 sm:flex-none sm:w-52"
+                    triggerClassName="w-full"
                     options={[
                       { value: 'name-asc', label: 'Name (A-Z)' },
                       { value: 'name-desc', label: 'Name (Z-A)' },
@@ -1089,8 +1094,8 @@ export default function WishlistDetail() {
                 </div>
 
                 {session?.user && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-muted-foreground whitespace-nowrap">
+                  <div className="flex flex-col gap-1.5 sm:flex-1">
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                       Show prices in
                     </span>
                     <Select
@@ -1098,8 +1103,7 @@ export default function WishlistDetail() {
                       onChange={setPriceCurrency}
                       options={priceOptions}
                       ariaLabel="Show prices in"
-                      size="sm"
-                      triggerClassName="min-w-0 flex-1 sm:flex-none sm:w-48"
+                      triggerClassName="w-full"
                     />
                   </div>
                 )}
