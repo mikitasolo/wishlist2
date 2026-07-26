@@ -103,3 +103,26 @@ The app-level rate limiter (`lib/rateLimit.ts`, Upstash-backed) is implemented a
 - **New-account friction.** Lower limits for accounts younger than ~24h (most abuse is throwaway accounts), relaxed automatically after age/activity.
 
 Limit values in `SPECS` are starting points — tune them from real traffic/logs once Upstash is live.
+
+## Rethink wishlist & people search
+
+The header search (and the landing-page search block) need a clearer model. Open questions before building:
+
+- **Scope:** should search cover _all_ wishlists in the system, or only those visible/available to the searcher (respecting privacy/visibility)? Likely the latter, but confirm.
+- **Ranking:** should results tied to the searcher — friends, people they follow, their followers — rank above strangers? A "people you know first" ordering.
+- **Landing page:** the logged-out landing page has its own search block at the bottom; search is also in the header. Do we drop the landing-page one as redundant, or is it a deliberate entry point for first-time visitors?
+
+## Compute the default currency instead of hardcoding USD
+
+Today new users / wishlists default to `USD`. Questions:
+
+- Do we even need this, or is USD a fine default? (Weigh against added complexity.)
+- If we compute it, what to rely on? Options: the browser's `Intl`/locale (`navigator.language` → region → currency), `Accept-Language` server-side, IP geolocation, or an explicit onboarding choice. Each has accuracy/privacy tradeoffs. A safe path: infer a suggested default from locale, but always let the user override in settings.
+
+## "Discreet mode" — hide booked status on demand
+
+A user-toggleable mode that stops the UI from revealing booking status, so someone glancing at your screen (the very person you're gifting) can't see what's been booked and get spoiled. Open questions:
+
+- Scope: per-session toggle in the header, or a persisted user setting? Probably an ephemeral toggle (like an incognito switch) that defaults off.
+- What it hides: the "booked" badges / "booked by you" markers on items you're viewing, collapsing them back to "available" client-side. It's a _display_ guard, not a privacy/authorization change (the data still comes down; consider whether that's acceptable or if it should be server-enforced when enabled).
+- Interaction with the "Reserved by you" page, which is inherently a list of your bookings — hide/blur there too, or leave it (you'd only open it deliberately)?
