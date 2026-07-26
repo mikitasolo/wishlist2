@@ -96,44 +96,45 @@ export default function FilterDropdown({
           : `${selectedFilters.length} selected`;
 
   return (
-    <div className="relative" ref={dropdownRef}>
-      <label className="text-xs sm:text-sm font-medium text-foreground whitespace-nowrap mb-2 block">
-        {label}:
-      </label>
-      <button
-        type="button"
-        onClick={() => setIsOpen(!isOpen)}
-        className="flex h-9 w-full sm:w-auto min-w-[200px] items-center justify-between gap-2 rounded-xl border border-border-strong bg-surface px-3.5 text-sm font-medium text-foreground outline-none transition-colors hover:bg-surface-hover"
-      >
-        <span className="truncate">{displayText}</span>
-        <Icon
-          name="chevron-down"
-          size={16}
-          className={`flex-shrink-0 text-muted-foreground transition-transform ${isOpen ? 'rotate-180' : ''}`}
-        />
-      </button>
+    <div className="flex w-full items-center gap-2 sm:w-auto">
+      <span className="text-sm font-medium text-muted-foreground whitespace-nowrap">{label}</span>
+      <div className="relative min-w-0 flex-1 sm:flex-none" ref={dropdownRef}>
+        <button
+          type="button"
+          onClick={() => setIsOpen(!isOpen)}
+          className="flex h-9 w-full items-center justify-between gap-2 rounded-xl border border-border-strong bg-surface px-3.5 text-sm font-medium text-foreground outline-none transition-colors hover:bg-surface-hover sm:w-44"
+        >
+          <span className="truncate">{displayText}</span>
+          <Icon
+            name="chevron-down"
+            size={16}
+            className={`flex-shrink-0 text-muted-foreground transition-transform ${isOpen ? 'rotate-180' : ''}`}
+          />
+        </button>
 
-      {isOpen && (
-        <div className="absolute z-50 mt-2 w-full sm:w-auto min-w-[200px] bg-surface border border-border rounded-xl shadow-lg max-h-60 overflow-auto py-1.5">
-          {options.map((option) => {
-            const isSelected = option === 'all' ? isAllSelected : selectedFilters.includes(option);
-            return (
-              <label
-                key={option}
-                className="flex items-center px-4 py-2 hover:bg-muted cursor-pointer"
-              >
-                <input
-                  type="checkbox"
-                  checked={isSelected}
-                  onChange={() => handleToggleFilter(option)}
-                  className="w-4 h-4 text-accent border-border-strong rounded cursor-pointer"
-                />
-                <span className="ml-3 text-sm text-foreground">{getDisplayLabel(option)}</span>
-              </label>
-            );
-          })}
-        </div>
-      )}
+        {isOpen && (
+          <div className="absolute left-0 top-full z-50 mt-2 max-h-60 w-full min-w-[220px] overflow-auto rounded-xl border border-border bg-surface py-1.5 shadow-lg">
+            {options.map((option) => {
+              const isSelected =
+                option === 'all' ? isAllSelected : selectedFilters.includes(option);
+              return (
+                <label
+                  key={option}
+                  className="flex items-center px-4 py-2 hover:bg-muted cursor-pointer"
+                >
+                  <input
+                    type="checkbox"
+                    checked={isSelected}
+                    onChange={() => handleToggleFilter(option)}
+                    className="w-4 h-4 text-accent border-border-strong rounded cursor-pointer"
+                  />
+                  <span className="ml-3 text-sm text-foreground">{getDisplayLabel(option)}</span>
+                </label>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
