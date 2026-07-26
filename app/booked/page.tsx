@@ -148,7 +148,7 @@ export default function BookedPage() {
   return (
     <div className="min-h-screen">
       <AppHeader actions={<AuthButton />} />
-      <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
+      <main className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
         <h1 className="text-3xl font-semibold tracking-tight text-foreground">Reserved by you</h1>
         <p className="mt-1 text-muted-foreground">
           Gifts you’ve claimed across everyone’s wishlists. When you’ve given one, mark it as gifted
@@ -158,7 +158,7 @@ export default function BookedPage() {
         {loading ? (
           <div className="mt-8">
             <div className="skeleton mb-4 ml-1 h-6 w-24 rounded-md" />
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               {Array.from({ length: 6 }).map((_, i) => (
                 <div
                   key={i}
@@ -206,7 +206,7 @@ export default function BookedPage() {
                           it’s saved to your history — otherwise dismiss it. Either way, the owner’s
                           list isn’t affected.
                         </p>
-                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                           {needsConfirm.map((r) => (
                             <ReservationCard
                               key={r._id}
@@ -229,7 +229,7 @@ export default function BookedPage() {
                           Nothing actively reserved right now.
                         </p>
                       ) : (
-                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                           {active.map((r) => (
                             <ReservationCard
                               key={r._id}
