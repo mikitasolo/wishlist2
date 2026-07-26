@@ -781,7 +781,7 @@ export default function WishlistDetail() {
 
   // Price-currency options: Original, then the viewer's default, then the rest.
   const priceOptions = useMemo(() => {
-    const opts = [{ value: 'original', label: 'Original' }];
+    const opts = [{ value: 'original', label: 'Each item’s currency' }];
     const def = currencySelectOptions.find((o) => o.value === viewerCurrency);
     if (def) opts.push({ value: def.value, label: `${def.label} · your default` });
     else opts.push({ value: viewerCurrency, label: `${viewerCurrency} · your default` });
@@ -1033,43 +1033,65 @@ export default function WishlistDetail() {
               })}
             </div>
 
-            {/* Filter and Sort Controls */}
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 mb-6 sm:mb-8">
-              <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+            {/* Search, filter, sort & currency toolbar */}
+            <div className="mb-6 flex flex-col gap-3 sm:mb-8 sm:flex-row sm:flex-wrap sm:items-center">
+              {/* Search — grows to fill the row */}
+              <div className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-xl border border-border-strong bg-surface px-3.5 sm:min-w-[240px]">
+                <Icon name="search" size={17} className="flex-shrink-0 text-muted-foreground" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search items by name…"
+                  aria-label="Search items by name"
+                  className="h-full min-w-0 flex-1 border-0 bg-transparent text-sm outline-none"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    aria-label="Clear search"
+                    className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  >
+                    <Icon name="close" size={15} />
+                  </button>
+                )}
+              </div>
+
+              {/* Filter · Sort · Currency — grouped, equal-height controls */}
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
                 <FilterDropdown
                   options={getFilterOptions()}
                   selectedFilters={selectedFilters}
                   onChange={setSelectedFilters}
                   label="Filter"
                 />
-                <div className="flex min-w-0 items-center gap-2 rounded-full border border-border-strong bg-surface pl-3.5 pr-1.5 shadow-xs w-full sm:w-64">
-                  <Icon name="search" size={17} className="flex-shrink-0 text-muted-foreground" />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search items by name…"
-                    aria-label="Search items by name"
-                    className="h-9 min-w-0 flex-1 border-0 bg-transparent text-sm outline-none"
-                  />
-                  {searchQuery && (
-                    <button
-                      type="button"
-                      onClick={() => setSearchQuery('')}
-                      aria-label="Clear search"
-                      className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                    >
-                      <Icon name="close" size={15} />
-                    </button>
-                  )}
-                </div>
-              </div>
 
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 flex-shrink-0 w-full sm:w-auto">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-muted-foreground whitespace-nowrap">
+                    Sort
+                  </span>
+                  <Select
+                    value={sortBy}
+                    onChange={(v) => setSortBy(v as SortType)}
+                    ariaLabel="Sort items by"
+                    menuAlign="right"
+                    triggerClassName="min-w-0 flex-1 sm:flex-none sm:w-52"
+                    options={[
+                      { value: 'name-asc', label: 'Name (A-Z)' },
+                      { value: 'name-desc', label: 'Name (Z-A)' },
+                      { value: 'price-asc', label: 'Price (Low to High)' },
+                      { value: 'price-desc', label: 'Price (High to Low)' },
+                      { value: 'date-asc', label: 'Date Created (Oldest First)' },
+                      { value: 'date-desc', label: 'Date Created (Newest First)' },
+                    ]}
+                  />
+                </div>
+
                 {session?.user && (
                   <div className="flex items-center gap-2">
-                    <span className="text-xs sm:text-sm font-medium text-foreground whitespace-nowrap">
-                      Prices:
+                    <span className="text-sm font-medium text-muted-foreground whitespace-nowrap">
+                      Show prices in
                     </span>
                     <Select
                       value={priceCurrency}
@@ -1077,31 +1099,10 @@ export default function WishlistDetail() {
                       options={priceOptions}
                       ariaLabel="Show prices in"
                       size="sm"
-                      triggerClassName="w-full sm:w-44"
+                      triggerClassName="min-w-0 flex-1 sm:flex-none sm:w-48"
                     />
                   </div>
                 )}
-                <label
-                  htmlFor="sort"
-                  className="text-xs sm:text-sm font-medium text-foreground whitespace-nowrap"
-                >
-                  Sort by:
-                </label>
-                <Select
-                  value={sortBy}
-                  onChange={(v) => setSortBy(v as SortType)}
-                  ariaLabel="Sort items by"
-                  menuAlign="right"
-                  triggerClassName="w-full sm:w-auto sm:min-w-[13rem]"
-                  options={[
-                    { value: 'name-asc', label: 'Name (A-Z)' },
-                    { value: 'name-desc', label: 'Name (Z-A)' },
-                    { value: 'price-asc', label: 'Price (Low to High)' },
-                    { value: 'price-desc', label: 'Price (High to Low)' },
-                    { value: 'date-asc', label: 'Date Created (Oldest First)' },
-                    { value: 'date-desc', label: 'Date Created (Newest First)' },
-                  ]}
-                />
               </div>
             </div>
 
