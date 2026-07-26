@@ -298,12 +298,18 @@ export default function MyItemsPage() {
 
             {/* Filters + sort */}
             <div className="mt-6 flex flex-wrap items-end gap-3 sm:gap-4">
-              <FilterDropdown
-                label="Status"
-                options={STATUS_FILTER_OPTIONS}
-                selectedFilters={statusFilters}
-                onChange={setStatusFilters}
-              />
+              <div className="w-full sm:w-auto">
+                <label className="mb-2 block whitespace-nowrap text-xs font-medium text-foreground sm:text-sm">
+                  Status
+                </label>
+                <FilterDropdown
+                  options={STATUS_FILTER_OPTIONS}
+                  selectedFilters={statusFilters}
+                  onChange={setStatusFilters}
+                  ariaLabel="Filter by status"
+                  className="w-full sm:w-auto sm:min-w-[200px]"
+                />
+              </div>
               <MultiSelectDropdown
                 label="List"
                 options={wishlistOptions}

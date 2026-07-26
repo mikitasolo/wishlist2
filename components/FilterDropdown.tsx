@@ -17,14 +17,17 @@ interface FilterDropdownProps {
   options: FilterOption[];
   selectedFilters: FilterOption[];
   onChange: (filters: FilterOption[]) => void;
-  label?: string;
+  ariaLabel?: string;
+  /** Width/layout classes for the root; the trigger always fills it. */
+  className?: string;
 }
 
 export default function FilterDropdown({
   options,
   selectedFilters,
   onChange,
-  label = 'Filter',
+  ariaLabel,
+  className,
 }: FilterDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -96,45 +99,45 @@ export default function FilterDropdown({
           : `${selectedFilters.length} selected`;
 
   return (
-    <div className="flex w-full items-center gap-2 sm:w-auto">
-      <span className="text-sm font-medium text-muted-foreground whitespace-nowrap">{label}</span>
-      <div className="relative min-w-0 flex-1 sm:flex-none" ref={dropdownRef}>
-        <button
-          type="button"
-          onClick={() => setIsOpen(!isOpen)}
-          className="flex h-9 w-full items-center justify-between gap-2 rounded-xl border border-border-strong bg-surface px-3.5 text-sm font-medium text-foreground outline-none transition-colors hover:bg-surface-hover sm:w-44"
-        >
-          <span className="truncate">{displayText}</span>
-          <Icon
-            name="chevron-down"
-            size={16}
-            className={`flex-shrink-0 text-muted-foreground transition-transform ${isOpen ? 'rotate-180' : ''}`}
-          />
-        </button>
+    <div
+      className={`relative ${className ?? 'w-full sm:w-auto sm:min-w-[200px]'}`}
+      ref={dropdownRef}
+    >
+      <button
+        type="button"
+        aria-label={ariaLabel}
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex h-9 w-full items-center justify-between gap-2 rounded-xl border border-border-strong bg-surface px-3.5 text-sm font-medium text-foreground outline-none transition-colors hover:bg-surface-hover"
+      >
+        <span className="truncate">{displayText}</span>
+        <Icon
+          name="chevron-down"
+          size={16}
+          className={`flex-shrink-0 text-muted-foreground transition-transform ${isOpen ? 'rotate-180' : ''}`}
+        />
+      </button>
 
-        {isOpen && (
-          <div className="absolute left-0 top-full z-50 mt-2 max-h-60 w-full min-w-[220px] overflow-auto rounded-xl border border-border bg-surface py-1.5 shadow-lg">
-            {options.map((option) => {
-              const isSelected =
-                option === 'all' ? isAllSelected : selectedFilters.includes(option);
-              return (
-                <label
-                  key={option}
-                  className="flex items-center px-4 py-2 hover:bg-muted cursor-pointer"
-                >
-                  <input
-                    type="checkbox"
-                    checked={isSelected}
-                    onChange={() => handleToggleFilter(option)}
-                    className="w-4 h-4 text-accent border-border-strong rounded cursor-pointer"
-                  />
-                  <span className="ml-3 text-sm text-foreground">{getDisplayLabel(option)}</span>
-                </label>
-              );
-            })}
-          </div>
-        )}
-      </div>
+      {isOpen && (
+        <div className="absolute left-0 top-full z-50 mt-2 max-h-60 w-full min-w-[220px] overflow-auto rounded-xl border border-border bg-surface py-1.5 shadow-lg">
+          {options.map((option) => {
+            const isSelected = option === 'all' ? isAllSelected : selectedFilters.includes(option);
+            return (
+              <label
+                key={option}
+                className="flex items-center px-4 py-2 hover:bg-muted cursor-pointer"
+              >
+                <input
+                  type="checkbox"
+                  checked={isSelected}
+                  onChange={() => handleToggleFilter(option)}
+                  className="w-4 h-4 text-accent border-border-strong rounded cursor-pointer"
+                />
+                <span className="ml-3 text-sm text-foreground">{getDisplayLabel(option)}</span>
+              </label>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
