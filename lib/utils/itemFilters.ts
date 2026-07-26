@@ -63,6 +63,16 @@ export function filterItemsMulti(
 }
 
 /**
+ * Filters items to those whose name contains the query (case-insensitive
+ * substring match). An empty or whitespace-only query returns all items.
+ */
+export function searchItemsByName(items: ApiItem[], query: string): ApiItem[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return items;
+  return items.filter((item) => item.name?.toLowerCase().includes(q));
+}
+
+/**
  * Calculates statistics for items in a single pass
  */
 export function calculateStats(
