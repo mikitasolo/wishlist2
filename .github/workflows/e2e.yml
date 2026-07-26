@@ -2,7 +2,7 @@ name: E2E
 
 on:
   push:
-    branches: [main]
+    branches: [main, staging]
   pull_request:
 
 # Separate from the main CI workflow: E2E downloads a browser and builds the
