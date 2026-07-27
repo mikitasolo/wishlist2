@@ -7,7 +7,12 @@ import User from '@/models/User';
 import Item from '@/models/Item';
 import mongoose from 'mongoose';
 import { areFriends } from '@/lib/utils/friends';
-import { ownedByFilter, ownerIds, serializeWishlist } from '@/lib/utils/wishlistOwners';
+import {
+  isWishlistOwner,
+  ownedByFilter,
+  ownerIds,
+  serializeWishlist,
+} from '@/lib/utils/wishlistOwners';
 
 // GET /api/users/[id]/wishlists - Get wishlists for a specific user
 // Returns: public wishlists + wishlists the current user has access to
@@ -66,7 +71,19 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       });
     }
 
-    const allWishlists = [...visibleWishlists, ...memberWishlists];
+    // Plus any wishlist (any tier) the viewer co-owns. Co-owners have no
+    // `WishlistMember` row, so the membership clause above misses them entirely:
+    // without this, a private list you own with someone is invisible to you on
+    // their profile. A list you own is never hidden from you by its own tier.
+    let coOwnedWishlists: typeof visibleWishlists = [];
+    if (viewerId && !isSelf) {
+      coOwnedWishlists = await Wishlist.find({
+        // Two `$or` filters, so they have to be combined under `$and`.
+        $and: [ownedByFilter(userId), ownedByFilter(viewerId), { archived: { $ne: true } }],
+      });
+    }
+
+    const allWishlists = [...visibleWishlists, ...memberWishlists, ...coOwnedWishlists];
     const uniqueWishlists = Array.from(
       new Map(allWishlists.map((w) => [w._id.toString(), w])).values()
     );
@@ -110,9 +127,18 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         .map((oid) => ownerMap.get(oid))
         .filter((o): o is NonNullable<typeof o> => !!o);
       const profileOwner = people.find((o) => o._id.toString() === userId) ?? people[0];
+      // The viewer's own relationship to the list. On someone else's profile,
+      // "owner" is what explains why a private list is visible at all.
+      const viewerRole = isWishlistOwner(wishlist, viewerId)
+        ? ('owner' as const)
+        : viewerMemberships.has(wishlist._id.toString())
+          ? ('member' as const)
+          : null;
       return {
         ...serializeWishlist(wishlist, viewerId),
-        userRole: viewerMemberships.has(wishlist._id.toString()) ? ('member' as const) : null,
+        // Suppressed on your own profile, where every list is yours and the
+        // badge would just be uniform noise.
+        userRole: isSelf ? null : viewerRole,
         ownerUsername: profileOwner?.username || null,
         ownerImage: profileOwner?.image ?? null,
         ownerUsernames: people.map((o) => o.username).filter((u): u is string => !!u),

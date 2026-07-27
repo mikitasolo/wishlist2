@@ -152,6 +152,57 @@ describe('co-ownership — reading the list', () => {
       expect(body.data.map((w: { _id: string }) => w._id)).toContain(wid);
     }
   });
+
+  async function profileOf(profileUserId: string, viewerId: string | null) {
+    as(viewerId);
+    const res = await getProfileWishlists(req(`/api/users/${profileUserId}/wishlists`), {
+      params: Promise.resolve({ id: profileUserId }),
+    });
+    return res.json();
+  }
+
+  // regression: the "see it regardless of visibility tier" escape hatch keyed on
+  // a `WishlistMember` row, and co-owners don't have one — so a list you co-owned
+  // vanished from your co-owner's profile the moment it wasn't public.
+  it('regression: a co-owner sees a private shared list on the other owner’s profile', async () => {
+    await Wishlist.updateOne({ _id: wid }, { $set: { visibility: 'private', isPublic: false } });
+
+    const body = await profileOf(bob, alice);
+    const row = body.data.find((w: { _id: string }) => w._id === wid);
+    expect(row).toBeDefined();
+    // And it's labelled as theirs, which is what explains the visibility.
+    expect(row.userRole).toBe('owner');
+  });
+
+  // The friends tier is gated on friendship with the profile's owner, which a
+  // co-owner needn't have.
+  it('regression: a co-owner sees a friends-only shared list without being friends', async () => {
+    await Wishlist.updateOne({ _id: wid }, { $set: { visibility: 'friends', isPublic: false } });
+
+    const body = await profileOf(bob, alice);
+    expect(body.data.map((w: { _id: string }) => w._id)).toContain(wid);
+  });
+
+  // The fix must widen access for owners only — not for everyone else.
+  it('still hides a private list from a stranger and from a plain member’s view of it', async () => {
+    await Wishlist.updateOne({ _id: wid }, { $set: { visibility: 'private', isPublic: false } });
+    const stranger = (await User.create({ email: 'z@x.com', username: 'zoe' }))._id.toString();
+
+    expect((await profileOf(bob, stranger)).data).toHaveLength(0);
+    expect((await profileOf(bob, null)).data).toHaveLength(0);
+
+    // A member still reaches it, as before — via the membership clause.
+    const memberView = await profileOf(bob, carol);
+    const row = memberView.data.find((w: { _id: string }) => w._id === wid);
+    expect(row.userRole).toBe('member');
+  });
+
+  it('does not badge every list as owned on your own profile', async () => {
+    const body = await profileOf(alice, alice);
+    const row = body.data.find((w: { _id: string }) => w._id === wid);
+    expect(row).toBeDefined();
+    expect(row.userRole).toBeNull();
+  });
 });
 
 describe('co-ownership — notifications', () => {

@@ -14,8 +14,8 @@ interface WishlistCardProps {
     ownerImage?: string | null;
     /** Every owner of a co-owned list; the card shows the first plus a count. */
     ownerUsernames?: string[] | null;
-    /** The viewer's role in this list, if any (null when not a member). */
-    userRole?: 'member' | null;
+    /** The viewer's own relationship to this list (null when they have none). */
+    userRole?: 'owner' | 'member' | null;
     itemCount?: number;
     archived?: boolean;
     bannerUrl?: string | null;
@@ -57,7 +57,7 @@ export default function WishlistCard({ wishlist, showOwner = false }: WishlistCa
             <Icon name="sparkles" size={12} />
             Featured
           </span>
-        ) : wishlist.userRole === 'member' ? (
+        ) : wishlist.userRole ? (
           <span className="absolute left-3 top-3 inline-flex items-center rounded-full border border-white/25 bg-white/20 px-2.5 py-1 text-[11.5px] font-semibold capitalize text-white backdrop-blur-md">
             {wishlist.userRole}
           </span>
