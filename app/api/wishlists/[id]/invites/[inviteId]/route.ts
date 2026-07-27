@@ -3,9 +3,9 @@ import { auth } from '@/lib/auth';
 import connectDB from '@/lib/mongodb';
 import WishlistInvite from '@/models/WishlistInvite';
 import { resolveWishlistId } from '@/lib/utils/wishlistSlug';
-import { isAdminOrOwner } from '@/lib/utils/wishlistAccess';
+import { isOwnerOfWishlist } from '@/lib/utils/wishlistAccess';
 
-// DELETE /api/wishlists/[id]/invites/[inviteId] - cancel a pending invite (owner/admin).
+// DELETE /api/wishlists/[id]/invites/[inviteId] - cancel a pending invite (owners).
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string; inviteId: string }> }
@@ -21,7 +21,7 @@ export async function DELETE(
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
     await connectDB();
-    if (!(await isAdminOrOwner(id, session.user.id))) {
+    if (!(await isOwnerOfWishlist(id, session.user.id))) {
       return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
     }
 

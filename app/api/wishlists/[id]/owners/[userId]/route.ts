@@ -1,0 +1,238 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { auth } from '@/lib/auth';
+import { enforce } from '@/lib/rateLimit';
+import connectDB from '@/lib/mongodb';
+import User from '@/models/User';
+import type { IWishlist } from '@/models/Wishlist';
+import { resolveWishlistId } from '@/lib/utils/wishlistSlug';
+import { getOwnerAccess } from '@/lib/utils/wishlistAccess';
+import { isWishlistOwner } from '@/lib/utils/wishlistOwners';
+import {
+  isLastOwner,
+  releaseUserBookings,
+  removeWishlistOwner,
+} from '@/lib/utils/wishlistOwnership';
+import { issueWishlistInvite } from '@/lib/utils/wishlistInvites';
+
+/**
+ * Who owns a wishlist. Owners have no `WishlistMember` row (they live in
+ * `Wishlist.owners`), so they're addressed here by *user* id — the `_id` the
+ * members listing returns for an owner row.
+ *
+ *   POST   → invite this user to become a co-owner (promotion; needs their accept)
+ *   PATCH  → demote this owner to a plain member
+ *   DELETE → remove this owner from the wishlist entirely
+ *
+ * All three are owner-only. PATCH/DELETE additionally refuse the last owner (a
+ * wishlist with no owner is unmanageable — delete it instead) and refuse to act on
+ * yourself: demoting yourself is a self-role-change, removing yourself is "leave".
+ */
+async function requireOwnerCaller(
+  wishlistIdParam: string,
+  callerId: string
+): Promise<{ ok: false; response: NextResponse } | { ok: true; id: string; wishlist: IWishlist }> {
+  const id = await resolveWishlistId(wishlistIdParam);
+  if (!id) {
+    return {
+      ok: false,
+      response: NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 }),
+    };
+  }
+
+  const { isOwner, wishlist } = await getOwnerAccess(id, callerId);
+  if (!wishlist) {
+    return {
+      ok: false,
+      response: NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 }),
+    };
+  }
+  if (!isOwner) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { success: false, error: 'Only an owner can change who owns this wishlist' },
+        { status: 403 }
+      ),
+    };
+  }
+
+  return { ok: true, id, wishlist };
+}
+
+/** Extra guards for acting on an *existing* owner (demote / remove). */
+function checkExistingOwner(wishlist: IWishlist, userId: string): NextResponse | null {
+  if (!isWishlistOwner(wishlist, userId)) {
+    return NextResponse.json(
+      { success: false, error: 'This person is not an owner of this wishlist' },
+      { status: 404 }
+    );
+  }
+  if (isLastOwner(wishlist, userId)) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'A wishlist needs at least one owner. Delete the wishlist instead.',
+      },
+      { status: 400 }
+    );
+  }
+  return null;
+}
+
+// POST /api/wishlists/[id]/owners/[userId] - invite a member to become a co-owner.
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string; userId: string }> }
+) {
+  try {
+    const session = await auth();
+    const { id: idParam, userId } = await params;
+
+    if (!session?.user) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized - Please sign in' },
+        { status: 401 }
+      );
+    }
+
+    await connectDB();
+
+    const authorized = await requireOwnerCaller(idParam, session.user.id);
+    if (!authorized.ok) return authorized.response;
+    const { id, wishlist } = authorized;
+
+    if (isWishlistOwner(wishlist, userId)) {
+      return NextResponse.json(
+        { success: false, error: 'This person already owns this wishlist' },
+        { status: 400 }
+      );
+    }
+
+    // This sends mail, so it carries the same budget as the invite route.
+    const limited = await enforce('invite', session.user.id);
+    if (limited) return limited;
+
+    const target = await User.findById(userId).select('email username');
+    if (!target) {
+      return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
+    }
+
+    // Promotion is consent-gated: co-ownership puts the list on their public
+    // profile and cancels the reservations they hold on it, so it can never be a
+    // silent write. Their `whoCanInvite` preference isn't re-checked — they're
+    // already on this list by their own choice, so this isn't an unsolicited
+    // invite, it's a change to a relationship they opted into.
+    const invite = await issueWishlistInvite({
+      wishlistId: id,
+      wishlistName: wishlist.name,
+      role: 'owner',
+      invitedBy: session.user.id,
+      inviterName: session.user.username || session.user.email?.split('@')[0] || 'Someone',
+      actorUsername: session.user.username ?? null,
+      invitedUserId: userId,
+      invitedUserEmail: target.email,
+    });
+
+    if (!invite) {
+      return NextResponse.json(
+        { success: false, error: 'This person already has a pending invite' },
+        { status: 400 }
+      );
+    }
+
+    return NextResponse.json(
+      { success: true, data: { pending: true, role: 'owner', inviteId: invite._id } },
+      { status: 202 }
+    );
+  } catch (error) {
+    console.error('Error inviting owner:', error);
+    return NextResponse.json({ success: false, error: 'Failed to invite owner' }, { status: 500 });
+  }
+}
+
+// PATCH /api/wishlists/[id]/owners/[userId] - demote an owner to a plain member.
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string; userId: string }> }
+) {
+  try {
+    const session = await auth();
+    const { id: idParam, userId } = await params;
+
+    if (!session?.user) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized - Please sign in' },
+        { status: 401 }
+      );
+    }
+
+    await connectDB();
+
+    if (userId === session.user.id) {
+      return NextResponse.json(
+        { success: false, error: 'You cannot change your own role' },
+        { status: 403 }
+      );
+    }
+
+    const authorized = await requireOwnerCaller(idParam, session.user.id);
+    if (!authorized.ok) return authorized.response;
+
+    const invalid = checkExistingOwner(authorized.wishlist, userId);
+    if (invalid) return invalid;
+
+    // Losing ownership also drops their dashboard pin for this list (per-owner).
+    // Nothing to release: they land as a member, who can see and cancel their own
+    // bookings — the stranded-booking problem only runs the other way.
+    await removeWishlistOwner(authorized.wishlist, userId, true);
+
+    const user = await User.findById(userId).select('username image');
+    return NextResponse.json({ success: true, data: { role: 'member', user } }, { status: 200 });
+  } catch (error) {
+    console.error('Error demoting owner:', error);
+    return NextResponse.json({ success: false, error: 'Failed to update owner' }, { status: 500 });
+  }
+}
+
+// DELETE /api/wishlists/[id]/owners/[userId] - remove an owner from the wishlist.
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string; userId: string }> }
+) {
+  try {
+    const session = await auth();
+    const { id: idParam, userId } = await params;
+
+    if (!session?.user) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized - Please sign in' },
+        { status: 401 }
+      );
+    }
+
+    await connectDB();
+
+    if (userId === session.user.id) {
+      return NextResponse.json(
+        { success: false, error: 'Cannot remove yourself. Leave the wishlist instead.' },
+        { status: 400 }
+      );
+    }
+
+    const authorized = await requireOwnerCaller(idParam, session.user.id);
+    if (!authorized.ok) return authorized.response;
+
+    const invalid = checkExistingOwner(authorized.wishlist, userId);
+    if (invalid) return invalid;
+
+    await removeWishlistOwner(authorized.wishlist, userId, false);
+    // Defensive: an owner shouldn't hold a booking on their own list, but if a
+    // stale one exists don't leave the item stuck as claimed.
+    await releaseUserBookings(authorized.id, userId);
+
+    return NextResponse.json({ success: true, data: {} }, { status: 200 });
+  } catch (error) {
+    console.error('Error removing owner:', error);
+    return NextResponse.json({ success: false, error: 'Failed to remove owner' }, { status: 500 });
+  }
+}

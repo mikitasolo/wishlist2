@@ -30,7 +30,7 @@ beforeEach(async () => {
   const owner = await User.create({ email: 'owner@x.com', username: 'owner' });
   ownerId = owner._id.toString();
   await User.create({ email: 'friend@x.com', username: 'friend' });
-  const wl = await Wishlist.create({ name: 'List', owner: owner._id, visibility: 'everyone' });
+  const wl = await Wishlist.create({ name: 'List', owners: [owner._id], visibility: 'everyone' });
   wishlistId = wl._id.toString();
 });
 

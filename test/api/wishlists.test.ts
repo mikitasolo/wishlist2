@@ -37,7 +37,7 @@ describe('GET /api/wishlists/[id] — archived visibility', () => {
   async function archived() {
     const wl = await Wishlist.create({
       name: 'Secret',
-      owner: ownerId,
+      owners: [ownerId],
       visibility: 'everyone',
       archived: true,
       slug: 'secret-list',
@@ -68,7 +68,7 @@ describe('GET /api/wishlists/[id] — slug resolution', () => {
   it('resolves a wishlist by its slug', async () => {
     const wl = await Wishlist.create({
       name: 'Public List',
-      owner: ownerId,
+      owners: [ownerId],
       visibility: 'everyone',
       slug: 'public-list',
     });

@@ -12,8 +12,10 @@ interface WishlistCardProps {
   wishlist: IWishlist & {
     ownerUsername?: string | null;
     ownerImage?: string | null;
+    /** Every owner of a co-owned list; the card shows the first plus a count. */
+    ownerUsernames?: string[] | null;
     /** The viewer's role in this list, if any (null when not a member). */
-    userRole?: 'admin' | 'member' | null;
+    userRole?: 'member' | null;
     itemCount?: number;
     archived?: boolean;
     bannerUrl?: string | null;
@@ -23,6 +25,7 @@ interface WishlistCardProps {
 
 export default function WishlistCard({ wishlist, showOwner = false }: WishlistCardProps) {
   const ownerName = wishlist.ownerUsername || 'unknown';
+  const coOwnerCount = Math.max(0, (wishlist.ownerUsernames?.length ?? 1) - 1);
   const itemCount = wishlist.itemCount ?? 0;
   const vis = visibilityMeta[getVisibility(wishlist)];
 
@@ -54,7 +57,7 @@ export default function WishlistCard({ wishlist, showOwner = false }: WishlistCa
             <Icon name="sparkles" size={12} />
             Featured
           </span>
-        ) : wishlist.userRole === 'admin' || wishlist.userRole === 'member' ? (
+        ) : wishlist.userRole === 'member' ? (
           <span className="absolute left-3 top-3 inline-flex items-center rounded-full border border-white/25 bg-white/20 px-2.5 py-1 text-[11.5px] font-semibold capitalize text-white backdrop-blur-md">
             {wishlist.userRole}
           </span>
@@ -74,7 +77,10 @@ export default function WishlistCard({ wishlist, showOwner = false }: WishlistCa
           {showOwner ? (
             <span className="flex min-w-0 items-center gap-2">
               <Avatar name={ownerName} src={wishlist.ownerImage} size="sm" />
-              <span className="truncate text-[13px] text-muted-foreground">@{ownerName}</span>
+              <span className="truncate text-[13px] text-muted-foreground">
+                @{ownerName}
+                {coOwnerCount > 0 && ` +${coOwnerCount}`}
+              </span>
             </span>
           ) : (
             <span />

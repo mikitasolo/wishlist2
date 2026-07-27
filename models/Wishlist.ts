@@ -21,10 +21,25 @@ const WishlistSchema = new Schema(
       type: String,
       trim: true,
     },
+    // Co-owners. Every owner is equal: same authorization, same privacy (none of
+    // them ever see booking status), the list shows on each of their profiles,
+    // and each can pin it to their own dashboard (see `featuredBy`). Always has
+    // at least one entry — the last owner can't be removed, only the wishlist
+    // deleted. Owners are NOT rows in `WishlistMember`; that collection holds
+    // only 'admin' / 'member'.
+    owners: {
+      type: [{ type: Schema.Types.ObjectId, ref: 'User' }],
+      default: [],
+    },
+    /**
+     * @deprecated Pre-multi-owner single owner. Superseded by `owners[]`; kept so
+     * rows written before the migration can still be resolved (and so the
+     * `wishlist-owners` migration can read them). Nothing in the app authorizes
+     * against it — use the helpers in `lib/utils/wishlistOwners.ts`.
+     */
     owner: {
       type: Schema.Types.ObjectId,
       ref: 'User',
-      required: true,
     },
     // Legacy flag, kept in sync with `visibility` (everyone ⇒ true).
     isPublic: {
@@ -33,9 +48,9 @@ const WishlistSchema = new Schema(
       required: true,
     },
     // Who can see this wishlist:
-    //  - everyone: anyone with the link / on your profile
-    //  - friends:  the owner's friends (mutual follows) + members
-    //  - private:  owner + explicit members only
+    //  - everyone: anyone with the link / on any owner's profile
+    //  - friends:  any owner's friends (mutual follows) + members
+    //  - private:  owners + explicit members only
     visibility: {
       type: String,
       enum: ['everyone', 'friends', 'private'],
@@ -47,7 +62,7 @@ const WishlistSchema = new Schema(
       default: false,
     },
     // Default currency for this wishlist (uppercase code). Prefilled from the
-    // owner's default on creation; editable in settings.
+    // creating owner's default; editable in settings.
     currency: {
       type: String,
       uppercase: true,
@@ -61,11 +76,20 @@ const WishlistSchema = new Schema(
       required: false,
       default: null,
     },
-    // Owner-pinned "featured" list for their dashboard hero. At most one per
-    // owner is true at a time (enforced in the update route).
+    // Which owners pinned this list as the hero of *their* dashboard. "Featured"
+    // is per-owner, not per-list: a co-owned family list can be the highlight
+    // for one owner and not another. At most one list per owner (enforced in the
+    // update route), and an owner is pulled out when they lose ownership.
+    featuredBy: {
+      type: [{ type: Schema.Types.ObjectId, ref: 'User' }],
+      default: [],
+    },
+    /**
+     * @deprecated Pre-multi-owner featured flag. Superseded by `featuredBy[]`;
+     * read only by the `wishlist-owners` migration.
+     */
     featured: {
       type: Boolean,
-      default: false,
     },
   },
   {
@@ -73,8 +97,24 @@ const WishlistSchema = new Schema(
   }
 );
 
-// Index for faster lookups
-WishlistSchema.index({ owner: 1 });
+// Transitional shim: accept the pre-multi-owner write shape (`{ owner }`) by
+// seeding `owners` from it, so anything still constructing a wishlist the old
+// way produces a valid multi-owner document instead of an unowned one.
+WishlistSchema.pre('validate', function seedOwners(next) {
+  if ((!this.owners || this.owners.length === 0) && this.owner) {
+    this.owners = [this.owner];
+  }
+  next();
+});
+
+// A wishlist without an owner is unreachable and unmanageable — never allow one.
+WishlistSchema.path('owners').validate(
+  (v: mongoose.Types.ObjectId[]) => Array.isArray(v) && v.length > 0,
+  'A wishlist must have at least one owner'
+);
+
+// "My wishlists" / profile listings look up by owner.
+WishlistSchema.index({ owners: 1 });
 
 // Base document type
 export interface IWishlist {
@@ -82,11 +122,20 @@ export interface IWishlist {
   name: string;
   slug?: string | null;
   description?: string | null;
-  owner: mongoose.Types.ObjectId;
+  owners: mongoose.Types.ObjectId[];
+  /** @deprecated see the schema note — resolve owners via `lib/utils/wishlistOwners.ts`. */
+  owner?: mongoose.Types.ObjectId | null;
   isPublic: boolean;
   visibility: 'everyone' | 'friends' | 'private';
   archived?: boolean;
   currency?: string;
+  featuredBy: mongoose.Types.ObjectId[];
+  /**
+   * Whether this list is the *viewer's* dashboard highlight. Persisted per-owner
+   * in `featuredBy`; API responses fold it down to this boolean for the caller
+   * (see `serializeWishlist`). The legacy stored flag of the same name is only
+   * read by the migration.
+   */
   featured?: boolean;
   bannerUrl?: string | null;
   createdAt: Date;

@@ -45,13 +45,15 @@ interface WishlistMember {
     username?: string;
     image?: string | null;
   };
-  role: 'owner' | 'admin' | 'member'; // 'owner' is only used when representing the original owner from wishlist.owner
+  // Owners have no membership row — their `_id` is their *user* id, which is what
+  // the /owners/[userId] endpoints take.
+  role: 'owner' | 'member';
   createdAt: string;
 }
 
 interface PendingInvite {
   _id: string;
-  role: 'admin' | 'member';
+  role: 'owner' | 'member';
   username: string | null;
   image: string | null;
 }
@@ -64,7 +66,7 @@ export default function WishlistDetail() {
   const wishlistId = typeof params?.id === 'string' ? params.id : null;
 
   const [wishlist, setWishlist] = useState<IWishlist | null>(null);
-  const [ownerUsername, setOwnerUsername] = useState<string | null>(null);
+  const [ownerUsernames, setOwnerUsernames] = useState<string[]>([]);
   const [items, setItems] = useState<ApiItem[]>([]);
   const [members, setMembers] = useState<WishlistMember[]>([]);
   const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
@@ -72,7 +74,6 @@ export default function WishlistDetail() {
   const [loadingItems, setLoadingItems] = useState(true);
   const [loadingMembers, setLoadingMembers] = useState(false);
   const [isOwner, setIsOwner] = useState(false);
-  const [isAdmin, setIsAdmin] = useState(false);
   const [isMember, setIsMember] = useState(false);
   const [manageOpen, setManageOpen] = useState(false);
   const [selectedFilters, setSelectedFilters] = useState<FilterOption[]>([]);
@@ -103,9 +104,16 @@ export default function WishlistDetail() {
   });
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<{
-    type: 'member' | 'leave' | 'wishlist';
+    type: 'member' | 'owner' | 'leave' | 'wishlist';
     memberId?: string;
     memberEmail?: string;
+  } | null>(null);
+  // Promoting someone to co-owner is destructive for them (it cancels the
+  // reservations they hold here) and irreversible without their consent, so it
+  // always goes through an explicit warning first.
+  const [promoteConfirm, setPromoteConfirm] = useState<{
+    userId: string;
+    username: string;
   } | null>(null);
   const [isDeletingWishlist, setIsDeletingWishlist] = useState(false);
   const settingsFormDirtyRef = useRef(false);
@@ -255,27 +263,28 @@ export default function WishlistDetail() {
         if (result.success && result.data) {
           const w = result.data;
           // Type guard to check if data has extended properties
-          if (typeof w === 'object' && w !== null && 'name' in w && 'owner' in w) {
+          if (typeof w === 'object' && w !== null && 'name' in w && 'owners' in w) {
             // Type guard function to check if it's an IWishlist
             const wishlistData = w as IWishlist;
             setWishlist(wishlistData);
 
             // Check for extended properties
-            const hasExtendedProps = 'userRole' in w || 'ownerUsername' in w;
+            const hasExtendedProps = 'userRole' in w || 'ownerUsernames' in w;
             if (hasExtendedProps) {
               const extendedWishlist = w as IWishlist & {
-                userRole?: 'owner' | 'admin' | 'member' | null;
+                userRole?: 'owner' | 'member' | null;
                 ownerUsername?: string | null;
+                ownerUsernames?: string[] | null;
               };
-              setOwnerUsername(
-                'ownerUsername' in extendedWishlist ? extendedWishlist.ownerUsername || null : null
+              setOwnerUsernames(
+                extendedWishlist.ownerUsernames ??
+                  (extendedWishlist.ownerUsername ? [extendedWishlist.ownerUsername] : [])
               );
 
               // Check user role from API response
               const userRole = 'userRole' in extendedWishlist ? extendedWishlist.userRole : null;
               setIsOwner(userRole === 'owner');
-              setIsAdmin(userRole === 'admin');
-              setIsMember(userRole === 'member' || userRole === 'admin');
+              setIsMember(userRole === 'member');
             }
 
             if (!settingsFormDirtyRef.current) {
@@ -315,7 +324,7 @@ export default function WishlistDetail() {
     }
   }, [wishlistId, status, router, showToast]);
 
-  // Refresh the pending-invites list (owner/admin only).
+  // Refresh the pending-invites list (owners only).
   const refreshInvites = useCallback(async () => {
     if (!wishlistId) return;
     try {
@@ -327,10 +336,10 @@ export default function WishlistDetail() {
     }
   }, [wishlistId]);
 
-  // Fetch members + pending invites (only for owners and admins)
+  // Fetch members + pending invites (owners only)
   useEffect(() => {
     async function fetchMembers() {
-      if (!wishlistId || (!isOwner && !isAdmin)) return;
+      if (!wishlistId || !isOwner) return;
 
       setLoadingMembers(true);
       try {
@@ -347,11 +356,11 @@ export default function WishlistDetail() {
       }
     }
 
-    if ((isOwner || isAdmin) && manageOpen) {
+    if (isOwner && manageOpen) {
       fetchMembers();
       refreshInvites();
     }
-  }, [wishlistId, isOwner, isAdmin, manageOpen, refreshInvites]);
+  }, [wishlistId, isOwner, manageOpen, refreshInvites]);
 
   // Timestamp of the most recent local mutation. A background poll whose read
   // was in flight across a mutation is stale and must be discarded, otherwise it
@@ -578,7 +587,7 @@ export default function WishlistDetail() {
   }, [itemToEdit, deleteItemHook]);
 
   const handleInvite = useCallback(
-    async (payload: { username: string; role: 'admin' | 'member' }) => {
+    async (payload: { username: string; role: 'owner' | 'member' }) => {
       if (!wishlistId) return;
 
       setIsInviting(true);
@@ -634,38 +643,53 @@ export default function WishlistDetail() {
     [wishlistId, showToast, refreshInvites]
   );
 
-  const handleKickMember = useCallback((memberId: string, memberEmail: string) => {
-    setDeleteConfirm({
-      type: 'member',
-      memberId,
-      memberEmail,
-    });
-  }, []);
+  const refreshMembers = useCallback(async () => {
+    if (!wishlistId) return;
+    try {
+      const res = await fetch(`/api/wishlists/${wishlistId}/members`, { cache: 'no-store' });
+      const result = await res.json();
+      if (result.success) setMembers(result.data || []);
+    } catch {
+      /* ignore */
+    }
+  }, [wishlistId]);
+
+  const handleKickMember = useCallback(
+    (memberId: string, memberEmail: string, isOwnerRow: boolean) => {
+      setDeleteConfirm({
+        // Owners aren't memberships — they're removed through the owners endpoint.
+        type: isOwnerRow ? 'owner' : 'member',
+        memberId,
+        memberEmail,
+      });
+    },
+    []
+  );
 
   const confirmKickMember = useCallback(async () => {
-    if (!wishlistId || !deleteConfirm || deleteConfirm.type !== 'member' || !deleteConfirm.memberId)
+    if (
+      !wishlistId ||
+      !deleteConfirm ||
+      (deleteConfirm.type !== 'member' && deleteConfirm.type !== 'owner') ||
+      !deleteConfirm.memberId
+    )
       return;
 
-    try {
-      const response = await fetch(
-        `/api/wishlists/${wishlistId}/members/${deleteConfirm.memberId}`,
-        {
-          method: 'DELETE',
-        }
-      );
+    const path =
+      deleteConfirm.type === 'owner'
+        ? `/api/wishlists/${wishlistId}/owners/${deleteConfirm.memberId}`
+        : `/api/wishlists/${wishlistId}/members/${deleteConfirm.memberId}`;
 
+    try {
+      const response = await fetch(path, { method: 'DELETE' });
       const result = await response.json();
 
       if (result.success) {
-        showToast('Member removed successfully', 'success');
-        // Refresh members list
-        const membersResponse = await fetch(`/api/wishlists/${wishlistId}/members`, {
-          cache: 'no-store',
-        });
-        const membersResult = await membersResponse.json();
-        if (membersResult.success) {
-          setMembers(membersResult.data || []);
-        }
+        showToast(
+          deleteConfirm.type === 'owner' ? 'Owner removed' : 'Member removed successfully',
+          'success'
+        );
+        await refreshMembers();
       } else {
         showToast(result.error || 'Failed to remove member', 'error');
       }
@@ -675,7 +699,65 @@ export default function WishlistDetail() {
     } finally {
       setDeleteConfirm(null);
     }
-  }, [wishlistId, deleteConfirm, showToast]);
+  }, [wishlistId, deleteConfirm, showToast, refreshMembers]);
+
+  /**
+   * Send a member an invitation to become a co-owner. It's an invite, not a role
+   * write: ownership puts the list on their profile and cancels the reservations
+   * they hold here, so they have to accept it themselves. `member._id` on an owner
+   * row is a *user* id — that's what the owners endpoints take.
+   */
+  const inviteAsOwner = useCallback(
+    async (userId: string, username: string) => {
+      if (!wishlistId) return;
+      try {
+        const res = await fetch(`/api/wishlists/${wishlistId}/owners/${userId}`, {
+          method: 'POST',
+        });
+        const result = await res.json();
+        if (result.success) {
+          showToast(`Invitation sent — @${username} becomes an owner once they accept`, 'success');
+          await refreshInvites();
+        } else {
+          showToast(result.error || 'Failed to send owner invitation', 'error');
+        }
+      } catch (error) {
+        console.error('Error inviting owner:', error);
+        showToast('Failed to send owner invitation', 'error');
+      }
+    },
+    [wishlistId, showToast, refreshInvites]
+  );
+
+  /** Step an owner down to a plain member. */
+  const demoteOwner = useCallback(
+    async (userId: string) => {
+      if (!wishlistId) return;
+      try {
+        const res = await fetch(`/api/wishlists/${wishlistId}/owners/${userId}`, {
+          method: 'PATCH',
+        });
+        const result = await res.json();
+        if (result.success) {
+          showToast('Owner is now a member', 'success');
+          await refreshMembers();
+        } else {
+          showToast(result.error || 'Failed to update owner', 'error');
+        }
+      } catch (error) {
+        console.error('Error demoting owner:', error);
+        showToast('Failed to update owner', 'error');
+      }
+    },
+    [wishlistId, showToast, refreshMembers]
+  );
+
+  const confirmPromoteToOwner = useCallback(async () => {
+    if (!promoteConfirm) return;
+    const { userId, username } = promoteConfirm;
+    setPromoteConfirm(null);
+    await inviteAsOwner(userId, username);
+  }, [promoteConfirm, inviteAsOwner]);
 
   const handleLeaveWishlist = useCallback(() => {
     setDeleteConfirm({
@@ -738,6 +820,15 @@ export default function WishlistDetail() {
       setIsDeletingWishlist(false);
     }
   }, [wishlistId, deleteConfirm, router, showToast]);
+
+  const ownerCount = wishlist?.owners?.length ?? 0;
+  // A co-owner may step down; the sole owner has to delete the list instead.
+  const canLeave = isOwner ? ownerCount > 1 : isMember;
+
+  // The members endpoint returns one list; the UI shows the two relationships
+  // separately, because they aren't rungs on a ladder.
+  const ownerRows = useMemo(() => members.filter((m) => m.role === 'owner'), [members]);
+  const memberRows = useMemo(() => members.filter((m) => m.role !== 'owner'), [members]);
 
   const stats = useMemo(() => calculateStats(items, session?.user?.id), [items, session?.user?.id]);
 
@@ -904,25 +995,32 @@ export default function WishlistDetail() {
             <h1 className="min-w-0 truncate text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
               {wishlist.name}
             </h1>
-            {ownerUsername && (
+            {/* Credit every owner: a co-owned list is equally each owner's. */}
+            {ownerUsernames.length > 0 && (
               <span className="flex-shrink-0 whitespace-nowrap text-sm text-muted-foreground">
                 by{' '}
-                {isOwner ? (
-                  'you'
-                ) : (
-                  <Link
-                    href={`/users/${ownerUsername}`}
-                    className="font-semibold text-foreground underline-offset-2 hover:underline"
-                  >
-                    @{ownerUsername}
-                  </Link>
-                )}
+                {ownerUsernames.slice(0, 2).map((name, i) => (
+                  <span key={name}>
+                    {i > 0 && ' & '}
+                    {isOwner && name === session?.user?.username ? (
+                      'you'
+                    ) : (
+                      <Link
+                        href={`/users/${name}`}
+                        className="font-semibold text-foreground underline-offset-2 hover:underline"
+                      >
+                        @{name}
+                      </Link>
+                    )}
+                  </span>
+                ))}
+                {ownerUsernames.length > 2 && ` +${ownerUsernames.length - 2}`}
               </span>
             )}
           </div>
           <div className="flex flex-shrink-0 items-center gap-2">
             <ShareButton />
-            {isMember && !isOwner && (
+            {canLeave && (
               <button
                 onClick={handleLeaveWishlist}
                 className="inline-flex h-9 items-center gap-1.5 rounded-full border border-border bg-surface px-3.5 text-[13px] font-semibold text-foreground shadow-xs transition-colors hover:bg-surface-hover"
@@ -931,7 +1029,7 @@ export default function WishlistDetail() {
                 Leave
               </button>
             )}
-            {(isOwner || isAdmin) && (
+            {isOwner && (
               <button
                 onClick={() => setManageOpen((v) => !v)}
                 aria-label={manageOpen ? 'Back to items' : 'Manage wishlist'}
@@ -944,8 +1042,8 @@ export default function WishlistDetail() {
           </div>
         </div>
 
-        {/* Manage header (owner/admin) */}
-        {manageOpen && (isOwner || isAdmin) && (
+        {/* Manage header (owners only) */}
+        {manageOpen && isOwner && (
           <div className="mb-6 flex items-center gap-3">
             <button
               onClick={() => setManageOpen(false)}
@@ -1112,12 +1210,12 @@ export default function WishlistDetail() {
 
             {/* Add Item Button */}
             <div className="mb-6 sm:mb-8">
-              {(isOwner || isAdmin) && (
+              {isOwner && (
                 <Button onClick={() => setShowAddItemModal(true)} size="md">
                   + Add Item
                 </Button>
               )}
-              {isMember && !isOwner && !isAdmin && (
+              {isMember && !isOwner && (
                 <Button onClick={() => setShowProposeItemModal(true)} size="md">
                   + Propose Item
                 </Button>
@@ -1149,21 +1247,21 @@ export default function WishlistDetail() {
                     item={item}
                     onUpdate={handleUpdateItem}
                     onEdit={
-                      // Owners and admins can edit non-proposed items
+                      // Owners can edit non-proposed items
                       // Proposers can edit their own proposed items
-                      ((isOwner || isAdmin) && item.status !== 'proposed') ||
+                      (isOwner && item.status !== 'proposed') ||
                       (item.status === 'proposed' &&
                         item.proposedBy?.toString() === session?.user?.id)
                         ? handleEditItem
                         : undefined
                     }
                     onReview={
-                      (isOwner || isAdmin) && item.status === 'proposed'
+                      isOwner && item.status === 'proposed'
                         ? () => setItemToReview(item)
                         : undefined
                     }
                     isAuthenticated={!!session?.user}
-                    isOwner={isOwner || isAdmin}
+                    isOwner={isOwner}
                     isMember={isMember}
                     priceCurrency={priceCurrency}
                     rates={rates}
@@ -1177,40 +1275,37 @@ export default function WishlistDetail() {
         {/* Users Tab */}
         {manageOpen && (
           <div className="space-y-6">
-            {(isOwner || isAdmin) && (
-              <InviteMemberForm onInvite={handleInvite} isInviting={isInviting} />
-            )}
+            {isOwner && <InviteMemberForm onInvite={handleInvite} isInviting={isInviting} />}
 
+            {/* Owners and members are two different relationships to the list, not
+                two points on a scale — so they get their own blocks with their own
+                actions, rather than one list behind a role dropdown. */}
             <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-sm">
-              <div className="px-4 sm:px-6 py-4 border-b border-border">
-                <h2 className="text-xl font-bold text-foreground">Members</h2>
+              <div className="border-b border-border px-4 py-4 sm:px-6">
+                <h2 className="text-xl font-bold text-foreground">Owners</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Full control of this list, and it shows on each of their profiles. Owners never
+                  see what&apos;s been booked.
+                </p>
               </div>
               {loadingMembers ? (
                 <div className="divide-y divide-border">
-                  {Array.from({ length: 3 }).map((_, i) => (
+                  {Array.from({ length: 2 }).map((_, i) => (
                     <MemberRowSkeleton key={i} />
                   ))}
                 </div>
-              ) : members.length === 0 ? (
-                <div className="px-4 sm:px-6 py-12 text-center">
-                  <p className="text-muted-foreground">No members yet.</p>
-                </div>
               ) : (
                 <div className="divide-y divide-border">
-                  {members.map((member) => {
+                  {ownerRows.map((member) => {
                     const memberUserId = String(member.user._id);
                     const isCurrentUser = memberUserId === session?.user?.id;
-                    const isOriginalOwner = wishlist?.owner.toString() === memberUserId;
-                    // Role is only 'owner' if it's the original owner (from wishlist.owner), otherwise check membership role
-                    const memberRole = isOriginalOwner
-                      ? 'owner'
-                      : (member.role as 'admin' | 'member');
-                    const isAdminMember = memberRole === 'admin';
-                    const isRegularMember = memberRole === 'member';
+                    // Owner changes are owners-only, never on yourself, and never on
+                    // the last owner (a list must always keep one).
+                    const canEditRow = isOwner && !isCurrentUser && ownerCount > 1;
 
                     return (
                       <div
-                        key={member._id}
+                        key={memberUserId}
                         className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6"
                       >
                         <div className="flex min-w-0 flex-1 items-center gap-3">
@@ -1219,97 +1314,45 @@ export default function WishlistDetail() {
                             src={member.user.image}
                             size="md"
                           />
-                          <div className="flex min-w-0 flex-wrap items-center gap-2">
-                            <Link
-                              href={`/users/${member.user.username || ''}`}
-                              className="break-words font-medium text-foreground transition-colors hover:text-accent dark:hover:text-primary-400"
-                            >
-                              @{member.user.username || 'user'}
-                            </Link>
-                            {isOriginalOwner && (
-                              <span className="whitespace-nowrap rounded-full bg-primary-500/12 px-2 py-1 text-xs font-semibold text-primary-700 dark:text-primary-400">
-                                Owner
-                              </span>
-                            )}
-                            {isAdminMember && !isOriginalOwner && (
-                              <span className="whitespace-nowrap rounded-full bg-blue-500/12 px-2 py-1 text-xs font-semibold text-blue-700 dark:text-blue-400">
-                                Admin
-                              </span>
-                            )}
-                            {isRegularMember && (
-                              <span className="px-2 py-1 text-xs font-semibold rounded-full bg-muted text-foreground whitespace-nowrap">
-                                Member
-                              </span>
-                            )}
-                          </div>
+                          <Link
+                            href={`/users/${member.user.username || ''}`}
+                            className="break-words font-medium text-foreground transition-colors hover:text-accent dark:hover:text-primary-400"
+                          >
+                            @{member.user.username || 'user'}
+                          </Link>
                         </div>
-                        <div className="flex items-center gap-2 flex-shrink-0">
+                        <div className="flex flex-shrink-0 items-center gap-2">
                           {isCurrentUser && (
-                            <span className="text-sm text-muted-foreground whitespace-nowrap">
+                            <span className="whitespace-nowrap text-sm text-muted-foreground">
                               You
                             </span>
                           )}
-                          {(isOwner || isAdmin) && !isOriginalOwner && (
+                          {canEditRow && (
                             <>
-                              <Select
-                                value={memberRole}
-                                ariaLabel="Member role"
-                                menuAlign="right"
-                                triggerClassName="w-28"
-                                options={[
-                                  { value: 'member', label: 'Member' },
-                                  { value: 'admin', label: 'Admin' },
-                                ]}
-                                onChange={async (v) => {
-                                  const newRole = v as 'admin' | 'member';
-                                  try {
-                                    const response = await fetch(
-                                      `/api/wishlists/${wishlistId}/members/${member._id}`,
-                                      {
-                                        method: 'PATCH',
-                                        headers: {
-                                          'Content-Type': 'application/json',
-                                        },
-                                        body: JSON.stringify({ role: newRole }),
-                                      }
-                                    );
-
-                                    const result = await response.json();
-
-                                    if (result.success) {
-                                      showToast('Member role updated successfully', 'success');
-                                      // Refresh members list
-                                      const membersResponse = await fetch(
-                                        `/api/wishlists/${wishlistId}/members`,
-                                        { cache: 'no-store' }
-                                      );
-                                      const membersResult = await membersResponse.json();
-                                      if (membersResult.success) {
-                                        setMembers(membersResult.data || []);
-                                      }
-                                    } else {
-                                      showToast(result.error || 'Failed to update role', 'error');
-                                    }
-                                  } catch (error) {
-                                    console.error('Error updating role:', error);
-                                    showToast('Failed to update role', 'error');
-                                  }
-                                }}
-                              />
+                              <button
+                                onClick={() => demoteOwner(memberUserId)}
+                                className="cursor-pointer whitespace-nowrap rounded-xl px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted sm:px-4"
+                              >
+                                Make member
+                              </button>
                               <button
                                 onClick={() =>
-                                  handleKickMember(member._id, member.user.username || 'user')
+                                  handleKickMember(
+                                    memberUserId,
+                                    member.user.username || 'user',
+                                    true
+                                  )
                                 }
-                                className="px-3 sm:px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10 rounded-xl transition-colors cursor-pointer whitespace-nowrap"
+                                className="cursor-pointer whitespace-nowrap rounded-xl px-3 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10 sm:px-4"
                               >
                                 Remove
                               </button>
                             </>
                           )}
-                          {isMember && !isOwner && !isAdmin && isCurrentUser && (
+                          {isCurrentUser && canLeave && (
                             <button
                               onClick={handleLeaveWishlist}
-                              className="px-3 sm:px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10 rounded-xl transition-colors cursor-pointer whitespace-nowrap"
+                              className="cursor-pointer whitespace-nowrap rounded-xl px-3 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10 sm:px-4"
                             >
                               Leave
                             </button>
@@ -1322,8 +1365,92 @@ export default function WishlistDetail() {
               )}
             </div>
 
+            <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-sm">
+              <div className="border-b border-border px-4 py-4 sm:px-6">
+                <h2 className="text-xl font-bold text-foreground">Members</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  They can browse the list, propose items, and reserve gifts. Making someone an
+                  owner releases whatever they&apos;ve reserved here, since owners can&apos;t see
+                  bookings.
+                </p>
+              </div>
+              {loadingMembers ? (
+                <div className="divide-y divide-border">
+                  {Array.from({ length: 2 }).map((_, i) => (
+                    <MemberRowSkeleton key={i} />
+                  ))}
+                </div>
+              ) : memberRows.length === 0 ? (
+                <div className="px-4 py-12 text-center sm:px-6">
+                  <p className="text-muted-foreground">No members yet.</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-border">
+                  {memberRows.map((member) => {
+                    const memberUserId = String(member.user._id);
+                    const isCurrentUser = memberUserId === session?.user?.id;
+
+                    return (
+                      <div
+                        key={member._id}
+                        className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6"
+                      >
+                        <div className="flex min-w-0 flex-1 items-center gap-3">
+                          <Avatar
+                            name={member.user.username || 'user'}
+                            src={member.user.image}
+                            size="md"
+                          />
+                          <Link
+                            href={`/users/${member.user.username || ''}`}
+                            className="break-words font-medium text-foreground transition-colors hover:text-accent dark:hover:text-primary-400"
+                          >
+                            @{member.user.username || 'user'}
+                          </Link>
+                        </div>
+                        <div className="flex flex-shrink-0 items-center gap-2">
+                          {isCurrentUser && (
+                            <span className="whitespace-nowrap text-sm text-muted-foreground">
+                              You
+                            </span>
+                          )}
+                          {isOwner && !isCurrentUser && (
+                            <>
+                              <button
+                                onClick={() =>
+                                  setPromoteConfirm({
+                                    userId: memberUserId,
+                                    username: member.user.username || 'this person',
+                                  })
+                                }
+                                className="cursor-pointer whitespace-nowrap rounded-xl px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted sm:px-4"
+                              >
+                                Make owner
+                              </button>
+                              <button
+                                onClick={() =>
+                                  handleKickMember(
+                                    member._id,
+                                    member.user.username || 'user',
+                                    false
+                                  )
+                                }
+                                className="cursor-pointer whitespace-nowrap rounded-xl px-3 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10 sm:px-4"
+                              >
+                                Remove
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
             {/* Pending invites */}
-            {(isOwner || isAdmin) && pendingInvites.length > 0 && (
+            {isOwner && pendingInvites.length > 0 && (
               <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-sm">
                 <div className="border-b border-border px-4 py-4 sm:px-6">
                   <h2 className="text-xl font-bold text-foreground">Pending invites</h2>
@@ -1360,7 +1487,7 @@ export default function WishlistDetail() {
         )}
 
         {/* Settings Tab */}
-        {manageOpen && (isOwner || isAdmin) && (
+        {manageOpen && isOwner && (
           <div className="mt-6 space-y-6">
             <div className="rounded-2xl border border-border bg-surface p-6 shadow-sm">
               <h3 className="text-lg font-semibold text-foreground mb-4">Wishlist Settings</h3>
@@ -1617,6 +1744,8 @@ export default function WishlistDetail() {
                     {wishlist.featured
                       ? 'This list is pinned as the highlight at the top of your dashboard.'
                       : 'Pin this list as the highlight at the top of your dashboard. Otherwise your list with the most items is featured automatically.'}
+                    {ownerCount > 1 &&
+                      ' Each owner pins their own highlight — this only affects yours.'}
                   </p>
                   <Button
                     variant="secondary"
@@ -1718,29 +1847,52 @@ export default function WishlistDetail() {
       )}
 
       {/* Confirmation Dialogs */}
-      {deleteConfirm && deleteConfirm.type === 'member' && deleteConfirm.memberEmail && (
-        <ConfirmDialog
-          isOpen={!!deleteConfirm}
-          title="Remove Member"
-          message={`Are you sure you want to remove ${deleteConfirm.memberEmail} from this wishlist?`}
-          onConfirm={confirmKickMember}
-          onCancel={() => setDeleteConfirm(null)}
-          confirmText="Remove"
-          cancelText="Cancel"
-          type="danger"
-        />
-      )}
+      {deleteConfirm &&
+        (deleteConfirm.type === 'member' || deleteConfirm.type === 'owner') &&
+        deleteConfirm.memberEmail && (
+          <ConfirmDialog
+            isOpen={!!deleteConfirm}
+            title={deleteConfirm.type === 'owner' ? 'Remove Owner' : 'Remove Member'}
+            message={
+              deleteConfirm.type === 'owner'
+                ? `Remove @${deleteConfirm.memberEmail} as an owner? They lose all access to this wishlist, and it disappears from their profile and dashboard highlight.`
+                : `Are you sure you want to remove ${deleteConfirm.memberEmail} from this wishlist?`
+            }
+            onConfirm={confirmKickMember}
+            onCancel={() => setDeleteConfirm(null)}
+            confirmText="Remove"
+            cancelText="Cancel"
+            type="danger"
+          />
+        )}
 
       {deleteConfirm && deleteConfirm.type === 'leave' && (
         <ConfirmDialog
           isOpen={!!deleteConfirm}
           title="Leave Wishlist"
-          message="Are you sure you want to leave this wishlist? All your bookings will be removed."
+          message={
+            isOwner
+              ? 'Step down as an owner of this wishlist? You lose access to it, and it disappears from your profile and dashboard highlight. The other owners keep it.'
+              : 'Are you sure you want to leave this wishlist? All your bookings will be removed.'
+          }
           onConfirm={confirmLeaveWishlist}
           onCancel={() => setDeleteConfirm(null)}
           confirmText="Leave"
           cancelText="Cancel"
           type="danger"
+        />
+      )}
+
+      {promoteConfirm && (
+        <ConfirmDialog
+          isOpen={!!promoteConfirm}
+          title="Make owner?"
+          message={`@${promoteConfirm.username} will get the same full control you have — including deleting this wishlist — and it will appear on their profile as their own. Because owners can never see booking status, any items they've booked here will be released and their reservations cancelled. They have to accept the invitation first, and only another owner can undo it.`}
+          onConfirm={confirmPromoteToOwner}
+          onCancel={() => setPromoteConfirm(null)}
+          confirmText="Send owner invite"
+          cancelText="Cancel"
+          type="warning"
         />
       )}
 

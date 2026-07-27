@@ -41,7 +41,7 @@ beforeEach(async () => {
     { follower: friend._id, following: target._id },
   ]);
   // A public wishlist owned by the target.
-  await Wishlist.create({ name: 'Mugs', owner: target._id, visibility: 'everyone' });
+  await Wishlist.create({ name: 'Mugs', owners: [target._id], visibility: 'everyone' });
 });
 
 function profile(userId?: string) {

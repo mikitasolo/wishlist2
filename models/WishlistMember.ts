@@ -1,5 +1,16 @@
 import mongoose, { Schema, Model } from 'mongoose';
 
+/**
+ * Someone who has been invited onto a wishlist and accepted: they can see it,
+ * propose items, and book gifts.
+ *
+ * Membership has no role. A wishlist has exactly two kinds of people — **owners**
+ * (`Wishlist.owners`, who manage the list and can't see bookings) and **members**
+ * (rows here, who gift). There used to be an `admin` role in between; it was a
+ * manager-of-someone-else's-list, which isn't a relationship this app needs —
+ * anyone trusted to manage the list is a co-owner. See the `remove-admin-role`
+ * migration.
+ */
 const WishlistMemberSchema = new Schema(
   {
     wishlist: {
@@ -12,19 +23,13 @@ const WishlistMemberSchema = new Schema(
       ref: 'User',
       required: true,
     },
-    role: {
-      type: String,
-      enum: ['admin', 'member'],
-      required: true,
-      default: 'member',
-    },
   },
   {
     timestamps: true,
   }
 );
 
-// Compound index to ensure a user can only have one role per wishlist
+// Compound index to ensure a user is only a member of a wishlist once
 WishlistMemberSchema.index({ wishlist: 1, user: 1 }, { unique: true });
 // Index for faster lookups
 WishlistMemberSchema.index({ user: 1 });
@@ -35,7 +40,6 @@ export interface IWishlistMember {
   _id: mongoose.Types.ObjectId;
   wishlist: mongoose.Types.ObjectId;
   user: mongoose.Types.ObjectId;
-  role: 'admin' | 'member';
   createdAt: Date;
   updatedAt: Date;
 }

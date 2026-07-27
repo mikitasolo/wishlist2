@@ -5,7 +5,7 @@ import Icon from './Icon';
 import Avatar from './Avatar';
 import Select from './Select';
 
-type Role = 'admin' | 'member';
+type Role = 'owner' | 'member';
 
 interface InviteMemberFormProps {
   onInvite: (payload: { username: string; role: Role }) => Promise<void>;
@@ -79,6 +79,17 @@ export default function InviteMemberForm({ onInvite, isInviting }: InviteMemberF
         Search for someone by username. They’ll join this wishlist once they accept.
       </p>
 
+      {role === 'owner' && (
+        <p className="mb-4 flex gap-2 rounded-xl bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400">
+          <Icon name="alert" size={16} className="mt-0.5 flex-shrink-0" />
+          <span>
+            An owner gets the same full control you have, including deleting this wishlist, and it
+            appears on their profile as their own. Owners never see booking status, so anything
+            they’ve already booked here is released when they accept.
+          </span>
+        </p>
+      )}
+
       <form
         onSubmit={submit}
         className="flex flex-col gap-2 sm:flex-row sm:items-center"
@@ -143,7 +154,7 @@ export default function InviteMemberForm({ onInvite, isInviting }: InviteMemberF
           triggerClassName="w-full sm:w-32"
           options={[
             { value: 'member', label: 'Member' },
-            { value: 'admin', label: 'Admin' },
+            { value: 'owner', label: 'Owner' },
           ]}
         />
 

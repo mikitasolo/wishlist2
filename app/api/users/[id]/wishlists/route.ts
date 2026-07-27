@@ -7,6 +7,7 @@ import User from '@/models/User';
 import Item from '@/models/Item';
 import mongoose from 'mongoose';
 import { areFriends } from '@/lib/utils/friends';
+import { ownedByFilter, ownerIds, serializeWishlist } from '@/lib/utils/wishlistOwners';
 
 // GET /api/users/[id]/wishlists - Get wishlists for a specific user
 // Returns: public wishlists + wishlists the current user has access to
@@ -44,15 +45,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     if (isSelf) visibleTiers.push('private');
 
     // Match by visibility tier, tolerating legacy docs that predate the field
-    // (no `visibility` + isPublic:true ⇒ treated as everyone).
+    // (no `visibility` + isPublic:true ⇒ treated as everyone). A co-owned list
+    // shows on every owner's profile, so "their lists" is an owners-set match.
     const orClauses: Record<string, unknown>[] = [{ visibility: { $in: visibleTiers } }];
     if (visibleTiers.includes('everyone')) {
       orClauses.push({ visibility: { $exists: false }, isPublic: true });
     }
     const visibleWishlists = await Wishlist.find({
-      owner: userId,
-      archived: { $ne: true },
-      $or: orClauses,
+      // ownedByFilter is itself an `$or`, so both must be combined under `$and`.
+      $and: [ownedByFilter(userId), { archived: { $ne: true }, $or: orClauses }],
     });
 
     // Plus any wishlist (any tier) where the viewer is an explicit member
@@ -61,9 +62,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       const memberships = await WishlistMember.find({ user: viewerId });
       const wishlistIds = memberships.map((m) => m.wishlist);
       memberWishlists = await Wishlist.find({
-        _id: { $in: wishlistIds },
-        owner: userId,
-        archived: { $ne: true },
+        $and: [ownedByFilter(userId), { _id: { $in: wishlistIds }, archived: { $ne: true } }],
       });
     }
 
@@ -72,22 +71,19 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       new Map(allWishlists.map((w) => [w._id.toString(), w])).values()
     );
 
-    // Get the viewer's role in each wishlist (if authenticated).
-    const roleMap = new Map<string, 'admin' | 'member'>();
+    // Which of these the viewer is a member of (membership carries no role).
+    const viewerMemberships = new Set<string>();
     if (session?.user) {
-      const currentUserId = session.user.id;
       const memberships = await WishlistMember.find({
-        user: currentUserId,
+        user: session.user.id,
         wishlist: { $in: uniqueWishlists.map((w) => w._id) },
       });
-      memberships.forEach((m) => {
-        roleMap.set(m.wishlist.toString(), m.role);
-      });
+      memberships.forEach((m) => viewerMemberships.add(m.wishlist.toString()));
     }
 
-    // Get owner usernames for all wishlists
-    const ownerIds = uniqueWishlists.map((w) => w.owner.toString());
-    const owners = await User.find({ _id: { $in: ownerIds } }).select('username image');
+    // Get owner usernames for all wishlists (several per list when co-owned)
+    const allOwnerIds = Array.from(new Set(uniqueWishlists.flatMap((w) => ownerIds(w))));
+    const owners = await User.find({ _id: { $in: allOwnerIds } }).select('username image');
     const ownerMap = new Map(owners.map((o) => [o._id.toString(), o]));
 
     // Privacy-safe item count: only "real" list items are counted
@@ -106,14 +102,23 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     ]);
     const countMap = new Map(visibleCounts.map((c) => [c._id.toString(), c.count]));
 
-    // Add membership status, owner email and item count to each wishlist
-    const wishlistsWithMembership = uniqueWishlists.map((wishlist) => ({
-      ...wishlist.toObject(),
-      userRole: roleMap.get(wishlist._id.toString()) ?? null,
-      ownerUsername: ownerMap.get(wishlist.owner.toString())?.username || null,
-      ownerImage: ownerMap.get(wishlist.owner.toString())?.image ?? null,
-      itemCount: countMap.get(wishlist._id.toString()) ?? 0,
-    }));
+    // Add membership status, owner identities and item count to each wishlist.
+    // The profile being viewed is shown as the owner, even on a co-owned list —
+    // it's their profile — with the full set alongside for the card's "+N".
+    const wishlistsWithMembership = uniqueWishlists.map((wishlist) => {
+      const people = ownerIds(wishlist)
+        .map((oid) => ownerMap.get(oid))
+        .filter((o): o is NonNullable<typeof o> => !!o);
+      const profileOwner = people.find((o) => o._id.toString() === userId) ?? people[0];
+      return {
+        ...serializeWishlist(wishlist, viewerId),
+        userRole: viewerMemberships.has(wishlist._id.toString()) ? ('member' as const) : null,
+        ownerUsername: profileOwner?.username || null,
+        ownerImage: profileOwner?.image ?? null,
+        ownerUsernames: people.map((o) => o.username).filter((u): u is string => !!u),
+        itemCount: countMap.get(wishlist._id.toString()) ?? 0,
+      };
+    });
 
     // Sort by creation date (newest first)
     wishlistsWithMembership.sort((a, b) => {

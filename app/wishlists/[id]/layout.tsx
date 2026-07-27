@@ -3,6 +3,7 @@ import connectDB from '@/lib/mongodb';
 import Wishlist from '@/models/Wishlist';
 import User from '@/models/User';
 import { resolveWishlistId } from '@/lib/utils/wishlistSlug';
+import { primaryOwnerId } from '@/lib/utils/wishlistOwners';
 
 // Per-wishlist share metadata (og:title/description + twitter card). The
 // og:image is supplied separately by opengraph-image.tsx. Only public,
@@ -18,12 +19,13 @@ export async function generateMetadata({
     await connectDB();
     const wid = await resolveWishlistId(id);
     const w = wid
-      ? await Wishlist.findById(wid).select('name owner visibility isPublic archived').lean()
+      ? await Wishlist.findById(wid).select('name owners owner visibility isPublic archived').lean()
       : null;
     if (w) {
       const isPublic = (w.visibility ? w.visibility === 'everyone' : w.isPublic) && !w.archived;
       if (isPublic) {
-        const owner = await User.findById(w.owner).select('username').lean();
+        // A co-owned list is credited to its primary owner in share metadata.
+        const owner = await User.findById(primaryOwnerId(w)).select('username').lean();
         const title = w.name;
         const by = owner?.username ? ` by @${owner.username}` : '';
         const description = `Browse “${w.name}”${by} on Wishlist and quietly reserve a gift without spoiling the surprise for them.`;

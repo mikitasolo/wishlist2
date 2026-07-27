@@ -5,12 +5,13 @@ A modern wishlist app: create wishlists, share them, follow friends, and quietly
 ## ✨ Features
 
 - **Multiple wishlists per user**, each with its own cover image, currency, and human-readable slug.
-- **Visibility tiers** per wishlist: `everyone`, `friends` (mutual followers), or `private`. Archived wishlists are visible to the owner only.
+- **Co-ownership** — a wishlist can have several equal owners (a family list appears on each of their profiles, and each can pin it to their own dashboard). Ownership is only ever granted with the new owner's consent; accepting it releases the bookings they held on that list, since owners can never see booking status.
+- **Visibility tiers** per wishlist: `everyone`, `friends` (mutual followers of any owner), or `private`. Archived wishlists are visible to owners only.
 - **Follows & friends** — follow people; a mutual follow makes you "friends", which unlocks friends-only content.
 - **Booking without spoilers** — friends reserve items to gift; the owner never sees what's been booked on their own list.
 - **Reservations & gift history** — a durable record of what you're giving, decoupled from the owner's item (see [AGENTS.md](AGENTS.md) for the invariants).
-- **Invitations** to co-manage a wishlist (member/admin), registered-users-only, with accept/decline.
-- **Item proposals** — members can propose items for the owner to approve.
+- **Invitations** to a wishlist as an owner or a member, registered-users-only, with accept/decline.
+- **Item proposals** — members can propose items for the owners to approve.
 - **Multi-currency** prices with live conversion to any currency you pick.
 - **Profiles** with avatar, bio, follower/following counts, and privacy controls.
 - **Magic-link sign-in** (no passwords), image uploads, responsive Apple-inspired UI, light/dark themes.
@@ -47,7 +48,7 @@ cp .env.example .env.local   # then fill in the values
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). Sign in from `/auth/signin` with your email and click the magic link. On first sign-in an account (with an auto-generated username) is created — there is no separate admin/seed step; roles are per-wishlist (owner / admin / member).
+Open [http://localhost:3000](http://localhost:3000). Sign in from `/auth/signin` with your email and click the magic link. On first sign-in an account (with an auto-generated username) is created — there is no separate admin/seed step. Each wishlist has owners (any number, all equal) and members.
 
 ## 🔑 Environment variables
 
@@ -98,6 +99,20 @@ Tests live in `test/` and run on Vitest:
 
 CI runs on every push to `main` and every pull request: `.github/workflows/ci.yml` does lint, typecheck, the full Vitest suite, and a production build; `.github/workflows/e2e.yml` runs the Playwright suite (kept separate since it downloads a browser and builds the app). Coverage (`npm run test:cov`) enforces a non-regression threshold floor configured in `vitest.config.ts`.
 
+## 🗄️ Data migrations
+
+Schema migrations are one-off POST endpoints under `app/api/migrations/<name>`, guarded by the
+`MIGRATION_SECRET` header. They're idempotent, so re-running one is harmless:
+
+```bash
+curl -X POST -H "X-Migration-Secret: $MIGRATION_SECRET" \
+  https://<your-host>/api/migrations/wishlist-owners
+```
+
+| Migration         | What it does                                                                                                                                                                                                                       |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `wishlist-owners` | Co-ownership: single `owner` → `owners[]`, and the `featured` flag → the per-owner `featuredBy[]`. Roles are untouched. **Run once per environment after deploying co-ownership** (the app tolerates un-migrated rows until then). |
+
 ## 📁 Project structure
 
 ```
@@ -112,9 +127,11 @@ types/          # shared TS types
 
 ## 🔐 Security & privacy notes
 
-- Owner-facing views never reveal booking status (booked folds into available).
+- Owner-facing views never reveal booking status (booked folds into available) — for every co-owner, not just the creator.
+- Nobody can change their own role, and only an owner can grant or revoke ownership. Ownership is never applied without the recipient accepting, since it puts the list on their public profile.
+- Owners can't see bookings, so being made an owner releases whatever that person had reserved — a booking is never left in a state only they could cancel but can no longer see. Owners are never told how many were released.
 - User emails are never exposed to other users; invitations target registered accounts by username.
-- Archived wishlists 404 for everyone except the owner, even by direct link.
+- Archived wishlists 404 for everyone except the owners, even by direct link.
 - `friends`-only profile visibility hides the bio and the browsable wishlist list from non-friends while keeping the profile discoverable.
 - Security headers (CSP, `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`, HSTS) are set for every route in `next.config.js`.
 - Migration endpoints compare their secret in constant time (`crypto.timingSafeEqual`) to avoid a timing side-channel.

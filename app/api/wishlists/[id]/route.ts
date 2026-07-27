@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import mongoose from 'mongoose';
 import { auth } from '@/lib/auth';
 import connectDB from '@/lib/mongodb';
 import Wishlist, { IWishlist } from '@/models/Wishlist';
@@ -13,7 +14,14 @@ import {
   generateUniqueWishlistSlug,
   isReservedWishlistSlug,
 } from '@/lib/utils/wishlistSlug';
-import { getAdminOrOwnerAccess } from '@/lib/utils/wishlistAccess';
+import { getOwnerAccess } from '@/lib/utils/wishlistAccess';
+import {
+  isWishlistOwner,
+  ownerIds,
+  primaryOwnerId,
+  serializeWishlist,
+} from '@/lib/utils/wishlistOwners';
+import { ensureOwnersBackfilled } from '@/lib/utils/wishlistOwnership';
 
 // GET /api/wishlists/[id] - Get a specific wishlist
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -39,16 +47,22 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       await wishlist.save();
     }
 
-    // Fetch owner's public username (never expose their email to viewers)
-    const owner = await User.findById(wishlist.owner).select('username');
-    const ownerUsername = owner?.username || null;
+    // Fetch owners' public usernames (never expose their emails to viewers).
+    // `ownerUsernames` is ordered like `owners`, so [0] is the primary owner.
+    const owners = ownerIds(wishlist);
+    const ownerUsers = await User.find({ _id: { $in: owners } }).select('username');
+    const usernameById = new Map(ownerUsers.map((u) => [u._id.toString(), u.username]));
+    const ownerUsernames = owners.map((id) => usernameById.get(id)).filter((u): u is string => !!u);
+    const primaryId = primaryOwnerId(wishlist);
+    const ownerUsername = (primaryId && usernameById.get(primaryId)) || null;
 
     const visibility = wishlist.visibility || (wishlist.isPublic ? 'everyone' : 'private');
 
-    // Resolve the viewer's relationship to the wishlist
-    const isOwner = !!session?.user && wishlist.owner.toString() === session.user.id;
+    // Resolve the viewer's relationship to the wishlist. Every co-owner is an
+    // owner here — same authorization, same booking blindness.
+    const isOwner = isWishlistOwner(wishlist, session?.user?.id);
 
-    // Archived wishlists are visible to the owner only — hide from everyone else
+    // Archived wishlists are visible to owners only — hide from everyone else
     // (return 404 so the URL doesn't even reveal that it exists).
     if (wishlist.archived && !isOwner) {
       return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
@@ -58,9 +72,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       session?.user && !isOwner
         ? await WishlistMember.findOne({ wishlist: id, user: session.user.id })
         : null;
-    let userRole: 'owner' | 'admin' | 'member' | null = null;
+    let userRole: 'owner' | 'member' | null = null;
     if (isOwner) userRole = 'owner';
-    else if (membership) userRole = membership.role === 'admin' ? 'admin' : 'member';
+    else if (membership) userRole = 'member';
 
     // Determine access by visibility tier
     let hasAccess = false;
@@ -76,7 +90,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       }
       hasAccess = isOwner || !!membership;
       if (!hasAccess && visibility === 'friends') {
-        hasAccess = await areFriends(session.user.id, wishlist.owner.toString());
+        // A co-owned list behaves as if each owner created it, so the friends
+        // tier admits any owner's friends.
+        const viewerId = session.user.id;
+        const friendChecks = await Promise.all(owners.map((id) => areFriends(viewerId, id)));
+        hasAccess = friendChecks.some(Boolean);
       }
     }
 
@@ -91,9 +109,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       {
         success: true,
         data: {
-          ...wishlist.toObject(),
+          ...serializeWishlist(wishlist, session?.user?.id ?? null),
           userRole,
           ownerUsername,
+          ownerUsernames,
         },
       },
       { status: 200 }
@@ -126,16 +145,17 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
     }
 
-    const { hasAccess, wishlist } = await getAdminOrOwnerAccess(id, session.user.id);
+    const { isOwner, wishlist } = await getOwnerAccess(id, session.user.id);
 
-    if (!hasAccess || !wishlist) {
+    if (!wishlist) {
+      return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
+    }
+    if (!isOwner) {
       return NextResponse.json(
-        { success: false, error: 'Unauthorized - Admin or owner access required' },
+        { success: false, error: 'Unauthorized - Owner access required' },
         { status: 403 }
       );
     }
-
-    const isOwner = wishlist.owner.toString() === session.user.id;
 
     // Validate request body
     const validation = await validateRequestBody(request, updateWishlistSchema);
@@ -155,7 +175,6 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         | 'isPublic'
         | 'visibility'
         | 'archived'
-        | 'featured'
         | 'bannerUrl'
         | 'currency'
       >
@@ -191,21 +210,23 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     }
     if (validatedData.archived !== undefined) updateData.archived = validatedData.archived;
 
-    // "Featured" pins a list to the owner's dashboard hero. Only the owner may
-    // set it, and at most one of their lists can be featured at a time.
+    // "Featured" pins a list to the *caller's* dashboard hero, so it's stored
+    // per-owner in `featuredBy`: on a co-owned list one owner can feature it
+    // without touching anyone else's dashboard. At most one of their lists is
+    // pinned at a time.
     if (validatedData.featured !== undefined) {
-      if (!isOwner) {
-        return NextResponse.json(
-          { success: false, error: 'Only the owner can feature a wishlist' },
-          { status: 403 }
-        );
-      }
-      updateData.featured = validatedData.featured;
-      if (validatedData.featured === true) {
+      // Normalize the legacy single-owner shape before touching `featuredBy`.
+      await ensureOwnersBackfilled(wishlist);
+      const viewer = new mongoose.Types.ObjectId(session.user.id);
+      if (validatedData.featured) {
+        // Unpin whichever of the caller's other lists was pinned.
         await Wishlist.updateMany(
-          { owner: session.user.id, _id: { $ne: id } },
-          { $set: { featured: false } }
+          { featuredBy: viewer, _id: { $ne: id } },
+          { $pull: { featuredBy: viewer } }
         );
+        await Wishlist.updateOne({ _id: id }, { $addToSet: { featuredBy: viewer } });
+      } else {
+        await Wishlist.updateOne({ _id: id }, { $pull: { featuredBy: viewer } });
       }
     }
 
@@ -219,7 +240,13 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       await deleteOwnBlob(wishlist.bannerUrl);
     }
 
-    return NextResponse.json({ success: true, data: updatedWishlist }, { status: 200 });
+    return NextResponse.json(
+      {
+        success: true,
+        data: updatedWishlist ? serializeWishlist(updatedWishlist, session.user.id) : null,
+      },
+      { status: 200 }
+    );
   } catch (error) {
     console.error('Error updating wishlist:', error);
     return NextResponse.json(
@@ -229,7 +256,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   }
 }
 
-// DELETE /api/wishlists/[id] - Delete a wishlist (owner only)
+// DELETE /api/wishlists/[id] - Delete a wishlist (any owner; owners are equal)
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -256,10 +283,10 @@ export async function DELETE(
       return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
     }
 
-    // Only owner can delete
-    if (wishlist.owner.toString() !== session.user.id) {
+    // Only an owner can delete.
+    if (!isWishlistOwner(wishlist, session.user.id)) {
       return NextResponse.json(
-        { success: false, error: 'Unauthorized - Only owner can delete wishlist' },
+        { success: false, error: 'Unauthorized - Only an owner can delete wishlist' },
         { status: 403 }
       );
     }

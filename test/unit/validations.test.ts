@@ -56,9 +56,14 @@ describe('inviteMemberSchema', () => {
     expect(ok.success && ok.data.role).toBe('member');
   });
 
-  it('accepts an explicit admin role', () => {
-    const ok = inviteMemberSchema.safeParse({ username: 'mikita', role: 'admin' });
-    expect(ok.success && ok.data.role).toBe('admin');
+  it('accepts an explicit owner role', () => {
+    const ok = inviteMemberSchema.safeParse({ username: 'mikita', role: 'owner' });
+    expect(ok.success && ok.data.role).toBe('owner');
+  });
+
+  // The admin tier is gone: a wishlist has owners and members, nothing between.
+  it('rejects the retired admin role', () => {
+    expect(inviteMemberSchema.safeParse({ username: 'mikita', role: 'admin' }).success).toBe(false);
   });
 
   // Regression: invites are registered-users-only now. Email must be required as

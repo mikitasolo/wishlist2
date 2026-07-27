@@ -4,9 +4,9 @@ import connectDB from '@/lib/mongodb';
 import WishlistInvite from '@/models/WishlistInvite';
 import User from '@/models/User';
 import { resolveWishlistId } from '@/lib/utils/wishlistSlug';
-import { isAdminOrOwner } from '@/lib/utils/wishlistAccess';
+import { isOwnerOfWishlist } from '@/lib/utils/wishlistAccess';
 
-// GET /api/wishlists/[id]/invites - pending invites for a wishlist (owner/admin).
+// GET /api/wishlists/[id]/invites - pending invites for a wishlist (owners).
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth();
@@ -19,7 +19,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
     await connectDB();
-    if (!(await isAdminOrOwner(id, session.user.id))) {
+    if (!(await isOwnerOfWishlist(id, session.user.id))) {
       return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
     }
 

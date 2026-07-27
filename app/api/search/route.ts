@@ -3,6 +3,7 @@ import connectDB from '@/lib/mongodb';
 import { enforce, clientIp } from '@/lib/rateLimit';
 import User from '@/models/User';
 import Wishlist from '@/models/Wishlist';
+import { primaryOwnerId } from '@/lib/utils/wishlistOwners';
 
 // GET /api/search?q=... - unified search over usernames + public wishlist names
 export async function GET(request: NextRequest) {
@@ -31,13 +32,16 @@ export async function GET(request: NextRequest) {
         archived: { $ne: true },
         $or: [{ visibility: 'everyone' }, { visibility: { $exists: false }, isPublic: true }],
       })
-        .select('name slug owner')
+        .select('name slug owners owner')
         .limit(6),
     ]);
 
-    // Resolve owner usernames for the matched wishlists
-    const ownerIds = Array.from(new Set(wishlists.map((w) => w.owner.toString())));
-    const owners = await User.find({ _id: { $in: ownerIds } }).select('username');
+    // Resolve the primary owner's username for the matched wishlists — the
+    // result row has space for one name, and co-owners are listed on the list itself.
+    const primaryIds = wishlists.map((w) => primaryOwnerId(w)).filter((id): id is string => !!id);
+    const owners = await User.find({ _id: { $in: Array.from(new Set(primaryIds)) } }).select(
+      'username'
+    );
     const ownerMap = new Map(owners.map((o) => [o._id.toString(), o.username]));
 
     return NextResponse.json({
@@ -48,7 +52,7 @@ export async function GET(request: NextRequest) {
           _id: w._id,
           name: w.name,
           slug: w.slug ?? null,
-          ownerUsername: ownerMap.get(w.owner.toString()) || null,
+          ownerUsername: ownerMap.get(primaryOwnerId(w) ?? '') || null,
         })),
       },
     });

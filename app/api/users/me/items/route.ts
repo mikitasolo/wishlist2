@@ -4,9 +4,10 @@ import connectDB from '@/lib/mongodb';
 import Item from '@/models/Item';
 import Wishlist from '@/models/Wishlist';
 import { ensureCurrencyRatesUpToDate, convertToUsdCents } from '@/lib/utils/currencyRates';
+import { ownedByFilter } from '@/lib/utils/wishlistOwners';
 
-// GET /api/users/me/items - all items across the current user's OWNED wishlists.
-// Booking state is never revealed to the owner (booked folds into "available").
+// GET /api/users/me/items - all items across the wishlists the user co-owns.
+// Booking state is never revealed to any owner (booked folds into "available").
 export async function GET() {
   try {
     const session = await auth();
@@ -16,7 +17,7 @@ export async function GET() {
 
     await connectDB();
 
-    const wishlists = await Wishlist.find({ owner: session.user.id }).select('name slug');
+    const wishlists = await Wishlist.find(ownedByFilter(session.user.id)).select('name slug');
     const nameMap = new Map(wishlists.map((w) => [w._id.toString(), w.name]));
     const slugMap = new Map(wishlists.map((w) => [w._id.toString(), w.slug ?? null]));
 

@@ -27,7 +27,7 @@ beforeEach(async () => {
   const owner = await User.create({ email: 'owner@x.com', username: 'owner' });
   const invitee = await User.create({ email: 'invitee@x.com', username: 'invitee' });
   inviteeId = invitee._id.toString();
-  const wl = await Wishlist.create({ name: 'List', owner: owner._id, visibility: 'friends' });
+  const wl = await Wishlist.create({ name: 'List', owners: [owner._id], visibility: 'friends' });
   wishlistId = wl._id.toString();
   const inv = await WishlistInvite.create({
     wishlist: wl._id,

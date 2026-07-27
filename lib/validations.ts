@@ -97,10 +97,15 @@ export const updateProfileSchema = z
     message: 'At least one field must be provided for update',
   });
 
-// Member schemas — invite an existing account by username
+// Member schemas — invite an existing account by username.
+// A wishlist has two kinds of people: owners (manage it, never see bookings) and
+// members (gift). `owner` is a real invite role because co-ownership can only be
+// granted with the invitee's consent, so it uses the same accept/decline path.
+export const wishlistRoleSchema = z.enum(['owner', 'member']);
+
 export const inviteMemberSchema = z.object({
   username: usernameSchema,
-  role: z.enum(['admin', 'member']).optional().default('member'),
+  role: wishlistRoleSchema.optional().default('member'),
 });
 
 // Item schemas

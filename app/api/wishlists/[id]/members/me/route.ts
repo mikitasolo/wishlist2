@@ -3,30 +3,13 @@ import { auth } from '@/lib/auth';
 import connectDB from '@/lib/mongodb';
 import Wishlist from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
-import Item from '@/models/Item';
 import { resolveWishlistId } from '@/lib/utils/wishlistSlug';
-
-// Helper function to unbook all items for a user in a wishlist
-async function unbookAllItemsForUser(wishlistId: string, userId: string): Promise<number> {
-  await connectDB();
-
-  // Find all items in this wishlist booked by the user and make them available
-  const result = await Item.updateMany(
-    {
-      wishlist: wishlistId,
-      bookedBy: userId,
-      status: 'booked',
-    },
-    {
-      $set: {
-        status: 'available',
-        bookedBy: null,
-      },
-    }
-  );
-
-  return result.modifiedCount;
-}
+import { isWishlistOwner } from '@/lib/utils/wishlistOwners';
+import {
+  isLastOwner,
+  releaseUserBookings,
+  removeWishlistOwner,
+} from '@/lib/utils/wishlistOwnership';
 
 // DELETE /api/wishlists/[id]/members/me - Leave a wishlist
 export async function DELETE(
@@ -56,11 +39,27 @@ export async function DELETE(
       return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
     }
 
-    // Prevent owner from leaving (they should delete the wishlist instead)
-    if (wishlist.owner.toString() === session.user.id) {
+    // A co-owner may step down, as long as somebody is left holding the list.
+    // The sole owner still can't: there'd be nobody to manage it.
+    if (isWishlistOwner(wishlist, session.user.id)) {
+      if (isLastOwner(wishlist, session.user.id)) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'You are the only owner. Delete the wishlist instead.',
+          },
+          { status: 400 }
+        );
+      }
+
+      // Leaving means leaving — no membership left behind. Also drops this list
+      // from their dashboard pin, since `featuredBy` is per-owner.
+      await removeWishlistOwner(wishlist, session.user.id, false);
+      const unbookedCount = await releaseUserBookings(wishlistId, session.user.id);
+
       return NextResponse.json(
-        { success: false, error: 'Owner cannot leave wishlist. Delete the wishlist instead.' },
-        { status: 400 }
+        { success: true, data: { unbookedItemsCount: unbookedCount, wasOwner: true } },
+        { status: 200 }
       );
     }
 
@@ -77,8 +76,9 @@ export async function DELETE(
       );
     }
 
-    // Remove all bookings by this user
-    const unbookedCount = await unbookAllItemsForUser(wishlistId, session.user.id);
+    // Free the items they had booked. Their durable reservations survive so they
+    // can still log a gift they went on to give.
+    const unbookedCount = await releaseUserBookings(wishlistId, session.user.id);
 
     if (unbookedCount > 0) {
       console.log(

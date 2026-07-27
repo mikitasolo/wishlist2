@@ -5,6 +5,8 @@ import Wishlist from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
 import WishlistInvite from '@/models/WishlistInvite';
 import { createNotification } from '@/lib/notifications';
+import { isWishlistOwner } from '@/lib/utils/wishlistOwners';
+import { addWishlistOwner } from '@/lib/utils/wishlistOwnership';
 
 // PATCH /api/invites/[inviteId] - accept or decline a pending invite (invitee).
 export async function PATCH(
@@ -41,8 +43,10 @@ export async function PATCH(
       return NextResponse.json({ success: true, data: { status: 'declined' } }, { status: 200 });
     }
 
-    // Accept: create the membership (unless already owner/member), then mark accepted.
-    const wishlist = await Wishlist.findById(invite.wishlist).select('owner slug name');
+    // Accept: grant the invited role (unless already an owner), then mark accepted.
+    const wishlist = await Wishlist.findById(invite.wishlist).select(
+      'owners owner featuredBy featured slug name'
+    );
     if (!wishlist) {
       invite.status = 'declined';
       await invite.save();
@@ -52,17 +56,20 @@ export async function PATCH(
       );
     }
 
-    if (wishlist.owner.toString() !== session.user.id) {
-      const existing = await WishlistMember.findOne({
-        wishlist: invite.wishlist,
-        user: session.user.id,
-      });
-      if (!existing) {
-        await WishlistMember.create({
-          wishlist: invite.wishlist,
-          user: session.user.id,
-          role: invite.role,
-        });
+    // This is where co-ownership is actually granted — the consent step. Becoming
+    // an owner releases every booking the invitee held here and cancels their
+    // reservations: an owner can never see, cancel, or receive their own booking.
+    let released = { unbookedItems: 0, cancelledReservations: 0 };
+    if (!isWishlistOwner(wishlist, session.user.id)) {
+      if (invite.role === 'owner') {
+        released = await addWishlistOwner(wishlist, session.user.id);
+      } else {
+        // Membership carries no role, so joining twice is a no-op.
+        await WishlistMember.findOneAndUpdate(
+          { wishlist: invite.wishlist, user: session.user.id },
+          { $set: { wishlist: invite.wishlist, user: session.user.id } },
+          { upsert: true }
+        );
       }
     }
 
@@ -84,8 +91,11 @@ export async function PATCH(
         success: true,
         data: {
           status: 'accepted',
+          role: invite.role,
           wishlistSlug: wishlist.slug ?? null,
           wishlistId: invite.wishlist.toString(),
+          releasedBookings: released.unbookedItems,
+          cancelledReservations: released.cancelledReservations,
         },
       },
       { status: 200 }

@@ -4,14 +4,13 @@ import { enforce } from '@/lib/rateLimit';
 import connectDB from '@/lib/mongodb';
 import Wishlist from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
-import WishlistInvite from '@/models/WishlistInvite';
 import User from '@/models/User';
-import { sendWishlistInvitationEmail } from '@/lib/email';
-import { createNotification } from '@/lib/notifications';
 import { inviteMemberSchema, validateRequestBody } from '@/lib/validations';
 import { areFriends } from '@/lib/utils/friends';
 import { resolveWishlistId } from '@/lib/utils/wishlistSlug';
-import { getAdminOrOwnerAccess } from '@/lib/utils/wishlistAccess';
+import { getOwnerAccess } from '@/lib/utils/wishlistAccess';
+import { isWishlistOwner, ownerIds } from '@/lib/utils/wishlistOwners';
+import { issueWishlistInvite } from '@/lib/utils/wishlistInvites';
 
 // GET /api/wishlists/[id]/members - Get all members of a wishlist
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -32,30 +31,26 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     await connectDB();
 
-    // Only admins and owners can view members list
-    const { hasAccess } = await getAdminOrOwnerAccess(id, session.user.id);
-    if (!hasAccess) {
+    // Only owners can view the members list
+    const { isOwner, wishlist } = await getOwnerAccess(id, session.user.id);
+    if (!wishlist) {
+      return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
+    }
+    if (!isOwner) {
       return NextResponse.json(
-        { success: false, error: 'Unauthorized - Admin or owner access required' },
+        { success: false, error: 'Unauthorized - Owner access required' },
         { status: 403 }
       );
     }
 
-    const wishlist = await Wishlist.findById(id);
-    if (!wishlist) {
-      return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
-    }
+    // Owners live in `wishlist.owners`, never in WishlistMember, so fetch them
+    // separately. Rows are keyed by the *user* id (they have no membership row) —
+    // that's what the owners endpoints take as their [userId] segment.
+    const ownerUserIds = ownerIds(wishlist);
+    const ownerUsers = await User.find({ _id: { $in: ownerUserIds } }).select('username image');
+    const ownerById = new Map(ownerUsers.map((u) => [u._id.toString(), u]));
 
-    // Fetch owner separately (owner is stored in wishlist.owner, not in WishlistMember)
-    const owner = await User.findById(wishlist.owner).select('username image');
-    if (!owner) {
-      return NextResponse.json(
-        { success: false, error: 'Wishlist owner not found' },
-        { status: 404 }
-      );
-    }
-
-    // Get all members from WishlistMember (only 'admin' and 'member' roles)
+    // Everyone else on the list — membership carries no role.
     const allMembers = await WishlistMember.find({ wishlist: id }).sort({ createdAt: -1 }).lean();
 
     // Fetch user details for all members
@@ -76,25 +71,28 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           _id: member._id,
           wishlist: member.wishlist,
           user,
-          role: member.role, // 'admin' or 'member'
+          role: 'member' as const,
           createdAt: member.createdAt,
           updatedAt: member.updatedAt,
         };
       })
       .filter((m): m is NonNullable<typeof m> => m !== null);
 
-    // Always add original owner at the beginning (owner is never in WishlistMember)
-    const ownerMember = {
-      _id: owner._id,
-      wishlist: wishlist._id,
-      user: owner,
-      role: 'owner' as const,
-      createdAt: wishlist.createdAt,
-      updatedAt: wishlist.updatedAt,
-    };
+    // Owners come first, in `owners` order (so [0] is the creator).
+    const ownerRows = ownerUserIds
+      .map((id) => ownerById.get(id))
+      .filter((u): u is NonNullable<typeof u> => !!u)
+      .map((user) => ({
+        _id: user._id,
+        wishlist: wishlist._id,
+        user,
+        role: 'owner' as const,
+        createdAt: wishlist.createdAt,
+        updatedAt: wishlist.updatedAt,
+      }));
 
     return NextResponse.json(
-      { success: true, data: [ownerMember, ...membersWithUsers] },
+      { success: true, data: [...ownerRows, ...membersWithUsers] },
       { status: 200 }
     );
   } catch (error) {
@@ -126,10 +124,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     await connectDB();
 
-    const { hasAccess, wishlist } = await getAdminOrOwnerAccess(id, session.user.id);
-    if (!hasAccess || !wishlist) {
+    const { isOwner, wishlist } = await getOwnerAccess(id, session.user.id);
+    if (!wishlist) {
+      return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
+    }
+    if (!isOwner) {
       return NextResponse.json(
-        { success: false, error: 'Unauthorized - Admin or owner access required' },
+        { success: false, error: 'Unauthorized - Owner access required' },
         { status: 403 }
       );
     }
@@ -172,58 +173,51 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       }
     }
 
-    // Can't invite the owner or an existing member.
-    if (wishlist.owner.toString() === invitedUser._id.toString()) {
+    // Can't invite an existing owner.
+    if (isWishlistOwner(wishlist, invitedUser._id.toString())) {
       return NextResponse.json(
         { success: false, error: 'This person already owns this wishlist' },
         { status: 400 }
       );
     }
+    // Someone already on the list is promoted, not re-invited — that path is
+    // POST /owners/[userId], so it can be driven from the members UI.
     const existingMember = await WishlistMember.findOne({ wishlist: id, user: invitedUser._id });
     if (existingMember) {
       return NextResponse.json(
-        { success: false, error: 'This person is already a member' },
+        {
+          success: false,
+          error:
+            role === 'owner'
+              ? 'This person is already a member — promote them from the members list'
+              : 'This person is already a member',
+        },
         { status: 400 }
       );
     }
-    const existingInvite = await WishlistInvite.findOne({
-      wishlist: id,
-      invitedUser: invitedUser._id,
-      status: 'pending',
+    // Create a pending invite (membership/ownership is granted only on accept),
+    // and notify the invitee at their account email — fetched here, never stored
+    // on the invite.
+    const invite = await issueWishlistInvite({
+      wishlistId: id,
+      wishlistName: wishlist.name,
+      role,
+      invitedBy: session.user.id,
+      inviterName: session.user.username || session.user.email?.split('@')[0] || 'Someone',
+      actorUsername: session.user.username ?? null,
+      invitedUserId: invitedUser._id,
+      invitedUserEmail: invitedUser.email,
     });
-    if (existingInvite) {
+
+    if (!invite) {
       return NextResponse.json(
         { success: false, error: 'This person already has a pending invite' },
         { status: 400 }
       );
     }
 
-    // Create a pending invite (membership is created only when they accept).
-    const invite = await WishlistInvite.create({
-      wishlist: id,
-      invitedBy: session.user.id,
-      invitedUser: invitedUser._id,
-      role,
-    });
-
-    // Notify the invitee at their account email (fetched here, never stored on
-    // the invite) with a link to their invites page.
-    const inviterName = session.user.username || session.user.email?.split('@')[0] || 'Someone';
-    if (invitedUser.email) {
-      await sendWishlistInvitationEmail(invitedUser.email, wishlist.name, inviterName);
-    }
-
-    // In-app notification alongside the email.
-    await createNotification({
-      user: invitedUser._id,
-      type: 'wishlist_invite',
-      actorUsername: session.user.username ?? null,
-      wishlist: id,
-      wishlistName: wishlist.name,
-    });
-
     return NextResponse.json(
-      { success: true, data: { _id: invite._id, status: invite.status } },
+      { success: true, data: { _id: invite._id, status: invite.status, role: invite.role } },
       { status: 201 }
     );
   } catch (error) {

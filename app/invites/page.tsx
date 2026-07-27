@@ -12,7 +12,7 @@ import { useToast } from '@/components/ToastProvider';
 
 interface Invite {
   _id: string;
-  role: 'admin' | 'member';
+  role: 'owner' | 'member';
   wishlistId: string;
   wishlistName: string;
   wishlistSlug: string | null;
@@ -118,8 +118,17 @@ export default function InvitesPage() {
                     <p className="truncate font-semibold text-foreground">{invite.wishlistName}</p>
                     <p className="truncate text-sm text-muted-foreground">
                       {invite.invitedByUsername ? `@${invite.invitedByUsername}` : 'Someone'}{' '}
-                      invited you{invite.role === 'admin' ? ' as an admin' : ''}
+                      invited you
+                      {invite.role === 'owner' ? ' as a co-owner' : ''}
                     </p>
+                    {/* Accepting co-ownership is destructive on the gifting side —
+                        say so before they tap Accept, not after. */}
+                    {invite.role === 'owner' && (
+                      <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
+                        You’ll get full control and the list will show on your profile. Owners never
+                        see booking status, so anything you’ve booked here will be released.
+                      </p>
+                    )}
                   </div>
                 </div>
                 <div className="flex flex-shrink-0 items-center gap-2">

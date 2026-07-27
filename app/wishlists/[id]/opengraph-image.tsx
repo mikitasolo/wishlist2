@@ -5,6 +5,7 @@ import Item from '@/models/Item';
 import User from '@/models/User';
 import { resolveWishlistId } from '@/lib/utils/wishlistSlug';
 import { ogGradient, withTimeout } from '@/lib/utils/og';
+import { primaryOwnerId } from '@/lib/utils/wishlistOwners';
 
 // Runs on the Node runtime (default) because it touches Mongoose.
 export const alt = 'Wishlist';
@@ -32,14 +33,15 @@ export default async function Image({ params }: { params: Promise<{ id: string }
     await connectDB();
     const wid = await resolveWishlistId(idOrSlug);
     const w = wid
-      ? await Wishlist.findById(wid).select('name owner visibility isPublic archived').lean()
+      ? await Wishlist.findById(wid).select('name owners owner visibility isPublic archived').lean()
       : null;
     if (!w) return data;
     const seed = w._id.toString();
     const isPublic = (w.visibility ? w.visibility === 'everyone' : w.isPublic) && !w.archived;
     if (!isPublic) return { ...data, seed, title: 'A private wishlist' };
     const [owner, count] = await Promise.all([
-      User.findById(w.owner).select('username').lean(),
+      // Co-owned lists are credited to their primary owner on the share card.
+      User.findById(primaryOwnerId(w)).select('username').lean(),
       Item.countDocuments({ wishlist: w._id, status: { $nin: ['draft', 'proposed'] } }),
     ]);
     const items = `${count} item${count === 1 ? '' : 's'}`;

@@ -54,7 +54,7 @@ export default async function globalSetup(_config: FullConfig) {
   });
   const wishlist = await Wishlist.create({
     name: 'E2E Birthday List',
-    owner: user._id,
+    owners: [user._id],
     visibility: 'everyone',
     isPublic: true,
     slug: 'e2e-birthday',

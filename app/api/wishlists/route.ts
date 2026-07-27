@@ -9,6 +9,7 @@ import Item from '@/models/Item';
 import { generateUniqueWishlistSlug } from '@/lib/utils/wishlistSlug';
 import mongoose from 'mongoose';
 import { createWishlistSchema, validateRequestBody } from '@/lib/validations';
+import { ownedByFilter, ownerIds, serializeWishlist } from '@/lib/utils/wishlistOwners';
 
 // GET /api/wishlists - Get all wishlists user has access to
 export async function GET(request: NextRequest) {
@@ -29,12 +30,13 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'User not found' }, { status: 403 });
     }
 
-    // Get all wishlists owned by user, sorted by creation date
-    const ownedWishlists = await Wishlist.find({ owner: user._id }).sort({ createdAt: -1 });
+    // Get all wishlists the user co-owns, sorted by creation date
+    const ownedWishlists = await Wishlist.find(ownedByFilter(user._id.toString())).sort({
+      createdAt: -1,
+    });
 
     // Get all wishlists where user is a member (not owner)
     const memberships = await WishlistMember.find({ user: user._id });
-    const roleMap = new Map(memberships.map((m) => [m.wishlist.toString(), m.role]));
     const wishlistIds = memberships.map((m) => m.wishlist);
     // Archived wishlists are hidden from members — only the owner still sees them.
     const memberWishlists = await Wishlist.find({
@@ -48,15 +50,26 @@ export async function GET(request: NextRequest) {
       (w) => !ownedWishlistIds.has(w._id.toString())
     );
 
-    // Get owner emails for all wishlists
-    const allWishlistOwners = new Set([
-      ...ownedWishlists.map((w) => w.owner.toString()),
-      ...memberOnlyWishlists.map((w) => w.owner.toString()),
-    ]);
+    // Resolve every owner's public identity (never their email). A co-owned list
+    // has several; `ownerUsernames` keeps them all and the card shows the first
+    // plus a count.
+    const allWishlistOwners = new Set(
+      [...ownedWishlists, ...memberOnlyWishlists].flatMap((w) => ownerIds(w))
+    );
     const owners = await User.find({ _id: { $in: Array.from(allWishlistOwners) } }).select(
       'username image'
     );
     const ownerMap = new Map(owners.map((o) => [o._id.toString(), o]));
+    const ownerFields = (w: (typeof ownedWishlists)[number]) => {
+      const people = ownerIds(w)
+        .map((id) => ownerMap.get(id))
+        .filter((o): o is NonNullable<typeof o> => !!o);
+      return {
+        ownerUsername: people[0]?.username || null,
+        ownerImage: people[0]?.image ?? null,
+        ownerUsernames: people.map((o) => o.username).filter((u): u is string => !!u),
+      };
+    };
 
     // Compute a privacy-safe item count per wishlist.
     // We deliberately never expose booking state here (owners must not learn
@@ -83,21 +96,22 @@ export async function GET(request: NextRequest) {
     ]);
     const countMap = new Map(countAgg.map((c) => [c._id.toString(), c]));
 
-    // Add owner email + safe item count to wishlists
+    // Add owner identities + safe item count to wishlists. `featured` is folded
+    // to this viewer's own pin by serializeWishlist — a co-owner's pin never
+    // shows up as yours.
+    const viewerId = user._id.toString();
     const ownedWithOwnerEmail = ownedWishlists.map((w) => ({
-      ...w.toObject(),
-      ownerUsername: ownerMap.get(w.owner.toString())?.username || null,
-      ownerImage: ownerMap.get(w.owner.toString())?.image ?? null,
+      ...serializeWishlist(w, viewerId),
+      ...ownerFields(w),
       itemCount: countMap.get(w._id.toString())?.total ?? 0,
     }));
 
     const memberWithOwnerEmail = memberOnlyWishlists.map((w) => ({
-      ...w.toObject(),
-      ownerUsername: ownerMap.get(w.owner.toString())?.username || null,
-      ownerImage: ownerMap.get(w.owner.toString())?.image ?? null,
+      ...serializeWishlist(w, viewerId),
+      ...ownerFields(w),
       itemCount: countMap.get(w._id.toString())?.nonDraft ?? 0,
       isMember: true,
-      userRole: roleMap.get(w._id.toString()) ?? 'member',
+      userRole: 'member' as const,
     }));
 
     return NextResponse.json(
@@ -159,14 +173,19 @@ export async function POST(request: NextRequest) {
       name,
       slug,
       description,
-      owner: user._id,
+      // Creating a list is the first of the three ways to become an owner (the
+      // others are being invited as one, or being promoted — both consented).
+      owners: [user._id],
       visibility,
       isPublic: visibility === 'everyone',
       bannerUrl: bannerUrl || null,
       currency: currency || user.defaultCurrency || 'USD',
     });
 
-    return NextResponse.json({ success: true, data: wishlist }, { status: 201 });
+    return NextResponse.json(
+      { success: true, data: serializeWishlist(wishlist, user._id.toString()) },
+      { status: 201 }
+    );
   } catch (error) {
     console.error('Error creating wishlist:', error);
     return NextResponse.json(

@@ -34,3 +34,16 @@ export async function createNotification(args: CreateNotificationArgs): Promise<
     console.error('Failed to create notification:', err);
   }
 }
+
+/**
+ * Same notification to several recipients — used to fan an event out to every
+ * owner of a co-owned wishlist, so no owner misses a proposal just because
+ * someone else created the list. Duplicate ids are collapsed.
+ */
+export async function createNotifications(
+  users: Id[],
+  args: Omit<CreateNotificationArgs, 'user'>
+): Promise<void> {
+  const unique = Array.from(new Set(users.map((u) => u.toString())));
+  await Promise.all(unique.map((user) => createNotification({ ...args, user })));
+}

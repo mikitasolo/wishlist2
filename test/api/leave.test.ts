@@ -28,7 +28,7 @@ beforeEach(async () => {
   const owner = await User.create({ email: 'owner@x.com', username: 'owner' });
   const member = await User.create({ email: 'member@x.com', username: 'member' });
   memberId = member._id.toString();
-  const wl = await Wishlist.create({ name: 'List', owner: owner._id, visibility: 'everyone' });
+  const wl = await Wishlist.create({ name: 'List', owners: [owner._id], visibility: 'everyone' });
   wishlistId = wl._id.toString();
   await WishlistMember.create({ wishlist: wl._id, user: member._id, role: 'member' });
   const item = await Item.create({
@@ -42,6 +42,7 @@ beforeEach(async () => {
     gifter: member._id,
     wishlist: wl._id,
     item: item._id,
+    // `Reservation.owner` is the gift *recipient* snapshot, not a wishlist owner set.
     owner: owner._id,
     itemName: 'Gift',
     wishlistName: 'List',

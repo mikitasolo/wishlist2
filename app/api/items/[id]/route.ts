@@ -12,10 +12,11 @@ import { updateItemSchema, validateRequestBody } from '@/lib/validations';
 import { ensureCurrencyRatesUpToDate } from '@/lib/utils/currencyRates';
 import { deleteOwnBlob } from '@/lib/utils/blob';
 import { createNotification } from '@/lib/notifications';
+import { isWishlistOwner, primaryOwnerId } from '@/lib/utils/wishlistOwners';
 
 // PATCH /api/items/[id] - Update an item
-// Regular members can book/unbook items (only their own bookings)
-// Wishlist owner can update all fields
+// Members can book/unbook items (only their own bookings)
+// Wishlist owners can update all fields
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth();
@@ -51,16 +52,15 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
     }
 
-    // Check if user has access to this wishlist
-    const isOwner = wishlist.owner.toString() === session.user.id;
-    const membership = await WishlistMember.findOne({
+    // Check if user has access to this wishlist. Every co-owner is an owner, so
+    // none of them can book, and none of them see booking state in the response.
+    const isOwner = isWishlistOwner(wishlist, session.user.id);
+    const isMember = !!(await WishlistMember.findOne({
       wishlist: wishlist._id,
       user: session.user.id,
-    });
-    const isAdmin = membership?.role === 'admin';
-    const isMember = !!membership;
+    }));
     const isProposer = currentItem.proposedBy?.toString() === session.user.id;
-    const hasAccess = isOwner || isAdmin || isMember || isProposer;
+    const hasAccess = isOwner || isMember || isProposer;
 
     if (!hasAccess) {
       return NextResponse.json(
@@ -110,14 +110,14 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       >
     > = {};
 
-    // If an owner/admin approves a proposed item below, remember the proposer
+    // If an owner approves a proposed item below, remember the proposer
     // so we can notify them after the update succeeds.
     let approvedProposer: mongoose.Types.ObjectId | null = null;
 
     // Handle proposed items
     if (currentItem.status === 'proposed') {
-      // Owner and admin can review proposed items (change status and clear proposedBy)
-      if (isOwner || isAdmin) {
+      // Owners review proposed items (change status and clear proposedBy)
+      if (isOwner) {
         if (validatedData.name !== undefined) updateData.name = validatedData.name;
         if (validatedData.imageUrl !== undefined) updateData.imageUrl = validatedData.imageUrl;
         if (validatedData.price !== undefined) {
@@ -172,8 +172,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         );
       }
     }
-    // If user is wishlist owner or admin, allow updating all fields
-    else if (isOwner || isAdmin) {
+    // An owner may update every field
+    else if (isOwner) {
       if (validatedData.name !== undefined) updateData.name = validatedData.name;
       if (validatedData.imageUrl !== undefined) updateData.imageUrl = validatedData.imageUrl;
       if (validatedData.price !== undefined) {
@@ -258,7 +258,10 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
             gifter: session.user.id,
             wishlist: wishlist._id,
             item: item._id,
-            owner: wishlist.owner,
+            // Snapshot of the recipient. A co-owned list has several owners, so
+            // this pins the primary one — a `GiftLog` records one recipient, and
+            // the snapshot deliberately doesn't follow later ownership changes.
+            owner: primaryOwnerId(wishlist),
             itemName: item.name,
             itemImage: item.imageUrl ?? null,
             itemPrice: item.price ?? null,
@@ -300,8 +303,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const isBookedByMe = itemObj.bookedBy?.toString() === session.user.id;
 
     let responseData;
-    if (isOwner || isAdmin) {
-      // Owner/admin: hide the proposer and any booking.
+    if (isOwner) {
+      // Owner: hide the proposer and any booking.
       responseData = {
         ...itemObj,
         status: itemObj.status === 'booked' ? 'available' : itemObj.status,
@@ -362,19 +365,14 @@ export async function DELETE(
       return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
     }
 
-    const isOwner = wishlist.owner.toString() === session.user.id;
-    const membership = await WishlistMember.findOne({
-      wishlist: wishlist._id,
-      user: session.user.id,
-    });
-    const isAdmin = membership?.role === 'admin';
+    const isOwner = isWishlistOwner(wishlist, session.user.id);
     const isProposer =
       item.status === 'proposed' && item.proposedBy?.toString() === session.user.id;
 
-    // Check if user is owner, admin, or proposer
-    if (!isOwner && !isAdmin && !isProposer) {
+    // Only an owner, or the proposer of a still-pending proposal, may delete.
+    if (!isOwner && !isProposer) {
       return NextResponse.json(
-        { success: false, error: 'Unauthorized - Owner, admin, or proposer access required' },
+        { success: false, error: 'Unauthorized - Owner or proposer access required' },
         { status: 403 }
       );
     }

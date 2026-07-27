@@ -9,7 +9,8 @@ import WishlistMember from '@/models/WishlistMember';
 import { createItemSchema, validateRequestBody } from '@/lib/validations';
 import { ensureCurrencyRatesUpToDate, convertToUsdCents } from '@/lib/utils/currencyRates';
 import { resolveWishlistId } from '@/lib/utils/wishlistSlug';
-import { createNotification } from '@/lib/notifications';
+import { createNotifications } from '@/lib/notifications';
+import { isWishlistOwner, ownerIds } from '@/lib/utils/wishlistOwners';
 
 // Helper function to check wishlist access
 async function checkWishlistAccess(
@@ -33,8 +34,8 @@ async function checkWishlistAccess(
     return { hasAccess: false };
   }
 
-  // Owner always has access
-  if (wishlist.owner.toString() === userId) {
+  // Any owner always has access
+  if (isWishlistOwner(wishlist, userId)) {
     return { hasAccess: true, wishlist };
   }
 
@@ -48,7 +49,7 @@ async function checkWishlistAccess(
 }
 
 // GET /api/wishlists/[id]/items - Get all items for a wishlist
-// Admin and public users don't see bookedBy to avoid spoiling surprises
+// Owners and public users don't see bookedBy to avoid spoiling surprises
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth();
@@ -76,28 +77,24 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     const items = await Item.find({ wishlist: wishlistId }).sort({ createdAt: -1 });
 
-    // Check if user is owner, admin, or member
-    const isOwner = session?.user && wishlist.owner.toString() === session.user.id;
-    let isAdmin = false;
+    // Every co-owner counts as owner — which is also what keeps bookings hidden
+    // from all of them below.
+    const isOwner = isWishlistOwner(wishlist, session?.user?.id);
     let isMember = false;
     if (session?.user && !isOwner) {
-      const membership = await WishlistMember.findOne({
+      isMember = !!(await WishlistMember.findOne({
         wishlist: wishlistId,
         user: session.user.id,
-      });
-      isAdmin = membership?.role === 'admin';
-      isMember = !!membership;
+      }));
     }
 
-    // Filter out draft items for non-owners/admins
-    // Filter out proposed items except for owner/admin and proposer
+    // Drafts are owner-only; a proposal is visible to the owners and its proposer.
     const visibleItems = items.filter((item) => {
       if (item.status === 'draft') {
-        return isOwner || isAdmin; // Only owners and admins can see draft items
+        return isOwner;
       }
       if (item.status === 'proposed') {
-        // Only owner/admin and proposer can see proposed items
-        if (isOwner || isAdmin) return true;
+        if (isOwner) return true;
         if (session?.user && item.proposedBy?.toString() === session.user.id) return true;
         return false;
       }
@@ -137,9 +134,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         };
       }
 
-      if (isOwner || isAdmin) {
-        // Owner/Admin: CANNOT see which items are booked (hide booking info)
-        // Owner/Admin: CANNOT see who proposed items (hide proposedBy info)
+      if (isOwner) {
+        // Owners CANNOT see which items are booked (hide booking info)
+        // Owners CANNOT see who proposed items (hide proposedBy info)
         if (itemObj.status === 'booked') {
           return {
             ...enrichedItem,
@@ -222,23 +219,19 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
     }
 
-    const isOwner = wishlist.owner.toString() === session.user.id;
+    const isOwner = isWishlistOwner(wishlist, session.user.id);
 
-    // Check if user is owner, admin, or member
-    let isAdmin = false;
     let isMember = false;
     if (!isOwner) {
-      const membership = await WishlistMember.findOne({
+      isMember = !!(await WishlistMember.findOne({
         wishlist: wishlistId,
         user: session.user.id,
-      });
-      isAdmin = membership?.role === 'admin';
-      isMember = !!membership;
+      }));
     }
 
-    if (!isOwner && !isAdmin && !isMember) {
+    if (!isOwner && !isMember) {
       return NextResponse.json(
-        { success: false, error: 'Unauthorized - Owner, admin, or member access required' },
+        { success: false, error: 'Unauthorized - Owner or member access required' },
         { status: 403 }
       );
     }
@@ -272,8 +265,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       }
     }
 
-    // Members can only create proposed items (owners and admins can create any status)
-    if (!isOwner && !isAdmin && status !== 'proposed') {
+    // Members can only propose; owners create any status directly.
+    if (!isOwner && status !== 'proposed') {
       return NextResponse.json(
         { success: false, error: 'Members can only propose items (status must be "proposed")' },
         { status: 403 }
@@ -326,11 +319,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const item = await Item.create(itemData);
 
-    // Tell the owner a new item was proposed — anonymously: owners must never
+    // Tell every owner a new item was proposed — anonymously: owners must never
     // learn who proposed an item (they can't see proposedBy elsewhere either).
+    // All co-owners get it; nobody depends on the creator being online.
     if (item.status === 'proposed') {
-      await createNotification({
-        user: wishlist.owner,
+      await createNotifications(ownerIds(wishlist), {
         type: 'proposal',
         actorUsername: null,
         wishlist: wishlist._id,
