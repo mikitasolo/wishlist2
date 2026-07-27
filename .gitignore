@@ -22,6 +22,10 @@
 # production
 /build
 
+# generated brand assets — `docs/brand/generate-avatars.mjs` is the source
+/docs/brand/*.png
+/docs/brand/*.svg
+
 # misc
 .DS_Store
 *.pem
