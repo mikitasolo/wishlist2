@@ -27,6 +27,16 @@ npm run release          # promote: fast-forward remote main to remote staging (
 - **Work on `staging`** (the default branch). CI runs on every push to `staging` and `main`.
 - **`main` is production** (Vercel deploys on push). `main` is only ever advanced by **fast-forwarding to `staging`** — never commit directly to `main`, never squash/merge-commit into it. This keeps `main` a strict prefix of `staging` (identical hashes, no divergence).
 - **To release:** push `staging` yourself when a chunk is ready, verify CI is green and the Vercel staging deploy looks good, then `npm run release`. It fast-forwards **remote** `main` to **remote** `staging` (via `git push origin origin/staging:main`) — it does **not** push your local branch, so unreleased WIP commits on your local `staging` stay local. No PR/merge-button — those mint new commits and diverge the two branches.
+- **A push to `main` announces itself.** `.github/workflows/release-notify.yml` posts the changelog to a Telegram channel, built from the commit subjects in the pushed range by `.github/scripts/telegram-release-notes.py`. It needs the `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` repo secrets; without them it prints a preview and sends nothing.
+
+## Commit messages
+
+**Commit subjects are published.** Every subject in a release goes verbatim into the Telegram changelog, so it's release-note copy, not a private note to yourself. Write accordingly:
+
+- **Conventional-commit prefix**, which the changelog groups by: `feat:` `fix:` `perf:` `refactor:` `docs:` `test:` `build:` `ci:` `chore:`. Anything unprefixed lands in a catch-all "Other" section — avoid it.
+- **Imperative, specific subject** that stands alone. A reader in the channel sees only the subject, with no diff and no body: `fix: release a member's bookings when they're made an owner`, not `fix: bug` or `fix: address review comments`.
+- **Body explains _why_**, plus anything a future reader would otherwise have to reconstruct: the invariant being protected, the failure mode being closed, migrations the change requires and their ordering.
+- One coherent change per commit. "Various fixes" is one useless changelog line covering several things worth naming.
 
 ## Testing policy (required)
 

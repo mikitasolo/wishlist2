@@ -99,6 +99,13 @@ Tests live in `test/` and run on Vitest:
 
 CI runs on every push to `main` and every pull request: `.github/workflows/ci.yml` does lint, typecheck, the full Vitest suite, and a production build; `.github/workflows/e2e.yml` runs the Playwright suite (kept separate since it downloads a browser and builds the app). Coverage (`npm run test:cov`) enforces a non-regression threshold floor configured in `vitest.config.ts`.
 
+A push to `main` is a release, so `.github/workflows/release-notify.yml` also posts the changelog to a Telegram channel — grouped by conventional-commit prefix, which is why commit subjects need to read as release notes (see [AGENTS.md](AGENTS.md)). It needs two **repo secrets**, `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` (not app env vars); with them unset the job prints a preview and sends nothing. Preview a message locally without a token:
+
+```bash
+BEFORE=$(git rev-parse HEAD~3) AFTER=$(git rev-parse HEAD) REPO=owner/repo \
+  python3 .github/scripts/telegram-release-notes.py
+```
+
 ## 🗄️ Data migrations
 
 Schema migrations are one-off POST endpoints under `app/api/migrations/<name>`, guarded by the
