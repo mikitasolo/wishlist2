@@ -6,18 +6,14 @@ Ideas we've discussed and deliberately deferred. Not scheduled — captured here
 
 Co-ownership shipped (see the ownership invariants in [AGENTS.md](AGENTS.md)): `Wishlist.owners[]`,
 per-owner `featuredBy[]`, consent-gated promotion via an `owner` invite, the self-role-change guard,
-and the retirement of the `admin` tier (a wishlist now has owners and members, nothing between).
+and the retirement of the `admin` tier (a wishlist now has owners and members, nothing between). The
+legacy single-owner fields and all three migrations are gone too — applied everywhere, then deleted.
 What's still open:
 
 - **Tell people when their role changes.** Being demoted from owner, or removed from a list, is
   currently silent — there's no notification type for it. Being _promoted_ is fine (they accepted an
   invite). Needs a `role_changed` / `removed_from_wishlist` notification type plus rendering in the
   notification center.
-- **Drop the legacy single-owner fields.** Once every environment runs the co-ownership code, add a
-  cleanup migration that `$unset`s `Wishlist.owner` / `Wishlist.featured`, then delete the schema
-  fields, the `pre('validate')` seeding shim, and the legacy fallbacks in
-  `lib/utils/wishlistOwners.ts` (`ownerIds`, `ownedByFilter`, `isFeaturedBy`). `wishlist-owners` is
-  deliberately additive so it can run before a deploy, which is why the fields are still there.
 - **Transfer sole ownership.** A single owner can't hand a list over and walk away — they can invite
   a co-owner and then leave, which works but is two steps. A "transfer ownership" action might be
   worth it.

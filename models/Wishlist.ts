@@ -31,16 +31,6 @@ const WishlistSchema = new Schema(
       type: [{ type: Schema.Types.ObjectId, ref: 'User' }],
       default: [],
     },
-    /**
-     * @deprecated Pre-multi-owner single owner. Superseded by `owners[]`; kept so
-     * rows written before the migration can still be resolved (and so the
-     * `wishlist-owners` migration can read them). Nothing in the app authorizes
-     * against it — use the helpers in `lib/utils/wishlistOwners.ts`.
-     */
-    owner: {
-      type: Schema.Types.ObjectId,
-      ref: 'User',
-    },
     // Legacy flag, kept in sync with `visibility` (everyone ⇒ true).
     isPublic: {
       type: Boolean,
@@ -84,28 +74,11 @@ const WishlistSchema = new Schema(
       type: [{ type: Schema.Types.ObjectId, ref: 'User' }],
       default: [],
     },
-    /**
-     * @deprecated Pre-multi-owner featured flag. Superseded by `featuredBy[]`;
-     * read only by the `wishlist-owners` migration.
-     */
-    featured: {
-      type: Boolean,
-    },
   },
   {
     timestamps: true,
   }
 );
-
-// Transitional shim: accept the pre-multi-owner write shape (`{ owner }`) by
-// seeding `owners` from it, so anything still constructing a wishlist the old
-// way produces a valid multi-owner document instead of an unowned one.
-WishlistSchema.pre('validate', function seedOwners(next) {
-  if ((!this.owners || this.owners.length === 0) && this.owner) {
-    this.owners = [this.owner];
-  }
-  next();
-});
 
 // A wishlist without an owner is unreachable and unmanageable — never allow one.
 WishlistSchema.path('owners').validate(
@@ -123,18 +96,15 @@ export interface IWishlist {
   slug?: string | null;
   description?: string | null;
   owners: mongoose.Types.ObjectId[];
-  /** @deprecated see the schema note — resolve owners via `lib/utils/wishlistOwners.ts`. */
-  owner?: mongoose.Types.ObjectId | null;
   isPublic: boolean;
   visibility: 'everyone' | 'friends' | 'private';
   archived?: boolean;
   currency?: string;
   featuredBy: mongoose.Types.ObjectId[];
   /**
-   * Whether this list is the *viewer's* dashboard highlight. Persisted per-owner
-   * in `featuredBy`; API responses fold it down to this boolean for the caller
-   * (see `serializeWishlist`). The legacy stored flag of the same name is only
-   * read by the migration.
+   * Whether this list is the *viewer's* dashboard highlight. Not stored: it's
+   * persisted per-owner in `featuredBy`, and API responses fold it down to this
+   * boolean for the caller (see `serializeWishlist`).
    */
   featured?: boolean;
   bannerUrl?: string | null;

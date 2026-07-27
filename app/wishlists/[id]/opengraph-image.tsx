@@ -33,7 +33,7 @@ export default async function Image({ params }: { params: Promise<{ id: string }
     await connectDB();
     const wid = await resolveWishlistId(idOrSlug);
     const w = wid
-      ? await Wishlist.findById(wid).select('name owners owner visibility isPublic archived').lean()
+      ? await Wishlist.findById(wid).select('name owners visibility isPublic archived').lean()
       : null;
     if (!w) return data;
     const seed = w._id.toString();

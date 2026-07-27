@@ -109,16 +109,17 @@ BEFORE=$(git rev-parse HEAD~3) AFTER=$(git rev-parse HEAD) REPO=owner/repo \
 ## 🗄️ Data migrations
 
 Schema migrations are one-off POST endpoints under `app/api/migrations/<name>`, guarded by the
-`MIGRATION_SECRET` header. They're idempotent, so re-running one is harmless:
+`MIGRATION_SECRET` header and written to be idempotent:
 
 ```bash
 curl -X POST -H "X-Migration-Secret: $MIGRATION_SECRET" \
-  https://<your-host>/api/migrations/wishlist-owners
+  https://<your-host>/api/migrations/<name>
 ```
 
-| Migration         | What it does                                                                                                                                                                                                                       |
-| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `wishlist-owners` | Co-ownership: single `owner` → `owners[]`, and the `featured` flag → the per-owner `featuredBy[]`. Roles are untouched. **Run once per environment after deploying co-ownership** (the app tolerates un-migrated rows until then). |
+None are currently in the tree. The co-ownership set (`wishlist-owners`, `remove-admin-role`,
+`drop-legacy-owner-fields`) has been applied to every environment and removed; recover them from git
+history if you ever need to replay one against a restored backup. See [AGENTS.md](AGENTS.md) for the
+rules a new migration should follow.
 
 ## 📁 Project structure
 

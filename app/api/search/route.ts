@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
         archived: { $ne: true },
         $or: [{ visibility: 'everyone' }, { visibility: { $exists: false }, isPublic: true }],
       })
-        .select('name slug owners owner')
+        .select('name slug owners')
         .limit(6),
     ]);
 

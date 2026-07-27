@@ -19,7 +19,7 @@ export async function generateMetadata({
     await connectDB();
     const wid = await resolveWishlistId(id);
     const w = wid
-      ? await Wishlist.findById(wid).select('name owners owner visibility isPublic archived').lean()
+      ? await Wishlist.findById(wid).select('name owners visibility isPublic archived').lean()
       : null;
     if (w) {
       const isPublic = (w.visibility ? w.visibility === 'everyone' : w.isPublic) && !w.archived;

@@ -8,8 +8,7 @@ import mongoose, { Schema, Model } from 'mongoose';
  * (`Wishlist.owners`, who manage the list and can't see bookings) and **members**
  * (rows here, who gift). There used to be an `admin` role in between; it was a
  * manager-of-someone-else's-list, which isn't a relationship this app needs —
- * anyone trusted to manage the list is a co-owner. See the `remove-admin-role`
- * migration.
+ * anyone trusted to manage the list is a co-owner.
  */
 const WishlistMemberSchema = new Schema(
   {

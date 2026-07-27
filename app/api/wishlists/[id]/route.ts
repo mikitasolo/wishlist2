@@ -21,7 +21,6 @@ import {
   primaryOwnerId,
   serializeWishlist,
 } from '@/lib/utils/wishlistOwners';
-import { ensureOwnersBackfilled } from '@/lib/utils/wishlistOwnership';
 
 // GET /api/wishlists/[id] - Get a specific wishlist
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -215,8 +214,6 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     // without touching anyone else's dashboard. At most one of their lists is
     // pinned at a time.
     if (validatedData.featured !== undefined) {
-      // Normalize the legacy single-owner shape before touching `featuredBy`.
-      await ensureOwnersBackfilled(wishlist);
       const viewer = new mongoose.Types.ObjectId(session.user.id);
       if (validatedData.featured) {
         // Unpin whichever of the caller's other lists was pinned.

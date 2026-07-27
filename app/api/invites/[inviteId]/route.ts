@@ -44,9 +44,7 @@ export async function PATCH(
     }
 
     // Accept: grant the invited role (unless already an owner), then mark accepted.
-    const wishlist = await Wishlist.findById(invite.wishlist).select(
-      'owners owner featuredBy featured slug name'
-    );
+    const wishlist = await Wishlist.findById(invite.wishlist).select('owners featuredBy slug name');
     if (!wishlist) {
       invite.status = 'declined';
       await invite.save();

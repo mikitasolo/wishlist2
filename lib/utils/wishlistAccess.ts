@@ -22,6 +22,6 @@ export async function getOwnerAccess(
 /** Lightweight boolean variant — only fetches what's needed. */
 export async function isOwnerOfWishlist(wishlistId: string, userId: string): Promise<boolean> {
   await connectDB();
-  const wishlist = await Wishlist.findById(wishlistId).select('owners owner');
+  const wishlist = await Wishlist.findById(wishlistId).select('owners');
   return !!wishlist && isWishlistOwner(wishlist, userId);
 }

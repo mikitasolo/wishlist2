@@ -11,40 +11,8 @@ import { ownerIds } from '@/lib/utils/wishlistOwners';
  * so the cleanup lives here rather than being re-derived per route.
  */
 
-/** A loaded wishlist document (or `.lean()` row) these helpers can normalize. */
-type WishlistShape = Pick<IWishlist, '_id' | 'owners'> &
-  Pick<Partial<IWishlist>, 'owner' | 'featured' | 'featuredBy'>;
-
-/**
- * Bring a pre-`owners[]` row into the multi-owner shape before mutating it, by
- * seeding `owners`/`featuredBy` from the legacy single-owner fields. Same lazy
- * backfill the `wishlist-owners` migration does in bulk, and a no-op once `owners`
- * is set.
- *
- * Every route that mutates owners or the dashboard pin must call this first,
- * otherwise a `$addToSet` on an empty `owners` would silently drop the legacy
- * owner — leaving the wishlist owned by the wrong person.
- *
- * The legacy fields are deliberately **left in place**: the previously deployed
- * code still authorizes against `owner`, so removing it out from under a running
- * old deployment would break it. They get dropped by a later cleanup migration
- * once every environment runs this code (see BACKLOG.md). Nothing reads them once
- * `owners` is set.
- */
-export async function ensureOwnersBackfilled(wishlist: WishlistShape): Promise<void> {
-  if (Array.isArray(wishlist.owners) && wishlist.owners.length > 0) return;
-
-  await connectDB();
-
-  const owners = wishlist.owner ? [wishlist.owner] : [];
-  const featuredBy = wishlist.featured && owners.length > 0 ? [owners[0]] : [];
-
-  await Wishlist.updateOne({ _id: wishlist._id }, { $set: { owners, featuredBy } });
-
-  // Keep the caller's in-memory copy consistent with what we just wrote.
-  wishlist.owners = owners;
-  wishlist.featuredBy = featuredBy;
-}
+/** A loaded wishlist document (or `.lean()` row) these helpers can mutate. */
+type WishlistShape = Pick<IWishlist, '_id' | 'owners'> & Pick<Partial<IWishlist>, 'featuredBy'>;
 
 /**
  * Release everything a user holds *as a gifter* on a wishlist, because they are
@@ -125,7 +93,7 @@ export async function addWishlistOwner(
   wishlist: WishlistShape,
   userId: string
 ): Promise<{ unbookedItems: number; cancelledReservations: number }> {
-  await ensureOwnersBackfilled(wishlist);
+  await connectDB();
 
   const wishlistId = wishlist._id.toString();
   await Wishlist.updateOne(
@@ -153,7 +121,7 @@ export async function removeWishlistOwner(
   userId: string,
   keepAsMember: boolean
 ): Promise<void> {
-  await ensureOwnersBackfilled(wishlist);
+  await connectDB();
 
   const wishlistId = wishlist._id.toString();
   const uid = new mongoose.Types.ObjectId(userId);

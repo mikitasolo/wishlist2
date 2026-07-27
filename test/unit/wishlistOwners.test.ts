@@ -40,18 +40,6 @@ describe('ownerIds / primaryOwnerId', () => {
     expect(primaryOwnerId(wishlist({ owners: [A, B] }))).toBe(A.toString());
   });
 
-  // The `owners[]` migration runs after deploy, so reads must still resolve rows
-  // that only carry the old single `owner` field.
-  it('falls back to the legacy single owner when owners[] is empty', () => {
-    const legacy = wishlist({ owners: [], owner: B });
-    expect(ownerIds(legacy)).toEqual([B.toString()]);
-    expect(primaryOwnerId(legacy)).toBe(B.toString());
-  });
-
-  it('prefers owners[] over the legacy field once both exist', () => {
-    expect(ownerIds(wishlist({ owners: [A, B], owner: C }))).toEqual([A.toString(), B.toString()]);
-  });
-
   it('returns nothing for an unowned row', () => {
     expect(ownerIds(wishlist({ owners: [] }))).toEqual([]);
     expect(primaryOwnerId(wishlist({ owners: [] }))).toBeNull();
@@ -73,12 +61,8 @@ describe('isWishlistOwner', () => {
 });
 
 describe('ownedByFilter', () => {
-  it('matches owners[] plus the two legacy shapes', () => {
-    const filter = ownedByFilter(A.toString()) as { $or: Record<string, unknown>[] };
-    expect(filter.$or).toHaveLength(3);
-    expect(filter.$or[0]).toEqual({ owners: A });
-    expect(filter.$or[1]).toEqual({ owner: A, owners: { $size: 0 } });
-    expect(filter.$or[2]).toEqual({ owner: A, owners: { $exists: false } });
+  it('matches on the owners set', () => {
+    expect(ownedByFilter(A.toString())).toEqual({ owners: A });
   });
 });
 
@@ -88,10 +72,6 @@ describe('isLastOwner', () => {
     expect(isLastOwner(wishlist({ owners: [A, B] }), A.toString())).toBe(false);
     expect(isLastOwner(wishlist({ owners: [A] }), B.toString())).toBe(false);
   });
-
-  it('reads the legacy single owner too', () => {
-    expect(isLastOwner(wishlist({ owners: [], owner: A }), A.toString())).toBe(true);
-  });
 });
 
 describe('isFeaturedBy', () => {
@@ -99,12 +79,6 @@ describe('isFeaturedBy', () => {
     const w = wishlist({ owners: [A, B], featuredBy: [A] });
     expect(isFeaturedBy(w, A.toString())).toBe(true);
     expect(isFeaturedBy(w, B.toString())).toBe(false);
-  });
-
-  it('falls back to the legacy flag for un-migrated rows', () => {
-    const legacy = wishlist({ owners: [], owner: A, featuredBy: [], featured: true });
-    expect(isFeaturedBy(legacy, A.toString())).toBe(true);
-    expect(isFeaturedBy(legacy, B.toString())).toBe(false);
   });
 
   it('is false without a viewer', () => {
@@ -124,9 +98,10 @@ describe('serializeWishlist', () => {
     expect(forB.featured).toBe(true);
   });
 
-  it('drops the deprecated single-owner fields', () => {
-    const out = serializeWishlist(wishlist({ owners: [A], owner: A, featuredBy: [A] }), null);
-    expect(out).not.toHaveProperty('owner');
+  // `featuredBy` is per-owner state; clients get the folded `featured` boolean
+  // instead, so the raw set must not leak into the response.
+  it('does not expose the raw featuredBy set', () => {
+    const out = serializeWishlist(wishlist({ owners: [A], featuredBy: [A] }), null);
     expect(out).not.toHaveProperty('featuredBy');
   });
 
