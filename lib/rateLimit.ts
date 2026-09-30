@@ -17,6 +17,13 @@ import { Redis } from '@upstash/redis';
  *    `fail-open` for user-facing reads/writes (an infra blip must not lock
  *    people out) and `fail-closed` for the cost-bearing sign-in email path
  *    (never let an email bomb through because Redis hiccuped).
+ *
+ * Observability: each time a limiter turns a request away it logs one JSON
+ * line, `{"event":"rate_limited","name":…,"keyKind":…}`, so Vercel's logs give
+ * per-surface block counts to tune `SPECS` from. A store error (a throw) logs
+ * one `rate_limit_store_error` line instead. Neither ever includes the key — it's
+ * an email, an IP or a user id — so a key's *kind* is declared per limiter and
+ * enforced at compile time (see `RateLimitKey`) rather than read from the key.
  */
 
 export interface RateLimitResult {
@@ -34,31 +41,71 @@ export interface RateLimiter {
 
 type Policy = 'fail-open' | 'fail-closed';
 
+/** What a limiter's key identifies. Logged on a block in place of the key itself. */
+export type KeyKind = 'user' | 'ip' | 'email';
+
+declare const keyKindBrand: unique symbol;
+
+/**
+ * A limiter key, branded with what it identifies. Build one only with `userKey` /
+ * `ipKey` / `emailKey`: `enforce` / `checkRateLimit` accept only the kind their
+ * `SPECS` entry declares, so a key of the wrong kind — which would mislabel the
+ * `rate_limited` log line — is a type error rather than a silent mislabel.
+ */
+export type RateLimitKey<K extends KeyKind = KeyKind> = string & { readonly [keyKindBrand]: K };
+
 interface LimiterSpec {
   tokens: number;
   /** Upstash duration string, e.g. `'15 m'`, `'1 h'`. */
   window: Parameters<typeof Ratelimit.slidingWindow>[1];
   policy: Policy;
+  keyKind: KeyKind;
 }
 
-// One entry per surface. Limits are starting points to tune from real traffic.
+// One entry per surface. Limits are starting points to tune from real traffic —
+// the `rate_limited` log lines count blocks per surface.
 const SPECS = {
   // Sign-in magic link — the top abuse target (email bombing + SMTP cost). Fail
   // closed: better to reject a legitimate retry than to let a flood through.
-  signinEmail: { tokens: 3, window: '15 m', policy: 'fail-closed' },
-  signinIp: { tokens: 10, window: '15 m', policy: 'fail-closed' },
+  signinEmail: { tokens: 3, window: '15 m', policy: 'fail-closed', keyKind: 'email' },
+  signinIp: { tokens: 10, window: '15 m', policy: 'fail-closed', keyKind: 'ip' },
   // Authenticated, cost-bearing or spammy write surfaces — keyed on user id.
-  upload: { tokens: 20, window: '10 m', policy: 'fail-open' },
-  invite: { tokens: 30, window: '1 h', policy: 'fail-open' },
-  follow: { tokens: 60, window: '1 h', policy: 'fail-open' },
-  content: { tokens: 60, window: '1 h', policy: 'fail-open' },
-  booking: { tokens: 60, window: '1 h', policy: 'fail-open' },
-  usernameCheck: { tokens: 30, window: '1 m', policy: 'fail-open' },
+  upload: { tokens: 20, window: '10 m', policy: 'fail-open', keyKind: 'user' },
+  invite: { tokens: 30, window: '1 h', policy: 'fail-open', keyKind: 'user' },
+  follow: { tokens: 60, window: '1 h', policy: 'fail-open', keyKind: 'user' },
+  content: { tokens: 60, window: '1 h', policy: 'fail-open', keyKind: 'user' },
+  booking: { tokens: 60, window: '1 h', policy: 'fail-open', keyKind: 'user' },
+  usernameCheck: { tokens: 30, window: '1 m', policy: 'fail-open', keyKind: 'user' },
   // Public read/scraping surfaces — keyed on IP.
-  search: { tokens: 60, window: '1 m', policy: 'fail-open' },
+  search: { tokens: 60, window: '1 m', policy: 'fail-open', keyKind: 'ip' },
 } satisfies Record<string, LimiterSpec>;
 
 export type LimiterName = keyof typeof SPECS;
+
+type IsUnion<T, U = T> = T extends unknown ? ([U] extends [T] ? false : true) : never;
+
+/**
+ * The key a limiter accepts: branded with the kind its `SPECS` entry declares.
+ * `never` unless `N` is a single limiter — a non-literal `LimiterName` would
+ * otherwise accept a key of any kind and slip past the check.
+ */
+type KeyFor<N extends LimiterName> =
+  IsUnion<N> extends true ? never : RateLimitKey<(typeof SPECS)[N]['keyKind']>;
+
+/** Key an authenticated surface on the caller's user id. */
+export function userKey(userId: string): RateLimitKey<'user'> {
+  return userId as RateLimitKey<'user'>;
+}
+
+/** Key a public surface on the client IP (`ip:<first x-forwarded-for hop>`). */
+export function ipKey(headers: Headers): RateLimitKey<'ip'> {
+  return `ip:${clientIp(headers)}` as RateLimitKey<'ip'>;
+}
+
+/** Key the sign-in email path on the (case-insensitive) target address. */
+export function emailKey(email: string): RateLimitKey<'email'> {
+  return email.toLowerCase() as RateLimitKey<'email'>;
+}
 
 let registry: Partial<Record<LimiterName, RateLimiter>> | null = null;
 let warned = false;
@@ -98,11 +145,28 @@ function getRegistry(): Partial<Record<LimiterName, RateLimiter>> {
       redis,
       limiter: Ratelimit.slidingWindow(spec.tokens, spec.window),
       prefix: `rl:${name}`,
+      // Off: the `rate_limited` log line already counts blocks per surface.
+      // Upstash analytics would add a ZINCRBY to every `limit()` call, allowed
+      // or blocked, and store the raw key (email / IP / user id) in Redis.
       analytics: false,
     });
   }
   registry = built;
   return registry;
+}
+
+/**
+ * The store's error, minus anything that could carry the key. `UpstashError`
+ * appends the whole command (`…, command was: ["evalsha",…,"rl:<name>:<key>:…"]`),
+ * so that tail is cut, and any other occurrence of the key is masked.
+ */
+function describeStoreError(error: unknown, key: string): string {
+  let text = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+  if (error instanceof Error && error.cause instanceof Error) {
+    text += ` (cause: ${error.cause.message})`;
+  }
+  text = text.split(', command was:')[0]!;
+  return key ? text.replaceAll(key, '<key>') : text;
 }
 
 async function run(name: LimiterName, key: string): Promise<RateLimitResult> {
@@ -114,10 +178,19 @@ async function run(name: LimiterName, key: string): Promise<RateLimitResult> {
     return { success: true, reset: 0, limit: spec.tokens, remaining: spec.tokens };
   }
 
+  let result: RateLimitResult;
   try {
-    return await limiter.limit(key);
+    result = await limiter.limit(key);
   } catch (error) {
-    console.error(`[rateLimit] store error for "${name}":`, error);
+    console.error(
+      JSON.stringify({
+        event: 'rate_limit_store_error',
+        name,
+        keyKind: spec.keyKind,
+        policy: spec.policy,
+        error: describeStoreError(error, key),
+      })
+    );
     // Store unreachable → apply the limiter's failure policy.
     return {
       success: spec.policy === 'fail-open',
@@ -126,6 +199,12 @@ async function run(name: LimiterName, key: string): Promise<RateLimitResult> {
       remaining: 0,
     };
   }
+
+  if (!result.success) {
+    // One line per block, for tuning SPECS from real traffic. Never the key.
+    console.warn(JSON.stringify({ event: 'rate_limited', name, keyKind: spec.keyKind }));
+  }
+  return result;
 }
 
 /**
@@ -133,10 +212,13 @@ async function run(name: LimiterName, key: string): Promise<RateLimitResult> {
  * `NextResponse` (with `Retry-After`) when over the limit, or `null` when the
  * request may proceed.
  *
- *   const limited = await enforce('upload', session.user.id);
+ *   const limited = await enforce('upload', userKey(session.user.id));
  *   if (limited) return limited;
  */
-export async function enforce(name: LimiterName, key: string): Promise<NextResponse | null> {
+export async function enforce<N extends LimiterName>(
+  name: N,
+  key: KeyFor<N>
+): Promise<NextResponse | null> {
   const result = await run(name, key);
   if (result.success) return null;
 
@@ -151,7 +233,10 @@ export async function enforce(name: LimiterName, key: string): Promise<NextRespo
  * Boolean check for non-route contexts (e.g. NextAuth's `sendVerificationRequest`,
  * which must throw to abort rather than return a response). `true` = allowed.
  */
-export async function checkRateLimit(name: LimiterName, key: string): Promise<boolean> {
+export async function checkRateLimit<N extends LimiterName>(
+  name: N,
+  key: KeyFor<N>
+): Promise<boolean> {
   return (await run(name, key)).success;
 }
 

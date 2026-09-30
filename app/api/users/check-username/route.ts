@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
-import { enforce } from '@/lib/rateLimit';
+import { enforce, userKey } from '@/lib/rateLimit';
 import connectDB from '@/lib/mongodb';
 import User from '@/models/User';
 import { USERNAME_REGEX } from '@/lib/validations';
@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
   }
 
   // Cheap DB lookup called on every keystroke — cap it to blunt enumeration.
-  const limited = await enforce('usernameCheck', session.user.id);
+  const limited = await enforce('usernameCheck', userKey(session.user.id));
   if (limited) return limited;
 
   const raw = (request.nextUrl.searchParams.get('username') || '').toLowerCase().trim();

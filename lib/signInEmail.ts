@@ -1,5 +1,5 @@
 import { sendMagicLinkEmail } from './email';
-import { checkRateLimit, clientIp } from './rateLimit';
+import { checkRateLimit, emailKey, ipKey } from './rateLimit';
 
 /** The subset of Auth.js's `sendVerificationRequest` params we use. */
 export interface VerificationRequest {
@@ -24,10 +24,9 @@ export async function sendVerificationRequest({
   url,
   request,
 }: VerificationRequest): Promise<void> {
-  const target = email.toLowerCase();
   const [emailOk, ipOk] = await Promise.all([
-    checkRateLimit('signinEmail', target),
-    checkRateLimit('signinIp', `ip:${clientIp(request.headers)}`),
+    checkRateLimit('signinEmail', emailKey(email)),
+    checkRateLimit('signinIp', ipKey(request.headers)),
   ]);
   if (!emailOk || !ipOk) {
     throw new Error('Too many sign-in attempts. Please wait a few minutes and try again.');

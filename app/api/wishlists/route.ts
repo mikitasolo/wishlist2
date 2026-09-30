@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
-import { enforce } from '@/lib/rateLimit';
+import { enforce, userKey } from '@/lib/rateLimit';
 import connectDB from '@/lib/mongodb';
 import Wishlist from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
@@ -147,7 +147,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Throttle content creation to stop bulk junk.
-    const limited = await enforce('content', session.user.id);
+    const limited = await enforce('content', userKey(session.user.id));
     if (limited) return limited;
 
     await connectDB();
