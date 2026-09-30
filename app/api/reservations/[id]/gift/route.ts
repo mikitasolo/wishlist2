@@ -18,28 +18,41 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const { id } = await params;
     await connectDB();
 
-    const reservation = await Reservation.findById(id);
-    if (!reservation || reservation.gifter.toString() !== session.user.id) {
+    // Take the reservation in one atomic step, so that of a double submit, or of
+    // this and a dismiss or release (which free its snapshot image), exactly one
+    // gets it. The entry is then written from what was taken, image included.
+    const reservation = await Reservation.findOneAndDelete({
+      _id: id,
+      gifter: session.user.id,
+    }).lean();
+    if (!reservation) {
       return NextResponse.json({ success: false, error: 'Reservation not found' }, { status: 404 });
     }
 
-    // Snapshot the recipient's username at gift time (best-effort).
-    const recipient = await User.findById(reservation.owner).select('username');
+    let entry;
+    try {
+      // Snapshot the recipient's username at gift time (best-effort).
+      const recipient = await User.findById(reservation.owner).select('username');
 
-    const entry = await GiftLog.create({
-      gifter: session.user.id,
-      giftedAt: new Date(),
-      itemName: reservation.itemName,
-      itemImage: reservation.itemImage ?? null,
-      itemPrice: reservation.itemPrice ?? null,
-      recipient: reservation.owner,
-      recipientUsername: recipient?.username ?? null,
-      wishlistName: reservation.wishlistName,
-      wishlist: reservation.wishlist,
-      item: reservation.item,
-    });
-
-    await Reservation.findByIdAndDelete(id);
+      entry = await GiftLog.create({
+        gifter: session.user.id,
+        giftedAt: new Date(),
+        itemName: reservation.itemName,
+        itemImage: reservation.itemImage ?? null,
+        itemPrice: reservation.itemPrice ?? null,
+        recipient: reservation.owner,
+        recipientUsername: recipient?.username ?? null,
+        wishlistName: reservation.wishlistName,
+        wishlist: reservation.wishlist,
+        item: reservation.item,
+      });
+    } catch (error) {
+      // Put the reservation back exactly as it was, so the gift can be retried.
+      await Reservation.collection
+        .insertOne(reservation)
+        .catch((err) => console.error('Could not restore the reservation of a failed gift:', err));
+      throw error;
+    }
 
     return NextResponse.json(
       { success: true, data: { _id: entry._id.toString() } },

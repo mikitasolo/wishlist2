@@ -8,10 +8,9 @@ import AppHeader from '@/components/AppHeader';
 import AuthButton from '@/components/AuthButton';
 import Icon from '@/components/Icon';
 import { useToast } from '@/components/ToastProvider';
-import BannerImage from '@/components/BannerImage';
+import SnapshotThumb from '@/components/SnapshotThumb';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import { formatPriceFromObject } from '@/lib/utils/currency';
-import { coverGradient } from '@/lib/utils/cover';
 import { partitionReservations, reservationNote } from '@/lib/utils/reservations';
 
 interface Price {
@@ -255,7 +254,7 @@ export default function BookedPage() {
                   <ul className="divide-y divide-border">
                     {gifts.map((g) => (
                       <li key={g._id} className="flex items-center gap-3 p-3 sm:px-4">
-                        <Thumb src={g.itemImage} alt={g.itemName} seed={g._id} small />
+                        <SnapshotThumb src={g.itemImage} alt={g.itemName} seed={g._id} small />
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-semibold text-foreground">
                             {g.itemName}
@@ -363,7 +362,7 @@ function ReservationCard({
       }`}
     >
       <div className="flex gap-3 p-3">
-        <Thumb src={r.itemImage} alt={r.itemName} seed={r._id} />
+        <SnapshotThumb src={r.itemImage} alt={r.itemName} seed={r._id} />
         <div className="min-w-0 flex-1">
           <p className="truncate text-[15px] font-semibold text-foreground">{r.itemName}</p>
           {r.itemPrice && (
@@ -427,28 +426,6 @@ function EmptyState({ icon, title, body }: { icon: 'gift'; title: string; body: 
       </span>
       <h3 className="text-xl font-semibold text-foreground">{title}</h3>
       <p className="mx-auto mt-2 max-w-sm px-4 text-[15px] text-muted-foreground">{body}</p>
-    </div>
-  );
-}
-
-function Thumb({
-  src,
-  alt,
-  seed,
-  small = false,
-}: {
-  src: string | null;
-  alt: string;
-  seed: string;
-  small?: boolean;
-}) {
-  const size = small ? 'h-11 w-11' : 'h-16 w-16';
-  return (
-    <div
-      className={`relative ${size} flex-shrink-0 overflow-hidden rounded-xl bg-surface-2`}
-      style={{ background: src ? undefined : coverGradient(seed) }}
-    >
-      {src && <BannerImage src={src} alt={alt} sizes="64px" />}
     </div>
   );
 }

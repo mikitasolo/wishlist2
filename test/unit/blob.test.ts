@@ -3,9 +3,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 // Mock the Vercel Blob SDK so we can assert what would be deleted without a store.
 const del = vi.fn().mockResolvedValue(undefined);
 const list = vi.fn();
+const copy = vi.fn();
 vi.mock('@vercel/blob', () => ({
   del: (...a: unknown[]) => del(...a),
   list: (...a: unknown[]) => list(...a),
+  copy: (...a: unknown[]) => copy(...a),
 }));
 
 import {
@@ -16,6 +18,9 @@ import {
   deleteOwnBlob,
   deleteOwnBlobs,
   getUserUploadBytes,
+  isSnapshotBlob,
+  snapshotBlob,
+  SNAPSHOT_COPY_TIMEOUT_MS,
 } from '@/lib/utils/blob';
 
 // A fake read-write token in the SDK's `vercel_blob_rw_<storeId>_<secret>` shape.
@@ -211,5 +216,105 @@ describe('getUserUploadBytes', () => {
     expect(await getUserUploadBytes('u1')).toBe(400);
     expect(list).toHaveBeenCalledTimes(2);
     expect(list.mock.calls[0][0]).toMatchObject({ prefix: 'uploads/u1/' });
+  });
+});
+
+const SNAPSHOT = `https://${HOST}/snapshots/0b7d6f5e-2c1a-4e8b-9f3d-5a6b7c8d9e0f.jpg`;
+
+describe('isSnapshotBlob', () => {
+  it('recognizes a file directly inside our snapshots/ folder', () => {
+    expect(isSnapshotBlob(SNAPSHOT)).toBe(true);
+  });
+
+  it('rejects uploads, other stores, external, lookalike and malformed URLs', () => {
+    expect(isSnapshotBlob(OWN)).toBe(false);
+    expect(
+      isSnapshotBlob(`https://otherstore9.public.blob.vercel-storage.com/snapshots/x.jpg`)
+    ).toBe(false);
+    expect(isSnapshotBlob(EXTERNAL)).toBe(false);
+    expect(isSnapshotBlob(`https://${HOST}/snapshotsx/x.jpg`)).toBe(false);
+    expect(isSnapshotBlob(`https://${HOST}/snapshots/nested/x.jpg`)).toBe(false);
+    expect(isSnapshotBlob(`https://${HOST}/snapshots/..%2Fuploads%2Fu1%2Fx.jpg`)).toBe(false);
+    expect(isSnapshotBlob(`https://${HOST}/snapshots/../uploads/u1/x.jpg`)).toBe(false);
+    expect(isSnapshotBlob(`https://${HOST}/snapshots/`)).toBe(false);
+    expect(isSnapshotBlob(null)).toBe(false);
+    expect(isSnapshotBlob('not a url')).toBe(false);
+  });
+
+  it('is false when the token is missing', () => {
+    vi.stubEnv('BLOB_READ_WRITE_TOKEN', '');
+    expect(isSnapshotBlob(SNAPSHOT)).toBe(false);
+  });
+
+  // A snapshot is freed when its reservation ends, so nobody may attach one to
+  // an image field (and later get it freed from under the gifter).
+  it('can never be attached to an image field', () => {
+    expect(canAttachImage(SNAPSHOT, 'u1')).toBe(false);
+    expect(canAttachImage(SNAPSHOT, 'u1', OWN)).toBe(false);
+  });
+});
+
+describe('snapshotBlob', () => {
+  let errorLog: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    copy.mockReset();
+    errorLog = vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    errorLog.mockRestore();
+    vi.useRealTimers();
+  });
+
+  it('copies our own blob to a random name in snapshots/, keeping the extension', async () => {
+    copy.mockImplementation(async (_from: string, to: string) => ({
+      url: `https://${HOST}/${to}`,
+    }));
+
+    const first = await snapshotBlob(OWN);
+    const second = await snapshotBlob(OWN);
+
+    expect(copy).toHaveBeenCalledTimes(2);
+    const [from, to, options] = copy.mock.calls[0];
+    expect(from).toBe(OWN);
+    expect(to).toMatch(/^snapshots\/[0-9a-f-]{36}\.jpg$/);
+    expect(options).toMatchObject({ access: 'public' });
+    expect(first).toBe(`https://${HOST}/${to}`);
+    expect(isSnapshotBlob(first)).toBe(true);
+    expect(second).not.toBe(first); // unguessable, and never shared between bookings
+  });
+
+  it('returns an external or empty URL as-is, without copying', async () => {
+    expect(await snapshotBlob(EXTERNAL)).toBe(EXTERNAL);
+    expect(await snapshotBlob(OTHER_STORE)).toBe(OTHER_STORE);
+    expect(await snapshotBlob(null)).toBeNull();
+    expect(await snapshotBlob('')).toBeNull();
+    expect(copy).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the original URL when the copy fails, logging neither URL', async () => {
+    copy.mockRejectedValueOnce(new Error('The blob service is currently not available.'));
+
+    expect(await snapshotBlob(OWN)).toBe(OWN);
+    expect(errorLog).toHaveBeenCalledTimes(1);
+    const logged = errorLog.mock.calls[0].join(' ');
+    expect(logged).not.toContain(HOST);
+    expect(logged).not.toContain('u1');
+  });
+
+  it('gives up after the timeout, aborting the copy, and keeps the original URL', async () => {
+    vi.useFakeTimers();
+    let signal: AbortSignal | undefined;
+    copy.mockImplementationOnce(
+      (_from: string, _to: string, options: { abortSignal: AbortSignal }) => {
+        signal = options.abortSignal;
+        return new Promise(() => {}); // a store that never answers
+      }
+    );
+
+    const pending = snapshotBlob(OWN);
+    await vi.advanceTimersByTimeAsync(SNAPSHOT_COPY_TIMEOUT_MS);
+
+    expect(await pending).toBe(OWN);
+    expect(signal?.aborted).toBe(true);
   });
 });

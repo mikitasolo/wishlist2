@@ -15,12 +15,15 @@ export default function BannerImage({
   alt = '',
   sizes = '100vw',
   priority = false,
+  onError,
 }: {
   src: string;
   alt?: string;
   sizes?: string;
   /** Set for above-the-fold hero images (LCP) so they load eagerly. */
   priority?: boolean;
+  /** Called when the image fails to load, for a parent that paints its own fallback. */
+  onError?: () => void;
 }) {
   const [error, setError] = useState(false);
   if (error) return null;
@@ -32,7 +35,10 @@ export default function BannerImage({
       sizes={sizes}
       priority={priority}
       className="object-cover"
-      onError={() => setError(true)}
+      onError={() => {
+        setError(true);
+        onError?.();
+      }}
     />
   );
 }

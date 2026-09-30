@@ -11,6 +11,11 @@ import Reservation from '@/models/Reservation';
 import { updateItemSchema, validateRequestBody } from '@/lib/validations';
 import { ensureCurrencyRatesUpToDate } from '@/lib/utils/currencyRates';
 import { canAttachImage, deleteOwnBlob, FOREIGN_IMAGE_ERROR } from '@/lib/utils/blob';
+import {
+  deleteReservations,
+  releaseSnapshots,
+  snapshotReservationImage,
+} from '@/lib/utils/reservationSnapshots';
 import { createNotification } from '@/lib/notifications';
 import { isWishlistOwner, primaryOwnerId } from '@/lib/utils/wishlistOwners';
 
@@ -277,7 +282,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     // gifter's own book/unbook touches it; owner status changes never do, so the
     // reservation (and the ability to log the gift) survives them.
     if (reservationAction === 'create') {
-      await Reservation.findOneAndUpdate(
+      const previous = await Reservation.findOneAndUpdate(
         { gifter: session.user.id, item: item._id },
         {
           $set: {
@@ -294,10 +299,15 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
             wishlistName: wishlist.name,
           },
         },
-        { upsert: true }
-      );
+        // The document as it was, so a rebooking can free the snapshot it replaces.
+        { upsert: true, new: false }
+      ).lean();
+      if (previous) await releaseSnapshots(session.user.id, [previous.itemImage]);
+      // Then swap in our own copy of the image, since the owner frees the item's
+      // blob when they delete the item or replace its image.
+      await snapshotReservationImage(session.user.id, item._id, item.imageUrl);
     } else if (reservationAction === 'delete') {
-      await Reservation.deleteMany({ gifter: session.user.id, item: item._id });
+      await deleteReservations({ gifter: session.user.id, item: item._id });
     }
 
     // If this edit replaced or cleared the image, free the old uploaded blob.
