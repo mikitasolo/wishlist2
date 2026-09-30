@@ -21,6 +21,8 @@ const GiftLogSchema = new Schema(
     giftedAt: { type: Date, required: true },
     // Snapshot at gift time (frozen).
     itemName: { type: String, required: true },
+    // Taken over from the reservation, snapshot blob included; freed only when
+    // the gifter deletes this entry.
     itemImage: { type: String, default: null },
     itemPrice: { type: GiftLogPriceSchema, default: null },
     recipient: { type: Schema.Types.ObjectId, ref: 'User', default: null },

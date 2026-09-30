@@ -4,6 +4,7 @@ import connectDB from '@/lib/mongodb';
 import Reservation from '@/models/Reservation';
 import GiftLog from '@/models/GiftLog';
 import User from '@/models/User';
+import { releaseSnapshots } from '@/lib/utils/reservationSnapshots';
 
 // POST /api/reservations/[id]/gift - mark a reservation as gifted. Writes a
 // permanent GiftLog entry from the reservation's snapshot and removes the
@@ -39,7 +40,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       item: reservation.item,
     });
 
-    await Reservation.findByIdAndDelete(id);
+    // The entry only stands if it takes the reservation over as logged. Of a
+    // double submit, or this racing a dismiss or release (which free the snapshot
+    // image), exactly one wins; the loser undoes its entry.
+    const claimed = await Reservation.findOneAndDelete({
+      _id: reservation._id,
+      itemImage: reservation.itemImage ?? null,
+    });
+    if (!claimed) {
+      await GiftLog.deleteOne({ _id: entry._id });
+      await releaseSnapshots(session.user.id, [entry.itemImage]);
+      return NextResponse.json({ success: false, error: 'Reservation not found' }, { status: 404 });
+    }
 
     return NextResponse.json(
       { success: true, data: { _id: entry._id.toString() } },

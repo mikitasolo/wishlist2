@@ -1,4 +1,5 @@
-import { del, list } from '@vercel/blob';
+import { randomUUID } from 'node:crypto';
+import { copy, del, list } from '@vercel/blob';
 
 /**
  * Per-user upload quota. Generous on purpose: images are re-encoded on upload
@@ -70,8 +71,12 @@ export function isOwnBlob(url: string | null | undefined): url is string {
  *    `\` (`..%2F<otherId>/x.jpg`) can climb out if the store decodes it.
  */
 function isInUploadFolder(parsed: URL, raw: string, userId: string): boolean {
-  if (!userId || parsed.href !== raw) return false;
-  const prefix = `/uploads/${userId}/`;
+  return !!userId && isDirectlyIn(parsed, raw, `/uploads/${userId}/`);
+}
+
+/** The strict check behind `isInUploadFolder`, for any folder `prefix` (`/…/`). */
+function isDirectlyIn(parsed: URL, raw: string, prefix: string): boolean {
+  if (parsed.href !== raw) return false;
   return (
     parsed.pathname.startsWith(prefix) && /^[^/%]+$/.test(parsed.pathname.slice(prefix.length))
   );
@@ -133,6 +138,79 @@ export async function deleteOwnBlob(url: string | null | undefined): Promise<voi
 /** Delete many blobs, skipping any that aren't ours. Best-effort. */
 export async function deleteOwnBlobs(urls: Array<string | null | undefined>): Promise<void> {
   await Promise.all(urls.map(deleteOwnBlob));
+}
+
+/**
+ * Snapshot blobs: our own copies of item images, frozen onto a `Reservation`
+ * (and the `GiftLog` it turns into) when the item is booked.
+ *
+ * The reservation's image has to outlive the item's. The owner deleting the item
+ * or replacing its image frees the item's blob, which would leave the gifter
+ * with a broken image, so booking stores a copy instead of the item's URL.
+ *
+ * Snapshots live outside every `uploads/<id>/` folder. So they count against
+ * nobody's upload quota (least of all the owner's: owners are booking-blind, and
+ * a quota that grew whenever someone booked would tell them), and
+ * `canAttachImage` never lets anyone put one into an image field. File names
+ * are random UUIDs, so a snapshot's URL can't be guessed.
+ */
+const SNAPSHOT_FOLDER = 'snapshots/';
+
+/** How long booking waits for a snapshot copy before keeping the original URL. */
+export const SNAPSHOT_COPY_TIMEOUT_MS = 3000;
+
+/** Is this one of our snapshot blobs (a file directly inside `snapshots/`)? */
+export function isSnapshotBlob(url: string | null | undefined): url is string {
+  if (!url) return false;
+  const parsed = parseOwnBlobUrl(url);
+  return !!parsed && isDirectlyIn(parsed, url, `/${SNAPSHOT_FOLDER}`);
+}
+
+/**
+ * The image URL to freeze onto a new reservation: a fresh snapshot copy of
+ * `url` when it's one of our blobs, or `url` itself when it's external (we never
+ * delete those, so there's nothing to protect) or empty.
+ *
+ * Best-effort and time-boxed, because a booking must never fail or hang over a
+ * copy. On any error, or after `SNAPSHOT_COPY_TIMEOUT_MS`, it gives up and
+ * returns `url`, sharing the item's blob as bookings did before snapshots;
+ * `/booked` shows a placeholder if that blob is freed later. The log line
+ * carries neither URL, since the source path names the list's owner.
+ */
+export async function snapshotBlob(url: string | null | undefined): Promise<string | null> {
+  if (!url) return null;
+  const parsed = parseOwnBlobUrl(url);
+  if (!parsed) return url;
+
+  // Keep the extension: the store derives the copy's content type from it.
+  const ext = /\.[a-z0-9]{1,8}$/i.exec(parsed.pathname)?.[0] ?? '';
+  // Raced against a timer rather than just passed an `AbortSignal.timeout`: the
+  // SDK retries a failing request with growing backoff, and an abort only lands
+  // on the next attempt, so the signal alone doesn't bound the wait.
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      reject(new Error(`timed out after ${SNAPSHOT_COPY_TIMEOUT_MS}ms`));
+    }, SNAPSHOT_COPY_TIMEOUT_MS);
+  });
+  try {
+    const copied = await Promise.race([
+      copy(url, `${SNAPSHOT_FOLDER}${randomUUID()}${ext}`, {
+        access: 'public',
+        abortSignal: controller.signal,
+      }),
+      timeout,
+    ]);
+    return copied.url;
+  } catch (err) {
+    const reason = err instanceof Error ? `${err.name}: ${err.message}` : 'unknown error';
+    console.error(`Snapshot copy failed, keeping the original image URL (${reason})`);
+    return url;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /**

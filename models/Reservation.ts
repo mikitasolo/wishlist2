@@ -12,6 +12,9 @@ import mongoose, { Schema, Model } from 'mongoose';
  *   - created  when the gifter books an available item
  *   - deleted  when the gifter unbooks, marks it gifted (→ a GiftLog entry), or
  *              dismisses it
+ *
+ * Any deletion but marking the gift goes through `deleteReservations`
+ * (`lib/utils/reservationSnapshots.ts`), which frees the snapshot image too.
  */
 const ReservationPriceSchema = new Schema(
   { value: { type: Number, required: true }, currency: { type: String, required: true } },
@@ -27,6 +30,8 @@ const ReservationSchema = new Schema(
     owner: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     // Snapshot at reserve time (frozen — survives item edits/deletion).
     itemName: { type: String, required: true },
+    // Our own copy of the item's image (`snapshotBlob`), so it survives the owner
+    // freeing the item's blob. An external URL is stored as-is.
     itemImage: { type: String, default: null },
     itemPrice: { type: ReservationPriceSchema, default: null },
     wishlistName: { type: String, required: true },

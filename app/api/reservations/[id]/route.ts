@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import connectDB from '@/lib/mongodb';
 import Reservation from '@/models/Reservation';
+import { deleteReservations } from '@/lib/utils/reservationSnapshots';
 
 // DELETE /api/reservations/[id] - dismiss a reservation without logging a gift
 // (e.g. the owner completed it themselves and you never gave it). Removes it
@@ -23,7 +24,7 @@ export async function DELETE(
       return NextResponse.json({ success: false, error: 'Reservation not found' }, { status: 404 });
     }
 
-    await Reservation.findByIdAndDelete(id);
+    await deleteReservations({ _id: reservation._id });
     return NextResponse.json({ success: true, data: {} }, { status: 200 });
   } catch (error) {
     console.error('Error dismissing reservation:', error);

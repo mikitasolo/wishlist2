@@ -1,7 +1,7 @@
 import mongoose from 'mongoose';
 import connectDB from '@/lib/mongodb';
 import Item from '@/models/Item';
-import Reservation from '@/models/Reservation';
+import { deleteReservations } from '@/lib/utils/reservationSnapshots';
 import Wishlist, { IWishlist } from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
 import { ownedByFilter, ownerIds } from '@/lib/utils/wishlistOwners';
@@ -36,12 +36,12 @@ export async function releaseGifterHoldings(
       { wishlist: wishlistId, bookedBy: userId, status: 'booked' },
       { $set: { status: 'available', bookedBy: null } }
     ),
-    Reservation.deleteMany({ wishlist: wishlistId, gifter: userId }),
+    deleteReservations({ wishlist: wishlistId, gifter: userId }),
   ]);
 
   return {
     unbookedItems: items.modifiedCount ?? 0,
-    cancelledReservations: reservations.deletedCount ?? 0,
+    cancelledReservations: reservations,
   };
 }
 
