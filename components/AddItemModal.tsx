@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import BaseModal from './BaseModal';
 import ItemForm from './ItemForm';
 import ConfirmDialog from './ConfirmDialog';
+import { defaultItemCurrency } from '@/lib/utils/currencies';
 
 interface AddItemModalProps {
   isOpen: boolean;
@@ -16,9 +17,20 @@ interface AddItemModalProps {
     notes?: string | null;
     status?: 'draft' | 'available';
   }) => Promise<void>;
+  // The new item's currency starts on the wishlist's, else the viewer's default,
+  // else USD. Required (though either may be empty) so a caller can't silently
+  // drop them and fall back to USD.
+  wishlistCurrency: string | null | undefined;
+  userCurrency: string | null | undefined;
 }
 
-export default function AddItemModal({ isOpen, onClose, onAdd }: AddItemModalProps) {
+export default function AddItemModal({
+  isOpen,
+  onClose,
+  onAdd,
+  wishlistCurrency,
+  userCurrency,
+}: AddItemModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showConfirmClose, setShowConfirmClose] = useState(false);
@@ -91,6 +103,7 @@ export default function AddItemModal({ isOpen, onClose, onAdd }: AddItemModalPro
           submittingLabel="Adding..."
           isSubmitting={isSubmitting}
           onFormChange={setHasUnsavedChanges}
+          defaultCurrency={defaultItemCurrency(wishlistCurrency, userCurrency)}
         />
       </BaseModal>
 

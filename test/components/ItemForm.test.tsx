@@ -70,3 +70,84 @@ describe('ItemForm — create submission', () => {
     );
   });
 });
+
+// The currency picker's trigger is a button labelled with the selected code.
+const currencyButton = (code: string) => screen.getByRole('button', { name: code });
+const pickCurrency = (from: string, name: RegExp) => {
+  fireEvent.click(currencyButton(from));
+  fireEvent.click(screen.getByRole('button', { name }));
+};
+
+describe('ItemForm — default currency', () => {
+  // regression: the create/propose form hardcoded a 'USD' default
+  // (DEFAULT_ITEM_FORM_DATA.currency) and ignored the wishlist's currency, so
+  // someone with a PLN list had to switch the currency on every new item.
+  it('regression: a new item starts on the given default currency, not USD', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(<ItemForm onSubmit={onSubmit} onCancel={vi.fn()} mode="create" defaultCurrency="PLN" />);
+
+    expect(currencyButton('PLN')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'USD' })).toBeNull();
+
+    fireEvent.change(screen.getByLabelText(/item name/i), { target: { value: 'Gift' } });
+    fireEvent.change(screen.getByLabelText(/^price$/i), { target: { value: '12.50' } });
+    fireEvent.click(screen.getByRole('button', { name: /^submit$/i }));
+    // Shown uppercase, stored lowercase to match Item.price.currency.
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({ price: { value: 1250, currency: 'pln' } })
+      )
+    );
+  });
+
+  it('falls back to USD when no default currency is given', () => {
+    render(<ItemForm onSubmit={vi.fn()} onCancel={vi.fn()} mode="create" />);
+    expect(currencyButton('USD')).toBeInTheDocument();
+  });
+
+  it('resets to the default currency (not USD) after a successful create', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(<ItemForm onSubmit={onSubmit} onCancel={vi.fn()} mode="create" defaultCurrency="PLN" />);
+
+    fireEvent.change(screen.getByLabelText(/item name/i), { target: { value: 'Gift' } });
+    pickCurrency('PLN', /EUR\s*Euro/);
+    expect(currencyButton('EUR')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /^submit$/i }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    await waitFor(() => expect(currencyButton('PLN')).toBeInTheDocument());
+  });
+
+  it('does not count the prefilled currency as an unsaved change', () => {
+    const onFormChange = vi.fn();
+    render(
+      <ItemForm
+        onSubmit={vi.fn()}
+        onCancel={vi.fn()}
+        mode="create"
+        defaultCurrency="PLN"
+        onFormChange={onFormChange}
+      />
+    );
+    expect(onFormChange).toHaveBeenCalled();
+    expect(onFormChange).not.toHaveBeenCalledWith(true);
+
+    // Picking a different currency is a real edit.
+    pickCurrency('PLN', /EUR\s*Euro/);
+    expect(onFormChange).toHaveBeenLastCalledWith(true);
+  });
+
+  it("editing keeps the item's own currency, whatever the default", () => {
+    render(
+      <ItemForm
+        onSubmit={vi.fn()}
+        onCancel={vi.fn()}
+        mode="edit"
+        initialData={{ ...filled, price: '10.00', currency: 'EUR' }}
+        defaultCurrency="PLN"
+      />
+    );
+    expect(currencyButton('EUR')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'PLN' })).toBeNull();
+  });
+});
