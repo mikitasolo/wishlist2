@@ -19,6 +19,7 @@ import {
 } from '@/lib/utils/reservationSnapshots';
 import { createNotification } from '@/lib/notifications';
 import { isWishlistOwner, primaryOwnerId } from '@/lib/utils/wishlistOwners';
+import { isHiddenByArchive } from '@/lib/utils/wishlistAccess';
 
 // PATCH /api/items/[id] - Update an item
 // Members can book/unbook items (only their own bookings)
@@ -56,6 +57,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const wishlist = await Wishlist.findById(currentItem.wishlist);
     if (!wishlist) {
       return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
+    }
+
+    // An archived list is owner-only, so nobody else may book, unbook or edit a
+    // proposal on it. Answered like a missing item, so it doesn't reveal the list.
+    if (isHiddenByArchive(wishlist, session.user.id)) {
+      return NextResponse.json({ success: false, error: 'Item not found' }, { status: 404 });
     }
 
     // Check if user has access to this wishlist. Every co-owner is an owner, so
@@ -413,6 +420,11 @@ export async function DELETE(
     const wishlist = await Wishlist.findById(item.wishlist);
     if (!wishlist) {
       return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
+    }
+
+    // Owner-only once archived: a proposer can't withdraw on it either (see PATCH).
+    if (isHiddenByArchive(wishlist, session.user.id)) {
+      return NextResponse.json({ success: false, error: 'Item not found' }, { status: 404 });
     }
 
     const isOwner = isWishlistOwner(wishlist, session.user.id);

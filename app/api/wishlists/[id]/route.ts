@@ -9,7 +9,6 @@ import Notification from '@/models/Notification';
 import User from '@/models/User';
 import Item from '@/models/Item';
 import { updateWishlistSchema, validateRequestBody } from '@/lib/validations';
-import { areFriends } from '@/lib/utils/friends';
 import {
   canAttachImage,
   deleteOwnBlob,
@@ -21,9 +20,8 @@ import {
   generateUniqueWishlistSlug,
   isReservedWishlistSlug,
 } from '@/lib/utils/wishlistSlug';
-import { getOwnerAccess } from '@/lib/utils/wishlistAccess';
+import { getOwnerAccess, getWishlistViewAccess } from '@/lib/utils/wishlistAccess';
 import {
-  isWishlistOwner,
   ownedByFilter,
   ownerIds,
   primaryOwnerId,
@@ -63,54 +61,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const primaryId = primaryOwnerId(wishlist);
     const ownerUsername = (primaryId && usernameById.get(primaryId)) || null;
 
-    const visibility = wishlist.visibility || (wishlist.isPublic ? 'everyone' : 'private');
-
-    // Resolve the viewer's relationship to the wishlist. Every co-owner is an
-    // owner here — same authorization, same booking blindness.
-    const isOwner = isWishlistOwner(wishlist, session?.user?.id);
-
-    // Archived wishlists are visible to owners only — hide from everyone else
-    // (return 404 so the URL doesn't even reveal that it exists).
-    if (wishlist.archived && !isOwner) {
-      return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
+    // Archived (owners only), visibility tier, membership, any owner's friends:
+    // the same rules as the items read, so the list and its items agree.
+    const access = await getWishlistViewAccess(wishlist, session?.user?.id);
+    if (!access.allowed) {
+      return NextResponse.json({ success: false, error: access.error }, { status: access.status });
     }
-
-    const membership =
-      session?.user && !isOwner
-        ? await WishlistMember.findOne({ wishlist: id, user: session.user.id })
-        : null;
     let userRole: 'owner' | 'member' | null = null;
-    if (isOwner) userRole = 'owner';
-    else if (membership) userRole = 'member';
-
-    // Determine access by visibility tier
-    let hasAccess = false;
-    if (visibility === 'everyone') {
-      hasAccess = true;
-    } else {
-      // friends / private require a session
-      if (!session?.user) {
-        return NextResponse.json(
-          { success: false, error: 'Unauthorized - This wishlist is private' },
-          { status: 401 }
-        );
-      }
-      hasAccess = isOwner || !!membership;
-      if (!hasAccess && visibility === 'friends') {
-        // A co-owned list behaves as if each owner created it, so the friends
-        // tier admits any owner's friends.
-        const viewerId = session.user.id;
-        const friendChecks = await Promise.all(owners.map((id) => areFriends(viewerId, id)));
-        hasAccess = friendChecks.some(Boolean);
-      }
-    }
-
-    if (!hasAccess) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized - No access to this wishlist' },
-        { status: 403 }
-      );
-    }
+    if (access.isOwner) userRole = 'owner';
+    else if (access.isMember) userRole = 'member';
 
     return NextResponse.json(
       {
