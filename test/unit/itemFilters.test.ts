@@ -112,6 +112,16 @@ describe('sortItems', () => {
     expect(sortItems(items, 'price-asc').map((i) => i.name)).toEqual(['cheap', 'noprice']);
   });
 
+  it('sorts a free item (0) as priced, not with the items without a price', () => {
+    const items = [
+      item({ name: 'noprice', priceInUsdCents: null }),
+      item({ name: 'cheap', priceInUsdCents: 100 }),
+      item({ name: 'free', priceInUsdCents: 0 }),
+    ];
+    expect(sortItems(items, 'price-asc').map((i) => i.name)).toEqual(['free', 'cheap', 'noprice']);
+    expect(sortItems(items, 'price-desc').map((i) => i.name)).toEqual(['cheap', 'free', 'noprice']);
+  });
+
   // Regression: prices were sorted by raw minor units, so 3000 PLN sorted above
   // 2000 USD. Sorting must use the USD-normalised value (priceInUsdCents).
   it('regression: sorts by USD-normalised value, not raw amount', () => {
