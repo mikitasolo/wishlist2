@@ -1,0 +1,57 @@
+"$schema" = "https://conductor.build/schemas/settings.repo.schema.json"
+
+# Copy only the local-dev env into new workspaces. The default (`.env*`) would
+# also hand every agent `.env.prod` / `.env.staging`.
+file_include_globs = """
+.env
+.env.local
+"""
+
+[scripts]
+# - Download mongodb-memory-server's binary into the shared home cache (which
+#   it probes before node_modules at runtime) instead of into every worktree.
+# - Fetch the Chromium build this Playwright version expects (a no-op when the
+#   shared ~/Library/Caches/ms-playwright already has it), so E2E runs.
+# - Point NextAuth at this workspace's port, so magic links from `npm run dev`
+#   come back here instead of to :3000 (.env.local overrides .env).
+setup = """
+set -e
+MONGOMS_DOWNLOAD_DIR="$HOME/.cache/mongodb-binaries" npm ci
+if [ "$CONDUCTOR_IS_LOCAL" = "1" ]; then
+  npx playwright install chromium
+  touch .env.local
+  grep -v '^NEXTAUTH_URL=' .env.local > .env.local.tmp || true
+  echo "NEXTAUTH_URL=http://localhost:$CONDUCTOR_PORT" >> .env.local.tmp
+  mv .env.local.tmp .env.local
+fi
+"""
+run_mode = "concurrent"
+
+[scripts.run.dev]
+available_in = ["local"]
+command = "npm run dev -- --port $CONDUCTOR_PORT"
+default = true
+icon = "play"
+
+[scripts.run.test]
+command = "npm run test:watch"
+icon = "test-tube"
+
+[git]
+archive_on_merge = true
+
+[prompts]
+create_pr = """
+Open the PR into `staging` (never `main`) following AGENTS.md → "Pull requests & commit messages":
+the title is a conventional-commit subject that reads as a release note (it is published verbatim),
+with no issue ID; the body follows .github/pull_request_template.md and includes `Closes WIS-<n>`
+for the Linear issue this workspace is for. Before opening it, make sure lint, format:check, tsc,
+tests and build pass. After opening it, wait for CI and fix failures.
+"""
+code_review = """
+Review the diff against origin/staging. Prioritize, in order: violations of the domain invariants in
+AGENTS.md (booking privacy, ownership consent, proposer anonymity, email exposure, archived-list access);
+authorization and rate-limiting gaps in API routes; logic changes without the tests the Testing policy
+requires (bug fixes need a `// regression:` test); stale docs (README, AGENTS.md, .env.example);
+scope creep beyond the Linear issue.
+"""

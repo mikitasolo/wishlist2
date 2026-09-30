@@ -30,6 +30,9 @@
 .DS_Store
 *.pem
 
+# python bytecode (CI helper scripts)
+__pycache__/
+
 # debug
 npm-debug.log*
 yarn-debug.log*
@@ -42,6 +45,9 @@ yarn-error.log*
 
 # vercel
 .vercel
+
+# conductor — per-workspace scratch space for agents (notes, plans, screenshots)
+/.context/
 
 # editor
 .idea

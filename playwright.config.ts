@@ -2,8 +2,13 @@ import { defineConfig, devices } from '@playwright/test';
 
 // The app server + ephemeral MongoDB are started in global-setup.ts (Playwright
 // evaluates this config as CJS, so no top-level await / webServer with a
-// dynamic DB URI). Port is fixed here and reused there.
-export const E2E_PORT = 3100;
+// dynamic DB URI). Port is decided here and reused there: 3100 by default, or
+// one above the workspace's dev port under Conductor, so parallel worktrees
+// don't collide. `E2E_PORT` overrides both.
+export const E2E_PORT = Number(
+  process.env.E2E_PORT ||
+    (process.env.CONDUCTOR_PORT ? Number(process.env.CONDUCTOR_PORT) + 1 : 3100)
+);
 const BASE_URL = `http://localhost:${E2E_PORT}`;
 
 export default defineConfig({

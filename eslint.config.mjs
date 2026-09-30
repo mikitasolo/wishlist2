@@ -2,7 +2,7 @@ import next from 'eslint-config-next';
 
 // eslint-config-next v16 ships a native flat config (core-web-vitals + typescript).
 const eslintConfig = [
-  { ignores: ['.next/**', 'node_modules/**', 'coverage/**', 'next-env.d.ts'] },
+  { ignores: ['.next/**', 'node_modules/**', 'coverage/**', '.context/**', 'next-env.d.ts'] },
   ...next,
   {
     // The React Compiler is NOT enabled (no `reactCompiler` in next.config, no
