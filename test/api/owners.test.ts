@@ -15,7 +15,11 @@ vi.mock('@/lib/utils/currencyRates', () => ({
 }));
 
 import { auth } from '@/lib/auth';
-import { GET as getWishlist, PATCH as patchWishlist } from '@/app/api/wishlists/[id]/route';
+import {
+  GET as getWishlist,
+  PATCH as patchWishlist,
+  DELETE as deleteWishlist,
+} from '@/app/api/wishlists/[id]/route';
 import { GET as getItems } from '@/app/api/wishlists/[id]/items/route';
 import { POST as postItem } from '@/app/api/wishlists/[id]/items/route';
 import { GET as getMembers, POST as invite } from '@/app/api/wishlists/[id]/members/route';
@@ -707,22 +711,48 @@ describe('racing removals still leave the wishlist an owner', () => {
    * race needs, which a bare `Promise.all` would only hit by luck. If fewer than
    * `n` ever arrive, a fallback lets them through so the test fails on `writes()`
    * instead of hanging until the timeout.
+   *
+   * With `deleteLast`, `Wishlist.findOneAndDelete` (which `findByIdAndDelete`
+   * goes through) is held and counted too, and only let through once the held
+   * `updateOne`s have landed. So a delete racing a removal always runs second,
+   * after the removal has taken effect.
    */
-  function holdWishlistWritesUntil(n: number) {
+  function holdWishlistWritesUntil(n: number, { deleteLast = false } = {}) {
     const updateOne = Wishlist.updateOne.bind(Wishlist) as (...args: unknown[]) => unknown;
+    const findOneAndDelete = Wishlist.findOneAndDelete.bind(Wishlist) as (
+      ...args: unknown[]
+    ) => unknown;
     let writes = 0;
     let release!: () => void;
     const allWaiting = new Promise<void>((resolve) => (release = resolve));
     const fallback = setTimeout(release, 1000);
-    const spy = vi.spyOn(Wishlist, 'updateOne').mockImplementation(((...args: unknown[]) => {
+    const arrive = () => {
       if (++writes === n) release();
-      return allWaiting.then(() => updateOne(...args));
-    }) as never);
+    };
+    const updates: Promise<unknown>[] = [];
+    const spies: { mockRestore(): void }[] = [
+      vi.spyOn(Wishlist, 'updateOne').mockImplementation(((...args: unknown[]) => {
+        arrive();
+        const update = allWaiting.then(() => updateOne(...args));
+        updates.push(update);
+        return update;
+      }) as never),
+    ];
+    if (deleteLast) {
+      spies.push(
+        vi.spyOn(Wishlist, 'findOneAndDelete').mockImplementation(((...args: unknown[]) => {
+          arrive();
+          return allWaiting
+            .then(() => Promise.allSettled(updates))
+            .then(() => findOneAndDelete(...args));
+        }) as never)
+      );
+    }
     return {
       writes: () => writes,
       restore() {
         clearTimeout(fallback);
-        spy.mockRestore();
+        spies.forEach((spy) => spy.mockRestore());
       },
     };
   }
@@ -844,6 +874,135 @@ describe('racing removals still leave the wishlist an owner', () => {
     expect(!!(await WishlistMember.exists({ wishlist: wid, user: loser }))).toBe(
       winningOp === 'demote'
     );
+  });
+
+  describe('an owner-only write re-checks the caller at the write', () => {
+    const deleteListAs = async (user: string): Promise<Raced> => {
+      session.mockResolvedValueOnce({ user: { id: user } } as never);
+      const res = await deleteWishlist(req(`/api/wishlists/${wid}`, 'DELETE'), {
+        params: Promise.resolve({ id: wid }),
+      });
+      return { actor: user, res };
+    };
+
+    // regression: deleting a list checked that the caller owns it against the list
+    // read at the start of the request, then deleted its items, memberships and the
+    // list itself in separate writes. A co-owner who removed the caller in between
+    // didn't stop it: the whole list was gone on the say-so of someone who no longer
+    // owned it.
+    it.each([
+      ['removes', removeAs],
+      ['demotes', demoteAs],
+    ])(
+      'regression: a co-owner %s an owner while they delete the list — the list survives',
+      async (_, takeOwnership) => {
+        const itemId = await makeItem();
+        await WishlistInvite.create({ wishlist: wid, invitedBy: bob, invitedUser: carol });
+
+        const held = holdWishlistWritesUntil(2, { deleteLast: true });
+        let lost: Raced, deleted: Raced;
+        try {
+          [lost, deleted] = await Promise.all([takeOwnership(bob, alice), deleteListAs(alice)]);
+        } finally {
+          held.restore();
+        }
+
+        // Both got past every pre-check to their write, so the race really ran,
+        // and the removal landed first.
+        expect(held.writes()).toBe(2);
+        expect(lost.res.status).toBe(200);
+        // By the time her delete ran, alice was no longer an owner: answered like
+        // any non-owner, with nothing deleted.
+        expect(deleted.res.status).toBe(403);
+        expect((await deleted.res.json()).error).toMatch(/only an owner can delete/i);
+        expect((await Wishlist.findById(wid))!.owners.map(String)).toEqual([bob]);
+        expect(await Item.findById(itemId)).not.toBeNull();
+        expect(await WishlistMember.exists({ wishlist: wid, user: carol })).toBeTruthy();
+        expect(await WishlistMember.exists({ wishlist: wid, user: dave })).toBeTruthy();
+        expect(await WishlistInvite.countDocuments({ wishlist: wid, invitedUser: carol })).toBe(1);
+      }
+    );
+
+    it('two owners deleting the list at once: one deletes it, the other gets a 404', async () => {
+      const held = holdWishlistWritesUntil(2, { deleteLast: true });
+      let results: Raced[];
+      try {
+        results = await Promise.all([deleteListAs(alice), deleteListAs(bob)]);
+      } finally {
+        held.restore();
+      }
+
+      // Both found the list and reached the delete before either landed.
+      expect(held.writes()).toBe(2);
+      expect(results.map((r) => r.res.status).sort()).toEqual([200, 404]);
+      expect(await Wishlist.findById(wid)).toBeNull();
+    });
+
+    /**
+     * Alice kicks carol, and `meanwhile` runs to completion while her kick looks
+     * the membership up: after her access check passed, before the kick changes
+     * anything. Resolves to the kick's response and whatever `meanwhile` returned.
+     */
+    async function kickCarolAsAliceWhile<T>(meanwhile: () => Promise<T>) {
+      const memberId = (await WishlistMember.findOne({ wishlist: wid, user: carol }))!._id;
+      const findMembership = WishlistMember.findById.bind(WishlistMember) as (
+        ...args: unknown[]
+      ) => PromiseLike<unknown>;
+      let during: T | undefined;
+      const spy = vi.spyOn(WishlistMember, 'findById').mockImplementationOnce(((
+        ...args: unknown[]
+      ) =>
+        findMembership(...args).then(async (membership) => {
+          during = await meanwhile();
+          return membership;
+        })) as never);
+      try {
+        session.mockResolvedValueOnce({ user: { id: alice } } as never);
+        const kicked = await deleteMember(
+          req(`/api/wishlists/${wid}/members/${memberId}`, 'DELETE'),
+          { params: Promise.resolve({ id: wid, memberId: memberId.toString() }) }
+        );
+        return { kicked, during, memberId };
+      } finally {
+        spy.mockRestore();
+      }
+    }
+
+    // regression: kicking a member checked that the caller owns the list against the
+    // list read at the start of the request, then freed the member's bookings and
+    // deleted their membership. An owner whom a co-owner removed in between could
+    // still take a member off the list.
+    it('regression: an owner removed after their access check cannot kick a member', async () => {
+      const itemId = await makeItem('booked', carol);
+      await WishlistInvite.create({
+        wishlist: wid,
+        invitedBy: bob,
+        invitedUser: carol,
+        role: 'owner',
+      });
+
+      const {
+        kicked,
+        during: removal,
+        memberId,
+      } = await kickCarolAsAliceWhile(() => removeAs(bob, alice));
+
+      expect(removal?.res.status).toBe(200);
+      expect(kicked.status).toBe(403);
+      expect((await kicked.json()).error).toMatch(/owner access required/i);
+      // Carol is still on the list, with her booking and her pending invite.
+      expect(await WishlistMember.exists({ _id: memberId })).toBeTruthy();
+      expect((await Item.findById(itemId))?.bookedBy?.toString()).toBe(carol);
+      expect(await WishlistInvite.countDocuments({ wishlist: wid, invitedUser: carol })).toBe(1);
+    });
+
+    it('a kick racing a co-owner deleting the list answers 404, not "not an owner"', async () => {
+      const { kicked, during: deleted } = await kickCarolAsAliceWhile(() => deleteListAs(bob));
+
+      expect(deleted?.res.status).toBe(200);
+      // Alice was an owner all along: the list is gone, not her ownership.
+      expect(kicked.status).toBe(404);
+    });
   });
 });
 

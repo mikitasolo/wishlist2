@@ -1,9 +1,16 @@
-import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import { NextRequest } from 'next/server';
 import { connectTestDB, disconnectTestDB, clearTestDB } from '../db';
 
 vi.mock('@/lib/mongodb', () => ({ default: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('@/lib/auth', () => ({ auth: vi.fn() }));
+// Record which blobs a delete frees instead of talking to a store.
+const deleteBlob = vi.fn().mockResolvedValue(undefined);
+vi.mock('@vercel/blob', () => ({
+  del: (...a: unknown[]) => deleteBlob(...a),
+  list: vi.fn(),
+  put: vi.fn(),
+}));
 
 import { auth } from '@/lib/auth';
 import { GET, DELETE } from '@/app/api/wishlists/[id]/route';
@@ -133,6 +140,35 @@ describe('DELETE /api/wishlists/[id] — cleanup', () => {
     await seedInvitesAndNotifications(keptId);
   });
 
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('deletes its items and memberships, and frees the images uploaded for it', async () => {
+    // A fake token in the SDK's `vercel_blob_rw_<storeId>_<secret>` shape; our
+    // store's public host is derived from it.
+    vi.stubEnv('BLOB_READ_WRITE_TOKEN', ['vercel', 'blob', 'rw', 'TestStore42', 'x'].join('_'));
+    const blob = (name: string) =>
+      `https://teststore42.public.blob.vercel-storage.com/uploads/${ownerId}/${name}`;
+    await Wishlist.updateOne({ _id: doomedId }, { $set: { bannerUrl: blob('cover.jpg') } });
+    await Item.create([
+      { wishlist: doomedId, name: 'Uploaded', imageUrl: blob('item.jpg') },
+      { wishlist: doomedId, name: 'Linked', imageUrl: 'https://images.example.com/photo.jpg' },
+      { wishlist: keptId, name: 'Elsewhere', imageUrl: blob('kept.jpg') },
+    ]);
+    deleteBlob.mockClear();
+
+    expect((await del(doomedId, ownerId)).status).toBe(200);
+
+    expect(await Item.countDocuments({ wishlist: doomedId })).toBe(0);
+    expect(await Item.countDocuments({ wishlist: keptId })).toBe(1);
+    expect(await WishlistMember.countDocuments({ wishlist: doomedId })).toBe(0);
+    // Only our own uploads for this list: never a pasted external URL.
+    expect(deleteBlob.mock.calls.map(([url]) => url).sort()).toEqual(
+      [blob('cover.jpg'), blob('item.jpg')].sort()
+    );
+  });
+
   // Regression: deleting a list left its invites and notifications behind, so
   // recipients kept notifications (including actionable-looking invites) that
   // linked to a 404.
@@ -208,6 +244,20 @@ describe('DELETE /api/wishlists/[id] — cleanup', () => {
     }
   }
 
+  it('still deletes the list and succeeds when item cleanup fails', async () => {
+    await expectDeleteSurvives(
+      vi.spyOn(Item, 'deleteMany').mockRejectedValueOnce(new Error('db hiccup')),
+      () => WishlistMember.countDocuments({ wishlist: doomedId })
+    );
+  });
+
+  it('still deletes the list and succeeds when membership cleanup fails', async () => {
+    await expectDeleteSurvives(
+      vi.spyOn(WishlistMember, 'deleteMany').mockRejectedValueOnce(new Error('db hiccup')),
+      () => WishlistInvite.countDocuments({ wishlist: doomedId })
+    );
+  });
+
   it('still deletes the list and succeeds when invite cleanup fails', async () => {
     await expectDeleteSurvives(
       vi.spyOn(WishlistInvite, 'deleteMany').mockRejectedValueOnce(new Error('db hiccup')),
@@ -222,10 +272,16 @@ describe('DELETE /api/wishlists/[id] — cleanup', () => {
     );
   });
 
-  it('refuses a non-owner and leaves the invites and notifications in place', async () => {
-    expect((await del(doomedId, otherId)).status).toBe(403);
+  it('refuses a non-owner and leaves everything on the list in place', async () => {
+    const item = await Item.create({ wishlist: doomedId, name: 'Gift' });
+
+    const res = await del(doomedId, otherId);
+    expect(res.status).toBe(403);
+    expect((await res.json()).error).toMatch(/only an owner can delete/i);
 
     expect(await Wishlist.findById(doomedId)).not.toBeNull();
+    expect(await Item.findById(item._id)).not.toBeNull();
+    expect(await WishlistMember.countDocuments({ wishlist: doomedId })).toBe(1);
     expect(await WishlistInvite.countDocuments({ wishlist: doomedId })).toBe(3);
     expect(await Notification.countDocuments({ wishlist: doomedId })).toBe(4);
   });
