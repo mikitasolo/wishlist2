@@ -31,6 +31,86 @@ beforeAll(() => {
 afterAll(() => vi.restoreAllMocks());
 beforeEach(() => cleanup());
 
+describe('EditItemModal — save outcome', () => {
+  const saved = () => item({ price: { value: 5000, currency: 'eur' } });
+  const nameInput = () => screen.getByLabelText(/item name/i);
+  const priceInput = () => screen.getByLabelText(/^price$/i);
+  const saveButton = () => screen.getByRole('button', { name: /^save changes$/i });
+
+  const editAndSave = () => {
+    fireEvent.change(nameInput(), { target: { value: 'Road bike' } });
+    fireEvent.change(priceInput(), { target: { value: '120.50' } });
+    fireEvent.click(saveButton());
+  };
+  // Saving has settled once the button is back to its idle label.
+  const settled = () => waitFor(() => expect(saveButton()).toBeEnabled());
+
+  // ItemForm logs the rejection it catches; keep the test output clean.
+  beforeEach(() => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    return () => consoleError.mockRestore();
+  });
+
+  // regression: a failed save closed the modal and threw away everything the
+  // user had changed. The close came from the page, which resolved whatever the
+  // outcome (covered by e2e/item-edit.authed.spec.ts); this pins the modal's
+  // half: a rejected onSave neither closes it nor resets the fields.
+  it('regression: stays open with the edited name and price when the save fails', async () => {
+    const onSave = vi.fn().mockRejectedValue(new Error('Too many requests'));
+    const onClose = vi.fn();
+    render(<EditItemModal isOpen onClose={onClose} onSave={onSave} item={saved()} />);
+
+    editAndSave();
+    await settled();
+
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(onClose).not.toHaveBeenCalled();
+    expect(nameInput()).toHaveValue('Road bike');
+    expect(priceInput()).toHaveValue(120.5);
+    expect(screen.getByRole('button', { name: 'EUR' })).toBeInTheDocument();
+  });
+
+  // regression: with the rejection swallowed, ItemForm took the failure for a
+  // success and made the unsaved draft its baseline, so undoing a later
+  // keystroke marked the form clean and closing discarded the draft unasked.
+  it('regression: still asks before discarding the changes after a failure', async () => {
+    const onSave = vi.fn().mockRejectedValue(new Error('Network error'));
+    const onClose = vi.fn();
+    render(<EditItemModal isOpen onClose={onClose} onSave={onSave} item={saved()} />);
+
+    editAndSave();
+    await settled();
+    expect(onSave).toHaveBeenCalledTimes(1);
+
+    fireEvent.change(nameInput(), { target: { value: 'Road bikes' } });
+    fireEvent.change(nameInput(), { target: { value: 'Road bike' } });
+    fireEvent.click(screen.getByRole('button', { name: /^cancel$/i }));
+
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByText(/discard changes\?/i)).toBeInTheDocument();
+  });
+
+  it('lets the user retry after a failure, and closes once it succeeds', async () => {
+    const onSave = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('Server error'))
+      .mockResolvedValueOnce(undefined);
+    const onClose = vi.fn();
+    render(<EditItemModal isOpen onClose={onClose} onSave={onSave} item={saved()} />);
+
+    editAndSave();
+    await settled();
+    expect(onClose).not.toHaveBeenCalled();
+
+    fireEvent.click(saveButton());
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(onSave).toHaveBeenCalledTimes(2);
+    expect(onSave).toHaveBeenLastCalledWith(
+      expect.objectContaining({ name: 'Road bike', price: { value: 12050, currency: 'eur' } })
+    );
+  });
+});
+
 describe('EditItemModal — most wanted', () => {
   // Owners are booking-blind, so an edit that sent a status could wipe a
   // booking they can't see. Flagging an item is a content edit like any other.
