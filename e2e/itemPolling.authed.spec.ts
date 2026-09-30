@@ -3,10 +3,10 @@ import { randomBytes } from 'crypto';
 
 // The wishlist page polls its items every 5 s (and whenever the tab becomes
 // visible), replacing the whole list with the server's. These specs pin the
-// order in which a poll and an add/proposal land, so the page is told it's
-// hidden from the start (it skips every timer tick) and each poll is fired by
-// hand with a visibilitychange. Concurrent item reads share one request, so a
-// stray tick would also swallow the poll a spec fires.
+// order in which a poll and an add, proposal or delete land, so the page is
+// told it's hidden from the start (it skips every timer tick) and each poll is
+// fired by hand with a visibilitychange. Concurrent item reads share one
+// request, so a stray tick would also swallow the poll a spec fires.
 async function takeOverPolling(page: Page) {
   await page.addInitScript(() => {
     let state: DocumentVisibilityState = 'hidden';
@@ -172,5 +172,107 @@ for (const flow of [
     // The toast and the list update are set in the same callback, so they
     // render together: a one-off count here sees the merged list.
     expect(await card.count()).toBe(1);
+  });
+}
+
+// Owners can't create proposals, so the review flow's one is added to the
+// owner's list in the browser.
+const polledProposal = {
+  _id: '0000000000000000000e2e02',
+  wishlist: 'e2e',
+  name: 'E2E Polled Proposal',
+  status: 'proposed',
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
+};
+
+for (const flow of [
+  {
+    from: 'edit',
+    item: 'E2E Gift',
+    open: 'Edit item',
+    title: 'Edit Item',
+    done: 'Item deleted successfully',
+  },
+  {
+    from: 'review',
+    item: polledProposal.name,
+    open: 'Review proposed item',
+    title: 'Review Proposed Item',
+    done: 'Proposed item deleted',
+  },
+]) {
+  // regression: the delete handlers filtered the item out without bumping
+  // lastMutationAt, so a poll whose GET started before the DELETE settled
+  // resolved afterwards with the old list and brought the deleted item back
+  // until the next poll (and deleting it again got a 404).
+  test(`regression: a poll that read before a delete from the ${flow.from} modal doesn't bring the item back`, async ({
+    page,
+  }) => {
+    const card = page.getByRole('article', { name: `Item: ${flow.item}` });
+
+    // The DELETE is answered here, so nothing reaches the seeded database;
+    // reads made after it leave the item out, as the server would.
+    let deleted = false;
+    await page.route('**/api/items/*', (route: Route) => {
+      if (route.request().method() !== 'DELETE') return route.fallback();
+      deleted = true;
+      return route.fulfill({ json: { success: true } });
+    });
+
+    // Every read lists the proposal. The poll a spec fires reads the list
+    // while the item still exists, but only hands it to the page once the
+    // delete has settled.
+    let holdNextRead = false;
+    const pollRead = deferred<Request>();
+    const deliverPoll = deferred();
+    await page.route('**/api/wishlists/*/items', async (route: Route) => {
+      const request = route.request();
+      if (request.method() !== 'GET') return route.fallback();
+      const isPoll = holdNextRead;
+      holdNextRead = false;
+      const response = await route.fetch();
+      const body = await response.json();
+      if (body.success) {
+        body.data = [polledProposal, ...body.data].filter(
+          (item: { name: string }) => !(deleted && item.name === flow.item)
+        );
+      }
+      if (isPoll) {
+        pollRead.resolve(request);
+        await deliverPoll.promise;
+      }
+      await route.fulfill({ response, json: body });
+    });
+
+    await takeOverPolling(page);
+    await page.goto('/wishlists/e2e-birthday');
+    // Once the card can be opened the initial load is done, so the poll below
+    // is a request of its own.
+    await card.getByRole('button', { name: flow.open }).click();
+    await page
+      .getByRole('dialog', { name: flow.title })
+      .getByRole('button', { name: 'Delete Item' })
+      .click();
+
+    holdNextRead = true;
+    await pollOnce(page);
+    const pollRequest = await pollRead.promise;
+
+    await page
+      .getByRole('alertdialog')
+      .getByRole('button', { name: 'Delete', exact: true })
+      .click();
+    await expect(page.getByRole('status').getByText(flow.done)).toBeVisible();
+    await expect(card).toHaveCount(0);
+
+    const delivered = page.waitForEvent('requestfinished', (r) => r === pollRequest);
+    deliverPoll.resolve();
+    await delivered;
+    await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 250)));
+
+    // The page has had the stale list for a while now, and no later poll can
+    // run to take the item out again, so this count is the settled state.
+    expect(await card.count()).toBe(0);
   });
 }
