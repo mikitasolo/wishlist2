@@ -4,7 +4,7 @@ import Item from '@/models/Item';
 import Reservation from '@/models/Reservation';
 import Wishlist, { IWishlist } from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
-import { ownerIds } from '@/lib/utils/wishlistOwners';
+import { ownedByFilter, ownerIds } from '@/lib/utils/wishlistOwners';
 
 /**
  * Changing who owns a wishlist. Ownership is consequential in both directions,
@@ -113,19 +113,35 @@ export async function addWishlistOwner(
  * for this list — `featuredBy` is per-owner, so a non-owner must not keep a list
  * pinned as their profile hero.
  *
- * Callers must reject removing the *last* owner first (see `isLastOwner`), which
- * would leave the wishlist unreachable.
+ * Refuses to remove the *last* owner, which would leave the wishlist unreachable,
+ * and returns `false` having changed nothing — callers must then stop before any
+ * follow-on side effect (freeing bookings, and so on). The refusal is enforced by
+ * the write itself, not by `wishlist`: that's a copy read earlier, and two
+ * co-owners stepping down at once would each see the other still there. Callers
+ * still pre-check `isLastOwner` for the common case.
+ *
+ * `false` also covers a user who stopped being an owner since `wishlist` was read
+ * (a concurrent request already removed them): with the list as it now stands,
+ * there's nobody left to remove.
  */
 export async function removeWishlistOwner(
   wishlist: WishlistShape,
   userId: string,
   keepAsMember: boolean
-): Promise<void> {
+): Promise<boolean> {
   await connectDB();
 
   const wishlistId = wishlist._id.toString();
   const uid = new mongoose.Types.ObjectId(userId);
-  await Wishlist.updateOne({ _id: wishlistId }, { $pull: { owners: uid, featuredBy: uid } });
+  // One conditional write: only matches while they're an owner *and* a second
+  // owner exists (`owners.1`), so of two racing removals on a two-owner list,
+  // exactly one lands. The schema's non-empty `owners` validator doesn't run on
+  // `updateOne`, so this filter is the only thing holding the invariant.
+  const { modifiedCount } = await Wishlist.updateOne(
+    { _id: wishlistId, ...ownedByFilter(userId), 'owners.1': { $exists: true } },
+    { $pull: { owners: uid, featuredBy: uid } }
+  );
+  if (modifiedCount === 0) return false;
 
   if (keepAsMember) {
     await WishlistMember.findOneAndUpdate(
@@ -136,9 +152,14 @@ export async function removeWishlistOwner(
   } else {
     await WishlistMember.deleteMany({ wishlist: wishlistId, user: userId });
   }
+  return true;
 }
 
-/** Whether `userId` is the only owner left — the case every removal must refuse. */
+/**
+ * Whether `userId` is the only owner left — the case every removal must refuse.
+ * A pre-check against an already-read document, for a clean error on the common
+ * path; `removeWishlistOwner` re-enforces it atomically.
+ */
 export function isLastOwner(wishlist: WishlistShape, userId: string): boolean {
   const owners = ownerIds(wishlist);
   return owners.length <= 1 && owners.includes(userId);

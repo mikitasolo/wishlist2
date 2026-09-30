@@ -30,6 +30,7 @@ import { DELETE as leave } from '@/app/api/wishlists/[id]/members/me/route';
 import { PATCH as respondInvite } from '@/app/api/invites/[inviteId]/route';
 import { GET as getProfileWishlists } from '@/app/api/users/[id]/wishlists/route';
 import { __setRateLimiters, type RateLimiter } from '@/lib/rateLimit';
+import { isLastOwner, removeWishlistOwner } from '@/lib/utils/wishlistOwnership';
 import User from '@/models/User';
 import Wishlist from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
@@ -584,9 +585,10 @@ describe('a wishlist always keeps an owner', () => {
     expect((await Wishlist.findById(wid))!.owners.map(String)).toEqual([alice]);
   });
 
-  // The owners endpoints can't reach the last-owner case (you must be a *different*
-  // owner to act, so at least two exist) — they send you to "leave" instead, which
-  // is where the last-owner guard actually bites. `isLastOwner` is unit-tested.
+  // One request at a time, the owners endpoints can't reach the last-owner case (you
+  // must be a *different* owner to act, so at least two exist) — they send you to
+  // "leave" instead, which is where the pre-check bites. `isLastOwner` is
+  // unit-tested; concurrent requests *can* reach it — see the race tests below.
   it('an owner removing themselves is redirected to leaving', async () => {
     as(bob);
     const res = await deleteOwner(req(`/api/wishlists/${wid}/owners/${bob}`, 'DELETE'), {
@@ -595,6 +597,125 @@ describe('a wishlist always keeps an owner', () => {
     expect(res.status).toBe(400);
     expect((await res.json()).error).toMatch(/leave the wishlist/i);
     expect((await Wishlist.findById(wid))!.owners).toHaveLength(2);
+  });
+});
+
+// regression: leave, demote and remove checked `isLastOwner` against a wishlist
+// read earlier, then `$pull`ed the owner in a separate write (check-then-act). Two
+// co-owners stepping down at the same moment both passed the check and left the
+// list with `owners: []` — unreachable, and nobody could manage it. The schema's
+// non-empty validator doesn't run on `updateOne`, so nothing caught it.
+describe('racing removals still leave the wishlist an owner', () => {
+  it('regression: two removals checked against the same stale read — only one lands', async () => {
+    await Wishlist.updateOne({ _id: wid }, { $set: { featuredBy: [alice, bob] } });
+    const stale = (await Wishlist.findById(wid))!;
+    // Each sees the other still there, so both pass the pre-check.
+    expect(isLastOwner(stale, alice)).toBe(false);
+    expect(isLastOwner(stale, bob)).toBe(false);
+
+    expect(await removeWishlistOwner(stale, alice, false)).toBe(true);
+    expect(await removeWishlistOwner(stale, bob, true)).toBe(false);
+
+    const wl = await Wishlist.findById(wid);
+    expect(wl!.owners.map(String)).toEqual([bob]);
+    // The refused demotion changed nothing: bob keeps his pin and gets no member row.
+    expect(wl!.featuredBy.map(String)).toEqual([bob]);
+    expect(await WishlistMember.findOne({ wishlist: wid, user: bob })).toBeNull();
+  });
+
+  it('refuses to remove someone who is no longer an owner', async () => {
+    const stale = (await Wishlist.findById(wid))!;
+    await Wishlist.updateOne({ _id: wid }, { $pull: { owners: bob } });
+
+    // The stale read still lists bob, but the write only acts on the list as it is.
+    expect(await removeWishlistOwner(stale, bob, true)).toBe(false);
+    expect(await WishlistMember.findOne({ wishlist: wid, user: bob })).toBeNull();
+    expect((await Wishlist.findById(wid))!.owners.map(String)).toEqual([alice]);
+  });
+
+  /**
+   * Holds every `Wishlist.updateOne` until `n` are waiting, then lets them all
+   * through at once. So every racing request has finished its reads and its
+   * `isLastOwner` pre-check before any of them writes — the interleaving the
+   * race needs, which a bare `Promise.all` would only hit by luck. If fewer than
+   * `n` ever arrive, a fallback lets them through so the test fails on `writes()`
+   * instead of hanging until the timeout.
+   */
+  function holdWishlistWritesUntil(n: number) {
+    const updateOne = Wishlist.updateOne.bind(Wishlist) as (...args: unknown[]) => unknown;
+    let writes = 0;
+    let release!: () => void;
+    const allWaiting = new Promise<void>((resolve) => (release = resolve));
+    const fallback = setTimeout(release, 1000);
+    const spy = vi.spyOn(Wishlist, 'updateOne').mockImplementation(((...args: unknown[]) => {
+      if (++writes === n) release();
+      return allWaiting.then(() => updateOne(...args));
+    }) as never);
+    return {
+      writes: () => writes,
+      restore() {
+        clearTimeout(fallback);
+        spy.mockRestore();
+      },
+    };
+  }
+
+  // `auth()` is the first thing each handler calls, synchronously on invocation,
+  // so a one-shot session per call is consumed by that call even when they race.
+  const leaveAs = (user: string) => {
+    session.mockResolvedValueOnce({ user: { id: user } } as never);
+    return leave(req(`/api/wishlists/${wid}/members/me`, 'DELETE'), {
+      params: Promise.resolve({ id: wid }),
+    });
+  };
+  const demoteAs = (user: string, target: string) => {
+    session.mockResolvedValueOnce({ user: { id: user } } as never);
+    return patchOwner(req(`/api/wishlists/${wid}/owners/${target}`, 'PATCH'), {
+      params: Promise.resolve({ id: wid, userId: target }),
+    });
+  };
+  const removeAs = (user: string, target: string) => {
+    session.mockResolvedValueOnce({ user: { id: user } } as never);
+    return deleteOwner(req(`/api/wishlists/${wid}/owners/${target}`, 'DELETE'), {
+      params: Promise.resolve({ id: wid, userId: target }),
+    });
+  };
+
+  it.each([
+    ['both co-owners leave', () => [leaveAs(alice), leaveAs(bob)]],
+    ['one leaves while demoting the other', () => [leaveAs(alice), demoteAs(alice, bob)]],
+    ['one leaves while removing the other', () => [leaveAs(alice), removeAs(alice, bob)]],
+    ['they demote each other', () => [demoteAs(alice, bob), demoteAs(bob, alice)]],
+    ['they remove each other', () => [removeAs(alice, bob), removeAs(bob, alice)]],
+  ])('regression: %s at once — exactly one succeeds', async (_, race) => {
+    await Wishlist.updateOne({ _id: wid }, { $set: { featuredBy: [alice, bob] } });
+    // Stale bookings held by each owner: the refused request must not free its own.
+    const items = {
+      [alice]: await makeItem('booked', alice),
+      [bob]: await makeItem('booked', bob),
+    };
+
+    const held = holdWishlistWritesUntil(2);
+    let responses: Response[];
+    try {
+      responses = await Promise.all(race());
+    } finally {
+      held.restore();
+    }
+
+    // Both got past every pre-check to the owner write, so the race really ran.
+    expect(held.writes()).toBe(2);
+    expect(responses.map((r) => r.status).sort()).toEqual([200, 400]);
+    const refused = responses.find((r) => r.status === 400)!;
+    expect((await refused.json()).error).toMatch(/only owner|at least one owner/i);
+
+    const wl = await Wishlist.findById(wid);
+    expect(wl!.owners).toHaveLength(1);
+    // The one left standing is untouched: still pinned, no member row, booking held.
+    const [remaining] = wl!.owners.map(String);
+    expect(wl!.featuredBy.map(String)).toEqual([remaining]);
+    expect(await WishlistMember.findOne({ wishlist: wid, user: remaining })).toBeNull();
+    expect((await Item.findById(items[remaining]))?.bookedBy?.toString()).toBe(remaining);
   });
 });
 

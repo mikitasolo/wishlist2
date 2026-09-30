@@ -11,6 +11,12 @@ import {
   removeWishlistOwner,
 } from '@/lib/utils/wishlistOwnership';
 
+const onlyOwnerError = () =>
+  NextResponse.json(
+    { success: false, error: 'You are the only owner. Delete the wishlist instead.' },
+    { status: 400 }
+  );
+
 // DELETE /api/wishlists/[id]/members/me - Leave a wishlist
 export async function DELETE(
   request: NextRequest,
@@ -42,19 +48,13 @@ export async function DELETE(
     // A co-owner may step down, as long as somebody is left holding the list.
     // The sole owner still can't: there'd be nobody to manage it.
     if (isWishlistOwner(wishlist, session.user.id)) {
-      if (isLastOwner(wishlist, session.user.id)) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: 'You are the only owner. Delete the wishlist instead.',
-          },
-          { status: 400 }
-        );
-      }
+      if (isLastOwner(wishlist, session.user.id)) return onlyOwnerError();
 
       // Leaving means leaving — no membership left behind. Also drops this list
-      // from their dashboard pin, since `featuredBy` is per-owner.
-      await removeWishlistOwner(wishlist, session.user.id, false);
+      // from their dashboard pin, since `featuredBy` is per-owner. `false`: a
+      // co-owner stepped down at the same moment and got there first, leaving
+      // them the only owner — so nothing was changed and nothing is released.
+      if (!(await removeWishlistOwner(wishlist, session.user.id, false))) return onlyOwnerError();
       const unbookedCount = await releaseUserBookings(wishlistId, session.user.id);
 
       return NextResponse.json(

@@ -81,6 +81,8 @@ const WishlistSchema = new Schema(
 );
 
 // A wishlist without an owner is unreachable and unmanageable — never allow one.
+// This only runs on create/save, not on `updateOne`: removals are guarded by the
+// conditional write in `removeWishlistOwner` instead.
 WishlistSchema.path('owners').validate(
   (v: mongoose.Types.ObjectId[]) => Array.isArray(v) && v.length > 0,
   'A wishlist must have at least one owner'
