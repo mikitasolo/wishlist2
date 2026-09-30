@@ -23,7 +23,7 @@ A modern wishlist app: create wishlists, share them, follow friends, and quietly
 - **Framework**: Next.js 16 (App Router), React 19, TypeScript
 - **Database**: MongoDB with Mongoose
 - **Auth**: NextAuth v5 / Auth.js (`next-auth@5`) with the MongoDB adapter — **database sessions**, magic-link email (Nodemailer provider)
-- **Email**: SMTP via Nodemailer (works with Brevo, Postmark, Gmail, etc.)
+- **Email**: SMTP via Nodemailer (works with Brevo, Postmark, Gmail, etc.), or printed to the server log in local dev (`EMAIL_TRANSPORT=console`)
 - **Image uploads**: Vercel Blob
 - **Rate limiting**: Upstash Redis (`@upstash/ratelimit`) — optional; disabled when unconfigured
 - **Styling**: Tailwind CSS v4
@@ -35,7 +35,7 @@ A modern wishlist app: create wishlists, share them, follow friends, and quietly
 - Node.js 24 (the runtime we build and deploy on; pinned via `package.json`'s `engines` field)
 - **npm** — the package manager (bundled with Node.js)
 - A MongoDB database (MongoDB Atlas recommended)
-- An SMTP provider for sending magic-link emails
+- An SMTP provider for sending magic-link emails (not needed for local dev: see `EMAIL_TRANSPORT=console` below)
 - A Vercel Blob store (for image uploads)
 
 ## 🚀 Local setup
@@ -48,7 +48,9 @@ cp .env.example .env.local   # then fill in the values
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). Sign in from `/auth/signin` with your email and click the magic link. On first sign-in an account (with an auto-generated username) is created — there is no separate admin/seed step. Each wishlist has owners (any number, all equal) and members.
+You don't need an SMTP account to run locally: set `EMAIL_TRANSPORT=console` in `.env.local` (the `SMTP_*` variables can then stay empty) and every email the app would send, the magic link included, is printed to the terminal running `npm run dev` instead. Nothing is sent.
+
+Open [http://localhost:3000](http://localhost:3000). Sign in from `/auth/signin` with your email, then click the magic link in the email, or, in console mode, copy the link from the terminal into your browser. On first sign-in an account (with an auto-generated username) is created — there is no separate admin/seed step. Each wishlist has owners (any number, all equal) and members.
 
 ## 🔑 Environment variables
 
@@ -59,16 +61,19 @@ Copy `.env.example` to `.env.local` and fill in:
 | `MONGODB_URI`              | yes      | Connection string **including the database name** in the path                 |
 | `NEXTAUTH_SECRET`          | yes      | Session secret — generate with `openssl rand -base64 32`                      |
 | `NEXTAUTH_URL`             | yes\*    | App URL (e.g. `http://localhost:3000`). \*Derived from `VERCEL_URL` on Vercel |
-| `SMTP_HOST`                | yes      | SMTP server host                                                              |
-| `SMTP_PORT`                | yes      | SMTP port (e.g. `587`)                                                        |
-| `SMTP_SECURE`              | yes      | `true` for port 465, otherwise `false`                                        |
-| `SMTP_USER`                | yes      | SMTP username                                                                 |
-| `SMTP_PASSWORD`            | yes      | SMTP password                                                                 |
+| `EMAIL_TRANSPORT`          | no       | `smtp` (default) sends mail; `console` prints it to the server log. See below |
+| `SMTP_HOST`                | yes\*\*  | SMTP server host                                                              |
+| `SMTP_PORT`                | yes\*\*  | SMTP port (e.g. `587`)                                                        |
+| `SMTP_SECURE`              | yes\*\*  | `true` for port 465, otherwise `false`                                        |
+| `SMTP_USER`                | yes\*\*  | SMTP username                                                                 |
+| `SMTP_PASSWORD`            | yes\*\*  | SMTP password                                                                 |
 | `EMAIL_FROM`               | yes      | From address for outgoing mail                                                |
 | `MIGRATION_SECRET`         | yes      | Shared secret guarding migration endpoints                                    |
 | `BLOB_READ_WRITE_TOKEN`    | yes      | Vercel Blob token for uploads. Its store ID says which blob URLs are ours     |
 | `UPSTASH_REDIS_REST_URL`   | no       | Upstash Redis REST URL for rate limiting. Unset ⇒ rate limiting disabled      |
 | `UPSTASH_REDIS_REST_TOKEN` | no       | Upstash Redis REST token (set together with the URL)                          |
+
+\*\*Only when `EMAIL_TRANSPORT` is `smtp` (the default). With `EMAIL_TRANSPORT=console` no email is sent: each one is printed to the server log (recipient, subject and its link, e.g. the magic link), so the `SMTP_*` variables are optional. It's meant for local dev and the Vercel Development environment. It's refused in production (`VERCEL_ENV=production`): env validation throws, which fails the build and every request, so a misconfigured deploy can't silently drop sign-in emails. Any other value is an error. Rate limits apply in both modes, since the sign-in limiter runs before the email goes anywhere.
 
 `KV_REST_API_URL` / `KV_REST_API_TOKEN` (the names the Vercel Marketplace integration injects) are accepted as fallbacks for the two Upstash variables — so a `.env` pulled with `npm run vercel:env` turns rate limiting **on** against that store.
 

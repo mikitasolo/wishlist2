@@ -3,7 +3,16 @@
  * Validates all required environment variables at application startup
  */
 
-export interface EnvSchema {
+/**
+ * How outgoing email leaves the app (`EMAIL_TRANSPORT`):
+ *  - `smtp` (the default): sent through the `SMTP_*` server.
+ *  - `console`: printed to the server log and never sent — for local dev, so
+ *    signing in doesn't need a real SMTP account. Refused in production.
+ */
+export const EMAIL_TRANSPORTS = ['smtp', 'console'] as const;
+export type EmailTransport = (typeof EMAIL_TRANSPORTS)[number];
+
+interface BaseEnv {
   // Database
   MONGODB_URI: string;
 
@@ -11,17 +20,30 @@ export interface EnvSchema {
   NEXTAUTH_SECRET: string;
   NEXTAUTH_URL: string;
 
-  // Email (SMTP)
-  SMTP_HOST: string;
-  SMTP_PORT: string;
-  SMTP_SECURE: string;
-  SMTP_USER: string;
-  SMTP_PASSWORD: string;
+  // Email — the From address is needed whichever transport is active.
   EMAIL_FROM: string;
 
   // Migrations
   MIGRATION_SECRET: string;
 }
+
+/** `smtp` mode: every SMTP setting is required and present. */
+export interface SmtpEmailEnv {
+  EMAIL_TRANSPORT: 'smtp';
+  SMTP_HOST: string;
+  SMTP_PORT: string;
+  SMTP_SECURE: string;
+  SMTP_USER: string;
+  SMTP_PASSWORD: string;
+}
+
+/** `console` mode: nothing is sent, so there is no SMTP config to read. */
+export interface ConsoleEmailEnv {
+  EMAIL_TRANSPORT: 'console';
+}
+
+/** Narrow on `EMAIL_TRANSPORT === 'smtp'` before reading any `SMTP_*` field. */
+export type EnvSchema = BaseEnv & (SmtpEmailEnv | ConsoleEmailEnv);
 
 /**
  * Required environment variables grouped by category
@@ -29,9 +51,31 @@ export interface EnvSchema {
 const REQUIRED_ENV_VARS = {
   database: ['MONGODB_URI'],
   auth: ['NEXTAUTH_SECRET'],
-  email: ['SMTP_HOST', 'SMTP_PORT', 'SMTP_SECURE', 'SMTP_USER', 'SMTP_PASSWORD', 'EMAIL_FROM'],
+  email: ['EMAIL_FROM'],
   migrations: ['MIGRATION_SECRET'],
 } as const;
+
+/** Only required when `EMAIL_TRANSPORT` is `smtp`. */
+export const SMTP_ENV_VARS = [
+  'SMTP_HOST',
+  'SMTP_PORT',
+  'SMTP_SECURE',
+  'SMTP_USER',
+  'SMTP_PASSWORD',
+] as const;
+
+/**
+ * The configured email transport. Unset (or empty) means `smtp`; anything else
+ * that isn't a known transport throws rather than silently falling back.
+ */
+function resolveEmailTransport(): EmailTransport {
+  const value = process.env.EMAIL_TRANSPORT;
+  if (!value) return 'smtp';
+  if ((EMAIL_TRANSPORTS as readonly string[]).includes(value)) return value as EmailTransport;
+  throw new Error(
+    `Invalid EMAIL_TRANSPORT "${value}": expected "smtp" (the default) or "console".`
+  );
+}
 
 /**
  * Validate all required environment variables
@@ -49,10 +93,31 @@ export function validateEnvVars(): void {
     );
   }
 
+  const transport = resolveEmailTransport();
+
+  // The console transport drops every email, sign-in links included. A
+  // production deploy configured that way would look healthy while nobody can
+  // sign in, so refuse to start instead.
+  if (transport === 'console' && process.env.VERCEL_ENV === 'production') {
+    throw new Error(
+      'EMAIL_TRANSPORT=console is not allowed in production (VERCEL_ENV=production): ' +
+        'it prints emails to the log instead of sending them, so nobody could sign in. ' +
+        'Unset EMAIL_TRANSPORT (or set it to "smtp") and configure the SMTP_* variables.'
+    );
+  }
+
   const missing: Record<string, string[]> = {};
 
+  const required: Record<string, readonly string[]> = {
+    ...REQUIRED_ENV_VARS,
+    email:
+      transport === 'smtp'
+        ? [...SMTP_ENV_VARS, ...REQUIRED_ENV_VARS.email]
+        : REQUIRED_ENV_VARS.email,
+  };
+
   // Check each category
-  for (const [category, vars] of Object.entries(REQUIRED_ENV_VARS)) {
+  for (const [category, vars] of Object.entries(required)) {
     const categoryMissing: string[] = [];
 
     for (const envVar of vars) {
@@ -80,6 +145,9 @@ export function validateEnvVars(): void {
     throw new Error(
       `Missing required environment variables:\n\n${errorMessages.join('\n\n')}\n\n` +
         `Please set all required environment variables in your Vercel project settings or .env.local file.\n` +
+        (transport === 'smtp'
+          ? `For local development without SMTP, set EMAIL_TRANSPORT=console.\n`
+          : '') +
         `See README.md for setup instructions.`
     );
   }
@@ -105,7 +173,7 @@ export function getEnvVars(): EnvSchema {
 
   const nextAuthUrl = process.env.NEXTAUTH_URL || `https://${process.env.VERCEL_URL}`;
 
-  return {
+  const base: BaseEnv = {
     // Database
     MONGODB_URI: process.env.MONGODB_URI!,
 
@@ -114,14 +182,23 @@ export function getEnvVars(): EnvSchema {
     NEXTAUTH_URL: nextAuthUrl,
 
     // Email
+    EMAIL_FROM: process.env.EMAIL_FROM!,
+
+    // Migrations
+    MIGRATION_SECRET: process.env.MIGRATION_SECRET!,
+  };
+
+  if (resolveEmailTransport() === 'console') {
+    return { ...base, EMAIL_TRANSPORT: 'console' };
+  }
+
+  return {
+    ...base,
+    EMAIL_TRANSPORT: 'smtp',
     SMTP_HOST: process.env.SMTP_HOST!,
     SMTP_PORT: process.env.SMTP_PORT!,
     SMTP_SECURE: process.env.SMTP_SECURE!,
     SMTP_USER: process.env.SMTP_USER!,
     SMTP_PASSWORD: process.env.SMTP_PASSWORD!,
-    EMAIL_FROM: process.env.EMAIL_FROM!,
-
-    // Migrations
-    MIGRATION_SECRET: process.env.MIGRATION_SECRET!,
   };
 }

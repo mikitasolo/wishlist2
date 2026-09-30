@@ -91,18 +91,15 @@ export default async function globalSetup(_config: FullConfig) {
   await writeFile(path.join(authDir, 'user.json'), JSON.stringify(storageState, null, 2));
 
   // Build once and run a production server (fast, stable page loads vs. dev's
-  // on-demand compilation). Dummy env — E2E never sends mail.
+  // on-demand compilation). Dummy env; E2E never sends mail, so the console
+  // transport stands in for SMTP (which also proves the app runs without it).
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     MONGODB_URI: uri,
     NEXTAUTH_SECRET: 'e2e-secret-e2e-secret-e2e-secret-0',
     NEXTAUTH_URL: BASE_URL,
     AUTH_TRUST_HOST: 'true',
-    SMTP_HOST: 'localhost',
-    SMTP_PORT: '587',
-    SMTP_SECURE: 'false',
-    SMTP_USER: 'e2e',
-    SMTP_PASSWORD: 'e2e',
+    EMAIL_TRANSPORT: 'console',
     EMAIL_FROM: 'e2e@example.com',
     MIGRATION_SECRET: 'e2e-migration',
   };

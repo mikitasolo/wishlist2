@@ -5,16 +5,20 @@ import { getEnvVars } from './env';
 // Get validated environment variables
 const env = getEnvVars();
 
-// Create SMTP transporter
-const transporter = nodemailer.createTransport({
-  host: env.SMTP_HOST,
-  port: parseInt(env.SMTP_PORT),
-  secure: env.SMTP_SECURE === 'true', // true for 465, false for other ports
-  auth: {
-    user: env.SMTP_USER,
-    pass: env.SMTP_PASSWORD,
-  },
-});
+// Create SMTP transporter, in `smtp` mode only: the `console` transport has no
+// SMTP config and never dials a server.
+const smtpTransporter =
+  env.EMAIL_TRANSPORT === 'smtp'
+    ? nodemailer.createTransport({
+        host: env.SMTP_HOST,
+        port: parseInt(env.SMTP_PORT),
+        secure: env.SMTP_SECURE === 'true', // true for 465, false for other ports
+        auth: {
+          user: env.SMTP_USER,
+          pass: env.SMTP_PASSWORD,
+        },
+      })
+    : null;
 
 // The brand logo, mirroring app/icon.svg. Email clients render SVG poorly and
 // block remote images by default, so we rasterize it to a PNG and embed it as
@@ -58,6 +62,75 @@ async function logoAttachment() {
   } catch (err) {
     console.error('Could not render email logo, sending without it:', err);
     return null;
+  }
+}
+
+interface OutgoingEmail {
+  /** What kind of email this is, for log lines. Never the recipient. */
+  kind: string;
+  to: string;
+  subject: string;
+  html: string;
+  text: string;
+  /** The link the email exists to deliver (magic link, invitations page, …). */
+  link: string;
+}
+
+/**
+ * A loggable summary of a failed SMTP send. Nodemailer's error messages and
+ * fields can carry the recipient ("Invalid recipient …", `rejected`, the
+ * server's `response`), so keep only the diagnostic codes.
+ */
+function describeSendError(error: unknown): string {
+  if (!(error instanceof Error)) return 'unknown error';
+  const { code, responseCode, command } = error as Error & Record<string, unknown>;
+  return [
+    error.name,
+    typeof code === 'string' && `code=${code}`,
+    typeof responseCode === 'number' && `responseCode=${responseCode}`,
+    typeof command === 'string' && `command=${command}`,
+  ]
+    .filter(Boolean)
+    .join(' ');
+}
+
+/**
+ * The one place an email leaves the app. Every sender goes through here, so
+ * none of them can bypass the configured `EMAIL_TRANSPORT`.
+ *
+ * - `console`: print the recipient, subject and link to the server log and send
+ *   nothing. For local dev; `lib/env` refuses it in production.
+ * - `smtp`: send it. Never log the recipient or the link: a magic link in a log
+ *   is a working sign-in credential. That holds on failure too, so the error is
+ *   logged and rethrown in a form that carries neither (callers log it again).
+ */
+async function deliver(email: OutgoingEmail): Promise<void> {
+  if (!smtpTransporter) {
+    // EMAIL_TRANSPORT=console (the transporter only exists in smtp mode).
+    console.log(
+      `[email] EMAIL_TRANSPORT=console: ${email.kind} email printed, not sent\n` +
+        `  To:      ${email.to}\n` +
+        `  Subject: ${email.subject}\n` +
+        `  Link:    ${email.link}`
+    );
+    return;
+  }
+
+  const logo = await logoAttachment();
+  try {
+    await smtpTransporter.sendMail({
+      from: env.EMAIL_FROM,
+      to: email.to,
+      subject: email.subject,
+      html: email.html,
+      text: email.text,
+      attachments: logo ? [logo] : [],
+    });
+    console.log(`Sent ${email.kind} email`);
+  } catch (error) {
+    const reason = describeSendError(error);
+    console.error(`Error sending ${email.kind} email: ${reason}`);
+    throw new Error(`Could not send ${email.kind} email (${reason})`);
   }
 }
 
@@ -244,23 +317,14 @@ export async function sendMagicLinkEmail(email: string, magicLink: string) {
     linkUrl: magicLink,
   });
 
-  const logo = await logoAttachment();
-  const mailOptions = {
-    from: env.EMAIL_FROM,
+  await deliver({
+    kind: 'magic link',
     to: email,
     subject: `Sign in to ${siteTitle}`,
     html,
     text: `Sign in to ${siteTitle}\n\nHello!\n\nClick the link below to sign in to your ${siteTitle} account:\n${magicLink}\n\nThis link will expire in 24 hours.\n\nIf you didn't request this email, you can safely ignore it.`,
-    attachments: logo ? [logo] : [],
-  };
-
-  try {
-    await transporter.sendMail(mailOptions);
-    console.log('Magic link email sent to:', email);
-  } catch (error) {
-    console.error('Error sending magic link email:', error);
-    throw error;
-  }
+    link: magicLink,
+  });
 }
 
 export async function sendWishlistInvitationEmail(
@@ -284,21 +348,12 @@ export async function sendWishlistInvitationEmail(
     footerText: `Invitation sent to <strong>${email}</strong>`,
   });
 
-  const logo = await logoAttachment();
-  const mailOptions = {
-    from: env.EMAIL_FROM,
+  await deliver({
+    kind: 'wishlist invitation',
     to: email,
     subject: `You've been invited to ${wishlistName} on ${siteTitle}!`,
     html,
     text: `Wishlist Invitation\n\n${invitedBy} has invited you to join their wishlist: ${wishlistName}.\n\nSign in to your account to accept or decline it: ${invitesUrl}`,
-    attachments: logo ? [logo] : [],
-  };
-
-  try {
-    await transporter.sendMail(mailOptions);
-    console.log('Wishlist invitation email sent to:', email);
-  } catch (error) {
-    console.error('Error sending wishlist invitation email:', error);
-    throw error;
-  }
+    link: invitesUrl,
+  });
 }
