@@ -26,7 +26,11 @@ export default function InvitesPage() {
   const { showToast } = useToast();
   const [invites, setInvites] = useState<Invite[]>([]);
   const [loading, setLoading] = useState(true);
-  const [busyId, setBusyId] = useState<string | null>(null);
+  // Invites whose answer is still in flight. Tracked per invite, not as one id
+  // for the page: answering another card must not re-enable this one's
+  // buttons, and that answer settling first must not unlock this one while its
+  // own request is still pending.
+  const [busyIds, setBusyIds] = useState<ReadonlySet<string>>(() => new Set());
 
   useEffect(() => {
     if (status === 'unauthenticated') router.push('/');
@@ -54,8 +58,20 @@ export default function InvitesPage() {
     window.dispatchEvent(new Event('invites-changed'));
   }
 
+  // A functional update, so answers settling in any order each touch only
+  // their own entry and never write back a stale copy of the set.
+  function setBusy(inviteId: string, busy: boolean) {
+    setBusyIds((prev) => {
+      if (prev.has(inviteId) === busy) return prev;
+      const next = new Set(prev);
+      if (busy) next.add(inviteId);
+      else next.delete(inviteId);
+      return next;
+    });
+  }
+
   async function respond(invite: Invite, action: 'accept' | 'decline') {
-    setBusyId(invite._id);
+    setBusy(invite._id, true);
     try {
       const res = await fetch(`/api/invites/${invite._id}`, {
         method: 'PATCH',
@@ -88,7 +104,7 @@ export default function InvitesPage() {
     } catch {
       showToast('Something went wrong', 'error');
     } finally {
-      setBusyId(null);
+      setBusy(invite._id, false);
     }
   }
 
@@ -150,14 +166,14 @@ export default function InvitesPage() {
                 <div className="flex flex-shrink-0 items-center gap-2">
                   <button
                     onClick={() => respond(invite, 'decline')}
-                    disabled={busyId === invite._id}
+                    disabled={busyIds.has(invite._id)}
                     className="inline-flex h-9 items-center rounded-xl px-4 text-sm font-semibold text-foreground transition-colors hover:bg-muted disabled:opacity-50"
                   >
                     Decline
                   </button>
                   <button
                     onClick={() => respond(invite, 'accept')}
-                    disabled={busyId === invite._id}
+                    disabled={busyIds.has(invite._id)}
                     className="inline-flex h-9 items-center rounded-xl bg-primary-600 px-4 text-sm font-semibold text-white shadow-[0_8px_22px_-10px_rgba(94,92,230,0.9)] transition-colors hover:bg-primary-500 disabled:opacity-50"
                   >
                     Accept
