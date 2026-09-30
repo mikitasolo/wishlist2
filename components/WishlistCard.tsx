@@ -4,8 +4,7 @@ import Link from 'next/link';
 import { IWishlist } from '@/models/Wishlist';
 import Avatar from '@/components/Avatar';
 import Icon from '@/components/Icon';
-import BannerImage from '@/components/BannerImage';
-import { coverGradient } from '@/lib/utils/cover';
+import Cover from '@/components/Cover';
 import { getVisibility, visibilityMeta } from '@/lib/utils/visibility';
 
 interface WishlistCardProps {
@@ -37,13 +36,11 @@ export default function WishlistCard({ wishlist, showOwner = false }: WishlistCa
       }`}
     >
       {/* Cover band */}
-      <div
+      <Cover
+        src={wishlist.bannerUrl}
+        seed={wishlist._id.toString()}
         className={`relative aspect-[16/9] bg-surface-2 ${wishlist.archived ? 'grayscale' : ''}`}
-        style={{
-          background: wishlist.bannerUrl ? undefined : coverGradient(wishlist._id.toString()),
-        }}
       >
-        {wishlist.bannerUrl && <BannerImage src={wishlist.bannerUrl} alt="" />}
         <span className="absolute right-3 top-3 inline-flex items-center gap-1.5 rounded-full border border-white/25 bg-white/20 px-2.5 py-1 text-[11.5px] font-semibold text-white backdrop-blur-md">
           <Icon name={vis.icon} size={12} />
           {vis.label}
@@ -62,7 +59,7 @@ export default function WishlistCard({ wishlist, showOwner = false }: WishlistCa
             {wishlist.userRole}
           </span>
         ) : null}
-      </div>
+      </Cover>
 
       {/* Body */}
       <div className="flex flex-1 flex-col p-4 sm:p-5">

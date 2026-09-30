@@ -10,10 +10,9 @@ import Icon from '@/components/Icon';
 import Select from '@/components/Select';
 import FilterDropdown, { type FilterOption } from '@/components/FilterDropdown';
 import MultiSelectDropdown from '@/components/MultiSelectDropdown';
-import BannerImage from '@/components/BannerImage';
+import Cover from '@/components/Cover';
 import { useToast } from '@/components/ToastProvider';
 import { formatPriceFromObject } from '@/lib/utils/currency';
-import { coverGradient } from '@/lib/utils/cover';
 import {
   compareMostWanted,
   isSortType,
@@ -343,17 +342,13 @@ export default function MyItemsPage() {
                       key={it._id}
                       className="flex flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-sm"
                     >
-                      <div
+                      <Cover
+                        src={it.imageUrl}
+                        seed={it._id}
+                        alt={it.name}
+                        sizes="(max-width: 640px) 50vw, (max-width: 1024px) 25vw, 20vw"
                         className="relative aspect-square w-full bg-surface-2"
-                        style={{ background: it.imageUrl ? undefined : coverGradient(it._id) }}
                       >
-                        {it.imageUrl && (
-                          <BannerImage
-                            src={it.imageUrl}
-                            alt={it.name}
-                            sizes="(max-width: 640px) 50vw, (max-width: 1024px) 25vw, 20vw"
-                          />
-                        )}
                         {badge && (
                           <span
                             className={`absolute left-2 top-2 rounded-full px-2 py-0.5 text-[11px] font-semibold shadow-sm ${badge.className}`}
@@ -371,7 +366,7 @@ export default function MyItemsPage() {
                             <Icon name="star" size={12} className="fill-amber-400 text-amber-500" />
                           </span>
                         )}
-                      </div>
+                      </Cover>
                       <div className="flex flex-1 flex-col p-3">
                         <p className="truncate text-sm font-semibold text-foreground">{it.name}</p>
                         {it.price && (

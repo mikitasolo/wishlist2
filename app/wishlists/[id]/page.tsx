@@ -15,13 +15,12 @@ import ConfirmDialog from '@/components/ConfirmDialog';
 import Button from '@/components/Button';
 import Icon from '@/components/Icon';
 import InviteMemberForm from '@/components/InviteMemberForm';
-import BannerImage from '@/components/BannerImage';
+import Cover from '@/components/Cover';
 import ShareButton from '@/components/ShareButton';
 import ImageUpload from '@/components/ImageUpload';
 import Select from '@/components/Select';
 import { SkeletonGrid, MemberRowSkeleton } from '@/components/Skeleton';
 import Avatar from '@/components/Avatar';
-import { coverGradient } from '@/lib/utils/cover';
 import { getVisibility, visibilityMeta, type Visibility } from '@/lib/utils/visibility';
 import { currencySelectOptions } from '@/lib/utils/currencies';
 import { isStalePoll, prependCreatedItem } from '@/lib/utils/itemListMerge';
@@ -1103,27 +1102,18 @@ export default function WishlistDetail() {
                   : 'sm:max-w-md'
               }`}
             >
-              <div
+              <Cover
+                src={wishlist.bannerUrl}
+                seed={wishlist._id.toString()}
+                priority
+                sizes="(max-width: 1024px) 100vw, 26rem"
                 className="relative aspect-[16/9] overflow-hidden rounded-3xl border border-border bg-surface-2 shadow-md"
-                style={{
-                  background: wishlist.bannerUrl
-                    ? undefined
-                    : coverGradient(wishlist._id.toString()),
-                }}
               >
-                {wishlist.bannerUrl && (
-                  <BannerImage
-                    src={wishlist.bannerUrl}
-                    alt=""
-                    priority
-                    sizes="(max-width: 1024px) 100vw, 26rem"
-                  />
-                )}
                 <span className="absolute right-3 top-3 inline-flex items-center gap-1.5 rounded-full border border-white/25 bg-white/20 px-2.5 py-1 text-[11.5px] font-semibold text-white backdrop-blur-md">
                   <Icon name={visibilityMeta[getVisibility(wishlist)].icon} size={12} />
                   {visibilityMeta[getVisibility(wishlist)].label}
                 </span>
-              </div>
+              </Cover>
               {wishlist.description && (
                 <div className="rounded-2xl border border-border bg-surface p-5">
                   <p className="whitespace-pre-line break-words text-[15px] text-muted-foreground">
