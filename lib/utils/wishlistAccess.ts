@@ -2,7 +2,7 @@ import connectDB from '@/lib/mongodb';
 import Wishlist, { IWishlist } from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
 import { areFriends } from '@/lib/utils/friends';
-import { getVisibility } from '@/lib/utils/visibility';
+import { getVisibility, type Visibility } from '@/lib/utils/visibility';
 import { isWishlistOwner, ownerIds } from '@/lib/utils/wishlistOwners';
 
 /**
@@ -33,6 +33,18 @@ export async function isOwnerOfWishlist(wishlistId: string, userId: string): Pro
 type ViewedWishlist = Pick<IWishlist, '_id' | 'owners' | 'visibility' | 'isPublic' | 'archived'>;
 
 /**
+ * The list's visibility tier, failing closed on an old document. `isPublic` is
+ * the legacy flag, kept in sync with `visibility` (everyone ⇔ true) by every
+ * write. A list saved before `visibility` existed has only `isPublic`, but a
+ * hydrated doc fills the missing field with the schema default `everyone` (and
+ * a `save()` of one stores it), so `isPublic: false` wins: that list is private.
+ */
+function viewTier(wishlist: ViewedWishlist): Visibility {
+  const tier = getVisibility(wishlist);
+  return tier === 'everyone' && wishlist.isPublic === false ? 'private' : tier;
+}
+
+/**
  * Whether an archived list must look nonexistent to `userId`. Archived lists are
  * owner-only: anyone else, signed in or not, gets the same 404 as for a list
  * that doesn't exist, whatever they ask of it (view, propose, book).
@@ -54,7 +66,7 @@ export type WishlistViewAccess =
  * its items can never disagree about who sees them:
  *
  *  - archived: owners only; everyone else gets 404 (see `isHiddenByArchive`);
- *  - `everyone`: anyone, signed in or not;
+ *  - `everyone`: anyone, signed in or not (see `viewTier` for old documents);
  *  - `friends` / `private`: 401 when signed out. Owners and members get in at
  *    either tier, and `friends` also admits a mutual friend of *any* owner — a
  *    co-owned list behaves as if each owner created it.
@@ -79,7 +91,7 @@ export async function getWishlistViewAccess(
     !!(await WishlistMember.exists({ wishlist: wishlist._id, user: viewerId }));
   const granted = { allowed: true as const, isOwner, isMember };
 
-  const visibility = getVisibility(wishlist);
+  const visibility = viewTier(wishlist);
   if (visibility === 'everyone') return granted;
 
   if (!viewerId) {

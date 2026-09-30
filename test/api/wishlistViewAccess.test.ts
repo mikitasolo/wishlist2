@@ -242,6 +242,31 @@ describe('the wishlist and its items share one set of access rules', () => {
     expect(await role(member)).toBe('member');
     expect(await role(friendOfOwner)).toBeNull();
   });
+
+  // regression: a list saved before `visibility` existed has only isPublic, and
+  // a hydrated doc fills the missing field with the schema default 'everyone'
+  // (the slug backfill's save() even stores it), so the wishlist read admitted
+  // anyone to an old private list, and sharing its rules would have opened the
+  // items too. isPublic: false has to win.
+  it.each([
+    ['saved before visibility existed', {}],
+    ['whose default visibility was later saved', { visibility: 'everyone' }],
+  ])('regression: keeps an old private list %s private, list and items', async (_, extra) => {
+    const { insertedId } = await Wishlist.collection.insertOne({
+      name: 'Old',
+      owners: [new mongoose.Types.ObjectId(owner), new mongoose.Types.ObjectId(coOwner)],
+      featuredBy: [],
+      isPublic: false,
+      ...extra,
+    });
+    wishlistId = insertedId.toString();
+    await WishlistMember.create({ wishlist: insertedId, user: member });
+    await makeItem('available');
+
+    const { list, items } = await statuses(wishlistId);
+    expect(list).toEqual(expected.private);
+    expect(items).toEqual(expected.private);
+  });
 });
 
 describe('GET /api/wishlists/[id]/items — archived lists', () => {
