@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, onTestFinished } from 'vitest';
 import { render, screen, fireEvent, waitFor, act, cleanup } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { useState } from 'react';
 import ConfirmDialog from '@/components/ConfirmDialog';
 
 // useBodyScrollLock restores the scroll position on close; jsdom lacks scrollTo.
@@ -140,5 +142,128 @@ describe('ConfirmDialog — an action that returns a promise', () => {
 
     expect(onConfirm).toHaveBeenCalledTimes(2);
     await finish();
+  });
+});
+
+/** A page with a button that opens the dialog, and another one behind it. */
+function DialogPage({ onConfirm = vi.fn() }: { onConfirm?: () => void | Promise<unknown> }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button onClick={() => setOpen(true)}>Open</button>
+      <button>Behind</button>
+      <ConfirmDialog
+        isOpen={open}
+        title="Remove Member"
+        message="Are you sure?"
+        onConfirm={onConfirm}
+        onCancel={() => setOpen(false)}
+        confirmText="Remove"
+        pendingText="Removing..."
+        type="danger"
+      />
+    </>
+  );
+}
+
+describe('ConfirmDialog — keyboard focus', () => {
+  it('moves focus to Cancel when it opens', async () => {
+    const user = userEvent.setup();
+    render(<DialogPage />);
+
+    await user.click(button('Open'));
+
+    expect(button('Cancel')).toHaveFocus();
+  });
+
+  it('keeps Tab and Shift+Tab inside, wrapping at both ends', async () => {
+    const user = userEvent.setup();
+    render(<DialogPage />);
+    await user.click(button('Open'));
+
+    await user.tab();
+    expect(button('Remove')).toHaveFocus();
+    await user.tab();
+    expect(button('Cancel')).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(button('Remove')).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(button('Cancel')).toHaveFocus();
+  });
+
+  it('brings focus back inside when it has dropped to the page', async () => {
+    const user = userEvent.setup();
+    render(<DialogPage />);
+    await user.click(button('Open'));
+
+    act(() => (document.activeElement as HTMLElement).blur());
+    await user.tab();
+    expect(button('Cancel')).toHaveFocus();
+
+    act(() => (document.activeElement as HTMLElement).blur());
+    await user.tab({ shift: true });
+    expect(button('Remove')).toHaveFocus();
+  });
+
+  it('returns focus to the button that opened it when it closes', async () => {
+    const user = userEvent.setup();
+    render(<DialogPage />);
+
+    await user.click(button('Open'));
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(button('Open')).toHaveFocus();
+
+    await user.click(button('Open'));
+    await user.click(button('Cancel'));
+    expect(button('Open')).toHaveFocus();
+  });
+
+  it('leaves focus alone on close when its opener has gone', async () => {
+    const user = userEvent.setup();
+    function OpenerGoes() {
+      const [open, setOpen] = useState(false);
+      return (
+        <>
+          {!open && <button onClick={() => setOpen(true)}>Open</button>}
+          <ConfirmDialog
+            isOpen={open}
+            title="Remove Member"
+            message="Are you sure?"
+            onConfirm={vi.fn()}
+            onCancel={() => setOpen(false)}
+          />
+        </>
+      );
+    }
+    render(<OpenerGoes />);
+
+    await user.click(button('Open'));
+    await user.click(button('Cancel'));
+
+    expect(document.body).toHaveFocus();
+  });
+
+  // The confirm button it had is disabled while the action runs, which would
+  // drop focus to <body> behind the backdrop.
+  it('holds focus on itself while its action runs, and lets Tab back in once it settles', async () => {
+    const user = userEvent.setup();
+    const { onConfirm, finish } = deferredConfirm();
+    renderDialog(onConfirm);
+
+    await user.click(button('Remove'));
+    const dialog = screen.getByRole('alertdialog');
+    expect(button('Removing...')).toBeDisabled();
+    expect(dialog).toHaveFocus();
+
+    await user.tab();
+    expect(dialog).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(dialog).toHaveFocus();
+
+    await finish();
+    await waitFor(() => expect(button('Remove')).toBeEnabled());
+    await user.tab();
+    expect(button('Cancel')).toHaveFocus();
   });
 });

@@ -171,8 +171,11 @@ label[for] {
   cursor: pointer;
 }
 
-/* Consistent, accessible focus rings for interactive controls */
-*:focus-visible {
+/* Consistent, accessible focus rings for interactive controls. A tabindex="-1"
+   element isn't one: only script focuses it (e.g. a dialog holding focus while
+   its buttons are disabled), so it gets no ring. :where() keeps the
+   specificity, so the form-field opt-out below still wins. */
+*:focus-visible:not(:where([tabindex='-1'])) {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
   border-radius: 6px;
