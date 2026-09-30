@@ -11,6 +11,7 @@ import { getOwnerAccess } from '@/lib/utils/wishlistAccess';
 import { isWishlistOwner } from '@/lib/utils/wishlistOwners';
 import {
   isLastOwner,
+  type OwnerRemoval,
   releaseUserBookings,
   removeWishlistOwner,
 } from '@/lib/utils/wishlistOwnership';
@@ -49,18 +50,16 @@ async function requireOwnerCaller(
       response: NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 }),
     };
   }
-  if (!isOwner) {
-    return {
-      ok: false,
-      response: NextResponse.json(
-        { success: false, error: 'Only an owner can change who owns this wishlist' },
-        { status: 403 }
-      ),
-    };
-  }
+  if (!isOwner) return { ok: false, response: notOwnerError() };
 
   return { ok: true, id, wishlist };
 }
+
+const notOwnerError = () =>
+  NextResponse.json(
+    { success: false, error: 'Only an owner can change who owns this wishlist' },
+    { status: 403 }
+  );
 
 const lastOwnerError = () =>
   NextResponse.json(
@@ -82,6 +81,13 @@ function checkExistingOwner(wishlist: IWishlist, userId: string): NextResponse |
   if (isLastOwner(wishlist, userId)) return lastOwnerError();
   return null;
 }
+
+/**
+ * The answer to a demote/remove whose write changed nothing. A caller whom a
+ * concurrent request just took off the owners gets what any non-owner gets.
+ */
+const removalRefused = (result: Exclude<OwnerRemoval, 'removed'>) =>
+  result === 'actor-not-owner' ? notOwnerError() : lastOwnerError();
 
 // POST /api/wishlists/[id]/owners/[userId] - invite a member to become a co-owner.
 export async function POST(
@@ -201,9 +207,14 @@ export async function PATCH(
 
     // Losing ownership also drops their dashboard pin for this list (per-owner).
     // Nothing to release: they land as a member, who can see and cancel their own
-    // bookings — the stranded-booking problem only runs the other way. `false`:
-    // a concurrent removal left them the last owner, so nothing was changed.
-    if (!(await removeWishlistOwner(authorized.wishlist, userId, true))) return lastOwnerError();
+    // bookings — the stranded-booking problem only runs the other way. Not
+    // `'removed'`: a concurrent removal took the caller off the owners, or left
+    // the target the last one, so nothing was changed.
+    const removal = await removeWishlistOwner(authorized.wishlist, userId, {
+      actorId: session.user.id,
+      keepAsMember: true,
+    });
+    if (removal !== 'removed') return removalRefused(removal);
 
     const user = await User.findById(userId).select('username image');
     return NextResponse.json({ success: true, data: { role: 'member', user } }, { status: 200 });
@@ -244,8 +255,13 @@ export async function DELETE(
     const invalid = checkExistingOwner(authorized.wishlist, userId);
     if (invalid) return invalid;
 
-    // `false`: a concurrent removal left them the last owner — release nothing.
-    if (!(await removeWishlistOwner(authorized.wishlist, userId, false))) return lastOwnerError();
+    // Not `'removed'`: a concurrent removal took the caller off the owners, or
+    // left the target the last one — release nothing.
+    const removal = await removeWishlistOwner(authorized.wishlist, userId, {
+      actorId: session.user.id,
+      keepAsMember: false,
+    });
+    if (removal !== 'removed') return removalRefused(removal);
     // Defensive: an owner shouldn't hold a booking on their own list, but if a
     // stale one exists don't leave the item stuck as claimed.
     await releaseUserBookings(authorized.id, userId);
