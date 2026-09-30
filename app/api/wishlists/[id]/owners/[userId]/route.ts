@@ -62,6 +62,15 @@ async function requireOwnerCaller(
   return { ok: true, id, wishlist };
 }
 
+const lastOwnerError = () =>
+  NextResponse.json(
+    {
+      success: false,
+      error: 'A wishlist needs at least one owner. Delete the wishlist instead.',
+    },
+    { status: 400 }
+  );
+
 /** Extra guards for acting on an *existing* owner (demote / remove). */
 function checkExistingOwner(wishlist: IWishlist, userId: string): NextResponse | null {
   if (!isWishlistOwner(wishlist, userId)) {
@@ -70,15 +79,7 @@ function checkExistingOwner(wishlist: IWishlist, userId: string): NextResponse |
       { status: 404 }
     );
   }
-  if (isLastOwner(wishlist, userId)) {
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'A wishlist needs at least one owner. Delete the wishlist instead.',
-      },
-      { status: 400 }
-    );
-  }
+  if (isLastOwner(wishlist, userId)) return lastOwnerError();
   return null;
 }
 
@@ -200,8 +201,9 @@ export async function PATCH(
 
     // Losing ownership also drops their dashboard pin for this list (per-owner).
     // Nothing to release: they land as a member, who can see and cancel their own
-    // bookings — the stranded-booking problem only runs the other way.
-    await removeWishlistOwner(authorized.wishlist, userId, true);
+    // bookings — the stranded-booking problem only runs the other way. `false`:
+    // a concurrent removal left them the last owner, so nothing was changed.
+    if (!(await removeWishlistOwner(authorized.wishlist, userId, true))) return lastOwnerError();
 
     const user = await User.findById(userId).select('username image');
     return NextResponse.json({ success: true, data: { role: 'member', user } }, { status: 200 });
@@ -242,7 +244,8 @@ export async function DELETE(
     const invalid = checkExistingOwner(authorized.wishlist, userId);
     if (invalid) return invalid;
 
-    await removeWishlistOwner(authorized.wishlist, userId, false);
+    // `false`: a concurrent removal left them the last owner — release nothing.
+    if (!(await removeWishlistOwner(authorized.wishlist, userId, false))) return lastOwnerError();
     // Defensive: an owner shouldn't hold a booking on their own list, but if a
     // stale one exists don't leave the item stuck as claimed.
     await releaseUserBookings(authorized.id, userId);
