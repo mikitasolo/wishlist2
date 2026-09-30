@@ -129,8 +129,11 @@ export const createItemSchema = z.object({
   link: z.url('Invalid link URL').optional(),
   notes: z.string().max(100, 'Notes must be 100 characters or less').trim().optional(),
   mostWanted: z.boolean().optional(),
-  status: z.enum(['draft', 'available', 'booked', 'completed', 'proposed']).default('available'),
-  bookedBy: z.string().optional().nullable(),
+  // A new item is never booked or completed, and takes no `bookedBy`: a booking
+  // only comes from a member booking it (PATCH), which also writes the
+  // Reservation that lets them release it. The route narrows this further:
+  // owners create draft/available, members only propose.
+  status: z.enum(['draft', 'available', 'proposed']).default('available'),
   proposedBy: z.string().optional().nullable(),
 });
 
