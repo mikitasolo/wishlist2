@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+import mongoose from 'mongoose';
 import { auth } from '@/lib/auth';
 import { enforce } from '@/lib/rateLimit';
 import connectDB from '@/lib/mongodb';
 import User from '@/models/User';
 import type { IWishlist } from '@/models/Wishlist';
+import WishlistMember from '@/models/WishlistMember';
 import { resolveWishlistId } from '@/lib/utils/wishlistSlug';
 import { getOwnerAccess } from '@/lib/utils/wishlistAccess';
 import { isWishlistOwner } from '@/lib/utils/wishlistOwners';
@@ -19,7 +21,8 @@ import { issueWishlistInvite } from '@/lib/utils/wishlistInvites';
  * `Wishlist.owners`), so they're addressed here by *user* id — the `_id` the
  * members listing returns for an owner row.
  *
- *   POST   → invite this user to become a co-owner (promotion; needs their accept)
+ *   POST   → invite an existing member to become a co-owner (promotion; needs
+ *            their accept). Non-members are invited through POST /members instead.
  *   PATCH  → demote this owner to a plain member
  *   DELETE → remove this owner from the wishlist entirely
  *
@@ -108,20 +111,34 @@ export async function POST(
       );
     }
 
+    // Promotion is only for people already on the list — anyone else is invited
+    // through POST /members, which honours their `whoCanInvite`. Without this, an
+    // owner could send an owner invite to any user id. "Not a member", "no such
+    // user" and a malformed id all get the same 404, so it can't probe who exists.
+    // Checked before the rate limit: a request that sends nothing shouldn't spend
+    // the budget, and it tells an owner nothing their members list doesn't.
+    const notAMember = () =>
+      NextResponse.json(
+        { success: false, error: "This person isn't a member of this wishlist" },
+        { status: 404 }
+      );
+    if (!mongoose.isObjectIdOrHexString(userId)) return notAMember();
+    const [membership, target] = await Promise.all([
+      WishlistMember.exists({ wishlist: id, user: userId }),
+      User.findById(userId).select('email username'),
+    ]);
+    if (!membership || !target) return notAMember();
+
     // This sends mail, so it carries the same budget as the invite route.
     const limited = await enforce('invite', session.user.id);
     if (limited) return limited;
 
-    const target = await User.findById(userId).select('email username');
-    if (!target) {
-      return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
-    }
-
     // Promotion is consent-gated: co-ownership puts the list on their public
     // profile and cancels the reservations they hold on it, so it can never be a
-    // silent write. Their `whoCanInvite` preference isn't re-checked — they're
-    // already on this list by their own choice, so this isn't an unsolicited
-    // invite, it's a change to a relationship they opted into.
+    // silent write. Their `whoCanInvite` preference isn't re-checked — membership
+    // was verified above, so they're already on this list by their own choice:
+    // this isn't an unsolicited invite, it's a change to a relationship they
+    // opted into.
     const invite = await issueWishlistInvite({
       wishlistId: id,
       wishlistName: wishlist.name,
