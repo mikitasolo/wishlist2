@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import WishlistInvite, { IWishlistInvite } from '@/models/WishlistInvite';
+import Notification from '@/models/Notification';
 import { sendWishlistInvitationEmail } from '@/lib/email';
 import { createNotification } from '@/lib/notifications';
 
@@ -99,4 +100,39 @@ export async function issueWishlistInvite(args: IssueInviteArgs): Promise<IWishl
   }
 
   return invite;
+}
+
+/**
+ * Cancel the invites a user still has pending on a wishlist they've just left or
+ * lost a role on (leave, kick, owner removal, demotion), along with the
+ * `wishlist_invite` notifications that point them at those invites.
+ *
+ * Accepting an invite grants the role it names, so a leftover one lets the person
+ * who was removed undo it: an `owner` invite brings a kicked member back as a
+ * co-owner, and a demoted owner back to owner. Re-checking membership on accept
+ * isn't an option, because `owner` invites legitimately go to non-members too.
+ *
+ * Call it only after the membership/ownership write has landed. Never before it,
+ * and never when `removeWishlistOwner` refused it (returned `false`).
+ *
+ * Only *pending* invites go. Accepted and declined rows are kept on purpose. The
+ * invite delete is the fix itself, so its failure propagates to the caller. The
+ * notification cleanup is best-effort, like a deleted wishlist's: a failure is
+ * logged and swallowed. Notifications carry no invite id, so they're matched on
+ * recipient + wishlist, and only cleared when a pending invite was actually
+ * cancelled. After that none can be left pending for the pair.
+ */
+export async function cancelPendingInvites(wishlistId: Id, userId: Id): Promise<void> {
+  const { deletedCount } = await WishlistInvite.deleteMany({
+    wishlist: wishlistId,
+    invitedUser: userId,
+    status: 'pending',
+  });
+  if (!deletedCount) return;
+
+  try {
+    await Notification.deleteMany({ user: userId, wishlist: wishlistId, type: 'wishlist_invite' });
+  } catch (err) {
+    console.error(`Invite notification cleanup failed for wishlist ${wishlistId}:`, err);
+  }
 }

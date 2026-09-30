@@ -6,6 +6,7 @@ import { resolveWishlistId } from '@/lib/utils/wishlistSlug';
 import { getOwnerAccess } from '@/lib/utils/wishlistAccess';
 import { isWishlistOwner } from '@/lib/utils/wishlistOwners';
 import { releaseUserBookings } from '@/lib/utils/wishlistOwnership';
+import { cancelPendingInvites } from '@/lib/utils/wishlistInvites';
 
 // DELETE /api/wishlists/[id]/members/[memberId] - Remove a member from a wishlist.
 //
@@ -79,6 +80,9 @@ export async function DELETE(
 
     // Remove membership
     await WishlistMember.findByIdAndDelete(memberId);
+
+    // Otherwise accepting a leftover invite would bring them straight back.
+    await cancelPendingInvites(id, membershipUserId);
 
     return NextResponse.json({ success: true, data: {} }, { status: 200 });
   } catch (error) {
