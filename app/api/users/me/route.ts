@@ -5,7 +5,7 @@ import User from '@/models/User';
 import Follow from '@/models/Follow';
 import { updateProfileSchema, validateRequestBody } from '@/lib/validations';
 import { isReservedUsername } from '@/lib/utils/username';
-import { deleteOwnBlob } from '@/lib/utils/blob';
+import { canAttachImage, deleteOwnBlob, FOREIGN_IMAGE_ERROR, isUploadedBy } from '@/lib/utils/blob';
 
 // GET /api/users/me - current user's profile + privacy settings
 export async function GET() {
@@ -62,6 +62,10 @@ export async function PATCH(request: NextRequest) {
 
     const { username, image, bio, defaultCurrency, privacy } = validation.data;
 
+    if (!canAttachImage(image, session.user.id, user.image)) {
+      return NextResponse.json({ success: false, error: FOREIGN_IMAGE_ERROR }, { status: 400 });
+    }
+
     if (username && username !== user.username) {
       if (isReservedUsername(username)) {
         return NextResponse.json(
@@ -106,7 +110,15 @@ export async function PATCH(request: NextRequest) {
 
     await user.save();
 
-    if (previousAvatar && previousAvatar !== user.image) {
+    // An avatar has exactly one legitimate uploader, its user, so check that
+    // here as well as on write: it keeps a foreign blob URL saved before the
+    // write check existed from being freed. (Item images and banners can carry
+    // a co-owner's or proposer's upload, so they rely on the write check.)
+    if (
+      previousAvatar &&
+      previousAvatar !== user.image &&
+      isUploadedBy(previousAvatar, session.user.id)
+    ) {
       await deleteOwnBlob(previousAvatar);
     }
 

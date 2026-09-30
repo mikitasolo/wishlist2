@@ -66,7 +66,7 @@ Copy `.env.example` to `.env.local` and fill in:
 | `SMTP_PASSWORD`            | yes      | SMTP password                                                                 |
 | `EMAIL_FROM`               | yes      | From address for outgoing mail                                                |
 | `MIGRATION_SECRET`         | yes      | Shared secret guarding migration endpoints                                    |
-| `BLOB_READ_WRITE_TOKEN`    | yes      | Vercel Blob token (read implicitly by the Blob SDK) for image uploads         |
+| `BLOB_READ_WRITE_TOKEN`    | yes      | Vercel Blob token for uploads. Its store ID says which blob URLs are ours     |
 | `UPSTASH_REDIS_REST_URL`   | no       | Upstash Redis REST URL for rate limiting. Unset ⇒ rate limiting disabled      |
 | `UPSTASH_REDIS_REST_TOKEN` | no       | Upstash Redis REST token (set together with the URL)                          |
 

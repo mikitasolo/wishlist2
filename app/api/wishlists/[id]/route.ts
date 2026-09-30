@@ -8,7 +8,12 @@ import User from '@/models/User';
 import Item from '@/models/Item';
 import { updateWishlistSchema, validateRequestBody } from '@/lib/validations';
 import { areFriends } from '@/lib/utils/friends';
-import { deleteOwnBlob, deleteOwnBlobs } from '@/lib/utils/blob';
+import {
+  canAttachImage,
+  deleteOwnBlob,
+  deleteOwnBlobs,
+  FOREIGN_IMAGE_ERROR,
+} from '@/lib/utils/blob';
 import {
   resolveWishlistId,
   generateUniqueWishlistSlug,
@@ -181,8 +186,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const validatedData = validation.data;
     if (validatedData.name !== undefined) updateData.name = validatedData.name;
     if (validatedData.description !== undefined) updateData.description = validatedData.description;
-    if (validatedData.bannerUrl !== undefined)
+    if (validatedData.bannerUrl !== undefined) {
+      if (!canAttachImage(validatedData.bannerUrl, session.user.id, wishlist.bannerUrl)) {
+        return NextResponse.json({ success: false, error: FOREIGN_IMAGE_ERROR }, { status: 400 });
+      }
       updateData.bannerUrl = validatedData.bannerUrl || null;
+    }
     if (validatedData.currency !== undefined) updateData.currency = validatedData.currency;
 
     // Slug: validate reserved + uniqueness before applying.
