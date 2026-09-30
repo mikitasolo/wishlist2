@@ -49,7 +49,11 @@ export default function BookedPage() {
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [gifts, setGifts] = useState<Gift[]>([]);
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState<string | null>(null);
+  // Reservations and gift-log entries whose action is still in flight. Tracked
+  // per id, not as one id for the page: acting on another card must not
+  // re-enable this one's buttons, and that action settling first must not
+  // unlock this one while its own request is still pending.
+  const [busyIds, setBusyIds] = useState<ReadonlySet<string>>(() => new Set());
   const [giftConfirm, setGiftConfirm] = useState<string | null>(null);
   const [dismissConfirm, setDismissConfirm] = useState<string | null>(null);
   const [deleteGiftConfirm, setDeleteGiftConfirm] = useState<string | null>(null);
@@ -89,8 +93,20 @@ export default function BookedPage() {
     }
   }
 
+  // A functional update, so actions settling in any order each touch only their
+  // own entry and never write back a stale copy of the set.
+  function setBusy(id: string, busy: boolean) {
+    setBusyIds((prev) => {
+      if (prev.has(id) === busy) return prev;
+      const next = new Set(prev);
+      if (busy) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
   async function markGifted(id: string) {
-    setBusy(id);
+    setBusy(id, true);
     try {
       const res = await fetch(`/api/reservations/${id}/gift`, { method: 'POST' });
       const result = await res.json();
@@ -104,12 +120,12 @@ export default function BookedPage() {
     } catch {
       showToast('Something went wrong', 'error');
     } finally {
-      setBusy(null);
+      setBusy(id, false);
     }
   }
 
   async function dismiss(id: string) {
-    setBusy(id);
+    setBusy(id, true);
     try {
       const res = await fetch(`/api/reservations/${id}`, { method: 'DELETE' });
       const result = await res.json();
@@ -122,12 +138,12 @@ export default function BookedPage() {
     } catch {
       showToast('Something went wrong', 'error');
     } finally {
-      setBusy(null);
+      setBusy(id, false);
     }
   }
 
   async function deleteGift(id: string) {
-    setBusy(id);
+    setBusy(id, true);
     try {
       const res = await fetch(`/api/gifts/${id}`, { method: 'DELETE' });
       const result = await res.json();
@@ -140,7 +156,7 @@ export default function BookedPage() {
     } catch {
       showToast('Something went wrong', 'error');
     } finally {
-      setBusy(null);
+      setBusy(id, false);
     }
   }
 
@@ -210,7 +226,7 @@ export default function BookedPage() {
                             <ReservationCard
                               key={r._id}
                               r={r}
-                              busy={busy === r._id}
+                              busy={busyIds.has(r._id)}
                               highlight
                               onGift={() => setGiftConfirm(r._id)}
                               onDismiss={() => setDismissConfirm(r._id)}
@@ -233,7 +249,7 @@ export default function BookedPage() {
                             <ReservationCard
                               key={r._id}
                               r={r}
-                              busy={busy === r._id}
+                              busy={busyIds.has(r._id)}
                               onGift={() => setGiftConfirm(r._id)}
                               onDismiss={() => setDismissConfirm(r._id)}
                             />
@@ -272,7 +288,7 @@ export default function BookedPage() {
                           </p>
                         </div>
                         <button
-                          disabled={busy === g._id}
+                          disabled={busyIds.has(g._id)}
                           onClick={() => setDeleteGiftConfirm(g._id)}
                           className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-red-600 disabled:opacity-50"
                           aria-label="Delete from gift history"
