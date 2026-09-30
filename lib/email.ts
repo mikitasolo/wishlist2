@@ -263,41 +263,6 @@ export async function sendMagicLinkEmail(email: string, magicLink: string) {
   }
 }
 
-export async function sendInvitationEmail(email: string, invitedBy: string) {
-  const siteTitle = 'Wishlist';
-  const signInUrl = `${env.NEXTAUTH_URL}/auth/signin`;
-
-  const html = getEmailTemplate({
-    title: 'Invitation',
-    greeting: `${invitedBy} invited you to Wishlist`,
-    content: `
-      <p><strong>${invitedBy}</strong> invited you to join <strong>${siteTitle}</strong>.</p>
-      <p>Sign in to view wishlists and quietly reserve gifts. No password needed — just use this email address.</p>
-    `,
-    buttonText: 'Sign in',
-    buttonUrl: signInUrl,
-    footerText: `Sign in with <strong>${email}</strong>`,
-  });
-
-  const logo = await logoAttachment();
-  const mailOptions = {
-    from: env.EMAIL_FROM,
-    to: email,
-    subject: `You've been invited to ${siteTitle}!`,
-    html,
-    text: `You've been invited!\n\n${invitedBy} has invited you to join ${siteTitle}.\n\nSign in at: ${signInUrl}\n\nWhen you sign in, use this email address: ${email}`,
-    attachments: logo ? [logo] : [],
-  };
-
-  try {
-    await transporter.sendMail(mailOptions);
-    console.log('Invitation email sent to:', email);
-  } catch (error) {
-    console.error('Error sending invitation email:', error);
-    throw error;
-  }
-}
-
 export async function sendWishlistInvitationEmail(
   email: string,
   wishlistName: string,
