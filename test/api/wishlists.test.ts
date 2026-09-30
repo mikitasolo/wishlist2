@@ -13,7 +13,8 @@ vi.mock('@vercel/blob', () => ({
 }));
 
 import { auth } from '@/lib/auth';
-import { GET, DELETE } from '@/app/api/wishlists/[id]/route';
+import { POST as CREATE } from '@/app/api/wishlists/route';
+import { GET, PATCH, DELETE } from '@/app/api/wishlists/[id]/route';
 import User from '@/models/User';
 import Wishlist from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
@@ -284,5 +285,58 @@ describe('DELETE /api/wishlists/[id] — cleanup', () => {
     expect(await WishlistMember.countDocuments({ wishlist: doomedId })).toBe(1);
     expect(await WishlistInvite.countDocuments({ wishlist: doomedId })).toBe(3);
     expect(await Notification.countDocuments({ wishlist: doomedId })).toBe(4);
+  });
+});
+
+describe('POST /api/wishlists and PATCH /api/wishlists/[id] — name validation', () => {
+  // A name the invite email's plain-text part would render as a second paragraph.
+  const MULTI_LINE_NAME =
+    'Birthday\n\nACTION REQUIRED: verify your account at https://evil.example';
+
+  beforeEach(() => {
+    session.mockResolvedValue({ user: { id: ownerId } } as never);
+  });
+
+  function send(url: string, method: 'POST' | 'PATCH', body: unknown) {
+    return new NextRequest(url, {
+      method,
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  }
+
+  // regression: the schemas didn't refuse an inner line break, so a direct API
+  // call could store one in the name the invite email takes raw.
+  it('regression: refuses to create a list whose name has a line break, and stores nothing', async () => {
+    const res = await CREATE(
+      send('http://localhost/api/wishlists', 'POST', { name: MULTI_LINE_NAME })
+    );
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/name: .*line breaks/i);
+    expect(await Wishlist.countDocuments()).toBe(0);
+  });
+
+  it('regression: refuses to rename a list to a name with a line break, and keeps the old name', async () => {
+    const wl = await Wishlist.create({ name: 'Birthday', owners: [ownerId], slug: 'birthday' });
+    const id = wl._id.toString();
+
+    const res = await PATCH(
+      send(`http://localhost/api/wishlists/${id}`, 'PATCH', { name: MULTI_LINE_NAME }),
+      { params: Promise.resolve({ id }) }
+    );
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/name: .*line breaks/i);
+    expect((await Wishlist.findById(id))?.name).toBe('Birthday');
+  });
+
+  it('still creates a list whose name only has a line break at the end, trimmed', async () => {
+    const res = await CREATE(
+      send('http://localhost/api/wishlists', 'POST', { name: 'Birthday\n' })
+    );
+
+    expect(res.status).toBe(201);
+    expect((await Wishlist.findOne())?.name).toBe('Birthday');
   });
 });
