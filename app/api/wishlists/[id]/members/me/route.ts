@@ -10,6 +10,7 @@ import {
   releaseUserBookings,
   removeWishlistOwner,
 } from '@/lib/utils/wishlistOwnership';
+import { cancelPendingInvites } from '@/lib/utils/wishlistInvites';
 
 const onlyOwnerError = () =>
   NextResponse.json(
@@ -61,6 +62,8 @@ export async function DELETE(
       });
       if (removal !== 'removed') return onlyOwnerError();
       const unbookedCount = await releaseUserBookings(wishlistId, session.user.id);
+      // Leaving means no way back in through an invite that was already pending.
+      await cancelPendingInvites(wishlistId, session.user.id);
 
       return NextResponse.json(
         { success: true, data: { unbookedItemsCount: unbookedCount, wasOwner: true } },
@@ -93,6 +96,9 @@ export async function DELETE(
 
     // Remove membership
     await WishlistMember.findByIdAndDelete(membership._id);
+
+    // Leaving means no way back in through an invite that was already pending.
+    await cancelPendingInvites(wishlistId, session.user.id);
 
     return NextResponse.json(
       {

@@ -15,7 +15,7 @@ import {
   releaseUserBookings,
   removeWishlistOwner,
 } from '@/lib/utils/wishlistOwnership';
-import { issueWishlistInvite } from '@/lib/utils/wishlistInvites';
+import { cancelPendingInvites, issueWishlistInvite } from '@/lib/utils/wishlistInvites';
 
 /**
  * Who owns a wishlist. Owners have no `WishlistMember` row (they live in
@@ -216,6 +216,9 @@ export async function PATCH(
     });
     if (removal !== 'removed') return removalRefused(removal);
 
+    // Nothing left for them to accept: a pending invite would undo the demotion.
+    await cancelPendingInvites(authorized.id, userId);
+
     const user = await User.findById(userId).select('username image');
     return NextResponse.json({ success: true, data: { role: 'member', user } }, { status: 200 });
   } catch (error) {
@@ -265,6 +268,8 @@ export async function DELETE(
     // Defensive: an owner shouldn't hold a booking on their own list, but if a
     // stale one exists don't leave the item stuck as claimed.
     await releaseUserBookings(authorized.id, userId);
+    // Otherwise accepting a leftover invite would bring them straight back.
+    await cancelPendingInvites(authorized.id, userId);
 
     return NextResponse.json({ success: true, data: {} }, { status: 200 });
   } catch (error) {

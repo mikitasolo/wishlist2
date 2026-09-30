@@ -695,7 +695,8 @@ export default function WishlistDetail() {
           deleteConfirm.type === 'owner' ? 'Owner removed' : 'Member removed successfully',
           'success'
         );
-        await refreshMembers();
+        // Removing someone also cancels any invite they still had pending here.
+        await Promise.all([refreshMembers(), refreshInvites()]);
       } else {
         showToast(result.error || 'Failed to remove member', 'error');
       }
@@ -705,7 +706,7 @@ export default function WishlistDetail() {
     } finally {
       setDeleteConfirm(null);
     }
-  }, [wishlistId, deleteConfirm, showToast, refreshMembers]);
+  }, [wishlistId, deleteConfirm, showToast, refreshMembers, refreshInvites]);
 
   /**
    * Send a member an invitation to become a co-owner. It's an invite, not a role
@@ -746,7 +747,8 @@ export default function WishlistDetail() {
         const result = await res.json();
         if (result.success) {
           showToast('Owner is now a member', 'success');
-          await refreshMembers();
+          // Demoting also cancels any invite they still had pending here.
+          await Promise.all([refreshMembers(), refreshInvites()]);
         } else {
           showToast(result.error || 'Failed to update owner', 'error');
         }
@@ -755,7 +757,7 @@ export default function WishlistDetail() {
         showToast('Failed to update owner', 'error');
       }
     },
-    [wishlistId, showToast, refreshMembers]
+    [wishlistId, showToast, refreshMembers, refreshInvites]
   );
 
   const confirmPromoteToOwner = useCallback(async () => {
