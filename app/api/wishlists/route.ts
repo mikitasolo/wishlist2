@@ -10,6 +10,7 @@ import { generateUniqueWishlistSlug } from '@/lib/utils/wishlistSlug';
 import mongoose from 'mongoose';
 import { createWishlistSchema, validateRequestBody } from '@/lib/validations';
 import { ownedByFilter, ownerIds, serializeWishlist } from '@/lib/utils/wishlistOwners';
+import { canAttachImage, FOREIGN_IMAGE_ERROR } from '@/lib/utils/blob';
 
 // GET /api/wishlists - Get all wishlists user has access to
 export async function GET(request: NextRequest) {
@@ -166,6 +167,10 @@ export async function POST(request: NextRequest) {
     }
 
     const { name, description, visibility, bannerUrl, currency } = validation.data;
+
+    if (!canAttachImage(bannerUrl, session.user.id)) {
+      return NextResponse.json({ success: false, error: FOREIGN_IMAGE_ERROR }, { status: 400 });
+    }
 
     // Create wishlist with a URL slug derived from its name.
     const slug = await generateUniqueWishlistSlug(name);

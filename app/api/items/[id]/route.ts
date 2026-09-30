@@ -10,7 +10,7 @@ import WishlistMember from '@/models/WishlistMember';
 import Reservation from '@/models/Reservation';
 import { updateItemSchema, validateRequestBody } from '@/lib/validations';
 import { ensureCurrencyRatesUpToDate } from '@/lib/utils/currencyRates';
-import { deleteOwnBlob } from '@/lib/utils/blob';
+import { canAttachImage, deleteOwnBlob, FOREIGN_IMAGE_ERROR } from '@/lib/utils/blob';
 import { createNotification } from '@/lib/notifications';
 import { isWishlistOwner, primaryOwnerId } from '@/lib/utils/wishlistOwners';
 
@@ -235,6 +235,16 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
           { status: 403 }
         );
       }
+    }
+
+    // Checked on what's about to be written, whichever branch above set it. An
+    // unchanged URL passes, so co-owners and owners approving a proposal keep
+    // an image someone else uploaded.
+    if (
+      updateData.imageUrl !== undefined &&
+      !canAttachImage(updateData.imageUrl, session.user.id, currentItem.imageUrl)
+    ) {
+      return NextResponse.json({ success: false, error: FOREIGN_IMAGE_ERROR }, { status: 400 });
     }
 
     const item = await Item.findByIdAndUpdate(

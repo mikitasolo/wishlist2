@@ -11,6 +11,7 @@ import { ensureCurrencyRatesUpToDate, convertToUsdCents } from '@/lib/utils/curr
 import { resolveWishlistId } from '@/lib/utils/wishlistSlug';
 import { createNotifications } from '@/lib/notifications';
 import { isWishlistOwner, ownerIds } from '@/lib/utils/wishlistOwners';
+import { canAttachImage, FOREIGN_IMAGE_ERROR } from '@/lib/utils/blob';
 
 // Helper function to check wishlist access
 async function checkWishlistAccess(
@@ -246,6 +247,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     const { name, imageUrl, price, link, notes, status, bookedBy } = validation.data;
+
+    // Covers owner-created items and member proposals alike.
+    if (!canAttachImage(imageUrl, session.user.id)) {
+      return NextResponse.json({ success: false, error: FOREIGN_IMAGE_ERROR }, { status: 400 });
+    }
 
     // Ensure currency rates are up to date for validation
     const currencyRate = await ensureCurrencyRatesUpToDate();
