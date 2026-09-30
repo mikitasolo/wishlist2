@@ -518,15 +518,40 @@ export default function WishlistDetail() {
     [wishlistId, showToast]
   );
 
+  // Approving doesn't go through handleUpdateItem: that never reports a failure,
+  // and the owner must only be told "approved" when the server agreed.
   const handleReviewItem = useCallback(
     async (updates: Partial<ApiItem> & { status: 'draft' | 'available' }) => {
       if (!itemToReview) return;
       const itemId = itemToReview._id;
-      await handleUpdateItem(itemId, updates);
+      // The proposal as the list shows it now, to put back if the approve fails.
+      const proposal = items.find((item) => item._id === itemId);
+
+      lastMutationAt.current = Date.now();
+      setItems((prevItems) =>
+        prevItems.map((item) => (item._id === itemId ? { ...item, ...updates } : item))
+      );
+
+      const approved = await updateItemHook(itemId, updates);
+      // Mark the settle time so any poll that read across this mutation is dropped.
+      lastMutationAt.current = Date.now();
+
+      if (!approved) {
+        // The hook has already toasted the API's error. Roll the optimistic
+        // approve back, and reject so ReviewItemModal stays open with the edits.
+        if (proposal) {
+          setItems((prevItems) => prevItems.map((item) => (item._id === itemId ? proposal : item)));
+        }
+        throw new Error('Failed to approve item');
+      }
+
+      setItems((prevItems) =>
+        prevItems.map((item) => (item._id === itemId ? { ...item, ...approved } : item))
+      );
       setItemToReview(null);
       showToast('Item approved successfully', 'success');
     },
-    [itemToReview, handleUpdateItem, showToast]
+    [itemToReview, items, updateItemHook, showToast]
   );
 
   const handleDeleteProposedItem = useCallback(async () => {
