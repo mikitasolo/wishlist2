@@ -59,7 +59,11 @@ let carol: string; // member
 let dave: string; // second member
 let wid: string;
 
-beforeAll(connectTestDB);
+beforeAll(async () => {
+  await connectTestDB();
+  // Concurrent-promotion tests rely on the unique pending-invite index.
+  await WishlistInvite.init();
+});
 afterAll(disconnectTestDB);
 
 beforeEach(async () => {
@@ -336,7 +340,10 @@ describe('promotion to owner is consent-gated', () => {
 });
 
 describe('promotion reaches existing members only, and keeps its other guards', () => {
-  afterEach(() => __setRateLimiters(null));
+  afterEach(() => {
+    __setRateLimiters(null);
+    vi.restoreAllMocks();
+  });
 
   function promote(userId: string) {
     return postOwner(req(`/api/wishlists/${wid}/owners/${userId}`, 'POST'), {
@@ -481,6 +488,37 @@ describe('promotion reaches existing members only, and keeps its other guards', 
     expect((await again.json()).error).toMatch(/pending invite/i);
     expect(await WishlistInvite.countDocuments({ wishlist: wid, invitedUser: carol })).toBe(1);
     expect(sendEmail).toHaveBeenCalledOnce();
+  });
+
+  it('two owners promoting the same member at once issue one invite', async () => {
+    // Each concurrent request reads its own session.
+    session
+      .mockResolvedValueOnce({ user: { id: alice } } as never)
+      .mockResolvedValueOnce({ user: { id: bob } } as never);
+
+    const results = await Promise.all([promote(carol), promote(carol)]);
+    expect(results.map((r) => r.status).sort()).toEqual([202, 400]);
+    expect(
+      await WishlistInvite.countDocuments({ wishlist: wid, invitedUser: carol, status: 'pending' })
+    ).toBe(1);
+    expect(sendEmail).toHaveBeenCalledOnce();
+    expect(await Notification.countDocuments({ user: carol, type: 'wishlist_invite' })).toBe(1);
+  });
+
+  // regression: a failed invite email used to be rethrown after the invite was
+  // written, so the promotion answered 500 with no notification behind it.
+  it('regression: a promotion whose email fails still stands, with its notification', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    sendEmail.mockRejectedValueOnce(new Error('SMTP unavailable'));
+
+    as(alice);
+    const res = await promote(carol);
+    expect(res.status).toBe(202);
+    expect((await res.json()).data).toMatchObject({ pending: true, role: 'owner' });
+    expect(
+      await WishlistInvite.countDocuments({ wishlist: wid, invitedUser: carol, status: 'pending' })
+    ).toBe(1);
+    expect(await Notification.countDocuments({ user: carol, type: 'wishlist_invite' })).toBe(1);
   });
 
   it('refuses to promote someone who already owns the list', async () => {

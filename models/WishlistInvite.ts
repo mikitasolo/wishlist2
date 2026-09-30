@@ -30,6 +30,17 @@ const WishlistInviteSchema = new Schema(
 WishlistInviteSchema.index({ wishlist: 1, invitedUser: 1, status: 1 });
 WishlistInviteSchema.index({ invitedUser: 1, status: 1 });
 
+// At most one *pending* invite per person per list, so concurrent invites can't
+// both land (`issueWishlistInvite` answers the duplicate-key error as "already
+// pending"). Partial on purpose: accepting or declining keeps the row and only
+// changes `status`, and a full unique index would then block re-inviting someone
+// who declined. Environments that predate it are deduped and indexed by the
+// `dedupe-pending-invites` migration.
+WishlistInviteSchema.index(
+  { wishlist: 1, invitedUser: 1 },
+  { unique: true, partialFilterExpression: { status: 'pending' } }
+);
+
 export interface IWishlistInvite {
   _id: mongoose.Types.ObjectId;
   wishlist: mongoose.Types.ObjectId;
