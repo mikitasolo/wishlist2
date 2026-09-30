@@ -411,14 +411,11 @@ export default function WishlistDetail() {
     showToast(error, 'error');
   });
 
-  const deleteItemHook = useDeleteItem(
-    () => {
-      showToast('Item deleted successfully', 'success');
-    },
-    (error) => {
-      showToast(error, 'error');
-    }
-  );
+  // No success toast here — each delete handler says what it removed, and only
+  // once the delete has succeeded.
+  const deleteItemHook = useDeleteItem(undefined, (error) => {
+    showToast(error, 'error');
+  });
 
   const handleCreateItem = useCallback(
     async (itemData: {
@@ -532,7 +529,10 @@ export default function WishlistDetail() {
   const handleDeleteProposedItem = useCallback(async () => {
     if (!itemToReview) return;
     const itemId = itemToReview._id;
-    await deleteItemHook(itemId);
+    // The hook toasts a failure and resolves false. Reject so ReviewItemModal
+    // stays open and the item stays listed; it closes itself on success.
+    const deleted = await deleteItemHook(itemId);
+    if (!deleted) throw new Error('Failed to delete item');
     setItems((prevItems) => prevItems.filter((item) => item._id !== itemId));
     setItemToReview(null);
     showToast('Proposed item deleted', 'success');
@@ -555,10 +555,14 @@ export default function WishlistDetail() {
   const handleDeleteItem = useCallback(async () => {
     if (!itemToEdit) return;
     const itemId = itemToEdit._id;
-    await deleteItemHook(itemId);
+    // The hook toasts a failure and resolves false. Reject so EditItemModal
+    // stays open and the item stays listed; it closes itself on success.
+    const deleted = await deleteItemHook(itemId);
+    if (!deleted) throw new Error('Failed to delete item');
     setItems((prevItems) => prevItems.filter((item) => item._id !== itemId));
     setItemToEdit(null);
-  }, [itemToEdit, deleteItemHook]);
+    showToast('Item deleted successfully', 'success');
+  }, [itemToEdit, deleteItemHook, showToast]);
 
   const handleInvite = useCallback(
     async (payload: { username: string; role: 'owner' | 'member' }) => {

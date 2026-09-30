@@ -76,17 +76,20 @@ export default function EditItemModal({
     }
   };
 
+  // onDelete rejects when the delete fails (after showing the error), so only a
+  // real delete closes the modal. Either way the confirmation is answered: on a
+  // failure it drops back to this modal, item intact, for a retry or cancel.
   const handleDelete = async () => {
-    if (!onDelete) return;
+    if (!onDelete || isDeleting) return;
     setIsDeleting(true);
     try {
       await onDelete();
-      setShowDeleteConfirm(false);
       setHasUnsavedChanges(false);
       onClose();
     } catch (error) {
       console.error('Error deleting item:', error);
     } finally {
+      setShowDeleteConfirm(false);
       setIsDeleting(false);
     }
   };
