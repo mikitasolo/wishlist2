@@ -1,5 +1,6 @@
-import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import { NextRequest } from 'next/server';
+import mongoose from 'mongoose';
 import { connectTestDB, disconnectTestDB, clearTestDB } from '../db';
 
 vi.mock('@/lib/mongodb', () => ({ default: vi.fn().mockResolvedValue(undefined) }));
@@ -28,6 +29,7 @@ import {
 import { DELETE as leave } from '@/app/api/wishlists/[id]/members/me/route';
 import { PATCH as respondInvite } from '@/app/api/invites/[inviteId]/route';
 import { GET as getProfileWishlists } from '@/app/api/users/[id]/wishlists/route';
+import { __setRateLimiters, type RateLimiter } from '@/lib/rateLimit';
 import User from '@/models/User';
 import Wishlist from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
@@ -330,6 +332,163 @@ describe('promotion to owner is consent-gated', () => {
     );
     expect(res.status).toBe(400);
     expect((await res.json()).error).toMatch(/already a member/i);
+  });
+});
+
+describe('promotion reaches existing members only, and keeps its other guards', () => {
+  afterEach(() => __setRateLimiters(null));
+
+  function promote(userId: string) {
+    return postOwner(req(`/api/wishlists/${wid}/owners/${userId}`, 'POST'), {
+      params: Promise.resolve({ id: wid, userId }),
+    });
+  }
+
+  async function expectNothingSent(userId: string) {
+    expect(await WishlistInvite.countDocuments({ wishlist: wid })).toBe(0);
+    expect(await Notification.countDocuments({ user: userId })).toBe(0);
+    expect(sendEmail).not.toHaveBeenCalled();
+  }
+
+  // regression: the promotion route skips the target's `whoCanInvite` on the grounds
+  // that they're "already on this list", but never checked that they were — so any
+  // owner could send an owner invite (email + notification) to any user id.
+  it('regression: promoting a non-member is a 404 and sends nothing', async () => {
+    const erin = (await User.create({ email: 'e@x.com', username: 'erin' }))._id.toString();
+
+    as(alice);
+    const res = await promote(erin);
+    expect(res.status).toBe(404);
+    expect((await res.json()).error).toBe("This person isn't a member of this wishlist");
+    await expectNothingSent(erin);
+  });
+
+  // regression: the missing membership check let an owner reach someone who opted
+  // out of invites entirely — `POST /members` refuses them, this route didn't.
+  it('regression: a non-member who accepts no invites cannot be reached through either door', async () => {
+    const erin = await User.create({
+      email: 'e@x.com',
+      username: 'erin',
+      privacy: { whoCanInvite: 'nobody' },
+    });
+    const erinId = erin._id.toString();
+
+    as(alice);
+    const promoted = await promote(erinId);
+    expect(promoted.status).toBe(404);
+
+    const invited = await invite(
+      req(`/api/wishlists/${wid}/members`, 'POST', { username: 'erin', role: 'owner' }),
+      { params: Promise.resolve({ id: wid }) }
+    );
+    expect(invited.status).toBe(403);
+
+    await expectNothingSent(erinId);
+  });
+
+  // regression: with the membership check missing, a made-up id reached the user
+  // lookup and came back "User not found" — a different answer from a real user's.
+  it('regression: answers a non-member, a nonexistent user and a malformed id identically', async () => {
+    const erin = (await User.create({ email: 'e@x.com', username: 'erin' }))._id.toString();
+    const ghost = new mongoose.Types.ObjectId().toString();
+
+    as(alice);
+    const responses = [await promote(erin), await promote(ghost), await promote('not-an-id')];
+    const bodies = await Promise.all(responses.map((r) => r.json()));
+
+    expect(responses.map((r) => r.status)).toEqual([404, 404, 404]);
+    expect(bodies[1]).toEqual(bodies[0]);
+    expect(bodies[2]).toEqual(bodies[0]);
+    await expectNothingSent(ghost);
+  });
+
+  it('treats a membership whose account is gone as no membership', async () => {
+    const ghost = new mongoose.Types.ObjectId().toString();
+    await WishlistMember.create({ wishlist: wid, user: ghost });
+
+    as(alice);
+    const res = await promote(ghost);
+    expect(res.status).toBe(404);
+    expect((await res.json()).error).toBe("This person isn't a member of this wishlist");
+    await expectNothingSent(ghost);
+  });
+
+  it('a former member can no longer be promoted', async () => {
+    await WishlistMember.deleteOne({ wishlist: wid, user: carol });
+
+    as(alice);
+    const res = await promote(carol);
+    expect(res.status).toBe(404);
+    await expectNothingSent(carol);
+  });
+
+  it('a request that cannot send anything does not spend the invite budget', async () => {
+    const limit = vi.fn<RateLimiter['limit']>(async () => ({
+      success: true,
+      reset: 0,
+      limit: 30,
+      remaining: 29,
+    }));
+    __setRateLimiters({ invite: { limit } });
+    const erin = (await User.create({ email: 'e@x.com', username: 'erin' }))._id.toString();
+
+    as(alice);
+    expect((await promote(erin)).status).toBe(404);
+    expect(limit).not.toHaveBeenCalled();
+
+    expect((await promote(carol)).status).toBe(202);
+    expect(limit).toHaveBeenCalledWith(alice);
+  });
+
+  it('still rate-limits promoting a member, before anything is sent', async () => {
+    __setRateLimiters({
+      invite: {
+        async limit() {
+          return { success: false, reset: Date.now() + 60_000, limit: 30, remaining: 0 };
+        },
+      },
+    });
+
+    as(alice);
+    const res = await promote(carol);
+    expect(res.status).toBe(429);
+    await expectNothingSent(carol);
+  });
+
+  // Membership is what makes skipping `whoCanInvite` sound: they're already on the
+  // list by their own choice, so this changes a relationship they opted into.
+  it('promotes a member even if they accept no new invites', async () => {
+    await User.updateOne({ _id: carol }, { $set: { 'privacy.whoCanInvite': 'nobody' } });
+
+    as(alice);
+    const res = await promote(carol);
+    expect(res.status).toBe(202);
+    expect((await res.json()).data).toMatchObject({ pending: true, role: 'owner' });
+
+    const inv = await WishlistInvite.findOne({ wishlist: wid, invitedUser: carol });
+    expect(inv?.role).toBe('owner');
+    expect(inv?.status).toBe('pending');
+    expect(sendEmail).toHaveBeenCalledOnce();
+    expect(await Notification.countDocuments({ user: carol, type: 'wishlist_invite' })).toBe(1);
+  });
+
+  it('does not issue a second invite while one is pending', async () => {
+    as(alice);
+    expect((await promote(carol)).status).toBe(202);
+
+    const again = await promote(carol);
+    expect(again.status).toBe(400);
+    expect((await again.json()).error).toMatch(/pending invite/i);
+    expect(await WishlistInvite.countDocuments({ wishlist: wid, invitedUser: carol })).toBe(1);
+    expect(sendEmail).toHaveBeenCalledOnce();
+  });
+
+  it('refuses to promote someone who already owns the list', async () => {
+    as(alice);
+    const res = await promote(bob);
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/already owns/i);
+    await expectNothingSent(bob);
   });
 });
 
