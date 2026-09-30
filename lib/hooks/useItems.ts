@@ -141,28 +141,23 @@ export function useDeleteItem(onSuccess?: () => void, onError?: (error: string) 
 }
 
 /**
- * Hook for fetching items
+ * Hook for fetching items. Rejects when the read fails (network error, a non-2xx
+ * or unparseable response, `success: false`), so the caller keeps the list it
+ * already has: a resolved `[]` only ever means the list really is empty.
  */
 export function useFetchItems() {
   return useCallback(async (wishlistId: string): Promise<ApiItem[]> => {
     const requestKey = createRequestKey(`/api/wishlists/${wishlistId}/items`, 'GET');
 
-    try {
-      const data = await deduplicateRequest(requestKey, async () => {
-        const response = await fetch(`/api/wishlists/${wishlistId}/items`, { cache: 'no-store' });
-        const result: ApiResponse<ApiItem[]> = await response.json();
+    return deduplicateRequest(requestKey, async () => {
+      const response = await fetch(`/api/wishlists/${wishlistId}/items`, { cache: 'no-store' });
+      const result: ApiResponse<ApiItem[]> = await response.json();
 
-        if (!result.success) {
-          throw new Error(result.error || 'Failed to fetch items');
-        }
+      if (!response.ok || !result.success || !Array.isArray(result.data)) {
+        throw new Error(result.error || 'Failed to fetch items');
+      }
 
-        return result.data || [];
-      });
-
-      return data;
-    } catch (error) {
-      console.error('Error fetching items:', error);
-      return [];
-    }
+      return result.data;
+    });
   }, []);
 }

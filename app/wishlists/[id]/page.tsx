@@ -337,6 +337,10 @@ export default function WishlistDetail() {
   // clobbers the optimistic state and the UI flickers.
   const lastMutationAt = useRef(0);
 
+  // Whether a read of the list has landed yet. Until one has, an empty `items`
+  // means the list couldn't be loaded, not that it has no items.
+  const [itemsLoaded, setItemsLoaded] = useState(false);
+
   const fetchItems = useCallback(
     async (silent = false) => {
       if (!wishlistId) return;
@@ -347,11 +351,14 @@ export default function WishlistDetail() {
 
       const startedAt = Date.now();
       try {
+        // Rejects when the read fails, so a failed poll or reconcile keeps the
+        // list on screen: only a successful read replaces it.
         const data = await fetchItemsHook(wishlistId);
         // Drop a poll result that raced with a mutation (started before the
         // mutation settled) so it can't overwrite fresher local state.
         if (silent && isStalePoll(startedAt, lastMutationAt.current)) return;
         setItems(data);
+        setItemsLoaded(true);
       } catch (error) {
         console.error('Error fetching items:', error);
         if (!silent) {
@@ -1241,6 +1248,20 @@ export default function WishlistDetail() {
             {/* Items Grid */}
             {loadingItems ? (
               <SkeletonGrid count={8} variant="item" />
+            ) : !itemsLoaded && items.length === 0 ? (
+              // No read has landed yet (the failed one toasted). Don't claim the
+              // list is empty: the poll keeps retrying, and fills it in if one lands.
+              <div className="flex flex-col items-center rounded-2xl border border-dashed border-border-strong py-16 text-center sm:py-20">
+                <span className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-red-500/12 text-red-600 dark:text-red-400">
+                  <Icon name="alert" size={28} />
+                </span>
+                <h3 className="text-lg font-semibold text-foreground sm:text-xl">
+                  Failed to load items
+                </h3>
+                <p className="mx-auto mt-1.5 max-w-sm px-4 text-sm text-muted-foreground">
+                  Try reloading the page.
+                </p>
+              </div>
             ) : sortedItems.length === 0 ? (
               <div className="flex flex-col items-center rounded-2xl border border-dashed border-border-strong py-16 text-center sm:py-20">
                 <span className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
