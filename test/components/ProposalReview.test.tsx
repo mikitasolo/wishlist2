@@ -29,7 +29,16 @@ const approveButton = () => screen.getByRole('button', { name: /^approve item$/i
 
 function open(onApprove: () => Promise<void>) {
   const onClose = vi.fn();
-  render(<ReviewItemModal isOpen onClose={onClose} onApprove={onApprove} item={proposal} />);
+  render(
+    <ReviewItemModal
+      isOpen
+      onClose={onClose}
+      onApprove={onApprove}
+      item={proposal}
+      wishlistCurrency="USD"
+      userCurrency="USD"
+    />
+  );
   return { onClose };
 }
 

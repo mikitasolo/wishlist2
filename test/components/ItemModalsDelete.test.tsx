@@ -35,6 +35,8 @@ const modals = [
           onSave={vi.fn()}
           onDelete={onDelete}
           item={item({})}
+          wishlistCurrency="USD"
+          userCurrency="USD"
         />
       ),
   },
@@ -48,6 +50,8 @@ const modals = [
           onApprove={vi.fn()}
           onDelete={onDelete}
           item={item({ status: 'proposed' })}
+          wishlistCurrency="USD"
+          userCurrency="USD"
         />
       ),
   },
