@@ -94,10 +94,21 @@ export async function DELETE(
       );
     }
 
-    // Remove membership
-    await WishlistMember.findByIdAndDelete(membership._id);
-
     // Leaving means no way back in through an invite that was already pending.
+    // Cancelled before the membership goes and again after it, as a kick does
+    // (see `cancelPendingInvites`).
+    await cancelPendingInvites(wishlistId, session.user.id);
+
+    const { deletedCount } = await WishlistMember.deleteOne({ _id: membership._id });
+    if (!deletedCount) {
+      // A concurrent request took the row first: another leave, a kick, or their
+      // own accept of a promotion. This request didn't take them off the list.
+      return NextResponse.json(
+        { success: false, error: 'You are not a member of this wishlist' },
+        { status: 404 }
+      );
+    }
+
     await cancelPendingInvites(wishlistId, session.user.id);
 
     return NextResponse.json(

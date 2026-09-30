@@ -17,6 +17,12 @@ const WishlistInviteSchema = new Schema(
     invitedBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     invitedUser: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     role: { type: String, enum: ['owner', 'member'], required: true, default: 'member' },
+    // Set on an `owner` invite that promotes a member (POST /owners/[userId]).
+    // Accepting it can only turn their membership into ownership, so once they're
+    // off the list it grants nothing, however the accept and their removal
+    // interleave. Absent on every other invite, including promotions issued before
+    // the field existed.
+    promotion: { type: Boolean },
     status: {
       type: String,
       enum: ['pending', 'accepted', 'declined'],
@@ -47,6 +53,7 @@ export interface IWishlistInvite {
   invitedBy: mongoose.Types.ObjectId;
   invitedUser: mongoose.Types.ObjectId;
   role: 'owner' | 'member';
+  promotion?: boolean;
   status: 'pending' | 'accepted' | 'declined';
   createdAt: Date;
   updatedAt: Date;

@@ -89,6 +89,9 @@ export async function releaseHoldingsForRole(
  * Consent is the caller's job: promotion always goes through an accepted
  * `WishlistInvite`, never a silent role write — ownership puts the list on the
  * new owner's public profile and destroys their reservations on it.
+ *
+ * For someone who isn't on the list. Promote a member with `promoteMemberToOwner`,
+ * which can't race a kick.
  */
 export async function addWishlistOwner(
   wishlist: WishlistShape,
@@ -102,6 +105,59 @@ export async function addWishlistOwner(
     { $addToSet: { owners: new mongoose.Types.ObjectId(userId) } }
   );
   await WishlistMember.deleteMany({ wishlist: wishlistId, user: userId });
+
+  return releaseHoldingsForRole(wishlistId, userId, 'owner');
+}
+
+/**
+ * `addWishlistOwner` for a member of the list, who accepted an owner invite:
+ * their membership row becomes ownership, or nothing happens.
+ *
+ * The row is taken first, in one conditional delete, and ownership is granted only
+ * if that delete matched. A kick or a member leaving deletes the same row, so of a
+ * removal and a promotion racing each other exactly one lands. Without this a kick
+ * could land after accept claimed the invite and before it granted the role, and
+ * the member the owners had just removed would come back as a co-owner. Returns
+ * `null`, having changed nothing, when the row is already gone.
+ *
+ * If the ownership write then fails, the row is put back (same id, same join date)
+ * before the error propagates, so they aren't left off the list altogether. Not
+ * when the write landed after all and only its acknowledgement was lost: they're
+ * an owner then, and an owner has no membership row.
+ */
+export async function promoteMemberToOwner(
+  wishlist: WishlistShape,
+  userId: string
+): Promise<{ unbookedItems: number; cancelledReservations: number } | null> {
+  await connectDB();
+
+  const wishlistId = wishlist._id.toString();
+  const membership = await WishlistMember.findOneAndDelete({ wishlist: wishlistId, user: userId });
+  if (!membership) return null;
+
+  try {
+    await Wishlist.updateOne(
+      { _id: wishlistId },
+      { $addToSet: { owners: new mongoose.Types.ObjectId(userId) } }
+    );
+  } catch (err) {
+    try {
+      if (!(await isOwnerOfWishlist(wishlistId, userId))) {
+        await WishlistMember.create({
+          _id: membership._id,
+          wishlist: membership.wishlist,
+          user: membership.user,
+          createdAt: membership.createdAt,
+        });
+      }
+    } catch (restoreErr) {
+      console.error(
+        `Could not restore membership ${membership._id} after a failed promotion:`,
+        restoreErr
+      );
+    }
+    throw err;
+  }
 
   return releaseHoldingsForRole(wishlistId, userId, 'owner');
 }

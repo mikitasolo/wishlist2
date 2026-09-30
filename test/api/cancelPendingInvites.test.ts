@@ -10,11 +10,14 @@ import { auth } from '@/lib/auth';
 import { DELETE as kick } from '@/app/api/wishlists/[id]/members/[memberId]/route';
 import { DELETE as leave } from '@/app/api/wishlists/[id]/members/me/route';
 import {
+  POST as promote,
   PATCH as demote,
   DELETE as removeOwner,
 } from '@/app/api/wishlists/[id]/owners/[userId]/route';
 import { PATCH as respondInvite } from '@/app/api/invites/[inviteId]/route';
 import { cancelPendingInvites, issueWishlistInvite } from '@/lib/utils/wishlistInvites';
+import { sendWishlistInvitationEmail } from '@/lib/email';
+import { holdFirstCall } from '../interleave';
 import User from '@/models/User';
 import Wishlist from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
@@ -126,6 +129,13 @@ function demoteBob() {
   as(alice);
   return demote(req(`/api/wishlists/${wid}/owners/${bob}`, 'PATCH'), {
     params: Promise.resolve({ id: wid, userId: bob }),
+  });
+}
+
+function promoteCarol() {
+  as(alice);
+  return promote(req(`/api/wishlists/${wid}/owners/${carol}`, 'POST'), {
+    params: Promise.resolve({ id: wid, userId: carol }),
   });
 }
 
@@ -299,4 +309,188 @@ describe('cancelPendingInvites', () => {
     const res = await kickCarol();
     expect(res.status).toBe(500);
   });
+});
+
+/**
+ * Where carol stands once her removal has won a race: neither an owner nor a
+ * member, nothing pending that she could accept, and no notification pointing at
+ * an invite.
+ */
+async function expectCarolOffTheList() {
+  expect((await Wishlist.findById(wid))!.owners.map(String)).not.toContain(carol);
+  expect(await WishlistMember.exists({ wishlist: wid, user: carol })).toBeNull();
+  expect(
+    await WishlistInvite.countDocuments({ wishlist: wid, invitedUser: carol, status: 'pending' })
+  ).toBe(0);
+  expect(await invitesNotifications(carol, wid)).toBe(0);
+}
+
+/** Carol accepts the invite she's just been sent while its email is still sending. */
+function acceptWhileTheEmailSends() {
+  const acceptance: { res?: Response } = {};
+  vi.mocked(sendWishlistInvitationEmail).mockImplementationOnce(async () => {
+    const invite = await WishlistInvite.findOne({
+      wishlist: wid,
+      invitedUser: carol,
+      status: 'pending',
+    });
+    acceptance.res = await accept(invite!._id.toString(), carol);
+  });
+  return acceptance;
+}
+
+// Each removal, with what it answers when there was no one left for it to remove.
+const carolsRemovals: [string, () => Promise<Response>, RegExp][] = [
+  ['an owner kicks her', kickCarol, /membership not found/i],
+  ['she leaves', () => leaveAs(carol), /not a member/i],
+];
+
+// Carol is a member, and alice has asked her to co-own the list. Each race is run
+// in one fixed order (`holdFirstCall`), with both requests past their checks.
+describe('a removal racing her accept of a promotion', () => {
+  // regression: accept read the invite as pending, granted the role, and only then
+  // recorded `accepted`. A kick landing in between cancelled the invite and removed
+  // the membership, and the accept then made the member the owners had just
+  // removed a co-owner (and failed to save the invite it no longer had, so she saw
+  // a 500 while holding the list).
+  it.each(carolsRemovals)(
+    'regression: %s once her accept has read the invite: the removal wins',
+    async (_, remove) => {
+      const inviteId = await pendingInvite(wid, carol, 'owner');
+      const race = holdFirstCall(WishlistInvite, 'findById', remove, { after: true });
+
+      const accepted = await accept(inviteId, carol);
+
+      expect(race.outcome()?.status).toBe(200);
+      expect(accepted.status).toBe(404);
+      await expectCarolOffTheList();
+      expect(await WishlistInvite.findById(inviteId)).toBeNull();
+    }
+  );
+
+  // By now the removal's cancel finds nothing pending, so it's the membership row
+  // that decides: the removal deletes it first, and the promotion can't take it.
+  it.each(carolsRemovals)(
+    '%s once her accept has claimed the invite, before it grants anything: the removal wins',
+    async (_, remove) => {
+      const inviteId = await pendingInvite(wid, carol, 'owner');
+      const race = holdFirstCall(WishlistInvite, 'updateOne', remove, { after: true });
+
+      const accepted = await accept(inviteId, carol);
+
+      expect(race.outcome()?.status).toBe(200);
+      expect(accepted.status).toBe(404);
+      await expectCarolOffTheList();
+      // The claimed invite goes too, as the removal's cancel would have taken it,
+      // and nobody is told she accepted.
+      expect(await WishlistInvite.findById(inviteId)).toBeNull();
+      expect(await Notification.countDocuments({ type: 'invite_accepted' })).toBe(0);
+    }
+  );
+
+  // regression: kick and leave ignored the result of their membership delete, so a
+  // kick whose member had just become a co-owner still answered "Member removed".
+  it.each(carolsRemovals)(
+    'regression: her accept lands first when %s: she co-owns the list, and the removal reports it removed nobody',
+    async (_, remove, nobodyRemoved) => {
+      const inviteId = await pendingInvite(wid, carol, 'owner');
+      // The removal waits at its first invite write, the cancel, while she accepts.
+      const race = holdFirstCall(WishlistInvite, 'deleteMany', () => accept(inviteId, carol));
+
+      const removed = await remove();
+
+      expect(race.outcome()?.status).toBe(200);
+      expect(removed.status).toBe(404);
+      expect((await removed.json()).error).toMatch(nobodyRemoved);
+      expect((await Wishlist.findById(wid))!.owners.map(String)).toContain(carol);
+      expect(await WishlistMember.exists({ wishlist: wid, user: carol })).toBeNull();
+      expect((await WishlistInvite.findById(inviteId))?.status).toBe('accepted');
+    }
+  );
+});
+
+// Carol is a member, and alice asks her to co-own the list while she's removed.
+describe('a promotion racing her removal', () => {
+  // regression: promotion checked the membership, and issued the owner invite only
+  // later. A kick landing in between ran its cancel before the invite existed, so
+  // someone who was no longer on the list was left holding a live owner invite.
+  it.each(carolsRemovals)(
+    'regression: %s between the promotion’s member check and its invite: nothing is left',
+    async (_, remove) => {
+      const race = holdFirstCall(WishlistInvite, 'create', remove);
+
+      const promoted = await promoteCarol();
+
+      expect(race.outcome()?.status).toBe(200);
+      expect(promoted.status).toBe(404);
+      await expectCarolOffTheList();
+    }
+  );
+
+  // The removal's cancel takes the new invite, but the invite's notification is
+  // written only after that, so the promotion has to clear it.
+  it.each(carolsRemovals)(
+    '%s right after the invite is written: neither it nor its notification is left',
+    async (_, remove) => {
+      const race = holdFirstCall(WishlistInvite, 'create', remove, { after: true });
+
+      const promoted = await promoteCarol();
+
+      expect(race.outcome()?.status).toBe(200);
+      expect(promoted.status).toBe(404);
+      await expectCarolOffTheList();
+    }
+  );
+
+  // regression: with the removal already finished, the promotion still issued its
+  // invite, and she could accept it before the promotion noticed she'd gone, e.g.
+  // while its email was sending. Accept found no membership, took her for a
+  // newcomer, and made someone the owners had just removed a co-owner.
+  it.each(carolsRemovals)(
+    'regression: %s before the promotion’s invite exists, and she accepts it while its email sends: nothing is left',
+    async (_, remove) => {
+      const race = holdFirstCall(WishlistInvite, 'create', remove);
+      const acceptance = acceptWhileTheEmailSends();
+
+      const promoted = await promoteCarol();
+
+      expect(race.outcome()?.status).toBe(200);
+      expect(acceptance.res?.status).toBe(404);
+      expect(promoted.status).toBe(404);
+      await expectCarolOffTheList();
+      expect(await WishlistInvite.countDocuments({ wishlist: wid, invitedUser: carol })).toBe(0);
+    }
+  );
+
+  // Accepting takes her membership row, so the promotion's re-check finds none,
+  // and mustn't read that as her having left.
+  it('a promotion she accepts while its email is still sending stands', async () => {
+    const acceptance = acceptWhileTheEmailSends();
+
+    const promoted = await promoteCarol();
+
+    expect(acceptance.res?.status).toBe(200);
+    expect(promoted.status).toBe(202);
+    expect((await Wishlist.findById(wid))!.owners.map(String)).toContain(carol);
+    expect((await WishlistInvite.findOne({ wishlist: wid, invitedUser: carol }))?.status).toBe(
+      'accepted'
+    );
+    // Her invite notification is history now, like any answered invite's.
+    expect(await invitesNotifications(carol, wid)).toBe(1);
+  });
+
+  // The promotion's own re-check passes when it lands between the removal's cancel
+  // and its delete, so the removal cancels again after its delete.
+  it.each(carolsRemovals)(
+    '%s and the promotion lands between the removal’s cancel and its delete: nothing is left',
+    async (_, remove) => {
+      const race = holdFirstCall(WishlistMember, 'deleteOne', promoteCarol);
+
+      const removed = await remove();
+
+      expect(race.outcome()?.status).toBe(202);
+      expect(removed.status).toBe(200);
+      await expectCarolOffTheList();
+    }
+  );
 });
