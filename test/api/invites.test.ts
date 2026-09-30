@@ -154,19 +154,95 @@ describe('DELETE /api/wishlists/[id]/invites/[inviteId]', () => {
     ).toBe(1);
   });
 
+  // regression: the cancel looked the invite up without a status filter, so an
+  // owner whose invites panel still listed an invite the invitee had since
+  // accepted got "Invitation cancelled" (the person stayed a member) and the
+  // accepted row was erased.
+  it('regression: refuses to cancel an accepted invite and keeps the row and membership', async () => {
+    expect((await respond(inviteId, 'accept', inviteeId)).status).toBe(200);
+
+    const res = await cancel(inviteId, ownerId);
+    expect(res.status).toBe(409);
+    expect((await res.json()).success).toBe(false);
+
+    expect((await WishlistInvite.findById(inviteId))?.status).toBe('accepted');
+    expect(await WishlistMember.exists({ wishlist: wishlistId, user: inviteeId })).not.toBeNull();
+  });
+
   // Accept and decline keep the notification as history, so a stale cancel of an
   // invite that was already answered (the owner's invites panel lagging behind)
-  // keeps it too.
+  // keeps it too, along with the row.
   it.each(['accepted', 'declined'])(
-    'leaves the notification alone when the invite was already %s',
+    'answers 409 and changes nothing when the invite was already %s',
     async (status) => {
       await WishlistInvite.updateOne({ _id: inviteId }, { status });
 
-      await cancel(inviteId, ownerId);
+      expect((await cancel(inviteId, ownerId)).status).toBe(409);
 
+      expect((await WishlistInvite.findById(inviteId))?.status).toBe(status);
       expect(await inviteNotifications()).toBe(1);
     }
   );
+
+  // The owner learns how an invite went from the members list, not from here.
+  it("doesn't say whether an answered invite was accepted or declined", async () => {
+    await WishlistInvite.updateOne({ _id: inviteId }, { status: 'accepted' });
+    const declined = await WishlistInvite.findOneAndUpdate(
+      { wishlist: wishlistId, invitedUser: bystanderId },
+      { status: 'declined' }
+    ).orFail();
+
+    const accepted = await cancel(inviteId, ownerId);
+    const refused = await cancel(declined._id.toString(), ownerId);
+
+    expect([accepted.status, refused.status]).toEqual([409, 409]);
+    const body = await accepted.json();
+    expect(await refused.json()).toEqual(body);
+    expect(body).toEqual({ success: false, error: 'This invitation has already been answered.' });
+  });
+
+  // An accept that lands after the owner check but right before the delete runs
+  // must not be erased: the pending check is part of the delete, not a read
+  // before it.
+  it('keeps an invite accepted just before the delete runs', async () => {
+    const realDelete = WishlistInvite.findOneAndDelete.bind(WishlistInvite);
+    const racing = vi
+      .spyOn(WishlistInvite, 'findOneAndDelete')
+      .mockImplementationOnce(((filter: object) =>
+        respond(inviteId, 'accept', inviteeId).then(() => realDelete(filter))) as never);
+    try {
+      expect((await cancel(inviteId, ownerId)).status).toBe(409);
+
+      expect(racing).toHaveBeenCalled();
+      expect((await WishlistInvite.findById(inviteId))?.status).toBe('accepted');
+      expect(await WishlistMember.exists({ wishlist: wishlistId, user: inviteeId })).not.toBeNull();
+      expect(await inviteNotifications()).toBe(1);
+    } finally {
+      racing.mockRestore();
+    }
+  });
+
+  // regression: a malformed id made the lookup throw a CastError, so the route
+  // answered 500 "Failed to cancel invite" instead of 404.
+  it.each(['not-an-id', '12345', 'z'.repeat(24)])(
+    'regression: answers 404 for a malformed invite id (%s)',
+    async (badId) => {
+      const res = await cancel(badId, ownerId);
+
+      expect(res.status).toBe(404);
+      expect(await res.json()).toEqual({ success: false, error: 'Invite not found' });
+      expect(await WishlistInvite.countDocuments()).toBe(2);
+    }
+  );
+
+  it('answers 404 for an invite that no longer exists', async () => {
+    await WishlistInvite.deleteOne({ _id: inviteId });
+
+    const res = await cancel(inviteId, ownerId);
+
+    expect(res.status).toBe(404);
+    expect((await res.json()).error).toBe('Invite not found');
+  });
 
   // Until the `dedupe-pending-invites` migration has built the unique pending
   // index, a person can hold two pending invites to one list, and the
