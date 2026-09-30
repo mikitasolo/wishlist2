@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
-import { enforce, clientIp } from '@/lib/rateLimit';
+import { enforce, ipKey } from '@/lib/rateLimit';
 import User from '@/models/User';
 import Wishlist from '@/models/Wishlist';
 import { primaryOwnerId } from '@/lib/utils/wishlistOwners';
@@ -9,7 +9,7 @@ import { primaryOwnerId } from '@/lib/utils/wishlistOwners';
 export async function GET(request: NextRequest) {
   try {
     // Public endpoint — key on IP to blunt graph scraping.
-    const limited = await enforce('search', `ip:${clientIp(request.headers)}`);
+    const limited = await enforce('search', ipKey(request.headers));
     if (limited) return limited;
 
     const q = (request.nextUrl.searchParams.get('q') || '').trim().toLowerCase();

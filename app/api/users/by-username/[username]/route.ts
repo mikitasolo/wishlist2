@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
-import { enforce, clientIp } from '@/lib/rateLimit';
+import { enforce, ipKey } from '@/lib/rateLimit';
 import connectDB from '@/lib/mongodb';
 import User from '@/models/User';
 import Follow from '@/models/Follow';
@@ -14,7 +14,7 @@ export async function GET(
 ) {
   try {
     // Public profile lookup — key on IP to blunt scraping.
-    const limited = await enforce('search', `ip:${clientIp(request.headers)}`);
+    const limited = await enforce('search', ipKey(request.headers));
     if (limited) return limited;
 
     const { username } = await params;

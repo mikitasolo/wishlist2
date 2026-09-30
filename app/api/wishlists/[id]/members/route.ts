@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
-import { enforce } from '@/lib/rateLimit';
+import { enforce, userKey } from '@/lib/rateLimit';
 import connectDB from '@/lib/mongodb';
 import Wishlist from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
@@ -119,7 +119,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     // Throttle invites so one actor can't flood others' invitation/notification lists.
-    const limited = await enforce('invite', session.user.id);
+    const limited = await enforce('invite', userKey(session.user.id));
     if (limited) return limited;
 
     await connectDB();

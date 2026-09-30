@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
-import { enforce } from '@/lib/rateLimit';
+import { enforce, userKey } from '@/lib/rateLimit';
 import connectDB from '@/lib/mongodb';
 import mongoose from 'mongoose';
 import Item from '@/models/Item';
@@ -205,7 +205,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     // Throttle content creation (owner items + member proposals) to stop bulk junk.
-    const limited = await enforce('content', session.user.id);
+    const limited = await enforce('content', userKey(session.user.id));
     if (limited) return limited;
 
     await connectDB();

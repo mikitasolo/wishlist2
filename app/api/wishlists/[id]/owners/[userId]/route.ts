@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import mongoose from 'mongoose';
 import { auth } from '@/lib/auth';
-import { enforce } from '@/lib/rateLimit';
+import { enforce, userKey } from '@/lib/rateLimit';
 import connectDB from '@/lib/mongodb';
 import User from '@/models/User';
 import type { IWishlist } from '@/models/Wishlist';
@@ -131,7 +131,7 @@ export async function POST(
     if (!membership || !target) return notAMember();
 
     // This sends mail, so it carries the same budget as the invite route.
-    const limited = await enforce('invite', session.user.id);
+    const limited = await enforce('invite', userKey(session.user.id));
     if (limited) return limited;
 
     // Promotion is consent-gated: co-ownership puts the list on their public
