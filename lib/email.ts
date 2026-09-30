@@ -135,15 +135,40 @@ async function deliver(email: OutgoingEmail): Promise<void> {
 }
 
 /**
- * Generate beautiful HTML email template
+ * Escape a value for HTML text or a quoted attribute. Every user-controlled value
+ * (a wishlist name, a display name, an address, a link carrying user input) must
+ * pass through here before it goes into an email's HTML: a wishlist name is free
+ * text, and unescaped it could put a live link or image in a mail sent from our
+ * domain. Plain-text parts and subjects take the raw value (nodemailer folds
+ * CR/LF in a header value to spaces, so a subject can't inject a header).
+ */
+const HTML_ESCAPES: Record<string, string> = {
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
+  "'": '&#39;',
+};
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (char) => HTML_ESCAPES[char]);
+}
+
+/**
+ * Generate beautiful HTML email template.
+ *
+ * `title`, `greeting`, `buttonText`, `buttonUrl` and `linkUrl` are plain text and
+ * escaped here. `contentHtml` and `footerHtml` are HTML fragments inserted as-is,
+ * so the caller escapes every value it interpolates into them with `escapeHtml`.
+ * Escaping doesn't vet a URL's scheme: `buttonUrl` / `linkUrl` must be links we
+ * build (the magic link, our own pages), never a user-supplied URL.
  */
 function getEmailTemplate(options: {
   title: string;
   greeting: string;
-  content: string;
+  contentHtml: string;
   buttonText?: string;
   buttonUrl?: string;
-  footerText?: string;
+  footerHtml?: string;
   showLinkFallback?: boolean;
   linkUrl?: string;
 }) {
@@ -158,6 +183,7 @@ function getEmailTemplate(options: {
         <meta http-equiv="X-UA-Compatible" content="IE=edge">
         <meta name="color-scheme" content="light dark">
         <meta name="supported-color-schemes" content="light dark">
+        <title>${escapeHtml(options.title)}</title>
         <style>
           :root { color-scheme: light dark; supported-color-schemes: light dark; }
           body, table, td, p, a, li, blockquote {
@@ -270,13 +296,13 @@ function getEmailTemplate(options: {
             </div>
 
             <div class="email-body">
-              <h2>${options.greeting}</h2>
-              ${options.content}
+              <h2>${escapeHtml(options.greeting)}</h2>
+              ${options.contentHtml}
 
               ${
                 options.buttonText && options.buttonUrl
                   ? `<div class="button-container">
-                  <a href="${options.buttonUrl}" class="email-button">${options.buttonText}</a>
+                  <a href="${escapeHtml(options.buttonUrl)}" class="email-button">${escapeHtml(options.buttonText)}</a>
                 </div>`
                   : ''
               }
@@ -285,14 +311,14 @@ function getEmailTemplate(options: {
                 options.showLinkFallback && options.linkUrl
                   ? `<div class="link-fallback">
                   <p>Or paste this link into your browser:</p>
-                  <a href="${options.linkUrl}">${options.linkUrl}</a>
+                  <a href="${escapeHtml(options.linkUrl)}">${escapeHtml(options.linkUrl)}</a>
                 </div>`
                   : ''
               }
             </div>
 
             <div class="email-footer">
-              ${options.footerText ? `<p>${options.footerText}</p>` : ''}
+              ${options.footerHtml ? `<p>${options.footerHtml}</p>` : ''}
               <p>Sent by ${siteTitle} · If you didn’t request this, you can safely ignore it.</p>
             </div>
           </div>
@@ -308,7 +334,7 @@ export async function sendMagicLinkEmail(email: string, magicLink: string) {
   const html = getEmailTemplate({
     title: 'Sign in',
     greeting: 'Sign in to Wishlist',
-    content: `
+    contentHtml: `
       <p>Tap the button below to securely sign in — no password needed. This link signs you straight in and expires in 24 hours.</p>
     `,
     buttonText: 'Sign in',
@@ -339,13 +365,13 @@ export async function sendWishlistInvitationEmail(
   const html = getEmailTemplate({
     title: 'Wishlist invitation',
     greeting: `You’re invited to “${wishlistName}”`,
-    content: `
-      <p><strong>${invitedBy}</strong> invited you to their wishlist <strong>${wishlistName}</strong>.</p>
+    contentHtml: `
+      <p><strong>${escapeHtml(invitedBy)}</strong> invited you to their wishlist <strong>${escapeHtml(wishlistName)}</strong>.</p>
       <p>Sign in to your account to review the invitation — you can accept or decline it.</p>
     `,
     buttonText: 'Review invitation',
     buttonUrl: invitesUrl,
-    footerText: `Invitation sent to <strong>${email}</strong>`,
+    footerHtml: `Invitation sent to <strong>${escapeHtml(email)}</strong>`,
   });
 
   await deliver({
