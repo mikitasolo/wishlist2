@@ -14,6 +14,20 @@ const MAGIC_LINK =
   'http://localhost:3000/api/auth/callback/nodemailer?token=secret-token-123&email=friend%40example.com';
 const INVITES_LINK = `http://localhost:3000/auth/signin?callbackUrl=${encodeURIComponent('/invites')}`;
 
+/** The magic link as it must appear in HTML, where a raw `&` isn't valid. */
+const MAGIC_LINK_HTML = MAGIC_LINK.replaceAll('&', '&amp;');
+
+/** The message handed to nodemailer by the (only) send in the test. */
+function sentMessage() {
+  expect(sendMail).toHaveBeenCalledTimes(1);
+  return sendMail.mock.calls[0]![0] as {
+    to: string;
+    subject: string;
+    html: string;
+    text: string;
+  };
+}
+
 let log: ReturnType<typeof vi.spyOn>;
 let error: ReturnType<typeof vi.spyOn>;
 
@@ -130,7 +144,8 @@ describe('EMAIL_TRANSPORT=smtp', () => {
       subject: 'Sign in to Wishlist',
     });
     expect(message.text).toContain(MAGIC_LINK);
-    expect(message.html).toContain(MAGIC_LINK);
+    // HTML-escaped (`&` → `&amp;`), which a mail client decodes back to the same URL.
+    expect(message.html).toContain(MAGIC_LINK_HTML);
   });
 
   it('is the default when EMAIL_TRANSPORT is unset', async () => {
@@ -205,6 +220,79 @@ describe('EMAIL_TRANSPORT=smtp', () => {
 
     await expect(sendWishlistInvitationEmail(RECIPIENT, 'Birthday', 'alice')).rejects.toThrow(
       'Could not send wishlist invitation email (unknown error)'
+    );
+  });
+});
+
+describe('user-controlled values in email HTML', () => {
+  // All five characters that matter in HTML text and quoted attributes.
+  const MARKUP_NAME = `<a href="https://evil.example">Click & 'accept'</a>`;
+  const MARKUP_NAME_HTML =
+    '&lt;a href=&quot;https://evil.example&quot;&gt;Click &amp; &#39;accept&#39;&lt;/a&gt;';
+
+  // regression: the invite email interpolated the wishlist name (free text) raw
+  // into its HTML, so any owner could put a live link or image in a mail sent
+  // from our domain to anyone whose `whoCanInvite` let them invite.
+  it('escapes a wishlist name in the invite HTML and keeps it verbatim in the text and subject', async () => {
+    const { sendWishlistInvitationEmail } = await loadEmail('smtp');
+
+    await sendWishlistInvitationEmail(RECIPIENT, MARKUP_NAME, 'alice');
+
+    const { html, text, subject } = sentMessage();
+    expect(html).not.toContain('<a href="https://evil.example"');
+    expect(html).toContain(`<h2>You’re invited to “${MARKUP_NAME_HTML}”</h2>`);
+    expect(html).toContain(`their wishlist <strong>${MARKUP_NAME_HTML}</strong>.`);
+    expect(text).toContain(`join their wishlist: ${MARKUP_NAME}.`);
+    expect(subject).toBe(`You've been invited to ${MARKUP_NAME} on Wishlist!`);
+  });
+
+  // regression: the inviter's display name was interpolated raw too, and it can
+  // be free text (an account `name`), not only a regex-bound username.
+  it("escapes the inviter's name and the recipient's address", async () => {
+    const { sendWishlistInvitationEmail } = await loadEmail('smtp');
+    const address = "o'brien@example.com";
+
+    await sendWishlistInvitationEmail(address, 'Birthday', '<img src=x onerror=alert(1)>');
+
+    const { html, text } = sentMessage();
+    expect(html).not.toContain('<img src=x');
+    expect(html).toContain('<strong>&lt;img src=x onerror=alert(1)&gt;</strong> invited you');
+    expect(html).toContain('Invitation sent to <strong>o&#39;brien@example.com</strong>');
+    expect(text).toContain('<img src=x onerror=alert(1)> has invited you');
+  });
+
+  it('escapes the magic link in the button and the paste-this-link fallback', async () => {
+    const { sendMagicLinkEmail } = await loadEmail('smtp');
+
+    await sendMagicLinkEmail(RECIPIENT, MAGIC_LINK);
+
+    const { html, text } = sentMessage();
+    expect(html).toContain(`<a href="${MAGIC_LINK_HTML}" class="email-button">Sign in</a>`);
+    expect(html).toContain(`<a href="${MAGIC_LINK_HTML}">${MAGIC_LINK_HTML}</a>`);
+    expect(html).not.toContain(MAGIC_LINK);
+    expect(text).toContain(MAGIC_LINK);
+  });
+
+  // The subject takes the wishlist name raw, and a name can hold a line break.
+  // Nodemailer is what stops that starting a new header, so render the message we
+  // hand it with the real library and check the result.
+  it('cannot inject a header through a wishlist name in the subject', async () => {
+    const { sendWishlistInvitationEmail } = await loadEmail('smtp');
+
+    await sendWishlistInvitationEmail(RECIPIENT, 'Birthday\r\nBcc: attacker@evil.example', 'alice');
+
+    const realNodemailer = await vi.importActual<typeof import('nodemailer')>('nodemailer');
+    const info = await realNodemailer
+      .createTransport({ streamTransport: true, buffer: true, newline: 'unix' })
+      .sendMail(sentMessage());
+    expect(info.envelope.to).toEqual([RECIPIENT]);
+    const headers = info.message
+      .toString()
+      .split('\n\n')[0]!
+      .replace(/\n[ \t]+/g, ' '); // unfold continuation lines
+    expect(headers).not.toMatch(/^Bcc:/im);
+    expect(headers).toMatch(
+      /^Subject: You've been invited to Birthday +Bcc: attacker@evil\.example on Wishlist!$/m
     );
   });
 });
