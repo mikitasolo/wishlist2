@@ -246,8 +246,8 @@ describe('user-controlled values in email HTML', () => {
     expect(subject).toBe(`You've been invited to ${MARKUP_NAME} on Wishlist!`);
   });
 
-  // regression: the inviter's display name was interpolated raw too, and it can
-  // be free text (an account `name`), not only a regex-bound username.
+  // regression: the inviter's display name was interpolated raw too, and it isn't
+  // always a regex-bound username: the invite routes fall back to other sources.
   it("escapes the inviter's name and the recipient's address", async () => {
     const { sendWishlistInvitationEmail } = await loadEmail('smtp');
     const address = "o'brien@example.com";

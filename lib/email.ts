@@ -142,21 +142,25 @@ async function deliver(email: OutgoingEmail): Promise<void> {
  * domain. Plain-text parts and subjects take the raw value (nodemailer folds
  * CR/LF in a header value to spaces, so a subject can't inject a header).
  */
+const HTML_ESCAPES: Record<string, string> = {
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
+  "'": '&#39;',
+};
 function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
+  return value.replace(/[&<>"']/g, (char) => HTML_ESCAPES[char]);
 }
 
 /**
  * Generate beautiful HTML email template.
  *
- * `greeting`, `buttonText`, `buttonUrl` and `linkUrl` are plain text and escaped
- * here. `contentHtml` and `footerHtml` are HTML fragments inserted as-is, so
- * the caller escapes every value it interpolates into them with `escapeHtml`.
+ * `title`, `greeting`, `buttonText`, `buttonUrl` and `linkUrl` are plain text and
+ * escaped here. `contentHtml` and `footerHtml` are HTML fragments inserted as-is,
+ * so the caller escapes every value it interpolates into them with `escapeHtml`.
+ * Escaping doesn't vet a URL's scheme: `buttonUrl` / `linkUrl` must be links we
+ * build (the magic link, our own pages), never a user-supplied URL.
  */
 function getEmailTemplate(options: {
   title: string;
@@ -179,6 +183,7 @@ function getEmailTemplate(options: {
         <meta http-equiv="X-UA-Compatible" content="IE=edge">
         <meta name="color-scheme" content="light dark">
         <meta name="supported-color-schemes" content="light dark">
+        <title>${escapeHtml(options.title)}</title>
         <style>
           :root { color-scheme: light dark; supported-color-schemes: light dark; }
           body, table, td, p, a, li, blockquote {
