@@ -27,6 +27,8 @@ function item(overrides: Partial<ApiItem>): ApiItem {
 const modals = [
   {
     name: 'EditItemModal',
+    submitLabel: 'Save Changes',
+    submittingLabel: 'Saving...',
     renderModal: (onDelete: () => Promise<void>, onClose: () => void) =>
       render(
         <EditItemModal
@@ -42,6 +44,8 @@ const modals = [
   },
   {
     name: 'ReviewItemModal',
+    submitLabel: 'Approve Item',
+    submittingLabel: 'Approving...',
     renderModal: (onDelete: () => Promise<void>, onClose: () => void) =>
       render(
         <ReviewItemModal
@@ -69,7 +73,7 @@ beforeAll(() => {
 afterAll(() => vi.restoreAllMocks());
 beforeEach(() => cleanup());
 
-describe.each(modals)('$name — delete outcome', ({ renderModal }) => {
+describe.each(modals)('$name — delete outcome', ({ renderModal, submitLabel, submittingLabel }) => {
   // The modal logs the rejection it catches; keep the test output clean.
   beforeEach(() => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -117,6 +121,7 @@ describe.each(modals)('$name — delete outcome', ({ renderModal }) => {
 
   // regression: nothing stopped a second confirm click while the first delete
   // was in flight, so the page ran its delete handler twice and doubled its toast.
+  // The confirmation now shows the delete as running and ignores the second click.
   it('regression: sends one delete when the confirmation is clicked twice', async () => {
     let finish!: () => void;
     const onDelete = vi.fn(
@@ -130,12 +135,35 @@ describe.each(modals)('$name — delete outcome', ({ renderModal }) => {
 
     fireEvent.click(deleteItemButton());
     confirmDelete();
-    // Still in flight: the modal's own buttons are disabled meanwhile.
-    await waitFor(() => expect(deleteItemButton()).toBeDisabled());
-    confirmDelete();
+    const pending = within(confirmation()!).getByRole('button', { name: 'Deleting...' });
+    expect(pending).toBeDisabled();
+    fireEvent.click(pending);
     expect(onDelete).toHaveBeenCalledTimes(1);
 
     finish();
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+  });
+
+  // regression: the modal passed `isSubmitting || isDeleting` to its form, so
+  // while a delete ran the form behind the confirmation read "Saving..." /
+  // "Approving...", as if the user's changes were being saved.
+  it('regression: does not label the form as saving while the delete runs', async () => {
+    let finish!: () => void;
+    const onDelete = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        })
+    );
+    renderModal(onDelete, vi.fn());
+
+    fireEvent.click(deleteItemButton());
+    confirmDelete();
+    expect(within(confirmation()!).getByRole('button', { name: 'Deleting...' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: submitLabel })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: submittingLabel })).toBeNull();
+
+    finish();
+    await waitFor(() => expect(confirmation()).toBeNull());
   });
 });

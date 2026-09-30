@@ -1885,6 +1885,7 @@ export default function WishlistDetail() {
             onConfirm={confirmKickMember}
             onCancel={() => setDeleteConfirm(null)}
             confirmText="Remove"
+            pendingText="Removing..."
             cancelText="Cancel"
             type="danger"
           />
@@ -1902,6 +1903,7 @@ export default function WishlistDetail() {
           onConfirm={confirmLeaveWishlist}
           onCancel={() => setDeleteConfirm(null)}
           confirmText="Leave"
+          pendingText="Leaving..."
           cancelText="Cancel"
           type="danger"
         />
@@ -1928,6 +1930,7 @@ export default function WishlistDetail() {
           onConfirm={confirmDeleteWishlist}
           onCancel={() => setDeleteConfirm(null)}
           confirmText="Delete"
+          pendingText="Deleting..."
           cancelText="Cancel"
           type="danger"
         />

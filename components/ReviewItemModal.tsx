@@ -32,7 +32,6 @@ export default function ReviewItemModal({
   userCurrency,
 }: ReviewItemModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showConfirmClose, setShowConfirmClose] = useState(false);
@@ -41,7 +40,6 @@ export default function ReviewItemModal({
   useEffect(() => {
     if (!isOpen) {
       setIsSubmitting(false);
-      setIsDeleting(false);
       setShowDeleteConfirm(false);
       setHasUnsavedChanges(false);
       setShowConfirmClose(false);
@@ -91,9 +89,10 @@ export default function ReviewItemModal({
   // onDelete rejects when the delete fails (after showing the error), so only a
   // real delete closes the modal. Either way the confirmation is answered: on a
   // failure it drops back to this modal, item intact, for a retry or cancel.
+  // The confirmation shows the delete as running, and ignores a second click,
+  // until this settles.
   const handleDelete = async () => {
-    if (!onDelete || isDeleting) return;
-    setIsDeleting(true);
+    if (!onDelete) return;
     try {
       await onDelete();
       setHasUnsavedChanges(false);
@@ -102,7 +101,6 @@ export default function ReviewItemModal({
       console.error('Error deleting item:', error);
     } finally {
       setShowDeleteConfirm(false);
-      setIsDeleting(false);
     }
   };
 
@@ -131,7 +129,7 @@ export default function ReviewItemModal({
         onClose={handleClose}
         title="Review Proposed Item"
         titleId="review-item-title"
-        isSubmitting={isSubmitting || isDeleting}
+        isSubmitting={isSubmitting}
         shouldInterceptClose={() => hasUnsavedChanges}
         onInterceptClose={() => setShowConfirmClose(true)}
       >
@@ -163,7 +161,7 @@ export default function ReviewItemModal({
           onCancel={handleClose}
           submitLabel="Approve Item"
           submittingLabel="Approving..."
-          isSubmitting={isSubmitting || isDeleting}
+          isSubmitting={isSubmitting}
           mode="review"
           itemId={item._id}
           onFormChange={setHasUnsavedChanges}
@@ -210,6 +208,7 @@ export default function ReviewItemModal({
           onConfirm={handleDelete}
           onCancel={() => setShowDeleteConfirm(false)}
           confirmText="Delete"
+          pendingText="Deleting..."
           cancelText="Cancel"
           type="danger"
         />
