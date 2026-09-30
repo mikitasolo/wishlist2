@@ -47,6 +47,13 @@ export default function InvitesPage() {
     if (status === 'authenticated') load();
   }, [status, load]);
 
+  // Take an invite off the page and let the header's invitation dot re-check
+  // immediately.
+  function dropInvite(inviteId: string) {
+    setInvites((prev) => prev.filter((i) => i._id !== inviteId));
+    window.dispatchEvent(new Event('invites-changed'));
+  }
+
   async function respond(invite: Invite, action: 'accept' | 'decline') {
     setBusyId(invite._id);
     try {
@@ -55,11 +62,20 @@ export default function InvitesPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action }),
       });
+      // Parsed first, so a 404 that isn't the route's own JSON answer (an HTML
+      // page from the platform) lands in the catch below and keeps the card.
       const result = await res.json();
+      // The invite went away while this page was open: an owner cancelled it,
+      // its list was deleted, we left or lost our role there, or another tab
+      // already answered it. Every retry would 404 the same way, so drop the
+      // card. Any other failure keeps it, so the user can retry.
+      if (res.status === 404) {
+        dropInvite(invite._id);
+        showToast('This invitation is no longer available', 'info');
+        return;
+      }
       if (result.success) {
-        setInvites((prev) => prev.filter((i) => i._id !== invite._id));
-        // Let the header's invitation dot re-check immediately.
-        window.dispatchEvent(new Event('invites-changed'));
+        dropInvite(invite._id);
         if (action === 'accept') {
           showToast(`Joined “${invite.wishlistName}”`, 'success');
           router.push(`/wishlists/${result.data.wishlistSlug ?? result.data.wishlistId}`);
