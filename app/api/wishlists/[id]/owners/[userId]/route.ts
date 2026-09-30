@@ -15,7 +15,11 @@ import {
   releaseUserBookings,
   removeWishlistOwner,
 } from '@/lib/utils/wishlistOwnership';
-import { cancelPendingInvites, issueWishlistInvite } from '@/lib/utils/wishlistInvites';
+import {
+  cancelPendingInvites,
+  issueWishlistInvite,
+  withdrawInvite,
+} from '@/lib/utils/wishlistInvites';
 import { publicDisplayName } from '@/lib/utils/displayName';
 
 /**
@@ -146,11 +150,13 @@ export async function POST(
     // silent write. Their `whoCanInvite` preference isn't re-checked — membership
     // was verified above, so they're already on this list by their own choice:
     // this isn't an unsolicited invite, it's a change to a relationship they
-    // opted into.
+    // opted into. Marked as a promotion, so accepting it can only ever turn their
+    // membership into ownership, never make a non-member an owner.
     const invite = await issueWishlistInvite({
       wishlistId: id,
       wishlistName: wishlist.name,
       role: 'owner',
+      promotion: true,
       invitedBy: session.user.id,
       inviterName: publicDisplayName(session.user),
       actorUsername: session.user.username ?? null,
@@ -163,6 +169,21 @@ export async function POST(
         { success: false, error: 'This person already has a pending invite' },
         { status: 400 }
       );
+    }
+
+    // The membership check above ran before the invite existed, so a kick or
+    // leave that landed since then cancelled their invites while this one wasn't
+    // there to cancel. Check again now that it is, and take it back if they've
+    // gone. (A removal that is still running cancels once more after its delete,
+    // which covers this check landing just before that delete.) Accepting takes
+    // the membership row too, so no row can also mean they've accepted already:
+    // `withdrawInvite` leaves an answered invite alone, and the promotion stands.
+    // The email has gone out by now; the invite it points at is what counts.
+    if (
+      !(await WishlistMember.exists({ wishlist: id, user: userId })) &&
+      (await withdrawInvite(invite, 'pending'))
+    ) {
+      return notAMember();
     }
 
     return NextResponse.json(

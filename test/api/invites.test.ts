@@ -1,6 +1,7 @@
-import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import { NextRequest } from 'next/server';
 import { connectTestDB, disconnectTestDB, clearTestDB } from '../db';
+import { holdFirstCall } from '../interleave';
 
 vi.mock('@/lib/mongodb', () => ({ default: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('@/lib/auth', () => ({ auth: vi.fn() }));
@@ -13,6 +14,7 @@ import Wishlist from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
 import WishlistInvite from '@/models/WishlistInvite';
 import Notification from '@/models/Notification';
+import Item from '@/models/Item';
 
 const session = vi.mocked(auth);
 
@@ -75,6 +77,167 @@ describe('PATCH /api/invites/[inviteId]', () => {
     const res = await respond(inviteId, 'accept', other._id.toString());
     expect(res.status).toBe(403);
     expect((await WishlistInvite.findById(inviteId))?.status).toBe('pending');
+  });
+
+  it('answers 404 and declines the invite when its list is gone', async () => {
+    await Wishlist.deleteOne({ _id: wishlistId });
+
+    const res = await respond(inviteId, 'accept', inviteeId);
+    expect(res.status).toBe(404);
+    expect((await res.json()).error).toMatch(/no longer exists/i);
+
+    expect((await WishlistInvite.findById(inviteId))?.status).toBe('declined');
+    expect(await WishlistMember.exists({ wishlist: wishlistId, user: inviteeId })).toBeNull();
+  });
+});
+
+// Accept and decline record the answer in one conditional write before anything
+// is granted: whichever answer reaches the pending invite first is the one that
+// counts, and the other matches nothing.
+describe('PATCH /api/invites/[inviteId] claims the invite first', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const member = () => WishlistMember.exists({ wishlist: wishlistId, user: inviteeId });
+  const acceptedNotifications = () =>
+    Notification.countDocuments({ user: ownerId, type: 'invite_accepted' });
+
+  // regression: accept recorded `accepted` only after granting the role, so a second
+  // accept (another tab, a double click) that read the invite in between granted it
+  // again, and the inviter was told twice.
+  it('regression: of two accepts at once, one lets them in and the other gets a 404', async () => {
+    const race = holdFirstCall(
+      WishlistInvite,
+      'findById',
+      () => respond(inviteId, 'accept', inviteeId),
+      { after: true }
+    );
+
+    const first = await respond(inviteId, 'accept', inviteeId);
+
+    expect(race.outcome()?.status).toBe(200);
+    expect(first.status).toBe(404);
+    expect(await WishlistMember.countDocuments({ wishlist: wishlistId })).toBe(1);
+    expect(await acceptedNotifications()).toBe(1);
+  });
+
+  // regression: an accept that read the invite before a decline landed went on to
+  // let them in and overwrite the decline with `accepted`.
+  it('regression: a decline that lands during an accept wins, and nobody joins', async () => {
+    const race = holdFirstCall(
+      WishlistInvite,
+      'findById',
+      () => respond(inviteId, 'decline', inviteeId),
+      { after: true }
+    );
+
+    const accepted = await respond(inviteId, 'accept', inviteeId);
+
+    expect(race.outcome()?.status).toBe(200);
+    expect(accepted.status).toBe(404);
+    expect((await WishlistInvite.findById(inviteId))?.status).toBe('declined');
+    expect(await member()).toBeNull();
+    expect(await acceptedNotifications()).toBe(0);
+  });
+
+  it('an accept that lands during a decline wins, and the decline gets a 404', async () => {
+    const race = holdFirstCall(
+      WishlistInvite,
+      'findById',
+      () => respond(inviteId, 'accept', inviteeId),
+      { after: true }
+    );
+
+    const declined = await respond(inviteId, 'decline', inviteeId);
+
+    expect(race.outcome()?.status).toBe(200);
+    expect(declined.status).toBe(404);
+    expect((await WishlistInvite.findById(inviteId))?.status).toBe('accepted');
+    expect(await member()).not.toBeNull();
+  });
+
+  it('reopens the invite when granting the role fails, so accepting again works', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(WishlistMember, 'findOneAndUpdate').mockRejectedValueOnce(new Error('db down'));
+
+    expect((await respond(inviteId, 'accept', inviteeId)).status).toBe(500);
+    expect((await WishlistInvite.findById(inviteId))?.status).toBe('pending');
+    expect(await member()).toBeNull();
+    expect(await acceptedNotifications()).toBe(0);
+
+    expect((await respond(inviteId, 'accept', inviteeId)).status).toBe(200);
+    expect(await member()).not.toBeNull();
+  });
+
+  it('puts a member back on the list when their promotion fails half-way', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const membership = await WishlistMember.create({ wishlist: wishlistId, user: inviteeId });
+    await WishlistInvite.updateOne({ _id: inviteId }, { $set: { role: 'owner' } });
+    // The membership row is taken, then the ownership write fails.
+    vi.spyOn(Wishlist, 'updateOne').mockRejectedValueOnce(new Error('db down'));
+
+    expect((await respond(inviteId, 'accept', inviteeId)).status).toBe(500);
+
+    // Back as they were: the same membership row, not an owner, invite still open.
+    const restored = await WishlistMember.findOne({ wishlist: wishlistId, user: inviteeId });
+    expect(restored?._id.toString()).toBe(membership._id.toString());
+    expect(restored?.createdAt.getTime()).toBe(membership.createdAt.getTime());
+    expect((await Wishlist.findById(wishlistId))!.owners.map(String)).toEqual([ownerId]);
+    expect((await WishlistInvite.findById(inviteId))?.status).toBe('pending');
+
+    expect((await respond(inviteId, 'accept', inviteeId)).status).toBe(200);
+    expect((await Wishlist.findById(wishlistId))!.owners.map(String)).toContain(inviteeId);
+    expect(await member()).toBeNull();
+  });
+
+  it('keeps no membership row when the ownership write landed but still reported an error', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    await WishlistMember.create({ wishlist: wishlistId, user: inviteeId });
+    await WishlistInvite.updateOne({ _id: inviteId }, { $set: { role: 'owner' } });
+    // The write is applied, and then its acknowledgement is lost.
+    const realUpdate = Wishlist.updateOne.bind(Wishlist) as (
+      ...a: unknown[]
+    ) => PromiseLike<unknown>;
+    vi.spyOn(Wishlist, 'updateOne').mockImplementationOnce(((...args: unknown[]) =>
+      realUpdate(...args).then(() => {
+        throw new Error('timed out');
+      })) as never);
+
+    expect((await respond(inviteId, 'accept', inviteeId)).status).toBe(500);
+
+    // An owner, and an owner has no membership row.
+    expect((await Wishlist.findById(wishlistId))!.owners.map(String)).toContain(inviteeId);
+    expect(await member()).toBeNull();
+    expect((await respond(inviteId, 'accept', inviteeId)).status).toBe(200);
+    expect(await member()).toBeNull();
+  });
+
+  // Reopening a claim is only any use if accepting again finishes the job, which
+  // here means releasing the bookings of someone who is an owner already.
+  it('releases their bookings when a retry finds the promotion half done', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    await WishlistMember.create({ wishlist: wishlistId, user: inviteeId });
+    await WishlistInvite.updateOne({ _id: inviteId }, { $set: { role: 'owner' } });
+    const item = await Item.create({
+      wishlist: wishlistId,
+      name: 'Gift',
+      status: 'booked',
+      bookedBy: inviteeId,
+    });
+    // Ownership lands, then freeing the booking fails.
+    vi.spyOn(Item, 'updateMany').mockRejectedValueOnce(new Error('db down'));
+
+    expect((await respond(inviteId, 'accept', inviteeId)).status).toBe(500);
+    expect((await Wishlist.findById(wishlistId))!.owners.map(String)).toContain(inviteeId);
+    expect((await WishlistInvite.findById(inviteId))?.status).toBe('pending');
+
+    const retry = await respond(inviteId, 'accept', inviteeId);
+    expect(retry.status).toBe(200);
+    expect((await retry.json()).data.releasedBookings).toBe(1);
+    const freed = await Item.findById(item._id);
+    expect(freed?.status).toBe('available');
+    expect(freed?.bookedBy ?? null).toBeNull();
   });
 });
 
@@ -219,6 +382,42 @@ describe('DELETE /api/wishlists/[id]/invites/[inviteId]', () => {
       expect(await inviteNotifications()).toBe(1);
     } finally {
       racing.mockRestore();
+    }
+  });
+
+  // regression: accept granted the role before it recorded `accepted`, so a cancel
+  // landing mid-accept deleted the invite and told the owner "cancelled", and the
+  // accept let the person in anyway (then failed to save the invite it no longer
+  // had, and answered 500).
+  it('regression: a cancel that lands during an accept wins, and nobody joins', async () => {
+    const race = holdFirstCall(WishlistInvite, 'findById', () => cancel(inviteId, ownerId), {
+      after: true,
+    });
+    try {
+      const accepted = await respond(inviteId, 'accept', inviteeId);
+
+      expect(race.outcome()?.status).toBe(200);
+      expect(accepted.status).toBe(404);
+      expect(await WishlistInvite.findById(inviteId)).toBeNull();
+      expect(await WishlistMember.exists({ wishlist: wishlistId, user: inviteeId })).toBeNull();
+    } finally {
+      race.restore();
+    }
+  });
+
+  it('a cancel that lands once an accept has claimed the invite gets a 409, and the accept completes', async () => {
+    const race = holdFirstCall(WishlistInvite, 'updateOne', () => cancel(inviteId, ownerId), {
+      after: true,
+    });
+    try {
+      const accepted = await respond(inviteId, 'accept', inviteeId);
+
+      expect(race.outcome()?.status).toBe(409);
+      expect(accepted.status).toBe(200);
+      expect((await WishlistInvite.findById(inviteId))?.status).toBe('accepted');
+      expect(await WishlistMember.exists({ wishlist: wishlistId, user: inviteeId })).not.toBeNull();
+    } finally {
+      race.restore();
     }
   });
 

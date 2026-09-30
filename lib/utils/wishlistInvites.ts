@@ -10,6 +10,8 @@ interface IssueInviteArgs {
   wishlistId: Id;
   wishlistName: string;
   role: IWishlistInvite['role'];
+  /** Promoting a member of the list (an `owner` invite): see `WishlistInvite.promotion`. */
+  promotion?: boolean;
   invitedBy: Id;
   /** Public name of the inviter, for the email body: `publicDisplayName`, never from their email. */
   inviterName: string;
@@ -72,6 +74,7 @@ export async function issueWishlistInvite(args: IssueInviteArgs): Promise<IWishl
       invitedBy: args.invitedBy,
       invitedUser: args.invitedUserId,
       role: args.role,
+      ...(args.promotion ? { promotion: true } : {}),
     });
   } catch (err) {
     // A concurrent call created the pending invite after our check. It sends the
@@ -109,18 +112,30 @@ export async function issueWishlistInvite(args: IssueInviteArgs): Promise<IWishl
  *
  * Accepting an invite grants the role it names, so a leftover one lets the person
  * who was removed undo it: an `owner` invite brings a kicked member back as a
- * co-owner, and a demoted owner back to owner. Re-checking membership on accept
- * isn't an option, because `owner` invites legitimately go to non-members too.
+ * co-owner, and a demoted owner back to owner. Accept can't just refuse
+ * non-members, because `owner` invites legitimately go to non-members too.
  *
- * Call it only after the membership/ownership write has landed. Never before it,
- * and never when `removeWishlistOwner` refused it (returned `false`).
+ * When to call it depends on the write it goes with:
+ *   - An owner write that can be refused (remove-owner, demote, a co-owner
+ *     leaving): only once it has landed. Never before it, and never when
+ *     `removeWishlistOwner` refused it.
+ *   - The membership delete of a kick or of a member leaving: both before and
+ *     after it. Before, so that once someone is off the list none of their
+ *     invites is still pending. Accept tells whether an `owner` invite without
+ *     the `promotion` mark is one by reading the membership before it claims the
+ *     invite, and would otherwise take a just-kicked member for a newcomer and
+ *     grant the role. After, for an invite a promotion issued between the first
+ *     cancel and the delete.
  *
- * Only *pending* invites go. Accepted and declined rows are kept on purpose.
+ * Only *pending* invites go. Accepted and declined rows are kept on purpose. An
+ * invite that accept has already claimed isn't pending any more, so this never
+ * pulls one out from under an accept in flight: `promoteMemberToOwner` settles
+ * that race on the membership row instead.
  *
  * The invite delete is the fix itself, so its failure propagates and the request
- * reports an error rather than a clean success. The removal has landed by then
- * and a retry stops early, but the leftover invite still shows in the owners'
- * Pending invites panel, where they can cancel it.
+ * reports an error rather than a clean success. A retry can finish the job, and
+ * until then a leftover invite still shows in the owners' Pending invites panel,
+ * where they can cancel it.
  *
  * The notification cleanup is best-effort, like a deleted wishlist's: a failure is
  * logged and swallowed. Notifications carry no invite id, so it runs only when a
@@ -134,8 +149,37 @@ export async function cancelPendingInvites(wishlistId: Id, userId: Id): Promise<
     invitedUser: userId,
     status: 'pending',
   });
-  if (!deletedCount) return;
+  if (deletedCount) await clearInviteNotifications(wishlistId, userId);
+}
 
+/**
+ * Take back one invite that a concurrent removal's `cancelPendingInvites` missed,
+ * as that cancel would have:
+ *   - `pending`: a promotion found the member gone right after issuing it.
+ *   - `accepted`: accept had already claimed it when the invitee was taken off
+ *     the list, and found their membership gone before granting anything.
+ *
+ * The row goes only while it still has that status. Returns whether the invite is
+ * gone now: `false` means it has been answered since, so it wasn't this call's to
+ * take back, and nothing was changed.
+ *
+ * Unlike `cancelPendingInvites`, this clears the notifications even when the row
+ * was already gone: the invite was issued with one, and a removal's cancel may
+ * have deleted the row before that notification was written.
+ */
+export async function withdrawInvite(
+  invite: Pick<IWishlistInvite, '_id' | 'wishlist' | 'invitedUser'>,
+  status: 'pending' | 'accepted'
+): Promise<boolean> {
+  const { deletedCount } = await WishlistInvite.deleteOne({ _id: invite._id, status });
+  // Not deleted but still there: it was answered in the meantime.
+  if (!deletedCount && (await WishlistInvite.exists({ _id: invite._id }))) return false;
+  await clearInviteNotifications(invite.wishlist, invite.invitedUser);
+  return true;
+}
+
+/** Best-effort: a failure is logged and swallowed, never failing the request. */
+async function clearInviteNotifications(wishlistId: Id, userId: Id): Promise<void> {
   try {
     await Notification.deleteMany({ user: userId, wishlist: wishlistId, type: 'wishlist_invite' });
   } catch (err) {

@@ -91,10 +91,22 @@ export async function DELETE(
     // can still log a gift they went on to give.
     await releaseUserBookings(id, membershipUserId);
 
-    // Remove membership
-    await WishlistMember.findByIdAndDelete(memberId);
+    // Otherwise accepting a leftover invite would bring them straight back. Done
+    // before the membership goes, so that they're never off the list with an
+    // invite still pending: an accept that then finds no membership would take
+    // them for a newcomer and grant the role.
+    await cancelPendingInvites(id, membershipUserId);
 
-    // Otherwise accepting a leftover invite would bring them straight back.
+    const { deletedCount } = await WishlistMember.deleteOne({ _id: memberId });
+    if (!deletedCount) {
+      // Someone else got there first: they left, another owner removed them, or
+      // they accepted a promotion, which takes this same row. Either way this kick
+      // removed nobody, so it doesn't say it did.
+      return NextResponse.json({ success: false, error: 'Membership not found' }, { status: 404 });
+    }
+
+    // And once more: a promotion issued between the cancel above and the delete
+    // would otherwise leave them an owner invite on a list they're no longer on.
     await cancelPendingInvites(id, membershipUserId);
 
     return NextResponse.json({ success: true, data: {} }, { status: 200 });

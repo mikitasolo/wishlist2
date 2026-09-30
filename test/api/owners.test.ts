@@ -250,6 +250,8 @@ describe('promotion to owner is consent-gated', () => {
     const inv = await WishlistInvite.findOne({ wishlist: wid, invitedUser: carol });
     expect(inv?.role).toBe('owner');
     expect(inv?.status).toBe('pending');
+    // Marked, so accepting it can only turn her membership into ownership.
+    expect(inv?.promotion).toBe(true);
     expect(sendEmail).toHaveBeenCalledOnce();
   });
 
@@ -316,7 +318,10 @@ describe('promotion to owner is consent-gated', () => {
       { params: Promise.resolve({ id: wid }) }
     );
     expect(res.status).toBe(201);
-    expect((await WishlistInvite.findOne({ invitedUser: stranger._id }))?.role).toBe('owner');
+    const inv = await WishlistInvite.findOne({ invitedUser: stranger._id });
+    expect(inv?.role).toBe('owner');
+    // Not a promotion: she has no membership for it to turn into ownership.
+    expect(inv?.promotion).toBeUndefined();
   });
 
   it('a member cannot invite anyone', async () => {

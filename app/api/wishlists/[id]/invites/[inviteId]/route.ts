@@ -36,9 +36,10 @@ export async function DELETE(
     // Only a pending invite can be cancelled, and that check is part of the
     // delete itself. The owner's invites panel can lag behind the invitee, and an
     // answer recorded between a separate read and the delete would be erased, with
-    // the owner told "cancelled" while the person stays in. (An accept still in
-    // flight isn't covered: it grants the role before it records `accepted`, so
-    // closing that window means accept claiming the invite first.)
+    // the owner told "cancelled" while the person stays in. Accept and decline
+    // record the answer before they grant anything, in the same kind of
+    // conditional write, so an answer still in flight is covered too: exactly one
+    // of the two matches the pending row.
     const cancelledAt = new Date();
     const invite = await WishlistInvite.findOneAndDelete({
       _id: inviteId,
