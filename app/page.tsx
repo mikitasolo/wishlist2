@@ -8,14 +8,13 @@ import AppHeader from '@/components/AppHeader';
 import UserSearch from '@/components/UserSearch';
 import CreateWishlistModal from '@/components/CreateWishlistModal';
 import WishlistCard from '@/components/WishlistCard';
-import BannerImage from '@/components/BannerImage';
+import Cover from '@/components/Cover';
 import Select from '@/components/Select';
 import FollowListModal, { type FollowTab } from '@/components/FollowListModal';
 import Button from '@/components/Button';
 import Icon, { IconName } from '@/components/Icon';
 import { SkeletonGrid } from '@/components/Skeleton';
 import { useToast } from '@/components/ToastProvider';
-import { coverGradient } from '@/lib/utils/cover';
 import { getVisibility, visibilityMeta } from '@/lib/utils/visibility';
 import { IWishlist } from '@/models/Wishlist';
 
@@ -349,22 +348,13 @@ export default function Home() {
                     href={`/wishlists/${featured.slug ?? featured._id}`}
                     className="group col-span-2 flex flex-col overflow-hidden rounded-3xl border border-border bg-surface shadow-md transition-all hover:shadow-lg lg:row-span-2"
                   >
-                    <div
+                    <Cover
+                      src={featured.bannerUrl}
+                      seed={featured._id.toString()}
+                      priority
+                      sizes="(max-width: 1024px) 100vw, 640px"
                       className="relative flex aspect-[16/9] flex-col justify-end bg-surface-2 p-6"
-                      style={{
-                        background: featured.bannerUrl
-                          ? undefined
-                          : coverGradient(featured._id.toString()),
-                      }}
                     >
-                      {featured.bannerUrl && (
-                        <BannerImage
-                          src={featured.bannerUrl}
-                          alt=""
-                          priority
-                          sizes="(max-width: 1024px) 100vw, 640px"
-                        />
-                      )}
                       <div className="absolute inset-0 bg-gradient-to-t from-black/35 to-transparent" />
                       <span className="relative text-xs font-bold uppercase tracking-widest text-white/85">
                         Featured
@@ -372,7 +362,7 @@ export default function Home() {
                       <h2 className="relative mt-1.5 text-2xl font-semibold text-white sm:text-3xl">
                         {featured.name}
                       </h2>
-                    </div>
+                    </Cover>
                     <div className="flex items-center justify-between p-5">
                       <span className="flex items-center gap-2 text-sm text-muted-foreground">
                         <Icon name={visibilityMeta[getVisibility(featured)].icon} size={15} />

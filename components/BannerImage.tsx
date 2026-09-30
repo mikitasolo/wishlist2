@@ -4,11 +4,12 @@ import Image from 'next/image';
 import { useState } from 'react';
 
 /**
- * Cover-image layer for wishlists (and reserved thumbnails). Uses next/image so
+ * The image layer of a `Cover`, and of the upload preview. Uses next/image so
  * it routes through the server-side image optimizer — this loads images from
  * hosts that block direct hotlinking (which a plain <img> can't). Renders inside
- * a positioned, sized parent; on error it renders nothing so the gradient cover
- * underneath shows through.
+ * a positioned, sized parent; on error it renders nothing and calls `onError`.
+ * Don't frame it by hand for a list or item image: `Cover` puts the gradient
+ * placeholder back when the image fails.
  */
 export default function BannerImage({
   src,

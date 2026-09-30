@@ -4,9 +4,8 @@ import { memo, useMemo, useCallback, useState, useEffect } from 'react';
 import { ApiItem } from '@/types/api';
 import { useSession } from 'next-auth/react';
 import { formatPriceFromObject, convertPrice } from '@/lib/utils/currency';
-import { coverGradient } from '@/lib/utils/cover';
 import Icon from '@/components/Icon';
-import BannerImage from '@/components/BannerImage';
+import Cover from '@/components/Cover';
 import ConfirmDialog from '@/components/ConfirmDialog';
 
 interface WishlistItemProps {
@@ -62,6 +61,9 @@ function WishlistItem({
 
   // For owners, items always show as available (bookings are hidden)
   const displayStatus = isOwner && item.status === 'booked' ? 'available' : item.status;
+
+  // While the notes are hidden, the cover links to the product page.
+  const productLink = item.link && !showNotes ? item.link : null;
 
   // Price to display: original currency, or converted to the picked currency
   // (falling back to original if the rate isn't available yet).
@@ -198,45 +200,27 @@ function WishlistItem({
       {/* Image / notes area — when notes are shown, the image stays visible
           behind a frosted, dimmed layer so the text is easy to read on top.
           Gradient shows through when there's no image (or it fails to load). */}
-      {item.link && !showNotes ? (
-        <a
-          href={item.link}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="relative mb-4 block aspect-square w-full flex-shrink-0 overflow-hidden rounded-2xl bg-surface-2 transition-opacity duration-200 hover:opacity-90"
-          style={{ background: item.imageUrl ? undefined : coverGradient(item._id) }}
-          aria-label={`View ${item.name} product page`}
-        >
-          {item.imageUrl && (
-            <BannerImage
-              src={item.imageUrl}
-              alt={item.name}
-              sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-            />
-          )}
-        </a>
-      ) : (
-        <div
-          className="relative mb-4 aspect-square w-full flex-shrink-0 overflow-hidden rounded-2xl bg-surface-2"
-          style={{ background: item.imageUrl ? undefined : coverGradient(item._id) }}
-        >
-          {item.imageUrl && (
-            <BannerImage
-              src={item.imageUrl}
-              alt={item.name}
-              sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-            />
-          )}
-          {showNotes && item.notes && (
-            <div className="absolute inset-0 flex items-center justify-center p-4">
-              <div className="absolute inset-0 bg-black/45 backdrop-blur-md" aria-hidden />
-              <p className="relative max-h-full overflow-y-auto whitespace-pre-wrap break-words text-center text-base font-medium leading-relaxed text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.65)] sm:text-lg">
-                {item.notes}
-              </p>
-            </div>
-          )}
-        </div>
-      )}
+      <Cover
+        src={item.imageUrl}
+        seed={item._id}
+        alt={item.name}
+        sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+        link={
+          productLink ? { href: productLink, label: `View ${item.name} product page` } : undefined
+        }
+        className={`relative mb-4 block aspect-square w-full flex-shrink-0 overflow-hidden rounded-2xl bg-surface-2 ${
+          productLink ? 'transition-opacity duration-200 hover:opacity-90' : ''
+        }`}
+      >
+        {showNotes && item.notes && (
+          <div className="absolute inset-0 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black/45 backdrop-blur-md" aria-hidden />
+            <p className="relative max-h-full overflow-y-auto whitespace-pre-wrap break-words text-center text-base font-medium leading-relaxed text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.65)] sm:text-lg">
+              {item.notes}
+            </p>
+          </div>
+        )}
+      </Cover>
 
       {/* Content */}
       <div className="flex flex-col flex-grow">

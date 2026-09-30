@@ -10,9 +10,12 @@ vi.mock('next-auth/react', () => ({
   useSession: () => ({ data: { user: { id: ME } }, status: 'authenticated' }),
 }));
 
-// BannerImage wraps next/image — render a plain <img> so we can assert presence.
+// BannerImage wraps next/image — render a plain <img> so we can assert presence
+// (and fire its load error).
 vi.mock('@/components/BannerImage', () => ({
-  default: ({ alt }: { alt?: string }) => <img alt={alt ?? ''} data-testid="banner-image" />,
+  default: ({ alt, onError }: { alt?: string; onError?: () => void }) => (
+    <img alt={alt ?? ''} data-testid="banner-image" onError={onError} />
+  ),
 }));
 
 // Simplify ConfirmDialog to expose its message + confirm/cancel buttons.
@@ -43,6 +46,7 @@ vi.mock('@/components/ConfirmDialog', () => ({
 }));
 
 import WishlistItem from '@/components/WishlistItem';
+import { coverGradient } from '@/lib/utils/cover';
 
 function item(overrides: Partial<ApiItem>): ApiItem {
   return {
@@ -163,6 +167,100 @@ describe('WishlistItem — notes overlay', () => {
     // Toggle notes on.
     fireEvent.click(screen.getByRole('button', { name: /show notes/i }));
     expect(screen.getByText('Size L, blue please')).toBeInTheDocument();
+    expect(screen.getByTestId('banner-image')).toBeInTheDocument();
+  });
+});
+
+describe('WishlistItem — cover image', () => {
+  const IMAGE = 'https://x/y.jpg';
+
+  // jsdom normalises the inline style, so compare against what it makes of the
+  // gradient rather than the raw string.
+  function placeholderOf(seed: string) {
+    const probe = document.createElement('div');
+    probe.style.background = coverGradient(seed);
+    return probe.style.background;
+  }
+
+  it('shows the placeholder when the item has no image', () => {
+    render(<WishlistItem item={item({})} onUpdate={vi.fn()} isAuthenticated isMember />);
+    expect(screen.queryByTestId('banner-image')).toBeNull();
+    const cover = screen.getByRole('article').querySelector('.aspect-square') as HTMLElement;
+    expect(cover.style.background).toBe(placeholderOf('item-1'));
+  });
+
+  // regression: the card painted the gradient only when there was no image URL,
+  // so a freed blob or a dead external image left a blank tile.
+  it('regression: falls back to the placeholder when the image fails to load', () => {
+    render(
+      <WishlistItem item={item({ imageUrl: IMAGE })} onUpdate={vi.fn()} isAuthenticated isMember />
+    );
+    const img = screen.getByTestId('banner-image');
+    const cover = img.parentElement as HTMLElement;
+    expect(cover.style.background).toBe('');
+
+    fireEvent.error(img);
+
+    expect(screen.queryByTestId('banner-image')).toBeNull();
+    expect(cover.style.background).toBe(placeholderOf('item-1'));
+  });
+
+  // regression: same blank tile on the product-link variant of the cover.
+  it('regression: falls back to the placeholder on a linked item, keeping the link', () => {
+    render(
+      <WishlistItem
+        item={item({ imageUrl: IMAGE, link: 'https://shop.example/gift' })}
+        onUpdate={vi.fn()}
+        isAuthenticated
+        isMember
+      />
+    );
+
+    fireEvent.error(screen.getByTestId('banner-image'));
+
+    // The cover is one of two product links on the card (the other is "View item").
+    const link = screen
+      .getAllByRole('link', { name: 'View Cool Gift product page' })
+      .find((a) => a.classList.contains('aspect-square')) as HTMLElement;
+    expect(link).toHaveAttribute('href', 'https://shop.example/gift');
+    expect(screen.queryByTestId('banner-image')).toBeNull();
+    expect(link.style.background).toBe(placeholderOf('item-1'));
+  });
+
+  it('keeps the placeholder while the notes are toggled over a broken image', () => {
+    render(
+      <WishlistItem
+        item={item({ imageUrl: IMAGE, link: 'https://shop.example/gift', notes: 'Size L' })}
+        onUpdate={vi.fn()}
+        isAuthenticated
+        isMember
+      />
+    );
+    fireEvent.error(screen.getByTestId('banner-image'));
+
+    fireEvent.click(screen.getByRole('button', { name: /show notes/i }));
+
+    expect(screen.getByText('Size L')).toBeInTheDocument();
+    expect(screen.queryByTestId('banner-image')).toBeNull();
+    const cover = screen.getByText('Size L').closest('.aspect-square') as HTMLElement;
+    expect(cover.style.background).toBe(placeholderOf('item-1'));
+  });
+
+  it('shows the new image when an edit replaces a broken one', () => {
+    const { rerender } = render(
+      <WishlistItem item={item({ imageUrl: IMAGE })} onUpdate={vi.fn()} isAuthenticated isMember />
+    );
+    fireEvent.error(screen.getByTestId('banner-image'));
+
+    rerender(
+      <WishlistItem
+        item={item({ imageUrl: `${IMAGE}?v=2` })}
+        onUpdate={vi.fn()}
+        isAuthenticated
+        isMember
+      />
+    );
+
     expect(screen.getByTestId('banner-image')).toBeInTheDocument();
   });
 });
