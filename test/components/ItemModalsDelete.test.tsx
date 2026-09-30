@@ -27,6 +27,8 @@ function item(overrides: Partial<ApiItem>): ApiItem {
 const modals = [
   {
     name: 'EditItemModal',
+    submitLabel: 'Save Changes',
+    submittingLabel: 'Saving...',
     renderModal: (onDelete: () => Promise<void>, onClose: () => void) =>
       render(
         <EditItemModal
@@ -42,6 +44,8 @@ const modals = [
   },
   {
     name: 'ReviewItemModal',
+    submitLabel: 'Approve Item',
+    submittingLabel: 'Approving...',
     renderModal: (onDelete: () => Promise<void>, onClose: () => void) =>
       render(
         <ReviewItemModal
@@ -62,6 +66,18 @@ const confirmation = () => screen.queryByRole('alertdialog');
 const confirmDelete = () =>
   fireEvent.click(within(confirmation()!).getByRole('button', { name: /^delete$/i }));
 
+// An onDelete that stays in flight until the test calls `finish`.
+function pendingDelete() {
+  let finish!: () => void;
+  const onDelete = vi.fn(
+    () =>
+      new Promise<void>((resolve) => {
+        finish = resolve;
+      })
+  );
+  return { onDelete, finish: () => finish() };
+}
+
 // useBodyScrollLock restores the scroll position on close; jsdom lacks scrollTo.
 beforeAll(() => {
   vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
@@ -69,7 +85,7 @@ beforeAll(() => {
 afterAll(() => vi.restoreAllMocks());
 beforeEach(() => cleanup());
 
-describe.each(modals)('$name — delete outcome', ({ renderModal }) => {
+describe.each(modals)('$name — delete outcome', ({ renderModal, submitLabel, submittingLabel }) => {
   // The modal logs the rejection it catches; keep the test output clean.
   beforeEach(() => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -117,25 +133,38 @@ describe.each(modals)('$name — delete outcome', ({ renderModal }) => {
 
   // regression: nothing stopped a second confirm click while the first delete
   // was in flight, so the page ran its delete handler twice and doubled its toast.
+  // The confirmation now shows the delete as running and ignores the second click.
   it('regression: sends one delete when the confirmation is clicked twice', async () => {
-    let finish!: () => void;
-    const onDelete = vi.fn(
-      () =>
-        new Promise<void>((resolve) => {
-          finish = resolve;
-        })
-    );
+    const { onDelete, finish } = pendingDelete();
     const onClose = vi.fn();
     renderModal(onDelete, onClose);
 
     fireEvent.click(deleteItemButton());
     confirmDelete();
-    // Still in flight: the modal's own buttons are disabled meanwhile.
-    await waitFor(() => expect(deleteItemButton()).toBeDisabled());
-    confirmDelete();
+    const pending = within(confirmation()!).getByRole('button', { name: 'Deleting...' });
+    expect(pending).toBeDisabled();
+    fireEvent.click(pending);
     expect(onDelete).toHaveBeenCalledTimes(1);
 
     finish();
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+  });
+
+  // regression: the form's submit button took its label from the disabled state,
+  // which a delete sets too, so while a delete ran it read "Saving..." /
+  // "Approving...", as if the user's changes were being saved.
+  it('regression: keeps the form disabled but not labelled as saving while the delete runs', async () => {
+    const { onDelete, finish } = pendingDelete();
+    renderModal(onDelete, vi.fn());
+
+    fireEvent.click(deleteItemButton());
+    confirmDelete();
+    expect(within(confirmation()!).getByRole('button', { name: 'Deleting...' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: submitLabel })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: submittingLabel })).toBeNull();
+    expect(deleteItemButton()).toBeDisabled();
+
+    finish();
+    await waitFor(() => expect(confirmation()).toBeNull());
   });
 });

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Icon, { IconName } from '@/components/Icon';
 import { useBodyScrollLock } from '@/lib/hooks/useBodyScrollLock';
 
@@ -8,9 +8,17 @@ interface ConfirmDialogProps {
   isOpen: boolean;
   title: string;
   message: string;
-  onConfirm: () => void;
+  /**
+   * Return a promise to keep the dialog pending until it settles: both buttons
+   * are disabled, Escape and backdrop clicks are ignored, the confirm button
+   * shows `pendingText`, and a second click doesn't call this again. The caller
+   * still closes the dialog, and reports its own failures.
+   */
+  onConfirm: () => void | Promise<unknown>;
   onCancel: () => void;
   confirmText?: string;
+  /** Confirm button label while `onConfirm`'s promise runs, e.g. "Deleting...". */
+  pendingText?: string;
   cancelText?: string;
   type?: 'danger' | 'warning' | 'info';
 }
@@ -22,18 +30,38 @@ export default function ConfirmDialog({
   onConfirm,
   onCancel,
   confirmText = 'Confirm',
+  pendingText = 'Please wait...',
   cancelText = 'Cancel',
   type = 'warning',
 }: ConfirmDialogProps) {
+  // The ref blocks a second click synchronously, before the disabled state renders.
+  const [isPending, setIsPending] = useState(false);
+  const pendingRef = useRef(false);
+
+  const handleConfirm = async () => {
+    if (pendingRef.current) return;
+    const result = onConfirm();
+    if (!(result instanceof Promise)) return;
+    pendingRef.current = true;
+    setIsPending(true);
+    try {
+      await result;
+    } finally {
+      pendingRef.current = false;
+      setIsPending(false);
+    }
+  };
+
   // Handle Escape key press — capture phase + stopImmediatePropagation
-  // so parent modals (BaseModal) don't also process the Escape
+  // so parent modals (BaseModal) don't also process the Escape, even while
+  // the action runs and the dialog itself ignores it
   useEffect(() => {
     if (!isOpen) return;
 
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.stopImmediatePropagation();
-        onCancel();
+        if (!pendingRef.current) onCancel();
       }
     };
 
@@ -46,7 +74,7 @@ export default function ConfirmDialog({
 
   const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
     // Only close if clicking the backdrop itself, not the dialog content
-    if (e.target === e.currentTarget) {
+    if (e.target === e.currentTarget && !pendingRef.current) {
       onCancel();
     }
   };
@@ -101,15 +129,17 @@ export default function ConfirmDialog({
         <div className="mt-6 flex flex-col justify-end gap-2 sm:flex-row sm:gap-3">
           <button
             onClick={onCancel}
-            className="order-2 h-10 rounded-xl bg-muted px-4 text-sm font-medium text-foreground transition-colors hover:bg-surface-2 sm:order-1"
+            disabled={isPending}
+            className="order-2 h-10 rounded-xl bg-muted px-4 text-sm font-medium text-foreground transition-colors hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50 sm:order-1"
           >
             {cancelText}
           </button>
           <button
-            onClick={onConfirm}
-            className={`order-1 h-10 rounded-xl px-4 text-sm font-medium text-white shadow-sm transition-colors sm:order-2 ${button}`}
+            onClick={handleConfirm}
+            disabled={isPending}
+            className={`order-1 h-10 rounded-xl px-4 text-sm font-medium text-white shadow-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50 sm:order-2 ${button}`}
           >
-            {confirmText}
+            {isPending ? pendingText : confirmText}
           </button>
         </div>
       </div>
