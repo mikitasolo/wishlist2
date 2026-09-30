@@ -6,9 +6,15 @@ vi.mock('@/lib/mongodb', () => ({ default: vi.fn().mockResolvedValue(undefined) 
 vi.mock('@/lib/auth', () => ({ auth: vi.fn() }));
 
 import { auth } from '@/lib/auth';
-import { GET } from '@/app/api/wishlists/[id]/route';
+import { GET, DELETE } from '@/app/api/wishlists/[id]/route';
 import User from '@/models/User';
 import Wishlist from '@/models/Wishlist';
+import WishlistMember from '@/models/WishlistMember';
+import WishlistInvite from '@/models/WishlistInvite';
+import Notification from '@/models/Notification';
+import Item from '@/models/Item';
+import Reservation from '@/models/Reservation';
+import GiftLog from '@/models/GiftLog';
 
 const session = vi.mocked(auth);
 
@@ -80,5 +86,147 @@ describe('GET /api/wishlists/[id] — slug resolution', () => {
 
   it('404s for an unknown slug', async () => {
     expect((await get('does-not-exist')).status).toBe(404);
+  });
+});
+
+describe('DELETE /api/wishlists/[id] — cleanup', () => {
+  let doomedId: string;
+  let keptId: string;
+
+  function del(id: string, userId: string) {
+    session.mockResolvedValue({ user: { id: userId } } as never);
+    const req = new NextRequest('http://localhost/api/wishlists/' + id, { method: 'DELETE' });
+    return DELETE(req, { params: Promise.resolve({ id }) });
+  }
+
+  // Everything a list accumulates that points back at it: invites in every
+  // status, and one notification of each wishlist-linked type.
+  async function seedInvitesAndNotifications(wishlistId: string) {
+    await WishlistInvite.create([
+      { wishlist: wishlistId, invitedBy: ownerId, invitedUser: otherId, status: 'pending' },
+      { wishlist: wishlistId, invitedBy: ownerId, invitedUser: otherId, status: 'declined' },
+      { wishlist: wishlistId, invitedBy: ownerId, invitedUser: otherId, status: 'accepted' },
+    ]);
+    const types = ['wishlist_invite', 'invite_accepted', 'proposal', 'proposal_approved'] as const;
+    await Notification.create(
+      types.map((type) => ({ user: otherId, type, wishlist: wishlistId, wishlistName: 'List' }))
+    );
+  }
+
+  beforeEach(async () => {
+    const doomed = await Wishlist.create({
+      name: 'Doomed',
+      owners: [ownerId],
+      visibility: 'everyone',
+      slug: 'doomed',
+    });
+    const kept = await Wishlist.create({
+      name: 'Kept',
+      owners: [ownerId],
+      visibility: 'everyone',
+      slug: 'kept',
+    });
+    doomedId = doomed._id.toString();
+    keptId = kept._id.toString();
+    await WishlistMember.create({ wishlist: doomedId, user: otherId });
+    await seedInvitesAndNotifications(doomedId);
+    await seedInvitesAndNotifications(keptId);
+  });
+
+  // Regression: deleting a list left its invites and notifications behind, so
+  // recipients kept notifications (including actionable-looking invites) that
+  // linked to a 404.
+  it('regression: deletes every invite (any status) and notification for the list', async () => {
+    const res = await del(doomedId, ownerId);
+    expect(res.status).toBe(200);
+
+    expect(await Wishlist.findById(doomedId)).toBeNull();
+    expect(await WishlistInvite.countDocuments({ wishlist: doomedId })).toBe(0);
+    expect(await Notification.countDocuments({ wishlist: doomedId })).toBe(0);
+  });
+
+  it('leaves invites and notifications for other lists, and unrelated notifications, alone', async () => {
+    await Notification.create({ user: ownerId, type: 'follow', actorUsername: 'other' });
+
+    await del(doomedId, ownerId);
+
+    expect(await WishlistInvite.countDocuments({ wishlist: keptId })).toBe(3);
+    expect(await Notification.countDocuments({ wishlist: keptId })).toBe(4);
+    expect(await Notification.countDocuments({ type: 'follow', user: ownerId })).toBe(1);
+  });
+
+  // Reservations and gift logs belong to the gifter: they must outlive the list
+  // so the gifter can still see what they claimed and log the gift.
+  it('leaves reservations and gift logs for the list untouched', async () => {
+    const item = await Item.create({
+      wishlist: doomedId,
+      name: 'Gift',
+      status: 'booked',
+      bookedBy: otherId,
+    });
+    const reservation = await Reservation.create({
+      gifter: otherId,
+      wishlist: doomedId,
+      item: item._id,
+      owner: ownerId,
+      itemName: 'Gift',
+      wishlistName: 'Doomed',
+    });
+    const giftLog = await GiftLog.create({
+      gifter: otherId,
+      giftedAt: new Date(),
+      itemName: 'Earlier gift',
+      recipient: ownerId,
+      wishlistName: 'Doomed',
+      wishlist: doomedId,
+    });
+
+    expect((await del(doomedId, ownerId)).status).toBe(200);
+
+    expect(await Reservation.findById(reservation._id)).not.toBeNull();
+    expect(await GiftLog.findById(giftLog._id)).not.toBeNull();
+  });
+
+  // Cleanup is best-effort: the list is already gone, so a failed step must
+  // neither fail the delete nor stop the other (independent) step from running.
+  async function expectDeleteSurvives(
+    failing: { mockRestore(): void },
+    otherStepLeftovers: () => PromiseLike<number>
+  ) {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const res = await del(doomedId, ownerId);
+      expect(res.status).toBe(200);
+      expect((await res.json()).success).toBe(true);
+
+      expect(await Wishlist.findById(doomedId)).toBeNull();
+      expect(log).toHaveBeenCalledWith(expect.stringContaining(doomedId), expect.any(Error));
+      expect(await otherStepLeftovers()).toBe(0);
+    } finally {
+      failing.mockRestore();
+      log.mockRestore();
+    }
+  }
+
+  it('still deletes the list and succeeds when invite cleanup fails', async () => {
+    await expectDeleteSurvives(
+      vi.spyOn(WishlistInvite, 'deleteMany').mockRejectedValueOnce(new Error('db hiccup')),
+      () => Notification.countDocuments({ wishlist: doomedId })
+    );
+  });
+
+  it('still deletes the list and succeeds when notification cleanup fails', async () => {
+    await expectDeleteSurvives(
+      vi.spyOn(Notification, 'deleteMany').mockRejectedValueOnce(new Error('db hiccup')),
+      () => WishlistInvite.countDocuments({ wishlist: doomedId })
+    );
+  });
+
+  it('refuses a non-owner and leaves the invites and notifications in place', async () => {
+    expect((await del(doomedId, otherId)).status).toBe(403);
+
+    expect(await Wishlist.findById(doomedId)).not.toBeNull();
+    expect(await WishlistInvite.countDocuments({ wishlist: doomedId })).toBe(3);
+    expect(await Notification.countDocuments({ wishlist: doomedId })).toBe(4);
   });
 });

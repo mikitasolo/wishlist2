@@ -4,6 +4,8 @@ import { auth } from '@/lib/auth';
 import connectDB from '@/lib/mongodb';
 import Wishlist, { IWishlist } from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
+import WishlistInvite from '@/models/WishlistInvite';
+import Notification from '@/models/Notification';
 import User from '@/models/User';
 import Item from '@/models/Item';
 import { updateWishlistSchema, validateRequestBody } from '@/lib/validations';
@@ -262,6 +264,19 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   }
 }
 
+/** Run one cleanup step after a wishlist delete; log and swallow a failure. */
+async function bestEffort(
+  what: string,
+  wishlistId: string,
+  step: () => PromiseLike<unknown>
+): Promise<void> {
+  try {
+    await step();
+  } catch (err) {
+    console.error(`${what} cleanup failed for deleted wishlist ${wishlistId}:`, err);
+  }
+}
+
 // DELETE /api/wishlists/[id] - Delete a wishlist (any owner; owners are equal)
 export async function DELETE(
   request: NextRequest,
@@ -310,8 +325,21 @@ export async function DELETE(
     // Delete wishlist
     await Wishlist.findByIdAndDelete(id);
 
-    // Best-effort cleanup of our own uploaded blobs (item images + cover).
-    await deleteOwnBlobs([...items.map((i) => i.imageUrl), wishlist.bannerUrl]);
+    // Best-effort cleanup of what only made sense while the list existed. The
+    // list is already gone, so each step logs and continues: a failure here
+    // must not turn a successful delete into an error.
+    //  - Invites, whatever their status (accepted/declined rows are only
+    //    history for a list that no longer exists).
+    //  - Notifications that link to the list, which would now 404 (the
+    //    `wishlist_invite` ones even look actionable).
+    //  - Our own uploaded blobs (item images + cover).
+    // Reservations and gift logs deliberately stay: they're the gifter's, so
+    // they can still see what they claimed and log the gift.
+    await Promise.all([
+      bestEffort('Invite', id, () => WishlistInvite.deleteMany({ wishlist: id })),
+      bestEffort('Notification', id, () => Notification.deleteMany({ wishlist: id })),
+      deleteOwnBlobs([...items.map((i) => i.imageUrl), wishlist.bannerUrl]),
+    ]);
 
     return NextResponse.json({ success: true, data: {} }, { status: 200 });
   } catch (error) {
