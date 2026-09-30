@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import mongoose from 'mongoose';
 import { auth } from '@/lib/auth';
 import connectDB from '@/lib/mongodb';
 import WishlistInvite from '@/models/WishlistInvite';
@@ -26,17 +27,40 @@ export async function DELETE(
       return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
     }
 
-    const invite = await WishlistInvite.findOne({ _id: inviteId, wishlist: id });
-    if (!invite) {
+    // A malformed id can't match any invite: answer like a missing one, not with
+    // the CastError's 500.
+    if (!mongoose.isObjectIdOrHexString(inviteId)) {
       return NextResponse.json({ success: false, error: 'Invite not found' }, { status: 404 });
     }
+
+    // Only a pending invite can be cancelled, and that check is part of the
+    // delete itself. The owner's invites panel can lag behind the invitee, and an
+    // answer recorded between a separate read and the delete would be erased, with
+    // the owner told "cancelled" while the person stays in. (An accept still in
+    // flight isn't covered: it grants the role before it records `accepted`, so
+    // closing that window means accept claiming the invite first.)
     const cancelledAt = new Date();
-    await WishlistInvite.deleteOne({ _id: inviteId });
+    const invite = await WishlistInvite.findOneAndDelete({
+      _id: inviteId,
+      wishlist: id,
+      status: 'pending',
+    });
+    if (!invite) {
+      // Nothing was deleted. If the invite is still on this list it was answered:
+      // say so, but not how (accepted and declined get the same reply).
+      if (await WishlistInvite.exists({ _id: inviteId, wishlist: id })) {
+        return NextResponse.json(
+          { success: false, error: 'This invitation has already been answered.' },
+          { status: 409 }
+        );
+      }
+      return NextResponse.json({ success: false, error: 'Invite not found' }, { status: 404 });
+    }
 
     // A pending invite's `wishlist_invite` notification links to /invites and
     // looks actionable, but there's nothing left there to accept, so clear it.
-    // (Once an invite is accepted or declined its notification is history, which
-    // accept/decline keep too, so a stale "cancel" of one leaves it alone.)
+    // (An invite that was already accepted or declined never gets this far, and
+    // its notification is history, which accept/decline keep too.)
     // Notifications carry no invite id, which bounds what we may delete:
     //  - only while no other pending invite for this person and list remains:
     //    the unique pending index allows one at most, but only once it's built;
@@ -44,24 +68,22 @@ export async function DELETE(
     //    between the check and the delete keeps its own.
     // Best-effort: the invite is already gone, so a failed cleanup must not turn
     // a successful cancel into an error.
-    if (invite.status === 'pending') {
-      try {
-        const stillPending = await WishlistInvite.exists({
+    try {
+      const stillPending = await WishlistInvite.exists({
+        wishlist: id,
+        invitedUser: invite.invitedUser,
+        status: 'pending',
+      });
+      if (!stillPending) {
+        await Notification.deleteMany({
+          user: invite.invitedUser,
           wishlist: id,
-          invitedUser: invite.invitedUser,
-          status: 'pending',
+          type: 'wishlist_invite',
+          createdAt: { $lt: cancelledAt },
         });
-        if (!stillPending) {
-          await Notification.deleteMany({
-            user: invite.invitedUser,
-            wishlist: id,
-            type: 'wishlist_invite',
-            createdAt: { $lt: cancelledAt },
-          });
-        }
-      } catch (err) {
-        console.error(`Notification cleanup failed for cancelled invite ${inviteId}:`, err);
       }
+    } catch (err) {
+      console.error(`Notification cleanup failed for cancelled invite ${inviteId}:`, err);
     }
 
     return NextResponse.json({ success: true, data: {} }, { status: 200 });
