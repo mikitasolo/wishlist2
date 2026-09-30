@@ -7,8 +7,9 @@ import { useState } from 'react';
  * The image layer of a `Cover`, and of the upload preview. Uses next/image so
  * it routes through the server-side image optimizer — this loads images from
  * hosts that block direct hotlinking (which a plain <img> can't). Renders inside
- * a positioned, sized parent; on error it renders nothing and calls `onError`.
- * Don't frame it by hand for a list or item image: `Cover` puts the gradient
+ * a positioned, sized parent; on error it renders nothing and calls `onError`,
+ * until `src` changes: a new URL (a replaced image) gets a fresh try. Don't
+ * frame it by hand for a list or item image: `Cover` puts the gradient
  * placeholder back when the image fails.
  */
 export default function BannerImage({
@@ -26,8 +27,10 @@ export default function BannerImage({
   /** Called when the image fails to load, for a parent that paints its own fallback. */
   onError?: () => void;
 }) {
-  const [error, setError] = useState(false);
-  if (error) return null;
+  // Keyed on the URL, not a boolean: the upload preview keeps this mounted
+  // when Replace swaps in a new URL.
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  if (failedSrc === src) return null;
   return (
     <Image
       src={src}
@@ -37,7 +40,7 @@ export default function BannerImage({
       priority={priority}
       className="object-cover"
       onError={() => {
-        setError(true);
+        setFailedSrc(src);
         onError?.();
       }}
     />
