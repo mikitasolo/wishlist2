@@ -32,6 +32,7 @@ export default function EditItemModal({
   userCurrency,
 }: EditItemModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showConfirmClose, setShowConfirmClose] = useState(false);
@@ -40,6 +41,7 @@ export default function EditItemModal({
   useEffect(() => {
     if (!isOpen) {
       setIsSubmitting(false);
+      setIsDeleting(false);
       setShowDeleteConfirm(false);
       setHasUnsavedChanges(false);
       setShowConfirmClose(false);
@@ -88,10 +90,10 @@ export default function EditItemModal({
   // onDelete rejects when the delete fails (after showing the error), so only a
   // real delete closes the modal. Either way the confirmation is answered: on a
   // failure it drops back to this modal, item intact, for a retry or cancel.
-  // The confirmation shows the delete as running, and ignores a second click,
-  // until this settles.
+  // Until then the confirmation shows the delete running and takes no second click.
   const handleDelete = async () => {
     if (!onDelete) return;
+    setIsDeleting(true);
     try {
       await onDelete();
       setHasUnsavedChanges(false);
@@ -100,6 +102,7 @@ export default function EditItemModal({
       console.error('Error deleting item:', error);
     } finally {
       setShowDeleteConfirm(false);
+      setIsDeleting(false);
     }
   };
 
@@ -124,7 +127,7 @@ export default function EditItemModal({
         onClose={handleClose}
         title={item.status === 'proposed' ? 'Edit Proposed Item' : 'Edit Item'}
         titleId="edit-item-title"
-        isSubmitting={isSubmitting}
+        isSubmitting={isSubmitting || isDeleting}
         shouldInterceptClose={() => hasUnsavedChanges}
         onInterceptClose={() => setShowConfirmClose(true)}
       >
@@ -135,7 +138,7 @@ export default function EditItemModal({
           onCancel={handleClose}
           submitLabel="Save Changes"
           submittingLabel="Saving..."
-          isSubmitting={isSubmitting}
+          isSubmitting={isSubmitting || isDeleting}
           mode={item.status === 'proposed' ? 'propose' : 'edit'}
           itemId={item._id}
           onFormChange={setHasUnsavedChanges}
@@ -155,7 +158,8 @@ export default function EditItemModal({
                   className="flex-1 px-4 py-2 border border-transparent bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors font-medium disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
                   disabled={submitting}
                 >
-                  {submitting ? submittingLabel : submitLabel}
+                  {/* A delete disables the form too, but only a save reads "Saving...". */}
+                  {isSubmitting ? submittingLabel : submitLabel}
                 </button>
               </div>
               {onDelete && (

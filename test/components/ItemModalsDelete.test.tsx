@@ -66,6 +66,18 @@ const confirmation = () => screen.queryByRole('alertdialog');
 const confirmDelete = () =>
   fireEvent.click(within(confirmation()!).getByRole('button', { name: /^delete$/i }));
 
+// An onDelete that stays in flight until the test calls `finish`.
+function pendingDelete() {
+  let finish!: () => void;
+  const onDelete = vi.fn(
+    () =>
+      new Promise<void>((resolve) => {
+        finish = resolve;
+      })
+  );
+  return { onDelete, finish: () => finish() };
+}
+
 // useBodyScrollLock restores the scroll position on close; jsdom lacks scrollTo.
 beforeAll(() => {
   vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
@@ -123,13 +135,7 @@ describe.each(modals)('$name — delete outcome', ({ renderModal, submitLabel, s
   // was in flight, so the page ran its delete handler twice and doubled its toast.
   // The confirmation now shows the delete as running and ignores the second click.
   it('regression: sends one delete when the confirmation is clicked twice', async () => {
-    let finish!: () => void;
-    const onDelete = vi.fn(
-      () =>
-        new Promise<void>((resolve) => {
-          finish = resolve;
-        })
-    );
+    const { onDelete, finish } = pendingDelete();
     const onClose = vi.fn();
     renderModal(onDelete, onClose);
 
@@ -144,24 +150,19 @@ describe.each(modals)('$name — delete outcome', ({ renderModal, submitLabel, s
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
 
-  // regression: the modal passed `isSubmitting || isDeleting` to its form, so
-  // while a delete ran the form behind the confirmation read "Saving..." /
+  // regression: the form's submit button took its label from the disabled state,
+  // which a delete sets too, so while a delete ran it read "Saving..." /
   // "Approving...", as if the user's changes were being saved.
-  it('regression: does not label the form as saving while the delete runs', async () => {
-    let finish!: () => void;
-    const onDelete = vi.fn(
-      () =>
-        new Promise<void>((resolve) => {
-          finish = resolve;
-        })
-    );
+  it('regression: keeps the form disabled but not labelled as saving while the delete runs', async () => {
+    const { onDelete, finish } = pendingDelete();
     renderModal(onDelete, vi.fn());
 
     fireEvent.click(deleteItemButton());
     confirmDelete();
     expect(within(confirmation()!).getByRole('button', { name: 'Deleting...' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: submitLabel })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: submitLabel })).toBeDisabled();
     expect(screen.queryByRole('button', { name: submittingLabel })).toBeNull();
+    expect(deleteItemButton()).toBeDisabled();
 
     finish();
     await waitFor(() => expect(confirmation()).toBeNull());

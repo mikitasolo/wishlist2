@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, onTestFinished } from 'vitest';
 import { render, screen, fireEvent, waitFor, act, cleanup } from '@testing-library/react';
 import ConfirmDialog from '@/components/ConfirmDialog';
 
@@ -79,7 +79,10 @@ describe('ConfirmDialog — an action that returns a promise', () => {
     expect(button('Cancel')).toBeEnabled();
   });
 
-  it('does not call onConfirm again on a second click while it runs', async () => {
+  // regression: the dialog had no pending state and kept calling onConfirm, so
+  // a double click on Remove Member sent two DELETEs and the second one's 404
+  // toasted "Failed to remove member" right after the success.
+  it('regression: does not call onConfirm again on a second click while it runs', async () => {
     const { onConfirm, finish } = deferredConfirm();
     renderDialog(onConfirm);
 
@@ -90,8 +93,9 @@ describe('ConfirmDialog — an action that returns a promise', () => {
     await finish();
   });
 
-  // Two clicks landing before React re-renders the button as disabled.
-  it('does not call onConfirm again on a second click before it re-renders', async () => {
+  // regression: as above, for two clicks landing before React re-renders the
+  // button as disabled.
+  it('regression: does not call onConfirm again on a second click before it re-renders', async () => {
     const { onConfirm, finish } = deferredConfirm();
     renderDialog(onConfirm);
 
@@ -111,6 +115,7 @@ describe('ConfirmDialog — an action that returns a promise', () => {
     // A parent modal (BaseModal) listens for Escape on the document too.
     const parentEscape = vi.fn();
     document.addEventListener('keydown', parentEscape);
+    onTestFinished(() => document.removeEventListener('keydown', parentEscape));
 
     fireEvent.click(button('Remove'));
     fireEvent.keyDown(document, { key: 'Escape' });
@@ -123,7 +128,6 @@ describe('ConfirmDialog — an action that returns a promise', () => {
     // Settled: the dialog can be dismissed again.
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(onCancel).toHaveBeenCalledTimes(1);
-    document.removeEventListener('keydown', parentEscape);
   });
 
   it('lets the user confirm again once it has settled', async () => {

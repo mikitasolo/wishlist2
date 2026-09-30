@@ -778,8 +778,12 @@ export default function WishlistDetail() {
   const confirmPromoteToOwner = useCallback(async () => {
     if (!promoteConfirm) return;
     const { userId, username } = promoteConfirm;
-    setPromoteConfirm(null);
-    await inviteAsOwner(userId, username);
+    // Closed once the invite settles, so the dialog shows it being sent meanwhile.
+    try {
+      await inviteAsOwner(userId, username);
+    } finally {
+      setPromoteConfirm(null);
+    }
   }, [promoteConfirm, inviteAsOwner]);
 
   const handleLeaveWishlist = useCallback(() => {
@@ -1917,6 +1921,7 @@ export default function WishlistDetail() {
           onConfirm={confirmPromoteToOwner}
           onCancel={() => setPromoteConfirm(null)}
           confirmText="Send owner invite"
+          pendingText="Sending..."
           cancelText="Cancel"
           type="warning"
         />
