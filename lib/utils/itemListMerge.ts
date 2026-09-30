@@ -19,9 +19,8 @@ export function isStalePoll(pollStartedAt: number, lastMutationAt: number): bool
 /**
  * Put an item the server just created at the top of the list, unless a poll
  * already brought it in. A copy with the same `_id` can only come from a read
- * made after the write, so it is at least as fresh as the create response (and
- * carries the list read's `priceInUsdCents`): it stays as is rather than being
- * listed twice.
+ * made after the write, so it is at least as fresh as the create response: it
+ * stays as is rather than being listed twice.
  */
 export function prependCreatedItem<T extends { _id: string }>(items: T[], created: T): T[] {
   if (items.some((item) => item._id === created._id)) return items;

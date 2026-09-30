@@ -468,8 +468,9 @@ export default function WishlistDetail() {
       lastMutationAt.current = Date.now();
 
       if (updated) {
-        // Merge authoritative server fields into just this item (keeps enriched
-        // fields like priceInUsdCents that the PATCH response doesn't include).
+        // Merge authoritative server fields into just this item. The PATCH
+        // response carries a fresh priceInUsdCents, so a re-priced item sorts
+        // by its new price straight away.
         setItems((prevItems) =>
           prevItems.map((item) => (item._id === id ? { ...item, ...updated } : item))
         );
