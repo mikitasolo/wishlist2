@@ -518,8 +518,9 @@ export default function WishlistDetail() {
     [wishlistId, showToast]
   );
 
-  // Approving doesn't go through handleUpdateItem: that never reports a failure,
-  // and the owner must only be told "approved" when the server agreed.
+  // Approving has its own optimistic path rather than handleUpdateItem's: a
+  // failure must put the proposal back at once and reach ReviewItemModal, and
+  // the owner is only told "approved" once the server agreed.
   const handleReviewItem = useCallback(
     async (updates: Partial<ApiItem> & { status: 'draft' | 'available' }) => {
       if (!itemToReview) return;
@@ -538,20 +539,22 @@ export default function WishlistDetail() {
 
       if (!approved) {
         // The hook has already toasted the API's error. Roll the optimistic
-        // approve back, and reject so ReviewItemModal stays open with the edits.
+        // approve back, then reconcile with the server in case the write landed
+        // after all. Reject so ReviewItemModal stays open with the edits.
         if (proposal) {
           setItems((prevItems) => prevItems.map((item) => (item._id === itemId ? proposal : item)));
         }
+        fetchItems(true);
         throw new Error('Failed to approve item');
       }
 
       setItems((prevItems) =>
         prevItems.map((item) => (item._id === itemId ? { ...item, ...approved } : item))
       );
-      setItemToReview(null);
+      // ReviewItemModal closes itself on success.
       showToast('Item approved successfully', 'success');
     },
-    [itemToReview, items, updateItemHook, showToast]
+    [itemToReview, items, updateItemHook, fetchItems, showToast]
   );
 
   const handleDeleteProposedItem = useCallback(async () => {

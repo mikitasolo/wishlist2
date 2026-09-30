@@ -22,8 +22,9 @@ test('regression: a failed approve shows the error and leaves the item proposed'
   let listServed = false;
   await page.route('**/api/wishlists/*/items', async (route) => {
     if (route.request().method() !== 'GET') return route.fallback();
-    // Hold every refetch after the first load, so the list can only change
-    // locally: the page itself must put the proposal back.
+    // Hold every refetch after the first load (the poll, and the reconcile after
+    // a failure), so the list can only change locally: the page itself must put
+    // the proposal back.
     if (listServed) return;
     const response = await route.fetch();
     const body = await response.json();
