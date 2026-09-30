@@ -115,12 +115,18 @@ export async function issueWishlistInvite(args: IssueInviteArgs): Promise<IWishl
  * Call it only after the membership/ownership write has landed. Never before it,
  * and never when `removeWishlistOwner` refused it (returned `false`).
  *
- * Only *pending* invites go. Accepted and declined rows are kept on purpose. The
- * invite delete is the fix itself, so its failure propagates to the caller. The
- * notification cleanup is best-effort, like a deleted wishlist's: a failure is
- * logged and swallowed. Notifications carry no invite id, so they're matched on
- * recipient + wishlist, and only cleared when a pending invite was actually
- * cancelled. After that none can be left pending for the pair.
+ * Only *pending* invites go. Accepted and declined rows are kept on purpose.
+ *
+ * The invite delete is the fix itself, so its failure propagates and the request
+ * reports an error rather than a clean success. The removal has landed by then
+ * and a retry stops early, but the leftover invite still shows in the owners'
+ * Pending invites panel, where they can cancel it.
+ *
+ * The notification cleanup is best-effort, like a deleted wishlist's: a failure is
+ * logged and swallowed. Notifications carry no invite id, so it runs only when a
+ * pending invite was actually cancelled, and then clears every `wishlist_invite`
+ * notification this person has for the list, including one left by an invite they
+ * answered earlier. None of them has anything left to act on.
  */
 export async function cancelPendingInvites(wishlistId: Id, userId: Id): Promise<void> {
   const { deletedCount } = await WishlistInvite.deleteMany({

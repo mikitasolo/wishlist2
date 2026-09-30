@@ -263,6 +263,21 @@ describe('cancelPendingInvites', () => {
     expect(await invitesNotifications(carol, wid)).toBe(1);
   });
 
+  it('once it cancels one, clears all their invite notifications for that list only', async () => {
+    const answered = await pendingInvite(wid, carol, 'member');
+    await WishlistInvite.updateOne({ _id: answered }, { $set: { status: 'accepted' } });
+    await pendingInvite(wid, carol, 'owner');
+    await pendingInvite(otherId, carol, 'member');
+    expect(await invitesNotifications(carol, wid)).toBe(2);
+
+    await cancelPendingInvites(wid, carol);
+
+    // Notifications carry no invite id, and neither of these is actionable now.
+    expect(await invitesNotifications(carol, wid)).toBe(0);
+    expect(await invitesNotifications(carol, otherId)).toBe(1);
+    expect((await WishlistInvite.findById(answered))?.status).toBe('accepted');
+  });
+
   it('is best-effort about the notifications: the invite is still cancelled', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     const inviteId = await pendingInvite(wid, carol, 'owner');
