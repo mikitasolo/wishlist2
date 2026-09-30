@@ -5,6 +5,7 @@ import Reservation from '@/models/Reservation';
 import Wishlist, { IWishlist } from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
 import { ownedByFilter, ownerIds } from '@/lib/utils/wishlistOwners';
+import { isOwnerOfWishlist } from '@/lib/utils/wishlistAccess';
 
 /**
  * Changing who owns a wishlist. Ownership is consequential in both directions,
@@ -106,7 +107,22 @@ export async function addWishlistOwner(
 }
 
 /**
- * Remove a user from a wishlist's owners.
+ * How a `removeWishlistOwner` call ended. Anything but `'removed'` changed
+ * nothing, and the caller must stop before any follow-on side effect.
+ *
+ *   - removed         → done.
+ *   - actor-not-owner → whoever is acting stopped being an owner since the
+ *                       caller checked (a concurrent request removed them), so
+ *                       they no longer get to change who owns the list.
+ *   - last-owner      → the user is the only owner left. The same write miss
+ *                       also covers a user who already stopped being an owner.
+ */
+export type OwnerRemoval = 'removed' | 'actor-not-owner' | 'last-owner';
+
+/**
+ * Remove a user from a wishlist's owners, on the say-so of `actorId`: another
+ * owner demoting or removing them, or the user themselves when they leave.
+ * Named rather than positional, so the actor can't be swapped with the user.
  *
  * `keepAsMember` demotes them to a plain member; otherwise they're off the list
  * entirely (leaving or being removed). Either way they lose their dashboard pin
@@ -114,34 +130,41 @@ export async function addWishlistOwner(
  * pinned as their profile hero.
  *
  * Refuses to remove the *last* owner, which would leave the wishlist unreachable,
- * and returns `false` having changed nothing — callers must then stop before any
- * follow-on side effect (freeing bookings, and so on). The refusal is enforced by
- * the write itself, not by `wishlist`: that's a copy read earlier, and two
- * co-owners stepping down at once would each see the other still there. Callers
- * still pre-check `isLastOwner` for the common case.
- *
- * `false` also covers a user who stopped being an owner since `wishlist` was read
- * (a concurrent request already removed them): with the list as it now stands,
- * there's nobody left to remove.
+ * and refuses an actor who is no longer an owner, since only owners may change
+ * ownership. Both are enforced by the write itself, not by `wishlist`: that's a
+ * copy read earlier, so two co-owners stepping down at once would each see the
+ * other still there, and two owners removing each other at once would each still
+ * see themselves as an owner. Callers still pre-check (`isLastOwner`, and that the
+ * caller owns the list) for the common case.
  */
 export async function removeWishlistOwner(
   wishlist: WishlistShape,
   userId: string,
-  keepAsMember: boolean
-): Promise<boolean> {
+  { actorId, keepAsMember }: { actorId: string; keepAsMember: boolean }
+): Promise<OwnerRemoval> {
   await connectDB();
 
   const wishlistId = wishlist._id.toString();
   const uid = new mongoose.Types.ObjectId(userId);
-  // One conditional write: only matches while they're an owner *and* a second
-  // owner exists (`owners.1`), so of two racing removals on a two-owner list,
-  // exactly one lands. The schema's non-empty `owners` validator doesn't run on
-  // `updateOne`, so this filter is the only thing holding the invariant.
+  // One conditional write: only matches while the actor and the user are both
+  // owners *and* a second owner exists (`owners.1`). So of two racing removals on
+  // a two-owner list exactly one lands, and an owner whom a concurrent request
+  // just removed can't go on to remove anyone else. The schema's non-empty
+  // `owners` validator doesn't run on `updateOne`, so this filter is the only
+  // thing keeping the list an owner.
   const { modifiedCount } = await Wishlist.updateOne(
-    { _id: wishlistId, ...ownedByFilter(userId), 'owners.1': { $exists: true } },
+    {
+      _id: wishlistId,
+      $and: [ownedByFilter(actorId), ownedByFilter(userId)],
+      'owners.1': { $exists: true },
+    },
     { $pull: { owners: uid, featuredBy: uid } }
   );
-  if (modifiedCount === 0) return false;
+  if (modifiedCount === 0) {
+    // The write already refused, so this read only picks the answer. It can be a
+    // moment newer than the write; nothing was changed either way.
+    return (await isOwnerOfWishlist(wishlistId, actorId)) ? 'last-owner' : 'actor-not-owner';
+  }
 
   if (keepAsMember) {
     await WishlistMember.findOneAndUpdate(
@@ -152,7 +175,7 @@ export async function removeWishlistOwner(
   } else {
     await WishlistMember.deleteMany({ wishlist: wishlistId, user: userId });
   }
-  return true;
+  return 'removed';
 }
 
 /**

@@ -51,10 +51,15 @@ export async function DELETE(
       if (isLastOwner(wishlist, session.user.id)) return onlyOwnerError();
 
       // Leaving means leaving — no membership left behind. Also drops this list
-      // from their dashboard pin, since `featuredBy` is per-owner. `false`: a
-      // co-owner stepped down at the same moment and got there first, leaving
-      // them the only owner — so nothing was changed and nothing is released.
-      if (!(await removeWishlistOwner(wishlist, session.user.id, false))) return onlyOwnerError();
+      // from their dashboard pin, since `featuredBy` is per-owner. They act on
+      // themselves, so they're the actor too. Not `'removed'`: a co-owner stepped
+      // down at the same moment and got there first, leaving them the only owner
+      // — so nothing was changed and nothing is released.
+      const removal = await removeWishlistOwner(wishlist, session.user.id, {
+        actorId: session.user.id,
+        keepAsMember: false,
+      });
+      if (removal !== 'removed') return onlyOwnerError();
       const unbookedCount = await releaseUserBookings(wishlistId, session.user.id);
 
       return NextResponse.json(
