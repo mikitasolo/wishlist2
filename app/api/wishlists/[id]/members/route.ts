@@ -11,6 +11,7 @@ import { resolveWishlistId } from '@/lib/utils/wishlistSlug';
 import { getOwnerAccess } from '@/lib/utils/wishlistAccess';
 import { isWishlistOwner, ownerIds } from '@/lib/utils/wishlistOwners';
 import { issueWishlistInvite } from '@/lib/utils/wishlistInvites';
+import { publicDisplayName } from '@/lib/utils/displayName';
 
 // GET /api/wishlists/[id]/members - Get all members of a wishlist
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -203,7 +204,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       wishlistName: wishlist.name,
       role,
       invitedBy: session.user.id,
-      inviterName: session.user.username || session.user.email?.split('@')[0] || 'Someone',
+      inviterName: publicDisplayName(session.user),
       actorUsername: session.user.username ?? null,
       invitedUserId: invitedUser._id,
       invitedUserEmail: invitedUser.email,

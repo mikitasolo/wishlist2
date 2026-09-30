@@ -11,7 +11,7 @@ interface IssueInviteArgs {
   wishlistName: string;
   role: IWishlistInvite['role'];
   invitedBy: Id;
-  /** Public name of the inviter, for the email body. Never their email address. */
+  /** Public name of the inviter, for the email body: `publicDisplayName`, never from their email. */
   inviterName: string;
   /** Inviter's username for the in-app notification, or null to stay anonymous. */
   actorUsername?: string | null;
