@@ -22,6 +22,9 @@ export default defineConfig({
       NEXTAUTH_URL: 'http://localhost:3000',
       NEXTAUTH_SECRET: 'test-secret',
       EMAIL_FROM: 'test@example.com',
+      // Pinned so a dev shell exporting EMAIL_TRANSPORT=console can't change
+      // what the suite runs; tests that need console mode stub it themselves.
+      EMAIL_TRANSPORT: 'smtp',
       SMTP_HOST: 'localhost',
       SMTP_PORT: '587',
       SMTP_SECURE: 'false',

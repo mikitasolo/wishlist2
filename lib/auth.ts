@@ -2,11 +2,10 @@ import NextAuth from 'next-auth';
 import Nodemailer from 'next-auth/providers/nodemailer';
 import connectDB from './mongodb';
 import User from '@/models/User';
-import { sendMagicLinkEmail } from './email';
 import { adapter } from './authAdapter';
 import { getEnvVars } from './env';
 import { generateUniqueUsername } from './utils/username';
-import { checkRateLimit, clientIp } from './rateLimit';
+import { sendVerificationRequest } from './signInEmail';
 
 // Get validated environment variables
 const env = getEnvVars();
@@ -21,33 +20,24 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   trustHost: true,
   providers: [
     // v4's EmailProvider is `Nodemailer` in v5. Our custom sendVerificationRequest
-    // sends the mail via lib/email, so this transport is never actually dialed —
-    // but v5 validates that `server` is present at init, so we point it at the
-    // real SMTP config from env (harmless, and correct if the custom sender is
-    // ever removed).
+    // rate-limits, then sends the mail via lib/email (which honours
+    // EMAIL_TRANSPORT), so this transport is never actually dialed — but v5
+    // validates that `server` is present at init. In `smtp` mode we point it at
+    // the real SMTP config (harmless, and correct if the custom sender is ever
+    // removed); in `console` mode there is none, so we give it nodemailer's JSON
+    // transport, which never sends anything either.
     Nodemailer({
-      server: {
-        host: env.SMTP_HOST,
-        port: Number(env.SMTP_PORT),
-        secure: env.SMTP_SECURE === 'true',
-        auth: { user: env.SMTP_USER, pass: env.SMTP_PASSWORD },
-      },
+      server:
+        env.EMAIL_TRANSPORT === 'smtp'
+          ? {
+              host: env.SMTP_HOST,
+              port: Number(env.SMTP_PORT),
+              secure: env.SMTP_SECURE === 'true',
+              auth: { user: env.SMTP_USER, pass: env.SMTP_PASSWORD },
+            }
+          : { jsonTransport: true },
       from: env.EMAIL_FROM,
-      async sendVerificationRequest({ identifier: email, url, request }) {
-        // Rate limit the magic-link send — the top abuse target (email bombing
-        // a victim + SMTP cost/reputation). Key on BOTH the target email (so one
-        // attacker can't fan across IPs to bomb one address) and the client IP
-        // (so one host can't spray many addresses). Throwing aborts the send.
-        const target = email.toLowerCase();
-        const [emailOk, ipOk] = await Promise.all([
-          checkRateLimit('signinEmail', target),
-          checkRateLimit('signinIp', `ip:${clientIp(request.headers)}`),
-        ]);
-        if (!emailOk || !ipOk) {
-          throw new Error('Too many sign-in attempts. Please wait a few minutes and try again.');
-        }
-        await sendMagicLinkEmail(email, url);
-      },
+      sendVerificationRequest,
     }),
   ],
   callbacks: {
