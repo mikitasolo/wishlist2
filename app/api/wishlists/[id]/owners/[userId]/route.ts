@@ -16,6 +16,7 @@ import {
   removeWishlistOwner,
 } from '@/lib/utils/wishlistOwnership';
 import { cancelPendingInvites, issueWishlistInvite } from '@/lib/utils/wishlistInvites';
+import { publicDisplayName } from '@/lib/utils/displayName';
 
 /**
  * Who owns a wishlist. Owners have no `WishlistMember` row (they live in
@@ -151,7 +152,7 @@ export async function POST(
       wishlistName: wishlist.name,
       role: 'owner',
       invitedBy: session.user.id,
-      inviterName: session.user.username || session.user.email?.split('@')[0] || 'Someone',
+      inviterName: publicDisplayName(session.user),
       actorUsername: session.user.username ?? null,
       invitedUserId: userId,
       invitedUserEmail: target.email,
