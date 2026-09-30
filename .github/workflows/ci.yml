@@ -33,8 +33,10 @@ jobs:
       - name: Typecheck
         run: npx tsc --noEmit
 
-      - name: Test
-        run: npm test
+      # Runs the full Vitest suite with coverage, so a drop below the
+      # thresholds ratchet in vitest.config.ts fails the job.
+      - name: Test (with coverage thresholds)
+        run: npm run test:cov
 
       - name: Build
         run: npm run build

@@ -14,11 +14,11 @@ npm run dev          # local dev server — in Conductor: npm run dev -- --port 
 npm run lint         # eslint — must pass before done
 npm run format:check # prettier --check — must pass before done (npm run format fixes it)
 npx tsc --noEmit     # typecheck — must pass before done
-npm test             # run the full Vitest suite (unit + component + API) — must pass before done
+npm run test:cov     # full Vitest suite (unit + component + API) + the coverage floor in vitest.config.ts — must pass before done
 npm run build        # production build — must pass before done
 npm run test:e2e     # Playwright end-to-end suite
 npm run test:watch   # watch mode
-npm run test:cov     # coverage report (enforces the threshold floor in vitest.config.ts)
+npm test             # the same suite without coverage
 npm run release:preview  # list commits remote staging is ahead of remote main (dry run)
 npm run release          # promote: fast-forward remote main to remote staging — operator only
 ```
