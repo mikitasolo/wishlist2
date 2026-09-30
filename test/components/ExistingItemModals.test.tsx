@@ -147,7 +147,7 @@ describe('itemToFormData — currency', () => {
     expect(itemToFormData(item({ price: { value: 1000, currency: 'eur' } }), 'PLN').currency).toBe(
       'EUR'
     );
-    // A zero price is still a price.
+    // A zero price is still a price, so it keeps its own currency too.
     expect(itemToFormData(item({ price: { value: 0, currency: 'gbp' } }), 'PLN').currency).toBe(
       'GBP'
     );
