@@ -133,10 +133,16 @@ curl -X POST -H "X-Migration-Secret: $MIGRATION_SECRET" \
   https://<your-host>/api/migrations/<name>
 ```
 
-None are currently in the tree. The co-ownership set (`wishlist-owners`, `remove-admin-role`,
-`drop-legacy-owner-fields`) has been applied to every environment and removed; recover them from git
-history if you ever need to replay one against a restored backup. See [AGENTS.md](AGENTS.md) for the
-rules a new migration should follow.
+Currently in the tree:
+
+| Migration                | When to run      | What it does                                                                                                                            |
+| ------------------------ | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `dedupe-pending-invites` | after the deploy | Keeps the newest pending invite per person per wishlist, deletes the rest, then builds the unique pending-invite index. Safe to re-run. |
+
+It is removed once it has run on every environment. The co-ownership set (`wishlist-owners`,
+`remove-admin-role`, `drop-legacy-owner-fields`) has been applied everywhere and removed; recover any
+of them from git history if you ever need to replay one against a restored backup. See
+[AGENTS.md](AGENTS.md) for the rules a new migration should follow.
 
 ## 📁 Project structure
 
