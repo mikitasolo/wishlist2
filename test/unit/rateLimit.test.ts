@@ -6,6 +6,7 @@ import {
   userKey,
   ipKey,
   emailKey,
+  STORE_TIMEOUT_MS,
   __setRateLimiters,
   type KeyKind,
   type LimiterName,
@@ -280,6 +281,104 @@ describe('failure policy when the store throws', () => {
 
     expect(await enforce('search', ipKey(new Headers()))).toBeNull();
     expect(lines('error')).toEqual([expect.objectContaining({ error: 'socket hang up' })]);
+  });
+});
+
+describe('failure policy when the store times out', () => {
+  // What `@upstash/ratelimit` resolves when Redis doesn't answer within `timeout`.
+  const timedOut = () =>
+    fake({ success: true, limit: 0, remaining: 0, reset: 0, reason: 'timeout' });
+
+  // regression: a Redis timeout doesn't throw — the SDK resolves `{ success: true,
+  // reason: 'timeout' }` — and only a throw applied the failure policy, so on a
+  // slow Redis the fail-closed sign-in limiters quietly failed open, unlogged.
+  it.each([
+    ['signinEmail', 'email', 'fail-closed'],
+    ['signinIp', 'ip', 'fail-closed'],
+    ['search', 'ip', 'fail-open'],
+    ['upload', 'user', 'fail-open'],
+  ] as const)(
+    '%s (%s key): applies its %s policy and logs one store-error line, without the key',
+    async (name, kind, policy) => {
+      __setRateLimiters({ [name]: timedOut() });
+      const key = keyOf(kind);
+      const allowed = policy === 'fail-open';
+
+      expect(await checkAny(name, key)).toBe(allowed);
+      const res = await enforceAny(name, key);
+      if (allowed) {
+        expect(res).toBeNull();
+      } else {
+        expect(res?.status).toBe(429);
+        expect(Number(res!.headers.get('Retry-After'))).toBeGreaterThanOrEqual(1);
+      }
+
+      const expected = {
+        event: 'rate_limit_store_error',
+        name,
+        keyKind: kind,
+        policy,
+        error: `Timeout: no answer from the store within ${STORE_TIMEOUT_MS} ms`,
+      };
+      expect(lines('error')).toEqual([expected, expected]); // one per call
+      // A timeout isn't the limit being hit — it must not count as a block.
+      expect(spies.warn).not.toHaveBeenCalled();
+
+      const logged = everythingLogged();
+      expect(logged).not.toContain(key);
+      expect(logged).not.toContain(IDENTIFIERS[kind]);
+    }
+  );
+
+  it('still trusts the SDK when it answers for another reason', async () => {
+    // `cacheBlock`: the SDK's in-memory cache already knows the key is over its limit.
+    __setRateLimiters({ signinEmail: fake({ success: false, reason: 'cacheBlock' }) });
+
+    expect(await checkRateLimit('signinEmail', emailKey(IDENTIFIERS.email))).toBe(false);
+    expect(lines('warn')).toEqual([
+      { event: 'rate_limited', name: 'signinEmail', keyKind: 'email' },
+    ]);
+    expect(spies.error).not.toHaveBeenCalled();
+  });
+
+  describe('against the real SDK, with a Redis that never answers', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+      vi.stubEnv('UPSTASH_REDIS_REST_URL', 'https://test-store.upstash.io');
+      vi.stubEnv('UPSTASH_REDIS_REST_TOKEN', 'test-token');
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(() => new Promise<never>(() => {}))
+      );
+      __setRateLimiters(null); // build the real registry from the env above
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+    });
+
+    it('gives up after STORE_TIMEOUT_MS and fails the sign-in limiter closed', async () => {
+      // Not awaited: it only settles once the clock reaches the SDK's timeout.
+      let allowed: boolean | undefined;
+      void checkRateLimit('signinEmail', emailKey(IDENTIFIERS.email)).then((ok) => (allowed = ok));
+
+      await vi.advanceTimersByTimeAsync(STORE_TIMEOUT_MS - 1);
+      expect(fetch).toHaveBeenCalled(); // it really is waiting on the store
+      expect(allowed).toBeUndefined();
+
+      await vi.advanceTimersByTimeAsync(1);
+      expect(allowed).toBe(false);
+      expect(lines('error')).toEqual([
+        expect.objectContaining({
+          event: 'rate_limit_store_error',
+          name: 'signinEmail',
+          policy: 'fail-closed',
+        }),
+      ]);
+      expect(everythingLogged()).not.toContain(IDENTIFIERS.email);
+    });
   });
 });
 

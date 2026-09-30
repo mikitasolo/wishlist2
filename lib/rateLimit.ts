@@ -13,17 +13,19 @@ import { Redis } from '@upstash/redis';
  * Graceful degradation:
  *  - **Not configured** (no Upstash env — local dev, CI, tests): limiting is
  *    disabled and every request is allowed. Logged once so it's obvious in prod.
- *  - **Configured but the store errors** at request time: per-limiter policy —
- *    `fail-open` for user-facing reads/writes (an infra blip must not lock
- *    people out) and `fail-closed` for the cost-bearing sign-in email path
- *    (never let an email bomb through because Redis hiccuped).
+ *  - **Configured but the store fails** at request time — it throws, or doesn't
+ *    answer within `STORE_TIMEOUT_MS`: per-limiter policy — `fail-open` for
+ *    user-facing reads/writes (an infra blip must not lock people out) and
+ *    `fail-closed` for the cost-bearing sign-in email path (never let an email
+ *    bomb through because Redis hiccuped).
  *
  * Observability: each time a limiter turns a request away it logs one JSON
  * line, `{"event":"rate_limited","name":…,"keyKind":…}`, so Vercel's logs give
- * per-surface block counts to tune `SPECS` from. A store error (a throw) logs
- * one `rate_limit_store_error` line instead. Neither ever includes the key — it's
- * an email, an IP or a user id — so a key's *kind* is declared per limiter and
- * enforced at compile time (see `RateLimitKey`) rather than read from the key.
+ * per-surface block counts to tune `SPECS` from. A store failure (a throw or a
+ * timeout) logs one `rate_limit_store_error` line instead. Neither ever includes
+ * the key — it's an email, an IP or a user id — so a key's *kind* is declared per
+ * limiter and enforced at compile time (see `RateLimitKey`) rather than read from
+ * the key.
  */
 
 export interface RateLimitResult {
@@ -32,6 +34,12 @@ export interface RateLimitResult {
   reset: number;
   limit: number;
   remaining: number;
+  /**
+   * Why the SDK answered the way it did, when it didn't consult Redis normally.
+   * `'timeout'` means Redis never answered — `success` is then the SDK's own
+   * fail-open default, not a verdict, so `run()` treats it as a store failure.
+   */
+  reason?: Awaited<ReturnType<Ratelimit['limit']>>['reason'];
 }
 
 /** The shape we depend on from `@upstash/ratelimit` — lets tests inject a fake. */
@@ -107,6 +115,25 @@ export function emailKey(email: string): RateLimitKey<'email'> {
   return email.toLowerCase() as RateLimitKey<'email'>;
 }
 
+/**
+ * How long `limit()` waits for Redis before giving up — shorter than the SDK's
+ * 5 s default, because every limited request (a sign-in included) waits this
+ * long when the store is down. A healthy Upstash call takes tens of ms (a few
+ * hundred on a cold cross-region connection), so 2 s is well past a slow answer.
+ * It also covers the Redis client's first four retries when a fetch fails fast
+ * (a reset or DNS error — it sleeps 50, 136, 369 and 1004 ms before them), so a
+ * brief blip is retried rather than failed. The trade-off: a store answering
+ * slower than this fails the sign-in limiters closed rather than waiting for a
+ * verdict. If timeout lines show up in the logs while Upstash is healthy, raise it.
+ *
+ * On timeout the SDK doesn't throw: it resolves `{ success: true, reason:
+ * 'timeout' }`. A connection that hangs never retries, and a fast-failing one
+ * retries past the deadline (the five retries alone sleep ~4.3 s), so an
+ * unreachable store surfaces this way, not as a throw; only an HTTP error from
+ * Upstash throws. `run()` therefore applies the failure policy to a timeout too.
+ */
+export const STORE_TIMEOUT_MS = 2_000;
+
 let registry: Partial<Record<LimiterName, RateLimiter>> | null = null;
 let warned = false;
 
@@ -145,6 +172,7 @@ function getRegistry(): Partial<Record<LimiterName, RateLimiter>> {
       redis,
       limiter: Ratelimit.slidingWindow(spec.tokens, spec.window),
       prefix: `rl:${name}`,
+      timeout: STORE_TIMEOUT_MS,
       // Off: the `rate_limited` log line already counts blocks per surface.
       // Upstash analytics would add a ZINCRBY to every `limit()` call, allowed
       // or blocked, and store the raw key (email / IP / user id) in Redis.
@@ -169,6 +197,29 @@ function describeStoreError(error: unknown, key: string): string {
   return key ? text.replaceAll(key, '<key>') : text;
 }
 
+/**
+ * The store failed to answer (it threw or timed out): log one line — `error`
+ * must already be free of the key — and apply the limiter's failure policy.
+ */
+function storeFailure(name: LimiterName, error: string): RateLimitResult {
+  const spec = SPECS[name];
+  console.error(
+    JSON.stringify({
+      event: 'rate_limit_store_error',
+      name,
+      keyKind: spec.keyKind,
+      policy: spec.policy,
+      error,
+    })
+  );
+  return {
+    success: spec.policy === 'fail-open',
+    reset: Date.now() + 60_000,
+    limit: spec.tokens,
+    remaining: 0,
+  };
+}
+
 async function run(name: LimiterName, key: string): Promise<RateLimitResult> {
   const spec = SPECS[name];
   const limiter = getRegistry()[name];
@@ -182,22 +233,13 @@ async function run(name: LimiterName, key: string): Promise<RateLimitResult> {
   try {
     result = await limiter.limit(key);
   } catch (error) {
-    console.error(
-      JSON.stringify({
-        event: 'rate_limit_store_error',
-        name,
-        keyKind: spec.keyKind,
-        policy: spec.policy,
-        error: describeStoreError(error, key),
-      })
-    );
-    // Store unreachable → apply the limiter's failure policy.
-    return {
-      success: spec.policy === 'fail-open',
-      reset: Date.now() + 60_000,
-      limit: spec.tokens,
-      remaining: 0,
-    };
+    return storeFailure(name, describeStoreError(error, key));
+  }
+
+  // Not a verdict: the SDK gave up waiting on Redis and defaulted to allow (see
+  // `STORE_TIMEOUT_MS`). Taking its `success` would fail the sign-in limiters open.
+  if (result.reason === 'timeout') {
+    return storeFailure(name, `Timeout: no answer from the store within ${STORE_TIMEOUT_MS} ms`);
   }
 
   if (!result.success) {
