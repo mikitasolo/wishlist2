@@ -207,3 +207,41 @@ describe('GET /api/users/me/items — priceInUsdCents', () => {
     expect((await listed(priced))?.priceInUsdCents).toBe(2000);
   });
 });
+
+// regression: every read and write gated `priceInUsdCents` on a truthy
+// `price.value`, so a free item (price 0, which the schemas accept) got null
+// and the price sorts put it at the end with the priceless items instead of
+// first under "price: low to high".
+describe('a free (zero-priced) item — priceInUsdCents', () => {
+  it('regression: is 0 from both list reads, while a priceless item stays null', async () => {
+    const free = await makeItem({ name: 'Hug coupon', price: { value: 0, currency: 'eur' } });
+    const priceless = await makeItem({ name: 'Hug' });
+    as(ownerId);
+
+    expect((await listed(free))?.priceInUsdCents).toBe(0);
+    expect((await listed(priceless))?.priceInUsdCents).toBeNull();
+
+    const mine: { _id: string; priceInUsdCents: number | null }[] = (
+      await (await MY_ITEMS()).json()
+    ).data;
+    const valueOf = (id: string) => mine.find((i) => i._id === id)?.priceInUsdCents;
+    expect(valueOf(free)).toBe(0);
+    expect(valueOf(priceless)).toBeNull();
+  });
+
+  it('regression: is 0 on the create response', async () => {
+    as(ownerId);
+    const { status, data } = await create({ name: 'Free', price: { value: 0, currency: 'usd' } });
+    expect(status).toBe(201);
+    expect(data.priceInUsdCents).toBe(0);
+  });
+
+  it('regression: is 0 on the edit response once an item is re-priced to free', async () => {
+    const id = await makeItem({ price: { value: 1000, currency: 'eur' } });
+    as(ownerId);
+    const { status, data } = await patch(id, { price: { value: 0, currency: 'eur' } });
+    expect(status).toBe(200);
+    expect(data.priceInUsdCents).toBe(0);
+    expect((await listed(id))?.priceInUsdCents).toBe(0);
+  });
+});

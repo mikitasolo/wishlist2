@@ -19,13 +19,21 @@ describe('itemPriceInUsdCents', () => {
     expect(itemPriceInUsdCents(undefined, rates)).toBeNull();
   });
 
-  it('is null for a zero value or a missing currency, as the list read has always had it', () => {
-    expect(itemPriceInUsdCents({ value: 0, currency: 'usd' }, rates)).toBeNull();
+  // regression: the guard was a truthiness check on the value, so a free item
+  // (price 0) came back null and sorted with the priceless items, at the end,
+  // instead of first under "price: low to high".
+  it('regression: converts a zero price to 0, not null', () => {
+    expect(itemPriceInUsdCents({ value: 0, currency: 'usd' }, rates)).toBe(0);
+    expect(itemPriceInUsdCents({ value: 0, currency: 'eur' }, rates)).toBe(0);
+  });
+
+  it('is null for a missing currency', () => {
     expect(itemPriceInUsdCents({ value: 500, currency: '' }, rates)).toBeNull();
   });
 
   it('is null when there is no rate for the currency, so it sorts with the unpriced items', () => {
     expect(itemPriceInUsdCents({ value: 500, currency: 'jpy' }, rates)).toBeNull();
     expect(itemPriceInUsdCents({ value: 500, currency: 'eur' }, new Map())).toBeNull();
+    expect(itemPriceInUsdCents({ value: 0, currency: 'jpy' }, rates)).toBeNull();
   });
 });
