@@ -521,3 +521,37 @@ describe('Most wanted flag', () => {
     ]);
   });
 });
+
+describe('GET /api/users/me/items', () => {
+  // /items sorts with the wishlist page's sorter, whose date sorts read createdAt.
+  it("returns each item's createdAt, and the rest of the item as before", async () => {
+    const bike = await Item.create({
+      wishlist: wishlistId,
+      name: 'Bike',
+      status: 'booked',
+      bookedBy: memberId,
+      mostWanted: true,
+    });
+    const slug = (await Wishlist.findById(wishlistId).lean())?.slug ?? null;
+
+    session.mockResolvedValue({ user: { id: ownerId } } as never);
+    const res = await MY_ITEMS();
+    expect(res.status).toBe(200);
+    expect((await res.json()).data).toStrictEqual([
+      {
+        _id: bike._id.toString(),
+        name: 'Bike',
+        imageUrl: null,
+        price: null,
+        priceInUsdCents: null,
+        link: null,
+        mostWanted: true,
+        status: 'available', // an owner never sees a booking
+        wishlistId,
+        wishlistSlug: slug,
+        wishlistName: 'List',
+        createdAt: bike.createdAt.toISOString(),
+      },
+    ]);
+  });
+});

@@ -13,12 +13,7 @@ import MultiSelectDropdown from '@/components/MultiSelectDropdown';
 import Cover from '@/components/Cover';
 import { useToast } from '@/components/ToastProvider';
 import { formatPriceFromObject } from '@/lib/utils/currency';
-import {
-  compareMostWanted,
-  isSortType,
-  SORT_OPTIONS,
-  type SortType,
-} from '@/lib/utils/itemFilters';
+import { isSortType, sortItems, SORT_OPTIONS, type SortType } from '@/lib/utils/itemFilters';
 
 interface MyItem {
   _id: string;
@@ -32,6 +27,7 @@ interface MyItem {
   wishlistId: string;
   wishlistSlug: string | null;
   wishlistName: string;
+  createdAt: string; // ISO date string
 }
 
 const STATUS_BADGE: Partial<Record<MyItem['status'], { label: string; className: string }>> = {
@@ -173,39 +169,8 @@ export default function MyItemsPage() {
         wishlistFilters.includes(i.wishlistId) &&
         (statusFilters.includes('all') || statusFilters.includes(i.status))
     );
-    const sorted = [...list];
-    switch (sort) {
-      case 'priority':
-        // Most wanted first, newest first within each group (see date-desc).
-        sorted.sort((a, b) => compareMostWanted(a, b) || b._id.localeCompare(a._id));
-        break;
-      case 'name-asc':
-        sorted.sort((a, b) => a.name.localeCompare(b.name));
-        break;
-      case 'name-desc':
-        sorted.sort((a, b) => b.name.localeCompare(a.name));
-        break;
-      case 'price-asc':
-      case 'price-desc':
-        // Compare currency-normalized values (USD cents) so PLN vs USD sort
-        // correctly. Items without a price sort to the bottom either way.
-        sorted.sort((a, b) => {
-          const av = a.priceInUsdCents ?? null;
-          const bv = b.priceInUsdCents ?? null;
-          if (av === null) return bv === null ? 0 : 1;
-          if (bv === null) return -1;
-          return sort === 'price-asc' ? av - bv : bv - av;
-        });
-        break;
-      case 'date-asc':
-        // ObjectIds encode creation time, so lexical order is chronological.
-        sorted.sort((a, b) => a._id.localeCompare(b._id));
-        break;
-      case 'date-desc':
-        sorted.sort((a, b) => b._id.localeCompare(a._id));
-        break;
-    }
-    return sorted;
+    // The wishlist page's sorter, so the two grids order items the same way.
+    return sortItems(list, sort);
   }, [items, wishlistFilters, statusFilters, sort]);
 
   return (

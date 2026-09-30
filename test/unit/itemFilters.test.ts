@@ -3,12 +3,15 @@ import {
   filterItemsMulti,
   calculateStats,
   sortItems,
+  compareItems,
   searchItemsByName,
   compareMostWanted,
   savedWishlistSort,
   isSortType,
   SORT_OPTIONS,
   WISHLIST_SORT_STORAGE_KEY,
+  type SortType,
+  type SortableItem,
 } from '@/lib/utils/itemFilters';
 import type { ApiItem } from '@/types/api';
 
@@ -104,12 +107,57 @@ describe('sortItems', () => {
     expect(sortItems(items, 'date-desc').map((i) => i.name)).toEqual(['new', 'old']);
   });
 
+  it('tells apart two items made in the same second', () => {
+    const items = [
+      item({ name: 'later', createdAt: '2024-01-01T00:00:00.900Z' }),
+      item({ name: 'earlier', createdAt: '2024-01-01T00:00:00.100Z' }),
+    ];
+    expect(sortItems(items, 'date-asc').map((i) => i.name)).toEqual(['earlier', 'later']);
+    expect(sortItems(items, 'date-desc').map((i) => i.name)).toEqual(['later', 'earlier']);
+  });
+
+  it('returns a sorted copy and leaves the input alone', () => {
+    const items = [item({ name: 'b' }), item({ name: 'a' })];
+    expect(sortItems(items, 'name-asc').map((i) => i.name)).toEqual(['a', 'b']);
+    expect(items.map((i) => i.name)).toEqual(['b', 'a']);
+  });
+
   it('puts items without a price last', () => {
     const items = [
       item({ name: 'noprice', priceInUsdCents: null }),
       item({ name: 'cheap', priceInUsdCents: 100 }),
     ];
     expect(sortItems(items, 'price-asc').map((i) => i.name)).toEqual(['cheap', 'noprice']);
+    expect(sortItems(items, 'price-desc').map((i) => i.name)).toEqual(['cheap', 'noprice']);
+  });
+
+  // regression: the wishlist page's price sort returned 1 whenever `a` had no
+  // price, even when `b` had none either, so each of two priceless items
+  // compared greater than the other. With an inconsistent comparator the engine
+  // may put them in any order. Two items without a price now compare equal, so
+  // the (stable) sort keeps them in the order they came in.
+  it('regression: keeps two items without a price in their order, after the priced ones', () => {
+    const first = item({ name: 'first', priceInUsdCents: null });
+    const second = item({ name: 'second' }); // no priceInUsdCents at all
+    const priced = item({ name: 'priced', priceInUsdCents: 100 });
+
+    for (const sortBy of ['price-asc', 'price-desc'] as const) {
+      expect(compareItems(first, second, sortBy)).toBe(0);
+      expect(compareItems(second, first, sortBy)).toBe(0);
+      expect(compareItems(priced, first, sortBy)).toBeLessThan(0);
+      expect(compareItems(first, priced, sortBy)).toBeGreaterThan(0);
+
+      expect(sortItems([first, priced, second], sortBy).map((i) => i.name)).toEqual([
+        'priced',
+        'first',
+        'second',
+      ]);
+      expect(sortItems([second, priced, first], sortBy).map((i) => i.name)).toEqual([
+        'priced',
+        'second',
+        'first',
+      ]);
+    }
   });
 
   it('sorts a free item (0) as priced, not with the items without a price', () => {
@@ -179,6 +227,66 @@ describe('compareMostWanted', () => {
     expect(compareMostWanted({}, { mostWanted: true })).toBeGreaterThan(0);
     expect(compareMostWanted({ mostWanted: true }, { mostWanted: true })).toBe(0);
     expect(compareMostWanted({}, { mostWanted: false })).toBe(0);
+  });
+});
+
+// The wishlist page and /items sort with the same function, so each sort must
+// order both grids' items the same way.
+describe('sortItems — both item grids', () => {
+  const rows = [
+    { name: 'elderberry', usdCents: null, mostWanted: false, created: '2024-03-01T00:00:00Z' },
+    { name: 'apple', usdCents: 2000, mostWanted: true, created: '2024-02-01T00:00:00Z' },
+    { name: 'cherry', usdCents: 0, mostWanted: false, created: '2024-01-01T00:00:00Z' },
+    { name: 'Banana', usdCents: null, mostWanted: false, created: '2024-04-01T00:00:00Z' },
+    { name: 'Durian', usdCents: 500, mostWanted: true, created: '2024-05-01T00:00:00Z' },
+  ];
+
+  // Typed as a record so a new sort can't ship without an expected order here.
+  const expected: Record<SortType, string[]> = {
+    priority: ['Durian', 'apple', 'Banana', 'elderberry', 'cherry'],
+    'name-asc': ['apple', 'Banana', 'cherry', 'Durian', 'elderberry'],
+    'name-desc': ['elderberry', 'Durian', 'cherry', 'Banana', 'apple'],
+    // Free (0) is priced; the two without a price keep their order, last.
+    'price-asc': ['cherry', 'Durian', 'apple', 'elderberry', 'Banana'],
+    'price-desc': ['apple', 'Durian', 'cherry', 'elderberry', 'Banana'],
+    'date-asc': ['cherry', 'apple', 'elderberry', 'Banana', 'Durian'],
+    'date-desc': ['Durian', 'Banana', 'elderberry', 'apple', 'cherry'],
+  };
+
+  // The wishlist page's items (`ApiItem`, from /api/wishlists/[id]/items).
+  const wishlistItems: SortableItem[] = rows.map((r) =>
+    item({
+      name: r.name,
+      price: r.usdCents === null ? null : { value: r.usdCents, currency: 'usd' },
+      priceInUsdCents: r.usdCents,
+      mostWanted: r.mostWanted,
+      createdAt: r.created,
+    })
+  );
+
+  // /items' items, as /api/users/me/items returns them.
+  const myItems: SortableItem[] = rows.map((r) => ({
+    _id: Math.random().toString(36).slice(2),
+    name: r.name,
+    imageUrl: null,
+    price: r.usdCents === null ? null : { value: r.usdCents, currency: 'usd' },
+    priceInUsdCents: r.usdCents,
+    link: null,
+    mostWanted: r.mostWanted,
+    status: 'available',
+    wishlistId: 'w1',
+    wishlistSlug: null,
+    wishlistName: 'Birthday',
+    createdAt: r.created,
+  }));
+
+  describe.each([
+    ['the wishlist page', wishlistItems],
+    ['/items', myItems],
+  ])('%s', (_grid, items) => {
+    it.each(SORT_OPTIONS.map((o) => o.value))('%s', (sortBy) => {
+      expect(sortItems(items, sortBy).map((i) => i.name)).toEqual(expected[sortBy]);
+    });
   });
 });
 

@@ -44,6 +44,8 @@ export async function GET() {
       wishlistId: i.wishlist.toString(),
       wishlistSlug: slugMap.get(i.wishlist.toString()) ?? null,
       wishlistName: nameMap.get(i.wishlist.toString()) || 'Wishlist',
+      // The date sorts read it, as they do on the wishlist page.
+      createdAt: i.createdAt,
     }));
 
     return NextResponse.json({ success: true, data }, { status: 200 });

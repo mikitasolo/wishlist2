@@ -121,9 +121,7 @@ export function calculateStats(
   return { total, draft, available, booked, bookedByYou, completed, proposed, proposedByYou };
 }
 
-/**
- * Sorts items based on the specified sort type
- */
+/** The ways an item grid can be sorted (see `sortItems`). */
 export type SortType =
   'priority' | 'name-asc' | 'name-desc' | 'price-asc' | 'price-desc' | 'date-asc' | 'date-desc';
 
@@ -167,51 +165,67 @@ export function compareMostWanted(
   return Number(b.mostWanted === true) - Number(a.mostWanted === true);
 }
 
-export function sortItems(items: ApiItem[], sortBy: SortType): ApiItem[] {
-  return [...items].sort((a, b) => {
-    switch (sortBy) {
-      case 'priority':
-        // Most wanted first, newest first within each group.
-        return (
-          compareMostWanted(a, b) ||
-          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-        );
-      case 'name-asc':
-        return a.name.localeCompare(b.name);
-      case 'name-desc':
-        return b.name.localeCompare(a.name);
-      case 'price-asc': {
-        // Items without price go to the end
-        // Use priceInUsdCents (enriched by API)
-        const aPrice = a.priceInUsdCents ?? null;
-        const bPrice = b.priceInUsdCents ?? null;
-        if (aPrice == null) return 1;
-        if (bPrice == null) return -1;
-        return aPrice - bPrice;
-      }
-      case 'price-desc': {
-        // Items without price go to the end
-        // Use priceInUsdCents (enriched by API)
-        const aPrice = a.priceInUsdCents ?? null;
-        const bPrice = b.priceInUsdCents ?? null;
-        if (aPrice == null) return 1;
-        if (bPrice == null) return -1;
-        return bPrice - aPrice;
-      }
-      case 'date-asc': {
-        // Oldest first
-        const dateA = new Date(a.createdAt);
-        const dateB = new Date(b.createdAt);
-        return dateA.getTime() - dateB.getTime();
-      }
-      case 'date-desc': {
-        // Newest first
-        const dateA = new Date(a.createdAt);
-        const dateB = new Date(b.createdAt);
-        return dateB.getTime() - dateA.getTime();
-      }
-      default:
-        return 0;
-    }
-  });
+/**
+ * What the sorts read. Both item grids' items have it: the wishlist page's
+ * (`ApiItem`) and the /items page's (`/api/users/me/items`), so the two share
+ * one sorter and can't drift apart.
+ */
+export interface SortableItem {
+  name: string;
+  priceInUsdCents?: number | null;
+  mostWanted?: boolean;
+  createdAt: string; // ISO date string
+}
+
+/**
+ * Older item first, by `createdAt`: the sorts' one notion of when an item was
+ * created, and the time both item reads already order by on the server.
+ */
+function compareCreated(a: SortableItem, b: SortableItem): number {
+  return Date.parse(a.createdAt) - Date.parse(b.createdAt);
+}
+
+/**
+ * Cheaper item first, by the USD-normalised `priceInUsdCents` so prices in
+ * different currencies compare. A free item (0) is priced. An item without a
+ * price (null, or no rate for its currency) goes after every priced one in
+ * either direction, and two of them compare equal so the sort keeps their order.
+ */
+function comparePrice(a: SortableItem, b: SortableItem, direction: 1 | -1): number {
+  const aPrice = a.priceInUsdCents ?? null;
+  const bPrice = b.priceInUsdCents ?? null;
+  if (aPrice === null || bPrice === null) {
+    return Number(aPrice === null) - Number(bPrice === null);
+  }
+  return direction * (aPrice - bPrice);
+}
+
+/**
+ * Orders two items for the given sort: negative when `a` comes first, 0 for a
+ * tie. Every sort has a case and there is no default, so a new `SortType`
+ * without one fails the typecheck.
+ */
+export function compareItems(a: SortableItem, b: SortableItem, sortBy: SortType): number {
+  switch (sortBy) {
+    case 'priority':
+      // Most wanted first, newest first within each group.
+      return compareMostWanted(a, b) || compareCreated(b, a);
+    case 'name-asc':
+      return a.name.localeCompare(b.name);
+    case 'name-desc':
+      return b.name.localeCompare(a.name);
+    case 'price-asc':
+      return comparePrice(a, b, 1);
+    case 'price-desc':
+      return comparePrice(a, b, -1);
+    case 'date-asc':
+      return compareCreated(a, b);
+    case 'date-desc':
+      return compareCreated(b, a);
+  }
+}
+
+/** A sorted copy of `items`; items that tie keep their order. */
+export function sortItems<T extends SortableItem>(items: T[], sortBy: SortType): T[] {
+  return [...items].sort((a, b) => compareItems(a, b, sortBy));
 }
