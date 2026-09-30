@@ -16,6 +16,7 @@ const filled: ItemFormData = {
   currency: 'USD',
   link: '',
   notes: '',
+  mostWanted: false,
   isDraft: false,
 };
 
@@ -149,5 +150,64 @@ describe('ItemForm — default currency', () => {
     );
     expect(currencyButton('EUR')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'PLN' })).toBeNull();
+  });
+});
+
+describe('ItemForm — most wanted', () => {
+  const mostWantedSwitch = () => screen.queryByRole('switch', { name: /most wanted/i });
+
+  it('offers the switch when creating, editing and reviewing, but not proposing', () => {
+    for (const mode of ['create', 'edit', 'review'] as const) {
+      const { unmount } = render(
+        <ItemForm onSubmit={vi.fn()} onCancel={vi.fn()} mode={mode} initialData={filled} />
+      );
+      expect(mostWantedSwitch()).toBeInTheDocument();
+      unmount();
+    }
+    render(<ItemForm onSubmit={vi.fn()} onCancel={vi.fn()} mode="propose" />);
+    expect(mostWantedSwitch()).toBeNull();
+  });
+
+  it('submits false by default and true once switched on', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(<ItemForm onSubmit={onSubmit} onCancel={vi.fn()} mode="create" />);
+
+    fireEvent.change(screen.getByLabelText(/item name/i), { target: { value: 'Plain' } });
+    fireEvent.click(screen.getByRole('button', { name: /^submit$/i }));
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ mostWanted: false }))
+    );
+
+    onSubmit.mockClear();
+    fireEvent.change(screen.getByLabelText(/item name/i), { target: { value: 'Bike' } });
+    fireEvent.click(mostWantedSwitch()!);
+    expect(mostWantedSwitch()).toHaveAttribute('aria-checked', 'true');
+    fireEvent.click(screen.getByRole('button', { name: /^submit$/i }));
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'Bike', mostWanted: true })
+      )
+    );
+  });
+
+  it("starts from the item's own flag when editing", () => {
+    render(
+      <ItemForm
+        onSubmit={vi.fn()}
+        onCancel={vi.fn()}
+        mode="edit"
+        initialData={{ ...filled, mostWanted: true }}
+      />
+    );
+    expect(mostWantedSwitch()).toHaveAttribute('aria-checked', 'true');
+  });
+
+  it('leaves mostWanted out of a proposal', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(<ItemForm onSubmit={onSubmit} onCancel={vi.fn()} mode="propose" />);
+    fireEvent.change(screen.getByLabelText(/item name/i), { target: { value: 'Idea' } });
+    fireEvent.click(screen.getByRole('button', { name: /^submit$/i }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(onSubmit.mock.calls[0][0].mostWanted).toBeUndefined();
   });
 });

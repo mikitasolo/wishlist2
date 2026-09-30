@@ -40,6 +40,12 @@ const ItemSchema = new Schema(
       type: String,
       maxlength: 100,
     },
+    // Set by an owner to tell gifters this is a must-have. Items saved before
+    // the flag existed have no value, which means false.
+    mostWanted: {
+      type: Boolean,
+      default: false,
+    },
     status: {
       type: String,
       enum: ['draft', 'available', 'booked', 'completed', 'proposed'],
@@ -77,6 +83,7 @@ export interface IItem {
   } | null;
   link?: string | null;
   notes?: string | null;
+  mostWanted?: boolean;
   status: 'draft' | 'available' | 'booked' | 'completed' | 'proposed';
   bookedBy?: mongoose.Types.ObjectId | null;
   proposedBy?: mongoose.Types.ObjectId | null;

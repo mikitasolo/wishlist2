@@ -20,6 +20,7 @@ export type IconName =
   | 'image'
   | 'note'
   | 'sparkles'
+  | 'star'
   | 'settings'
   | 'external-link'
   | 'trash'
@@ -101,6 +102,9 @@ const paths: Record<IconName, React.ReactNode> = {
   ),
   sparkles: (
     <path d="M12 3l1.9 4.8L18.7 9l-4.8 1.9L12 15.7 10.1 10.9 5.3 9l4.8-1.2L12 3zM19 14l.8 2 2 .8-2 .8L19 20l-.8-2-2-.8 2-.8L19 14zM5 14l.6 1.6L7.2 16l-1.6.6L5 18l-.6-1.4L2.8 16l1.6-.4L5 14z" />
+  ),
+  star: (
+    <path d="M12 2.5l2.94 5.96 6.56.95-4.75 4.63 1.12 6.54L12 17.49l-5.87 3.09 1.12-6.54L2.5 9.41l6.56-.95L12 2.5z" />
   ),
   settings: (
     <>

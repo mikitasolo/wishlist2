@@ -89,6 +89,27 @@ describe('createItemSchema', () => {
   });
 });
 
+describe('mostWanted on the item schemas', () => {
+  it('is optional on create and accepts a boolean', () => {
+    const omitted = createItemSchema.safeParse({ name: 'Toy' });
+    expect(omitted.success && omitted.data.mostWanted).toBeUndefined();
+    const set = createItemSchema.safeParse({ name: 'Toy', mostWanted: true });
+    expect(set.success && set.data.mostWanted).toBe(true);
+  });
+
+  it('rejects a non-boolean value', () => {
+    for (const mostWanted of ['true', 1, null]) {
+      expect(createItemSchema.safeParse({ name: 'Toy', mostWanted }).success).toBe(false);
+      expect(updateItemSchema.safeParse({ mostWanted }).success).toBe(false);
+    }
+  });
+
+  it('counts as the one field an update needs, including false', () => {
+    const cleared = updateItemSchema.safeParse({ mostWanted: false });
+    expect(cleared.success && cleared.data.mostWanted).toBe(false);
+  });
+});
+
 describe('updateItemSchema', () => {
   it('requires at least one field', () => {
     expect(updateItemSchema.safeParse({}).success).toBe(false);

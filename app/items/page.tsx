@@ -7,14 +7,19 @@ import { useSession } from 'next-auth/react';
 import AppHeader from '@/components/AppHeader';
 import AuthButton from '@/components/AuthButton';
 import Icon from '@/components/Icon';
-import Select, { type SelectOption } from '@/components/Select';
+import Select from '@/components/Select';
 import FilterDropdown, { type FilterOption } from '@/components/FilterDropdown';
 import MultiSelectDropdown from '@/components/MultiSelectDropdown';
 import BannerImage from '@/components/BannerImage';
 import { useToast } from '@/components/ToastProvider';
 import { formatPriceFromObject } from '@/lib/utils/currency';
 import { coverGradient } from '@/lib/utils/cover';
-import type { SortType } from '@/lib/utils/itemFilters';
+import {
+  compareMostWanted,
+  isSortType,
+  SORT_OPTIONS,
+  type SortType,
+} from '@/lib/utils/itemFilters';
 
 interface MyItem {
   _id: string;
@@ -23,6 +28,7 @@ interface MyItem {
   price: { value: number; currency: string } | null;
   priceInUsdCents: number | null;
   link: string | null;
+  mostWanted: boolean;
   status: 'draft' | 'available' | 'completed' | 'proposed';
   wishlistId: string;
   wishlistSlug: string | null;
@@ -44,17 +50,6 @@ const STATUS_FILTER_OPTIONS: FilterOption[] = [
   'available',
   'completed',
 ];
-
-// Same sort options as the wishlist page.
-const SORT_OPTIONS: SelectOption[] = [
-  { value: 'name-asc', label: 'Name (A-Z)' },
-  { value: 'name-desc', label: 'Name (Z-A)' },
-  { value: 'price-asc', label: 'Price (Low to High)' },
-  { value: 'price-desc', label: 'Price (High to Low)' },
-  { value: 'date-asc', label: 'Date Created (Oldest First)' },
-  { value: 'date-desc', label: 'Date Created (Newest First)' },
-];
-const SORT_VALUES = SORT_OPTIONS.map((o) => o.value as SortType);
 
 // localStorage keys — kept separate from the per-wishlist page's keys.
 const LS_STATUS = 'items-status-filters';
@@ -111,8 +106,8 @@ export default function MyItemsPage() {
         /* ignore malformed */
       }
     }
-    const storedSort = localStorage.getItem(LS_SORT) as SortType | null;
-    if (storedSort && SORT_VALUES.includes(storedSort)) setSort(storedSort);
+    const storedSort = localStorage.getItem(LS_SORT);
+    if (isSortType(storedSort)) setSort(storedSort);
   }, [loading]);
 
   // Restore the list filter once items (and therefore valid ids) are known;
@@ -146,11 +141,6 @@ export default function MyItemsPage() {
     if (loading || wishlistFilters.length === 0) return;
     localStorage.setItem(LS_LISTS, JSON.stringify(wishlistFilters));
   }, [loading, wishlistFilters]);
-
-  useEffect(() => {
-    if (loading) return;
-    localStorage.setItem(LS_SORT, sort);
-  }, [loading, sort]);
 
   // Distinct lists the user owns (from the loaded items — no extra fetch).
   const wishlistOptions = useMemo(() => {
@@ -186,6 +176,10 @@ export default function MyItemsPage() {
     );
     const sorted = [...list];
     switch (sort) {
+      case 'priority':
+        // Most wanted first, newest first within each group (see date-desc).
+        sorted.sort((a, b) => compareMostWanted(a, b) || b._id.localeCompare(a._id));
+        break;
       case 'name-asc':
         sorted.sort((a, b) => a.name.localeCompare(b.name));
         break;
@@ -324,7 +318,11 @@ export default function MyItemsPage() {
                 <Select
                   ariaLabel="Sort items"
                   value={sort}
-                  onChange={(v) => setSort(v as SortType)}
+                  onChange={(v) => {
+                    // Saved only when picked, so the default can still change.
+                    setSort(v as SortType);
+                    localStorage.setItem(LS_SORT, v);
+                  }}
                   options={SORT_OPTIONS}
                   menuAlign="right"
                   triggerClassName="w-full sm:w-auto sm:min-w-[13rem]"
@@ -361,6 +359,16 @@ export default function MyItemsPage() {
                             className={`absolute left-2 top-2 rounded-full px-2 py-0.5 text-[11px] font-semibold shadow-sm ${badge.className}`}
                           >
                             {badge.label}
+                          </span>
+                        )}
+                        {it.mostWanted && (
+                          <span
+                            role="img"
+                            aria-label="Most wanted"
+                            title="Most wanted"
+                            className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full border border-border bg-surface/90 shadow-sm backdrop-blur"
+                          >
+                            <Icon name="star" size={12} className="fill-amber-400 text-amber-500" />
                           </span>
                         )}
                       </div>

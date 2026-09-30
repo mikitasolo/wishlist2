@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { ApiItem } from '@/types/api';
 import ImageUpload from './ImageUpload';
+import Toggle from './Toggle';
 import {
   CURRENCY_OPTIONS as COMMON_CURRENCIES,
   POPULAR_CURRENCIES,
@@ -16,6 +17,7 @@ export interface ItemFormData {
   currency: string;
   link: string;
   notes: string;
+  mostWanted: boolean;
   isDraft: boolean;
 }
 
@@ -27,6 +29,7 @@ const BLANK_ITEM_FIELDS: Omit<ItemFormData, 'currency'> = {
   price: '',
   link: '',
   notes: '',
+  mostWanted: false,
   isDraft: false,
 };
 
@@ -38,6 +41,7 @@ interface ItemFormProps {
     price?: { value: number; currency: string } | null;
     link?: string | null;
     notes?: string | null;
+    mostWanted?: boolean; // omitted in propose mode — only owners set it
     status: 'draft' | 'available' | 'proposed';
   }) => Promise<void>;
   onCancel: () => void;
@@ -190,6 +194,7 @@ export default function ItemForm({
         price,
         link: isEditing ? trimmedLink || null : trimmedLink || undefined,
         notes: isEditing ? trimmedNotes || null : trimmedNotes || undefined,
+        mostWanted: mode === 'propose' ? undefined : formData.mostWanted,
         status,
       });
 
@@ -441,6 +446,17 @@ export default function ItemForm({
         <p className="text-xs text-muted-foreground mt-1">{formData.notes.length}/100 characters</p>
       </div>
 
+      {/* Most wanted — the owners' call, so a proposal never offers it */}
+      {mode !== 'propose' && (
+        <Toggle
+          label="Most wanted"
+          description="Gifters see a star on it, and it's listed first."
+          checked={formData.mostWanted}
+          onChange={(mostWanted) => setFormData({ ...formData, mostWanted })}
+          disabled={submitting}
+        />
+      )}
+
       {/* Submit and Cancel Buttons */}
       {renderButtons ? (
         renderButtons({
@@ -483,6 +499,7 @@ export function itemToFormData(item: ApiItem): ItemFormData {
     currency: item.price?.currency?.toUpperCase() || 'USD', // Display uppercase in UI
     link: item.link || '',
     notes: item.notes || '',
+    mostWanted: item.mostWanted === true,
     isDraft: item.status === 'draft',
   };
 }

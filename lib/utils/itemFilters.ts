@@ -125,11 +125,57 @@ export function calculateStats(
  * Sorts items based on the specified sort type
  */
 export type SortType =
-  'name-asc' | 'name-desc' | 'price-asc' | 'price-desc' | 'date-asc' | 'date-desc';
+  'priority' | 'name-asc' | 'name-desc' | 'price-asc' | 'price-desc' | 'date-asc' | 'date-desc';
+
+// The sort choices both item grids offer (the wishlist page and /items).
+export const SORT_OPTIONS: { value: SortType; label: string }[] = [
+  { value: 'priority', label: 'Most Wanted First' },
+  { value: 'name-asc', label: 'Name (A-Z)' },
+  { value: 'name-desc', label: 'Name (Z-A)' },
+  { value: 'price-asc', label: 'Price (Low to High)' },
+  { value: 'price-desc', label: 'Price (High to Low)' },
+  { value: 'date-asc', label: 'Date Created (Oldest First)' },
+  { value: 'date-desc', label: 'Date Created (Newest First)' },
+];
+
+export function isSortType(value: unknown): value is SortType {
+  return SORT_OPTIONS.some((o) => o.value === value);
+}
+
+// The wishlist page's sort when the visitor hasn't picked one.
+export const DEFAULT_WISHLIST_SORT: SortType = 'priority';
+
+// Holds only a sort the visitor picked. It replaces 'wishlist-sort', which the
+// page wrote on every visit, so its value can't tell a choice from the default.
+export const WISHLIST_SORT_STORAGE_KEY = 'wishlist-sort-choice';
+
+/** The visitor's saved wishlist sort, or the default when there isn't a valid one. */
+export function savedWishlistSort(storage: Pick<Storage, 'getItem'>): SortType {
+  const stored = storage.getItem(WISHLIST_SORT_STORAGE_KEY);
+  return isSortType(stored) ? stored : DEFAULT_WISHLIST_SORT;
+}
+
+/**
+ * Most-wanted items before the rest. An item with no flag (saved before it
+ * existed) counts as not most wanted. Returns 0 between two items of the same
+ * kind, so a caller breaks the tie.
+ */
+export function compareMostWanted(
+  a: { mostWanted?: boolean },
+  b: { mostWanted?: boolean }
+): number {
+  return Number(b.mostWanted === true) - Number(a.mostWanted === true);
+}
 
 export function sortItems(items: ApiItem[], sortBy: SortType): ApiItem[] {
   return [...items].sort((a, b) => {
     switch (sortBy) {
+      case 'priority':
+        // Most wanted first, newest first within each group.
+        return (
+          compareMostWanted(a, b) ||
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
       case 'name-asc':
         return a.name.localeCompare(b.name);
       case 'name-desc':

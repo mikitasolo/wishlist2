@@ -22,6 +22,7 @@ export interface ApiItem {
   priceInUsdCents?: number | null; // Enriched by API for sorting
   link?: string | null;
   notes?: string | null;
+  mostWanted?: boolean; // Absent on items saved before the flag existed — treat as false
   status: 'draft' | 'available' | 'booked' | 'completed' | 'proposed';
   bookedBy?: string | null; // User ID as string, or undefined if hidden
   proposedBy?: string | null; // User ID as string, or undefined if hidden

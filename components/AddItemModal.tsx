@@ -15,6 +15,7 @@ interface AddItemModalProps {
     price?: { value: number; currency: string } | null;
     link?: string | null;
     notes?: string | null;
+    mostWanted?: boolean;
     status?: 'draft' | 'available';
   }) => Promise<void>;
   // The new item's currency starts on the wishlist's, else the viewer's default,
@@ -50,6 +51,7 @@ export default function AddItemModal({
     price?: { value: number; currency: string } | null;
     link?: string | null;
     notes?: string | null;
+    mostWanted?: boolean;
     status: 'draft' | 'available' | 'proposed';
   }) => {
     setIsSubmitting(true);

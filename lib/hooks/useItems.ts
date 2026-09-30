@@ -68,6 +68,7 @@ export function useCreateItem(
         price?: { value: number; currency: string } | null;
         link?: string | null;
         notes?: string | null;
+        mostWanted?: boolean;
         status?: 'draft' | 'available';
       }
     ): Promise<ApiItem | null> => {

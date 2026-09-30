@@ -40,6 +40,8 @@ export async function GET() {
           ? convertToUsdCents(i.price.value, i.price.currency, rates)
           : null,
       link: i.link ?? null,
+      // lean() skips schema defaults, so an item saved before the flag has none.
+      mostWanted: i.mostWanted === true,
       status: i.status === 'booked' ? 'available' : i.status,
       wishlistId: i.wishlist.toString(),
       wishlistSlug: slugMap.get(i.wishlist.toString()) ?? null,
