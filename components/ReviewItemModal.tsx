@@ -5,6 +5,7 @@ import { ApiItem } from '@/types/api';
 import BaseModal from './BaseModal';
 import ItemForm, { itemToFormData } from './ItemForm';
 import ConfirmDialog from './ConfirmDialog';
+import { defaultItemCurrency } from '@/lib/utils/currencies';
 
 interface ReviewItemModalProps {
   isOpen: boolean;
@@ -12,6 +13,11 @@ interface ReviewItemModalProps {
   onApprove: (updates: Partial<ApiItem> & { status: 'draft' | 'available' }) => Promise<void>;
   onDelete?: () => Promise<void>;
   item: ApiItem;
+  // A priceless proposal's currency starts on the wishlist's, else the viewer's
+  // default, else USD. Required (though either may be empty) so a caller can't
+  // silently drop them and fall back to USD.
+  wishlistCurrency: string | null | undefined;
+  userCurrency: string | null | undefined;
 }
 
 export default function ReviewItemModal({
@@ -20,6 +26,8 @@ export default function ReviewItemModal({
   onApprove,
   onDelete,
   item,
+  wishlistCurrency,
+  userCurrency,
 }: ReviewItemModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -108,7 +116,7 @@ export default function ReviewItemModal({
   };
 
   // Convert proposed item to form data (status will be set to available by default)
-  const formData = itemToFormData(item);
+  const formData = itemToFormData(item, defaultItemCurrency(wishlistCurrency, userCurrency));
   formData.isDraft = false; // Default to published when reviewing
 
   return (

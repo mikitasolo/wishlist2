@@ -62,7 +62,7 @@ interface ItemFormProps {
   onFormChange?: (hasChanges: boolean) => void;
   // Currency a new item starts on (see defaultItemCurrency; USD if omitted).
   // Read once on mount so it never overwrites what the user picked; ignored when
-  // initialData is given, since an existing item keeps its own currency.
+  // initialData is given, which carries its own currency (see itemToFormData).
   defaultCurrency?: string;
 }
 
@@ -488,15 +488,20 @@ export default function ItemForm({
   );
 }
 
-// Helper function to convert ApiItem to ItemFormData
-export function itemToFormData(item: ApiItem): ItemFormData {
+// Helper function to convert ApiItem to ItemFormData. An item with a price keeps
+// its own currency; a priceless one starts on `defaultCurrency` (see
+// defaultItemCurrency), so a price added while editing or reviewing it lands in
+// the wishlist's currency rather than USD. Being part of the form's initial data,
+// that prefill never reads as an unsaved change.
+export function itemToFormData(item: ApiItem, defaultCurrency: string): ItemFormData {
   // Convert cents to dollars for display
   const priceInDollars = item.price?.value ? (item.price.value / 100).toFixed(2) : '';
   return {
     name: item.name,
     imageUrl: item.imageUrl || '',
     price: priceInDollars,
-    currency: item.price?.currency?.toUpperCase() || 'USD', // Display uppercase in UI
+    // Display uppercase in UI
+    currency: item.price?.currency?.toUpperCase() || defaultItemCurrency(defaultCurrency),
     link: item.link || '',
     notes: item.notes || '',
     mostWanted: item.mostWanted === true,
