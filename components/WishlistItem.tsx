@@ -11,7 +11,8 @@ import ConfirmDialog from '@/components/ConfirmDialog';
 
 interface WishlistItemProps {
   item: ApiItem;
-  onUpdate: (id: string, updates: Partial<ApiItem>) => Promise<void>;
+  // Resolves once the update settles; the card ignores what it resolves with.
+  onUpdate: (id: string, updates: Partial<ApiItem>) => Promise<unknown>;
   onEdit?: (item: ApiItem) => void;
   onReview?: (item: ApiItem) => void;
   isAuthenticated: boolean;

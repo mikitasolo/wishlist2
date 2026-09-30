@@ -475,6 +475,7 @@ export default function WishlistDetail() {
         // Mutation failed — reconcile this list with the server.
         fetchItems(true);
       }
+      return updated;
     },
     [updateItemHook, session?.user?.id, fetchItems]
   );
@@ -546,8 +547,11 @@ export default function WishlistDetail() {
     async (updates: Partial<ApiItem>) => {
       if (!itemToEdit) return;
       const itemId = itemToEdit._id;
-      await handleUpdateItem(itemId, updates);
-      setItemToEdit(null);
+      // handleUpdateItem toasts a failure, reconciles the list with the server
+      // and resolves null. Reject so EditItemModal stays open with the user's
+      // changes; it closes itself on success.
+      const updated = await handleUpdateItem(itemId, updates);
+      if (!updated) throw new Error('Failed to update item');
     },
     [itemToEdit, handleUpdateItem]
   );

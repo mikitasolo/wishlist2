@@ -10,6 +10,8 @@ import { defaultItemCurrency } from '@/lib/utils/currencies';
 interface EditItemModalProps {
   isOpen: boolean;
   onClose: () => void;
+  // Must reject when the request fails: the modal only closes on success, so
+  // the user's changes survive a failure.
   onSave: (updates: Partial<ApiItem>) => Promise<void>;
   onDelete?: () => Promise<void>;
   item: ApiItem;
@@ -60,6 +62,9 @@ export default function EditItemModal({
     status: 'draft' | 'available' | 'proposed';
   }) => {
     setIsSubmitting(true);
+    // No catch: a failed save must reject through to ItemForm, which then keeps
+    // comparing the user's changes against the saved item. Only a success
+    // closes the modal.
     try {
       const updates: Partial<ApiItem> = {
         name: data.name || undefined,
@@ -77,8 +82,6 @@ export default function EditItemModal({
       await onSave(updates);
       setHasUnsavedChanges(false);
       onClose();
-    } catch (error) {
-      console.error('Error updating item:', error);
     } finally {
       setIsSubmitting(false);
     }
