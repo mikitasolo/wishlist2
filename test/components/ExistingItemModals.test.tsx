@@ -31,8 +31,8 @@ function item(overrides: Partial<ApiItem>): ApiItem {
 
 type Submit = (updates: Partial<ApiItem>) => Promise<void>;
 
-// Every form that opens on an existing item gets the same currency default; run
-// every case on each.
+// Every form that opens on an existing item maps its price the same way and gets
+// the same currency default; run every case on each.
 const modals = [
   {
     name: 'EditItemModal',
@@ -68,7 +68,7 @@ beforeAll(() => {
 afterAll(() => vi.restoreAllMocks());
 beforeEach(() => cleanup());
 
-describe.each(modals)('$name — currency', ({ status, submitLabel, renderModal }) => {
+describe.each(modals)('$name — price and currency', ({ status, submitLabel, renderModal }) => {
   const plnList = { wishlistCurrency: 'PLN', userCurrency: 'EUR' };
   const open = (
     overrides: Partial<ApiItem>,
@@ -134,6 +134,51 @@ describe.each(modals)('$name — currency', ({ status, submitLabel, renderModal 
     fireEvent.click(screen.getByRole('button', { name: /^cancel$/i }));
     expect(onClose).not.toHaveBeenCalled();
     expect(screen.getByText(/discard changes\?/i)).toBeInTheDocument();
+  });
+
+  // regression: itemToFormData mapped the price with a truthiness check on
+  // price.value, so an item priced at 0 opened with an empty price field and
+  // saving any other change submitted `price: null`, which cleared it.
+  it('regression: an item priced at 0 keeps its price when another field is saved', async () => {
+    const { onSubmit } = open({ price: { value: 0, currency: 'eur' } });
+    expect(priceInput()).toHaveDisplayValue('0.00');
+    expect(currencyButton('EUR')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(/^notes$/i), {
+      target: { value: 'Free, just take it' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: submitLabel }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    expect(onSubmit.mock.calls[0][0]).toMatchObject({
+      notes: 'Free, just take it',
+      price: { value: 0, currency: 'eur' },
+    });
+  });
+
+  it('does not count a 0.00 price as an unsaved change', () => {
+    const { onClose } = open({ price: { value: 0, currency: 'eur' } });
+    fireEvent.click(screen.getByRole('button', { name: /^cancel$/i }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(/discard changes\?/i)).toBeNull();
+  });
+});
+
+describe('itemToFormData — price', () => {
+  it('shows a zero price as 0.00, not as an empty field', () => {
+    expect(itemToFormData(item({ price: { value: 0, currency: 'eur' } }), 'PLN').price).toBe(
+      '0.00'
+    );
+  });
+
+  it('shows cents as a two-decimal amount', () => {
+    expect(itemToFormData(item({ price: { value: 1999, currency: 'eur' } }), 'PLN').price).toBe(
+      '19.99'
+    );
+  });
+
+  it('leaves the field empty for an item with no price', () => {
+    expect(itemToFormData(item({ price: null }), 'PLN').price).toBe('');
+    expect(itemToFormData(item({ price: undefined }), 'PLN').price).toBe('');
   });
 });
 
