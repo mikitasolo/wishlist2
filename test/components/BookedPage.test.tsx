@@ -307,4 +307,23 @@ describe('BookedPage — keyboard focus in a confirmation', () => {
     expect(sent(markGiftedKey('res-lego'))).toBe(0);
     expect(sent(dismissKey('res-lego'))).toBe(0);
   });
+
+  it("hands focus back to the card's button once a failed request re-enables it", async () => {
+    const user = userEvent.setup();
+    const { answer } = await renderHeld();
+    const lego = reservationButtons('Lego set');
+
+    await user.click(lego.gift);
+    await user.click(
+      within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Mark as gifted' })
+    );
+    // The confirmation is gone and the card's buttons are disabled while its
+    // request runs, so focus has nowhere to go yet.
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expectReservationDisabled('Lego set');
+    expect(document.body).toHaveFocus();
+
+    await answer(markGiftedKey('res-lego'), failed('Failed to log gift'));
+    await waitFor(() => expect(lego.gift).toHaveFocus());
+  });
 });

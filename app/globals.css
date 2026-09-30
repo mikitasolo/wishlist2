@@ -171,16 +171,16 @@ label[for] {
   cursor: pointer;
 }
 
-/* Consistent, accessible focus rings for interactive controls. A tabindex="-1"
-   element isn't one: only script focuses it (e.g. a dialog holding focus while
-   its buttons are disabled), so it gets no ring, not even the browser's own.
-   :where() keeps the specificity, so the form-field opt-out below still wins. */
-*:focus-visible:not(:where([tabindex='-1'])) {
+/* Consistent, accessible focus rings for interactive controls. A dialog panel
+   isn't one: only script focuses it (useFocusTrap, e.g. while its buttons are
+   disabled), so it gets no ring, not even the browser's own. :where() keeps
+   the specificity, so the form-field opt-out below still wins. */
+*:focus-visible:not(:where([role='dialog'], [role='alertdialog'])) {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
   border-radius: 6px;
 }
-[tabindex='-1']:focus-visible {
+:is([role='dialog'], [role='alertdialog']):focus-visible {
   outline: none;
 }
 

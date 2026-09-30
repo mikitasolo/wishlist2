@@ -146,7 +146,7 @@ describe('ConfirmDialog — an action that returns a promise', () => {
 });
 
 /** A page with a button that opens the dialog, and another one behind it. */
-function DialogPage({ onConfirm = vi.fn() }: { onConfirm?: () => void | Promise<unknown> }) {
+function DialogPage() {
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -156,7 +156,7 @@ function DialogPage({ onConfirm = vi.fn() }: { onConfirm?: () => void | Promise<
         isOpen={open}
         title="Remove Member"
         message="Are you sure?"
-        onConfirm={onConfirm}
+        onConfirm={() => setOpen(false)}
         onCancel={() => setOpen(false)}
         confirmText="Remove"
         pendingText="Removing..."
@@ -244,9 +244,10 @@ describe('ConfirmDialog — keyboard focus', () => {
     expect(document.body).toHaveFocus();
   });
 
-  // The confirm button it had is disabled while the action runs, which would
-  // drop focus to <body> behind the backdrop.
-  it('holds focus on itself while its action runs, and lets Tab back in once it settles', async () => {
+  // regression: WIS-89 disables both buttons while the action runs, and
+  // disabling the focused confirm button dropped focus to <body>, behind the
+  // backdrop, where the next Tab started from the top of the page.
+  it('regression: holds focus on itself while its action runs, and lets Tab back in once it settles', async () => {
     const user = userEvent.setup();
     const { onConfirm, finish } = deferredConfirm();
     renderDialog(onConfirm);

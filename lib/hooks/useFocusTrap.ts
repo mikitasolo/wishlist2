@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, type RefObject } from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 
 /**
  * Keyboard focus for a modal dialog (`ConfirmDialog`, `BaseModal`), while
@@ -16,11 +16,28 @@ import { useEffect, useState, type RefObject } from 'react';
  *   focus until it closes, then the modal does again.
  * - On close, focus goes back to the element that had it when the dialog
  *   opened, if that's still in the document and focus hasn't since been moved
- *   somewhere outside the dialog on purpose.
+ *   somewhere outside the dialog on purpose. If the dialog's action disabled
+ *   that element, focus goes back once it's re-enabled.
+ *
+ * Tab order is taken to be DOM order, which holds without positive
+ * `tabIndex`es. A radio group would count as one stop per radio; no dialog
+ * has one.
  */
 
 // The open dialogs, oldest first; only the last one handles Tab.
 const openTraps: object[] = [];
+
+// Watches the one opener waiting to be re-enabled to take focus back (see
+// returnFocus).
+let openerWatch: MutationObserver | null = null;
+
+function stopWaiting() {
+  openerWatch?.disconnect();
+  openerWatch = null;
+}
+
+/** Focus has nowhere to be: it dropped to <body> with whatever held it. */
+const focusIsLost = () => !document.activeElement || document.activeElement === document.body;
 
 const TABBABLE = [
   'a[href]',
@@ -32,6 +49,7 @@ const TABBABLE = [
   'iframe',
   'audio[controls]',
   'video[controls]',
+  'summary',
   '[contenteditable]:not([contenteditable="false"])',
   '[tabindex]',
 ].join(',');
@@ -45,20 +63,37 @@ function tabbables(container: HTMLElement): HTMLElement[] {
       el.matches(TABBABLE) &&
       el.tabIndex >= 0 &&
       !el.closest('[inert]') &&
-      // Hidden elements can't take focus. (jsdom has no checkVisibility.)
+      // Hidden elements can't take focus. (jsdom has no checkVisibility, and
+      // browsers before `visibilityProperty` spell it `checkVisibilityCSS`.)
       (typeof el.checkVisibility !== 'function' ||
         el.checkVisibility({ visibilityProperty: true, checkVisibilityCSS: true }))
   );
 }
 
-/** Focuses the first candidate that takes focus; returns whether one did. */
-function focusFirst(candidates: (HTMLElement | null | undefined)[]): boolean {
-  for (const el of candidates) {
-    if (!el) continue;
-    el.focus();
-    if (document.activeElement === el) return true;
-  }
-  return false;
+/** Focuses `el`; returns whether it took focus. */
+function tryFocus(el: HTMLElement | null | undefined): boolean {
+  el?.focus();
+  return !!el && document.activeElement === el;
+}
+
+/**
+ * Focuses the dialog's opener, or, if the action the dialog just started has
+ * disabled it (a card's buttons while its request runs), focuses it once it's
+ * re-enabled, provided focus is still lost by then.
+ */
+function returnFocus(opener: HTMLElement) {
+  stopWaiting();
+  // The page hasn't moved while the dialog was open (the scroll lock).
+  opener.focus({ preventScroll: true });
+  if (document.activeElement === opener || !opener.matches(':disabled')) return;
+
+  const observer = new MutationObserver(() => {
+    if (opener.matches(':disabled')) return;
+    stopWaiting();
+    if (opener.isConnected && focusIsLost()) opener.focus({ preventScroll: true });
+  });
+  observer.observe(opener, { attributes: true, attributeFilter: ['disabled'] });
+  openerWatch = observer;
 }
 
 export function useFocusTrap(
@@ -78,15 +113,26 @@ export function useFocusTrap(
   }
   const { opener } = openedFrom;
 
+  // The focus return a close scheduled, until it runs.
+  const pendingReturn = useRef<{ cancelled: boolean } | null>(null);
+
   useEffect(() => {
     const container = containerRef.current;
     if (!active || !container) return;
 
+    // StrictMode (dev) runs the cleanup below and this effect back to back on
+    // mount. Cancelling the return that cleanup scheduled keeps focus where it
+    // was (e.g. on an autoFocus field) instead of bouncing it to the opener.
+    if (pendingReturn.current) pendingReturn.current.cancelled = true;
+    pendingReturn.current = null;
+    // A new dialog means the user has moved on from the last one's opener.
+    stopWaiting();
+
     const trap = {};
     openTraps.push(trap);
 
-    if (!container.contains(document.activeElement)) {
-      focusFirst([initialFocusRef?.current, ...tabbables(container), container]);
+    if (!container.contains(document.activeElement) && !tryFocus(initialFocusRef?.current)) {
+      if (!tabbables(container).some(tryFocus)) container.focus();
     }
 
     const handleTab = (e: KeyboardEvent) => {
@@ -121,18 +167,23 @@ export function useFocusTrap(
       document.removeEventListener('keydown', handleTab);
       openTraps.splice(openTraps.indexOf(trap), 1);
 
-      // Focus that was inside the dialog has dropped to <body> with it.
-      const current = document.activeElement;
-      const focusWasOurs = !current || current === document.body || container.contains(current);
-      if (
-        focusWasOurs &&
-        opener instanceof HTMLElement &&
-        opener !== document.body &&
-        opener.isConnected
-      ) {
-        // The page hasn't moved while the dialog was open (the scroll lock).
-        opener.focus({ preventScroll: true });
-      }
+      const pending = { cancelled: false };
+      pendingReturn.current = pending;
+      queueMicrotask(() => {
+        if (pending.cancelled) return;
+        if (pendingReturn.current === pending) pendingReturn.current = null;
+        // Focus that was inside the dialog has dropped to <body> with it; if
+        // it's anywhere else now, something put it there on purpose.
+        const focusWasOurs = focusIsLost() || container.contains(document.activeElement);
+        if (
+          focusWasOurs &&
+          opener instanceof HTMLElement &&
+          opener !== document.body &&
+          opener.isConnected
+        ) {
+          returnFocus(opener);
+        }
+      });
     };
   }, [active, containerRef, initialFocusRef, opener]);
 }

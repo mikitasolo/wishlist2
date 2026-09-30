@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
 import { render, screen, act, cleanup, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { useState, type ReactNode } from 'react';
+import { StrictMode, useState, type ReactNode } from 'react';
 import BaseModal from '@/components/BaseModal';
 import ConfirmDialog from '@/components/ConfirmDialog';
 
@@ -16,9 +16,10 @@ beforeEach(() => cleanup());
 /**
  * A page with a button that opens the modal and another one behind it. The
  * modal's "Delete Item" opens a confirmation rendered beside it, as the item
- * modals do.
+ * modals do. With `mountOpen`, the modal mounts already open, as the wishlist
+ * page's item modals do.
  */
-function ModalPage({ content }: { content?: ReactNode }) {
+function ModalPage({ content, mountOpen }: { content?: ReactNode; mountOpen?: boolean }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   return (
@@ -26,6 +27,7 @@ function ModalPage({ content }: { content?: ReactNode }) {
       <button onClick={() => setModalOpen(true)}>Open</button>
       <button>Behind</button>
       <BaseModal
+        key={mountOpen ? String(modalOpen) : undefined}
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}
         title="Edit Item"
@@ -71,6 +73,22 @@ describe('BaseModal — keyboard focus', () => {
   it('leaves focus on an autoFocus field in its content, and still returns it on close', async () => {
     const user = userEvent.setup();
     render(<ModalPage content={<input aria-label="Search" autoFocus />} />);
+
+    await user.click(button('Open'));
+    expect(screen.getByLabelText('Search')).toHaveFocus();
+
+    await user.keyboard('{Escape}');
+    expect(button('Open')).toHaveFocus();
+  });
+
+  // StrictMode (on in `next dev`) runs the effects of a modal that mounts open twice.
+  it('leaves an autoFocus field focused under StrictMode too', async () => {
+    const user = userEvent.setup();
+    render(
+      <StrictMode>
+        <ModalPage content={<input aria-label="Search" autoFocus />} mountOpen />
+      </StrictMode>
+    );
 
     await user.click(button('Open'));
     expect(screen.getByLabelText('Search')).toHaveFocus();

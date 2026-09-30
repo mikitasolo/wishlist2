@@ -113,9 +113,10 @@ describe.each(modals)('$name — delete outcome', ({ renderModal, submitLabel, s
     expect(deleteItemButton()).toBeEnabled();
   });
 
-  // While the delete ran, its disabled buttons would drop focus to <body>, and
+  // regression: the confirmation's buttons are disabled while the delete runs,
+  // which dropped focus to <body>; after a failed delete it stayed there, and
   // the next Tab started from the top of the page instead of the modal.
-  it('hands focus back to Delete Item in the modal when the delete fails', async () => {
+  it('regression: hands focus back to Delete Item in the modal when the delete fails', async () => {
     const user = userEvent.setup();
     const onDelete = vi.fn().mockRejectedValue(new Error('Something went wrong'));
     renderModal(onDelete, vi.fn());
