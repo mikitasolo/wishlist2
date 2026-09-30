@@ -106,6 +106,18 @@ describe('createItemSchema', () => {
     expect(parsed.success).toBe(true);
     expect(parsed.success && 'bookedBy' in parsed.data).toBe(false);
   });
+
+  // regression: the create schema accepted a `proposedBy` the route ignores (it
+  // sets the proposer from the session), a dead client-controlled field.
+  it('regression: drops a client-sent proposedBy', () => {
+    const parsed = createItemSchema.safeParse({
+      name: 'Toy',
+      status: 'proposed',
+      proposedBy: 'someone',
+    });
+    expect(parsed.success).toBe(true);
+    expect(parsed.success && 'proposedBy' in parsed.data).toBe(false);
+  });
 });
 
 describe('mostWanted on the item schemas', () => {
@@ -140,5 +152,16 @@ describe('updateItemSchema', () => {
     const res = updateItemSchema.safeParse({ status: 'available', gifted: true });
     expect(res.success).toBe(true);
     expect(res.success && res.data).not.toHaveProperty('gifted');
+  });
+
+  // regression: the update schema passed `bookedBy` through, and the owner branch
+  // stored it as given: a booking with no Reservation behind it.
+  it('regression: drops a client-sent bookedBy and proposedBy', () => {
+    const res = updateItemSchema.safeParse({ name: 'Toy', bookedBy: 'a', proposedBy: 'b' });
+    expect(res.success).toBe(true);
+    expect(res.success && res.data).toEqual({ name: 'Toy' });
+    // With nothing else, there's no field left to update.
+    expect(updateItemSchema.safeParse({ bookedBy: 'a' }).success).toBe(false);
+    expect(updateItemSchema.safeParse({ bookedBy: null }).success).toBe(false);
   });
 });
