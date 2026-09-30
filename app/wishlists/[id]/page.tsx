@@ -534,7 +534,6 @@ export default function WishlistDetail() {
     const deleted = await deleteItemHook(itemId);
     if (!deleted) throw new Error('Failed to delete item');
     setItems((prevItems) => prevItems.filter((item) => item._id !== itemId));
-    setItemToReview(null);
     showToast('Proposed item deleted', 'success');
   }, [itemToReview, deleteItemHook, showToast]);
 
@@ -560,7 +559,6 @@ export default function WishlistDetail() {
     const deleted = await deleteItemHook(itemId);
     if (!deleted) throw new Error('Failed to delete item');
     setItems((prevItems) => prevItems.filter((item) => item._id !== itemId));
-    setItemToEdit(null);
     showToast('Item deleted successfully', 'success');
   }, [itemToEdit, deleteItemHook, showToast]);
 
