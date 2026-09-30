@@ -24,6 +24,7 @@ import {
 import { getOwnerAccess } from '@/lib/utils/wishlistAccess';
 import {
   isWishlistOwner,
+  ownedByFilter,
   ownerIds,
   primaryOwnerId,
   serializeWishlist,
@@ -277,6 +278,14 @@ async function bestEffort(
   }
 }
 
+/** Delete a deleted list's items, then free the images uploaded for them. */
+async function deleteItemsAndImages(wishlistId: string): Promise<void> {
+  // Collected before the items go, or their blobs would be orphaned in storage.
+  const items = await Item.find({ wishlist: wishlistId }).select('imageUrl').lean();
+  await Item.deleteMany({ wishlist: wishlistId });
+  await deleteOwnBlobs(items.map((i) => i.imageUrl));
+}
+
 // DELETE /api/wishlists/[id] - Delete a wishlist (any owner; owners are equal)
 export async function DELETE(
   request: NextRequest,
@@ -299,46 +308,47 @@ export async function DELETE(
       return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
     }
 
-    const wishlist = await Wishlist.findById(id);
+    // Only an owner can delete, and the delete is its own ownership check: it
+    // only matches while the caller still owns the list. A check against a copy
+    // read earlier would race: a co-owner removing the caller a moment before
+    // wouldn't stop it. So the list goes first, and nothing else is touched
+    // unless it did.
+    const wishlist = await Wishlist.findOneAndDelete({
+      _id: id,
+      ...ownedByFilter(session.user.id),
+    });
     if (!wishlist) {
-      return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
-    }
-
-    // Only an owner can delete.
-    if (!isWishlistOwner(wishlist, session.user.id)) {
+      // Nothing was deleted, so this read only picks the answer: another owner
+      // deleted the list first, or the caller doesn't own it (any more).
+      if (!(await Wishlist.exists({ _id: id }))) {
+        return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
+      }
       return NextResponse.json(
         { success: false, error: 'Unauthorized - Only an owner can delete wishlist' },
         { status: 403 }
       );
     }
 
-    // Collect uploaded item images before deleting the items, so we can free
-    // their blobs afterwards (otherwise they'd be orphaned in storage).
-    const items = await Item.find({ wishlist: id }).select('imageUrl').lean();
-
-    // Delete all items in this wishlist
-    await Item.deleteMany({ wishlist: id });
-
-    // Delete all memberships
-    await WishlistMember.deleteMany({ wishlist: id });
-
-    // Delete wishlist
-    await Wishlist.findByIdAndDelete(id);
-
     // Best-effort cleanup of what only made sense while the list existed. The
     // list is already gone, so each step logs and continues: a failure here
-    // must not turn a successful delete into an error.
+    // must not turn a successful delete into an error. Whatever a failed step
+    // leaves behind points at a list that no longer exists, so nothing can
+    // reach it.
+    //  - Items, and their uploaded images.
+    //  - Memberships.
     //  - Invites, whatever their status (accepted/declined rows are only
     //    history for a list that no longer exists).
     //  - Notifications that link to the list, which would now 404 (the
     //    `wishlist_invite` ones even look actionable).
-    //  - Our own uploaded blobs (item images + cover).
+    //  - Our own uploaded cover image.
     // Reservations and gift logs deliberately stay: they're the gifter's, so
     // they can still see what they claimed and log the gift.
     await Promise.all([
+      bestEffort('Item', id, () => deleteItemsAndImages(id)),
+      bestEffort('Membership', id, () => WishlistMember.deleteMany({ wishlist: id })),
       bestEffort('Invite', id, () => WishlistInvite.deleteMany({ wishlist: id })),
       bestEffort('Notification', id, () => Notification.deleteMany({ wishlist: id })),
-      deleteOwnBlobs([...items.map((i) => i.imageUrl), wishlist.bannerUrl]),
+      deleteOwnBlob(wishlist.bannerUrl),
     ]);
 
     return NextResponse.json({ success: true, data: {} }, { status: 200 });

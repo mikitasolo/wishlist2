@@ -8,6 +8,12 @@ import { isWishlistOwner } from '@/lib/utils/wishlistOwners';
 import { releaseUserBookings } from '@/lib/utils/wishlistOwnership';
 import { cancelPendingInvites } from '@/lib/utils/wishlistInvites';
 
+const notOwnerError = () =>
+  NextResponse.json(
+    { success: false, error: 'Unauthorized - Owner access required' },
+    { status: 403 }
+  );
+
 // DELETE /api/wishlists/[id]/members/[memberId] - Remove a member from a wishlist.
 //
 // There's no PATCH here: membership carries no role. The only move up is to
@@ -38,12 +44,7 @@ export async function DELETE(
     if (!wishlist) {
       return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
     }
-    if (!isOwner) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized - Owner access required' },
-        { status: 403 }
-      );
-    }
+    if (!isOwner) return notOwnerError();
 
     const membership = await WishlistMember.findById(memberId);
     if (!membership) {
@@ -73,6 +74,18 @@ export async function DELETE(
         { status: 400 }
       );
     }
+
+    // The access check above ran against the list as it was read at the start of
+    // the request. Re-read it right before the first change: a co-owner may have
+    // removed the caller since (or deleted the list), and someone who no longer
+    // owns the list can't take anyone off it. This narrows the race to the gap
+    // before the next write rather than closing it: the writes below are on other
+    // collections, so none of them can carry the ownership check itself.
+    const current = await getOwnerAccess(id, session.user.id);
+    if (!current.wishlist) {
+      return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
+    }
+    if (!current.isOwner) return notOwnerError();
 
     // Free the items they had booked. Their durable reservations survive, so they
     // can still log a gift they went on to give.
