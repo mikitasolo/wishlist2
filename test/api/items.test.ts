@@ -174,6 +174,104 @@ describe('PATCH /api/items/[id] — publish / move to draft', () => {
   });
 });
 
+// regression: the owner branch of PATCH took `status` and `bookedBy` as given.
+// `booked` (with or without a `bookedBy`) or a `bookedBy` alone stored a booking
+// with no Reservation behind it, which nobody can release (only the holder can
+// unbook, owners are booking-blind), and `proposed` turned a live item into a
+// proposal with no proposer.
+describe('PATCH /api/items/[id] — owner edits never book or propose an item', () => {
+  const as = (userId: string) => session.mockResolvedValue({ user: { id: userId } } as never);
+
+  // The item has `status`, and neither a booker nor a proposer.
+  async function expectNoBookerOrProposer(id: string, status: string) {
+    const item = await Item.findById(id);
+    expect(item?.status).toBe(status);
+    expect(item?.bookedBy ?? null).toBeNull();
+    expect(item?.proposedBy ?? null).toBeNull();
+  }
+
+  it('regression: status booked, with or without bookedBy, is a 400 and books nothing', async () => {
+    as(ownerId);
+    for (const status of ['draft', 'available', 'completed']) {
+      const id = await makeItem(status);
+      for (const body of [{ status: 'booked', bookedBy: memberId }, { status: 'booked' }]) {
+        expect((await patch(id, body)).status).toBe(400);
+        await expectNoBookerOrProposer(id, status);
+      }
+    }
+    expect(await Reservation.countDocuments()).toBe(0);
+  });
+
+  it('regression: status proposed on a live item is a 400 and leaves it live', async () => {
+    as(ownerId);
+    for (const status of ['draft', 'available', 'completed']) {
+      const id = await makeItem(status);
+      expect((await patch(id, { status: 'proposed' })).status).toBe(400);
+      await expectNoBookerOrProposer(id, status);
+    }
+  });
+
+  it('regression: a bookedBy is ignored, alongside other fields or on its own', async () => {
+    as(ownerId);
+    const id = await makeItem('available');
+
+    // On its own there is nothing left to update, so the request is refused.
+    expect((await patch(id, { bookedBy: memberId })).status).toBe(400);
+    await expectNoBookerOrProposer(id, 'available');
+
+    const res = await patch(id, { name: 'Renamed', bookedBy: memberId });
+    expect(res.status).toBe(200);
+    expect((await Item.findById(id))?.name).toBe('Renamed');
+    await expectNoBookerOrProposer(id, 'available');
+    expect(await Reservation.countDocuments()).toBe(0);
+  });
+
+  it("regression: can't take over or strand a member's booking, and is refused as if unbooked", async () => {
+    as(memberId);
+    const bookedId = await makeItem('available');
+    await patch(bookedId, { status: 'booked' });
+    const freeId = await makeItem('available');
+
+    as(ownerId);
+    // Same answer for a booked and an unbooked item: it mustn't reveal the booking.
+    const onBooked = await patch(bookedId, { status: 'booked', bookedBy: ownerId });
+    const onFree = await patch(freeId, { status: 'booked', bookedBy: ownerId });
+    expect(onBooked.status).toBe(400);
+    expect(await onBooked.json()).toEqual(await onFree.json());
+
+    // Clearing or reassigning bookedBy used to leave it booked by nobody, or by
+    // someone with no Reservation.
+    for (const bookedBy of [null, ownerId]) {
+      expect((await patch(bookedId, { notes: 'Blue', bookedBy })).status).toBe(200);
+    }
+    const item = await Item.findById(bookedId);
+    expect(item?.status).toBe('booked');
+    expect(item?.bookedBy?.toString()).toBe(memberId);
+    expect(await Reservation.findOne({ gifter: memberId, item: bookedId })).not.toBeNull();
+  });
+
+  // regression: a status change only cleared bookedBy when the route's earlier
+  // read saw the item `booked`, so a booker set without a booking (the old
+  // `{ bookedBy }`-alone write, or a member booking in between) survived it.
+  it('regression: every owner status change clears a stray bookedBy', async () => {
+    as(ownerId);
+    for (const status of ['draft', 'completed', 'available']) {
+      const id = await makeItem('available', memberId);
+      expect((await patch(id, { status })).status).toBe(200);
+      await expectNoBookerOrProposer(id, status);
+    }
+  });
+
+  it('still publishes, moves to draft, completes and reopens', async () => {
+    as(ownerId);
+    const id = await makeItem('draft');
+    for (const status of ['available', 'draft', 'available', 'completed', 'available']) {
+      expect((await patch(id, { status })).status).toBe(200);
+      await expectNoBookerOrProposer(id, status);
+    }
+  });
+});
+
 describe('PATCH /api/items/[id] — proposal anonymity', () => {
   async function makeProposed() {
     const item = await Item.create({

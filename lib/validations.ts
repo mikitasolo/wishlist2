@@ -132,9 +132,9 @@ export const createItemSchema = z.object({
   // A new item is never booked or completed, and takes no `bookedBy`: a booking
   // only comes from a member booking it (PATCH), which also writes the
   // Reservation that lets them release it. The route narrows this further:
-  // owners create draft/available, members only propose.
+  // owners create draft/available, members only propose. No `proposedBy`
+  // either: the route sets the proposer from the session.
   status: z.enum(['draft', 'available', 'proposed']).default('available'),
-  proposedBy: z.string().optional().nullable(),
 });
 
 export const updateItemSchema = z
@@ -159,9 +159,11 @@ export const updateItemSchema = z
     link: z.url('Invalid link URL').optional().nullable(),
     notes: z.string().max(100, 'Notes must be 100 characters or less').trim().optional().nullable(),
     mostWanted: z.boolean().optional(),
+    // The route narrows this per role: members only book/unbook, owners only
+    // draft/available/completed (draft/available when approving a proposal).
+    // No `bookedBy` or `proposedBy`, so a client-sent one is dropped: the server
+    // sets them (a member's booking, a member's proposal) and clears them.
     status: z.enum(['draft', 'available', 'booked', 'completed', 'proposed']).optional(),
-    bookedBy: z.string().optional().nullable(),
-    proposedBy: z.string().optional().nullable(),
   })
   .refine((data) => Object.keys(data).length > 0, {
     message: 'At least one field must be provided for update',

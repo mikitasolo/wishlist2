@@ -16,7 +16,7 @@ import { isWishlistOwner, primaryOwnerId } from '@/lib/utils/wishlistOwners';
 
 // PATCH /api/items/[id] - Update an item
 // Members can book/unbook items (only their own bookings)
-// Wishlist owners can update all fields
+// Wishlist owners can edit content and publish/draft/complete/reopen, never book
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth();
@@ -186,7 +186,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         );
       }
     }
-    // An owner may update every field
+    // An owner may edit the content and make the explicit status changes
     else if (isOwner) {
       if (validatedData.name !== undefined) updateData.name = validatedData.name;
       if (validatedData.imageUrl !== undefined) updateData.imageUrl = validatedData.imageUrl;
@@ -203,16 +203,27 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       // A content edit like the others: it never touches status or bookedBy.
       if (validatedData.mostWanted !== undefined) updateData.mostWanted = validatedData.mostWanted;
       if (validatedData.status !== undefined) {
-        updateData.status = validatedData.status;
-        // Moving away from 'booked' (including to 'completed') unassigns the booker.
-        if (currentItem.status === 'booked' && validatedData.status !== 'booked') {
-          updateData.bookedBy = null;
+        // Owners publish, move to draft, complete or reopen, and nothing else. A
+        // booking only comes from a member booking the item (below), which also
+        // writes the Reservation that lets them release it, and only a member's
+        // proposal is `proposed`. Refused whatever the item's current status, so
+        // the answer never tells a booking-blind owner the item is booked.
+        const status = validatedData.status;
+        if (status !== 'draft' && status !== 'available' && status !== 'completed') {
+          return NextResponse.json(
+            {
+              success: false,
+              error: 'Owners can only set an item to draft, available or completed',
+            },
+            { status: 400 }
+          );
         }
-      }
-      if (validatedData.bookedBy !== undefined) {
-        updateData.bookedBy = validatedData.bookedBy
-          ? new mongoose.Types.ObjectId(validatedData.bookedBy)
-          : null;
+        updateData.status = status;
+        // None of these is 'booked', so the item comes out with no booker: moving
+        // off 'booked' (including to 'completed') unassigns it. Cleared whatever
+        // the earlier read said, since a member may have booked since. The
+        // gifter's Reservation is kept, so they can still log the gift.
+        updateData.bookedBy = null;
       }
     } else {
       // Regular members can only update status (for booking/unbooking)
