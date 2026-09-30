@@ -6,17 +6,6 @@
  */
 
 /**
- * Whether a background poll's result is stale and must be dropped: its read
- * started before the latest local mutation settled, so it may predate that
- * write and would overwrite the fresher local list (e.g. hide an item that was
- * just added). A poll started in the same millisecond is kept: the page's
- * reconcile read after a failed update is issued right after the stamp.
- */
-export function isStalePoll(pollStartedAt: number, lastMutationAt: number): boolean {
-  return lastMutationAt > pollStartedAt;
-}
-
-/**
  * The page's item mutations as the poll guard sees them: how many are in flight,
  * and when the latest one settled.
  */
@@ -30,10 +19,15 @@ export interface MutationTracker {
    */
   track<T>(mutation: () => Promise<T>): Promise<T>;
   /**
-   * Whether a poll whose read started at `pollStartedAt` must be dropped: a
-   * mutation is still in flight, so the read may predate its write (even one
-   * that started after the mutation did), or it read across one that has since
-   * settled (see `isStalePoll`).
+   * Whether a background poll's result is stale and must be dropped, because it
+   * would overwrite the fresher local list (e.g. undo an optimistic edit, or
+   * hide an item that was just added):
+   * - a mutation is still in flight, so the read may predate its write (even a
+   *   read that started after the mutation did), or
+   * - its read started before the latest mutation settled.
+   *
+   * A poll started in the same millisecond as the settle is kept: the page's
+   * reconcile read after a failed update is issued right after it.
    */
   isStale(pollStartedAt: number): boolean;
 }
@@ -52,7 +46,7 @@ export function createMutationTracker(now: () => number = Date.now): MutationTra
       }
     },
     isStale(pollStartedAt: number): boolean {
-      return pending > 0 || isStalePoll(pollStartedAt, lastSettledAt);
+      return pending > 0 || lastSettledAt > pollStartedAt;
     },
   };
 }

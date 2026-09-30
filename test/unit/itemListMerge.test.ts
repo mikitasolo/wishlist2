@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createMutationTracker, isStalePoll, prependCreatedItem } from '@/lib/utils/itemListMerge';
+import { createMutationTracker, prependCreatedItem } from '@/lib/utils/itemListMerge';
 import type { ApiItem } from '@/types/api';
 
 function item(overrides: Partial<ApiItem>): ApiItem {
@@ -31,26 +31,6 @@ function trackerAt() {
     },
   };
 }
-
-describe('isStalePoll', () => {
-  it('drops a poll whose read started before the latest mutation settled', () => {
-    expect(isStalePoll(1_000, 1_001)).toBe(true);
-  });
-
-  it('keeps a poll that started after the latest mutation settled', () => {
-    expect(isStalePoll(1_001, 1_000)).toBe(false);
-  });
-
-  it('keeps a poll that started in the same millisecond as the stamp', () => {
-    // handleUpdateItem stamps and then issues its reconcile read after a failed
-    // update, usually within the same millisecond; that read must land.
-    expect(isStalePoll(1_000, 1_000)).toBe(false);
-  });
-
-  it('keeps every poll before the first mutation', () => {
-    expect(isStalePoll(1_000, 0)).toBe(false);
-  });
-});
 
 describe('createMutationTracker', () => {
   it('keeps every poll before the first mutation', () => {
