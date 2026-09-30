@@ -159,6 +159,12 @@ function WishlistItem({
 
       {/* Status badges - positioned absolutely at top-right corner of card */}
       <div className="absolute right-2 top-2 z-10 flex flex-col items-end gap-2 sm:right-3 sm:top-3">
+        {item.mostWanted && (
+          <span className="flex items-center gap-1 rounded-full border border-border bg-surface/90 px-2.5 py-1 text-xs font-semibold text-foreground shadow-sm backdrop-blur">
+            <Icon name="star" size={12} className="fill-amber-400 text-amber-500" />
+            Most wanted
+          </span>
+        )}
         {item.status === 'draft' && (
           <span className="rounded-full border border-border bg-surface/90 px-2.5 py-1 text-xs font-semibold text-muted-foreground shadow-sm backdrop-blur">
             Draft

@@ -196,3 +196,24 @@ describe('WishlistItem — price conversion', () => {
     expect(screen.getByText('USD 1.00')).toBeInTheDocument();
   });
 });
+
+describe('WishlistItem — most wanted badge', () => {
+  it('shows the badge to owners, members and visitors alike', () => {
+    const wanted = item({ mostWanted: true });
+    for (const props of [{ isOwner: true }, { isMember: true }, {}]) {
+      const { unmount } = render(
+        <WishlistItem item={wanted} onUpdate={vi.fn()} isAuthenticated {...props} />
+      );
+      expect(screen.getByText('Most wanted')).toBeInTheDocument();
+      unmount();
+    }
+  });
+
+  it('shows no badge on an item that is not most wanted, or has no flag', () => {
+    for (const plain of [item({ mostWanted: false }), item({})]) {
+      const { unmount } = render(<WishlistItem item={plain} onUpdate={vi.fn()} isAuthenticated />);
+      expect(screen.queryByText('Most wanted')).toBeNull();
+      unmount();
+    }
+  });
+});

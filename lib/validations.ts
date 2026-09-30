@@ -128,6 +128,7 @@ export const createItemSchema = z.object({
     .nullable(), // Price object is optional, but if provided, both value and currency are required
   link: z.url('Invalid link URL').optional(),
   notes: z.string().max(100, 'Notes must be 100 characters or less').trim().optional(),
+  mostWanted: z.boolean().optional(),
   status: z.enum(['draft', 'available', 'booked', 'completed', 'proposed']).default('available'),
   bookedBy: z.string().optional().nullable(),
   proposedBy: z.string().optional().nullable(),
@@ -154,6 +155,7 @@ export const updateItemSchema = z
       .nullable(), // Price object is optional, but if provided, both value and currency are required
     link: z.url('Invalid link URL').optional().nullable(),
     notes: z.string().max(100, 'Notes must be 100 characters or less').trim().optional().nullable(),
+    mostWanted: z.boolean().optional(),
     status: z.enum(['draft', 'available', 'booked', 'completed', 'proposed']).optional(),
     bookedBy: z.string().optional().nullable(),
     proposedBy: z.string().optional().nullable(),

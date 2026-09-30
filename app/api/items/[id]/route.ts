@@ -106,7 +106,15 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     let updateData: Partial<
       Pick<
         IItem,
-        'name' | 'imageUrl' | 'price' | 'link' | 'notes' | 'status' | 'bookedBy' | 'proposedBy'
+        | 'name'
+        | 'imageUrl'
+        | 'price'
+        | 'link'
+        | 'notes'
+        | 'mostWanted'
+        | 'status'
+        | 'bookedBy'
+        | 'proposedBy'
       >
     > = {};
 
@@ -130,6 +138,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         }
         if (validatedData.link !== undefined) updateData.link = validatedData.link ?? null;
         if (validatedData.notes !== undefined) updateData.notes = validatedData.notes ?? null;
+        if (validatedData.mostWanted !== undefined)
+          updateData.mostWanted = validatedData.mostWanted;
         if (validatedData.status !== undefined) {
           // Owner can change from proposed to draft or available
           if (validatedData.status === 'draft' || validatedData.status === 'available') {
@@ -158,6 +168,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         }
         if (validatedData.link !== undefined) updateData.link = validatedData.link ?? null;
         if (validatedData.notes !== undefined) updateData.notes = validatedData.notes ?? null;
+        // mostWanted is the owners' call, so a proposer's value is ignored.
         // Proposers cannot change status of proposed items
         if (validatedData.status !== undefined && validatedData.status !== 'proposed') {
           return NextResponse.json(
@@ -186,6 +197,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       }
       if (validatedData.link !== undefined) updateData.link = validatedData.link ?? null;
       if (validatedData.notes !== undefined) updateData.notes = validatedData.notes ?? null;
+      // A content edit like the others: it never touches status or bookedBy.
+      if (validatedData.mostWanted !== undefined) updateData.mostWanted = validatedData.mostWanted;
       if (validatedData.status !== undefined) {
         updateData.status = validatedData.status;
         // Moving away from 'booked' (including to 'completed') unassigns the booker.

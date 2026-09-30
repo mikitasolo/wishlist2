@@ -48,6 +48,7 @@ export default function ReviewItemModal({
     price?: { value: number; currency: string } | null;
     link?: string | null;
     notes?: string | null;
+    mostWanted?: boolean;
     status: 'draft' | 'available' | 'proposed';
   }) => {
     setIsSubmitting(true);
@@ -63,6 +64,7 @@ export default function ReviewItemModal({
         price: data.price !== undefined ? data.price : undefined,
         link: data.link !== undefined ? data.link : undefined,
         notes: data.notes !== undefined ? data.notes : undefined,
+        mostWanted: data.mostWanted,
         status: data.status,
         proposedBy: null, // Clear proposedBy when approving
       };

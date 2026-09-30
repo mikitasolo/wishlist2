@@ -48,6 +48,7 @@ export default function EditItemModal({
     price?: { value: number; currency: string } | null;
     link?: string | null;
     notes?: string | null;
+    mostWanted?: boolean;
     status: 'draft' | 'available' | 'proposed';
   }) => {
     setIsSubmitting(true);
@@ -59,6 +60,8 @@ export default function EditItemModal({
         price: data.price !== undefined ? data.price : undefined,
         link: data.link !== undefined ? data.link : undefined,
         notes: data.notes !== undefined ? data.notes : undefined,
+        // Absent when a proposer edits their own proposal.
+        mostWanted: data.mostWanted,
       };
       // Editing content never changes status — that would silently clobber a
       // booking (owners can't see bookings). Publishing / moving to draft is a

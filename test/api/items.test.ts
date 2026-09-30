@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
 import { NextRequest } from 'next/server';
+import mongoose from 'mongoose';
 import { connectTestDB, disconnectTestDB, clearTestDB } from '../db';
 
 // connectDB becomes a no-op; the in-memory mongoose connection backs the models.
@@ -9,10 +10,13 @@ vi.mock('@/lib/auth', () => ({ auth: vi.fn() }));
 // Don't hit the DB/external API for currency rates.
 vi.mock('@/lib/utils/currencyRates', () => ({
   ensureCurrencyRatesUpToDate: vi.fn().mockResolvedValue({ rates: new Map([['usd', 1]]) }),
+  convertToUsdCents: vi.fn(),
 }));
 
 import { auth } from '@/lib/auth';
 import { PATCH } from '@/app/api/items/[id]/route';
+import { GET as LIST_ITEMS, POST as CREATE_ITEM } from '@/app/api/wishlists/[id]/items/route';
+import { GET as MY_ITEMS } from '@/app/api/users/me/items/route';
 import User from '@/models/User';
 import Wishlist from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
@@ -197,5 +201,141 @@ describe('PATCH /api/items/[id] — proposal anonymity', () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.data.proposedBy).toBe(memberId);
+  });
+});
+
+describe('Most wanted flag', () => {
+  const as = (userId: string) => session.mockResolvedValue({ user: { id: userId } } as never);
+
+  function create(body: unknown) {
+    const req = new NextRequest(`http://localhost/api/wishlists/${wishlistId}/items`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    return CREATE_ITEM(req, { params: Promise.resolve({ id: wishlistId }) });
+  }
+
+  async function list() {
+    const req = new NextRequest(`http://localhost/api/wishlists/${wishlistId}/items`);
+    const res = await LIST_ITEMS(req, { params: Promise.resolve({ id: wishlistId }) });
+    return (await res.json()).data as { name: string; mostWanted?: boolean }[];
+  }
+
+  const flagOf = async (id: string) => (await Item.findById(id).lean())?.mostWanted;
+
+  it('an owner can create an item as most wanted; it defaults to false', async () => {
+    as(ownerId);
+    const flagged = await create({ name: 'Bike', mostWanted: true });
+    expect(flagged.status).toBe(201);
+    expect(await flagOf((await flagged.json()).data._id)).toBe(true);
+
+    const plain = await create({ name: 'Socks' });
+    expect(await flagOf((await plain.json()).data._id)).toBe(false);
+  });
+
+  it('an owner can set and clear it on an existing item', async () => {
+    as(ownerId);
+    const id = await makeItem('available');
+
+    const set = await patch(id, { mostWanted: true });
+    expect(set.status).toBe(200);
+    expect((await set.json()).data.mostWanted).toBe(true);
+    expect(await flagOf(id)).toBe(true);
+
+    await patch(id, { mostWanted: false });
+    expect(await flagOf(id)).toBe(false);
+  });
+
+  it("flagging a booked item keeps the member's booking and reservation", async () => {
+    as(memberId);
+    const id = await makeItem('available');
+    await patch(id, { status: 'booked' });
+
+    as(ownerId);
+    const res = await patch(id, { mostWanted: true });
+    expect(res.status).toBe(200);
+    // The owner still sees it as available: bookings stay hidden from owners.
+    expect((await res.json()).data.status).toBe('available');
+
+    const item = await Item.findById(id);
+    expect(item?.mostWanted).toBe(true);
+    expect(item?.status).toBe('booked');
+    expect(item?.bookedBy?.toString()).toBe(memberId);
+    expect(await Reservation.findOne({ gifter: memberId, item: id })).not.toBeNull();
+  });
+
+  it('a member cannot flag an item', async () => {
+    as(memberId);
+    const id = await makeItem('available');
+
+    expect((await patch(id, { mostWanted: true })).status).toBe(403);
+    expect(await flagOf(id)).toBe(false);
+
+    // Riding along with a booking doesn't work either.
+    expect((await patch(id, { status: 'booked', mostWanted: true })).status).toBe(200);
+    const item = await Item.findById(id);
+    expect(item?.status).toBe('booked');
+    expect(item?.mostWanted).toBe(false);
+  });
+
+  it("a member's proposal starts unflagged, and the proposer can't flag it later", async () => {
+    as(memberId);
+    const res = await create({ name: 'Idea', status: 'proposed', mostWanted: true });
+    expect(res.status).toBe(201);
+    const id = (await res.json()).data._id;
+    expect(await flagOf(id)).toBe(false);
+
+    await patch(id, { mostWanted: true });
+    expect(await flagOf(id)).toBe(false);
+  });
+
+  it('an owner can flag a proposal while approving it', async () => {
+    const proposal = await Item.create({
+      wishlist: wishlistId,
+      name: 'Idea',
+      status: 'proposed',
+      proposedBy: memberId,
+    });
+    const id = proposal._id.toString();
+
+    as(ownerId);
+    expect((await patch(id, { status: 'available', mostWanted: true })).status).toBe(200);
+    const item = await Item.findById(id);
+    expect(item?.status).toBe('available');
+    expect(item?.mostWanted).toBe(true);
+  });
+
+  it('everyone who can see the item sees the flag', async () => {
+    await Item.create({
+      wishlist: wishlistId,
+      name: 'Bike',
+      status: 'available',
+      mostWanted: true,
+    });
+
+    for (const viewer of [ownerId, memberId, null]) {
+      session.mockResolvedValue((viewer ? { user: { id: viewer } } : null) as never);
+      expect((await list()).map((i) => i.mostWanted)).toEqual([true]);
+    }
+  });
+
+  // An item saved before the field existed has no mostWanted in the database.
+  it('reports false for an item saved before the flag existed', async () => {
+    await Item.collection.insertOne({
+      wishlist: new mongoose.Types.ObjectId(wishlistId),
+      name: 'Legacy',
+      status: 'available',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    as(ownerId);
+    expect((await list()).map((i) => i.mostWanted)).toEqual([false]);
+
+    const mine = await MY_ITEMS();
+    expect((await mine.json()).data.map((i: { mostWanted: unknown }) => i.mostWanted)).toEqual([
+      false,
+    ]);
   });
 });

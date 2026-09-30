@@ -32,6 +32,10 @@ import {
   calculateStats,
   filterItemsMulti,
   searchItemsByName,
+  savedWishlistSort,
+  DEFAULT_WISHLIST_SORT,
+  SORT_OPTIONS,
+  WISHLIST_SORT_STORAGE_KEY,
   type FilterOption,
   type SortType,
 } from '@/lib/utils/itemFilters';
@@ -77,7 +81,7 @@ export default function WishlistDetail() {
   const [isMember, setIsMember] = useState(false);
   const [manageOpen, setManageOpen] = useState(false);
   const [selectedFilters, setSelectedFilters] = useState<FilterOption[]>([]);
-  const [sortBy, setSortBy] = useState<SortType>('name-asc');
+  const [sortBy, setSortBy] = useState<SortType>(DEFAULT_WISHLIST_SORT);
   const [searchQuery, setSearchQuery] = useState('');
   // 'original' shows each item's own currency; any code converts all prices to it.
   const [priceCurrency, setPriceCurrency] = useState<string>('original');
@@ -155,11 +159,6 @@ export default function WishlistDetail() {
     }
   }, [isOwner, isMember]);
 
-  // Get localStorage key for sort (single key for all roles)
-  const getSortStorageKey = useCallback((): string => {
-    return 'wishlist-sort';
-  }, []);
-
   // Load filters from localStorage or use defaults
   // Only run after we've loaded the wishlist and determined the role
   useEffect(() => {
@@ -207,49 +206,19 @@ export default function WishlistDetail() {
     localStorage.setItem(storageKey, JSON.stringify(selectedFilters));
   }, [wishlistId, loading, wishlist, selectedFilters, getFilterStorageKey]);
 
-  // Load sort from localStorage or use default
-  // Only run after we've loaded the wishlist
+  // Restore the visitor's saved sort, else the default. It's one setting for
+  // every list, so it's read once rather than per wishlist.
   useEffect(() => {
-    // Wait until loading is complete and we have a wishlist
-    if (!wishlistId || loading || !wishlist) return;
+    setSortBy(savedWishlistSort(localStorage));
+  }, []);
 
-    const storageKey = getSortStorageKey();
-    const stored = localStorage.getItem(storageKey);
-
-    if (stored) {
-      try {
-        const parsed = stored as SortType;
-        // Validate stored sort value is valid
-        const validSortTypes: SortType[] = [
-          'name-asc',
-          'name-desc',
-          'price-asc',
-          'price-desc',
-          'date-asc',
-          'date-desc',
-        ];
-        if (validSortTypes.includes(parsed)) {
-          setSortBy(parsed);
-          return;
-        }
-      } catch (e) {
-        // Invalid stored data, use default
-      }
-    }
-
-    // Use default if no stored value or invalid
-    setSortBy('name-asc');
-  }, [wishlistId, loading, wishlist, getSortStorageKey]);
-
-  // Save sort to localStorage when it changes
-  // Only save after initial load is complete
-  useEffect(() => {
-    // Don't save during initial load
-    if (!wishlistId || loading || !wishlist) return;
-
-    const storageKey = getSortStorageKey();
-    localStorage.setItem(storageKey, sortBy);
-  }, [wishlistId, loading, wishlist, sortBy, getSortStorageKey]);
+  // Save only a sort the visitor picks, so the default can change for everyone
+  // who never chose one.
+  const handleSortChange = useCallback((value: string) => {
+    const next = value as SortType;
+    setSortBy(next);
+    localStorage.setItem(WISHLIST_SORT_STORAGE_KEY, next);
+  }, []);
 
   // Fetch wishlist and determine role
   useEffect(() => {
@@ -458,6 +427,7 @@ export default function WishlistDetail() {
       price?: { value: number; currency: string } | null;
       link?: string | null;
       notes?: string | null;
+      mostWanted?: boolean;
       status?: 'draft' | 'available';
     }) => {
       if (!wishlistId) return;
@@ -1177,17 +1147,10 @@ export default function WishlistDetail() {
                   </span>
                   <Select
                     value={sortBy}
-                    onChange={(v) => setSortBy(v as SortType)}
+                    onChange={handleSortChange}
                     ariaLabel="Sort items by"
                     triggerClassName="w-full"
-                    options={[
-                      { value: 'name-asc', label: 'Name (A-Z)' },
-                      { value: 'name-desc', label: 'Name (Z-A)' },
-                      { value: 'price-asc', label: 'Price (Low to High)' },
-                      { value: 'price-desc', label: 'Price (High to Low)' },
-                      { value: 'date-asc', label: 'Date Created (Oldest First)' },
-                      { value: 'date-desc', label: 'Date Created (Newest First)' },
-                    ]}
+                    options={SORT_OPTIONS}
                   />
                 </div>
 

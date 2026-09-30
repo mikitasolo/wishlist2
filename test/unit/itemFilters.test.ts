@@ -4,6 +4,11 @@ import {
   calculateStats,
   sortItems,
   searchItemsByName,
+  compareMostWanted,
+  savedWishlistSort,
+  isSortType,
+  SORT_OPTIONS,
+  WISHLIST_SORT_STORAGE_KEY,
 } from '@/lib/utils/itemFilters';
 import type { ApiItem } from '@/types/api';
 
@@ -124,6 +129,80 @@ describe('sortItems', () => {
       'PLN 3000',
       'USD 2000',
     ]);
+  });
+});
+
+describe('sortItems — priority', () => {
+  it('puts most-wanted items first, newest first within each group', () => {
+    const items = [
+      item({ name: 'old plain', createdAt: '2024-01-01T00:00:00Z' }),
+      item({ name: 'old wanted', mostWanted: true, createdAt: '2024-01-02T00:00:00Z' }),
+      item({ name: 'new plain', createdAt: '2024-03-01T00:00:00Z' }),
+      item({ name: 'new wanted', mostWanted: true, createdAt: '2024-03-02T00:00:00Z' }),
+    ];
+    expect(sortItems(items, 'priority').map((i) => i.name)).toEqual([
+      'new wanted',
+      'old wanted',
+      'new plain',
+      'old plain',
+    ]);
+  });
+
+  // Items saved before the flag existed come back without it.
+  it('treats an item with no flag as not most wanted', () => {
+    const items = [
+      item({ name: 'legacy', createdAt: '2024-03-01T00:00:00Z' }), // no mostWanted
+      item({ name: 'unflagged', mostWanted: false, createdAt: '2024-02-01T00:00:00Z' }),
+      item({ name: 'wanted', mostWanted: true, createdAt: '2024-01-01T00:00:00Z' }),
+    ];
+    expect(sortItems(items, 'priority').map((i) => i.name)).toEqual([
+      'wanted',
+      'legacy',
+      'unflagged',
+    ]);
+  });
+});
+
+describe('compareMostWanted', () => {
+  it('orders a most-wanted item first and ties everything else', () => {
+    expect(compareMostWanted({ mostWanted: true }, { mostWanted: false })).toBeLessThan(0);
+    expect(compareMostWanted({}, { mostWanted: true })).toBeGreaterThan(0);
+    expect(compareMostWanted({ mostWanted: true }, { mostWanted: true })).toBe(0);
+    expect(compareMostWanted({}, { mostWanted: false })).toBe(0);
+  });
+});
+
+describe('savedWishlistSort', () => {
+  const storage = (entries: Record<string, string>) => ({
+    getItem: (key: string) => entries[key] ?? null,
+  });
+
+  it('defaults to priority when nothing is saved', () => {
+    expect(savedWishlistSort(storage({}))).toBe('priority');
+  });
+
+  it('returns a sort the visitor picked', () => {
+    expect(savedWishlistSort(storage({ [WISHLIST_SORT_STORAGE_KEY]: 'price-asc' }))).toBe(
+      'price-asc'
+    );
+  });
+
+  it('ignores a value that is not a sort', () => {
+    expect(savedWishlistSort(storage({ [WISHLIST_SORT_STORAGE_KEY]: 'bogus' }))).toBe('priority');
+  });
+
+  // The page used to write the old key on every visit, default or not, so it
+  // can't tell a choice apart and mustn't keep anyone off the new default.
+  it("ignores the old 'wishlist-sort' key", () => {
+    expect(savedWishlistSort(storage({ 'wishlist-sort': 'name-asc' }))).toBe('priority');
+  });
+});
+
+describe('isSortType', () => {
+  it('accepts every offered sort and nothing else', () => {
+    for (const { value } of SORT_OPTIONS) expect(isSortType(value)).toBe(true);
+    expect(isSortType('bogus')).toBe(false);
+    expect(isSortType(null)).toBe(false);
   });
 });
 

@@ -11,6 +11,7 @@ A modern wishlist app: create wishlists, share them, follow friends, and quietly
 - **Booking without spoilers** — friends reserve items to gift; the owner never sees what's been booked on their own list.
 - **Reservations & gift history** — a durable record of what you're giving, decoupled from the owner's item (see [AGENTS.md](AGENTS.md) for the invariants).
 - **Invitations** to a wishlist as an owner or a member, registered-users-only, with accept/decline.
+- **Most wanted** — owners can mark the items they want most. Everyone sees a star on them, and a list sorts them first unless you pick another sort.
 - **Item proposals** — members can propose items for the owners to approve.
 - **Multi-currency** prices with live conversion to any currency you pick.
 - **Profiles** with avatar, bio, follower/following counts, and privacy controls.

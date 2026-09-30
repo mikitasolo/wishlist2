@@ -104,3 +104,27 @@ describe.each(modals)('$name — default currency', ({ renderModal, submitLabel 
     expect(screen.getByText(/discard changes\?/i)).toBeInTheDocument();
   });
 });
+
+describe('New item modals — most wanted', () => {
+  const currencies = { wishlistCurrency: 'USD', userCurrency: 'USD' };
+  const mostWantedSwitch = () => screen.queryByRole('switch', { name: /most wanted/i });
+
+  it('lets an owner add an item as most wanted', async () => {
+    const onAdd = vi.fn().mockResolvedValue(undefined);
+    render(<AddItemModal isOpen onClose={vi.fn()} onAdd={onAdd} {...currencies} />);
+
+    fireEvent.change(screen.getByLabelText(/item name/i), { target: { value: 'Bike' } });
+    fireEvent.click(mostWantedSwitch()!);
+    fireEvent.click(screen.getByRole('button', { name: /^add item$/i }));
+    await waitFor(() =>
+      expect(onAdd).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'Bike', mostWanted: true })
+      )
+    );
+  });
+
+  it('does not offer it when proposing', () => {
+    render(<ProposeItemModal isOpen onClose={vi.fn()} onPropose={vi.fn()} {...currencies} />);
+    expect(mostWantedSwitch()).toBeNull();
+  });
+});

@@ -9,6 +9,7 @@ import Button from '@/components/Button';
 import Icon from '@/components/Icon';
 import ImageUpload from '@/components/ImageUpload';
 import Select from '@/components/Select';
+import Toggle from '@/components/Toggle';
 import { currencySelectOptions } from '@/lib/utils/currencies';
 import { useToast } from '@/components/ToastProvider';
 
@@ -330,43 +331,6 @@ export default function SettingsPage() {
           </Button>
         </div>
       </main>
-    </div>
-  );
-}
-
-function Toggle({
-  label,
-  description,
-  checked,
-  onChange,
-}: {
-  label: string;
-  description: string;
-  checked: boolean;
-  onChange: (v: boolean) => void;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-4">
-      <div>
-        <p className="text-sm font-medium text-foreground">{label}</p>
-        <p className="text-sm text-muted-foreground">{description}</p>
-      </div>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={checked}
-        aria-label={label}
-        onClick={() => onChange(!checked)}
-        className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors ${
-          checked ? 'bg-primary-600' : 'bg-border-strong'
-        }`}
-      >
-        <span
-          className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition-transform duration-200 ${
-            checked ? 'translate-x-[22px]' : 'translate-x-0.5'
-          }`}
-        />
-      </button>
     </div>
   );
 }

@@ -246,7 +246,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       );
     }
 
-    const { name, imageUrl, price, link, notes, status, bookedBy } = validation.data;
+    const { name, imageUrl, price, link, notes, mostWanted, status, bookedBy } = validation.data;
 
     // Covers owner-created items and member proposals alike.
     if (!canAttachImage(imageUrl, session.user.id)) {
@@ -297,6 +297,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       } | null;
       link?: string;
       notes?: string;
+      mostWanted: boolean;
       status: string;
       bookedBy: mongoose.Types.ObjectId | null;
       proposedBy?: mongoose.Types.ObjectId;
@@ -314,6 +315,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         : null,
       link,
       notes,
+      // Owners set it. A proposal starts without it; the owner decides on review.
+      mostWanted: isOwner ? (mostWanted ?? false) : false,
       status: status || 'available',
       bookedBy: bookedBy ? new mongoose.Types.ObjectId(bookedBy) : null,
     };
