@@ -569,6 +569,9 @@ export default function WishlistDetail() {
     // stays open and the item stays listed; it closes itself on success.
     const deleted = await deleteItemHook(itemId);
     if (!deleted) throw new Error('Failed to delete item');
+    // Mark the settle time, so a poll whose read started before this is
+    // dropped instead of bringing the deleted item back.
+    lastMutationAt.current = Date.now();
     setItems((prevItems) => prevItems.filter((item) => item._id !== itemId));
     showToast('Proposed item deleted', 'success');
   }, [itemToReview, deleteItemHook, showToast]);
@@ -597,6 +600,8 @@ export default function WishlistDetail() {
     // stays open and the item stays listed; it closes itself on success.
     const deleted = await deleteItemHook(itemId);
     if (!deleted) throw new Error('Failed to delete item');
+    // Same poll guard as handleDeleteProposedItem.
+    lastMutationAt.current = Date.now();
     setItems((prevItems) => prevItems.filter((item) => item._id !== itemId));
     showToast('Item deleted successfully', 'success');
   }, [itemToEdit, deleteItemHook, showToast]);
