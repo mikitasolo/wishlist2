@@ -25,6 +25,64 @@ describe('createWishlistSchema', () => {
   });
 });
 
+describe('wishlist name on createWishlistSchema and updateWishlistSchema', () => {
+  const schemas = [
+    ['create', createWishlistSchema],
+    ['update', updateWishlistSchema],
+  ] as const;
+  const NAME_ERROR = "Name can't contain line breaks or control characters";
+
+  function nameIssues(schema: (typeof schemas)[number][1], name: string) {
+    const res = schema.safeParse({ name });
+    return res.success ? [] : res.error.issues.map((i) => ({ path: i.path, message: i.message }));
+  }
+
+  // regression: both schemas only bounded the name's length and trimmed its
+  // ends, so an API call could save a name with an inner CR/LF. It goes raw into
+  // the invite email's plain-text part (new paragraphs under our branding) and
+  // the console transport's log (a forged `Link:` line).
+  it.each(schemas)('regression: %s rejects a name with an inner CR or LF', (_, schema) => {
+    for (const name of [
+      'Birthday\n\nACTION REQUIRED: verify your account at https://evil.example',
+      'Birthday\r\nLink: https://evil.example',
+      'Birthday\rList',
+    ]) {
+      expect(nameIssues(schema, name)).toEqual([{ path: ['name'], message: NAME_ERROR }]);
+    }
+  });
+
+  it.each(schemas)(
+    '%s rejects any other control character and the Unicode line separators',
+    (_, schema) => {
+      for (const char of [
+        '\t',
+        '\u0000', // NUL
+        '\u001b', // ESC
+        '\u007f', // DEL
+        '\u0085', // NEL (next line)
+        '\u2028', // line separator
+        '\u2029', // paragraph separator
+      ]) {
+        expect(nameIssues(schema, `Birthday${char}List`)).toEqual([
+          { path: ['name'], message: NAME_ERROR },
+        ]);
+      }
+    }
+  );
+
+  it.each(schemas)('%s still just trims a line break at either end', (_, schema) => {
+    const res = schema.safeParse({ name: '\r\n  Birthday \n' });
+    expect(res.success && res.data.name).toBe('Birthday');
+  });
+
+  it.each(schemas)('%s keeps ordinary Unicode text, emoji sequences included', (_, schema) => {
+    for (const name of ['Café & crème', 'День рождения', '誕生日 🎂', '👨‍👩‍👧 Family (2026)']) {
+      const res = schema.safeParse({ name });
+      expect(res.success && res.data.name).toBe(name);
+    }
+  });
+});
+
 describe('updateWishlistSchema', () => {
   it('requires at least one field', () => {
     expect(updateWishlistSchema.safeParse({}).success).toBe(false);

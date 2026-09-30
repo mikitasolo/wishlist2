@@ -5,12 +5,27 @@ import { z } from 'zod';
  */
 
 // Wishlist schemas
+
+// Any control character (Unicode Cc: CR, LF, tab, NUL, NEL, …) or the Unicode
+// line and paragraph separators.
+const LINE_BREAK_OR_CONTROL_CHAR = /[\p{Cc}\p{Zl}\p{Zp}]/u;
+
+// A wishlist name is one line of text. It goes raw into the invite email's
+// plain-text part and subject, and into the console transport's log, where an
+// inner line break would start new lines of text under our branding (or a
+// forged `Link:` line). So the name is refused rather than cleaned up. The check
+// runs after `.trim()`, so a line break at either end is just trimmed off.
+const wishlistNameSchema = z
+  .string()
+  .min(1, 'Wishlist name is required')
+  .max(100, 'Name must be 100 characters or less')
+  .trim()
+  .refine((name) => !LINE_BREAK_OR_CONTROL_CHAR.test(name), {
+    message: "Name can't contain line breaks or control characters",
+  });
+
 export const createWishlistSchema = z.object({
-  name: z
-    .string()
-    .min(1, 'Wishlist name is required')
-    .max(100, 'Name must be 100 characters or less')
-    .trim(),
+  name: wishlistNameSchema,
   description: z.string().max(500, 'Description must be 500 characters or less').trim().optional(),
   visibility: z.enum(['everyone', 'friends', 'private']).default('everyone'),
   bannerUrl: z.url('Invalid image URL').optional().nullable().or(z.literal('')),
@@ -24,12 +39,7 @@ export const createWishlistSchema = z.object({
 
 export const updateWishlistSchema = z
   .object({
-    name: z
-      .string()
-      .min(1, 'Wishlist name is required')
-      .max(100, 'Name must be 100 characters or less')
-      .trim()
-      .optional(),
+    name: wishlistNameSchema.optional(),
     description: z
       .string()
       .max(500, 'Description must be 500 characters or less')

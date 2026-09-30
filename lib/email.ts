@@ -140,7 +140,11 @@ async function deliver(email: OutgoingEmail): Promise<void> {
  * pass through here before it goes into an email's HTML: a wishlist name is free
  * text, and unescaped it could put a live link or image in a mail sent from our
  * domain. Plain-text parts and subjects take the raw value (nodemailer folds
- * CR/LF in a header value to spaces, so a subject can't inject a header).
+ * CR/LF in a header value to spaces, so a subject can't inject a header). A raw
+ * value has to be one line, or it adds lines of its own to a text part and to the
+ * console transport's log. The wishlist name's schema (`lib/validations.ts`)
+ * refuses line breaks and control characters on create and rename. Rows saved
+ * before it did weren't migrated.
  */
 const HTML_ESCAPES: Record<string, string> = {
   '&': '&amp;',
