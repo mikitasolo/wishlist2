@@ -3,6 +3,7 @@ import {
   CURRENCY_OPTIONS,
   POPULAR_CURRENCIES,
   currencySelectOptions,
+  defaultItemCurrency,
 } from '@/lib/utils/currencies';
 
 describe('currency option lists', () => {
@@ -23,5 +24,46 @@ describe('currency option lists', () => {
     const usd = currencySelectOptions.find((o) => o.value === 'USD');
     expect(usd?.label).toContain('USD');
     expect(usd?.label).toContain('US Dollar');
+  });
+});
+
+describe('defaultItemCurrency', () => {
+  it("prefers the wishlist's currency over the viewer's default", () => {
+    expect(defaultItemCurrency('PLN', 'EUR')).toBe('PLN');
+  });
+
+  it("falls back to the viewer's default when the wishlist has none", () => {
+    expect(defaultItemCurrency(undefined, 'EUR')).toBe('EUR');
+    expect(defaultItemCurrency(null, 'EUR')).toBe('EUR');
+    expect(defaultItemCurrency('', 'EUR')).toBe('EUR');
+  });
+
+  it('falls back to USD when neither is set', () => {
+    expect(defaultItemCurrency()).toBe('USD');
+    expect(defaultItemCurrency(null, null)).toBe('USD');
+    expect(defaultItemCurrency('', '  ')).toBe('USD');
+  });
+
+  it('normalizes casing to the uppercase code the picker shows', () => {
+    expect(defaultItemCurrency('pln', 'eur')).toBe('PLN');
+    expect(defaultItemCurrency(' gbp ')).toBe('GBP');
+    expect(defaultItemCurrency(undefined, 'eur')).toBe('EUR');
+  });
+
+  it("skips a code the picker doesn't offer instead of starting on it", () => {
+    expect(defaultItemCurrency('XYZ', 'EUR')).toBe('EUR');
+    expect(defaultItemCurrency('XYZ', 'ABC')).toBe('USD');
+  });
+
+  it('always returns an offered code', () => {
+    const codes = new Set(CURRENCY_OPTIONS.map((c) => c.code));
+    for (const [w, u] of [
+      ['PLN', 'EUR'],
+      [null, 'jpy'],
+      ['nope', undefined],
+      [undefined, undefined],
+    ] as const) {
+      expect(codes.has(defaultItemCurrency(w, u))).toBe(true);
+    }
   });
 });

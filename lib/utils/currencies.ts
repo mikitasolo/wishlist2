@@ -32,3 +32,26 @@ export const currencySelectOptions = CURRENCY_OPTIONS.map((c) => ({
   value: c.code,
   label: `${c.code} · ${c.name}`,
 }));
+
+const OFFERED_CODES = new Set(CURRENCY_OPTIONS.map((c) => c.code));
+
+/**
+ * The currency a new or proposed item starts on: the wishlist's own currency,
+ * else the viewer's default, else USD.
+ *
+ * Returns the uppercase code the item form's picker shows (the form lowercases
+ * it on submit to match `Item.price.currency`). Candidates are uppercased before
+ * comparing, since currency-code casing isn't uniform across the DB. A code the
+ * picker doesn't offer (the API accepts any three letters) is skipped, so a new
+ * item never starts on a currency the user couldn't pick again.
+ */
+export function defaultItemCurrency(
+  wishlistCurrency?: string | null,
+  userCurrency?: string | null
+): string {
+  for (const candidate of [wishlistCurrency, userCurrency]) {
+    const code = candidate?.trim().toUpperCase();
+    if (code && OFFERED_CODES.has(code)) return code;
+  }
+  return 'USD';
+}

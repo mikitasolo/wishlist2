@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import BaseModal from './BaseModal';
 import ItemForm from './ItemForm';
 import ConfirmDialog from './ConfirmDialog';
+import { defaultItemCurrency } from '@/lib/utils/currencies';
 
 interface ProposeItemModalProps {
   isOpen: boolean;
@@ -16,9 +17,20 @@ interface ProposeItemModalProps {
     notes?: string | null;
     status: 'proposed';
   }) => Promise<void>;
+  // The new item's currency starts on the wishlist's, else the viewer's default,
+  // else USD. Required (though either may be empty) so a caller can't silently
+  // drop them and fall back to USD.
+  wishlistCurrency: string | null | undefined;
+  userCurrency: string | null | undefined;
 }
 
-export default function ProposeItemModal({ isOpen, onClose, onPropose }: ProposeItemModalProps) {
+export default function ProposeItemModal({
+  isOpen,
+  onClose,
+  onPropose,
+  wishlistCurrency,
+  userCurrency,
+}: ProposeItemModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showConfirmClose, setShowConfirmClose] = useState(false);
@@ -92,6 +104,7 @@ export default function ProposeItemModal({ isOpen, onClose, onPropose }: Propose
           isSubmitting={isSubmitting}
           mode="propose"
           onFormChange={setHasUnsavedChanges}
+          defaultCurrency={defaultItemCurrency(wishlistCurrency, userCurrency)}
         />
       </BaseModal>
 

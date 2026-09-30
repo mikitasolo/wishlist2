@@ -3,7 +3,11 @@
 import { useState, useRef, useEffect } from 'react';
 import { ApiItem } from '@/types/api';
 import ImageUpload from './ImageUpload';
-import { CURRENCY_OPTIONS as COMMON_CURRENCIES, POPULAR_CURRENCIES } from '@/lib/utils/currencies';
+import {
+  CURRENCY_OPTIONS as COMMON_CURRENCIES,
+  POPULAR_CURRENCIES,
+  defaultItemCurrency,
+} from '@/lib/utils/currencies';
 
 export interface ItemFormData {
   name: string;
@@ -15,12 +19,12 @@ export interface ItemFormData {
   isDraft: boolean;
 }
 
-// Module-level constant (stable identity) so effects can depend on it safely.
-const DEFAULT_ITEM_FORM_DATA: ItemFormData = {
+// Every field of a new item's form except the currency, which depends on the
+// wishlist (see the `defaultCurrency` prop).
+const BLANK_ITEM_FIELDS: Omit<ItemFormData, 'currency'> = {
   name: '',
   imageUrl: '',
   price: '',
-  currency: 'USD', // Display uppercase in UI; converted to lowercase on submit
   link: '',
   notes: '',
   isDraft: false,
@@ -52,6 +56,10 @@ interface ItemFormProps {
   itemId?: string;
   // Callback to notify parent when form has unsaved changes
   onFormChange?: (hasChanges: boolean) => void;
+  // Currency a new item starts on (see defaultItemCurrency; USD if omitted).
+  // Read once on mount so it never overwrites what the user picked; ignored when
+  // initialData is given, since an existing item keeps its own currency.
+  defaultCurrency?: string;
 }
 
 export default function ItemForm({
@@ -66,8 +74,17 @@ export default function ItemForm({
   mode = 'create',
   itemId,
   onFormChange,
+  defaultCurrency,
 }: ItemFormProps) {
-  const [formData, setFormData] = useState<ItemFormData>(initialData || DEFAULT_ITEM_FORM_DATA);
+  // The blank form a new item starts from — a stable snapshot, so effects can
+  // depend on it. It is also the "unsaved changes" baseline, so a prefilled
+  // currency alone never reads as an edit. The currency is shown uppercase and
+  // lowercased on submit.
+  const [blankFormData] = useState<ItemFormData>(() => ({
+    ...BLANK_ITEM_FIELDS,
+    currency: defaultItemCurrency(defaultCurrency),
+  }));
+  const [formData, setFormData] = useState<ItemFormData>(initialData || blankFormData);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCurrencyOpen, setIsCurrencyOpen] = useState(false);
   const [currencySearch, setCurrencySearch] = useState('');
@@ -77,7 +94,7 @@ export default function ItemForm({
   const submitting = externalIsSubmitting !== undefined ? externalIsSubmitting : isSubmitting;
 
   // Track initial data for comparison
-  const initialDataRef = useRef<ItemFormData>(initialData || DEFAULT_ITEM_FORM_DATA);
+  const initialDataRef = useRef<ItemFormData>(initialData || blankFormData);
 
   // Close currency dropdown when clicking outside
   useEffect(() => {
@@ -114,9 +131,9 @@ export default function ItemForm({
         lastInitializedItemIdRef.current = currentItemId;
       }
     } else {
-      initialDataRef.current = DEFAULT_ITEM_FORM_DATA;
+      initialDataRef.current = blankFormData;
     }
-  }, [initialData, itemId]);
+  }, [initialData, itemId, blankFormData]);
 
   // Check if form has changes and notify parent
   useEffect(() => {
@@ -178,8 +195,8 @@ export default function ItemForm({
 
       // Reset form only if not using external state
       if (!initialData) {
-        setFormData(DEFAULT_ITEM_FORM_DATA);
-        initialDataRef.current = DEFAULT_ITEM_FORM_DATA;
+        setFormData(blankFormData);
+        initialDataRef.current = blankFormData;
         lastInitializedItemIdRef.current = undefined;
       } else {
         // Update initial data ref to reflect successful submission

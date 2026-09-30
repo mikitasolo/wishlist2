@@ -1815,6 +1815,8 @@ export default function WishlistDetail() {
           isOpen={showAddItemModal}
           onClose={() => setShowAddItemModal(false)}
           onAdd={handleCreateItem}
+          wishlistCurrency={wishlist?.currency}
+          userCurrency={session?.user?.defaultCurrency}
         />
       )}
 
@@ -1823,6 +1825,8 @@ export default function WishlistDetail() {
           isOpen={showProposeItemModal}
           onClose={() => setShowProposeItemModal(false)}
           onPropose={handleProposeItem}
+          wishlistCurrency={wishlist?.currency}
+          userCurrency={session?.user?.defaultCurrency}
         />
       )}
 
