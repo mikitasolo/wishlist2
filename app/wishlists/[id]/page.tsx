@@ -25,7 +25,7 @@ import { coverGradient } from '@/lib/utils/cover';
 import { getVisibility, visibilityMeta, type Visibility } from '@/lib/utils/visibility';
 import { currencySelectOptions } from '@/lib/utils/currencies';
 import { useToast } from '@/components/ToastProvider';
-import { ApiItem } from '@/types/api';
+import { ApiItem, ApiResponse } from '@/types/api';
 import { IWishlist } from '@/models/Wishlist';
 import {
   sortItems,
@@ -431,9 +431,10 @@ export default function WishlistDetail() {
       status?: 'draft' | 'available';
     }) => {
       if (!wishlistId) return;
-      const createFn = createItemHook;
-      await createFn(wishlistId, itemData);
-      setShowAddItemModal(false);
+      // The hook toasts a failure and resolves null. Reject so AddItemModal
+      // stays open with the user's input; it closes itself on success.
+      const created = await createItemHook(wishlistId, itemData);
+      if (!created) throw new Error('Failed to create item');
     },
     [createItemHook, wishlistId]
   );
@@ -488,6 +489,7 @@ export default function WishlistDetail() {
       status: 'proposed';
     }) => {
       if (!wishlistId) return;
+      let result: ApiResponse<ApiItem> | null = null;
       try {
         const response = await fetch(`/api/wishlists/${wishlistId}/items`, {
           method: 'POST',
@@ -497,19 +499,21 @@ export default function WishlistDetail() {
           body: JSON.stringify(itemData),
         });
 
-        const result = await response.json();
-
-        if (result.success) {
-          setItems((prevItems) => [result.data, ...prevItems]);
-          showToast('Item proposed successfully', 'success');
-          setShowProposeItemModal(false);
-        } else {
-          showToast(result.error || 'Failed to propose item', 'error');
-        }
+        result = await response.json();
       } catch (error) {
         console.error('Error proposing item:', error);
-        showToast('Failed to propose item', 'error');
       }
+
+      // Every failure rejects after its toast, so ProposeItemModal stays open
+      // with the user's input; it closes itself on success.
+      const proposed = result?.success ? result.data : undefined;
+      if (!proposed) {
+        const message = result?.error || 'Failed to propose item';
+        showToast(message, 'error');
+        throw new Error(message);
+      }
+      setItems((prevItems) => [proposed, ...prevItems]);
+      showToast('Item proposed successfully', 'success');
     },
     [wishlistId, showToast]
   );

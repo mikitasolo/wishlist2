@@ -9,6 +9,7 @@ import { E2E_PORT } from '../playwright.config';
 import User from '../models/User';
 import Wishlist from '../models/Wishlist';
 import Item from '../models/Item';
+import WishlistMember from '../models/WishlistMember';
 
 const BASE_URL = `http://localhost:${E2E_PORT}`;
 
@@ -61,6 +62,23 @@ export default async function globalSetup(_config: FullConfig) {
     currency: 'USD',
   });
   await Item.create({ wishlist: wishlist._id, name: 'E2E Gift', status: 'available' });
+
+  // Someone else's list the E2E user is a member of, so specs can take the
+  // member side (proposing an item).
+  const friend = await User.create({
+    email: 'e2e-friend@example.com',
+    username: 'e2efriend',
+    defaultCurrency: 'USD',
+  });
+  const friendList = await Wishlist.create({
+    name: 'E2E Friend List',
+    owners: [friend._id],
+    visibility: 'everyone',
+    isPublic: true,
+    slug: 'e2e-friend',
+    currency: 'USD',
+  });
+  await WishlistMember.create({ wishlist: friendList._id, user: user._id });
 
   const sessionToken = randomUUID();
   const expires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
