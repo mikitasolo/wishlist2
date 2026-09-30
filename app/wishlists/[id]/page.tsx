@@ -24,7 +24,7 @@ import Avatar from '@/components/Avatar';
 import { coverGradient } from '@/lib/utils/cover';
 import { getVisibility, visibilityMeta, type Visibility } from '@/lib/utils/visibility';
 import { currencySelectOptions } from '@/lib/utils/currencies';
-import { isStalePoll, prependItem } from '@/lib/utils/itemListMerge';
+import { isStalePoll, prependCreatedItem } from '@/lib/utils/itemListMerge';
 import { useToast } from '@/components/ToastProvider';
 import { ApiItem, ApiResponse } from '@/types/api';
 import { IWishlist } from '@/models/Wishlist';
@@ -398,11 +398,11 @@ export default function WishlistDetail() {
 
   const createItemHook = useCreateItem(
     (newItem) => {
-      // Mark the settle time so a poll that read before the write is dropped
-      // instead of replacing the list without the new item. A poll that read
-      // after it may already list the item, so prepend without doubling it.
+      // Mark the settle time, so a poll whose read started before this is
+      // dropped instead of replacing the list without the new item. One that
+      // read after the write may already list it: don't add a second copy.
       lastMutationAt.current = Date.now();
-      setItems((prevItems) => prependItem(prevItems, newItem));
+      setItems((prevItems) => prependCreatedItem(prevItems, newItem));
       showToast('Item added successfully', 'success');
     },
     (error) => {
@@ -519,7 +519,7 @@ export default function WishlistDetail() {
       }
       // Same poll guards as an owner's add (see createItemHook).
       lastMutationAt.current = Date.now();
-      setItems((prevItems) => prependItem(prevItems, proposed));
+      setItems((prevItems) => prependCreatedItem(prevItems, proposed));
       showToast('Item proposed successfully', 'success');
     },
     [wishlistId, showToast]

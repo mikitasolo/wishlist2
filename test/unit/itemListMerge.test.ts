@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isStalePoll, prependItem } from '@/lib/utils/itemListMerge';
+import { isStalePoll, prependCreatedItem } from '@/lib/utils/itemListMerge';
 import type { ApiItem } from '@/types/api';
 
 function item(overrides: Partial<ApiItem>): ApiItem {
@@ -23,8 +23,9 @@ describe('isStalePoll', () => {
     expect(isStalePoll(1_001, 1_000)).toBe(false);
   });
 
-  it('keeps a poll that started in the same millisecond the mutation settled', () => {
-    // The write landed before its response did, so a read sent now reflects it.
+  it('keeps a poll that started in the same millisecond as the stamp', () => {
+    // handleUpdateItem stamps and then issues its reconcile read after a failed
+    // update, usually within the same millisecond; that read must land.
     expect(isStalePoll(1_000, 1_000)).toBe(false);
   });
 
@@ -33,43 +34,42 @@ describe('isStalePoll', () => {
   });
 });
 
-describe('prependItem', () => {
+describe('prependCreatedItem', () => {
   it('puts a new item at the top of the list', () => {
     const a = item({ name: 'a' });
     const b = item({ name: 'b' });
     const created = item({ name: 'new' });
 
-    expect(prependItem([a, b], created)).toEqual([created, a, b]);
+    expect(prependCreatedItem([a, b], created)).toEqual([created, a, b]);
   });
 
   it('adds to an empty list', () => {
     const created = item({ name: 'new' });
-    expect(prependItem([], created)).toEqual([created]);
+    expect(prependCreatedItem([], created)).toEqual([created]);
   });
 
-  it('replaces a copy with the same _id in place, keeping fields only the list read carries', () => {
+  it('keeps a copy a poll already listed, as is', () => {
     const a = item({ name: 'a' });
-    const polled = item({ _id: 'new-id', name: 'old name', priceInUsdCents: 1_200 });
-    const created = item({ _id: 'new-id', name: 'new name' });
+    // read after the write, so at least as fresh as the create response
+    const polled = item({ _id: 'new-id', status: 'available', priceInUsdCents: 1_200 });
+    const created = item({ _id: 'new-id', status: 'proposed' });
+    const list = [a, polled];
 
-    const next = prependItem([a, polled], created);
-
-    expect(next).toHaveLength(2);
-    expect(next[0]).toBe(a);
-    expect(next[1]).toMatchObject({ _id: 'new-id', name: 'new name', priceInUsdCents: 1_200 });
+    expect(prependCreatedItem(list, created)).toBe(list);
   });
 
   it('does not mutate the list it was given', () => {
     const a = item({ name: 'a' });
     const list = [a];
-    prependItem(list, item({ name: 'new' }));
+    prependCreatedItem(list, item({ name: 'new' }));
     expect(list).toEqual([a]);
   });
 });
 
 // The wishlist page's sequence, replayed with the helpers: `fetchItems(true)`
 // stamps `startedAt` and drops a stale result, and an add or proposal stamps
-// `lastMutationAt` and prepends the server's item when its POST settles.
+// `lastMutationAt` and prepends the server's item when its POST settles. That
+// the page does both on the real flows is pinned by e2e/itemPolling.authed.spec.ts.
 describe('an add or proposal racing the 5 s poll', () => {
   const existing = item({ _id: 'existing', name: 'Existing' });
   const created = item({ _id: 'created', name: 'Just added' });
@@ -86,7 +86,7 @@ describe('an add or proposal racing the 5 s poll', () => {
 
     // POST settles: stamp, then prepend (as createItemHook / handleProposeItem do)
     lastMutationAt = 1_050;
-    items = prependItem(items, created);
+    items = prependCreatedItem(items, created);
 
     // the poll resolves afterwards with the list it read before the write
     if (!isStalePoll(pollStartedAt, lastMutationAt)) items = polled;
@@ -109,7 +109,7 @@ describe('an add or proposal racing the 5 s poll', () => {
 
     // then the POST settles
     lastMutationAt = 1_050;
-    items = prependItem(items, created);
+    items = prependCreatedItem(items, created);
 
     expect(items.map((i) => i._id)).toEqual(['created', 'existing']);
     expect(items[0]).toMatchObject({ name: 'Just added', priceInUsdCents: 500 });
@@ -119,7 +119,7 @@ describe('an add or proposal racing the 5 s poll', () => {
     let items = [existing];
 
     const lastMutationAt = 1_000;
-    items = prependItem(items, created);
+    items = prependCreatedItem(items, created);
 
     const renamed = { ...existing, name: 'Renamed by a co-owner' };
     const polled = [created, renamed];
