@@ -105,6 +105,77 @@ describe.each(modals)('$name — default currency', ({ renderModal, submitLabel 
   });
 });
 
+describe.each(modals)('$name — submit outcome', ({ renderModal, submitLabel }) => {
+  const currencies = { wishlistCurrency: 'PLN', userCurrency: 'EUR' };
+  const nameInput = () => screen.getByLabelText(/item name/i);
+  const priceInput = () => screen.getByLabelText(/^price$/i);
+
+  const fillAndSubmit = () => {
+    fireEvent.change(nameInput(), { target: { value: 'Bike' } });
+    fireEvent.change(priceInput(), { target: { value: '120.50' } });
+    fireEvent.click(screen.getByRole('button', { name: submitLabel }));
+  };
+
+  // ItemForm logs the rejection it catches; keep the test output clean.
+  beforeEach(() => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    return () => consoleError.mockRestore();
+  });
+
+  // regression: the modal caught onAdd/onPropose's rejection itself, so ItemForm
+  // took the failure for a success and cleared the form (and the page closed the
+  // modal regardless), throwing away everything the user typed.
+  it('regression: stays open with the typed name and price when the request fails', async () => {
+    const onSubmit = vi.fn().mockRejectedValue(new Error('Too many requests'));
+    const onClose = vi.fn();
+    renderModal(onSubmit, onClose, currencies);
+
+    fillAndSubmit();
+
+    // Submitting has settled once the button is back to its idle label.
+    await waitFor(() => expect(screen.getByRole('button', { name: submitLabel })).toBeEnabled());
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    expect(onClose).not.toHaveBeenCalled();
+    expect(nameInput()).toHaveValue('Bike');
+    expect(priceInput()).toHaveValue(120.5);
+    expect(currencyButton('PLN')).toBeInTheDocument();
+  });
+
+  it('still asks before discarding the input after a failure', async () => {
+    const onSubmit = vi.fn().mockRejectedValue(new Error('Network error'));
+    const onClose = vi.fn();
+    renderModal(onSubmit, onClose, currencies);
+
+    fillAndSubmit();
+    await waitFor(() => expect(screen.getByRole('button', { name: submitLabel })).toBeEnabled());
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole('button', { name: /^cancel$/i }));
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByText(/discard changes\?/i)).toBeInTheDocument();
+  });
+
+  it('lets the user retry after a failure, and closes once it succeeds', async () => {
+    const onSubmit = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('Server error'))
+      .mockResolvedValueOnce(undefined);
+    const onClose = vi.fn();
+    renderModal(onSubmit, onClose, currencies);
+
+    fillAndSubmit();
+    await waitFor(() => expect(screen.getByRole('button', { name: submitLabel })).toBeEnabled());
+    expect(onClose).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: submitLabel }));
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(onSubmit).toHaveBeenCalledTimes(2);
+    expect(onSubmit).toHaveBeenLastCalledWith(
+      expect.objectContaining({ name: 'Bike', price: { value: 12050, currency: 'pln' } })
+    );
+  });
+});
+
 describe('New item modals — most wanted', () => {
   const currencies = { wishlistCurrency: 'USD', userCurrency: 'USD' };
   const mostWantedSwitch = () => screen.queryByRole('switch', { name: /most wanted/i });

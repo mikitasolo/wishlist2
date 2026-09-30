@@ -9,6 +9,8 @@ import { defaultItemCurrency } from '@/lib/utils/currencies';
 interface ProposeItemModalProps {
   isOpen: boolean;
   onClose: () => void;
+  // Must reject when the request fails: the modal only closes on success, so
+  // the user's input survives a failure.
   onPropose: (item: {
     name: string;
     imageUrl?: string | null;
@@ -53,6 +55,8 @@ export default function ProposeItemModal({
     status: 'draft' | 'available' | 'proposed';
   }) => {
     setIsSubmitting(true);
+    // No catch: a failed proposal must reject through to ItemForm, which then
+    // keeps what the user typed. Only a success closes the modal.
     try {
       // In propose mode, status will always be 'proposed'
       if (data.status !== 'proposed') {
@@ -64,8 +68,6 @@ export default function ProposeItemModal({
       });
       setHasUnsavedChanges(false);
       onClose();
-    } catch (error) {
-      console.error('Error proposing item:', error);
     } finally {
       setIsSubmitting(false);
     }

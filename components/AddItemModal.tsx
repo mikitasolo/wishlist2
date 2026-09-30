@@ -9,6 +9,8 @@ import { defaultItemCurrency } from '@/lib/utils/currencies';
 interface AddItemModalProps {
   isOpen: boolean;
   onClose: () => void;
+  // Must reject when the request fails: the modal only closes on success, so
+  // the user's input survives a failure.
   onAdd: (item: {
     name: string;
     imageUrl?: string | null;
@@ -55,6 +57,8 @@ export default function AddItemModal({
     status: 'draft' | 'available' | 'proposed';
   }) => {
     setIsSubmitting(true);
+    // No catch: a failed add must reject through to ItemForm, which then keeps
+    // what the user typed. Only a success closes the modal.
     try {
       // In create mode, status will always be 'draft' or 'available', never 'proposed'
       if (data.status === 'proposed') {
@@ -66,8 +70,6 @@ export default function AddItemModal({
       });
       setHasUnsavedChanges(false);
       onClose();
-    } catch (error) {
-      console.error('Error adding item:', error);
     } finally {
       setIsSubmitting(false);
     }
