@@ -14,6 +14,10 @@ concurrency:
 jobs:
   e2e:
     runs-on: ubuntu-latest
+    # Fail a hung run instead of letting it burn GitHub's 6-hour default. The
+    # slowest recent healthy run took 9 min (a slow browser install, below),
+    # so 30 leaves 3x headroom and must stay above the install step's own 20.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -27,6 +31,11 @@ jobs:
 
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium
+        # Usually ~30 s, but --with-deps pulls ~32 MB from the Ubuntu apt
+        # mirror, which has taken up to 7.6 min in a run that then passed
+        # (and hung past 11 min once). 20 is 2.6x the slowest healthy install
+        # and names this step as the one that timed out.
+        timeout-minutes: 20
 
       - name: Run E2E tests
         # global-setup boots an ephemeral MongoDB (mongodb-memory-server) and the

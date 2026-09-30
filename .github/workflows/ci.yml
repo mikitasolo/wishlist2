@@ -13,6 +13,10 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    # Fail a hung run instead of letting it burn GitHub's 6-hour default. The
+    # slowest recent healthy run took 2.7 min, so 15 leaves 5x headroom for a
+    # slow npm registry and a growing test suite.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
