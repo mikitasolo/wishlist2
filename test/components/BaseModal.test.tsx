@@ -68,7 +68,7 @@ describe('BaseModal — keyboard focus', () => {
     expect(button('Close modal')).toHaveFocus();
   });
 
-  it("leaves focus on an autoFocus field in its content, and still returns it on close", async () => {
+  it('leaves focus on an autoFocus field in its content, and still returns it on close', async () => {
     const user = userEvent.setup();
     render(<ModalPage content={<input aria-label="Search" autoFocus />} />);
 

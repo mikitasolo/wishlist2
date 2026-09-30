@@ -281,7 +281,7 @@ describe('BookedPage — keyboard focus in a confirmation', () => {
   // gifted?" open for a card, Tab reached the same card's Dismiss button behind
   // the backdrop, and Enter opened "Remove from reservations?" on top of it.
   // Confirming both sent two conflicting requests for one reservation.
-  it("regression: Tab and Shift+Tab never reach the cards behind an open confirmation", async () => {
+  it('regression: Tab and Shift+Tab never reach the cards behind an open confirmation', async () => {
     const user = userEvent.setup();
     const { sent } = await renderHeld();
     const lego = reservationButtons('Lego set');
