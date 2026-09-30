@@ -21,9 +21,9 @@ import { deleteOwnBlob, isSnapshotBlob, snapshotBlob } from '@/lib/utils/blob';
  *    alone: an external URL, or the item's own blob on a reservation made before
  *    snapshots existed or whose copy failed. That blob is the item's, and
  *    freeing it would break the owner's image and tell them it had been booked.
- *  - The still-held check keeps a snapshot another record still shows (say, the
- *    gift log a concurrent "mark as gifted" has just written) until the last
- *    one goes.
+ *  - As a safety net, a snapshot another of the gifter's records still shows is
+ *    kept until the last one goes. (Each snapshot normally has exactly one
+ *    holder, handed on atomically: see `deleteReservations` and the gift route.)
  *  - Best-effort: it never throws. If the check itself fails it keeps the blob,
  *    since a leaked blob costs less than a broken image.
  */
@@ -87,10 +87,20 @@ export async function snapshotReservationImage(
  *
  * Every path that deletes a reservation goes through this, except marking the
  * gift: there the `GiftLog` takes the snapshot over and must keep it.
+ *
+ * Deletes one at a time, each in a single atomic step that returns the image
+ * the reservation held as it went. A read followed by a bulk delete would miss
+ * a snapshot swapped in between (see `snapshotReservationImage`), or one on a
+ * reservation written in between, and leak it. Looping until nothing matches
+ * also catches those late reservations. A gifter holds only a handful per list.
  */
 export async function deleteReservations(filter: FilterQuery<IReservation>): Promise<number> {
-  const ending = await Reservation.find(filter).select('gifter itemImage').lean();
-  const { deletedCount } = await Reservation.deleteMany(filter);
-  await Promise.all(ending.map((r) => releaseSnapshots(r.gifter, [r.itemImage])));
-  return deletedCount ?? 0;
+  const ended: Array<Pick<IReservation, 'gifter' | 'itemImage'>> = [];
+  for (;;) {
+    const r = await Reservation.findOneAndDelete(filter).select('gifter itemImage').lean();
+    if (!r) break;
+    ended.push(r);
+  }
+  await Promise.all(ended.map((r) => releaseSnapshots(r.gifter, [r.itemImage])));
+  return ended.length;
 }

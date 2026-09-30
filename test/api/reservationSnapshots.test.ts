@@ -407,29 +407,59 @@ describe('paths that keep the reservation keep the snapshot', () => {
     expect(del).not.toHaveBeenCalled();
   });
 
-  // A dismiss that lands mid-gift frees the snapshot (no gift log shows it
-  // yet), so the gift must not stand with a freed image.
-  it('a gift that loses its reservation to a dismiss is undone', async () => {
+  it('a gift and a dismiss of the same reservation: exactly one wins', async () => {
     const reservation = await book(await makeItem());
     const id = reservation._id.toString();
-    const findUser = User.findById.bind(User);
-    // Dismiss right after the gift route has read the reservation.
-    const lookup = vi.spyOn(User, 'findById').mockImplementationOnce(((userId: string) => ({
-      select: async (fields: string) => {
-        expect((await dismiss(id)).status).toBe(200);
-        return findUser(userId).select(fields);
-      },
-    })) as never);
-    try {
-      expect((await gift(id)).status).toBe(404);
-    } finally {
-      lookup.mockRestore();
-    }
+
+    const [gifted, dismissed] = await Promise.all([gift(id), dismiss(id)]);
 
     expect(await Reservation.countDocuments()).toBe(0);
+    const entries = await GiftLog.find().lean();
+    if (gifted.status === 201) {
+      // The gift log took the snapshot over; nothing may free it.
+      expect(entries.map((e) => e.itemImage)).toEqual([reservation.itemImage]);
+      expect(del).not.toHaveBeenCalled();
+    } else {
+      expect(gifted.status).toBe(404);
+      expect(dismissed.status).toBe(200);
+      expect(entries).toEqual([]);
+      expect(del.mock.calls).toEqual([[reservation.itemImage]]);
+    }
+  });
+
+  it('marking the gift while the copy is in flight logs the item’s URL and frees the copy', async () => {
+    const itemId = await makeItem();
+    const held = holdCopy();
+    as(gifterId);
+    const booking = patchItem(itemId, { status: 'booked' });
+    await held.called;
+    const reservation = await Reservation.findOne({ gifter: gifterId });
+
+    expect((await gift(reservation!._id.toString())).status).toBe(201);
+    held.release();
+    expect((await booking).status).toBe(200);
+
+    expect((await GiftLog.findOne())?.itemImage).toBe(itemImage);
+    expect(await Reservation.countDocuments()).toBe(0);
+    expect(del.mock.calls).toEqual([[copiedTo(0)]]);
+  });
+
+  it('a gift that fails to log puts the reservation back as it was', async () => {
+    const reservation = await book(await makeItem());
+    const write = vi.spyOn(GiftLog, 'create').mockRejectedValueOnce(new Error('write failed'));
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      expect((await gift(reservation._id.toString())).status).toBe(500);
+    } finally {
+      write.mockRestore();
+      errorLog.mockRestore();
+    }
+
+    const restored = await Reservation.findById(reservation._id).lean();
+    expect(restored?.itemImage).toBe(reservation.itemImage);
+    expect(restored?.itemName).toBe('Blue Mug');
     expect(await GiftLog.countDocuments()).toBe(0);
-    // Freed (both sides may free it; deleting a blob twice is harmless).
-    expect(new Set(del.mock.calls.flat())).toEqual(new Set([reservation.itemImage]));
+    expect(del).not.toHaveBeenCalled();
   });
 
   it('deleting the gift entry frees its snapshot once no other entry shows it', async () => {
