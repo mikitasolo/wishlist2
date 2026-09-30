@@ -7,7 +7,8 @@ import Item from '@/models/Item';
 import Wishlist, { IWishlist } from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
 import { createItemSchema, validateRequestBody } from '@/lib/validations';
-import { ensureCurrencyRatesUpToDate, convertToUsdCents } from '@/lib/utils/currencyRates';
+import { ensureCurrencyRatesUpToDate } from '@/lib/utils/currencyRates';
+import { itemPriceInUsdCents } from '@/lib/utils/itemPrice';
 import { resolveWishlistId } from '@/lib/utils/wishlistSlug';
 import { createNotifications } from '@/lib/notifications';
 import { isWishlistOwner, ownerIds } from '@/lib/utils/wishlistOwners';
@@ -106,15 +107,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const filteredItems = visibleItems.map((item) => {
       const itemObj = item.toObject();
 
-      // Calculate priceInUsdCents for sorting
-      let priceInUsdCents: number | null = null;
-      if (itemObj.price?.value && itemObj.price?.currency) {
-        priceInUsdCents = convertToUsdCents(itemObj.price.value, itemObj.price.currency, rates);
-      }
-
       const enrichedItem = {
         ...itemObj,
-        priceInUsdCents,
+        priceInUsdCents: itemPriceInUsdCents(itemObj.price, rates),
       };
 
       if (!session?.user) {
@@ -344,7 +339,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       });
     }
 
-    return NextResponse.json({ success: true, data: item }, { status: 201 });
+    // Carries the list read's `priceInUsdCents`, so the page can sort the new
+    // item by price before the next poll brings it in.
+    return NextResponse.json(
+      {
+        success: true,
+        data: { ...item.toObject(), priceInUsdCents: itemPriceInUsdCents(item.price, rates) },
+      },
+      { status: 201 }
+    );
   } catch (error) {
     console.error('Error creating item:', error);
     return NextResponse.json({ success: false, error: 'Failed to create item' }, { status: 500 });

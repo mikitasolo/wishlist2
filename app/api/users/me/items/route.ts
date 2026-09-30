@@ -3,7 +3,8 @@ import { auth } from '@/lib/auth';
 import connectDB from '@/lib/mongodb';
 import Item from '@/models/Item';
 import Wishlist from '@/models/Wishlist';
-import { ensureCurrencyRatesUpToDate, convertToUsdCents } from '@/lib/utils/currencyRates';
+import { ensureCurrencyRatesUpToDate } from '@/lib/utils/currencyRates';
+import { itemPriceInUsdCents } from '@/lib/utils/itemPrice';
 import { ownedByFilter } from '@/lib/utils/wishlistOwners';
 
 // GET /api/users/me/items - all items across the wishlists the user co-owns.
@@ -35,10 +36,7 @@ export async function GET() {
       name: i.name,
       imageUrl: i.imageUrl ?? null,
       price: i.price ?? null,
-      priceInUsdCents:
-        i.price?.value && i.price?.currency
-          ? convertToUsdCents(i.price.value, i.price.currency, rates)
-          : null,
+      priceInUsdCents: itemPriceInUsdCents(i.price, rates),
       link: i.link ?? null,
       // lean() skips schema defaults, so an item saved before the flag has none.
       mostWanted: i.mostWanted === true,

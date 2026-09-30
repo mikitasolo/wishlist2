@@ -10,6 +10,7 @@ import WishlistMember from '@/models/WishlistMember';
 import Reservation from '@/models/Reservation';
 import { updateItemSchema, validateRequestBody } from '@/lib/validations';
 import { ensureCurrencyRatesUpToDate } from '@/lib/utils/currencyRates';
+import { itemPriceInUsdCents } from '@/lib/utils/itemPrice';
 import { canAttachImage, deleteOwnBlob, FOREIGN_IMAGE_ERROR } from '@/lib/utils/blob';
 import { createNotification } from '@/lib/notifications';
 import { isWishlistOwner, primaryOwnerId } from '@/lib/utils/wishlistOwners';
@@ -324,7 +325,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     //  - proposals are anonymous to the owner (never return `proposedBy` to
     //    anyone but the proposer themselves), and
     //  - owners never see booking status (booked folds into available).
-    const itemObj = item.toObject();
+    // Also carries the list read's `priceInUsdCents`, so a re-priced item sorts
+    // by its new price without waiting for the next poll.
+    const itemObj = { ...item.toObject(), priceInUsdCents: itemPriceInUsdCents(item.price, rates) };
     const isProposedByMe = itemObj.proposedBy?.toString() === session.user.id;
     const isBookedByMe = itemObj.bookedBy?.toString() === session.user.id;
 
