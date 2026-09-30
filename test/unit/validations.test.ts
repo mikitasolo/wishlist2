@@ -87,6 +87,25 @@ describe('createItemSchema', () => {
       createItemSchema.safeParse({ name: 'x', price: { value: 9.99, currency: 'usd' } }).success
     ).toBe(false); // non-integer cents
   });
+
+  // regression: the create schema accepted `booked` / `completed`, so a create
+  // could make an item that is already booked with no Reservation behind it.
+  it('regression: only allows draft, available and proposed as a status', () => {
+    for (const status of ['draft', 'available', 'proposed']) {
+      expect(createItemSchema.safeParse({ name: 'Toy', status }).success).toBe(true);
+    }
+    for (const status of ['booked', 'completed', 'bogus']) {
+      expect(createItemSchema.safeParse({ name: 'Toy', status }).success).toBe(false);
+    }
+  });
+
+  // regression: the create schema passed `bookedBy` through to the route, which
+  // stored it as given.
+  it('regression: drops a client-sent bookedBy', () => {
+    const parsed = createItemSchema.safeParse({ name: 'Toy', bookedBy: 'someone' });
+    expect(parsed.success).toBe(true);
+    expect(parsed.success && 'bookedBy' in parsed.data).toBe(false);
+  });
 });
 
 describe('mostWanted on the item schemas', () => {

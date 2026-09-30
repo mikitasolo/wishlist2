@@ -191,8 +191,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 }
 
 // POST /api/wishlists/[id]/items - Create a new item
-// Owners can create items with any status (draft/available)
-// Members can only create items with 'proposed' status
+// Owners create draft/available items; members can only propose.
+// A new item is never booked: a client-sent `bookedBy` is dropped by the schema.
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth();
@@ -246,7 +246,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       );
     }
 
-    const { name, imageUrl, price, link, notes, mostWanted, status, bookedBy } = validation.data;
+    const { name, imageUrl, price, link, notes, mostWanted, status } = validation.data;
 
     // Covers owner-created items and member proposals alike.
     if (!canAttachImage(imageUrl, session.user.id)) {
@@ -271,7 +271,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       }
     }
 
-    // Members can only propose; owners create any status directly.
+    // Members can only propose; owners create draft/available directly.
     if (!isOwner && status !== 'proposed') {
       return NextResponse.json(
         { success: false, error: 'Members can only propose items (status must be "proposed")' },
@@ -299,7 +299,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       notes?: string;
       mostWanted: boolean;
       status: string;
-      bookedBy: mongoose.Types.ObjectId | null;
+      bookedBy: null;
       proposedBy?: mongoose.Types.ObjectId;
     }
 
@@ -318,7 +318,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       // Owners set it. A proposal starts without it; the owner decides on review.
       mostWanted: isOwner ? (mostWanted ?? false) : false,
       status: status || 'available',
-      bookedBy: bookedBy ? new mongoose.Types.ObjectId(bookedBy) : null,
+      // Always unbooked. A booking with no Reservation behind it is one nobody
+      // can release (only the holder can unbook, and owners are booking-blind).
+      bookedBy: null,
     };
 
     // Set proposedBy for proposed items

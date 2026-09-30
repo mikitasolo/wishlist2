@@ -145,6 +145,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
           if (validatedData.status === 'draft' || validatedData.status === 'available') {
             updateData.status = validatedData.status;
             updateData.proposedBy = null; // Clear proposedBy when approving
+            // A proposal can't be booked, so any bookedBy on one is a stray (older
+            // creates accepted it); don't carry it onto the live item.
+            updateData.bookedBy = null;
             if (currentItem.proposedBy) approvedProposer = currentItem.proposedBy;
           } else {
             return NextResponse.json(

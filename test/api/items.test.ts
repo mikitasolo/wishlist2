@@ -34,6 +34,15 @@ function patch(id: string, body: unknown) {
   return PATCH(req, { params: Promise.resolve({ id }) });
 }
 
+function create(body: unknown) {
+  const req = new NextRequest(`http://localhost/api/wishlists/${wishlistId}/items`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  return CREATE_ITEM(req, { params: Promise.resolve({ id: wishlistId }) });
+}
+
 let ownerId: string;
 let memberId: string;
 let wishlistId: string;
@@ -204,17 +213,92 @@ describe('PATCH /api/items/[id] — proposal anonymity', () => {
   });
 });
 
-describe('Most wanted flag', () => {
+// regression: createItemSchema accepted `bookedBy` plus a `booked` / `completed`
+// status, and POST wrote `bookedBy` as given. That let a create produce a booking
+// with no Reservation behind it (nobody can release it: only the holder can
+// unbook and owners are booking-blind), and a proposal carry a stray `bookedBy`
+// that approving it kept on the live item.
+describe('Creating an item never books it', () => {
   const as = (userId: string) => session.mockResolvedValue({ user: { id: userId } } as never);
 
-  function create(body: unknown) {
-    const req = new NextRequest(`http://localhost/api/wishlists/${wishlistId}/items`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    return CREATE_ITEM(req, { params: Promise.resolve({ id: wishlistId }) });
-  }
+  it("regression: a member's proposal with bookedBy stores no bookedBy", async () => {
+    as(memberId);
+    const res = await create({ name: 'Idea', status: 'proposed', bookedBy: ownerId });
+    expect(res.status).toBe(201);
+
+    const item = await Item.findById((await res.json()).data._id);
+    expect(item?.status).toBe('proposed');
+    expect(item?.bookedBy).toBeNull();
+  });
+
+  it("regression: an owner's create with bookedBy stores no bookedBy", async () => {
+    as(ownerId);
+    const res = await create({ name: 'Bike', status: 'available', bookedBy: memberId });
+    expect(res.status).toBe(201);
+
+    const item = await Item.findById((await res.json()).data._id);
+    expect(item?.status).toBe('available');
+    expect(item?.bookedBy).toBeNull();
+    expect(await Reservation.countDocuments()).toBe(0);
+  });
+
+  it('regression: a create with status booked or completed is a 400, and stores nothing', async () => {
+    for (const userId of [ownerId, memberId]) {
+      as(userId);
+      for (const status of ['booked', 'completed']) {
+        const res = await create({ name: 'Gift', status, bookedBy: memberId });
+        expect(res.status).toBe(400);
+      }
+    }
+    expect(await Item.countDocuments()).toBe(0);
+  });
+
+  it('owners still create drafts and available items, and members still propose', async () => {
+    as(ownerId);
+    expect((await create({ name: 'Draft', status: 'draft' })).status).toBe(201);
+    expect((await create({ name: 'Live', status: 'available' })).status).toBe(201);
+    expect((await create({ name: 'Default' })).status).toBe(201);
+    as(memberId);
+    expect((await create({ name: 'Idea', status: 'proposed' })).status).toBe(201);
+
+    const items = await Item.find().sort({ name: 1 }).lean();
+    expect(items.map((i) => [i.name, i.status])).toEqual([
+      ['Default', 'available'],
+      ['Draft', 'draft'],
+      ['Idea', 'proposed'],
+      ['Live', 'available'],
+    ]);
+    expect(items.every((i) => i.bookedBy == null)).toBe(true);
+  });
+
+  // regression: approving a proposal kept any `bookedBy` it carried, leaving the
+  // live item `available` with a stray booker. Rows written before creates
+  // dropped `bookedBy` can still hold one.
+  it('regression: approving a proposal (to available or draft) leaves bookedBy null', async () => {
+    as(ownerId);
+    for (const status of ['available', 'draft'] as const) {
+      // Insert directly, as an old create would have stored it.
+      const proposal = await Item.create({
+        wishlist: wishlistId,
+        name: `Idea for ${status}`,
+        status: 'proposed',
+        proposedBy: memberId,
+        bookedBy: memberId,
+      });
+
+      const res = await patch(proposal._id.toString(), { status });
+      expect(res.status).toBe(200);
+
+      const item = await Item.findById(proposal._id);
+      expect(item?.status).toBe(status);
+      expect(item?.bookedBy).toBeNull();
+      expect(item?.proposedBy).toBeNull();
+    }
+  });
+});
+
+describe('Most wanted flag', () => {
+  const as = (userId: string) => session.mockResolvedValue({ user: { id: userId } } as never);
 
   async function list() {
     const req = new NextRequest(`http://localhost/api/wishlists/${wishlistId}/items`);
