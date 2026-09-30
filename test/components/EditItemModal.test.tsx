@@ -59,7 +59,9 @@ describe('EditItemModal — save outcome', () => {
   it('regression: stays open with the edited name and price when the save fails', async () => {
     const onSave = vi.fn().mockRejectedValue(new Error('Too many requests'));
     const onClose = vi.fn();
-    render(<EditItemModal isOpen onClose={onClose} onSave={onSave} item={saved()} />);
+    render(
+      <EditItemModal isOpen onClose={onClose} onSave={onSave} item={saved()} {...currencies} />
+    );
 
     editAndSave();
     await settled();
@@ -77,7 +79,9 @@ describe('EditItemModal — save outcome', () => {
   it('regression: still asks before discarding the changes after a failure', async () => {
     const onSave = vi.fn().mockRejectedValue(new Error('Network error'));
     const onClose = vi.fn();
-    render(<EditItemModal isOpen onClose={onClose} onSave={onSave} item={saved()} />);
+    render(
+      <EditItemModal isOpen onClose={onClose} onSave={onSave} item={saved()} {...currencies} />
+    );
 
     editAndSave();
     await settled();
@@ -97,7 +101,9 @@ describe('EditItemModal — save outcome', () => {
       .mockRejectedValueOnce(new Error('Server error'))
       .mockResolvedValueOnce(undefined);
     const onClose = vi.fn();
-    render(<EditItemModal isOpen onClose={onClose} onSave={onSave} item={saved()} />);
+    render(
+      <EditItemModal isOpen onClose={onClose} onSave={onSave} item={saved()} {...currencies} />
+    );
 
     editAndSave();
     await settled();
