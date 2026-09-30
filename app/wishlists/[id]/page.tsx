@@ -24,6 +24,7 @@ import Avatar from '@/components/Avatar';
 import { coverGradient } from '@/lib/utils/cover';
 import { getVisibility, visibilityMeta, type Visibility } from '@/lib/utils/visibility';
 import { currencySelectOptions } from '@/lib/utils/currencies';
+import { isStalePoll, prependCreatedItem } from '@/lib/utils/itemListMerge';
 import { useToast } from '@/components/ToastProvider';
 import { ApiItem, ApiResponse } from '@/types/api';
 import { IWishlist } from '@/models/Wishlist';
@@ -349,7 +350,7 @@ export default function WishlistDetail() {
         const data = await fetchItemsHook(wishlistId);
         // Drop a poll result that raced with a mutation (started before the
         // mutation settled) so it can't overwrite fresher local state.
-        if (silent && lastMutationAt.current > startedAt) return;
+        if (silent && isStalePoll(startedAt, lastMutationAt.current)) return;
         setItems(data);
       } catch (error) {
         console.error('Error fetching items:', error);
@@ -397,7 +398,11 @@ export default function WishlistDetail() {
 
   const createItemHook = useCreateItem(
     (newItem) => {
-      setItems((prevItems) => [newItem, ...prevItems]);
+      // Mark the settle time, so a poll whose read started before this is
+      // dropped instead of replacing the list without the new item. One that
+      // read after the write may already list it: don't add a second copy.
+      lastMutationAt.current = Date.now();
+      setItems((prevItems) => prependCreatedItem(prevItems, newItem));
       showToast('Item added successfully', 'success');
     },
     (error) => {
@@ -510,7 +515,9 @@ export default function WishlistDetail() {
         showToast(message, 'error');
         throw new Error(message);
       }
-      setItems((prevItems) => [proposed, ...prevItems]);
+      // Same poll guards as an owner's add (see createItemHook).
+      lastMutationAt.current = Date.now();
+      setItems((prevItems) => prependCreatedItem(prevItems, proposed));
       showToast('Item proposed successfully', 'success');
     },
     [wishlistId, showToast]
