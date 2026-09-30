@@ -26,7 +26,7 @@ const WishlistSchema = new Schema(
     // and each can pin it to their own dashboard (see `featuredBy`). Always has
     // at least one entry — the last owner can't be removed, only the wishlist
     // deleted. Owners are NOT rows in `WishlistMember`; that collection holds
-    // only 'admin' / 'member'.
+    // only members (existence, no role field).
     owners: {
       type: [{ type: Schema.Types.ObjectId, ref: 'User' }],
       default: [],

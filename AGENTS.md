@@ -4,39 +4,80 @@ Working instructions for AI agents (and humans) contributing to this repo. Keep 
 
 ## Project
 
-A wishlist app: **Next.js 16 (App Router), React 19, TypeScript, MongoDB/Mongoose, NextAuth v5 / Auth.js (database sessions), Tailwind v4, Vercel Blob**. Package manager is **npm**. Path alias `@/*` maps to the repo root. (Note: `README.md` is partly out of date on versions — trust the code and `package.json`.)
+A wishlist app: **Next.js 16 (App Router), React 19, TypeScript, MongoDB/Mongoose, NextAuth v5 / Auth.js (database sessions), Tailwind v4, Vercel Blob**. Package manager is **npm**. Path alias `@/*` maps to the repo root.
 
 ## Commands
 
 ```bash
-npm install          # install deps (use `npm ci` in CI)
-npm run dev          # local dev server
-npm run build        # production build — must pass before done
+npm ci               # install deps (Conductor's setup script runs this for you)
+npm run dev          # local dev server — in Conductor: npm run dev -- --port $CONDUCTOR_PORT
+npm run lint         # eslint — must pass before done
+npm run format:check # prettier --check — must pass before done (npm run format fixes it)
 npx tsc --noEmit     # typecheck — must pass before done
-npm test             # run the full Vitest suite (unit + component + API)
+npm test             # run the full Vitest suite (unit + component + API) — must pass before done
+npm run build        # production build — must pass before done
 npm run test:e2e     # Playwright end-to-end suite
 npm run test:watch   # watch mode
-npm run test:cov     # coverage report
-npm run format       # prettier
+npm run test:cov     # coverage report (enforces the threshold floor in vitest.config.ts)
 npm run release:preview  # list commits remote staging is ahead of remote main (dry run)
-npm run release          # promote: fast-forward remote main to remote staging (no local push)
+npm run release          # promote: fast-forward remote main to remote staging — operator only
 ```
 
-## Branching & releases
+## How work flows
 
-- **Work on `staging`** (the default branch). CI runs on every push to `staging` and `main`.
-- **`main` is production** (Vercel deploys on push). `main` is only ever advanced by **fast-forwarding to `staging`** — never commit directly to `main`, never squash/merge-commit into it. This keeps `main` a strict prefix of `staging` (identical hashes, no divergence).
-- **To release:** push `staging` yourself when a chunk is ready, verify CI is green and the Vercel staging deploy looks good, then `npm run release`. It fast-forwards **remote** `main` to **remote** `staging` (via `git push origin origin/staging:main`) — it does **not** push your local branch, so unreleased WIP commits on your local `staging` stay local. No PR/merge-button — those mint new commits and diverge the two branches.
-- **A push to `main` announces itself.** `.github/workflows/release-notify.yml` posts the changelog to a Telegram channel, built from the commit subjects in the pushed range by `.github/scripts/telegram-release-notes.py`. It needs the `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` repo secrets; without them it prints a preview and sends nothing.
+Tasks live in **Linear** — workspace `mikitasolo`, team **Wishlist**, issue keys `WIS-<n>`. Each issue is worked in its own **Conductor** workspace (a git worktree + branch cut from `staging`), usually by an AI agent. The human is the **operator**: they write and clarify requirements, review, merge, and release.
 
-## Commit messages
+### Branches
 
-**Commit subjects are published.** Every subject in a release goes verbatim into the Telegram changelog, so it's release-note copy, not a private note to yourself. Write accordingly:
+- **`staging`** is the default and integration branch. Every change reaches it through a **pull request**, which the operator **squash-merges**. CI (`ci.yml`, `e2e.yml`) runs on every PR.
+- **`main` is production** (Vercel deploys on push). It only ever moves by **fast-forwarding to `staging`** (`npm run release`, i.e. `git push origin origin/staging:main`) — never commit to `main`, never open a PR into it. This keeps `main` a strict prefix of `staging` (identical hashes, no divergence).
+- **A push to `main` is a release.** `.github/workflows/release-notify.yml` posts the changelog to a Telegram channel (built from the commit subjects in the pushed range by `.github/scripts/telegram-release-notes.py`) and moves the Linear issues those commits close from **On Staging** to **Done** (`.github/scripts/linear-mark-released.py`). Secrets: `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` / `LINEAR_API_KEY`; without them each job prints a preview and changes nothing.
+
+### Issue statuses
+
+| Status      | Meaning                                         | Moved by                                    |
+| ----------- | ----------------------------------------------- | ------------------------------------------- |
+| Backlog     | Idea, or not specified well enough to build yet | operator                                    |
+| Todo        | Spec is ready — an agent can take it            | operator                                    |
+| In Progress | Being worked in a workspace                     | the agent, when it starts                   |
+| In Review   | PR is open                                      | Linear's GitHub integration                 |
+| On Staging  | Squash-merged into `staging`, not yet released  | Linear's GitHub integration                 |
+| Done        | Released to production                          | `release-notify.yml`, on the push to `main` |
+| Canceled    | Won't do                                        | operator                                    |
+
+Labels: one **Type** (Feature / Bug / Improvement / Tech debt — maps to the commit prefix) and one **Area** per issue. Large features are Linear **projects**; their design notes and open questions live in the project description, so read it before starting an issue inside one.
+
+### Agent lifecycle for an issue
+
+1. **Read the issue** (`WIS-<n>`) through the Linear MCP server — description, comments, and the parent project's description if it has one. If the acceptance criteria are missing or ambiguous, especially anywhere near the domain invariants below, **ask the operator before writing code**. Don't guess at product decisions.
+2. **Move the issue to In Progress.**
+3. **Stay in your workspace branch.** Conductor created it from `staging`; don't rename it, and never check out, commit to, or push `staging` or `main`.
+4. **Implement with tests** (see Testing policy). Stay in scope: an unrelated bug or idea you notice becomes a **new Linear issue in Backlog** (link it from the PR), not part of this change.
+5. **Verify**: everything marked "must pass before done" under Commands passes locally, plus `npm run test:e2e` if you touched a flow the E2E smoke tests cover.
+6. **Review your own diff** (`git diff origin/staging...`) as a skeptical reviewer would — correctness, the domain invariants, missing tests, leftover debug code, docs the change makes stale — and fix what you find.
+7. **Commit, push your branch, and open a PR into `staging`** (`gh pr create --base staging`), following the rules below.
+8. **Get CI green** (`gh pr checks --watch`) and fix failures. Branch protection isn't available on the free GitHub plan, so nothing else stops a red PR from being merged.
+9. **Hand off**: reply with the PR link, what changed, how you verified it, and anything the operator has to do by hand (env vars, migrations, dashboard config).
+
+**Operator-only** — never do these as an agent: merge a PR, run `npm run release`, run a migration against a deployed host, change env vars or secrets in Vercel/GitHub, or push to any branch other than your own.
+
+### Pull requests & commit messages
+
+**PR titles are published.** A PR is squash-merged, so its title becomes the commit subject on `staging`, and every subject in a release goes verbatim into the Telegram changelog. The title is release-note copy, not a note to yourself:
 
 - **Conventional-commit prefix**, which the changelog groups by: `feat:` `fix:` `perf:` `refactor:` `docs:` `test:` `build:` `ci:` `chore:`. Anything unprefixed lands in a catch-all "Other" section — avoid it.
 - **Imperative, specific subject** that stands alone. A reader in the channel sees only the subject, with no diff and no body: `fix: release a member's bookings when they're made an owner`, not `fix: bug` or `fix: address review comments`.
-- **Body explains _why_**, plus anything a future reader would otherwise have to reconstruct: the invariant being protected, the failure mode being closed, migrations the change requires and their ordering.
-- One coherent change per commit. "Various fixes" is one useless changelog line covering several things worth naming.
+- **No issue ID in the title** — the channel's readers don't have Linear. Put `Closes WIS-<n>` in the **body**: that links the PR to the issue and drives its status. Use `Part of WIS-<n>` for a PR that doesn't finish the issue.
+- **The body becomes the squash commit's message**, so it explains _why_, plus anything a future reader would otherwise have to reconstruct: the invariant being protected, the failure mode being closed, migrations the change requires and their ordering, how it was tested. Follow `.github/pull_request_template.md`.
+- **One issue, one PR, one coherent change.** "Various fixes" is one useless changelog line covering several things worth naming. Commits inside the branch can be as granular as you like — they're squashed away — but still use the conventional prefixes.
+
+### Parallel workspaces
+
+Several agents run at once, each in its own worktree. Don't assume anything is exclusive to you:
+
+- **Ports**: dev runs on `$CONDUCTOR_PORT` (the Conductor run script passes it); E2E derives its port from `CONDUCTOR_PORT` too (`playwright.config.ts`). Never hard-code 3000/3100.
+- **Conflicts**: other PRs touch `README.md` / `AGENTS.md` too. When yours conflicts, rebase onto `origin/staging` and force-push **your own branch** with `--force-with-lease`; don't merge `staging` into it.
+- **Local dev data**: workspaces get the repo root's `.env` / `.env.local` copied in (`.conductor/settings.toml`); `.env.prod` / `.env.staging` deliberately aren't. The dev MongoDB is shared by every workspace — don't wipe or bulk-edit it. Prefer the test suites (in-memory Mongo, mocked email) over poking the dev server.
 
 ## Testing policy (required)
 
@@ -46,7 +87,7 @@ npm run release          # promote: fast-forward remote main to remote staging (
 - **New/changed interactive component behavior** (conditional rendering, state, optimistic updates) → a component test. Skip purely presentational markup.
 - **New/changed API route with authorization or business rules** → an API test (in-memory Mongo + mocked session).
 - **Every bug you fix** → a regression test tagged with a `// regression:` comment citing the cause, so it can't silently come back.
-- Before considering work done: `npm test` **and** `npx tsc --noEmit` **and** `npm run build` all pass.
+- Before considering work done: everything marked "must pass before done" under Commands passes — the same checks CI runs.
 
 Chase meaningful coverage of logic/authorization, not a headline line-coverage number.
 
@@ -67,7 +108,7 @@ Chase meaningful coverage of logic/authorization, not a headline line-coverage n
 These are correctness/privacy rules the product depends on:
 
 - **A wishlist has exactly two kinds of people: owners and members.** There is no `admin` tier — a manager of someone else's list isn't a relationship the product needs, so anyone trusted to manage a list is a co-owner. Owners live in `Wishlist.owners[]`; members are rows in `WishlistMember`, which carries **no role field**. Membership is existence, not a level.
-- **All co-owners are equal.** Identical authority (including deleting the list), the list shows on each of their profiles, and none of them ever sees booking status. Never authorize against the deprecated `Wishlist.owner` — use `isWishlistOwner` / `ownedByFilter` / `primaryOwnerId` from `lib/utils/wishlistOwners.ts`, or `getOwnerAccess` / `isOwnerOfWishlist` from `wishlistAccess.ts`. A list must always keep at least one owner.
+- **All co-owners are equal.** Identical authority (including deleting the list), the list shows on each of their profiles, and none of them ever sees booking status. Authorize owners only through `isWishlistOwner` / `ownedByFilter` / `primaryOwnerId` from `lib/utils/wishlistOwners.ts`, or `getOwnerAccess` / `isOwnerOfWishlist` from `wishlistAccess.ts` — never by hand-rolling a check on `owners[]`. A list must always keep at least one owner.
 - **Members have no management powers.** They browse, propose items, and book gifts. They can't see the members list, drafts, wishlist settings, or publish an item directly. Everything else is owner-only.
 - **Owners never see booking status.** For any owner, `booked` folds into `available`; never reveal who booked what.
 - **Becoming an owner requires consent and releases your bookings.** The three ways in are: create the list, accept an `owner` invite (`POST /api/wishlists/[id]/members` by username), or accept a promotion (`POST /api/wishlists/[id]/owners/[userId]`, which issues the same kind of invite — never a silent role write). On accept, `addWishlistOwner` frees the items that person booked **and deletes their reservations** — an owner can't be their own gifter. This is the one place that deletes a reservation on a membership change; leave/remove deliberately keep it.
@@ -85,7 +126,7 @@ These are correctness/privacy rules the product depends on:
 
 ## Conventions
 
-- **Money** is stored as integer **cents**; currency codes are **lowercase** in the DB. Conversion routes through USD (`rate` = units per USD). Use the shared helpers in `lib/utils/currency.ts` / `currencyRates.ts`.
+- **Money** is stored as integer **cents**. Currency-code casing is **not uniform** in the DB: `Item.price.currency` is lowercase (to match the rates format), while `Wishlist.currency` and `User.defaultCurrency` are uppercase — normalize before comparing. Conversion routes through USD (`rate` = units per USD). Use the shared helpers in `lib/utils/currency.ts` / `currencyRates.ts`.
 - Prefer the shared `Select`, `ConfirmDialog`, `BaseModal`, `Skeleton` components over bespoke ones. When a page's layout changes, **update its skeleton to match**.
 - Async UI mutations should be **optimistic** and resilient to the 5s polling on the wishlist page (see `handleUpdateItem`): update locally, merge the server response for the single item, and don't let a stale in-flight poll overwrite fresher local state.
 - TypeScript is `strict`. Keep it green.
@@ -94,12 +135,11 @@ These are correctness/privacy rules the product depends on:
   - Make it **idempotent**, so re-running is free and a partial run can be finished by running it again.
   - Decide its **deploy ordering** and say so in the docstring. An _additive_ migration (only writes new fields) is safe to run before the deploy, because the live old code still reads what it needs. One that removes or moves data the old code depends on must run **after**, or it breaks the running deployment.
   - If the reading code needs a fallback for the un-migrated shape, gate that fallback on the new field being absent, and delete it in a follow-up once the migration has run everywhere. Don't leave fallbacks behind — they quietly become unreachable code that still has to be reasoned about.
-- **Never push to a remote unless the user explicitly asks.** Committing is fine when the user requests it, but `git push` is always gated on an explicit request — never push as a side effect of finishing work, even after committing.
 - **The `overrides` in `package.json` keep `npm audit` clean** by forcing patched transitive deps across the whole tree. Don't remove any without re-running `npm audit`:
   - `nodemailer`, `postcss`, `sharp` — past `next-auth`'s peer cap on nodemailer and over Next's bundled postcss/sharp. Drop the `nodemailer` override once `next-auth` widens its peer to `^9` (then we're back in supported range).
   - `brace-expansion` → `5.0.8` **and** `minimatch` → `^10.2.5` (paired) — for GHSA-mh99-v99m-4gvg, a **dev-only** DoS advisory reaching us via eslint + `@vitest/coverage-v8`. `5.0.8` is the only version that clears the advisory, but it exports a _named_ `expand` that old `minimatch` (≤9, `require('brace-expansion')()`) can't call — so `minimatch` must be forced to 10 alongside it. Drop both once eslint/vitest upstream ship minimatch 10 themselves.
-- **Rate limiting goes through `enforce()` / `checkRateLimit()` in `lib/rateLimit.ts`** — never hand-roll an in-memory counter (Vercel's per-request instances don't share it). Add a new surface by adding a `SPECS` entry (tokens/window/policy) and calling `enforce('<name>', key)` right after the auth/access check, returning its response if non-null. Key **authed** writes on `session.user.id`; key **public** reads on `` `ip:${clientIp(request.headers)}` ``; key the sign-in email path on **both** email and IP. Choose `fail-open` for user-facing reads/writes and `fail-closed` for cost-bearing email sends. Limiting is **disabled** when `UPSTASH_REDIS_REST_URL`/`_TOKEN` are unset (dev/CI/tests) — tests inject a fake via `__setRateLimiters`, they don't need Redis.
-- **Never print, commit, or expose secrets** (`.env`, `.env.prod`). Only perform authorized DB operations.
+- **Rate limiting goes through `enforce()` / `checkRateLimit()` in `lib/rateLimit.ts`** — never hand-roll an in-memory counter (Vercel's per-request instances don't share it). Add a new surface by adding a `SPECS` entry (tokens/window/policy) and calling `enforce('<name>', key)` right after the auth/access check, returning its response if non-null. Key **authed** writes on `session.user.id`; key **public** reads on `` `ip:${clientIp(request.headers)}` ``; key the sign-in email path on **both** email and IP. Choose `fail-open` for user-facing reads/writes and `fail-closed` for cost-bearing email sends. Limiting is **disabled** when neither `UPSTASH_REDIS_REST_URL`/`_TOKEN` nor their `KV_REST_API_URL`/`_TOKEN` fallbacks are set (CI/tests) — tests inject a fake via `__setRateLimiters`, they don't need Redis. A `.env` pulled from Vercel carries the `KV_*` pair, so local dev _does_ rate-limit against that store.
+- **Never print, commit, or expose secrets** (`.env*`). Never read or use production credentials (`.env.prod`, `.env.staging`), and only perform authorized DB operations.
 
 ## Keep docs current
 
@@ -109,3 +149,4 @@ When a change affects how the project is set up, run, or structured, update the 
 - New/removed **npm script**, dependency, or tech-stack change → update `README.md`.
 - New user-facing **feature** or removed one → update the README feature list.
 - New **convention, invariant, or workflow** for contributors → update this `AGENTS.md`.
+- **Deferred ideas and follow-ups** go to Linear (Backlog), not into a file in the repo — design notes for a large feature belong in its Linear project description.
