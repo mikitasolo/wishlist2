@@ -23,6 +23,7 @@ function item(overrides: Partial<ApiItem>): ApiItem {
 }
 
 const mostWantedSwitch = () => screen.queryByRole('switch', { name: /most wanted/i });
+const currencies = { wishlistCurrency: 'USD', userCurrency: 'USD' };
 
 // useBodyScrollLock restores the scroll position on close; jsdom lacks scrollTo.
 beforeAll(() => {
@@ -36,7 +37,9 @@ describe('EditItemModal — most wanted', () => {
   // booking they can't see. Flagging an item is a content edit like any other.
   it('saves the flag without sending a status', async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
-    render(<EditItemModal isOpen onClose={vi.fn()} onSave={onSave} item={item({})} />);
+    render(
+      <EditItemModal isOpen onClose={vi.fn()} onSave={onSave} item={item({})} {...currencies} />
+    );
 
     fireEvent.click(mostWantedSwitch()!);
     fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
@@ -52,6 +55,7 @@ describe('EditItemModal — most wanted', () => {
         onClose={vi.fn()}
         onSave={vi.fn()}
         item={item({ status: 'proposed' })}
+        {...currencies}
       />
     );
     expect(mostWantedSwitch()).toBeNull();

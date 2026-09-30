@@ -1804,6 +1804,8 @@ export default function WishlistDetail() {
           onSave={handleSaveEdit}
           onDelete={handleDeleteItem}
           item={itemToEdit}
+          wishlistCurrency={wishlist?.currency}
+          userCurrency={session?.user?.defaultCurrency}
         />
       )}
 
@@ -1814,6 +1816,8 @@ export default function WishlistDetail() {
           onApprove={handleReviewItem}
           onDelete={handleDeleteProposedItem}
           item={itemToReview}
+          wishlistCurrency={wishlist?.currency}
+          userCurrency={session?.user?.defaultCurrency}
         />
       )}
 

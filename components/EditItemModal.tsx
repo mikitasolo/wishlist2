@@ -5,6 +5,7 @@ import { ApiItem } from '@/types/api';
 import BaseModal from './BaseModal';
 import ItemForm, { itemToFormData } from './ItemForm';
 import ConfirmDialog from './ConfirmDialog';
+import { defaultItemCurrency } from '@/lib/utils/currencies';
 
 interface EditItemModalProps {
   isOpen: boolean;
@@ -12,6 +13,11 @@ interface EditItemModalProps {
   onSave: (updates: Partial<ApiItem>) => Promise<void>;
   onDelete?: () => Promise<void>;
   item: ApiItem;
+  // A priceless item's currency starts on the wishlist's, else the viewer's
+  // default, else USD. Required (though either may be empty) so a caller can't
+  // silently drop them and fall back to USD.
+  wishlistCurrency: string | null | undefined;
+  userCurrency: string | null | undefined;
 }
 
 export default function EditItemModal({
@@ -20,6 +26,8 @@ export default function EditItemModal({
   onSave,
   onDelete,
   item,
+  wishlistCurrency,
+  userCurrency,
 }: EditItemModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -118,7 +126,7 @@ export default function EditItemModal({
       >
         <ItemForm
           key={itemFormKey}
-          initialData={itemToFormData(item)}
+          initialData={itemToFormData(item, defaultItemCurrency(wishlistCurrency, userCurrency))}
           onSubmit={handleSubmit}
           onCancel={handleClose}
           submitLabel="Save Changes"
