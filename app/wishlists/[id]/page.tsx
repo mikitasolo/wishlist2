@@ -519,15 +519,43 @@ export default function WishlistDetail() {
     [wishlistId, showToast]
   );
 
+  // Approving has its own optimistic path rather than handleUpdateItem's: a
+  // failure must put the proposal back at once and reach ReviewItemModal, and
+  // the owner is only told "approved" once the server agreed.
   const handleReviewItem = useCallback(
     async (updates: Partial<ApiItem> & { status: 'draft' | 'available' }) => {
       if (!itemToReview) return;
       const itemId = itemToReview._id;
-      await handleUpdateItem(itemId, updates);
-      setItemToReview(null);
+      // The proposal as the list shows it now, to put back if the approve fails.
+      const proposal = items.find((item) => item._id === itemId);
+
+      lastMutationAt.current = Date.now();
+      setItems((prevItems) =>
+        prevItems.map((item) => (item._id === itemId ? { ...item, ...updates } : item))
+      );
+
+      const approved = await updateItemHook(itemId, updates);
+      // Mark the settle time so any poll that read across this mutation is dropped.
+      lastMutationAt.current = Date.now();
+
+      if (!approved) {
+        // The hook has already toasted the API's error. Roll the optimistic
+        // approve back, then reconcile with the server in case the write landed
+        // after all. Reject so ReviewItemModal stays open with the edits.
+        if (proposal) {
+          setItems((prevItems) => prevItems.map((item) => (item._id === itemId ? proposal : item)));
+        }
+        fetchItems(true);
+        throw new Error('Failed to approve item');
+      }
+
+      setItems((prevItems) =>
+        prevItems.map((item) => (item._id === itemId ? { ...item, ...approved } : item))
+      );
+      // ReviewItemModal closes itself on success.
       showToast('Item approved successfully', 'success');
     },
-    [itemToReview, handleUpdateItem, showToast]
+    [itemToReview, items, updateItemHook, fetchItems, showToast]
   );
 
   const handleDeleteProposedItem = useCallback(async () => {

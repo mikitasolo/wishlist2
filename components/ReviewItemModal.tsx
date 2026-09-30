@@ -10,6 +10,8 @@ import { defaultItemCurrency } from '@/lib/utils/currencies';
 interface ReviewItemModalProps {
   isOpen: boolean;
   onClose: () => void;
+  // Must reject when the request fails: the modal only closes on success, so
+  // the owner's edits survive a failure.
   onApprove: (updates: Partial<ApiItem> & { status: 'draft' | 'available' }) => Promise<void>;
   onDelete?: () => Promise<void>;
   item: ApiItem;
@@ -60,6 +62,8 @@ export default function ReviewItemModal({
     status: 'draft' | 'available' | 'proposed';
   }) => {
     setIsSubmitting(true);
+    // No catch: a failed approve must reject through to ItemForm, so it keeps
+    // the proposal as its unsaved-changes baseline. Only a success closes the modal.
     try {
       // In review mode, status will always be 'draft' or 'available', never 'proposed'
       if (data.status === 'proposed') {
@@ -79,8 +83,6 @@ export default function ReviewItemModal({
       await onApprove(updates);
       setHasUnsavedChanges(false);
       onClose();
-    } catch (error) {
-      console.error('Error approving item:', error);
     } finally {
       setIsSubmitting(false);
     }
