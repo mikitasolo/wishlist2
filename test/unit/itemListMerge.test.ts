@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isStalePoll, prependCreatedItem } from '@/lib/utils/itemListMerge';
+import { createMutationTracker, isStalePoll, prependCreatedItem } from '@/lib/utils/itemListMerge';
 import type { ApiItem } from '@/types/api';
 
 function item(overrides: Partial<ApiItem>): ApiItem {
@@ -12,6 +12,24 @@ function item(overrides: Partial<ApiItem>): ApiItem {
     updatedAt: '2024-01-01T00:00:00.000Z',
     ...overrides,
   } as ApiItem;
+}
+
+function deferred<T = void>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((r) => (resolve = r));
+  return { promise, resolve };
+}
+
+// A tracker on a clock the test moves by hand, starting at 1_000.
+function trackerAt() {
+  let clock = 1_000;
+  const tracker = createMutationTracker(() => clock);
+  return {
+    tracker,
+    at(time: number) {
+      clock = time;
+    },
+  };
 }
 
 describe('isStalePoll', () => {
@@ -31,6 +49,101 @@ describe('isStalePoll', () => {
 
   it('keeps every poll before the first mutation', () => {
     expect(isStalePoll(1_000, 0)).toBe(false);
+  });
+});
+
+describe('createMutationTracker', () => {
+  it('keeps every poll before the first mutation', () => {
+    const { tracker } = trackerAt();
+    expect(tracker.isStale(1_000)).toBe(false);
+  });
+
+  // regression: a poll was dropped only if the latest mutation stamp was later
+  // than its start, so one that started after an update did and landed before
+  // its PATCH settled was applied and flipped the item back.
+  it('regression: drops a poll that lands while a mutation is in flight, even one started after it', () => {
+    const { tracker, at } = trackerAt();
+    void tracker.track(() => new Promise(() => {}));
+
+    at(1_010);
+    expect(tracker.isStale(1_010)).toBe(true);
+    expect(tracker.isStale(900)).toBe(true);
+  });
+
+  it('drops a poll that read across a mutation that has since settled', async () => {
+    const { tracker, at } = trackerAt();
+    const request = deferred();
+    const settled = tracker.track(() => request.promise);
+
+    at(1_050);
+    request.resolve();
+    await settled;
+
+    expect(tracker.isStale(1_010)).toBe(true);
+    expect(tracker.isStale(1_049)).toBe(true);
+  });
+
+  it('keeps a poll that started once the mutation settled, the same millisecond included', async () => {
+    const { tracker, at } = trackerAt();
+    const request = deferred();
+    const settled = tracker.track(() => request.promise);
+
+    at(1_050);
+    request.resolve();
+    await settled;
+
+    // handleUpdateItem's reconcile read after a failed update is issued as soon
+    // as the tracked request resolves, usually within the same millisecond.
+    expect(tracker.isStale(1_050)).toBe(false);
+    expect(tracker.isStale(1_060)).toBe(false);
+  });
+
+  it('stays stale until every overlapping mutation has settled', async () => {
+    const { tracker, at } = trackerAt();
+    const first = deferred();
+    const second = deferred();
+    const firstSettled = tracker.track(() => first.promise);
+    const secondSettled = tracker.track(() => second.promise);
+
+    at(1_050);
+    first.resolve();
+    await firstSettled;
+    expect(tracker.isStale(1_060)).toBe(true);
+
+    at(1_100);
+    second.resolve();
+    await secondSettled;
+    expect(tracker.isStale(1_060)).toBe(true);
+    expect(tracker.isStale(1_100)).toBe(false);
+  });
+
+  it('resolves with what the mutation resolved with', async () => {
+    const { tracker } = trackerAt();
+    await expect(tracker.track(async () => 42)).resolves.toBe(42);
+  });
+
+  it('counts a mutation that rejects as settled, and rejects with its error', async () => {
+    const { tracker, at } = trackerAt();
+    const error = new Error('Failed to update item');
+
+    at(1_050);
+    await expect(tracker.track(() => Promise.reject(error))).rejects.toBe(error);
+
+    expect(tracker.isStale(1_010)).toBe(true);
+    expect(tracker.isStale(1_050)).toBe(false);
+  });
+
+  it('counts a mutation that throws before returning a promise as settled', async () => {
+    const { tracker } = trackerAt();
+    const error = new Error('boom');
+
+    await expect(
+      tracker.track(() => {
+        throw error;
+      })
+    ).rejects.toBe(error);
+
+    expect(tracker.isStale(1_000)).toBe(false);
   });
 });
 
@@ -67,9 +180,27 @@ describe('prependCreatedItem', () => {
 });
 
 // The wishlist page's sequence, replayed with the helpers: `fetchItems(true)`
-// stamps `startedAt` and drops a stale result, and an add or proposal stamps
-// `lastMutationAt` and prepends the server's item when its POST settles. That
-// the page does both on the real flows is pinned by e2e/itemPolling.authed.spec.ts.
+// stamps `startedAt` and drops a result `mutations.isStale` calls stale, and
+// every item mutation runs its request through `mutations.track` (an update
+// applies its optimistic change first, and merges the server's item once the
+// request settles; an add or proposal prepends the server's item). That the
+// page does this on the real flows is pinned by e2e/itemPolling.authed.spec.ts.
+function wishlistPage(items: ApiItem[]) {
+  const { tracker: mutations, at } = trackerAt();
+  const page = {
+    items,
+    mutations,
+    at,
+    // `fetchItems(true)` resolving with the list its read got.
+    pollLands(startedAt: number, polled: ApiItem[]) {
+      if (!mutations.isStale(startedAt)) page.items = polled;
+    },
+  };
+  return page;
+}
+
+const ids = (items: ApiItem[]) => items.map((i) => i._id);
+
 describe('an add or proposal racing the 5 s poll', () => {
   const existing = item({ _id: 'existing', name: 'Existing' });
   const created = item({ _id: 'created', name: 'Just added' });
@@ -77,54 +208,118 @@ describe('an add or proposal racing the 5 s poll', () => {
   // regression: the add/propose paths prepended the new item without bumping
   // `lastMutationAt`, so a poll whose GET started before the POST settled
   // resolved afterwards with the old list and hid the item until the next poll.
-  it('regression: a poll that read before the add settled does not hide the new item', () => {
-    let items = [existing];
-    let lastMutationAt = 0;
+  it('regression: a poll that read before the add settled does not hide the new item', async () => {
+    const page = wishlistPage([existing]);
 
     const pollStartedAt = 1_000; // poll GET goes out, reading the old list
     const polled = [existing];
 
-    // POST settles: stamp, then prepend (as createItemHook / handleProposeItem do)
-    lastMutationAt = 1_050;
-    items = prependCreatedItem(items, created);
+    // POST settles: prepend (as createItemHook / handleProposeItem do)
+    page.at(1_050);
+    const newItem = await page.mutations.track(async () => created);
+    page.items = prependCreatedItem(page.items, newItem);
 
     // the poll resolves afterwards with the list it read before the write
-    if (!isStalePoll(pollStartedAt, lastMutationAt)) items = polled;
+    page.pollLands(pollStartedAt, polled);
 
-    expect(items.map((i) => i._id)).toEqual(['created', 'existing']);
+    expect(ids(page.items)).toEqual(['created', 'existing']);
   });
 
   // regression: the POST response was prepended unconditionally, so when a poll
   // that read after the server's write had already listed the item, the same
   // `_id` showed up twice until the next poll.
-  it('regression: a poll that already listed the new item does not get it doubled', () => {
-    let items = [existing];
-    let lastMutationAt = 0;
+  it('regression: a read that already listed the new item does not get it doubled', async () => {
+    const page = wishlistPage([existing]);
+    const listed = [{ ...created, priceInUsdCents: 500 }, existing];
 
-    // the server writes the item; a poll that reads after the write resolves
-    // before the POST response reaches the page
-    const pollStartedAt = 1_000;
-    const polled = [{ ...created, priceInUsdCents: 500 }, existing];
-    if (!isStalePoll(pollStartedAt, lastMutationAt)) items = polled;
+    // the server writes the item; a poll that read after the write lands before
+    // the POST response reaches the page, and is dropped as the POST is in flight
+    const post = deferred<ApiItem>();
+    const add = page.mutations.track(() => post.promise);
+    page.pollLands(1_000, listed);
+    expect(ids(page.items)).toEqual(['existing']);
 
-    // then the POST settles
-    lastMutationAt = 1_050;
-    items = prependCreatedItem(items, created);
+    // the initial load, which is never dropped, lists it before the POST settles
+    page.items = listed;
 
-    expect(items.map((i) => i._id)).toEqual(['created', 'existing']);
-    expect(items[0]).toMatchObject({ name: 'Just added', priceInUsdCents: 500 });
+    page.at(1_050);
+    post.resolve(created);
+    page.items = prependCreatedItem(page.items, await add);
+
+    expect(ids(page.items)).toEqual(['created', 'existing']);
+    expect(page.items[0]).toMatchObject({ name: 'Just added', priceInUsdCents: 500 });
   });
 
-  it('still applies a poll that started after the add settled', () => {
-    let items = [existing];
+  it('still applies a poll that started after the add settled', async () => {
+    const page = wishlistPage([existing]);
 
-    const lastMutationAt = 1_000;
-    items = prependCreatedItem(items, created);
+    const newItem = await page.mutations.track(async () => created);
+    page.items = prependCreatedItem(page.items, newItem);
 
     const renamed = { ...existing, name: 'Renamed by a co-owner' };
     const polled = [created, renamed];
-    if (!isStalePoll(1_100, lastMutationAt)) items = polled;
+    page.pollLands(1_100, polled);
 
-    expect(items).toBe(polled);
+    expect(page.items).toBe(polled);
+  });
+});
+
+describe('an update racing the 5 s poll', () => {
+  const gift = item({ _id: 'gift', name: 'Gift', status: 'available' });
+  const booked = { ...gift, status: 'booked' as const, bookedBy: 'me' };
+
+  // Apply the optimistic change and start the PATCH, as handleUpdateItem does.
+  function startBooking(page: ReturnType<typeof wishlistPage>) {
+    const patch = deferred<ApiItem>();
+    page.items = page.items.map((i) => (i._id === gift._id ? booked : i));
+    const settled = page.mutations.track(() => patch.promise);
+    return {
+      async settle(at: number) {
+        page.at(at);
+        patch.resolve(booked);
+        const updated = await settled;
+        page.items = page.items.map((i) => (i._id === updated._id ? { ...i, ...updated } : i));
+      },
+    };
+  }
+
+  // regression: an update stamped `lastMutationAt` when it started and again
+  // when it settled, and a poll was dropped only if that stamp was later than
+  // its start. A poll that started after the update did and resolved before the
+  // PATCH settled was applied, so the server's copy from before the write
+  // flipped the item back (a booking un-booked) until the PATCH response landed.
+  it('regression: a poll that starts during an update and lands before it settles does not undo it', async () => {
+    const page = wishlistPage([gift]);
+    const booking = startBooking(page);
+
+    // the poll reads the server's copy from before the write, and lands while
+    // the PATCH is still in flight
+    page.at(1_010);
+    page.pollLands(1_010, [gift]);
+    expect(page.items).toEqual([booked]);
+
+    await booking.settle(1_050);
+    expect(page.items).toEqual([booked]);
+  });
+
+  it('still drops a poll that read during the update and lands after it settled', async () => {
+    const page = wishlistPage([gift]);
+    const booking = startBooking(page);
+
+    await booking.settle(1_050);
+    page.pollLands(1_010, [gift]);
+
+    expect(page.items).toEqual([booked]);
+  });
+
+  it('applies a read issued once the update settled, like the reconcile after a failure', async () => {
+    const page = wishlistPage([gift]);
+    const booking = startBooking(page);
+
+    await booking.settle(1_050);
+    const fromServer = [{ ...booked, name: 'Gift, renamed by a co-owner' }];
+    page.pollLands(1_050, fromServer);
+
+    expect(page.items).toBe(fromServer);
   });
 });

@@ -23,7 +23,7 @@ import { SkeletonGrid, MemberRowSkeleton } from '@/components/Skeleton';
 import Avatar from '@/components/Avatar';
 import { getVisibility, visibilityMeta, type Visibility } from '@/lib/utils/visibility';
 import { currencySelectOptions } from '@/lib/utils/currencies';
-import { isStalePoll, prependCreatedItem } from '@/lib/utils/itemListMerge';
+import { createMutationTracker, prependCreatedItem } from '@/lib/utils/itemListMerge';
 import { useToast } from '@/components/ToastProvider';
 import { ApiItem, ApiResponse } from '@/types/api';
 import { IWishlist } from '@/models/Wishlist';
@@ -331,10 +331,11 @@ export default function WishlistDetail() {
     }
   }, [wishlistId, isOwner, manageOpen, refreshInvites]);
 
-  // Timestamp of the most recent local mutation. A background poll whose read
-  // was in flight across a mutation is stale and must be discarded, otherwise it
-  // clobbers the optimistic state and the UI flickers.
-  const lastMutationAt = useRef(0);
+  // The page's item mutations. A background poll that lands while one is in
+  // flight, or whose read was in flight across one, is stale and must be
+  // discarded, otherwise it clobbers the optimistic state and the UI flickers.
+  // Every item mutation's request goes through `mutations.track`.
+  const [mutations] = useState(createMutationTracker);
 
   // Whether a read of the list has landed yet. Until one has, an empty `items`
   // means the list couldn't be loaded, not that it has no items.
@@ -353,9 +354,10 @@ export default function WishlistDetail() {
         // Rejects when the read fails, so a failed poll or reconcile keeps the
         // list on screen: only a successful read replaces it.
         const data = await fetchItemsHook(wishlistId);
-        // Drop a poll result that raced with a mutation (started before the
-        // mutation settled) so it can't overwrite fresher local state.
-        if (silent && isStalePoll(startedAt, lastMutationAt.current)) return;
+        // Drop a poll result that raced with a mutation (landed while one was in
+        // flight, or started before one settled) so it can't overwrite fresher
+        // local state.
+        if (silent && mutations.isStale(startedAt)) return;
         setItems(data);
         setItemsLoaded(true);
       } catch (error) {
@@ -369,7 +371,7 @@ export default function WishlistDetail() {
         }
       }
     },
-    [fetchItemsHook, wishlistId, showToast]
+    [fetchItemsHook, wishlistId, showToast, mutations]
   );
 
   useEffect(() => {
@@ -404,10 +406,10 @@ export default function WishlistDetail() {
 
   const createItemHook = useCreateItem(
     (newItem) => {
-      // Mark the settle time, so a poll whose read started before this is
-      // dropped instead of replacing the list without the new item. One that
-      // read after the write may already list it: don't add a second copy.
-      lastMutationAt.current = Date.now();
+      // handleCreateItem tracks the request until after this runs, so a poll
+      // whose read started before it settled is dropped instead of replacing
+      // the list without the new item. One that read after the write may
+      // already list it: don't add a second copy.
       setItems((prevItems) => prependCreatedItem(prevItems, newItem));
       showToast('Item added successfully', 'success');
     },
@@ -441,15 +443,14 @@ export default function WishlistDetail() {
       if (!wishlistId) return;
       // The hook toasts a failure and resolves null. Reject so AddItemModal
       // stays open with the user's input; it closes itself on success.
-      const created = await createItemHook(wishlistId, itemData);
+      const created = await mutations.track(() => createItemHook(wishlistId, itemData));
       if (!created) throw new Error('Failed to create item');
     },
-    [createItemHook, wishlistId]
+    [createItemHook, wishlistId, mutations]
   );
 
   const handleUpdateItem = useCallback(
     async (id: string, updates: Partial<ApiItem>) => {
-      lastMutationAt.current = Date.now();
       // Optimistic: reflect the change immediately.
       setItems((prevItems) =>
         prevItems.map((item) => {
@@ -469,9 +470,9 @@ export default function WishlistDetail() {
         })
       );
 
-      const updated = await updateItemHook(id, updates);
-      // Mark the settle time so any poll that read across this mutation is dropped.
-      lastMutationAt.current = Date.now();
+      // Tracked, so no poll lands until it settles, and one that read across it
+      // is dropped afterwards.
+      const updated = await mutations.track(() => updateItemHook(id, updates));
 
       if (updated) {
         // Merge authoritative server fields into just this item. The PATCH
@@ -486,7 +487,7 @@ export default function WishlistDetail() {
       }
       return updated;
     },
-    [updateItemHook, session?.user?.id, fetchItems]
+    [updateItemHook, session?.user?.id, fetchItems, mutations]
   );
 
   const handleProposeItem = useCallback(
@@ -499,20 +500,22 @@ export default function WishlistDetail() {
       status: 'proposed';
     }) => {
       if (!wishlistId) return;
-      let result: ApiResponse<ApiItem> | null = null;
-      try {
-        const response = await fetch(`/api/wishlists/${wishlistId}/items`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(itemData),
-        });
+      const result = await mutations.track(async (): Promise<ApiResponse<ApiItem> | null> => {
+        try {
+          const response = await fetch(`/api/wishlists/${wishlistId}/items`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(itemData),
+          });
 
-        result = await response.json();
-      } catch (error) {
-        console.error('Error proposing item:', error);
-      }
+          return await response.json();
+        } catch (error) {
+          console.error('Error proposing item:', error);
+          return null;
+        }
+      });
 
       // Every failure rejects after its toast, so ProposeItemModal stays open
       // with the user's input; it closes itself on success.
@@ -523,11 +526,10 @@ export default function WishlistDetail() {
         throw new Error(message);
       }
       // Same poll guards as an owner's add (see createItemHook).
-      lastMutationAt.current = Date.now();
       setItems((prevItems) => prependCreatedItem(prevItems, proposed));
       showToast('Item proposed successfully', 'success');
     },
-    [wishlistId, showToast]
+    [wishlistId, showToast, mutations]
   );
 
   // Approving has its own optimistic path rather than handleUpdateItem's: a
@@ -540,14 +542,12 @@ export default function WishlistDetail() {
       // The proposal as the list shows it now, to put back if the approve fails.
       const proposal = items.find((item) => item._id === itemId);
 
-      lastMutationAt.current = Date.now();
       setItems((prevItems) =>
         prevItems.map((item) => (item._id === itemId ? { ...item, ...updates } : item))
       );
 
-      const approved = await updateItemHook(itemId, updates);
-      // Mark the settle time so any poll that read across this mutation is dropped.
-      lastMutationAt.current = Date.now();
+      // Same poll guard as handleUpdateItem.
+      const approved = await mutations.track(() => updateItemHook(itemId, updates));
 
       if (!approved) {
         // The hook has already toasted the API's error. Roll the optimistic
@@ -566,22 +566,21 @@ export default function WishlistDetail() {
       // ReviewItemModal closes itself on success.
       showToast('Item approved successfully', 'success');
     },
-    [itemToReview, items, updateItemHook, fetchItems, showToast]
+    [itemToReview, items, updateItemHook, fetchItems, showToast, mutations]
   );
 
   const handleDeleteProposedItem = useCallback(async () => {
     if (!itemToReview) return;
     const itemId = itemToReview._id;
     // The hook toasts a failure and resolves false. Reject so ReviewItemModal
-    // stays open and the item stays listed; it closes itself on success.
-    const deleted = await deleteItemHook(itemId);
+    // stays open and the item stays listed; it closes itself on success. The
+    // request is tracked, so a poll whose read started before the delete
+    // settled is dropped instead of bringing the deleted item back.
+    const deleted = await mutations.track(() => deleteItemHook(itemId));
     if (!deleted) throw new Error('Failed to delete item');
-    // Mark the settle time, so a poll whose read started before this is
-    // dropped instead of bringing the deleted item back.
-    lastMutationAt.current = Date.now();
     setItems((prevItems) => prevItems.filter((item) => item._id !== itemId));
     showToast('Proposed item deleted', 'success');
-  }, [itemToReview, deleteItemHook, showToast]);
+  }, [itemToReview, deleteItemHook, showToast, mutations]);
 
   const handleEditItem = useCallback((item: ApiItem) => {
     setItemToEdit(item);
@@ -605,13 +604,12 @@ export default function WishlistDetail() {
     const itemId = itemToEdit._id;
     // The hook toasts a failure and resolves false. Reject so EditItemModal
     // stays open and the item stays listed; it closes itself on success.
-    const deleted = await deleteItemHook(itemId);
-    if (!deleted) throw new Error('Failed to delete item');
     // Same poll guard as handleDeleteProposedItem.
-    lastMutationAt.current = Date.now();
+    const deleted = await mutations.track(() => deleteItemHook(itemId));
+    if (!deleted) throw new Error('Failed to delete item');
     setItems((prevItems) => prevItems.filter((item) => item._id !== itemId));
     showToast('Item deleted successfully', 'success');
-  }, [itemToEdit, deleteItemHook, showToast]);
+  }, [itemToEdit, deleteItemHook, showToast, mutations]);
 
   const handleInvite = useCallback(
     async (payload: { username: string; role: 'owner' | 'member' }) => {

@@ -3,7 +3,7 @@ import { randomBytes } from 'crypto';
 
 // The wishlist page polls its items every 5 s (and whenever the tab becomes
 // visible), replacing the whole list with the server's. These specs pin the
-// order in which a poll and an add, proposal or delete land, so the page is
+// order in which a poll and an add, proposal, delete or update land, so the page is
 // told it's hidden from the start (it skips every timer tick) and each poll is
 // fired by hand with a visibilitychange. Concurrent item reads share one
 // request, so a stray tick would also swallow the poll a spec fires.
@@ -133,18 +133,20 @@ for (const flow of [
     expect(await card.count()).toBe(1);
   });
 
-  // regression: the POST response was prepended unconditionally, so when a poll
-  // that read after the server's write had already listed the item, the same
-  // _id showed up twice until the next poll.
-  test(`regression: a poll that already listed the ${flow.as}'s new item doesn't get it doubled`, async ({
+  // regression: the POST response was prepended unconditionally, so when a read
+  // made after the server's write had already listed the item, the same _id
+  // showed up twice until the next poll. A poll that lands while the POST is in
+  // flight is dropped, but the initial load always lands, so that's the read
+  // that lists it here.
+  test(`regression: a read that already listed the ${flow.as}'s new item doesn't get it doubled`, async ({
     page,
   }) => {
     const name = `E2E Doubled ${flow.as}`;
     const card = page.getByRole('article', { name: `Item: ${name}` });
-    const { submit, userId } = await openAndFill(page, name);
+    const userId = await signedInUserId(page);
 
     // The item is "saved" as soon as the POST arrives, but its response is held
-    // until a poll has listed it.
+    // until the initial load, which waits for the save, has listed it.
     let saved: ReturnType<typeof createdItem> | undefined;
     const postArrived = deferred();
     const answerPost = deferred();
@@ -156,15 +158,21 @@ for (const flow of [
         await answerPost.promise;
         return route.fulfill({ status: 201, json: { success: true, data: saved } });
       }
+      await postArrived.promise;
       const response = await route.fetch();
       const body = await response.json();
-      if (saved) body.data = [saved, ...body.data];
+      body.data = [saved, ...body.data];
       await route.fulfill({ response, json: body });
     });
-    await submit.click();
+    await takeOverPolling(page);
+    await page.goto(`/wishlists/${flow.list}`);
+    // The button shows before the items have loaded.
+    await page.getByRole('button', { name: flow.open }).click();
+    const dialog = page.getByRole('dialog', { name: flow.title });
+    await dialog.getByLabel('Item Name').fill(name);
+    await dialog.getByRole('button', { name: flow.submit, exact: true }).click();
     await postArrived.promise;
 
-    await pollOnce(page);
     await expect(card).toHaveCount(1);
 
     answerPost.resolve();
@@ -274,5 +282,159 @@ for (const flow of [
     // The page has had the stale list for a while now, and no later poll can
     // run to take the item out again, so this count is the settled state.
     expect(await card.count()).toBe(0);
+  });
+}
+
+// A member's list with something to book: added to its reads in the browser,
+// like the owner's proposal above.
+const polledBookable = {
+  _id: '0000000000000000000e2e03',
+  wishlist: 'e2e',
+  name: 'E2E Polled Bookable',
+  status: 'available',
+  bookedBy: null,
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
+};
+
+const cardOf = (page: Page, name: string) => page.getByRole('article', { name: `Item: ${name}` });
+
+for (const flow of [
+  {
+    during: 'an edit',
+    list: 'e2e-birthday',
+    extra: null,
+    async start(page: Page) {
+      await cardOf(page, 'E2E Gift').getByRole('button', { name: 'Edit item' }).click();
+      const dialog = page.getByRole('dialog', { name: 'Edit Item' });
+      await dialog.getByLabel('Item Name').fill('E2E Renamed Gift');
+      await dialog.getByRole('button', { name: 'Save Changes' }).click();
+    },
+    changed: (page: Page) => cardOf(page, 'E2E Renamed Gift'),
+    reverted: (page: Page) => cardOf(page, 'E2E Gift'),
+    async settled(page: Page) {
+      await expect(page.getByRole('dialog', { name: 'Edit Item' })).toBeHidden();
+    },
+  },
+  {
+    during: 'an approve',
+    list: 'e2e-birthday',
+    extra: polledProposal,
+    async start(page: Page) {
+      await cardOf(page, polledProposal.name)
+        .getByRole('button', { name: 'Review proposed item' })
+        .click();
+      await page
+        .getByRole('dialog', { name: 'Review Proposed Item' })
+        .getByRole('button', { name: 'Approve Item' })
+        .click();
+    },
+    // Only a published item has owner buttons; a proposal is reviewed instead.
+    changed: (page: Page) =>
+      cardOf(page, polledProposal.name).getByRole('button', { name: 'Edit item' }),
+    reverted: (page: Page) =>
+      cardOf(page, polledProposal.name).getByText('Proposed', { exact: true }),
+    async settled(page: Page) {
+      await expect(page.getByRole('status').getByText('Item approved successfully')).toBeVisible();
+      await expect(page.getByRole('dialog', { name: 'Review Proposed Item' })).toBeHidden();
+    },
+  },
+  {
+    during: 'a booking',
+    list: 'e2e-friend',
+    extra: polledBookable,
+    async start(page: Page) {
+      await cardOf(page, polledBookable.name)
+        .getByRole('button', { name: 'Book this item', exact: true })
+        .click();
+    },
+    changed: (page: Page) => cardOf(page, polledBookable.name).getByText('Booked by you'),
+    reverted: (page: Page) =>
+      cardOf(page, polledBookable.name).getByRole('button', {
+        name: 'Book this item',
+        exact: true,
+      }),
+    async settled(page: Page) {
+      await expect(
+        cardOf(page, polledBookable.name).getByRole('button', { name: 'Unbook this item' })
+      ).toBeEnabled();
+    },
+  },
+]) {
+  // regression: a poll was dropped only if the update's settle stamp was later
+  // than the poll's start. One that started after the update did and resolved
+  // before its PATCH settled was applied, so the server's copy from before the
+  // write flipped the item back (the edit undone, the proposal "Proposed" again
+  // under "Approving...", the booking un-booked) until the PATCH response landed.
+  test(`regression: a poll that reads during ${flow.during} doesn't undo it before it settles`, async ({
+    page,
+  }) => {
+    const userId = await signedInUserId(page);
+
+    // Every read passes through to the server (plus the flow's extra item), so
+    // the poll gets the item as it was before the update.
+    let served: Array<{ _id: string }> = [];
+    await page.route('**/api/wishlists/*/items', async (route: Route) => {
+      if (route.request().method() !== 'GET') return route.fallback();
+      const response = await route.fetch();
+      const body = await response.json();
+      if (body.success) {
+        if (flow.extra) body.data = [flow.extra, ...body.data];
+        served = body.data;
+      }
+      await route.fulfill({ response, json: body });
+    });
+
+    // The PATCH is held until the poll has landed, then answered here as the
+    // server would, so nothing reaches the seeded database.
+    const patchArrived = deferred();
+    const answerPatch = deferred();
+    await page.route('**/api/items/*', async (route: Route) => {
+      const request = route.request();
+      if (request.method() !== 'PATCH') return route.fallback();
+      patchArrived.resolve();
+      await answerPatch.promise;
+      const id = new URL(request.url()).pathname.split('/').pop();
+      const updates = request.postDataJSON();
+      const current = served.find((item) => item._id === id);
+      await route.fulfill({
+        json: {
+          success: true,
+          data: {
+            ...current,
+            ...updates,
+            ...(updates.status === 'booked' ? { bookedBy: userId } : {}),
+          },
+        },
+      });
+    });
+
+    await takeOverPolling(page);
+    await page.goto(`/wishlists/${flow.list}`);
+    // The card can only be acted on once the initial load is done, so the poll
+    // below is a request of its own.
+    await flow.start(page);
+    await patchArrived.promise;
+    await expect(flow.changed(page)).toBeVisible();
+
+    // The poll starts after the update did and lands while its PATCH is held.
+    const pollDone = page.waitForEvent(
+      'requestfinished',
+      (r) =>
+        r.method() === 'GET' && /^\/api\/wishlists\/[^/]+\/items$/.test(new URL(r.url()).pathname)
+    );
+    await pollOnce(page);
+    await pollDone;
+    await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 250)));
+
+    // The page has had the poll's list for a while now, and the PATCH is still
+    // held, so these counts are what it shows until the update settles.
+    expect(await flow.reverted(page).count()).toBe(0);
+    expect(await flow.changed(page).count()).toBe(1);
+
+    answerPatch.resolve();
+    await flow.settled(page);
+    await expect(flow.changed(page)).toBeVisible();
+    expect(await flow.reverted(page).count()).toBe(0);
   });
 }
