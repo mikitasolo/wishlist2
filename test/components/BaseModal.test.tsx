@@ -2,9 +2,10 @@
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
 import { render, screen, act, cleanup, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { StrictMode, useState, type ReactNode } from 'react';
+import { StrictMode, useState, type FormEvent, type ReactNode } from 'react';
 import BaseModal from '@/components/BaseModal';
 import ConfirmDialog from '@/components/ConfirmDialog';
+import { emulateFocusFixup } from '../focusFixup';
 
 // useBodyScrollLock restores the scroll position on close; jsdom lacks scrollTo.
 beforeAll(() => {
@@ -165,6 +166,159 @@ describe('BaseModal — keyboard focus', () => {
 
     // Closing the modal hands focus back to the page.
     await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(button('Open')).toHaveFocus();
+  });
+});
+
+/**
+ * A modal whose form saves through `onSave`, disabling its controls (and so
+ * the modal's close button) while it runs, as the item modals do. A save that
+ * resolves closes the modal; one that rejects leaves it open, and with
+ * `dropSubmitOnFailure` takes the submit button away. `extra` goes at the top
+ * of the form.
+ */
+function SavingPage({
+  onSave,
+  extra,
+  dropSubmitOnFailure,
+}: {
+  onSave: () => Promise<void>;
+  extra?: ReactNode;
+  dropSubmitOnFailure?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const save = async (e: FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await onSave();
+      setOpen(false);
+    } catch {
+      setFailed(true);
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <>
+      <button onClick={() => setOpen(true)}>Open</button>
+      <BaseModal
+        isOpen={open}
+        onClose={() => setOpen(false)}
+        title="Edit Item"
+        titleId="edit-item-title"
+        isSubmitting={saving}
+      >
+        <form onSubmit={save}>
+          {extra}
+          <input aria-label="Item Name" disabled={saving} />
+          {failed && dropSubmitOnFailure ? (
+            <p>Saving is unavailable right now.</p>
+          ) : (
+            <button type="submit" disabled={saving}>
+              Save
+            </button>
+          )}
+        </form>
+      </BaseModal>
+    </>
+  );
+}
+
+/** An onSave that stays in flight until the test settles it. */
+function deferredSave() {
+  let settle!: { resolve: () => void; reject: (error: Error) => void };
+  const onSave = vi.fn(
+    () =>
+      new Promise<void>((resolve, reject) => {
+        settle = { resolve, reject };
+      })
+  );
+  return {
+    onSave,
+    succeed: () => act(async () => settle.resolve()),
+    fail: () => act(async () => settle.reject(new Error('Save failed'))),
+  };
+}
+
+describe('BaseModal — keyboard focus while submitting', () => {
+  // A disabled control drops focus to <body>, as in a browser.
+  beforeEach(() => emulateFocusFixup());
+
+  async function startSaving(props: { extra?: ReactNode; dropSubmitOnFailure?: boolean } = {}) {
+    const user = userEvent.setup();
+    const save = deferredSave();
+    render(<SavingPage onSave={save.onSave} {...props} />);
+    await user.click(button('Open'));
+    await user.click(button('Save'));
+    expect(button('Save')).toBeDisabled();
+    expect(button('Close modal')).toBeDisabled();
+    return { user, ...save };
+  }
+
+  // regression: disabling the focused submit button dropped focus to <body>,
+  // behind the backdrop; after a failed save it stayed there, so Enter did
+  // nothing and the next Tab started over at the close button.
+  it('regression: holds focus on its panel, then hands it back to the control that had it', async () => {
+    const { user, fail } = await startSaving();
+
+    expect(modal()).toHaveFocus();
+    await user.tab();
+    expect(modal()).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(modal()).toHaveFocus();
+
+    await fail();
+    expect(button('Save')).toBeEnabled();
+    expect(button('Save')).toHaveFocus();
+  });
+
+  it("keeps focus on its panel when that control can't take it again", async () => {
+    const { user, fail } = await startSaving({ dropSubmitOnFailure: true });
+
+    await fail();
+    expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
+    expect(modal()).toHaveFocus();
+    await user.tab();
+    expect(button('Close modal')).toHaveFocus();
+  });
+
+  it('leaves focus where it was moved inside it while submitting', async () => {
+    const { user, fail } = await startSaving({ extra: <a href="#help">Help</a> });
+    const help = screen.getByRole('link', { name: 'Help' });
+
+    // The link stays enabled, so Tab reaches it from the panel.
+    await user.tab();
+    expect(help).toHaveFocus();
+
+    await fail();
+    expect(help).toHaveFocus();
+  });
+
+  it('leaves focus on a control that stays enabled while submitting', async () => {
+    const user = userEvent.setup();
+    const { onSave, fail } = deferredSave();
+    render(<SavingPage onSave={onSave} extra={<input aria-label="Search" />} />);
+    await user.click(button('Open'));
+    const search = screen.getByLabelText('Search');
+
+    // Enter submits the form from a field that saving doesn't disable.
+    await user.click(search);
+    await user.keyboard('{Enter}');
+    expect(button('Save')).toBeDisabled();
+    expect(search).toHaveFocus();
+
+    await fail();
+    expect(search).toHaveFocus();
+  });
+
+  it('hands focus back to the opener when a successful submit closes it', async () => {
+    const { succeed } = await startSaving();
+
+    await succeed();
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(button('Open')).toHaveFocus();
   });

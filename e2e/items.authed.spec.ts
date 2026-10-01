@@ -45,5 +45,7 @@ for (const flow of [
     await expect(dialog.getByLabel('Item Name')).toHaveValue('E2E Bike');
     await expect(dialog.getByLabel('Price')).toHaveValue('120');
     await expect(dialog.getByRole('button', { name: flow.submit, exact: true })).toBeEnabled();
+    // Saving disabled the submit button; focus is back on it, not on <body>.
+    await expect(dialog.getByRole('button', { name: flow.submit, exact: true })).toBeFocused();
   });
 }

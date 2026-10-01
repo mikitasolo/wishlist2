@@ -55,10 +55,12 @@ export default function BaseModal({
   useBodyScrollLock(isOpen);
 
   // Focus starts on the close button (unless the content has an `autoFocus`),
-  // stays inside while it's open, and goes back on close.
+  // stays inside while it's open, and goes back on close. While a submit has
+  // the form disabled, it's held on the panel, then goes back to the control
+  // that had it (the submit button, after a failed save).
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
-  useFocusTrap(isOpen, dialogRef, closeButtonRef);
+  useFocusTrap(isOpen, dialogRef, closeButtonRef, { busy: isSubmitting });
 
   const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
     // Only close if clicking the backdrop itself, not the modal content

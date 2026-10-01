@@ -14,6 +14,12 @@ import { useEffect, useRef, useState, type RefObject } from 'react';
  *   never reach the page, or a dialog underneath, behind its backdrop. Dialogs
  *   stack in the order they open: a confirmation opened over a modal traps
  *   focus until it closes, then the modal does again.
+ * - While `busy` (its form is saving, its controls disabled), focus is held on
+ *   the container if the control inside that had it was disabled, so it
+ *   doesn't drop to <body> with it. When `busy` ends with the dialog still
+ *   open, focus goes back to that control if it can take focus again, else
+ *   stays on the container. Focus on a control that stays enabled is left
+ *   alone, and so is focus in a dialog stacked over this one (that's its own).
  * - On close, focus goes back to the element that had it when the dialog
  *   opened, if that's still in the document and focus hasn't since been moved
  *   somewhere outside the dialog on purpose. If the dialog's action disabled
@@ -99,7 +105,8 @@ function returnFocus(opener: HTMLElement) {
 export function useFocusTrap(
   active: boolean,
   containerRef: RefObject<HTMLElement | null>,
-  initialFocusRef?: RefObject<HTMLElement | null>
+  initialFocusRef?: RefObject<HTMLElement | null>,
+  { busy = false }: { busy?: boolean } = {}
 ) {
   // Where focus was when the dialog opened. Read while rendering the open,
   // because by the time an effect runs an `autoFocus` inside the dialog has
@@ -186,4 +193,47 @@ export function useFocusTrap(
       });
     };
   }, [active, containerRef, initialFocusRef, opener]);
+
+  // Where focus was when `busy` began in the open dialog. Read while rendering
+  // it, like `opener`: by the time an effect runs, the commit has disabled the
+  // control that had it, and focus may have dropped to <body> with it.
+  const holding = active && busy;
+  const [busyFrom, setBusyFrom] = useState<{ holding: boolean; focused: Element | null }>({
+    holding: false,
+    focused: null,
+  });
+  if (busyFrom.holding !== holding) {
+    setBusyFrom({ holding, focused: holding ? document.activeElement : null });
+  }
+  const heldFrom = busyFrom.focused;
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (
+      !container ||
+      !(heldFrom instanceof HTMLElement) ||
+      heldFrom === container ||
+      !container.contains(heldFrom)
+    ) {
+      return;
+    }
+
+    // Only if that control was disabled: focus has dropped with it, or will
+    // when the browser fixes it up. The trap's Tab handling then keeps it on
+    // the container while every control is disabled.
+    const focused = document.activeElement;
+    const dropped =
+      focusIsLost() || (!!focused && container.contains(focused) && focused.matches(':disabled'));
+    if (!dropped) return;
+    container.focus({ preventScroll: true });
+
+    return () => {
+      // `busy` has ended. If the dialog closed with it, it's gone from the
+      // document and the close returns focus to the opener instead. If focus
+      // has left the container, it went somewhere on purpose.
+      if (!container.isConnected) return;
+      if (document.activeElement !== container && !focusIsLost()) return;
+      if (heldFrom.isConnected) heldFrom.focus();
+    };
+  }, [containerRef, heldFrom]);
 }
