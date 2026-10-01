@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import mongoose from 'mongoose';
 import { auth } from '@/lib/auth';
 import { enforce, userKey } from '@/lib/rateLimit';
 import connectDB from '@/lib/mongodb';
@@ -21,6 +20,7 @@ import {
   withdrawInvite,
 } from '@/lib/utils/wishlistInvites';
 import { publicDisplayName } from '@/lib/utils/displayName';
+import { isObjectIdParam } from '@/lib/utils/objectId';
 
 /**
  * Who owns a wishlist. Owners have no `WishlistMember` row (they live in
@@ -134,7 +134,7 @@ export async function POST(
         { success: false, error: "This person isn't a member of this wishlist" },
         { status: 404 }
       );
-    if (!mongoose.isObjectIdOrHexString(userId)) return notAMember();
+    if (!isObjectIdParam(userId)) return notAMember();
     const [membership, target] = await Promise.all([
       WishlistMember.exists({ wishlist: id, user: userId }),
       User.findById(userId).select('email username'),

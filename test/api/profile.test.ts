@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
 import { NextRequest } from 'next/server';
+import mongoose from 'mongoose';
 import { connectTestDB, disconnectTestDB, clearTestDB } from '../db';
 
 vi.mock('@/lib/mongodb', () => ({ default: vi.fn().mockResolvedValue(undefined) }));
@@ -8,6 +9,10 @@ vi.mock('@/lib/auth', () => ({ auth: vi.fn() }));
 import { auth } from '@/lib/auth';
 import { GET as BY_USERNAME } from '@/app/api/users/by-username/[username]/route';
 import { GET as USER_WISHLISTS } from '@/app/api/users/[id]/wishlists/route';
+import { GET as GET_USER } from '@/app/api/users/[id]/route';
+import { POST as FOLLOW, DELETE as UNFOLLOW } from '@/app/api/users/[id]/follow/route';
+import { GET as FOLLOWERS } from '@/app/api/users/[id]/followers/route';
+import { GET as FOLLOWING } from '@/app/api/users/[id]/following/route';
 import User from '@/models/User';
 import Follow from '@/models/Follow';
 import Wishlist from '@/models/Wishlist';
@@ -115,5 +120,65 @@ describe('users/[id]/wishlists — list visibility under friends-only', () => {
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.data.some((w: { name: string }) => w.name === 'Mugs')).toBe(true);
+  });
+});
+
+describe('users/[id] routes — a malformed id', () => {
+  const BAD_IDS = ['not-an-id', '12345', 'z'.repeat(24)];
+  const at = (path: string, method = 'GET') =>
+    new NextRequest('http://localhost/api/users/' + path, { method });
+  const params = (id: string) => ({ params: Promise.resolve({ id }) });
+
+  // regression: a malformed id made the user lookup throw a CastError, so these
+  // routes answered 500 instead of their "User not found" 404.
+  it.each(BAD_IDS)(
+    'regression: GET /users/[id], its wishlists and follow answer 404 (%s)',
+    async (badId) => {
+      session.mockResolvedValue({ user: { id: strangerId } } as never);
+
+      const responses = [
+        await GET_USER(at(badId), params(badId)),
+        await USER_WISHLISTS(at(`${badId}/wishlists`), params(badId)),
+        await FOLLOW(at(`${badId}/follow`, 'POST'), params(badId)),
+      ];
+      for (const res of responses) {
+        expect(res.status).toBe(404);
+        expect(await res.json()).toEqual({ success: false, error: 'User not found' });
+      }
+      expect(await Follow.countDocuments()).toBe(2);
+    }
+  );
+
+  // regression: these query the follow edges with the raw id, so a malformed one
+  // threw a CastError and they answered 500. They have no "not found": an id that
+  // matches nobody has nothing to unfollow and no followers, and a malformed id
+  // now gets exactly that answer.
+  it.each(BAD_IDS)(
+    'regression: unfollow, followers and following answer as for an unknown user (%s)',
+    async (badId) => {
+      const ghost = new mongoose.Types.ObjectId().toString();
+      session.mockResolvedValue({ user: { id: friendId } } as never);
+
+      const routes = [
+        (id: string) => UNFOLLOW(at(`${id}/follow`, 'DELETE'), params(id)),
+        (id: string) => FOLLOWERS(at(`${id}/followers`), params(id)),
+        (id: string) => FOLLOWING(at(`${id}/following`), params(id)),
+      ];
+      for (const route of routes) {
+        const [malformed, unknown] = [await route(badId), await route(ghost)];
+        expect(malformed.status).toBe(200);
+        expect(await malformed.json()).toEqual(await unknown.json());
+      }
+      expect(await Follow.countDocuments()).toBe(2);
+    }
+  );
+
+  it('answers a signed-out follow or unfollow with the 401, before looking at the id', async () => {
+    session.mockResolvedValue(null as never);
+
+    expect((await FOLLOW(at('not-an-id/follow', 'POST'), params('not-an-id'))).status).toBe(401);
+    expect((await UNFOLLOW(at('not-an-id/follow', 'DELETE'), params('not-an-id'))).status).toBe(
+      401
+    );
   });
 });

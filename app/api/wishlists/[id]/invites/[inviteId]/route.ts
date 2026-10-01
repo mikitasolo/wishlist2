@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import mongoose from 'mongoose';
 import { auth } from '@/lib/auth';
 import connectDB from '@/lib/mongodb';
 import WishlistInvite from '@/models/WishlistInvite';
 import Notification from '@/models/Notification';
 import { resolveWishlistId } from '@/lib/utils/wishlistSlug';
 import { isOwnerOfWishlist } from '@/lib/utils/wishlistAccess';
+import { isObjectIdParam } from '@/lib/utils/objectId';
 
 // DELETE /api/wishlists/[id]/invites/[inviteId] - cancel a pending invite (owners).
 export async function DELETE(
@@ -29,7 +29,7 @@ export async function DELETE(
 
     // A malformed id can't match any invite: answer like a missing one, not with
     // the CastError's 500.
-    if (!mongoose.isObjectIdOrHexString(inviteId)) {
+    if (!isObjectIdParam(inviteId)) {
       return NextResponse.json({ success: false, error: 'Invite not found' }, { status: 404 });
     }
 

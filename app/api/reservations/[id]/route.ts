@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth';
 import connectDB from '@/lib/mongodb';
 import Reservation from '@/models/Reservation';
 import { deleteReservations } from '@/lib/utils/reservationSnapshots';
+import { isObjectIdParam } from '@/lib/utils/objectId';
 
 // DELETE /api/reservations/[id] - dismiss a reservation without logging a gift
 // (e.g. the owner completed it themselves and you never gave it). Removes it
@@ -19,7 +20,7 @@ export async function DELETE(
     const { id } = await params;
     await connectDB();
 
-    const reservation = await Reservation.findById(id);
+    const reservation = isObjectIdParam(id) ? await Reservation.findById(id) : null;
     if (!reservation || reservation.gifter.toString() !== session.user.id) {
       return NextResponse.json({ success: false, error: 'Reservation not found' }, { status: 404 });
     }

@@ -2,11 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import User from '@/models/User';
 import Follow from '@/models/Follow';
+import { isObjectIdParam } from '@/lib/utils/objectId';
 
 // GET /api/users/[id]/following - list the people this user follows
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
+    // A malformed id is nobody, so the list is empty: the answer for an unknown user.
+    if (!isObjectIdParam(id)) {
+      return NextResponse.json({ success: true, data: [] }, { status: 200 });
+    }
     await connectDB();
 
     const edges = await Follow.find({ follower: id })

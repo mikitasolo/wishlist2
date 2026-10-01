@@ -13,6 +13,7 @@ import {
   ownerIds,
   serializeWishlist,
 } from '@/lib/utils/wishlistOwners';
+import { isObjectIdParam } from '@/lib/utils/objectId';
 
 // GET /api/users/[id]/wishlists - Get wishlists for a specific user
 // Returns: public wishlists + wishlists the current user has access to
@@ -24,7 +25,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     await connectDB();
 
     // Check if target user exists
-    const targetUser = await User.findById(userId);
+    const targetUser = isObjectIdParam(userId) ? await User.findById(userId) : null;
     if (!targetUser) {
       return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
     }

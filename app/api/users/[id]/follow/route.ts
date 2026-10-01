@@ -5,6 +5,7 @@ import connectDB from '@/lib/mongodb';
 import User from '@/models/User';
 import Follow from '@/models/Follow';
 import { createNotification } from '@/lib/notifications';
+import { isObjectIdParam } from '@/lib/utils/objectId';
 
 // POST /api/users/[id]/follow - follow a user
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -27,7 +28,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     await connectDB();
-    const target = await User.findById(targetId).select('_id');
+    const target = isObjectIdParam(targetId) ? await User.findById(targetId).select('_id') : null;
     if (!target) {
       return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
     }
@@ -67,8 +68,12 @@ export async function DELETE(
     }
     const { id: targetId } = await params;
 
-    await connectDB();
-    await Follow.deleteOne({ follower: session.user.id, following: targetId });
+    // A malformed id follows nobody, so there's nothing to unfollow: the same
+    // answer as for anyone you don't follow.
+    if (isObjectIdParam(targetId)) {
+      await connectDB();
+      await Follow.deleteOne({ follower: session.user.id, following: targetId });
+    }
 
     return NextResponse.json({ success: true }, { status: 200 });
   } catch (error) {

@@ -20,6 +20,7 @@ import {
 import { createNotification } from '@/lib/notifications';
 import { isWishlistOwner, primaryOwnerId } from '@/lib/utils/wishlistOwners';
 import { isHiddenByArchive } from '@/lib/utils/wishlistAccess';
+import { isObjectIdParam } from '@/lib/utils/objectId';
 
 // PATCH /api/items/[id] - Update an item
 // Members can book/unbook items (only their own bookings)
@@ -49,7 +50,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     const { id } = await params;
 
-    const currentItem = await Item.findById(id);
+    const currentItem = isObjectIdParam(id) ? await Item.findById(id) : null;
     if (!currentItem) {
       return NextResponse.json({ success: false, error: 'Item not found' }, { status: 404 });
     }
@@ -412,7 +413,7 @@ export async function DELETE(
     await connectDB();
     const { id } = await params;
 
-    const item = await Item.findById(id);
+    const item = isObjectIdParam(id) ? await Item.findById(id) : null;
     if (!item) {
       return NextResponse.json({ success: false, error: 'Item not found' }, { status: 404 });
     }
