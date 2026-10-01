@@ -152,11 +152,12 @@ export async function cancelPendingInvites(wishlistId: Id, userId: Id): Promise<
 }
 
 /**
- * Take back one invite that a concurrent removal's `cancelPendingInvites` missed,
- * as that cancel would have:
+ * Take back one invite that a concurrent removal's `cancelPendingInvites` (or a
+ * list delete's invite cleanup) missed, as that cleanup would have:
  *   - `pending`: a promotion found the member gone right after issuing it.
  *   - `accepted`: accept had already claimed it when the invitee was taken off
- *     the list, and found their membership gone before granting anything.
+ *     the list, and found their membership gone before granting anything. Or the
+ *     list was deleted under the accept, which then granted nothing.
  *
  * The row goes only while it still has that status. Returns whether the invite is
  * gone now: `false` means it has been answered since, so it wasn't this call's to

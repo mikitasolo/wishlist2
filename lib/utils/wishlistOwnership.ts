@@ -92,18 +92,24 @@ export async function releaseHoldingsForRole(
  *
  * For someone who isn't on the list. Promote a member with `promoteMemberToOwner`,
  * which can't race a kick.
+ *
+ * Returns `null`, having changed nothing, when the ownership write matched no list:
+ * it was deleted since the caller read it. Nothing is released then either. On a
+ * deleted list that would only destroy their reservations, which the delete keeps
+ * on purpose so they can still log the gift.
  */
 export async function addWishlistOwner(
   wishlist: WishlistShape,
   userId: string
-): Promise<{ unbookedItems: number; cancelledReservations: number }> {
+): Promise<{ unbookedItems: number; cancelledReservations: number } | null> {
   await connectDB();
 
   const wishlistId = wishlist._id.toString();
-  await Wishlist.updateOne(
+  const { matchedCount } = await Wishlist.updateOne(
     { _id: wishlistId },
     { $addToSet: { owners: new mongoose.Types.ObjectId(userId) } }
   );
+  if (matchedCount === 0) return null;
   await WishlistMember.deleteMany({ wishlist: wishlistId, user: userId });
 
   return releaseHoldingsForRole(wishlistId, userId, 'owner');
@@ -120,6 +126,10 @@ export async function addWishlistOwner(
  * the member the owners had just removed would come back as a co-owner. Returns
  * `null`, having changed nothing, when the row is already gone.
  *
+ * Also `null` when the list was deleted after the row was taken, so the ownership
+ * write matched nothing. The row stays gone (the delete removes every membership
+ * of the list), and nothing is released, as in `addWishlistOwner`.
+ *
  * If the ownership write then fails, the row is put back (same id, same join date)
  * before the error propagates, so they aren't left off the list altogether. Not
  * when the write landed after all and only its acknowledgement was lost: they're
@@ -135,11 +145,12 @@ export async function promoteMemberToOwner(
   const membership = await WishlistMember.findOneAndDelete({ wishlist: wishlistId, user: userId });
   if (!membership) return null;
 
+  let matchedCount: number;
   try {
-    await Wishlist.updateOne(
+    ({ matchedCount } = await Wishlist.updateOne(
       { _id: wishlistId },
       { $addToSet: { owners: new mongoose.Types.ObjectId(userId) } }
-    );
+    ));
   } catch (err) {
     try {
       if (!(await isOwnerOfWishlist(wishlistId, userId))) {
@@ -158,6 +169,7 @@ export async function promoteMemberToOwner(
     }
     throw err;
   }
+  if (matchedCount === 0) return null;
 
   return releaseHoldingsForRole(wishlistId, userId, 'owner');
 }

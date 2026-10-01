@@ -237,7 +237,7 @@ describe('booking snapshots the item image', () => {
     await held.called;
 
     const wishlist = await Wishlist.findById(wishlistId).lean();
-    expect((await addWishlistOwner(wishlist!, gifterId)).cancelledReservations).toBe(1);
+    expect((await addWishlistOwner(wishlist!, gifterId))?.cancelledReservations).toBe(1);
     held.release();
     expect((await booking).status).toBe(200);
 
@@ -340,7 +340,7 @@ describe('a reservation that ends without a gift frees its snapshot', () => {
     const wishlist = await Wishlist.findById(wishlistId).lean();
     const released = await addWishlistOwner(wishlist!, gifterId);
 
-    expect(released.cancelledReservations).toBe(1);
+    expect(released?.cancelledReservations).toBe(1);
     expect(await Reservation.countDocuments()).toBe(0);
     expect(del.mock.calls).toEqual([[snapshot]]);
     expect((await Item.findById(itemId))?.imageUrl).toBe(itemImage);

@@ -9,12 +9,14 @@ vi.mock('@/lib/auth', () => ({ auth: vi.fn() }));
 import { auth } from '@/lib/auth';
 import { PATCH } from '@/app/api/invites/[inviteId]/route';
 import { DELETE as cancelInvite } from '@/app/api/wishlists/[id]/invites/[inviteId]/route';
+import { DELETE as deleteWishlist } from '@/app/api/wishlists/[id]/route';
 import User from '@/models/User';
 import Wishlist from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
 import WishlistInvite from '@/models/WishlistInvite';
 import Notification from '@/models/Notification';
 import Item from '@/models/Item';
+import Reservation from '@/models/Reservation';
 
 const session = vi.mocked(auth);
 
@@ -253,6 +255,136 @@ describe('PATCH /api/invites/[inviteId] claims the invite first', () => {
     const freed = await Item.findById(item._id);
     expect(freed?.status).toBe('available');
     expect(freed?.bookedBy ?? null).toBeNull();
+  });
+});
+
+// An owner deletes the list while the invitee accepts. The delete removes the list
+// first and only then its memberships, invites and notifications, so an accept that
+// read the list before it must not grant anything on it afterwards.
+describe('PATCH /api/invites/[inviteId] racing a list delete', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function deleteList() {
+    session.mockResolvedValueOnce({ user: { id: ownerId } } as never);
+    const req = new NextRequest(`http://localhost/api/wishlists/${wishlistId}`, {
+      method: 'DELETE',
+    });
+    return deleteWishlist(req, { params: Promise.resolve({ id: wishlistId }) });
+  }
+
+  /**
+   * A reservation the invitee holds on the list (a member's booking, or one they
+   * kept when they left). Deleting the list keeps it, so they can still log the gift.
+   */
+  async function inviteeReservation() {
+    const item = await Item.create({ wishlist: wishlistId, name: 'Gift', status: 'available' });
+    const reservation = await Reservation.create({
+      gifter: inviteeId,
+      wishlist: wishlistId,
+      item: item._id,
+      owner: ownerId,
+      itemName: 'Gift',
+      wishlistName: 'List',
+    });
+    return reservation._id;
+  }
+
+  /** The delete won: the accept got the gone-list 404 and left nothing on the list. */
+  async function expectDeleteWon(
+    accepted: Response,
+    race: { held: () => boolean; outcome: () => Response | undefined }
+  ) {
+    expect(race.held()).toBe(true);
+    expect(race.outcome()?.status).toBe(200);
+    expect(await Wishlist.exists({ _id: wishlistId })).toBeNull();
+    expect(await WishlistMember.countDocuments({ wishlist: wishlistId })).toBe(0);
+    expect(await WishlistInvite.countDocuments({ wishlist: wishlistId })).toBe(0);
+    // No `invite_accepted` for the inviter, and nothing else pointing at the list.
+    expect(await Notification.countDocuments({ wishlist: wishlistId })).toBe(0);
+    expect(accepted.status).toBe(404);
+    expect(await accepted.json()).toEqual({
+      success: false,
+      error: 'This wishlist no longer exists',
+    });
+  }
+
+  // regression: joining was an upsert on the membership, against a list read before
+  // the delete landed. The delete's membership cleanup had already run, so the upsert
+  // left a membership for a list that no longer existed, and the invitee was told
+  // "Joined" and sent to a list that 404'd.
+  it('regression: a delete that lands just before a member joins leaves no membership, and the accept gets a 404', async () => {
+    const race = holdFirstCall(WishlistMember, 'findOneAndUpdate', deleteList);
+
+    const accepted = await respond(inviteId, 'accept', inviteeId);
+
+    await expectDeleteWon(accepted, race);
+  });
+
+  it('a delete that lands just after a member joins answers the accept with the same 404', async () => {
+    const race = holdFirstCall(WishlistMember, 'findOneAndUpdate', deleteList, { after: true });
+
+    const accepted = await respond(inviteId, 'accept', inviteeId);
+
+    await expectDeleteWon(accepted, race);
+  });
+
+  // The claimed invite goes with the list, as the delete's own invite cleanup would
+  // have taken it, even when that cleanup failed. It isn't reopened: accepting again
+  // could never succeed.
+  it("withdraws the claimed invite even when the delete's own invite cleanup fails", async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(WishlistInvite, 'deleteMany').mockRejectedValueOnce(new Error('db hiccup'));
+    const race = holdFirstCall(WishlistMember, 'findOneAndUpdate', deleteList);
+
+    const accepted = await respond(inviteId, 'accept', inviteeId);
+
+    await expectDeleteWon(accepted, race);
+  });
+
+  // regression: the ownership write matched no list, and becoming an owner went on to
+  // release the invitee's bookings there anyway. That deleted the reservation they
+  // kept when they left the list earlier, which the list delete keeps on purpose so
+  // they can still log the gift, and the invitee was told they'd joined.
+  it('regression: a delete that lands just before an owner invite is granted releases nothing, and the accept gets a 404', async () => {
+    await WishlistInvite.updateOne({ _id: inviteId }, { $set: { role: 'owner' } });
+    const reservationId = await inviteeReservation();
+    const race = holdFirstCall(Wishlist, 'updateOne', deleteList);
+
+    const accepted = await respond(inviteId, 'accept', inviteeId);
+
+    // The delete keeps a list's reservations for their gifters.
+    expect(await Reservation.exists({ _id: reservationId })).not.toBeNull();
+    await expectDeleteWon(accepted, race);
+  });
+
+  // regression: as above, for a promotion. Its membership row was already taken, so
+  // there's no membership to orphan, but the release still ran.
+  it('regression: a delete that lands mid-promotion releases nothing, and the accept gets a 404', async () => {
+    await WishlistMember.create({ wishlist: wishlistId, user: inviteeId });
+    await WishlistInvite.updateOne({ _id: inviteId }, { $set: { role: 'owner', promotion: true } });
+    const reservationId = await inviteeReservation();
+    // After the membership row is taken, before ownership is granted.
+    const race = holdFirstCall(Wishlist, 'updateOne', deleteList);
+
+    const accepted = await respond(inviteId, 'accept', inviteeId);
+
+    // The delete keeps a list's reservations for their gifters.
+    expect(await Reservation.exists({ _id: reservationId })).not.toBeNull();
+    await expectDeleteWon(accepted, race);
+  });
+
+  // The delete took the membership row before the promotion could, which looks like
+  // a kick to the promotion. The answer says what really happened.
+  it('a delete that lands before a promotion takes the membership answers with the gone-list 404', async () => {
+    await WishlistMember.create({ wishlist: wishlistId, user: inviteeId });
+    await WishlistInvite.updateOne({ _id: inviteId }, { $set: { role: 'owner', promotion: true } });
+    const race = holdFirstCall(WishlistMember, 'findOneAndDelete', deleteList);
+
+    const accepted = await respond(inviteId, 'accept', inviteeId);
+
+    await expectDeleteWon(accepted, race);
   });
 });
 
