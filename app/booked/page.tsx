@@ -105,11 +105,32 @@ export default function BookedPage() {
     });
   }
 
+  // The route's own 404: the record went away while this page was open. A
+  // reservation was gifted, dismissed or unbooked in another tab or on another
+  // device, or cleared when we became an owner of its list; a gift-history entry
+  // was deleted elsewhere. Every retry would 404 the same way, so take the card
+  // off the page. Any other failure keeps it, so the user can retry.
+  function reservationGone(id: string) {
+    setReservations((prev) => prev.filter((r) => r._id !== id));
+    showToast('This reservation no longer exists', 'info');
+  }
+
+  function giftGone(id: string) {
+    setGifts((prev) => prev.filter((g) => g._id !== id));
+    showToast('This gift is no longer in your history', 'info');
+  }
+
   async function markGifted(id: string) {
     setBusy(id, true);
     try {
       const res = await fetch(`/api/reservations/${id}/gift`, { method: 'POST' });
+      // Parsed first, so a 404 that isn't the route's own JSON answer (an HTML
+      // page from the platform) lands in the catch below and keeps the card.
       const result = await res.json();
+      if (res.status === 404) {
+        reservationGone(id);
+        return;
+      }
       if (result.success) {
         setReservations((prev) => prev.filter((r) => r._id !== id));
         await refreshGifts();
@@ -128,7 +149,12 @@ export default function BookedPage() {
     setBusy(id, true);
     try {
       const res = await fetch(`/api/reservations/${id}`, { method: 'DELETE' });
+      // Parsed first, as in markGifted.
       const result = await res.json();
+      if (res.status === 404) {
+        reservationGone(id);
+        return;
+      }
       if (result.success) {
         setReservations((prev) => prev.filter((r) => r._id !== id));
         showToast('Removed from your reservations', 'success');
@@ -146,7 +172,12 @@ export default function BookedPage() {
     setBusy(id, true);
     try {
       const res = await fetch(`/api/gifts/${id}`, { method: 'DELETE' });
+      // Parsed first, as in markGifted.
       const result = await res.json();
+      if (res.status === 404) {
+        giftGone(id);
+        return;
+      }
       if (result.success) {
         setGifts((prev) => prev.filter((g) => g._id !== id));
         showToast('Removed from your gift history', 'success');
