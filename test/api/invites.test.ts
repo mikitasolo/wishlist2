@@ -443,9 +443,9 @@ describe('DELETE /api/wishlists/[id]/invites/[inviteId]', () => {
     expect((await res.json()).error).toBe('Invite not found');
   });
 
-  // Until the `dedupe-pending-invites` migration has built the unique pending
-  // index, a person can hold two pending invites to one list, and the
-  // notification (which carries no invite id) could be the other one's.
+  // Without the unique pending index (dropped here to set this up), a person can
+  // hold two pending invites to one list, and the notification (which carries
+  // no invite id) could be the other one's.
   it('keeps the notification while another pending invite for them remains', async () => {
     await WishlistInvite.init();
     await WishlistInvite.collection.dropIndex('wishlist_1_invitedUser_1');
