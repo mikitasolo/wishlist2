@@ -18,6 +18,9 @@ import { isObjectIdParam } from '@/lib/utils/objectId';
 const inviteNotFound = () =>
   NextResponse.json({ success: false, error: 'Invite not found' }, { status: 404 });
 
+const wishlistGone = () =>
+  NextResponse.json({ success: false, error: 'This wishlist no longer exists' }, { status: 404 });
+
 /**
  * Record the invitee's answer on a still-pending invite, in one conditional write.
  * This is the claim: of an accept, a decline, an owner cancelling it and a removal
@@ -52,6 +55,29 @@ async function releaseClaim(inviteId: mongoose.Types.ObjectId): Promise<void> {
   } catch (err) {
     console.error(`Could not reopen invite ${inviteId} after a failed accept:`, err);
   }
+}
+
+/**
+ * Make the invitee a member, unless the list has been deleted since accept read
+ * it: then `false`, with no membership row left behind for it.
+ *
+ * The upsert can't be made conditional on the list, which lives in another
+ * collection, so the list is checked after it. Deleting a list removes the list
+ * before its memberships. So either this check finds the list gone and takes the
+ * row back, or the list was still there, and the delete's membership cleanup runs
+ * after the row exists and removes it. A check before the upsert would miss a
+ * delete that finished in between, and leave the row for good.
+ */
+async function joinAsMember(wishlistId: mongoose.Types.ObjectId, userId: string): Promise<boolean> {
+  // Membership carries no role, so joining twice is a no-op.
+  await WishlistMember.findOneAndUpdate(
+    { wishlist: wishlistId, user: userId },
+    { $set: { wishlist: wishlistId, user: userId } },
+    { upsert: true }
+  );
+  if (await Wishlist.exists({ _id: wishlistId })) return true;
+  await WishlistMember.deleteMany({ wishlist: wishlistId, user: userId });
+  return false;
 }
 
 // PATCH /api/invites/[inviteId] - accept or decline a pending invite (invitee).
@@ -97,10 +123,7 @@ export async function PATCH(
     ]);
     if (!wishlist) {
       await claimInvite(invite._id, 'declined');
-      return NextResponse.json(
-        { success: false, error: 'This wishlist no longer exists' },
-        { status: 404 }
-      );
+      return wishlistGone();
     }
     // An owner invite promotes a member when it was issued as a promotion, or when
     // they're a member now (a promotion issued before the mark existed). A marked
@@ -115,6 +138,7 @@ export async function PATCH(
     // This is where co-ownership is actually granted — the consent step. Becoming
     // an owner releases every booking the invitee held here and cancels their
     // reservations: an owner can never see, cancel, or receive their own booking.
+    // `null` once nothing was granted (see below).
     let released: { unbookedItems: number; cancelledReservations: number } | null = {
       unbookedItems: 0,
       cancelledReservations: 0,
@@ -127,12 +151,7 @@ export async function PATCH(
           released = await releaseHoldingsForRole(wishlist._id.toString(), userId, 'owner');
         }
       } else if (invite.role !== 'owner') {
-        // Membership carries no role, so joining twice is a no-op.
-        await WishlistMember.findOneAndUpdate(
-          { wishlist: invite.wishlist, user: userId },
-          { $set: { wishlist: invite.wishlist, user: userId } },
-          { upsert: true }
-        );
+        if (!(await joinAsMember(invite.wishlist, userId))) released = null;
       } else if (promotion) {
         released = await promoteMemberToOwner(wishlist, userId);
       } else {
@@ -144,12 +163,15 @@ export async function PATCH(
     }
 
     if (!released) {
-      // A promotion whose member was taken off the list before it could land. That
-      // removal's cancel found the invite already claimed (or it was issued after
-      // that cancel), so finish its job: the invite goes, as it would have had the
-      // removal come first.
+      // Nothing was granted, because something beat the grant to it since the read
+      // above: the list was deleted, or a promotion's member was taken off the list.
+      // Either one's invite cleanup found this invite already claimed (or, for a
+      // promotion, it was issued after that cleanup), so finish its job: the invite
+      // goes, as it would have had the delete or the removal come first. It isn't
+      // reopened, as a failed grant's is, because accepting again can't succeed.
       await withdrawInvite(invite, 'accepted');
-      return inviteNotFound();
+      // Only picks the answer. A deleted list stays deleted.
+      return (await Wishlist.exists({ _id: invite.wishlist })) ? inviteNotFound() : wishlistGone();
     }
 
     // Let the inviter know their invitation was accepted.
