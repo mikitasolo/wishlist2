@@ -1,4 +1,11 @@
 {
   "framework": "nextjs",
-  "regions": ["arn1"]
+  "regions": ["arn1"],
+  "git": {
+    "deploymentEnabled": {
+      "*": false,
+      "staging": true,
+      "main": true
+    }
+  }
 }
