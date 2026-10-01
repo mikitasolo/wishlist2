@@ -255,7 +255,8 @@ export async function PATCH(
     await cancelPendingInvites(authorized.id, userId);
 
     // Only now that it has landed. Just to them, and without naming who did it.
-    // Links to the list, which they can still open as a member.
+    // Links to the list, which they can still open as a member (unless it's
+    // archived, which is owner-only until it's unarchived).
     await createNotification({
       user: userId,
       type: 'role_changed',
