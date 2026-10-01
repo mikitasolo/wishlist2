@@ -13,6 +13,7 @@ import {
   releaseHoldingsForRole,
 } from '@/lib/utils/wishlistOwnership';
 import { withdrawInvite } from '@/lib/utils/wishlistInvites';
+import { isObjectIdParam } from '@/lib/utils/objectId';
 
 const inviteNotFound = () =>
   NextResponse.json({ success: false, error: 'Invite not found' }, { status: 404 });
@@ -72,7 +73,7 @@ export async function PATCH(
 
     await connectDB();
 
-    const invite = await WishlistInvite.findById(inviteId);
+    const invite = isObjectIdParam(inviteId) ? await WishlistInvite.findById(inviteId) : null;
     if (!invite || invite.status !== 'pending') return inviteNotFound();
 
     // Verify the invite is addressed to this user's account.

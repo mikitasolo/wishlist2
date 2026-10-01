@@ -14,7 +14,7 @@ vi.mock('@/lib/utils/currencyRates', () => ({
 }));
 
 import { auth } from '@/lib/auth';
-import { PATCH } from '@/app/api/items/[id]/route';
+import { PATCH, DELETE } from '@/app/api/items/[id]/route';
 import { GET as LIST_ITEMS, POST as CREATE_ITEM } from '@/app/api/wishlists/[id]/items/route';
 import { GET as MY_ITEMS } from '@/app/api/users/me/items/route';
 import User from '@/models/User';
@@ -583,5 +583,38 @@ describe('GET /api/users/me/items', () => {
         createdAt: bike.createdAt.toISOString(),
       },
     ]);
+  });
+});
+
+describe('/api/items/[id] — a malformed id', () => {
+  function remove(id: string) {
+    const req = new NextRequest('http://localhost/api/items/' + id, { method: 'DELETE' });
+    return DELETE(req, { params: Promise.resolve({ id }) });
+  }
+
+  // regression: a malformed id made `findById` throw a CastError, so PATCH and
+  // DELETE answered 500 ("Failed to update item" / "Failed to delete item")
+  // instead of the 404 a missing item gets.
+  it.each(['not-an-id', '12345', 'z'.repeat(24)])(
+    'regression: PATCH and DELETE answer 404 for a malformed item id (%s)',
+    async (badId) => {
+      const id = await makeItem('available');
+
+      for (const userId of [ownerId, memberId]) {
+        session.mockResolvedValue({ user: { id: userId } } as never);
+        for (const res of [await patch(badId, { status: 'booked' }), await remove(badId)]) {
+          expect(res.status).toBe(404);
+          expect(await res.json()).toEqual({ success: false, error: 'Item not found' });
+        }
+      }
+      expect((await Item.findById(id))?.status).toBe('available');
+    }
+  );
+
+  it('answers a signed-out caller with the 401, before looking at the id', async () => {
+    session.mockResolvedValue(null as never);
+
+    expect((await patch('not-an-id', { status: 'booked' })).status).toBe(401);
+    expect((await remove('not-an-id')).status).toBe(401);
   });
 });

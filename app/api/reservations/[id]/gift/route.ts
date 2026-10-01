@@ -4,6 +4,7 @@ import connectDB from '@/lib/mongodb';
 import Reservation from '@/models/Reservation';
 import GiftLog from '@/models/GiftLog';
 import User from '@/models/User';
+import { isObjectIdParam } from '@/lib/utils/objectId';
 
 // POST /api/reservations/[id]/gift - mark a reservation as gifted. Writes a
 // permanent GiftLog entry from the reservation's snapshot and removes the
@@ -21,10 +22,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // Take the reservation in one atomic step, so that of a double submit, or of
     // this and a dismiss or release (which free its snapshot image), exactly one
     // gets it. The entry is then written from what was taken, image included.
-    const reservation = await Reservation.findOneAndDelete({
-      _id: id,
-      gifter: session.user.id,
-    }).lean();
+    const reservation = isObjectIdParam(id)
+      ? await Reservation.findOneAndDelete({ _id: id, gifter: session.user.id }).lean()
+      : null;
     if (!reservation) {
       return NextResponse.json({ success: false, error: 'Reservation not found' }, { status: 404 });
     }

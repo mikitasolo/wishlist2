@@ -8,6 +8,7 @@ vi.mock('@/lib/auth', () => ({ auth: vi.fn() }));
 import { auth } from '@/lib/auth';
 import { POST as GIFT } from '@/app/api/reservations/[id]/gift/route';
 import { DELETE as DISMISS } from '@/app/api/reservations/[id]/route';
+import { DELETE as DELETE_GIFT } from '@/app/api/gifts/[id]/route';
 import User from '@/models/User';
 import Item from '@/models/Item';
 import Reservation from '@/models/Reservation';
@@ -48,7 +49,11 @@ beforeEach(async () => {
   reservationId = r._id.toString();
 });
 
-function call(handler: typeof GIFT | typeof DISMISS, id: string, method = 'POST') {
+function call(
+  handler: typeof GIFT | typeof DISMISS | typeof DELETE_GIFT,
+  id: string,
+  method = 'POST'
+) {
   const req = new NextRequest('http://localhost/api/reservations/' + id, { method });
   return handler(req, { params: Promise.resolve({ id }) });
 }
@@ -100,5 +105,35 @@ describe('DELETE /api/reservations/[id] (dismiss)', () => {
     const res = await call(DISMISS, reservationId, 'DELETE');
     expect(res.status).toBe(404);
     expect(await Reservation.findById(reservationId)).not.toBeNull();
+  });
+});
+
+describe('a malformed reservation or gift id', () => {
+  // regression: a malformed id made the lookup throw a CastError, so these routes
+  // answered 500 ("Failed to log gift" / "Failed to dismiss reservation" /
+  // "Failed to delete gift entry") instead of their "not found" 404.
+  it.each([
+    ['POST /api/reservations/[id]/gift', GIFT, 'POST', 'Reservation not found'],
+    ['DELETE /api/reservations/[id]', DISMISS, 'DELETE', 'Reservation not found'],
+    ['DELETE /api/gifts/[id]', DELETE_GIFT, 'DELETE', 'Gift entry not found'],
+  ] as const)('regression: %s answers 404', async (_route, handler, method, error) => {
+    await GiftLog.create({ gifter: gifterId, giftedAt: new Date(), itemName: 'Old gift' });
+    session.mockResolvedValue({ user: { id: gifterId } } as never);
+
+    for (const badId of ['not-an-id', '12345', 'z'.repeat(24)]) {
+      const res = await call(handler, badId, method);
+      expect(res.status).toBe(404);
+      expect(await res.json()).toEqual({ success: false, error });
+    }
+    expect(await Reservation.countDocuments()).toBe(1);
+    expect(await GiftLog.countDocuments()).toBe(1);
+  });
+
+  it('answers a signed-out caller with the 401, before looking at the id', async () => {
+    session.mockResolvedValue(null as never);
+
+    expect((await call(GIFT, 'not-an-id', 'POST')).status).toBe(401);
+    expect((await call(DISMISS, 'not-an-id', 'DELETE')).status).toBe(401);
+    expect((await call(DELETE_GIFT, 'not-an-id', 'DELETE')).status).toBe(401);
   });
 });

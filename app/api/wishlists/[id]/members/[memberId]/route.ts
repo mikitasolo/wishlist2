@@ -7,6 +7,7 @@ import { getOwnerAccess } from '@/lib/utils/wishlistAccess';
 import { isWishlistOwner } from '@/lib/utils/wishlistOwners';
 import { releaseUserBookings } from '@/lib/utils/wishlistOwnership';
 import { cancelPendingInvites } from '@/lib/utils/wishlistInvites';
+import { isObjectIdParam } from '@/lib/utils/objectId';
 
 const notOwnerError = () =>
   NextResponse.json(
@@ -46,7 +47,7 @@ export async function DELETE(
     }
     if (!isOwner) return notOwnerError();
 
-    const membership = await WishlistMember.findById(memberId);
+    const membership = isObjectIdParam(memberId) ? await WishlistMember.findById(memberId) : null;
     if (!membership) {
       return NextResponse.json({ success: false, error: 'Membership not found' }, { status: 404 });
     }

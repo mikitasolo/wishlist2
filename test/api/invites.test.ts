@@ -89,6 +89,21 @@ describe('PATCH /api/invites/[inviteId]', () => {
     expect((await WishlistInvite.findById(inviteId))?.status).toBe('declined');
     expect(await WishlistMember.exists({ wishlist: wishlistId, user: inviteeId })).toBeNull();
   });
+
+  // regression: a malformed id made `findById` throw a CastError, so the route
+  // answered 500 "Failed to update invite" instead of 404.
+  it.each(['not-an-id', '12345', 'z'.repeat(24)])(
+    'regression: answers 404 for a malformed invite id (%s)',
+    async (badId) => {
+      for (const action of ['accept', 'decline']) {
+        const res = await respond(badId, action, inviteeId);
+
+        expect(res.status).toBe(404);
+        expect(await res.json()).toEqual({ success: false, error: 'Invite not found' });
+      }
+      expect((await WishlistInvite.findById(inviteId))?.status).toBe('pending');
+    }
+  );
 });
 
 // Accept and decline record the answer in one conditional write before anything

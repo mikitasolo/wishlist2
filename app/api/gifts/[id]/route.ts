@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth';
 import connectDB from '@/lib/mongodb';
 import GiftLog from '@/models/GiftLog';
 import { releaseSnapshots } from '@/lib/utils/reservationSnapshots';
+import { isObjectIdParam } from '@/lib/utils/objectId';
 
 // DELETE /api/gifts/[id] - remove an entry from your own gift history (a mistake
 // you'd rather not keep). Only the gifter who owns the entry can delete it.
@@ -18,7 +19,7 @@ export async function DELETE(
     const { id } = await params;
     await connectDB();
 
-    const entry = await GiftLog.findById(id);
+    const entry = isObjectIdParam(id) ? await GiftLog.findById(id) : null;
     if (!entry || entry.gifter.toString() !== session.user.id) {
       return NextResponse.json({ success: false, error: 'Gift entry not found' }, { status: 404 });
     }

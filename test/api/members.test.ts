@@ -11,9 +11,11 @@ vi.mock('@/lib/email', () => ({
 
 import { auth } from '@/lib/auth';
 import { POST } from '@/app/api/wishlists/[id]/members/route';
+import { DELETE as kick } from '@/app/api/wishlists/[id]/members/[memberId]/route';
 import { PATCH as respondInvite } from '@/app/api/invites/[inviteId]/route';
 import User from '@/models/User';
 import Wishlist from '@/models/Wishlist';
+import WishlistMember from '@/models/WishlistMember';
 import WishlistInvite from '@/models/WishlistInvite';
 import Notification from '@/models/Notification';
 
@@ -201,5 +203,40 @@ describe('POST /api/wishlists/[id]/members — one pending invite per person', (
     const rows = await WishlistInvite.find({ invitedUser: friendId }).sort({ _id: 1 });
     expect(rows.map((r) => r.status)).toEqual(['declined', 'pending']);
     expect(sendEmail).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('DELETE /api/wishlists/[id]/members/[memberId] — a malformed id', () => {
+  beforeEach(async () => {
+    await WishlistMember.create({ wishlist: wishlistId, user: friendId });
+  });
+
+  function remove(memberId: string, userId: string) {
+    session.mockResolvedValue({ user: { id: userId } } as never);
+    const req = new NextRequest(
+      `http://localhost/api/wishlists/${wishlistId}/members/${memberId}`,
+      { method: 'DELETE' }
+    );
+    return kick(req, { params: Promise.resolve({ id: wishlistId, memberId }) });
+  }
+
+  // regression: a malformed member id made `findById` throw a CastError, so the
+  // route answered 500 "Failed to remove member" instead of 404.
+  it.each(['not-an-id', '12345', 'z'.repeat(24)])(
+    'regression: answers 404 for a malformed member id (%s)',
+    async (badId) => {
+      const res = await remove(badId, ownerId);
+
+      expect(res.status).toBe(404);
+      expect(await res.json()).toEqual({ success: false, error: 'Membership not found' });
+      expect(await WishlistMember.countDocuments({ wishlist: wishlistId })).toBe(1);
+    }
+  );
+
+  it('answers a member with the 403 a non-owner gets, before looking at the id', async () => {
+    const res = await remove('not-an-id', friendId);
+
+    expect(res.status).toBe(403);
+    expect(await WishlistMember.countDocuments({ wishlist: wishlistId })).toBe(1);
   });
 });
