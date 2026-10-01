@@ -55,14 +55,16 @@ export default defineConfig({
       thresholds: {
         // A non-regression *ratchet*, set just under today's actuals — not an
         // aspiration. Coverage can only go up from here without tripping CI.
-        // Lines/statements are low because several large client components and
-        // browser/canvas hooks (useItems, cropImage, useScrollLock) are
-        // exercised via Playwright E2E rather than unit tests. Raise these as
-        // real coverage grows; never lower them to make a change pass.
-        lines: 29,
-        statements: 29,
-        functions: 54,
-        branches: 69,
+        // Measured on 2026-10-01 with Vitest 5's v8 provider: statements 81.05,
+        // branches 78.08, functions 77.17, lines 81.72. Vitest 4 changed how v8
+        // coverage is counted (from the code's structure, every function and
+        // logical branch included), so don't compare against numbers from
+        // Vitest 3. Raise these as real coverage grows; never lower them to make
+        // a change pass.
+        lines: 81,
+        statements: 80,
+        functions: 76,
+        branches: 77,
       },
     },
     // mongodb-memory-server can take a moment to boot on first run.
