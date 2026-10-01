@@ -121,6 +121,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     // lands (see the write below), and the answer when the item no longer is
     // that way. Null for every other change.
     let bookingGuard: { filter: FilterQuery<IItem>; conflict: string } | null = null;
+    // The same for a proposer's edit of their own proposal; null otherwise.
+    let proposalGuard: { filter: FilterQuery<IItem>; conflict: string } | null = null;
 
     let updateData: Partial<
       Pick<
@@ -198,6 +200,13 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
             { status: 403 }
           );
         }
+        // Allowed only because the item as read is their proposal, so it's
+        // written only while it still is. An owner approving it in between makes
+        // it a live item, which only owners may edit.
+        proposalGuard = {
+          filter: { status: 'proposed', proposedBy: session.user.id },
+          conflict: 'This item is no longer a proposal you can edit',
+        };
       } else {
         return NextResponse.json(
           { success: false, error: 'Only owner and proposer can edit proposed items' },
@@ -305,9 +314,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     // only if the item is still that way: still available to book, or still the
     // caller's booking to unbook. Otherwise another member's booking, or an
     // owner's status change, landing in between would be overwritten by this
-    // write, and the Reservation below would no longer match the item.
+    // write, and the Reservation below would no longer match the item. A
+    // proposer's edit, likewise, only while the item is still their proposal,
+    // or it would overwrite an owner's approval that landed in between.
+    const writeGuard = bookingGuard ?? proposalGuard;
     const item = await Item.findOneAndUpdate(
-      { _id: id, ...bookingGuard?.filter },
+      { _id: id, ...writeGuard?.filter },
       { $set: updateData },
       { new: true, runValidators: true }
     );
@@ -315,9 +327,10 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if (!item) {
       // The item changed, or went, since it was read. Nothing was written, so the
       // Reservation isn't touched either: a booking that lost creates none, and
-      // an unbook that lost leaves the gifter's in place.
-      if (bookingGuard && (await Item.exists({ _id: id }))) {
-        return NextResponse.json({ success: false, error: bookingGuard.conflict }, { status: 409 });
+      // an unbook that lost leaves the gifter's in place. Nor is any image freed
+      // below, so an approved item keeps the one it has.
+      if (writeGuard && (await Item.exists({ _id: id }))) {
+        return NextResponse.json({ success: false, error: writeGuard.conflict }, { status: 409 });
       }
       return NextResponse.json({ success: false, error: 'Item not found' }, { status: 404 });
     }
