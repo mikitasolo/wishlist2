@@ -43,6 +43,49 @@ function deferredConfirm() {
 const button = (name: string | RegExp) => screen.getByRole('button', { name });
 const backdrop = () => screen.getByRole('alertdialog').parentElement!;
 
+describe('ConfirmDialog — accessible name and description', () => {
+  // regression: the alertdialog had no aria-labelledby / aria-describedby, so
+  // once focus moved in to Cancel a screen reader announced "alert dialog,
+  // Cancel, button" without the title or the message.
+  it('regression: is named by its title and described by its message', () => {
+    renderDialog(vi.fn());
+
+    const dialog = screen.getByRole('alertdialog', { name: 'Remove Member' });
+
+    expect(dialog).toHaveAccessibleDescription('Are you sure?');
+  });
+
+  // A fixed id would point the second dialog's aria-labelledby at the first
+  // one's title.
+  it('gives each of two dialogs open at once its own name and description', () => {
+    render(
+      <>
+        <ConfirmDialog
+          isOpen
+          title="Discard changes"
+          message="Your edits will be lost."
+          onConfirm={vi.fn()}
+          onCancel={vi.fn()}
+        />
+        <ConfirmDialog
+          isOpen
+          title="Delete Wishlist"
+          message="This action cannot be undone."
+          onConfirm={vi.fn()}
+          onCancel={vi.fn()}
+        />
+      </>
+    );
+
+    expect(
+      screen.getByRole('alertdialog', { name: 'Discard changes' })
+    ).toHaveAccessibleDescription('Your edits will be lost.');
+    expect(
+      screen.getByRole('alertdialog', { name: 'Delete Wishlist' })
+    ).toHaveAccessibleDescription('This action cannot be undone.');
+  });
+});
+
 describe('ConfirmDialog — an action that returns nothing', () => {
   it('calls onConfirm and never shows a pending state', () => {
     const onConfirm = vi.fn();

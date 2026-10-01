@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import Icon, { IconName } from '@/components/Icon';
 import { useBodyScrollLock } from '@/lib/hooks/useBodyScrollLock';
 import { useFocusTrap } from '@/lib/hooks/useFocusTrap';
@@ -40,6 +40,11 @@ export default function ConfirmDialog({
   const pendingRef = useRef(false);
   const dialogRef = useRef<HTMLDivElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
+  // Name and describe the dialog by its title and message, so a screen reader
+  // reads them out when focus moves in. Per instance, so stacked or repeated
+  // dialogs never share an id.
+  const titleId = useId();
+  const messageId = useId();
 
   const handleConfirm = async () => {
     if (pendingRef.current) return;
@@ -125,6 +130,8 @@ export default function ConfirmDialog({
         onClick={(e) => e.stopPropagation()}
         role="alertdialog"
         aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={messageId}
       >
         <div className="flex gap-4">
           <span
@@ -133,8 +140,12 @@ export default function ConfirmDialog({
             <Icon name={icon} size={22} />
           </span>
           <div className="min-w-0 flex-1">
-            <h2 className="text-lg font-semibold tracking-tight text-foreground">{title}</h2>
-            <p className="mt-1.5 text-sm text-muted-foreground">{message}</p>
+            <h2 id={titleId} className="text-lg font-semibold tracking-tight text-foreground">
+              {title}
+            </h2>
+            <p id={messageId} className="mt-1.5 text-sm text-muted-foreground">
+              {message}
+            </p>
           </div>
         </div>
 
