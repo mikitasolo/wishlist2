@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Locator, type Page } from '@playwright/test';
 
 // The seeded list has one owner, and "Make member" only shows on a co-owner's
 // row when there's more than one. So a co-owner is added in the browser, to the
@@ -45,47 +45,61 @@ async function openOwners(page: Page) {
 // regression: "Make member" had no confirmation and no in-flight guard, so a
 // double click sent two demotions before the refresh moved the row. The first
 // demoted the co-owner; the second found they were no longer an owner, and its
-// error toast followed the success.
-test('regression: a double click on Make member sends one demotion', async ({ page }) => {
-  // Every PATCH is held until `answer()`, so both clicks land while the first
-  // is in flight. Then they're answered the way the server would: the first
-  // succeeds, any later one finds nobody left to demote.
-  let requests = 0;
-  let demoted = false;
-  let answer!: () => void;
-  const answered = new Promise<void>((resolve) => (answer = resolve));
-  await addCoOwner(page, () => demoted);
-  await page.route(`**/api/wishlists/*/owners/${coOwnerId}`, async (route) => {
-    if (route.request().method() !== 'PATCH') return route.fallback();
-    requests += 1;
-    const first = requests === 1;
-    await answered;
-    if (!first) {
-      return route.fulfill({ status: 404, json: { success: false, error: SECOND_ANSWER } });
-    }
-    demoted = true;
-    await route.fulfill({ json: { success: true } });
+// error toast followed the success. The second variant clicks twice in one
+// task, before React has rendered the button disabled, so only the handler's
+// own guard can turn it away.
+for (const variant of [
+  { name: 'a double click', click: (button: Locator) => button.dblclick() },
+  {
+    name: 'two clicks before the page re-renders',
+    click: (button: Locator) =>
+      button.evaluate((el: HTMLElement) => {
+        el.click();
+        el.click();
+      }),
+  },
+]) {
+  test(`regression: ${variant.name} on Make member sends one demotion`, async ({ page }) => {
+    // Every PATCH is held until `answer()`, so both clicks land while the first
+    // is in flight. Then they're answered the way the server would: the first
+    // succeeds, any later one finds nobody left to demote.
+    let requests = 0;
+    let demoted = false;
+    let answer!: () => void;
+    const answered = new Promise<void>((resolve) => (answer = resolve));
+    await addCoOwner(page, () => demoted);
+    await page.route(`**/api/wishlists/*/owners/${coOwnerId}`, async (route) => {
+      if (route.request().method() !== 'PATCH') return route.fallback();
+      requests += 1;
+      const first = requests === 1;
+      await answered;
+      if (!first) {
+        return route.fulfill({ status: 404, json: { success: false, error: SECOND_ANSWER } });
+      }
+      demoted = true;
+      await route.fulfill({ json: { success: true } });
+    });
+
+    await openOwners(page);
+    const makeMember = page.getByRole('button', { name: 'Make member' });
+    await variant.click(makeMember);
+
+    // While the demotion runs, the row takes no more clicks. Soft, so the request
+    // count below is checked either way.
+    await expect.poll(() => requests).toBeGreaterThan(0);
+    await expect.soft(makeMember).toBeDisabled();
+    await expect.soft(page.getByRole('button', { name: 'Remove', exact: true })).toBeDisabled();
+
+    answer();
+    await expect(toast(page, 'Owner is now a member')).toBeVisible();
+    expect(requests).toBe(1);
+    // Counted the moment the success shows: toasts dismiss themselves after 4s.
+    expect(await toast(page, SECOND_ANSWER).count()).toBe(0);
+    // The refresh moved them to Members, where the row offers "Make owner".
+    await expect(makeMember).toBeHidden();
+    await expect(page.getByRole('button', { name: 'Make owner' })).toBeVisible();
   });
-
-  await openOwners(page);
-  const makeMember = page.getByRole('button', { name: 'Make member' });
-  await makeMember.dblclick();
-
-  // While the demotion runs, the row takes no more clicks. Soft, so the request
-  // count below is checked either way.
-  await expect.poll(() => requests).toBeGreaterThan(0);
-  await expect.soft(makeMember).toBeDisabled();
-  await expect.soft(page.getByRole('button', { name: 'Remove', exact: true })).toBeDisabled();
-
-  answer();
-  await expect(toast(page, 'Owner is now a member')).toBeVisible();
-  expect(requests).toBe(1);
-  // Counted the moment the success shows: toasts dismiss themselves after 4s.
-  expect(await toast(page, SECOND_ANSWER).count()).toBe(0);
-  // The refresh moved them to Members, where the row offers "Make owner".
-  await expect(makeMember).toBeHidden();
-  await expect(page.getByRole('button', { name: 'Make owner' })).toBeVisible();
-});
+}
 
 test('a failed demotion gives the buttons back, so it can be retried', async ({ page }) => {
   let requests = 0;
