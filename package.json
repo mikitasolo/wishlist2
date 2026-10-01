@@ -8,6 +8,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "check:trace": "node scripts/check-native-trace.mjs",
+    "smoke:deploy": "node scripts/smoke-deploy.mjs",
     "start": "next start",
     "lint": "eslint .",
     "test": "vitest run",

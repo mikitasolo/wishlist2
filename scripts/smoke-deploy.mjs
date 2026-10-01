@@ -1,0 +1,51 @@
+#!/usr/bin/env node
+// Read-only smoke check of a deployed host (WIS-156). GET requests only: it
+// sends no sign-in email, uploads nothing and needs no credentials, so it's
+// safe against staging or a preview. Production checks need the operator's go-ahead.
+//
+//   npm run smoke:deploy -- https://wishlist-staging.mikitasolo.co
+//
+// It checks that the routes whose modules load sharp start: every /api/auth/*
+// route (through lib/email.ts) and /api/upload. On a bundle missing sharp's
+// native libvips they all answer 500.
+const base = process.argv[2]?.replace(/\/$/, '');
+if (!base || !/^https?:\/\//.test(base)) {
+  console.error('usage: npm run smoke:deploy -- <https://host>');
+  process.exit(2);
+}
+
+const checks = [
+  {
+    path: '/api/auth/csrf',
+    expect: 200,
+    body: (json) => typeof json?.csrfToken === 'string',
+  },
+  { path: '/api/auth/providers', expect: 200, body: (json) => Boolean(json?.nodemailer) },
+  { path: '/api/auth/session', expect: 200 },
+  // Only POST is exported, so a started route answers 405; a crashed one 500.
+  { path: '/api/upload', expect: 405 },
+  { path: '/auth/signin', expect: 200 },
+];
+
+let failed = 0;
+for (const check of checks) {
+  const url = `${base}${check.path}`;
+  let status = 'ERR';
+  let ok = false;
+  try {
+    const res = await fetch(url, { redirect: 'manual', headers: { 'cache-control': 'no-cache' } });
+    status = res.status;
+    ok = status === check.expect;
+    if (ok && check.body) ok = check.body(await res.json().catch(() => null));
+  } catch (error) {
+    status = `ERR ${error.message}`;
+  }
+  if (!ok) failed++;
+  console.log(`${ok ? 'ok  ' : 'FAIL'} GET ${check.path} -> ${status} (want ${check.expect})`);
+}
+
+if (failed) {
+  console.error(`\nsmoke:deploy: ${failed} check(s) failed against ${base}`);
+  process.exit(1);
+}
+console.log(`\nsmoke:deploy: all ${checks.length} checks passed against ${base}`);

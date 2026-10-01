@@ -48,7 +48,22 @@ const securityHeaders = [
   },
 ];
 
+// sharp's native binding (`@img/sharp-<platform>/lib/sharp-*.node`) links the
+// libvips shared library in `@img/sharp-libvips-<platform>/lib/` at load time.
+// Next's output file tracing ships the binding but not the library it links,
+// so on Vercel the first `import('sharp')` in a function fails with
+// ERR_DLOPEN_FAILED (libvips-cpp.so…) and takes the whole route down with it
+// (WIS-156: sign-in and uploads returned 500). Ship libvips with every API
+// route: the upload route runs sharp, and everything that reaches lib/email.ts
+// (auth, the invite routes) can, and nearly every route imports lib/auth, so
+// listing them one by one would miss the next one. `npm run check:trace`
+// asserts after a build that every API route shipping the binding ships libvips.
+const SHARP_NATIVE_LIBS = ['./node_modules/@img/sharp-libvips-*/lib/**/*'];
+
 const nextConfig = {
+  outputFileTracingIncludes: {
+    '/api/**/*': SHARP_NATIVE_LIBS,
+  },
   images: {
     remotePatterns: [
       {
