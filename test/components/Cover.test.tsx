@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import Cover from '@/components/Cover';
 import { coverGradient } from '@/lib/utils/cover';
@@ -40,6 +40,23 @@ describe('Cover', () => {
 
     expect(screen.queryByAltText('Birthday')).toBeNull();
     expect((container.firstChild as HTMLElement).style.background).toBe(placeholderOf('w1'));
+  });
+
+  // regression: Cover hands BannerImage a fresh onError arrow on every render,
+  // which reached next/image and made it run `img.src = img.src` each time. In
+  // Chromium that restarts an animated cover, so the wishlist page's 5 s poll
+  // sent every animated list and item image back to its first frame.
+  it('regression: re-renders without re-assigning the image src', () => {
+    const { rerender } = render(<Cover src={IMAGE} seed="w1" alt="Birthday" />);
+    const assignSrc = vi.spyOn(HTMLImageElement.prototype, 'src', 'set');
+    try {
+      rerender(<Cover src={IMAGE} seed="w1" alt="Birthday" />);
+      rerender(<Cover src={IMAGE} seed="w1" alt="Birthday" />);
+
+      expect(assignSrc).not.toHaveBeenCalled();
+    } finally {
+      assignSrc.mockRestore();
+    }
   });
 
   it('shows the new image when a broken one is replaced', () => {

@@ -30,6 +30,36 @@ describe('BannerImage', () => {
     expect(screen.queryByAltText('Cover')).toBeNull();
   });
 
+  // regression: the error handler handed to next/image was a fresh arrow on
+  // every render, and next/image re-attaches its <img> ref whenever that
+  // handler changes, running `img.src = img.src`. In Chromium that restarts an
+  // animated GIF/WebP, so a wishlist page re-rendering on its 5 s poll sent
+  // every animated cover back to its first frame.
+  it('regression: re-renders without re-assigning the image src', () => {
+    const { rerender } = render(<BannerImage src={WORKING} alt="Cover" onError={() => {}} />);
+    const assignSrc = vi.spyOn(HTMLImageElement.prototype, 'src', 'set');
+    try {
+      rerender(<BannerImage src={WORKING} alt="Cover" onError={() => {}} />);
+      rerender(<BannerImage src={WORKING} alt="Cover" onError={() => {}} />);
+
+      expect(assignSrc).not.toHaveBeenCalled();
+    } finally {
+      assignSrc.mockRestore();
+    }
+  });
+
+  it("calls the latest render's onError", () => {
+    const first = vi.fn();
+    const latest = vi.fn();
+    const { rerender } = render(<BannerImage src={BROKEN} alt="Cover" onError={first} />);
+    rerender(<BannerImage src={BROKEN} alt="Cover" onError={latest} />);
+
+    fireEvent.error(screen.getByAltText('Cover'));
+
+    expect(first).not.toHaveBeenCalled();
+    expect(latest).toHaveBeenCalledTimes(1);
+  });
+
   // regression: the failure was a plain boolean that never reset, so a parent
   // that kept this instance mounted and swapped in a new URL (the upload
   // preview, after Replace) went on rendering nothing for the working image.

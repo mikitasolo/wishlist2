@@ -1,7 +1,7 @@
 'use client';
 
 import Image from 'next/image';
-import { useState } from 'react';
+import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 
 /**
  * The image layer of a `Cover`, and of the upload preview. Uses next/image so
@@ -30,6 +30,17 @@ export default function BannerImage({
   // Keyed on the URL, not a boolean: the upload preview keeps this mounted
   // when Replace swaps in a new URL.
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  // next/image runs `img.src = img.src` whenever its onError changes identity,
+  // which restarts an animated image, so the handler it gets changes only with
+  // `src`. The caller's onError (often an inline arrow) is read through a ref.
+  const onErrorRef = useRef(onError);
+  useLayoutEffect(() => {
+    onErrorRef.current = onError;
+  });
+  const handleError = useCallback(() => {
+    setFailedSrc(src);
+    onErrorRef.current?.();
+  }, [src]);
   if (failedSrc === src) return null;
   return (
     <Image
@@ -39,10 +50,7 @@ export default function BannerImage({
       sizes={sizes}
       priority={priority}
       className="object-cover"
-      onError={() => {
-        setFailedSrc(src);
-        onError?.();
-      }}
+      onError={handleError}
     />
   );
 }
