@@ -4,6 +4,7 @@ import Notification from '@/models/Notification';
 import { sendWishlistInvitationEmail } from '@/lib/email';
 import { createNotification } from '@/lib/notifications';
 import { isDuplicateKeyError } from '@/lib/utils/mongoErrors';
+import { errorKind } from '@/lib/utils/errorKind';
 
 type Id = string | mongoose.Types.ObjectId;
 
@@ -29,9 +30,7 @@ interface IssueInviteArgs {
  * recipient's address.
  */
 function mailFailure(err: unknown) {
-  if (typeof err !== 'object' || err === null) return { name: typeof err };
-  const { name, code, responseCode } = err as Record<string, unknown>;
-  return { name, code, responseCode };
+  return errorKind(err, ['name', 'code', 'responseCode']);
 }
 
 /**
