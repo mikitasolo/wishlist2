@@ -113,6 +113,65 @@ export function createMutationTracker(now: () => number = nextStamp): MutationTr
   };
 }
 
+export interface OptimisticItemUpdate<T extends { _id: string }> {
+  /** The item to update. */
+  id: string;
+  /** The item as it should show while the request is in flight. */
+  apply: (item: T) => T;
+  /** The request: resolves with the server's item, or `null` once it has reported the failure. */
+  request: () => Promise<T | null>;
+  /** The list's state setter, given updaters only. */
+  setItems: (update: (items: T[]) => T[]) => void;
+  mutations: Pick<MutationTracker, 'track'>;
+  /** Read the list from the server, after a failure. */
+  reconcile: () => void;
+}
+
+/**
+ * One optimistic update of one item, the wishlist page's single path for it:
+ * show the change at once, send the request through `mutations.track`, then
+ * merge the server's item into just that item. If the request fails, the item
+ * is put back as it was straight away, and only then is the list reconciled
+ * with the server, in case the write landed after all. The rollback can't be
+ * left to the reconcile read: that read is dropped while another mutation is in
+ * flight, and a failed one keeps the list, so the failed change (a booking,
+ * say) would stay on screen until a later read got through.
+ *
+ * Resolves with the server's item, or `null` if the update failed.
+ */
+export async function updateItemOptimistically<T extends { _id: string }>({
+  id,
+  apply,
+  request,
+  setItems,
+  mutations,
+  reconcile,
+}: OptimisticItemUpdate<T>): Promise<T | null> {
+  // Taken where the change is applied, so the rollback puts back exactly the
+  // item it replaced. Updaters run in the order they were queued, so this is
+  // set by the time the rollback's runs.
+  let before: T | undefined;
+  setItems((items) =>
+    items.map((item) => {
+      if (item._id !== id) return item;
+      before = item;
+      return apply(item);
+    })
+  );
+
+  // No `await` between the change and the request, and nothing is merged or
+  // read until it has settled (see `track`).
+  const updated = await mutations.track(request);
+
+  if (updated) {
+    setItems((items) => items.map((item) => (item._id === id ? { ...item, ...updated } : item)));
+  } else {
+    setItems((items) => items.map((item) => (item._id === id && before ? before : item)));
+    reconcile();
+  }
+  return updated;
+}
+
 /**
  * Put an item the server just created at the top of the list, unless a read
  * already brought it in. A copy with the same `_id` can only come from a read

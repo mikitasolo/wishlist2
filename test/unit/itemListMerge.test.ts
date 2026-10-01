@@ -1,5 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
-import { createMutationTracker, prependCreatedItem } from '@/lib/utils/itemListMerge';
+import {
+  createMutationTracker,
+  prependCreatedItem,
+  updateItemOptimistically,
+} from '@/lib/utils/itemListMerge';
 import type { ApiItem } from '@/types/api';
 
 function item(overrides: Partial<ApiItem>): ApiItem {
@@ -324,6 +328,157 @@ describe('prependCreatedItem', () => {
     const list = [a];
     prependCreatedItem(list, item({ name: 'new' }));
     expect(list).toEqual([a]);
+  });
+});
+
+// The page's `items` state as `updateItemOptimistically` sees it. React may
+// run a state updater when it's queued or only at the next render, so `later`
+// holds every updater until `render()` runs them, in the order they were queued.
+function itemsState(items: ApiItem[], { later = false } = {}) {
+  const queued: Array<(items: ApiItem[]) => ApiItem[]> = [];
+  const state = {
+    items,
+    setItems(update: (items: ApiItem[]) => ApiItem[]) {
+      if (later) queued.push(update);
+      else state.items = update(state.items);
+    },
+    render() {
+      for (const update of queued.splice(0)) state.items = update(state.items);
+    },
+  };
+  return state;
+}
+
+describe('updateItemOptimistically', () => {
+  const gift = item({ _id: 'gift', name: 'Gift', status: 'available', bookedBy: null });
+  const other = item({ _id: 'other', name: 'Other' });
+  const book = (i: ApiItem): ApiItem => ({ ...i, status: 'booked', bookedBy: 'me' });
+
+  // A booking of `gift`, as handleUpdateItem sends one.
+  function booking(
+    state: ReturnType<typeof itemsState>,
+    request: () => Promise<ApiItem | null>,
+    reconcile: () => void = vi.fn(),
+    mutations = createMutationTracker()
+  ) {
+    return updateItemOptimistically({
+      id: gift._id,
+      apply: book,
+      request,
+      setItems: state.setItems,
+      mutations,
+      reconcile,
+    });
+  }
+
+  it('shows the change before the request is sent, and counts the request in flight', async () => {
+    const state = itemsState([gift, other]);
+    const mutations = createMutationTracker();
+    let shownAsSent: ApiItem[] = [];
+    let staleAsSent = false;
+    await booking(
+      state,
+      async () => {
+        shownAsSent = state.items;
+        staleAsSent = mutations.isStale(mutations.stamp());
+        return book(gift);
+      },
+      vi.fn(),
+      mutations
+    );
+
+    expect(shownAsSent).toEqual([book(gift), other]);
+    expect(staleAsSent).toBe(true);
+  });
+
+  it("merges the server's item into just that item, resolves with it, and reads nothing", async () => {
+    const state = itemsState([gift, other]);
+    const fromServer = { ...book(gift), priceInUsdCents: 1_200, updatedAt: '2024-02-01' };
+    const reconcile = vi.fn();
+
+    await expect(booking(state, async () => fromServer, reconcile)).resolves.toBe(fromServer);
+    expect(state.items).toEqual([fromServer, other]);
+    expect(state.items[1]).toBe(other);
+    expect(reconcile).not.toHaveBeenCalled();
+  });
+
+  // regression: only an approve put the item back when its request failed;
+  // every other update (a booking, an edit, ...) was undone by the reconcile
+  // read alone. A failed read keeps the list, so when the network was down the
+  // failed booking stayed on screen as "Booked by you" until a later read got
+  // through.
+  it('regression: puts a failed booking back at once, even when the reconcile read fails too', async () => {
+    const state = itemsState([gift, other]);
+    // A failed read keeps the list as it is.
+    const failedRead = vi.fn();
+
+    await expect(booking(state, async () => null, failedRead)).resolves.toBeNull();
+    expect(state.items).toEqual([gift, other]);
+    expect(state.items[0]).toBe(gift);
+    expect(failedRead).toHaveBeenCalledTimes(1);
+  });
+
+  it('reconciles a failure only once the item is back and the request has settled, so its read counts as fresh', async () => {
+    const state = itemsState([gift, other]);
+    const mutations = createMutationTracker();
+    let shownAtReconcile: ApiItem[] = [];
+    let staleAtReconcile = true;
+    await booking(
+      state,
+      async () => null,
+      () => {
+        shownAtReconcile = state.items;
+        staleAtReconcile = mutations.isStale(mutations.stamp());
+      },
+      mutations
+    );
+
+    expect(shownAtReconcile).toEqual([gift, other]);
+    expect(staleAtReconcile).toBe(false);
+  });
+
+  it('puts back only the failed item, keeping what else changed meanwhile', async () => {
+    const state = itemsState([gift, other]);
+    const patch = deferred<ApiItem | null>();
+    const settled = booking(state, () => patch.promise);
+
+    // Another update lands while this one is in flight.
+    const renamed = { ...other, name: 'Other, renamed' };
+    state.setItems((items) => items.map((i) => (i._id === other._id ? renamed : i)));
+    patch.resolve(null);
+    await settled;
+
+    expect(state.items).toEqual([gift, renamed]);
+  });
+
+  it('does not bring back an item that left the list while its request was in flight', async () => {
+    const state = itemsState([gift, other]);
+    const patch = deferred<ApiItem | null>();
+    const settled = booking(state, () => patch.promise);
+
+    // The first load, which is never dropped, lands without it.
+    state.setItems(() => [other]);
+    patch.resolve(null);
+    await settled;
+
+    expect(state.items).toEqual([other]);
+  });
+
+  it('puts the item back when the updaters only run at the next render', async () => {
+    const state = itemsState([gift, other], { later: true });
+    await booking(state, async () => null);
+    state.render();
+    expect(state.items).toEqual([gift, other]);
+    expect(state.items[0]).toBe(gift);
+  });
+
+  it('merges the server response when the updaters only run at the next render', async () => {
+    const state = itemsState([gift, other], { later: true });
+    const fromServer = { ...book(gift), priceInUsdCents: 1_200 };
+    await booking(state, async () => fromServer);
+    state.render();
+
+    expect(state.items).toEqual([fromServer, other]);
   });
 });
 
