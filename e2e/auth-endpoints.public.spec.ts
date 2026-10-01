@@ -4,7 +4,7 @@ import { test, expect } from '@playwright/test';
 // on Vercel because their modules loaded sharp, whose native libvips was
 // missing from the bundle. These check the routes start and answer, with GETs
 // only: no sign-in email is sent and nothing is uploaded.
-test('the auth endpoints answer, so the sign-in form can submit', async ({ request }) => {
+test('the auth endpoints answer, so magic links and sessions work', async ({ request }) => {
   const csrf = await request.get('/api/auth/csrf');
   expect(csrf.status()).toBe(200);
   expect(typeof (await csrf.json()).csrfToken).toBe('string');

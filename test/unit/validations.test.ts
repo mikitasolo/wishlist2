@@ -299,6 +299,13 @@ describe('magicLinkRequestSchema', () => {
     expect(ok.success && ok.data).toEqual({ email: 'me@example.com', callbackUrl: '/' });
   });
 
+  it('turns an empty callbackUrl into /', () => {
+    for (const callbackUrl of ['', '   ']) {
+      const ok = magicLinkRequestSchema.safeParse({ email: 'me@example.com', callbackUrl });
+      expect(ok.success && ok.data.callbackUrl).toBe('/');
+    }
+  });
+
   it('keeps a callbackUrl and a token', () => {
     const ok = magicLinkRequestSchema.safeParse({
       email: 'me@example.com',

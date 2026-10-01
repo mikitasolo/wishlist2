@@ -25,6 +25,7 @@ import { requestMagicLink } from '@/app/auth/signin/actions';
 import SignInForm, {
   CHALLENGE_FAILED_MESSAGE,
   CHALLENGE_LOAD_FAILED_MESSAGE,
+  TOKEN_WAIT_MS,
 } from '@/app/auth/signin/SignInForm';
 import SignInPage from '@/app/auth/signin/page';
 import { TURNSTILE_SCRIPT_URL, type TurnstileApi } from '@/components/TurnstileWidget';
@@ -35,7 +36,7 @@ const TOKEN = 'XXXX.DUMMY.TOKEN.XXXX';
 
 type RenderOptions = Parameters<TurnstileApi['render']>[1];
 
-/** A stand-in for Cloudflare's `window.turnstile`; `pass()` plays the check passing. */
+/** A stand-in for Cloudflare's `window.turnstile`; `pass()` plays the check passing, and so on. */
 function fakeTurnstile() {
   let options: RenderOptions | null = null;
   const api = {
@@ -48,8 +49,10 @@ function fakeTurnstile() {
   } satisfies TurnstileApi;
   return {
     api,
-    pass: (token = TOKEN) => act(() => options!.callback!(token)),
-    expire: () => act(() => options!['expired-callback']!()),
+    // Async acts, so the submit a token unblocks settles inside them.
+    pass: (token = TOKEN) => act(async () => options!.callback!(token)),
+    expire: () => act(async () => options!['expired-callback']!()),
+    error: () => act(async () => options!['error-callback']!('110200')),
   };
 }
 
@@ -125,6 +128,17 @@ describe('SignInForm — submit result handling', () => {
 });
 
 describe('SignInForm — Turnstile widget', () => {
+  /** Render the form with Turnstile on and wait for the widget to be rendered. */
+  async function renderWithWidget() {
+    const turnstile = fakeTurnstile();
+    window.turnstile = turnstile.api;
+    const view = render(<SignInForm turnstileSiteKey={SITE_KEY} />);
+    await vi.waitFor(() => expect(turnstile.api.render).toHaveBeenCalledTimes(1));
+    return { turnstile, ...view };
+  }
+
+  const sentToken = () => mockedRequest.mock.calls.at(-1)?.[0].turnstileToken;
+
   it('renders no widget and loads no Cloudflare script without a site key', async () => {
     const turnstile = fakeTurnstile();
     window.turnstile = turnstile.api;
@@ -133,16 +147,15 @@ describe('SignInForm — Turnstile widget', () => {
 
     expect(turnstile.api.render).not.toHaveBeenCalled();
     expect(document.querySelector(`script[src="${TURNSTILE_SCRIPT_URL}"]`)).toBeNull();
-    // And nothing to wait for: the button works straight away.
-    expect(sendButton()).toBeEnabled();
+
+    await typeEmail();
+    await userEvent.click(sendButton());
+    expect(sentToken()).toBeNull();
   });
 
   it('renders the widget with the site key when one is set', async () => {
-    const turnstile = fakeTurnstile();
-    window.turnstile = turnstile.api;
-    render(<SignInForm turnstileSiteKey={SITE_KEY} />);
+    const { turnstile } = await renderWithWidget();
 
-    await vi.waitFor(() => expect(turnstile.api.render).toHaveBeenCalledTimes(1));
     expect(turnstile.api.render).toHaveBeenCalledWith(
       expect.any(HTMLElement),
       expect.objectContaining({
@@ -168,31 +181,12 @@ describe('SignInForm — Turnstile widget', () => {
     expect(turnstile.api.render).toHaveBeenCalledTimes(1);
   });
 
-  it('tells the visitor when the script fails to load', async () => {
-    render(<SignInForm turnstileSiteKey={SITE_KEY} />);
-    const script = document.querySelector(`script[src="${TURNSTILE_SCRIPT_URL}"]`)!;
-
-    await act(async () => {
-      script.dispatchEvent(new Event('error'));
-    });
-
-    expect(await screen.findByRole('alert')).toHaveTextContent(CHALLENGE_LOAD_FAILED_MESSAGE);
-    // The failed tag is dropped, so a remount can try again.
-    expect(document.querySelector(`script[src="${TURNSTILE_SCRIPT_URL}"]`)).toBeNull();
-  });
-
-  it('waits for the token, then sends it with the email', async () => {
-    const turnstile = fakeTurnstile();
-    window.turnstile = turnstile.api;
+  it('sends the token with the email', async () => {
     mockedRequest.mockResolvedValue({ ok: true });
-    render(<SignInForm turnstileSiteKey={SITE_KEY} />);
-    await vi.waitFor(() => expect(turnstile.api.render).toHaveBeenCalled());
+    const { turnstile } = await renderWithWidget();
 
+    await turnstile.pass();
     await typeEmail();
-    expect(sendButton()).toBeDisabled();
-
-    turnstile.pass();
-    expect(sendButton()).toBeEnabled();
     await userEvent.click(sendButton());
 
     expect(mockedRequest).toHaveBeenCalledWith({
@@ -203,45 +197,125 @@ describe('SignInForm — Turnstile widget', () => {
     expect(await screen.findByText(/check your email/i)).toBeInTheDocument();
   });
 
-  it('waits again once the token expires', async () => {
-    const turnstile = fakeTurnstile();
-    window.turnstile = turnstile.api;
-    render(<SignInForm turnstileSiteKey={SITE_KEY} />);
-    await vi.waitFor(() => expect(turnstile.api.render).toHaveBeenCalled());
+  // The invisible check takes a moment after the page loads: a quick submit
+  // waits for it rather than going without.
+  it('waits for a token that is still on its way', async () => {
+    mockedRequest.mockResolvedValue({ ok: true });
+    const { turnstile } = await renderWithWidget();
 
-    turnstile.pass();
+    await typeEmail();
+    await userEvent.click(sendButton());
+    expect(mockedRequest).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: /sending link/i })).toBeDisabled();
+
+    await turnstile.pass();
+    await vi.waitFor(() => expect(sentToken()).toBe(TOKEN));
+  });
+
+  it('waits for a fresh token once the last one expired', async () => {
+    mockedRequest.mockResolvedValue({ ok: true });
+    const { turnstile } = await renderWithWidget();
+
+    await turnstile.pass('expired-token');
+    await turnstile.expire();
+    await typeEmail();
+    await userEvent.click(sendButton());
+    expect(mockedRequest).not.toHaveBeenCalled();
+
+    await turnstile.pass();
+    await vi.waitFor(() => expect(sentToken()).toBe(TOKEN));
+  });
+
+  it(`sends without a token when none arrives within ${TOKEN_WAIT_MS} ms`, async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      mockedRequest.mockResolvedValue({ ok: false, error: 'challenge' });
+      await renderWithWidget();
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+
+      await user.type(screen.getByLabelText(/email address/i), 'me@example.com');
+      await user.click(sendButton());
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(TOKEN_WAIT_MS - 100);
+      });
+      expect(mockedRequest).not.toHaveBeenCalled();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(100);
+      });
+
+      // The server decides; with Cloudflare up it refuses.
+      expect(sentToken()).toBeNull();
+      expect(await screen.findByRole('alert')).toHaveTextContent(CHALLENGE_FAILED_MESSAGE);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // The widget gave up (e.g. a site key not allowed on this hostname): the form
+  // doesn't wait, or lock its button. The server refuses a missing token unless
+  // Cloudflare is down, so an outage doesn't lock everyone out.
+  it('sends without a token straight away when the widget errors', async () => {
+    mockedRequest.mockResolvedValue({ ok: true });
+    const { turnstile } = await renderWithWidget();
+
+    await turnstile.error();
+    await typeEmail();
     expect(sendButton()).toBeEnabled();
-    turnstile.expire();
-    expect(sendButton()).toBeDisabled();
+    await userEvent.click(sendButton());
+
+    expect(sentToken()).toBeNull();
+    expect(await screen.findByText(/check your email/i)).toBeInTheDocument();
+  });
+
+  it('says so when the script fails to load, and still lets the server decide', async () => {
+    mockedRequest.mockResolvedValue({ ok: false, error: 'challenge' });
+    render(<SignInForm turnstileSiteKey={SITE_KEY} />);
+    const script = document.querySelector(`script[src="${TURNSTILE_SCRIPT_URL}"]`)!;
+
+    await act(async () => {
+      script.dispatchEvent(new Event('error'));
+    });
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(CHALLENGE_LOAD_FAILED_MESSAGE);
+    // The failed tag is dropped, so a remount can try again.
+    expect(document.querySelector(`script[src="${TURNSTILE_SCRIPT_URL}"]`)).toBeNull();
+
+    await typeEmail();
+    await userEvent.click(sendButton());
+    expect(sentToken()).toBeNull();
+    // Refused while Cloudflare answers: the explanation stays the load failure.
+    await vi.waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(CHALLENGE_LOAD_FAILED_MESSAGE)
+    );
   });
 
   it('asks to complete the check when the server refuses the token, and fetches a fresh one', async () => {
-    const turnstile = fakeTurnstile();
-    window.turnstile = turnstile.api;
     mockedRequest.mockResolvedValue({ ok: false, error: 'challenge' });
-    render(<SignInForm turnstileSiteKey={SITE_KEY} />);
-    await vi.waitFor(() => expect(turnstile.api.render).toHaveBeenCalled());
+    const { turnstile } = await renderWithWidget();
 
+    await turnstile.pass();
     await typeEmail();
-    turnstile.pass();
     await userEvent.click(sendButton());
 
     expect(await screen.findByRole('alert')).toHaveTextContent(CHALLENGE_FAILED_MESSAGE);
     expect(screen.queryByText(/check your email/i)).toBeNull();
     // A token passes one check: the spent one is dropped and a new one asked for.
     expect(turnstile.api.reset).toHaveBeenCalledWith('widget-1');
-    expect(sendButton()).toBeDisabled();
+
+    // The retry waits for that new token instead of resending the spent one.
+    mockedRequest.mockResolvedValue({ ok: true });
+    await userEvent.click(sendButton());
+    expect(mockedRequest).toHaveBeenCalledTimes(1);
+    await turnstile.pass('fresh-token');
+    await vi.waitFor(() => expect(sentToken()).toBe('fresh-token'));
   });
 
   it('fetches a fresh token after a failed send too', async () => {
-    const turnstile = fakeTurnstile();
-    window.turnstile = turnstile.api;
     mockedRequest.mockResolvedValue({ ok: false, error: 'send_failed' });
-    render(<SignInForm turnstileSiteKey={SITE_KEY} />);
-    await vi.waitFor(() => expect(turnstile.api.render).toHaveBeenCalled());
+    const { turnstile } = await renderWithWidget();
 
+    await turnstile.pass();
     await typeEmail();
-    turnstile.pass();
     await userEvent.click(sendButton());
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/couldn't send your magic link/i);
@@ -249,10 +323,7 @@ describe('SignInForm — Turnstile widget', () => {
   });
 
   it('removes the widget when the form goes away', async () => {
-    const turnstile = fakeTurnstile();
-    window.turnstile = turnstile.api;
-    const { unmount } = render(<SignInForm turnstileSiteKey={SITE_KEY} />);
-    await vi.waitFor(() => expect(turnstile.api.render).toHaveBeenCalled());
+    const { turnstile, unmount } = await renderWithWidget();
 
     unmount();
     expect(turnstile.api.remove).toHaveBeenCalledWith('widget-1');

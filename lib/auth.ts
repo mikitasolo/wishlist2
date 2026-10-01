@@ -5,7 +5,7 @@ import User from '@/models/User';
 import { adapter } from './authAdapter';
 import { getEnvVars } from './env';
 import { generateUniqueUsername } from './utils/username';
-import { sendVerificationRequest } from './signInEmail';
+import { isVerifiedSignIn, sendVerificationRequest } from './signInEmail';
 
 // Get validated environment variables
 const env = getEnvVars();
@@ -47,8 +47,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     // returning user, so `pages.newUser` never fired. The adapter's
     // `createUser` (lib/utils/userAccount.ts) creates it on the first verified
     // sign-in instead.
-    async signIn({ user }) {
-      return !!user.email;
+    async signIn({ user, email }) {
+      if (!user.email) return false;
+      // Auth.js is about to send a magic link (`verificationRequest`): only for
+      // the sign-in form's server action, once its Turnstile check has passed.
+      // Clicking the link calls this again without `verificationRequest`, from
+      // outside the action.
+      if (email?.verificationRequest && !isVerifiedSignIn()) return false;
+      return true;
     },
     async session({ session, user }) {
       if (session.user && user?.email) {

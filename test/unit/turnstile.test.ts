@@ -116,16 +116,29 @@ describe('verifyTurnstileToken: a verdict', () => {
     expect(await verifyTurnstileToken(TOKEN, IP)).toBe('failed');
   });
 
+  // A missing token is still put to Cloudflare, as an empty one: refused when
+  // it answers, failing open only when it can't (see the next describe).
   it.each([
     ['missing', undefined],
+    ['null', null],
     ['empty', ''],
-    ['not a string', 42],
-  ])('refuses a %s token without calling Cloudflare', async (_label, token) => {
+  ])('refuses a %s token once Cloudflare says it is missing', async (_label, token) => {
+    fetchMock.mockResolvedValue(
+      answer({ success: false, 'error-codes': ['missing-input-response'] })
+    );
+
     expect(await verifyTurnstileToken(token, IP)).toBe('failed');
-    expect(fetchMock).not.toHaveBeenCalled();
+
+    const form = new URLSearchParams(fetchMock.mock.calls[0]![1]?.body as URLSearchParams);
+    expect(form.get('response')).toBe('');
     expect(warnLog).toHaveBeenCalledWith(
       JSON.stringify({ event: 'turnstile_refused', errorCodes: ['missing-input-response'] })
     );
+  });
+
+  it('refuses a token that is not a string without calling Cloudflare', async () => {
+    expect(await verifyTurnstileToken(42, IP)).toBe('failed');
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('refuses a token longer than Cloudflare allows without calling it', async () => {
@@ -157,6 +170,14 @@ describe('verifyTurnstileToken: Cloudflare unavailable (fails open)', () => {
     expect(printed).not.toContain(IP);
     expect(printed).not.toContain(SECRET_KEY);
   }
+
+  // What the form sends when Cloudflare's script couldn't load or run: refused
+  // while Cloudflare answers, but an outage mustn't lock everyone out.
+  it('fails open on a missing token when Cloudflare is unreachable too', async () => {
+    fetchMock.mockRejectedValue(new TypeError('fetch failed'));
+    expect(await verifyTurnstileToken(null, IP)).toBe('unavailable');
+    expectUnavailableLogged('network');
+  });
 
   it('fails open when the network is down', async () => {
     fetchMock.mockRejectedValue(

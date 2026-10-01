@@ -6,7 +6,10 @@ interface CapturedConfig {
   providers: Array<{ id: string; options: Record<string, unknown> }>;
   pages: Record<string, string>;
   callbacks: {
-    signIn: (args: { user: { email?: string | null } }) => Promise<boolean>;
+    signIn: (args: {
+      user: { email?: string | null };
+      email?: { verificationRequest?: boolean };
+    }) => Promise<boolean>;
     session: (args: {
       session: { user: Record<string, unknown> };
       user: { id: string; email: string };
@@ -173,5 +176,58 @@ describe('lib/auth: sign-up', () => {
     for (const part of ['alice', 'smith', 'example']) {
       expect(dbUser.username).not.toContain(part);
     }
+  });
+});
+
+// A magic link is only sent from the sign-in form's server action, after its
+// Turnstile check (`asVerifiedSignIn`). Auth.js asks the signIn callback first,
+// with `verificationRequest`, so an unchecked request is refused there, before
+// anything is sent. (No account is made at that point either way: the adapter's
+// createUser makes it on the first verified sign-in.)
+describe('lib/auth callbacks: the magic-link request', () => {
+  const EMAIL = 'new.person@example.com';
+
+  async function load() {
+    vi.resetModules();
+    await import('@/lib/auth');
+    const { asVerifiedSignIn } = await import('@/lib/signInEmail');
+    return { callbacks: nextAuth.mock.calls[0]![0].callbacks, asVerifiedSignIn };
+  }
+
+  beforeEach(() => {
+    users.findOne.mockReset().mockResolvedValue(null);
+    users.create.mockReset().mockResolvedValue({ email: EMAIL });
+    users.exists.mockReset().mockResolvedValue(null);
+  });
+
+  it('refuses it outside the sign-in form', async () => {
+    const { callbacks } = await load();
+
+    expect(
+      await callbacks.signIn({ user: { email: EMAIL }, email: { verificationRequest: true } })
+    ).toBe(false);
+    expect(users.findOne).not.toHaveBeenCalled();
+    expect(users.create).not.toHaveBeenCalled();
+  });
+
+  it('allows it from the sign-in form, still without creating the account', async () => {
+    const { callbacks, asVerifiedSignIn } = await load();
+
+    const allowed = await asVerifiedSignIn(() =>
+      callbacks.signIn({ user: { email: EMAIL }, email: { verificationRequest: true } })
+    );
+    expect(allowed).toBe(true);
+    expect(users.create).not.toHaveBeenCalled();
+  });
+
+  // The link's own callback (GET /api/auth/callback/nodemailer) asks again,
+  // without verificationRequest and from outside the action.
+  it('allows the click on the link', async () => {
+    const { callbacks } = await load();
+
+    expect(await callbacks.signIn({ user: { email: EMAIL } })).toBe(true);
+    expect(
+      await callbacks.signIn({ user: { email: EMAIL }, email: { verificationRequest: false } })
+    ).toBe(true);
   });
 });

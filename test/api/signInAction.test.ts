@@ -158,13 +158,23 @@ describe('requestMagicLink with Turnstile on', () => {
     ['missing', undefined],
     ['null', null],
     ['empty', ''],
-  ])('refuses a %s token without asking Cloudflare or sending', async (_label, token) => {
+  ])('refuses a %s token without sending, once Cloudflare says so', async (_label, token) => {
+    siteverify({ success: false, 'error-codes': ['missing-input-response'] });
+
     expect(await requestMagicLink({ email: EMAIL, turnstileToken: token })).toEqual({
       ok: false,
       error: 'challenge',
     });
-    expect(fetchMock).not.toHaveBeenCalled();
     expect(mockedSignIn).not.toHaveBeenCalled();
+  });
+
+  // The form sends no token when Cloudflare's script couldn't load or run; if
+  // Cloudflare is down for us too, that's an outage, and sign-in fails open.
+  it('sends without a token when siteverify is down too', async () => {
+    fetchMock.mockRejectedValue(new TypeError('fetch failed'));
+
+    expect(await requestMagicLink({ email: EMAIL, turnstileToken: null })).toEqual({ ok: true });
+    expectSent();
   });
 
   it('sends when siteverify is down, and logs it without the email, IP or token', async () => {

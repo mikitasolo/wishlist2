@@ -9,7 +9,7 @@ import { RequestTimeoutError, withRequestTimeout } from './utils/requestTimeout'
  * with Cloudflare's `siteverify` before any email is sent. Off unless both keys
  * are set (`getTurnstileKeys`), like rate limiting without Redis.
  *
- * Failure policy: a token Cloudflare refuses (or no token) is refused. When
+ * Failure policy: a token Cloudflare refuses (no token included) is refused. When
  * Cloudflare can't give a verdict (unreachable, a timeout, a 5xx, an answer we
  * can't read, its own `internal-error`, or a secret it doesn't recognise), the
  * check fails **open**: sign-in goes ahead and one `turnstile_unavailable` line
@@ -45,7 +45,8 @@ const NOT_A_VERDICT = new Set(['internal-error', 'missing-input-secret', 'invali
 /**
  * - `skipped`: Turnstile is off (keys unset), so there's nothing to check.
  * - `passed`: Cloudflare accepted the token.
- * - `failed`: no token, or Cloudflare refused it. The only refusal.
+ * - `failed`: Cloudflare refused the token (a missing one included), or it was
+ *   too long or not a string to send at all. The only refusal.
  * - `unavailable`: no verdict from Cloudflare; sign-in fails open.
  */
 export type TurnstileOutcome = 'skipped' | 'passed' | 'failed' | 'unavailable';
@@ -85,10 +86,16 @@ export async function verifyTurnstileToken(
   const keys = getTurnstileKeys();
   if (!keys) return 'skipped';
 
-  if (typeof token !== 'string' || token.length === 0) return refused(['missing-input-response']);
-  if (token.length > MAX_TOKEN_LENGTH) return refused(['invalid-input-response']);
+  // A missing token still goes to Cloudflare, as an empty one. Healthy, it
+  // answers `missing-input-response`, a refusal like any other. Down, it can't,
+  // and sign-in fails open: the form sends no token when Cloudflare's script
+  // couldn't load or run, which is what a Cloudflare outage looks like from the
+  // browser, and refusing it here would lock everyone out for the outage.
+  const response = token ?? '';
+  if (typeof response !== 'string') return refused(['invalid-input-response']);
+  if (response.length > MAX_TOKEN_LENGTH) return refused(['invalid-input-response']);
 
-  const form = new URLSearchParams({ secret: keys.secretKey, response: token });
+  const form = new URLSearchParams({ secret: keys.secretKey, response });
   if (remoteIp) form.set('remoteip', remoteIp);
 
   let answer: SiteverifyAnswer;

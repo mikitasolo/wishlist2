@@ -13,8 +13,10 @@ export interface VerificationRequest {
  * Marks the one way into a magic-link send: the sign-in form's server action
  * (`app/auth/signin/actions.ts`), once its Turnstile check has let the request
  * through. Auth.js's own `POST /api/auth/signin/<provider>` is refused at the
- * route (`isMagicLinkSignInPath`), and this is the second lock behind it: a send
- * that didn't start inside `asVerifiedSignIn` is refused, whatever path led to it.
+ * route (`isMagicLinkSignInPath`), and this is the second lock behind it, checked
+ * twice in Auth.js's email flow: by the `signIn` callback (`lib/auth.ts`), before
+ * it creates the account, and by `sendVerificationRequest`, before the send. A
+ * request that didn't start inside `asVerifiedSignIn` gets neither.
  */
 const verifiedSignIn = new AsyncLocalStorage<true>();
 

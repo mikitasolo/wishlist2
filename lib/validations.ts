@@ -119,7 +119,12 @@ export const updateProfileSchema = z
 // refuses a missing or oversized one as a failed check rather than bad input.
 export const magicLinkRequestSchema = z.object({
   email: z.string().trim().min(1).max(254),
-  callbackUrl: z.string().trim().max(2048).optional().default('/'),
+  callbackUrl: z
+    .string()
+    .trim()
+    .max(2048)
+    .optional()
+    .transform((url) => url || '/'),
   turnstileToken: z.string().nullish(),
 });
 

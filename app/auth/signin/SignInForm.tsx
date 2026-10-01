@@ -17,6 +17,14 @@ export const SEND_FAILED_MESSAGE =
 /** The Turnstile check refused the token (or it never got one). */
 export const CHALLENGE_FAILED_MESSAGE = 'Please complete the check and try again.';
 
+/**
+ * How long a submit waits for the Turnstile token. The invisible check usually
+ * has it ready a second or two after the page loads, so this only matters for a
+ * very quick submit or an interactive challenge, which the visitor can still
+ * solve meanwhile. Past it the form sends without a token and the server decides.
+ */
+export const TOKEN_WAIT_MS = 10_000;
+
 export const CHALLENGE_LOAD_FAILED_MESSAGE =
   "The security check couldn't load. Check your connection (or allow challenges.cloudflare.com in your content blocker) and reload the page.";
 
@@ -30,33 +38,37 @@ export default function SignInForm({ turnstileSiteKey }: SignInFormProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const [checkLoadFailed, setCheckLoadFailed] = useState(false);
   const turnstile = useRef<TurnstileHandle>(null);
   const searchParams = useSearchParams();
   const error = searchParams?.get('error');
   const callbackUrl = searchParams?.get('callbackUrl') || '/';
 
-  // With Turnstile on, the button waits for the widget's token, which in the
-  // usual (invisible) case arrives a moment after the page loads.
-  const awaitingCheck = Boolean(turnstileSiteKey) && !turnstileToken;
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isLoading) return;
-    if (awaitingCheck) {
-      setSubmitError(CHALLENGE_FAILED_MESSAGE);
-      return;
-    }
     setIsLoading(true);
     setSubmitError(null);
 
     try {
+      // Turnstile on: wait for its token if it isn't there yet. Without one
+      // (the check couldn't load or run) the server decides: it refuses unless
+      // Cloudflare is down, so an outage doesn't lock everyone out.
+      const turnstileToken = turnstileSiteKey
+        ? ((await turnstile.current?.getToken(TOKEN_WAIT_MS)) ?? null)
+        : null;
       const result = await requestMagicLink({ email, callbackUrl, turnstileToken });
       if (result.ok) {
         setIsSubmitted(true);
         return;
       }
-      setSubmitError(result.error === 'challenge' ? CHALLENGE_FAILED_MESSAGE : SEND_FAILED_MESSAGE);
+      setSubmitError(
+        result.error !== 'challenge'
+          ? SEND_FAILED_MESSAGE
+          : checkLoadFailed
+            ? CHALLENGE_LOAD_FAILED_MESSAGE
+            : CHALLENGE_FAILED_MESSAGE
+      );
     } catch (error) {
       console.error('Error signing in:', error);
       setSubmitError(SEND_FAILED_MESSAGE);
@@ -143,14 +155,16 @@ export default function SignInForm({ turnstileSiteKey }: SignInFormProps) {
               ref={turnstile}
               siteKey={turnstileSiteKey}
               action="signin"
-              onToken={setTurnstileToken}
-              onLoadError={() => setSubmitError(CHALLENGE_LOAD_FAILED_MESSAGE)}
+              onLoadError={() => {
+                setCheckLoadFailed(true);
+                setSubmitError(CHALLENGE_LOAD_FAILED_MESSAGE);
+              }}
             />
           )}
 
           <button
             type="submit"
-            disabled={isLoading || awaitingCheck}
+            disabled={isLoading}
             className="w-full bg-primary-600 text-white py-3 rounded-lg font-medium hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
           >
             {isLoading ? 'Sending link...' : 'Send magic link'}
