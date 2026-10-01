@@ -85,6 +85,8 @@ Copy `.env.example` to `.env.local` and fill in:
 ```bash
 npm run dev          # dev server
 npm run build        # production build
+npm run check:trace  # after a build: every API route that ships sharp also ships its native libvips
+npm run smoke:deploy -- <url>  # read-only GET smoke of a deployed host: auth and upload routes start (no emails, no uploads)
 npm start            # run the production build
 npm run lint         # eslint (flat config)
 npm test             # full Vitest suite (unit + component + API)

@@ -1,5 +1,4 @@
 import nodemailer from 'nodemailer';
-import sharp from 'sharp';
 import { getEnvVars } from './env';
 
 // Get validated environment variables
@@ -42,11 +41,13 @@ const LOGO_CID = 'wishlist-logo';
 let logoPngPromise: Promise<Buffer> | null = null;
 function getLogoPng(): Promise<Buffer> {
   if (!logoPngPromise) {
-    // 2x (96px) for retina; rendered at 48px in the header.
-    logoPngPromise = sharp(Buffer.from(LOGO_SVG))
-      .resize(96, 96)
-      .png()
-      .toBuffer()
+    // sharp is loaded here, on first send, not at the top of the module:
+    // NextAuth imports this file, so a sharp that can't load (its native
+    // libvips missing from the bundle, WIS-156) would otherwise fail every
+    // /api/auth/* request before this fallback could send the email without
+    // the logo. 2x (96px) for retina; rendered at 48px in the header.
+    logoPngPromise = import('sharp')
+      .then(({ default: sharp }) => sharp(Buffer.from(LOGO_SVG)).resize(96, 96).png().toBuffer())
       .catch((err) => {
         logoPngPromise = null; // don't cache the failure — retry next send
         throw err;
