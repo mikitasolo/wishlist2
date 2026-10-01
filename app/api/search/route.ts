@@ -25,17 +25,18 @@ interface Searcher {
   followers: ObjectId[];
   /** Mutual follows, from `getFriendIds` like every other friends check. */
   friends: ObjectId[];
-  /** Lists they're a member of. */
+  /** Lists they're a member of. Only the list section reads it: empty when that's skipped. */
   memberOf: ObjectId[];
 }
 
-async function loadSearcher(id: string): Promise<Searcher> {
+/** `lists`: whether the request runs the list section, so its memberships are read. */
+async function loadSearcher(id: string, lists: boolean): Promise<Searcher> {
   const oid = new mongoose.Types.ObjectId(id);
   const [following, followers, friendIds, memberOf] = await Promise.all([
     Follow.distinct('following', { follower: oid }),
     Follow.distinct('follower', { following: oid }),
     getFriendIds(oid),
-    WishlistMember.distinct('wishlist', { user: oid }),
+    lists ? WishlistMember.distinct('wishlist', { user: oid }) : [],
   ]);
   // Aggregation expressions don't cast, so every id has to be an ObjectId.
   const friends = friendIds.map((f) => new mongoose.Types.ObjectId(f));
@@ -166,6 +167,9 @@ function searchWishlists(rx: RegExp, prefix: RegExp, searcher: Searcher | null) 
 
 // GET /api/search?q=... - unified search over usernames + the wishlists the
 // searcher may open, ranked by how close each result is to them.
+// `&sections=users` searches people only (the invite form's username
+// suggestions): `wishlists` comes back empty, and nothing only the list section
+// needs is read. Absent, or any other value, it's both sections.
 export async function GET(request: NextRequest) {
   try {
     // Public endpoint — key on IP to blunt graph scraping.
@@ -173,6 +177,7 @@ export async function GET(request: NextRequest) {
     if (limited) return limited;
 
     const q = (request.nextUrl.searchParams.get('q') || '').trim().toLowerCase();
+    const lists = request.nextUrl.searchParams.get('sections') !== 'users';
     if (q.length < 1) {
       return NextResponse.json({ success: true, data: { users: [], wishlists: [] } });
     }
@@ -183,19 +188,19 @@ export async function GET(request: NextRequest) {
     const { rx, prefix } = matchers(q);
 
     const session = await auth();
-    const searcher = session?.user?.id ? await loadSearcher(session.user.id) : null;
+    const searcher = session?.user?.id ? await loadSearcher(session.user.id, lists) : null;
 
     const [users, wishlists] = await Promise.all([
       searchPeople(q, searcher),
-      searchWishlists(rx, prefix, searcher),
+      lists ? searchWishlists(rx, prefix, searcher) : [],
     ]);
 
     // Resolve the primary owner's username for the matched wishlists — the
     // result row has space for one name, and co-owners are listed on the list itself.
     const primaryIds = wishlists.map((w) => primaryOwnerId(w)).filter((id): id is string => !!id);
-    const owners = await User.find({ _id: { $in: Array.from(new Set(primaryIds)) } }).select(
-      'username'
-    );
+    const owners = primaryIds.length
+      ? await User.find({ _id: { $in: Array.from(new Set(primaryIds)) } }).select('username')
+      : [];
     const ownerMap = new Map(owners.map((o) => [o._id.toString(), o.username]));
 
     return NextResponse.json({

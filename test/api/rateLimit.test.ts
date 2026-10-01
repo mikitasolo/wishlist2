@@ -140,4 +140,16 @@ describe('rate limiting on a public route (search)', () => {
     expect(warnings.lines()).toEqual([{ event: 'rate_limited', name: 'search', keyKind: 'ip' }]);
     expect(warnings.raw()).not.toContain('203.0.113.5');
   });
+
+  it('limits a people-only search (the invite form’s suggestions) under the same limit', async () => {
+    __setRateLimiters({ search: denyAll });
+    const warnings = captureWarnings();
+
+    const req = new NextRequest('http://localhost/api/search?q=ta&sections=users', {
+      headers: { 'x-forwarded-for': '203.0.113.5' },
+    });
+    const res = await SEARCH(req);
+    expect(res.status).toBe(429);
+    expect(warnings.lines()).toEqual([{ event: 'rate_limited', name: 'search', keyKind: 'ip' }]);
+  });
 });

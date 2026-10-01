@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import { NextRequest } from 'next/server';
 import mongoose from 'mongoose';
 import { connectTestDB, disconnectTestDB, clearTestDB } from '../db';
@@ -60,11 +60,11 @@ async function list(
 const join = (wishlist: string, member: string) =>
   WishlistMember.create({ wishlist, user: member });
 
-async function search(q: string, as: string | null) {
+async function search(q: string, as: string | null, sections?: string) {
   session.mockResolvedValue(as ? ({ user: { id: as } } as never) : (null as never));
-  const res = await SEARCH(
-    new NextRequest(`http://localhost/api/search?q=${encodeURIComponent(q)}`)
-  );
+  const params = new URLSearchParams({ q });
+  if (sections !== undefined) params.set('sections', sections);
+  const res = await SEARCH(new NextRequest(`http://localhost/api/search?${params}`));
   expect(res.status).toBe(200);
   const body = await res.json();
   return body.data as {
@@ -318,4 +318,75 @@ describe('GET /api/search — ranking', () => {
       'Birthday 2026',
     ]);
   });
+});
+
+describe('GET /api/search — people only (`sections=users`, the invite form’s suggestions)', () => {
+  let me: string;
+
+  beforeEach(async () => {
+    me = await user('searcher');
+    const friend = await user('alizfriend');
+    await user('aliastranger');
+    await user('alihidden', { searchable: false });
+    await befriend(me, friend);
+    // Private, so it's found only through the searcher's membership.
+    await join(await list('Ali birthday', [friend], 'private'), me);
+  });
+
+  afterEach(() => vi.restoreAllMocks());
+
+  /** Every read only the list section needs: the lists, the memberships, the owners' names. */
+  const spyOnListReads = () => ({
+    lists: vi.spyOn(Wishlist, 'aggregate'),
+    memberships: vi.spyOn(WishlistMember, 'distinct'),
+    ownerNames: vi.spyOn(User, 'find'),
+  });
+
+  it.each(['signed in', 'signed out'])(
+    'returns the same people and no lists, without reading any list data (%s)',
+    async (who) => {
+      const as = who === 'signed in' ? me : null;
+      const both = await search('ali', as);
+      const reads = spyOnListReads();
+      const people = await search('ali', as, 'users');
+
+      expect(people).toEqual({ users: both.users, wishlists: [] });
+      expect(reads.lists).not.toHaveBeenCalled();
+      expect(reads.memberships).not.toHaveBeenCalled();
+      expect(reads.ownerNames).not.toHaveBeenCalled();
+    }
+  );
+
+  it('still ranks friends first and hides someone who turned off searchable', async () => {
+    expect((await search('ali', me, 'users')).users.map((u) => u.username)).toEqual([
+      'alizfriend',
+      'aliastranger',
+    ]);
+  });
+
+  it.each([undefined, '', 'wishlists', 'Users', 'users,wishlists'])(
+    'runs both sections as before for sections=%s',
+    async (sections) => {
+      const reads = spyOnListReads();
+      const data = await search('ali', me, sections);
+
+      expect(data).toEqual({
+        users: [
+          { username: 'alizfriend', image: 'https://img.example/alizfriend.png' },
+          { username: 'aliastranger', image: 'https://img.example/aliastranger.png' },
+        ],
+        wishlists: [
+          {
+            _id: expect.any(String),
+            name: 'Ali birthday',
+            slug: 'ali-birthday',
+            ownerUsername: 'alizfriend',
+          },
+        ],
+      });
+      expect(reads.lists).toHaveBeenCalledTimes(1);
+      expect(reads.memberships).toHaveBeenCalledTimes(1);
+      expect(reads.ownerNames).toHaveBeenCalledTimes(1);
+    }
+  );
 });

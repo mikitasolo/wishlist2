@@ -24,7 +24,8 @@ export default function InviteMemberForm({ onInvite, isInviting }: InviteMemberF
   const [loadingSuggest, setLoadingSuggest] = useState(false);
   const fieldRef = useRef<HTMLDivElement>(null);
 
-  // Live username suggestions, reusing the search endpoint.
+  // Live username suggestions, from the search endpoint's people section only
+  // (`sections=users`), so it doesn't run the wishlist search for nothing.
   useEffect(() => {
     const term = value.trim().replace(/^@/, '');
     if (term.length < 3) {
@@ -35,7 +36,8 @@ export default function InviteMemberForm({ onInvite, isInviting }: InviteMemberF
     setLoadingSuggest(true);
     const t = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/search?q=${encodeURIComponent(term)}`, { cache: 'no-store' });
+        const params = new URLSearchParams({ q: term, sections: 'users' });
+        const res = await fetch(`/api/search?${params}`, { cache: 'no-store' });
         const result = await res.json();
         if (result.success) setSuggestions((result.data.users || []).slice(0, 5));
       } catch {
