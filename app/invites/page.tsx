@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
@@ -10,6 +10,7 @@ import Avatar from '@/components/Avatar';
 import Icon from '@/components/Icon';
 import { useToast } from '@/components/ToastProvider';
 import { useBusyIds } from '@/lib/hooks/useBusyIds';
+import { createMutationTracker } from '@/lib/utils/itemListMerge';
 
 interface Invite {
   _id: string;
@@ -22,35 +23,96 @@ interface Invite {
 }
 
 export default function InvitesPage() {
-  const { status } = useSession();
+  const { data: session, status } = useSession();
+  const userId = session?.user?.id;
   const router = useRouter();
   const { showToast } = useToast();
   const [invites, setInvites] = useState<Invite[]>([]);
   const [loading, setLoading] = useState(true);
   // Invites whose answer is still in flight, per invite.
   const { busy, run } = useBusyIds();
+  // The answers as a refetch sees them. A list read while one was in flight may
+  // predate it, so it would bring back the card that answer just took off, or
+  // take off the card still waiting on it. Such a read is dropped, and the list
+  // is read again once no answer is in flight. One tracker per account, so an
+  // answer the previous account still has on its way can't hold up this one's.
+  const answerTracker = useRef(createMutationTracker());
+  // The stamp of the latest list request sent.
+  const latestSent = useRef(0);
+  // List requests sent at or before this stamp are outdated: a newer one has
+  // already landed, or they were sent for the previous account.
+  const outdatedUpTo = useRef(0);
+  // The account whose invites the page shows.
+  const account = useRef(userId);
 
   useEffect(() => {
     if (status === 'unauthenticated') router.push('/');
   }, [status, router]);
 
-  const load = useCallback(() => {
-    fetch('/api/users/me/invites', { cache: 'no-store' })
-      .then((r) => r.json())
-      .then((res) => {
-        if (res.success) setInvites(res.data);
-        else showToast('Failed to load invites', 'error');
-      })
-      .catch(() => showToast('Failed to load invites', 'error'))
-      .finally(() => setLoading(false));
-  }, [showToast]);
+  // Another account signed in (from another tab): `status` stays
+  // 'authenticated', so key on the user id. A layout effect, so the previous
+  // account's cards are gone before the browser paints, and nothing still on its
+  // way for that account, a list or an answer, can land on the new one's page.
+  // The busy ids stay: an answer still in flight frees its own card's id when it
+  // settles, and the new account has no card with that id.
+  useLayoutEffect(() => {
+    account.current = userId;
+    answerTracker.current = createMutationTracker();
+    outdatedUpTo.current = answerTracker.current.stamp();
+    setInvites((prev) => (prev.length ? [] : prev));
+    setLoading(true);
+  }, [userId]);
 
+  // The first load of an account shows the skeleton, and says so if it fails.
+  // A refetch (`quiet`) updates the cards in place, and a failed one keeps them.
+  const load = useCallback(
+    (quiet: boolean) => {
+      const tracker = answerTracker.current;
+      const sentAt = tracker.stamp();
+      latestSent.current = sentAt;
+      fetch('/api/users/me/invites', { cache: 'no-store' })
+        .then((r) => r.json())
+        .then((res) => {
+          if (sentAt <= outdatedUpTo.current) return;
+          if (!res.success) throw new Error(res.error);
+          if (tracker.isStale(sentAt)) {
+            // Read again, unless a read sent since the answers settled is
+            // already on its way.
+            if (tracker.isStale(latestSent.current)) tracker.rereadWhenIdle();
+            return;
+          }
+          outdatedUpTo.current = sentAt;
+          setInvites(res.data);
+          setLoading(false);
+        })
+        .catch(() => {
+          if (sentAt <= outdatedUpTo.current || quiet) return;
+          showToast('Failed to load invites', 'error');
+          setLoading(false);
+        });
+    },
+    [showToast]
+  );
+
+  // Load, then re-check whenever the tab regains focus or something changes
+  // invites, as the header's invitation dot does, so the two agree.
   useEffect(() => {
-    if (status === 'authenticated') load();
-  }, [status, load]);
+    if (status !== 'authenticated') return;
+    const tracker = answerTracker.current;
+    const refresh = () => load(true);
+    load(false);
+    tracker.setReread(refresh);
+    window.addEventListener('focus', refresh);
+    window.addEventListener('invites-changed', refresh);
+    return () => {
+      tracker.setReread(null);
+      window.removeEventListener('focus', refresh);
+      window.removeEventListener('invites-changed', refresh);
+    };
+  }, [status, userId, load]);
 
-  // Take an invite off the page and let the header's invitation dot re-check
-  // immediately.
+  // Take an invite off the page and let the header's invitation dot (and this
+  // page's list) re-check immediately.
   function dropInvite(inviteId: string) {
     setInvites((prev) => prev.filter((i) => i._id !== inviteId));
     window.dispatchEvent(new Event('invites-changed'));
@@ -58,15 +120,23 @@ export default function InvitesPage() {
 
   function respond(invite: Invite, action: 'accept' | 'decline') {
     return run(invite._id, async () => {
+      const answeredFor = account.current;
       try {
-        const res = await fetch(`/api/invites/${invite._id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action }),
+        const { res, result } = await answerTracker.current.track(async () => {
+          const res = await fetch(`/api/invites/${invite._id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action }),
+          });
+          // Parsed first, so a 404 that isn't the route's own JSON answer (an
+          // HTML page from the platform) lands in the catch below and keeps the
+          // card.
+          return { res, result: await res.json() };
         });
-        // Parsed first, so a 404 that isn't the route's own JSON answer (an HTML
-        // page from the platform) lands in the catch below and keeps the card.
-        const result = await res.json();
+        // Another account signed in while this answer was on its way. What came
+        // of it (the list's name, the redirect, an error) belongs to the account
+        // that gave it, here and in the catch below.
+        if (account.current !== answeredFor) return;
         // The invite went away while this page was open: an owner cancelled it,
         // its list was deleted, we left or lost our role there, or another tab
         // already answered it. Every retry would 404 the same way, so drop the
@@ -88,7 +158,7 @@ export default function InvitesPage() {
           showToast(result.error || 'Something went wrong', 'error');
         }
       } catch {
-        showToast('Something went wrong', 'error');
+        if (account.current === answeredFor) showToast('Something went wrong', 'error');
       }
     });
   }
