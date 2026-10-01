@@ -6,6 +6,7 @@ import Wishlist, { IWishlist } from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
 import { ownedByFilter, ownerIds } from '@/lib/utils/wishlistOwners';
 import { isOwnerOfWishlist } from '@/lib/utils/wishlistAccess';
+import { errorKind } from '@/lib/utils/errorKind';
 
 /**
  * Changing who owns a wishlist. Ownership is consequential in both directions,
@@ -50,6 +51,9 @@ export async function releaseGifterHoldings(
  * reservations — used when they leave or are removed. They keep the ability to
  * mark the gift as given from their reservations page; the list just stops
  * showing the item as claimed.
+ *
+ * A member's leave or kick runs it before the membership delete, and
+ * `releaseLateBookings` after it.
  */
 export async function releaseUserBookings(wishlistId: string, userId: string): Promise<number> {
   await connectDB();
@@ -58,6 +62,27 @@ export async function releaseUserBookings(wishlistId: string, userId: string): P
     { $set: { status: 'available', bookedBy: null } }
   );
   return result.modifiedCount ?? 0;
+}
+
+/**
+ * `releaseUserBookings` once more, once a member's leave or kick has deleted their
+ * membership. A booking of theirs in flight that checked their membership before
+ * the delete stood (`undoBookingUnlessMember`, `lib/utils/lateBooking.ts`), and
+ * only this frees it. Reservations stay, as on the first release.
+ *
+ * Best-effort, because the removal has landed by now and must answer (and notify)
+ * as one: a failure is logged, with the list's id for repair by hand, and counts 0.
+ */
+export async function releaseLateBookings(wishlistId: string, userId: string): Promise<number> {
+  try {
+    return await releaseUserBookings(wishlistId, userId);
+  } catch (err) {
+    console.error(
+      `Could not release late bookings after a removal from wishlist ${wishlistId}:`,
+      errorKind(err)
+    );
+    return 0;
+  }
 }
 
 /**

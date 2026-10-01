@@ -7,6 +7,7 @@ import { resolveWishlistId } from '@/lib/utils/wishlistSlug';
 import { isWishlistOwner } from '@/lib/utils/wishlistOwners';
 import {
   isLastOwner,
+  releaseLateBookings,
   releaseUserBookings,
   removeWishlistOwner,
 } from '@/lib/utils/wishlistOwnership';
@@ -103,12 +104,16 @@ export async function DELETE(
       );
     }
 
+    // And free their items once more, now that they're off the list, for a
+    // booking that checked their membership before the delete.
+    const lateCount = await releaseLateBookings(wishlistId, session.user.id);
+
     await cancelPendingInvites(wishlistId, session.user.id);
 
     return NextResponse.json(
       {
         success: true,
-        data: { unbookedItemsCount: unbookedCount },
+        data: { unbookedItemsCount: unbookedCount + lateCount },
       },
       { status: 200 }
     );
