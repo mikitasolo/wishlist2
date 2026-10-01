@@ -528,9 +528,10 @@ export default function WishlistDetail() {
         } catch (error) {
           console.error('Error proposing item:', error);
           // A timeout says so; any other failure gets the generic message.
-          return error instanceof RequestTimeoutError
-            ? { success: false, error: error.message }
-            : null;
+          return {
+            success: false,
+            error: error instanceof RequestTimeoutError ? error.message : undefined,
+          };
         }
       });
 

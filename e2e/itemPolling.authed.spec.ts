@@ -767,9 +767,11 @@ test('regression: a stalled edit is given up on, the item goes back to its serve
 });
 
 // A proposal given up on may still have been saved. The member is told it
-// failed, keeps what they typed, and the next poll lists it if it went through,
-// so they can see it before proposing it again.
-test('a stalled proposal is given up on, keeping the modal open, and the next poll shows it if it was saved', async ({
+// failed and keeps what they typed, and the list behind the modal shows the
+// proposal once it's read, so they can see it went through before proposing it
+// again. With the tab in view, a 5 s poll is dropped while the POST stalls, so
+// the page reads the list straight after giving up on it.
+test('a stalled proposal is given up on, keeping the modal open, and the read straight after shows it if it was saved', async ({
   page,
 }) => {
   const name = 'E2E Stalled Proposal';
@@ -798,14 +800,20 @@ test('a stalled proposal is given up on, keeping the modal open, and the next po
   await dialog.getByRole('button', { name: 'Propose Item', exact: true }).click();
   await postArrived.promise;
 
+  // A poll that lands while the POST is stalled is dropped.
+  await pollOnce(page);
+  await (await reads.next()).land();
+  expect(await card.count()).toBe(0);
+  expect(reads.untaken).toBe(0);
+
   await page.clock.fastForward(ITEM_REQUEST_TIMEOUT_MS);
   await expect(page.getByRole('status').getByText(REQUEST_TIMEOUT_MESSAGE)).toBeVisible();
   await expect(dialog).toBeVisible();
   await expect(dialog.getByLabel('Item Name')).toHaveValue(name);
   await expect(dialog.getByRole('button', { name: 'Propose Item', exact: true })).toBeEnabled();
-  expect(await card.count()).toBe(0);
 
-  await pollOnce(page);
+  // The page reads the list again in place of the dropped poll; no tick runs.
   await (await reads.next()).land();
   await expect(card).toHaveCount(1);
+  expect(reads.untaken).toBe(0);
 });
