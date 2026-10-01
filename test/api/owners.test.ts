@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } 
 import { NextRequest } from 'next/server';
 import mongoose from 'mongoose';
 import { connectTestDB, disconnectTestDB, clearTestDB } from '../db';
+import { holdFirstCall } from '../interleave';
 
 vi.mock('@/lib/mongodb', () => ({ default: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('@/lib/auth', () => ({ auth: vi.fn() }));
@@ -12,6 +13,13 @@ vi.mock('@/lib/email', () => ({
 vi.mock('@/lib/utils/currencyRates', () => ({
   ensureCurrencyRatesUpToDate: vi.fn().mockResolvedValue({ rates: new Map([['usd', 1]]) }),
   convertToUsdCents: vi.fn().mockReturnValue(null),
+}));
+// Record which blobs a write frees instead of talking to a store.
+const deleteBlob = vi.fn().mockResolvedValue(undefined);
+vi.mock('@vercel/blob', () => ({
+  del: (...a: unknown[]) => deleteBlob(...a),
+  list: vi.fn(),
+  put: vi.fn(),
 }));
 
 import { auth } from '@/lib/auth';
@@ -24,7 +32,7 @@ import { GET as getItems } from '@/app/api/wishlists/[id]/items/route';
 import { POST as postItem } from '@/app/api/wishlists/[id]/items/route';
 import { GET as getMembers, POST as invite } from '@/app/api/wishlists/[id]/members/route';
 import { DELETE as deleteMember } from '@/app/api/wishlists/[id]/members/[memberId]/route';
-import { PATCH as patchItem } from '@/app/api/items/[id]/route';
+import { PATCH as patchItem, DELETE as deleteItem } from '@/app/api/items/[id]/route';
 import {
   POST as postOwner,
   PATCH as patchOwner,
@@ -75,6 +83,7 @@ beforeEach(async () => {
   await clearTestDB();
   session.mockReset();
   sendEmail.mockReset();
+  deleteBlob.mockClear();
 
   alice = (await User.create({ email: 'a@x.com', username: 'alice' }))._id.toString();
   bob = (await User.create({ email: 'b@x.com', username: 'bob' }))._id.toString();
@@ -1007,6 +1016,273 @@ describe('racing removals still leave the wishlist an owner', () => {
       expect(deleted?.res.status).toBe(200);
       // Alice was an owner all along: the list is gone, not her ownership.
       expect(kicked.status).toBe(404);
+    });
+
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    /**
+     * Runs `request`, with `meanwhile` running to completion right before the
+     * request's first call to `model[method]`: after its owner check passed, before
+     * that call goes through. Resolves to what each of them resolved to.
+     */
+    async function whileHeld<T>(
+      model: object,
+      method: string,
+      meanwhile: () => Promise<T>,
+      request: () => Promise<Raced>
+    ) {
+      const race = holdFirstCall(model, method, meanwhile);
+      try {
+        const raced = await request();
+        // The request got as far as that call, so the race really ran.
+        expect(race.held()).toBe(true);
+        return { raced, during: race.outcome() };
+      } finally {
+        race.restore();
+      }
+    }
+
+    /** One of our own uploads, as `uploads/<userId>/<name>` in the stubbed store. */
+    function ownBlob(userId: string, name: string) {
+      // A fake token in the SDK's `vercel_blob_rw_<storeId>_<secret>` shape; our
+      // store's public host is derived from it.
+      vi.stubEnv('BLOB_READ_WRITE_TOKEN', ['vercel', 'blob', 'rw', 'TestStore42', 'x'].join('_'));
+      return `https://teststore42.public.blob.vercel-storage.com/uploads/${userId}/${name}`;
+    }
+
+    const editListAs = async (user: string, body: unknown): Promise<Raced> => {
+      session.mockResolvedValueOnce({ user: { id: user } } as never);
+      const res = await patchWishlist(req(`/api/wishlists/${wid}`, 'PATCH', body), {
+        params: Promise.resolve({ id: wid }),
+      });
+      return { actor: user, res };
+    };
+
+    // regression: pinning a list was an `$addToSet` on `featuredBy` that didn't check
+    // ownership, run after the caller was authorized against the list read at the
+    // start of the request. An owner whom a co-owner removed in between could pin the
+    // list again after losing ownership had cleared their pin, and lost their pin on
+    // another list to make room for it.
+    it.each([
+      ['removes', removeAs],
+      ['demotes', demoteAs],
+    ])(
+      'regression: a co-owner %s an owner while they pin the list — no pin comes back',
+      async (_, takeOwnership) => {
+        await Wishlist.updateOne({ _id: wid }, { $set: { featuredBy: [bob] } });
+        const other = await Wishlist.create({
+          name: 'Other',
+          slug: 'other',
+          owners: [alice],
+          featuredBy: [alice],
+          visibility: 'everyone',
+        });
+
+        const { raced: pinned, during: lost } = await whileHeld(
+          Wishlist,
+          'findOneAndUpdate',
+          () => takeOwnership(bob, alice),
+          () => editListAs(alice, { featured: true })
+        );
+
+        expect(lost?.res.status).toBe(200);
+        // By the time her pin was written alice was no longer an owner: answered
+        // like any non-owner, and no pin moved.
+        expect(pinned.res.status).toBe(403);
+        expect((await pinned.res.json()).error).toMatch(/owner access required/i);
+        expect((await Wishlist.findById(wid))!.featuredBy.map(String)).toEqual([bob]);
+        expect((await Wishlist.findById(other._id))!.featuredBy.map(String)).toEqual([alice]);
+      }
+    );
+
+    // regression: an edit wrote the list's settings with an unconditional
+    // `findByIdAndUpdate`, after authorizing the caller against the list read at the
+    // start of the request. An owner whom a co-owner removed in between could still
+    // rename the list, change who sees it, archive it, or replace its cover (and
+    // free the old one).
+    it.each([
+      ['removes', removeAs],
+      ['demotes', demoteAs],
+    ])(
+      'regression: a co-owner %s an owner while they edit the list — nothing changes',
+      async (_, takeOwnership) => {
+        const cover = ownBlob(alice, 'cover.jpg');
+        await Wishlist.updateOne({ _id: wid }, { $set: { bannerUrl: cover } });
+        const settings = async () => {
+          const { name, slug, description, visibility, isPublic, archived, bannerUrl, currency } =
+            (await Wishlist.findById(wid).lean())!;
+          return { name, slug, description, visibility, isPublic, archived, bannerUrl, currency };
+        };
+        const before = await settings();
+
+        const { raced: edited, during: lost } = await whileHeld(
+          Wishlist,
+          'findOneAndUpdate',
+          () => takeOwnership(bob, alice),
+          () =>
+            editListAs(alice, {
+              name: 'Renamed',
+              slug: 'renamed-list',
+              description: 'Changed',
+              visibility: 'private',
+              archived: true,
+              currency: 'EUR',
+              bannerUrl: 'https://images.example.com/new-cover.jpg',
+            })
+        );
+
+        expect(lost?.res.status).toBe(200);
+        expect(edited.res.status).toBe(403);
+        expect((await edited.res.json()).error).toMatch(/owner access required/i);
+        expect(await settings()).toEqual(before);
+        // The cover she'd have replaced is still in storage.
+        expect(deleteBlob).not.toHaveBeenCalled();
+      }
+    );
+
+    it('an edit racing a co-owner deleting the list answers 404', async () => {
+      const { raced: edited, during: deleted } = await whileHeld(
+        Wishlist,
+        'findOneAndUpdate',
+        () => deleteListAs(bob),
+        () => editListAs(alice, { name: 'Renamed' })
+      );
+
+      expect(deleted?.res.status).toBe(200);
+      // Alice was an owner all along: the list is gone, not her ownership.
+      expect(edited.res.status).toBe(404);
+      expect(await Wishlist.exists({ _id: wid })).toBeNull();
+    });
+
+    const inviteAs = async (user: string, username: string): Promise<Raced> => {
+      session.mockResolvedValueOnce({ user: { id: user } } as never);
+      const res = await invite(req(`/api/wishlists/${wid}/members`, 'POST', { username }), {
+        params: Promise.resolve({ id: wid }),
+      });
+      return { actor: user, res };
+    };
+    const promoteAs = async (user: string, target: string): Promise<Raced> => {
+      session.mockResolvedValueOnce({ user: { id: user } } as never);
+      const res = await postOwner(req(`/api/wishlists/${wid}/owners/${target}`, 'POST'), {
+        params: Promise.resolve({ id: wid, userId: target }),
+      });
+      return { actor: user, res };
+    };
+
+    /** Nothing reached `userId`: no invite, no notification, no email. */
+    async function expectNothingSentTo(userId: string) {
+      expect(await WishlistInvite.countDocuments({ wishlist: wid, invitedUser: userId })).toBe(0);
+      expect(await Notification.countDocuments({ user: userId })).toBe(0);
+      expect(sendEmail).not.toHaveBeenCalled();
+    }
+
+    // regression: inviting someone checked that the caller owns the list against the
+    // list read at the start of the request, then looked the invitee up and issued the
+    // invite. An owner whom a co-owner removed in between could still invite people:
+    // an invite, a notification and an email on behalf of someone who no longer owned
+    // the list.
+    it.each([
+      ['removes', removeAs],
+      ['demotes', demoteAs],
+    ])(
+      'regression: a co-owner %s an owner while they invite someone — nothing is sent',
+      async (_, takeOwnership) => {
+        const erin = (await User.create({ email: 'e@x.com', username: 'erin' }))._id.toString();
+
+        // Lands right before the already-a-member check, the last read before the invite.
+        const { raced: invited, during: lost } = await whileHeld(
+          WishlistMember,
+          'findOne',
+          () => takeOwnership(bob, alice),
+          () => inviteAs(alice, 'erin')
+        );
+
+        expect(lost?.res.status).toBe(200);
+        expect(invited.res.status).toBe(403);
+        expect((await invited.res.json()).error).toMatch(/owner access required/i);
+        await expectNothingSentTo(erin);
+      }
+    );
+
+    // regression: promoting a member checked that the caller owns the list against the
+    // list read at the start of the request, then checked the membership and issued
+    // the owner invite. An owner whom a co-owner removed in between could still offer
+    // a member co-ownership of a list they no longer owned.
+    it.each([
+      ['removes', removeAs],
+      ['demotes', demoteAs],
+    ])(
+      'regression: a co-owner %s an owner while they promote a member — nothing is sent',
+      async (_, takeOwnership) => {
+        // Lands right before the membership check.
+        const { raced: promoted, during: lost } = await whileHeld(
+          WishlistMember,
+          'exists',
+          () => takeOwnership(bob, alice),
+          () => promoteAs(alice, carol)
+        );
+
+        expect(lost?.res.status).toBe(200);
+        expect(promoted.res.status).toBe(403);
+        expect((await promoted.res.json()).error).toMatch(/only an owner can change/i);
+        await expectNothingSentTo(carol);
+        expect(await WishlistMember.exists({ wishlist: wid, user: carol })).toBeTruthy();
+      }
+    );
+
+    const deleteItemAs = async (user: string, itemId: string): Promise<Raced> => {
+      session.mockResolvedValueOnce({ user: { id: user } } as never);
+      const res = await deleteItem(req(`/api/items/${itemId}`, 'DELETE'), {
+        params: Promise.resolve({ id: itemId }),
+      });
+      return { actor: user, res };
+    };
+
+    // regression: deleting an item freed the image read at the start of the request
+    // whether or not the delete removed anything. Of two owners deleting the same item
+    // at once, both were told it was deleted, and its image was freed twice.
+    it('regression: two owners deleting an item at once — one deletes it, the other gets a 404', async () => {
+      const image = ownBlob(alice, 'gift.jpg');
+      const itemId = (
+        await Item.create({ wishlist: wid, name: 'Gift', imageUrl: image })
+      )._id.toString();
+
+      const { raced: second, during: first } = await whileHeld(
+        Item,
+        'findOneAndDelete',
+        () => deleteItemAs(bob, itemId),
+        () => deleteItemAs(alice, itemId)
+      );
+
+      expect(first?.res.status).toBe(200);
+      expect(second.res.status).toBe(404);
+      expect(await Item.exists({ _id: itemId })).toBeNull();
+      expect(deleteBlob.mock.calls).toEqual([[image]]);
+    });
+
+    // regression: the image freed was the one read at the start of the request. An
+    // edit that replaced it in between had already freed the old one, so the delete
+    // freed that again and left the new one behind in storage.
+    it('regression: deleting an item frees the image it had when it was deleted', async () => {
+      const oldImage = ownBlob(alice, 'old.jpg');
+      const newImage = ownBlob(bob, 'new.jpg');
+      const itemId = (
+        await Item.create({ wishlist: wid, name: 'Gift', imageUrl: oldImage })
+      )._id.toString();
+
+      const { raced: deleted } = await whileHeld(
+        Item,
+        'findOneAndDelete',
+        async () => {
+          await Item.updateOne({ _id: itemId }, { $set: { imageUrl: newImage } });
+        },
+        () => deleteItemAs(alice, itemId)
+      );
+
+      expect(deleted.res.status).toBe(200);
+      expect(deleteBlob.mock.calls).toEqual([[newImage]]);
     });
   });
 });

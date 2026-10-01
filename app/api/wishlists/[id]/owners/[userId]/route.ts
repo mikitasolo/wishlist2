@@ -145,6 +145,18 @@ export async function POST(
     const limited = await enforce('invite', userKey(session.user.id));
     if (limited) return limited;
 
+    // The owner check above ran against the list as it was read at the start of
+    // the request. Re-read it right before the invite is issued: a co-owner may
+    // have removed the caller since (or deleted the list), and someone who no
+    // longer owns the list can't offer anyone a share of it. Like the kick's
+    // re-read, this narrows the race rather than closing it: the invite lives on
+    // another collection, so it can't carry the ownership check itself.
+    const current = await getOwnerAccess(id, session.user.id);
+    if (!current.wishlist) {
+      return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
+    }
+    if (!current.isOwner) return notOwnerError();
+
     // Promotion is consent-gated: co-ownership puts the list on their public
     // profile and cancels the reservations they hold on it, so it can never be a
     // silent write. Their `whoCanInvite` preference isn't re-checked — membership

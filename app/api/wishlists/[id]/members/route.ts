@@ -13,6 +13,12 @@ import { isWishlistOwner, ownerIds } from '@/lib/utils/wishlistOwners';
 import { issueWishlistInvite } from '@/lib/utils/wishlistInvites';
 import { publicDisplayName } from '@/lib/utils/displayName';
 
+const notOwnerError = () =>
+  NextResponse.json(
+    { success: false, error: 'Unauthorized - Owner access required' },
+    { status: 403 }
+  );
+
 // GET /api/wishlists/[id]/members - Get all members of a wishlist
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -129,12 +135,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (!wishlist) {
       return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
     }
-    if (!isOwner) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized - Owner access required' },
-        { status: 403 }
-      );
-    }
+    if (!isOwner) return notOwnerError();
 
     // Validate request body
     const validation = await validateRequestBody(request, inviteMemberSchema);
@@ -196,6 +197,19 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         { status: 400 }
       );
     }
+
+    // The owner check above ran against the list as it was read at the start of
+    // the request. Re-read it right before the invite is issued: a co-owner may
+    // have removed the caller since (or deleted the list), and someone who no
+    // longer owns the list can't invite anyone to it. Like the kick's re-read,
+    // this narrows the race rather than closing it: the invite lives on another
+    // collection, so it can't carry the ownership check itself.
+    const current = await getOwnerAccess(id, session.user.id);
+    if (!current.wishlist) {
+      return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
+    }
+    if (!current.isOwner) return notOwnerError();
+
     // Create a pending invite (membership/ownership is granted only on accept),
     // and notify the invitee at their account email — fetched here, never stored
     // on the invite.
