@@ -2,7 +2,7 @@ import type { FullConfig } from '@playwright/test';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import mongoose from 'mongoose';
 import { spawn, type ChildProcess } from 'child_process';
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import { mkdir, writeFile } from 'fs/promises';
 import path from 'path';
 import { E2E_PORT } from '../playwright.config';
@@ -10,6 +10,7 @@ import User from '../models/User';
 import Wishlist from '../models/Wishlist';
 import Item from '../models/Item';
 import WishlistMember from '../models/WishlistMember';
+import { E2E_AUTH_SECRET, MAGIC_LINKS } from './magicLinks';
 
 const BASE_URL = `http://localhost:${E2E_PORT}`;
 
@@ -87,6 +88,16 @@ export default async function globalSetup(_config: FullConfig) {
     userId: user._id,
     expires,
   });
+
+  // Unused magic links (see magicLinks.ts), stored the way Auth.js stores the
+  // token it emails, so the sign-up spec can follow one without any email.
+  await mongoose.connection.collection('verification_tokens').insertMany(
+    Object.values(MAGIC_LINKS).map(({ email, token }) => ({
+      identifier: email,
+      token: createHash('sha256').update(`${token}${E2E_AUTH_SECRET}`).digest('hex'),
+      expires,
+    }))
+  );
   await mongoose.disconnect();
 
   const storageState = {
@@ -114,7 +125,7 @@ export default async function globalSetup(_config: FullConfig) {
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     MONGODB_URI: uri,
-    NEXTAUTH_SECRET: 'e2e-secret-e2e-secret-e2e-secret-0',
+    NEXTAUTH_SECRET: E2E_AUTH_SECRET,
     NEXTAUTH_URL: BASE_URL,
     AUTH_TRUST_HOST: 'true',
     EMAIL_TRANSPORT: 'console',
