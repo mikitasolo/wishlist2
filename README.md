@@ -173,6 +173,7 @@ docs/           # brand assets and their generators
 - Nobody can change their own role, and only an owner can grant or revoke ownership. Ownership is never applied without the recipient accepting, since it puts the list on their public profile.
 - Owners can't see bookings, so being made an owner releases whatever that person had reserved — a booking is never left in a state only they could cancel but can no longer see. Owners are never told how many were released.
 - User emails are never exposed to other users; invitations target registered accounts by username.
+- The session (`auth()` on the server, `GET /api/auth/session` in the browser) is an explicit allowlist of the signed-in user's own fields. It never carries the session token, which the httpOnly cookie keeps away from scripts, or the rest of the user's database row.
 - Archived wishlists 404 for everyone except the owners, even by direct link.
 - `friends`-only profile visibility hides the bio and the browsable wishlist list from non-friends (on the profile and in search) while keeping the profile discoverable.
 - Search returns only the lists the searcher could open. It matches with `viewableWishlistsFilter`, the query form of the access check every wishlist read uses, and a table test keeps the two identical.

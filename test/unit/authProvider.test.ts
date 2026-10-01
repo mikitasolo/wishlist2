@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { format } from 'node:util';
 import { SMTP_ENV_VARS, type EmailTransport } from '@/lib/env';
+import { SESSION_USER_FIELDS } from '@/lib/utils/sessionPayload';
 
 interface CapturedConfig {
   providers: Array<{ id: string; options: Record<string, unknown> }>;
@@ -12,9 +13,9 @@ interface CapturedConfig {
       email?: { verificationRequest?: boolean };
     }) => Promise<boolean>;
     session: (args: {
-      session: { user: Record<string, unknown> };
-      user: { id: string; email: string };
-    }) => Promise<unknown>;
+      session: Record<string, unknown>;
+      user: Record<string, unknown>;
+    }) => Promise<Record<string, unknown> & { user: Record<string, unknown> }>;
   };
 }
 
@@ -109,9 +110,12 @@ describe('lib/auth callbacks: logging', () => {
     users.findOne.mockResolvedValueOnce(null);
     const { session: sessionCallback } = await callbacks();
 
-    const session = { user: {} };
-    const result = await sessionCallback({ session, user: { id: USER_ID, email: EMAIL } });
-    expect(result).toBe(session);
+    const result = await sessionCallback({
+      session: { user: {}, expires: new Date() },
+      user: { id: USER_ID, email: EMAIL },
+    });
+    // Still signed in, on the adapter's row.
+    expect(result.user.id).toBe(USER_ID);
 
     expect(errorLog).toHaveBeenCalledTimes(1);
     expect(logged()).not.toContain(EMAIL.toLowerCase());
@@ -194,15 +198,14 @@ describe('lib/auth: sign-up', () => {
     users.findOne.mockResolvedValueOnce(dbUser);
     const { callbacks } = await config();
 
-    const session = { user: {} as Record<string, unknown> };
-    await callbacks.session({
-      session,
+    const result = await callbacks.session({
+      session: { user: {}, expires: new Date() },
       user: { id: '64b7f0c2a1b2c3d4e5f60718', email: 'alice.smith@example.com' },
     });
 
     expect(save).toHaveBeenCalledTimes(1);
     expect(dbUser.username).toMatch(/^user_[a-z0-9]{8}$/);
-    expect(session.user.username).toBe(dbUser.username);
+    expect(result.user.username).toBe(dbUser.username);
     for (const part of ['alice', 'smith', 'example']) {
       expect(dbUser.username).not.toContain(part);
     }
@@ -259,5 +262,185 @@ describe('lib/auth callbacks: the magic-link request', () => {
     expect(
       await callbacks.signIn({ user: { email: EMAIL }, email: { verificationRequest: false } })
     ).toBe(true);
+  });
+});
+
+describe('lib/auth: the session payload', () => {
+  const USER_ID = '64b7f0c2a1b2c3d4e5f60718';
+  const TOKEN = 'a7c3e1f0-6d2b-4c8e-9f1a-session-token';
+  const EXPIRES = new Date('2026-10-31T12:00:00.000Z');
+
+  /** The adapter's user row, the way Auth.js passes it (`_id` already mapped to `id`): every field it has. */
+  const userRow = () => ({
+    id: USER_ID,
+    email: 'alice.smith@example.com',
+    emailVerified: new Date('2026-10-01T00:00:00Z'),
+    username: 'alice',
+    image: 'https://blob.example/uploads/me/a.webp',
+    bio: 'Gardening',
+    defaultCurrency: 'EUR',
+    privacy: { searchable: true, whoCanInvite: 'everyone', profileVisibility: 'everyone' },
+    createdAt: new Date('2026-01-01T00:00:00Z'),
+    updatedAt: new Date('2026-09-01T00:00:00Z'),
+    __v: 0,
+  });
+  /** What Auth.js passes as `session` with database sessions: `{ ...sessionRow, user }`. */
+  const sessionArg = () => ({
+    id: 'sess-row-id',
+    sessionToken: TOKEN,
+    userId: USER_ID,
+    expires: EXPIRES,
+    user: userRow(),
+  });
+  const dbUser = () => ({
+    _id: { toString: () => USER_ID },
+    email: 'alice.smith@example.com',
+    username: 'alice',
+    image: 'https://blob.example/uploads/me/a.webp',
+    defaultCurrency: 'EUR',
+    save: vi.fn(),
+  });
+
+  async function sessionCallback() {
+    vi.resetModules();
+    await import('@/lib/auth');
+    return nextAuth.mock.calls[0]![0].callbacks.session;
+  }
+
+  let errorLog: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    errorLog = vi.spyOn(console, 'error').mockImplementation(() => {});
+    users.findOne.mockReset();
+  });
+  afterEach(() => errorLog.mockRestore());
+
+  // regression: the session callback returned the object Auth.js passed it as
+  // is, and with database sessions that's `{ ...sessionRow, user }`, so
+  // GET /api/auth/session handed any script on the page the raw session token
+  // (the one the httpOnly cookie keeps from scripts), its row's ids, and every
+  // field of the user's row.
+  it('regression: returns only the allowlisted fields, never the session token or a raw row field', async () => {
+    users.findOne.mockResolvedValueOnce(dbUser());
+    const callback = await sessionCallback();
+
+    const result = await callback({ session: sessionArg(), user: userRow() });
+
+    // Exact: a new field fails here until it's added to the allowlist on purpose.
+    expect(result).toEqual({
+      user: {
+        id: USER_ID,
+        email: 'alice.smith@example.com',
+        username: 'alice',
+        name: undefined,
+        image: 'https://blob.example/uploads/me/a.webp',
+        defaultCurrency: 'EUR',
+      },
+      expires: '2026-10-31T12:00:00.000Z',
+    });
+    expect(Object.keys(result).sort()).toEqual(['expires', 'user']);
+    expect(Object.keys(result.user).sort()).toEqual([...SESSION_USER_FIELDS].sort());
+    const wire = JSON.stringify(result);
+    for (const leak of [TOKEN, 'sessionToken', 'userId', 'sess-row-id', 'emailVerified', 'bio']) {
+      expect(wire).not.toContain(leak);
+    }
+  });
+
+  it('builds a new object rather than returning or editing the one passed in', async () => {
+    users.findOne.mockResolvedValueOnce(dbUser());
+    const callback = await sessionCallback();
+    const passed = sessionArg();
+
+    const result = await callback({ session: passed, user: userRow() });
+
+    expect(result).not.toBe(passed);
+    expect(result.user).not.toBe(passed.user);
+    expect(passed.user).toEqual(userRow());
+  });
+
+  // Not found, or the read failed: still signed in on the adapter's row, as
+  // before, but through the same allowlist.
+  it.each([
+    ['the account isn’t found', () => users.findOne.mockResolvedValueOnce(null)],
+    [
+      'the database read fails',
+      () => users.findOne.mockRejectedValueOnce(new Error('connection refused')),
+    ],
+  ])('keeps the allowlist when %s', async (_, arrange) => {
+    arrange();
+    const callback = await sessionCallback();
+
+    const result = await callback({ session: sessionArg(), user: userRow() });
+
+    expect(result).toEqual({
+      user: {
+        id: USER_ID,
+        email: 'alice.smith@example.com',
+        username: 'alice',
+        name: undefined,
+        image: 'https://blob.example/uploads/me/a.webp',
+        defaultCurrency: 'EUR',
+      },
+      expires: '2026-10-31T12:00:00.000Z',
+    });
+    expect(JSON.stringify(result)).not.toContain(TOKEN);
+    expect(errorLog).toHaveBeenCalledTimes(1);
+  });
+
+  // update() (settings, welcome) re-runs the callback: it reads the account
+  // again rather than taking anything the client sent.
+  it('reflects a changed username on the next read, and ignores what update() sends', async () => {
+    users.findOne.mockResolvedValueOnce({ ...dbUser(), username: 'alice_new' });
+    const callback = await sessionCallback();
+
+    const result = await callback({
+      session: sessionArg(),
+      user: userRow(),
+      newSession: { user: { username: 'forged', id: 'someone-else' } },
+      trigger: 'update',
+    } as never);
+
+    // All of it from the account; none of what the client sent.
+    expect(result).toEqual({
+      user: {
+        id: USER_ID,
+        email: 'alice.smith@example.com',
+        username: 'alice_new',
+        name: undefined,
+        image: 'https://blob.example/uploads/me/a.webp',
+        defaultCurrency: 'EUR',
+      },
+      expires: '2026-10-31T12:00:00.000Z',
+    });
+  });
+
+  // A username backfill that loses a race fails on the unique index, and that
+  // error quotes the clashing username.
+  it('logs a duplicate-key error by its kind only', async () => {
+    const legacy = { ...dbUser(), username: undefined as string | undefined };
+    legacy.save.mockRejectedValueOnce(
+      Object.assign(new Error('E11000 dup key: { username: "user_clash000" }'), { code: 11000 })
+    );
+    users.findOne.mockResolvedValueOnce(legacy);
+    users.exists.mockResolvedValue(null);
+    const callback = await sessionCallback();
+
+    const result = await callback({ session: sessionArg(), user: userRow() });
+
+    expect(errorLog).toHaveBeenCalledWith('Error in session callback:', 'duplicate key');
+    expect(format(...errorLog.mock.calls[0])).not.toContain('user_clash000');
+    // Still signed in, on the adapter's row.
+    expect(result.user.username).toBe('alice');
+  });
+
+  // Fail closed: Auth.js answers a callback that throws with no session.
+  it('refuses a session it can’t name a user id for', async () => {
+    users.findOne.mockRejectedValueOnce(new Error('connection refused'));
+    const callback = await sessionCallback();
+    const { id: _, ...withoutId } = userRow();
+    void _;
+
+    await expect(callback({ session: sessionArg(), user: withoutId })).rejects.toThrow(
+      'No user id for the session'
+    );
   });
 });

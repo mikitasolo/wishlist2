@@ -15,6 +15,10 @@ export default defineConfig({
     // `// @vitest-environment jsdom` docblock at the top of the file.
     environment: 'node',
     setupFiles: ['./test/setup.ts'],
+    // next-auth's ESM imports `next/server` without an extension, which Node's
+    // own resolver refuses; letting Vite process it resolves it, so a test can
+    // run the real Auth.js route handlers (test/api/authSession.test.ts).
+    server: { deps: { inline: ['next-auth'] } },
     // Dummy env so modules that read env at import time (e.g. lib/mongodb) don't
     // throw. API tests mock lib/mongodb and use an in-memory server instead.
     env: {

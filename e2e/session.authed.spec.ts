@@ -31,3 +31,25 @@ test('regression: the legacy /api/invite endpoint 404s for a signed-in user', as
     expect(res.status(), `${method} /api/invite`).toBe(404);
   }
 });
+
+// regression: the session callback returned Auth.js's `{ ...sessionRow, user }`
+// as is, so this endpoint handed any script on the page the raw session token
+// that the httpOnly cookie keeps from it, plus the user's whole row.
+test('regression: the session endpoint has the user’s id and username, never the session token', async ({
+  page,
+}) => {
+  const res = await page.request.get('/api/auth/session');
+  expect(res.status()).toBe(200);
+  const text = await res.text();
+  const body = JSON.parse(text);
+
+  expect(body.user.id).toMatch(/^[a-f0-9]{24}$/);
+  expect(body.user.username).toBe('e2euser');
+  expect(text).not.toContain('sessionToken');
+  expect(body).not.toHaveProperty('userId');
+  const token = (await page.context().cookies()).find(
+    (c) => c.name === 'authjs.session-token'
+  )?.value;
+  expect(token).toBeTruthy();
+  expect(text).not.toContain(token!);
+});
