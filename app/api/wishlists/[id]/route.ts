@@ -46,12 +46,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
     }
 
-    // Lazily backfill a slug for legacy wishlists created before slugs existed.
-    if (!wishlist.slug) {
-      wishlist.slug = await generateUniqueWishlistSlug(wishlist.name);
-      await wishlist.save();
-    }
-
     // Fetch owners' public usernames (never expose their emails to viewers).
     // `ownerUsernames` is ordered like `owners`, so [0] is the primary owner.
     const owners = ownerIds(wishlist);
@@ -70,6 +64,26 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     let userRole: 'owner' | 'member' | null = null;
     if (access.isOwner) userRole = 'owner';
     else if (access.isMember) userRole = 'member';
+
+    // Lazily backfill a slug for legacy wishlists created before slugs existed.
+    // Only once access is granted, so a refused viewer writes nothing, and only
+    // the slug: a `save()` of the hydrated doc would also store the schema
+    // default `visibility: 'everyone'` on an old list that has only `isPublic`,
+    // making a private one public to every reader that trusts `visibility`.
+    // Not a content edit, so `updatedAt` stays put. It only fills a slug that's
+    // still missing: one set since our read (an owner's rename of the URL,
+    // another viewer's backfill) is kept, and that's the one we answer with.
+    if (!wishlist.slug) {
+      const slug = await generateUniqueWishlistSlug(wishlist.name);
+      const { modifiedCount } = await Wishlist.updateOne(
+        { _id: wishlist._id, slug: { $in: [null, ''] } },
+        { $set: { slug } },
+        { timestamps: false }
+      );
+      wishlist.slug = modifiedCount
+        ? slug
+        : (await Wishlist.findById(wishlist._id).select('slug').lean())?.slug;
+    }
 
     return NextResponse.json(
       {
