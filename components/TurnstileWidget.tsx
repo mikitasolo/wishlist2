@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useImperativeHandle, useRef, type Ref } from 'react';
+import { appliedTheme } from '@/components/ThemeProvider';
 
 /**
  * Cloudflare Turnstile's widget, loaded from Cloudflare's own script (it must
@@ -13,6 +14,15 @@ import { useEffect, useImperativeHandle, useRef, type Ref } from 'react';
  * Invisible mode it never shows. The token it hands back is single-use and
  * expires after 5 minutes. Turnstile fetches a fresh one itself when it expires;
  * after a token is spent, the caller asks for one with `reset()`.
+ *
+ * It's drawn in the app's own light or dark theme (`appliedTheme`), not
+ * Turnstile's `auto`, which follows the OS colour scheme instead of the app's
+ * toggle. The theme is taken when the widget is rendered, and a later change
+ * keeps the widget as it is: Turnstile can't change a widget's theme in place,
+ * and rendering a new one would throw away a held token or a check in progress.
+ * A rendered widget always has one or the other, since Turnstile starts a check
+ * on render and starts another by itself after an expiry, a timeout or an
+ * error. (The sign-in page has no theme toggle, so it doesn't happen there.)
  *
  * The caller asks for the token when it needs it (`getToken`), rather than
  * waiting on it up front: a visitor who submits a moment after the page loads
@@ -175,7 +185,8 @@ export default function TurnstileWidget({
               action,
               appearance: 'interaction-only',
               size: 'flexible',
-              theme: 'auto',
+              // Read here, not at mount: it may have changed while the script loaded.
+              theme: appliedTheme(),
               // The token goes to the server action, not into a form field.
               'response-field': false,
               callback: (value) => {

@@ -29,6 +29,7 @@ import SignInForm, {
 } from '@/app/auth/signin/SignInForm';
 import SignInPage from '@/app/auth/signin/page';
 import { TURNSTILE_SCRIPT_URL, type TurnstileApi } from '@/components/TurnstileWidget';
+import { ThemeProvider, useTheme } from '@/components/ThemeProvider';
 
 const mockedRequest = vi.mocked(requestMagicLink);
 const SITE_KEY = '1x00000000000000000000AA';
@@ -353,6 +354,102 @@ describe('SignInForm — Turnstile widget', () => {
 
     unmount();
     expect(turnstile.api.remove).toHaveBeenCalledWith('widget-1');
+  });
+
+  describe('theme', () => {
+    afterEach(() => {
+      document.documentElement.removeAttribute('data-theme');
+      localStorage.clear();
+    });
+
+    const renderedTheme = (turnstile: ReturnType<typeof fakeTurnstile>) =>
+      turnstile.api.render.mock.calls.at(-1)?.[1].theme;
+
+    /** The app's own light/dark switch, as the account menu has it. */
+    function ThemeSwitch() {
+      const { theme, setTheme } = useTheme();
+      return (
+        <button type="button" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
+          Switch theme
+        </button>
+      );
+    }
+
+    // regression: the widget was rendered with Turnstile's `theme: 'auto'`, which
+    // follows the OS colour scheme, so a dark app on a light OS got a light challenge.
+    it.each(['light', 'dark'] as const)(
+      "renders the widget in the app's %s theme",
+      async (theme) => {
+        document.documentElement.setAttribute('data-theme', theme);
+        const { turnstile } = await renderWithWidget();
+
+        expect(renderedTheme(turnstile)).toBe(theme);
+      }
+    );
+
+    // The page as the app serves it: a saved dark choice, put on <html> by the
+    // layout's inline script, with the real ThemeProvider (which starts at light).
+    it("renders in a saved dark theme on the first load, inside the app's ThemeProvider", async () => {
+      localStorage.setItem('theme', 'dark');
+      // What the layout's inline script does before paint.
+      document.documentElement.setAttribute('data-theme', 'dark');
+      const turnstile = fakeTurnstile();
+      window.turnstile = turnstile.api;
+      render(
+        <ThemeProvider>
+          <SignInForm turnstileSiteKey={SITE_KEY} />
+        </ThemeProvider>
+      );
+
+      await vi.waitFor(() => expect(turnstile.api.render).toHaveBeenCalledTimes(1));
+      expect(renderedTheme(turnstile)).toBe('dark');
+    });
+
+    it('takes the theme in effect once the script has loaded, not when the form mounted', async () => {
+      document.documentElement.setAttribute('data-theme', 'light');
+      const turnstile = fakeTurnstile();
+      render(<SignInForm turnstileSiteKey={SITE_KEY} />);
+      const script = document.querySelector(`script[src="${TURNSTILE_SCRIPT_URL}"]`)!;
+
+      document.documentElement.setAttribute('data-theme', 'dark');
+      window.turnstile = turnstile.api;
+      await act(async () => {
+        script.dispatchEvent(new Event('load'));
+      });
+
+      expect(renderedTheme(turnstile)).toBe('dark');
+    });
+
+    // Turnstile can't change a widget's theme in place, and a new widget would
+    // throw away the token it holds or the check it's running.
+    it.each([
+      ['holding a token', true],
+      ['still checking', false],
+    ])('keeps the widget when the app theme changes while it is %s', async (_label, holding) => {
+      mockedRequest.mockResolvedValue({ ok: true });
+      const turnstile = fakeTurnstile();
+      window.turnstile = turnstile.api;
+      render(
+        <ThemeProvider>
+          <ThemeSwitch />
+          <SignInForm turnstileSiteKey={SITE_KEY} />
+        </ThemeProvider>
+      );
+      await vi.waitFor(() => expect(turnstile.api.render).toHaveBeenCalledTimes(1));
+      expect(renderedTheme(turnstile)).toBe('light');
+
+      if (holding) await turnstile.pass();
+      await userEvent.click(screen.getByRole('button', { name: /switch theme/i }));
+      expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+      if (!holding) await turnstile.pass();
+
+      expect(turnstile.api.render).toHaveBeenCalledTimes(1);
+      expect(turnstile.api.remove).not.toHaveBeenCalled();
+      expect(turnstile.api.reset).not.toHaveBeenCalled();
+      await typeEmail();
+      await userEvent.click(sendButton());
+      expect(sentToken()).toBe(TOKEN);
+    });
   });
 });
 
