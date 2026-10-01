@@ -29,8 +29,8 @@ beforeEach(() => {
 
 describe('POST /api/auth/[...nextauth]', () => {
   // A magic link is only sent by the sign-in form's server action, after its
-  // Turnstile check. Auth.js's own sign-in POST would send one past it (and
-  // create the account first), so it never reaches Auth.js.
+  // Turnstile check. Auth.js's own sign-in POST would send one past it, so it
+  // never reaches Auth.js.
   it.each([
     '/api/auth/signin/nodemailer',
     '/api/auth//signin/nodemailer',

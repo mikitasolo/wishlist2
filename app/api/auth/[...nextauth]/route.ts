@@ -10,8 +10,7 @@ export const { GET } = handlers;
  * through the sign-in form's server action (`app/auth/signin/actions.ts`), which
  * checks the Turnstile token first. Left open, `POST /api/auth/signin/nodemailer`
  * (with a token from `/api/auth/csrf`) would send one past that check. It's
- * refused here before Auth.js runs at all, so it doesn't create the account
- * either. Sign-out, the session update and the email link's callback still pass.
+ * refused here before Auth.js runs at all. Sign-out, the session update and the email link's callback still pass.
  */
 export async function POST(request: NextRequest) {
   if (isMagicLinkSignInPath(request.nextUrl.pathname)) {

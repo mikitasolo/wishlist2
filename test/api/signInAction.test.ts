@@ -130,7 +130,7 @@ describe('requestMagicLink with Turnstile on', () => {
       remoteip: IP,
     });
     expectSent('/invites');
-    // The check ran before Auth.js did anything (account creation included).
+    // The check ran before Auth.js did anything.
     expect(fetchMock.mock.invocationCallOrder[0]!).toBeLessThan(
       mockedSignIn.mock.invocationCallOrder[0]!
     );

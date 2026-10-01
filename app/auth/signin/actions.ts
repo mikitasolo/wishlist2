@@ -21,8 +21,7 @@ export type MagicLinkResult = { ok: true } | { ok: false; error: 'challenge' | '
  *
  * The Turnstile token is checked first (`verifyTurnstileToken`: skipped while
  * Turnstile is off, fail-open when Cloudflare can't answer), before anything
- * else happens, so a refused request neither creates an account nor sends
- * anything. Then Auth.js's server-side `signIn` runs the usual email flow, inside
+ * else happens, so a refused request sends nothing. Then Auth.js's server-side `signIn` runs the usual email flow, inside
  * `asVerifiedSignIn` so `sendVerificationRequest` will send. Its rate limits (per
  * email and per IP, fail-closed) still apply there.
  *
