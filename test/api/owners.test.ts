@@ -1287,6 +1287,192 @@ describe('racing removals still leave the wishlist an owner', () => {
   });
 });
 
+describe('a demotion never leaves its owner off the list', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const demote = (actor: string, target: string) => {
+    session.mockResolvedValueOnce({ user: { id: actor } } as never);
+    return patchOwner(req(`/api/wishlists/${wid}/owners/${target}`, 'PATCH'), {
+      params: Promise.resolve({ id: wid, userId: target }),
+    });
+  };
+  const removeOwner = (actor: string, target: string) => {
+    session.mockResolvedValueOnce({ user: { id: actor } } as never);
+    return deleteOwner(req(`/api/wishlists/${wid}/owners/${target}`, 'DELETE'), {
+      params: Promise.resolve({ id: wid, userId: target }),
+    });
+  };
+  const leaveAs = (user: string) => {
+    session.mockResolvedValueOnce({ user: { id: user } } as never);
+    return leave(req(`/api/wishlists/${wid}/members/me`, 'DELETE'), {
+      params: Promise.resolve({ id: wid }),
+    });
+  };
+
+  /** Erin joins alice and bob as a third owner; every owner has the list pinned. */
+  async function addThirdOwner() {
+    const erin = (await User.create({ email: 'e@x.com', username: 'erin' }))._id.toString();
+    await Wishlist.updateOne(
+      { _id: wid },
+      { $set: { owners: [alice, bob, erin], featuredBy: [alice, bob, erin] } }
+    );
+    return erin;
+  }
+
+  /** Where `userId` stands on the list. Neither owner nor member means locked out. */
+  async function standing(userId: string) {
+    const [wl, members] = await Promise.all([
+      Wishlist.findById(wid),
+      WishlistMember.countDocuments({ wishlist: wid, user: userId }),
+    ]);
+    return {
+      owner: wl!.owners.map(String).includes(userId),
+      pinned: wl!.featuredBy.map(String).includes(userId),
+      members,
+    };
+  }
+
+  // regression: demoting took two writes, the ownership first and the membership
+  // second. When the membership write failed (a DB blip), the owner was already
+  // gone from `owners` and had no member row: locked out of the list, and a retry
+  // got 404 because they were no longer an owner.
+  it('regression: a membership write that fails leaves them an owner, and the demotion can be retried', async () => {
+    await Wishlist.updateOne({ _id: wid }, { $set: { featuredBy: [alice, bob] } });
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(WishlistMember, 'findOneAndUpdate').mockRejectedValueOnce(new Error('db blip'));
+
+    expect((await demote(alice, bob)).status).toBe(500);
+    // Nothing changed: still an owner, pin and all, rather than neither.
+    expect(await standing(bob)).toEqual({ owner: true, pinned: true, members: 0 });
+    as(bob);
+    const view = await getWishlist(req(`/api/wishlists/${wid}`), {
+      params: Promise.resolve({ id: wid }),
+    });
+    expect((await view.json()).data.userRole).toBe('owner');
+
+    // So the same demotion can just be sent again.
+    expect((await demote(alice, bob)).status).toBe(200);
+    expect(await standing(bob)).toEqual({ owner: false, pinned: false, members: 1 });
+  });
+
+  it('an ownership write that fails leaves them an owner, and the retry reuses the membership', async () => {
+    await Wishlist.updateOne({ _id: wid }, { $set: { featuredBy: [alice, bob] } });
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(Wishlist, 'updateOne').mockRejectedValueOnce(new Error('db blip'));
+
+    expect((await demote(alice, bob)).status).toBe(500);
+    // The membership written ahead of the ownership write is left in place: whether
+    // that write landed is unknown, and if it did, the row is all bob has. While he
+    // is still an owner it grants nothing, since every check sees the owner first.
+    expect(await standing(bob)).toEqual({ owner: true, pinned: true, members: 1 });
+
+    expect((await demote(alice, bob)).status).toBe(200);
+    expect(await standing(bob)).toEqual({ owner: false, pinned: false, members: 1 });
+  });
+
+  it('a demotion refused because the caller just lost ownership leaves no membership behind', async () => {
+    const erin = await addThirdOwner();
+    let writtenFirst = false;
+    // Held at alice's ownership write, after she has written bob's membership.
+    const race = holdFirstCall(Wishlist, 'updateOne', async () => {
+      writtenFirst = (await WishlistMember.countDocuments({ wishlist: wid, user: bob })) === 1;
+      return removeOwner(erin, alice);
+    });
+
+    const res = await demote(alice, bob);
+
+    expect(race.held()).toBe(true);
+    expect(race.outcome()?.status).toBe(200);
+    // The row really was there, so this is the refusal taking it back.
+    expect(writtenFirst).toBe(true);
+    expect(res.status).toBe(403);
+    expect(await standing(bob)).toEqual({ owner: true, pinned: true, members: 0 });
+  });
+
+  it('a demotion that loses to the owner leaving does not bring them back as a member', async () => {
+    // Bob has left completely before alice's demotion writes his membership.
+    const race = holdFirstCall(WishlistMember, 'findOneAndUpdate', () => leaveAs(bob));
+
+    const res = await demote(alice, bob);
+
+    expect(race.held()).toBe(true);
+    expect(race.outcome()?.status).toBe(200);
+    // Refused: bob is no longer an owner (still answered as the last-owner case).
+    expect(res.status).toBe(400);
+    expect(await standing(bob)).toEqual({ owner: false, pinned: false, members: 0 });
+  });
+
+  // regression: the membership was written after the ownership write had landed, so
+  // a list delete in between (its membership cleanup already done) left a row for a
+  // list that no longer exists, and the demotion answered success (WIS-146).
+  it('regression: a demotion that loses to the list being deleted leaves no membership for it', async () => {
+    const erin = await addThirdOwner();
+    // Erin deletes the list, memberships and all, before alice's demotion writes one.
+    const race = holdFirstCall(WishlistMember, 'findOneAndUpdate', () => {
+      session.mockResolvedValueOnce({ user: { id: erin } } as never);
+      return deleteWishlist(req(`/api/wishlists/${wid}`, 'DELETE'), {
+        params: Promise.resolve({ id: wid }),
+      });
+    });
+
+    const res = await demote(alice, bob);
+
+    expect(race.held()).toBe(true);
+    expect(race.outcome()?.status).toBe(200);
+    expect(res.status).not.toBe(200);
+    expect(await Wishlist.exists({ _id: wid })).toBeNull();
+    expect(await WishlistMember.countDocuments({ wishlist: wid })).toBe(0);
+  });
+
+  it('a stale demotion of someone already demoted keeps the membership they have', async () => {
+    // Carol goes member → owner (accepting a promotion) → member again.
+    as(alice);
+    const promoted = await postOwner(req(`/api/wishlists/${wid}/owners/${carol}`, 'POST'), {
+      params: Promise.resolve({ id: wid, userId: carol }),
+    });
+    const { inviteId } = (await promoted.json()).data;
+    as(carol);
+    const accepted = await respondInvite(
+      req(`/api/invites/${inviteId}`, 'PATCH', { action: 'accept' }),
+      { params: Promise.resolve({ inviteId: inviteId.toString() }) }
+    );
+    expect(accepted.status).toBe(200);
+    expect(await standing(carol)).toMatchObject({ owner: true, members: 0 });
+
+    // Bob read carol as an owner; alice's demotion lands before his writes anything.
+    const race = holdFirstCall(WishlistMember, 'findOneAndUpdate', async () => {
+      const res = await demote(alice, carol);
+      return { res, row: await WishlistMember.findOne({ wishlist: wid, user: carol }) };
+    });
+
+    const res = await demote(bob, carol);
+
+    expect(race.outcome()?.res.status).toBe(200);
+    // Refused (carol is no longer an owner), and the membership alice's demotion
+    // gave her isn't the refused one's to take back.
+    expect(res.status).toBe(400);
+    const row = await WishlistMember.findOne({ wishlist: wid, user: carol });
+    expect(row?._id.toString()).toBe(race.outcome()?.row?._id.toString());
+    expect(await standing(carol)).toEqual({ owner: false, pinned: false, members: 1 });
+  });
+
+  it('two owners demoting the same co-owner at once leave them a member', async () => {
+    const erin = await addThirdOwner();
+    // Alice writes bob's membership first. Erin's demotion then reuses that row and
+    // lands while alice's ownership write is held, so alice's is the one refused.
+    const race = holdFirstCall(Wishlist, 'updateOne', () => demote(erin, bob));
+
+    const res = await demote(alice, bob);
+
+    expect(race.outcome()?.status).toBe(200);
+    expect(res.status).toBe(400);
+    // The row alice's request created is what erin's demotion left bob with.
+    expect(await standing(bob)).toEqual({ owner: false, pinned: false, members: 1 });
+  });
+});
+
 describe('featuring is per-owner', () => {
   it('one owner pinning the list does not pin it for the other', async () => {
     as(alice);
