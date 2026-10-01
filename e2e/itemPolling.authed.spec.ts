@@ -2,11 +2,13 @@ import { test, expect, type Page, type Request, type Route } from '@playwright/t
 import { randomBytes } from 'crypto';
 
 // The wishlist page polls its items every 5 s (and whenever the tab becomes
-// visible), replacing the whole list with the server's. These specs pin the
-// order in which a poll and an add, proposal, delete or update land, so the page is
-// told it's hidden from the start (it skips every timer tick) and each poll is
-// fired by hand with a visibilitychange. Concurrent item reads share one
-// request, so a stray tick would also swallow the poll a spec fires.
+// visible), replacing the whole list with the server's, and reads the list
+// again straight away when a read turns out stale. These specs pin the order in
+// which a read and an add, proposal, delete or update land, and that the page
+// itself sends the read that follows a stale one, so the page is told it's
+// hidden from the start (it skips every timer tick) and each poll is fired by
+// hand with a visibilitychange. A tick would read the list on its own, and hide
+// whether the page did.
 async function takeOverPolling(page: Page) {
   await page.addInitScript(() => {
     let state: DocumentVisibilityState = 'hidden';
@@ -57,6 +59,72 @@ function deferred<T = void>() {
   return { promise, resolve };
 }
 
+type ListedItem = { _id: string; name: string } & Record<string, unknown>;
+
+interface HeldRead {
+  /** Answer the read, and give the page a moment to apply (or drop) it. */
+  land(): Promise<void>;
+}
+
+// From here on, every items read the page sends is held until the spec lands
+// it, so the spec decides the order in which reads and writes land. Each read
+// gets the server's list as `serve` shapes it once the server has answered: the
+// spec answers its writes in the browser, so nothing reaches the seeded
+// database, and `serve` lists them the way the server would.
+async function holdItemReads(page: Page, serve: (items: ListedItem[]) => ListedItem[]) {
+  let sent = 0;
+  let taken = 0;
+  const ready: HeldRead[] = [];
+  const waiting: Array<(read: HeldRead) => void> = [];
+  await page.route('**/api/wishlists/*/items', async (route: Route) => {
+    const request = route.request();
+    if (request.method() !== 'GET') return route.fallback();
+    sent += 1;
+    const response = await route.fetch();
+    const body = await response.json();
+    if (body.success) body.data = serve(body.data);
+    const answer = deferred();
+    const read: HeldRead = {
+      async land() {
+        const finished = page.waitForEvent('requestfinished', (r) => r === request);
+        answer.resolve();
+        await finished;
+        await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 250)));
+      },
+    };
+    const next = waiting.shift();
+    if (next) next(read);
+    else ready.push(read);
+    await answer.promise;
+    await route.fulfill({ response, json: body });
+  });
+  return {
+    /** The next read the page sends, once the server has answered it. */
+    next(): Promise<HeldRead> {
+      taken += 1;
+      const read = ready.shift();
+      if (read) return Promise.resolve(read);
+      return new Promise<HeldRead>((resolve, reject) => {
+        const take = (sent: HeldRead) => {
+          clearTimeout(timer);
+          resolve(sent);
+        };
+        const timer = setTimeout(() => {
+          waiting.splice(waiting.indexOf(take), 1);
+          reject(new Error('The page sent no items read within 10 s'));
+        }, 10_000);
+        waiting.push(take);
+      });
+    },
+    /** Reads the page has sent that the spec hasn't taken with `next()`. */
+    get untaken() {
+      return sent - taken;
+    },
+  };
+}
+
+const cardOf = (page: Page, name: string) => page.getByRole('article', { name: `Item: ${name}` });
+
 for (const flow of [
   {
     as: 'owner',
@@ -75,18 +143,23 @@ for (const flow of [
     done: 'Item proposed successfully',
   },
 ]) {
-  async function openAndFill(page: Page, name: string) {
-    const userId = await signedInUserId(page);
-    await takeOverPolling(page);
-    await page.goto(`/wishlists/${flow.list}`);
-    // Wait out the initial load, so the poll a spec fires is a request of its own.
-    await expect(
-      page.getByRole('article').or(page.getByText('No items found')).first()
-    ).toBeVisible();
+  // The create request is answered in the browser, and reads the server
+  // answers after it list the item, as the server would.
+  async function answerCreate(page: Page, userId: string) {
+    const created: { item?: ListedItem } = {};
+    await page.route('**/api/wishlists/*/items', (route: Route) => {
+      if (route.request().method() !== 'POST') return route.fallback();
+      created.item = createdItem(route.request(), userId);
+      return route.fulfill({ status: 201, json: { success: true, data: created.item } });
+    });
+    return (items: ListedItem[]) => (created.item ? [created.item, ...items] : items);
+  }
+
+  async function fillIn(page: Page, name: string) {
     await page.getByRole('button', { name: flow.open }).click();
     const dialog = page.getByRole('dialog', { name: flow.title });
     await dialog.getByLabel('Item Name').fill(name);
-    return { submit: dialog.getByRole('button', { name: flow.submit, exact: true }), userId };
+    return dialog.getByRole('button', { name: flow.submit, exact: true });
   }
 
   // regression: the add/propose paths prepended the new item without bumping
@@ -96,40 +169,32 @@ for (const flow of [
     page,
   }) => {
     const name = `E2E Hidden ${flow.as}`;
-    const card = page.getByRole('article', { name: `Item: ${name}` });
-    const { submit, userId } = await openAndFill(page, name);
+    const card = cardOf(page, name);
+    const userId = await signedInUserId(page);
+    await takeOverPolling(page);
+    await page.goto(`/wishlists/${flow.list}`);
+    // Wait out the initial load, so the poll a spec fires is a request of its own.
+    await expect(
+      page.getByRole('article').or(page.getByText('No items found')).first()
+    ).toBeVisible();
+    const submit = await fillIn(page, name);
+    const reads = await holdItemReads(page, await answerCreate(page, userId));
 
     // The poll reads the list now, before the item exists, but only hands it
     // to the page once the add has settled.
-    const pollRead = deferred<Request>();
-    const deliverPoll = deferred();
-    await page.route('**/api/wishlists/*/items', async (route: Route) => {
-      const request = route.request();
-      if (request.method() === 'POST') {
-        return route.fulfill({
-          status: 201,
-          json: { success: true, data: createdItem(request, userId) },
-        });
-      }
-      const response = await route.fetch();
-      pollRead.resolve(request);
-      await deliverPoll.promise;
-      await route.fulfill({ response });
-    });
     await pollOnce(page);
-    const pollRequest = await pollRead.promise;
+    const poll = await reads.next();
 
     await submit.click();
     await expect(page.getByRole('status').getByText(flow.done)).toBeVisible();
     await expect(card).toHaveCount(1);
 
-    const delivered = page.waitForEvent('requestfinished', (r) => r === pollRequest);
-    deliverPoll.resolve();
-    await delivered;
-    await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 250)));
+    await poll.land();
+    // The page has had the stale list for a while now, and the read it sends
+    // in its place is held, so this count is the settled state.
+    expect(await card.count()).toBe(1);
 
-    // The page has had the stale list for a while now, and no later poll can
-    // run to put the item back, so this count is the settled state.
+    await (await reads.next()).land();
     expect(await card.count()).toBe(1);
   });
 
@@ -142,7 +207,7 @@ for (const flow of [
     page,
   }) => {
     const name = `E2E Doubled ${flow.as}`;
-    const card = page.getByRole('article', { name: `Item: ${name}` });
+    const card = cardOf(page, name);
     const userId = await signedInUserId(page);
 
     // The item is "saved" as soon as the POST arrives, but its response is held
@@ -167,19 +232,58 @@ for (const flow of [
     await takeOverPolling(page);
     await page.goto(`/wishlists/${flow.list}`);
     // The button shows before the items have loaded.
-    await page.getByRole('button', { name: flow.open }).click();
-    const dialog = page.getByRole('dialog', { name: flow.title });
-    await dialog.getByLabel('Item Name').fill(name);
-    await dialog.getByRole('button', { name: flow.submit, exact: true }).click();
+    await (await fillIn(page, name)).click();
     await postArrived.promise;
 
     await expect(card).toHaveCount(1);
 
+    // The initial load landed while the POST was in flight, so the page reads
+    // the list again once it settles.
+    const reread = page.waitForEvent(
+      'requestfinished',
+      (r) => r.method() === 'GET' && new URL(r.url()).pathname.endsWith('/items')
+    );
     answerPost.resolve();
     await expect(page.getByRole('status').getByText(flow.done)).toBeVisible();
     // The toast and the list update are set in the same callback, so they
     // render together: a one-off count here sees the merged list.
     expect(await card.count()).toBe(1);
+
+    await reread;
+    await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 250)));
+    expect(await card.count()).toBe(1);
+  });
+
+  // regression: only a background read was checked against the page's own
+  // writes, so the initial load, sent before an add and landing after it,
+  // replaced the list without the new item, and nothing read it again until
+  // the next poll.
+  test(`regression: the ${flow.as}'s item saved while the list is loading shows once it has loaded`, async ({
+    page,
+  }) => {
+    const name = `E2E Early ${flow.as}`;
+    const card = cardOf(page, name);
+    const userId = await signedInUserId(page);
+    const reads = await holdItemReads(page, await answerCreate(page, userId));
+    await takeOverPolling(page);
+    await page.goto(`/wishlists/${flow.list}`);
+    const load = await reads.next();
+
+    // The button shows before the items have loaded.
+    await (await fillIn(page, name)).click();
+    await expect(page.getByRole('status').getByText(flow.done)).toBeVisible();
+
+    // The load from before the add still lands, so the list isn't left empty,
+    // and the page reads it again straight away: no tick can run here.
+    await load.land();
+    await expect(
+      page.getByRole('article').or(page.getByText('No items found')).first()
+    ).toBeVisible();
+    const reread = await reads.next();
+
+    await reread.land();
+    await expect(card).toHaveCount(1);
+    expect(reads.untaken).toBe(0);
   });
 }
 
@@ -217,55 +321,33 @@ for (const flow of [
   test(`regression: a poll that read before a delete from the ${flow.from} modal doesn't bring the item back`, async ({
     page,
   }) => {
-    const card = page.getByRole('article', { name: `Item: ${flow.item}` });
+    const card = cardOf(page, flow.item);
 
     // The DELETE is answered here, so nothing reaches the seeded database;
-    // reads made after it leave the item out, as the server would.
+    // reads the server answers after it leave the item out, as it would.
     let deleted = false;
     await page.route('**/api/items/*', (route: Route) => {
       if (route.request().method() !== 'DELETE') return route.fallback();
       deleted = true;
       return route.fulfill({ json: { success: true } });
     });
-
-    // Every read lists the proposal. The poll a spec fires reads the list
-    // while the item still exists, but only hands it to the page once the
-    // delete has settled.
-    let holdNextRead = false;
-    const pollRead = deferred<Request>();
-    const deliverPoll = deferred();
-    await page.route('**/api/wishlists/*/items', async (route: Route) => {
-      const request = route.request();
-      if (request.method() !== 'GET') return route.fallback();
-      const isPoll = holdNextRead;
-      holdNextRead = false;
-      const response = await route.fetch();
-      const body = await response.json();
-      if (body.success) {
-        body.data = [polledProposal, ...body.data].filter(
-          (item: { name: string }) => !(deleted && item.name === flow.item)
-        );
-      }
-      if (isPoll) {
-        pollRead.resolve(request);
-        await deliverPoll.promise;
-      }
-      await route.fulfill({ response, json: body });
-    });
+    const reads = await holdItemReads(page, (items) =>
+      [polledProposal, ...items].filter((item) => !(deleted && item.name === flow.item))
+    );
 
     await takeOverPolling(page);
     await page.goto('/wishlists/e2e-birthday');
-    // Once the card can be opened the initial load is done, so the poll below
-    // is a request of its own.
+    await (await reads.next()).land();
     await card.getByRole('button', { name: flow.open }).click();
     await page
       .getByRole('dialog', { name: flow.title })
       .getByRole('button', { name: 'Delete Item' })
       .click();
 
-    holdNextRead = true;
+    // The poll reads the list while the item still exists, but only hands it
+    // to the page once the delete has settled.
     await pollOnce(page);
-    const pollRequest = await pollRead.promise;
+    const poll = await reads.next();
 
     await page
       .getByRole('alertdialog')
@@ -274,13 +356,12 @@ for (const flow of [
     await expect(page.getByRole('status').getByText(flow.done)).toBeVisible();
     await expect(card).toHaveCount(0);
 
-    const delivered = page.waitForEvent('requestfinished', (r) => r === pollRequest);
-    deliverPoll.resolve();
-    await delivered;
-    await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 250)));
+    await poll.land();
+    // The page has had the stale list for a while now, and the read it sends
+    // in its place is held, so this count is the settled state.
+    expect(await card.count()).toBe(0);
 
-    // The page has had the stale list for a while now, and no later poll can
-    // run to take the item out again, so this count is the settled state.
+    await (await reads.next()).land();
     expect(await card.count()).toBe(0);
   });
 }
@@ -297,19 +378,52 @@ const polledBookable = {
   updatedAt: '2026-01-01T00:00:00.000Z',
 };
 
-const cardOf = (page: Page, name: string) => page.getByRole('article', { name: `Item: ${name}` });
+async function renameGift(page: Page) {
+  await cardOf(page, 'E2E Gift').getByRole('button', { name: 'Edit item' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Edit Item' });
+  await dialog.getByLabel('Item Name').fill('E2E Renamed Gift');
+  await dialog.getByRole('button', { name: 'Save Changes' }).click();
+}
+
+// Answers the item PATCH here as the server would, once `answer` resolves, so
+// nothing reaches the seeded database. `served` is the list the page was last
+// served, and `serve` lists the item as updated in every read the server
+// answers after that.
+async function answerUpdate(
+  page: Page,
+  userId: string,
+  served: () => ListedItem[],
+  answer: Promise<void> = Promise.resolve()
+) {
+  const arrived = deferred();
+  let updated: ListedItem | undefined;
+  await page.route('**/api/items/*', async (route: Route) => {
+    const request = route.request();
+    if (request.method() !== 'PATCH') return route.fallback();
+    arrived.resolve();
+    await answer;
+    const id = new URL(request.url()).pathname.split('/').pop();
+    const updates = request.postDataJSON();
+    updated = {
+      ...served().find((item) => item._id === id)!,
+      ...updates,
+      ...(updates.status === 'booked' ? { bookedBy: userId } : {}),
+    };
+    await route.fulfill({ json: { success: true, data: updated } });
+  });
+  return {
+    arrived: arrived.promise,
+    serve: (items: ListedItem[]) =>
+      items.map((item) => (updated && item._id === updated._id ? updated : item)),
+  };
+}
 
 for (const flow of [
   {
     during: 'an edit',
     list: 'e2e-birthday',
     extra: null,
-    async start(page: Page) {
-      await cardOf(page, 'E2E Gift').getByRole('button', { name: 'Edit item' }).click();
-      const dialog = page.getByRole('dialog', { name: 'Edit Item' });
-      await dialog.getByLabel('Item Name').fill('E2E Renamed Gift');
-      await dialog.getByRole('button', { name: 'Save Changes' }).click();
-    },
+    start: renameGift,
     changed: (page: Page) => cardOf(page, 'E2E Renamed Gift'),
     reverted: (page: Page) => cardOf(page, 'E2E Gift'),
     async settled(page: Page) {
@@ -371,70 +485,148 @@ for (const flow of [
   }) => {
     const userId = await signedInUserId(page);
 
-    // Every read passes through to the server (plus the flow's extra item), so
-    // the poll gets the item as it was before the update.
-    let served: Array<{ _id: string }> = [];
-    await page.route('**/api/wishlists/*/items', async (route: Route) => {
-      if (route.request().method() !== 'GET') return route.fallback();
-      const response = await route.fetch();
-      const body = await response.json();
-      if (body.success) {
-        if (flow.extra) body.data = [flow.extra, ...body.data];
-        served = body.data;
-      }
-      await route.fulfill({ response, json: body });
-    });
-
-    // The PATCH is held until the poll has landed, then answered here as the
-    // server would, so nothing reaches the seeded database.
-    const patchArrived = deferred();
+    // Every read gets the server's list (plus the flow's extra item), so the
+    // poll gets the item as it was before the update. The PATCH is held until
+    // the poll has landed.
+    let served: ListedItem[] = [];
     const answerPatch = deferred();
-    await page.route('**/api/items/*', async (route: Route) => {
-      const request = route.request();
-      if (request.method() !== 'PATCH') return route.fallback();
-      patchArrived.resolve();
-      await answerPatch.promise;
-      const id = new URL(request.url()).pathname.split('/').pop();
-      const updates = request.postDataJSON();
-      const current = served.find((item) => item._id === id);
-      await route.fulfill({
-        json: {
-          success: true,
-          data: {
-            ...current,
-            ...updates,
-            ...(updates.status === 'booked' ? { bookedBy: userId } : {}),
-          },
-        },
-      });
+    const update = await answerUpdate(page, userId, () => served, answerPatch.promise);
+    const reads = await holdItemReads(page, (items) => {
+      served = update.serve(flow.extra ? [flow.extra, ...items] : items);
+      return served;
     });
 
     await takeOverPolling(page);
     await page.goto(`/wishlists/${flow.list}`);
-    // The card can only be acted on once the initial load is done, so the poll
-    // below is a request of its own.
+    await (await reads.next()).land();
     await flow.start(page);
-    await patchArrived.promise;
+    await update.arrived;
     await expect(flow.changed(page)).toBeVisible();
 
     // The poll starts after the update did and lands while its PATCH is held.
-    const pollDone = page.waitForEvent(
-      'requestfinished',
-      (r) =>
-        r.method() === 'GET' && /^\/api\/wishlists\/[^/]+\/items$/.test(new URL(r.url()).pathname)
-    );
     await pollOnce(page);
-    await pollDone;
-    await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 250)));
+    await (await reads.next()).land();
 
     // The page has had the poll's list for a while now, and the PATCH is still
-    // held, so these counts are what it shows until the update settles.
+    // held, so these counts are what it shows until the update settles. Nor
+    // does it read the list again before then.
     expect(await flow.reverted(page).count()).toBe(0);
     expect(await flow.changed(page).count()).toBe(1);
+    expect(reads.untaken).toBe(0);
 
+    // Once the PATCH has settled, the page reads the list in place of the
+    // dropped poll, and it lists the item as updated.
     answerPatch.resolve();
     await flow.settled(page);
+    await (await reads.next()).land();
     await expect(flow.changed(page)).toBeVisible();
     expect(await flow.reverted(page).count()).toBe(0);
   });
 }
+
+// regression: a poll called while another items read was in flight joined that
+// request instead of sending its own, but was judged by when it was called. So
+// a read sent before an edit settled and landing after it was dropped by the
+// poll that sent it but applied by the one that joined it, and the edit was
+// undone until the next poll.
+test("regression: a poll that joins a read sent before an edit settled doesn't undo the edit", async ({
+  page,
+}) => {
+  const renamed = cardOf(page, 'E2E Renamed Gift');
+  const original = cardOf(page, 'E2E Gift');
+  const userId = await signedInUserId(page);
+  let served: ListedItem[] = [];
+  const update = await answerUpdate(page, userId, () => served);
+  const reads = await holdItemReads(page, (items) => (served = update.serve(items)));
+
+  await takeOverPolling(page);
+  await page.goto('/wishlists/e2e-birthday');
+  await (await reads.next()).land();
+
+  // A poll reads the list before the edit, and is slow to answer.
+  await pollOnce(page);
+  const slowRead = await reads.next();
+
+  await renameGift(page);
+  await expect(page.getByRole('dialog', { name: 'Edit Item' })).toBeHidden();
+  await expect(renamed).toBeVisible();
+
+  // The next poll (the tab regaining focus, say) joins the read still in flight.
+  await pollOnce(page);
+  await slowRead.land();
+
+  // Neither poll applied the read from before the edit, and the one the page
+  // sends in its place is still held, so this is the settled state.
+  expect(await original.count()).toBe(0);
+  expect(await renamed.count()).toBe(1);
+
+  await (await reads.next()).land();
+  await expect(renamed).toBeVisible();
+  expect(await original.count()).toBe(0);
+  // Both polls asked for the one re-read, which read the list afresh.
+  expect(reads.untaken).toBe(0);
+});
+
+// regression: after a failed update the page reconciles the list with a read,
+// which was dropped if another item mutation was still in flight when it
+// landed, and nothing read the list again until the next poll: the booking
+// that failed stayed on the card as "Booked by you".
+test("regression: a failed booking's reconcile read dropped behind a proposal is read again once it's saved", async ({
+  page,
+}) => {
+  const bookable = cardOf(page, polledBookable.name);
+  const bookedByMe = bookable.getByText('Booked by you');
+  const userId = await signedInUserId(page);
+
+  // The booking fails. The proposal is saved once its POST arrives, but its
+  // response is held until the reconcile read has landed.
+  await page.route('**/api/items/*', (route: Route) =>
+    route.request().method() === 'PATCH'
+      ? route.fulfill({ status: 500, json: { success: false, error: 'Something went wrong' } })
+      : route.fallback()
+  );
+  let proposal: ListedItem | undefined;
+  const postArrived = deferred();
+  const answerPost = deferred();
+  const reads = await holdItemReads(page, (items) => [
+    ...(proposal ? [proposal] : []),
+    polledBookable,
+    ...items,
+  ]);
+  await page.route('**/api/wishlists/*/items', async (route: Route) => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    postArrived.resolve();
+    await answerPost.promise;
+    proposal = createdItem(route.request(), userId);
+    await route.fulfill({ status: 201, json: { success: true, data: proposal } });
+  });
+
+  await takeOverPolling(page);
+  await page.goto('/wishlists/e2e-friend');
+  await (await reads.next()).land();
+
+  await bookable.getByRole('button', { name: 'Book this item', exact: true }).click();
+  await expect(page.getByRole('status').getByText('Something went wrong')).toBeVisible();
+  // The failed booking shows until the reconcile read lands.
+  const reconcile = await reads.next();
+  await expect(bookedByMe).toBeVisible();
+
+  await page.getByRole('button', { name: '+ Propose Item' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Propose New Item' });
+  await dialog.getByLabel('Item Name').fill('E2E Proposed Meanwhile');
+  await dialog.getByRole('button', { name: 'Propose Item', exact: true }).click();
+  await postArrived.promise;
+
+  // The reconcile read lands while the proposal's POST is in flight, so it's
+  // dropped, and the page reads nothing more until the POST settles.
+  await reconcile.land();
+  expect(await bookedByMe.count()).toBe(1);
+  expect(reads.untaken).toBe(0);
+
+  answerPost.resolve();
+  await expect(page.getByRole('status').getByText('Item proposed successfully')).toBeVisible();
+  await (await reads.next()).land();
+  await expect(bookable.getByRole('button', { name: 'Book this item', exact: true })).toBeVisible();
+  expect(await bookedByMe.count()).toBe(0);
+  expect(reads.untaken).toBe(0);
+});

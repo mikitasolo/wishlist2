@@ -333,8 +333,9 @@ export default function WishlistDetail() {
 
   // The page's item mutations. A background poll that lands while one is in
   // flight, or whose read was in flight across one, is stale and must be
-  // discarded, otherwise it clobbers the optimistic state and the UI flickers.
-  // Every item mutation's request goes through `mutations.track`.
+  // discarded, otherwise it clobbers the optimistic state and the UI flickers;
+  // the list is read again once they've settled. Every item mutation's request
+  // goes through `mutations.track`.
   const [mutations] = useState(createMutationTracker);
 
   // Whether a read of the list has landed yet. Until one has, an empty `items`
@@ -349,16 +350,21 @@ export default function WishlistDetail() {
         setLoadingItems(true);
       }
 
-      const startedAt = Date.now();
       try {
         // Rejects when the read fails, so a failed poll or reconcile keeps the
-        // list on screen: only a successful read replaces it.
-        const data = await fetchItemsHook(wishlistId);
-        // Drop a poll result that raced with a mutation (landed while one was in
-        // flight, or started before one settled) so it can't overwrite fresher
-        // local state.
-        if (silent && mutations.isStale(startedAt)) return;
-        setItems(data);
+        // list on screen: only a successful read replaces it. A call that joins
+        // a read already in flight gets that read's `sentAt`, not a later one.
+        const read = await fetchItemsHook(wishlistId, mutations.stamp);
+        // A read that raced with a mutation (landed while one was in flight, or
+        // was sent before one settled) may predate fresher local state, so the
+        // list is read again once no mutation is in flight. A background read's
+        // result is dropped; a non-silent one (the first load, or the one after
+        // leaving Manage) still lands, so the list isn't left empty.
+        if (mutations.isStale(read.sentAt)) {
+          mutations.rereadWhenIdle();
+          if (silent) return;
+        }
+        setItems(read.items);
         setItemsLoaded(true);
       } catch (error) {
         console.error('Error fetching items:', error);
@@ -378,6 +384,9 @@ export default function WishlistDetail() {
     if (wishlistId && !manageOpen) {
       // Reset loading state when switching to items tab
       setLoadingItems(true);
+      // While this tab polls, a read that turns out stale is followed by a
+      // background one (see fetchItems).
+      mutations.setReread(() => fetchItems(true));
       fetchItems();
 
       // Poll for updates every 5 seconds when tab is active
@@ -397,12 +406,15 @@ export default function WishlistDetail() {
       return () => {
         clearInterval(pollInterval);
         document.removeEventListener('visibilitychange', handleVisibilityChange);
+        // Coming back to the items tab reads the list anyway, and a read still
+        // in flight from here mustn't send another.
+        mutations.setReread(null);
       };
     } else if (manageOpen) {
       // Reset loading state when switching away from items tab
       setLoadingItems(false);
     }
-  }, [wishlistId, manageOpen, fetchItems]);
+  }, [wishlistId, manageOpen, fetchItems, mutations]);
 
   const createItemHook = useCreateItem(
     (newItem) => {

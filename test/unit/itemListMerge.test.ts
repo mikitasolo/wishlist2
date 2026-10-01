@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { createMutationTracker, prependCreatedItem } from '@/lib/utils/itemListMerge';
 import type { ApiItem } from '@/types/api';
 
@@ -63,7 +63,7 @@ describe('createMutationTracker', () => {
     expect(tracker.isStale(1_049)).toBe(true);
   });
 
-  it('keeps a poll that started once the mutation settled, the same millisecond included', async () => {
+  it('keeps a poll that started once the mutation settled', async () => {
     const { tracker, at } = trackerAt();
     const request = deferred();
     const settled = tracker.track(() => request.promise);
@@ -72,10 +72,37 @@ describe('createMutationTracker', () => {
     request.resolve();
     await settled;
 
-    // handleUpdateItem's reconcile read after a failed update is issued as soon
-    // as the tracked request resolves, usually within the same millisecond.
     expect(tracker.isStale(1_050)).toBe(false);
     expect(tracker.isStale(1_060)).toBe(false);
+  });
+
+  // The default clock is a sequence, not wall-clock milliseconds, so a read and
+  // a settle in the same millisecond still come in the order they happened.
+  it('orders a read sent right before a settle before it, and one sent right after after it', async () => {
+    const tracker = createMutationTracker();
+    const request = deferred();
+    const settled = tracker.track(() => request.promise);
+
+    const before = tracker.stamp();
+    request.resolve();
+    await settled;
+    // handleUpdateItem's reconcile read after a failed update goes out as soon
+    // as the tracked request resolves.
+    const after = tracker.stamp();
+
+    expect(tracker.isStale(before)).toBe(true);
+    expect(tracker.isStale(after)).toBe(false);
+  });
+
+  it('compares stamps across trackers, as a remounted page can join a read its last instance sent', async () => {
+    const previous = createMutationTracker();
+    const current = createMutationTracker();
+
+    const sentByPrevious = previous.stamp();
+    await current.track(async () => 'edited');
+
+    expect(current.isStale(sentByPrevious)).toBe(true);
+    expect(current.isStale(previous.stamp())).toBe(false);
   });
 
   it('stays stale until every overlapping mutation has settled', async () => {
@@ -127,6 +154,147 @@ describe('createMutationTracker', () => {
   });
 });
 
+// A tracker with a re-read set, as the page's polling sets one.
+function trackerWithReread(reread: () => void) {
+  const tracker = createMutationTracker();
+  tracker.setReread(reread);
+  return tracker;
+}
+
+describe('rereadWhenIdle', () => {
+  it('re-reads straight away when no mutation is in flight', () => {
+    const reread = vi.fn();
+    const tracker = trackerWithReread(reread);
+
+    tracker.rereadWhenIdle();
+
+    expect(reread).toHaveBeenCalledTimes(1);
+  });
+
+  it('waits for the mutation in flight, then re-reads once it has settled', async () => {
+    // The read it sends has to count as fresh.
+    const reread = vi.fn(() => expect(tracker.isStale(tracker.stamp())).toBe(false));
+    const tracker = trackerWithReread(reread);
+    const request = deferred();
+    const settled = tracker.track(() => request.promise);
+
+    tracker.rereadWhenIdle();
+    expect(reread).not.toHaveBeenCalled();
+
+    request.resolve();
+    await settled;
+    expect(reread).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-reads once a mutation that rejects has settled too, and keeps its rejection', async () => {
+    const reread = vi.fn();
+    const tracker = trackerWithReread(reread);
+    const error = new Error('Failed to update item');
+    const failed = tracker.track(() => Promise.reject(error));
+
+    tracker.rereadWhenIdle();
+    await expect(failed).rejects.toBe(error);
+
+    expect(reread).toHaveBeenCalledTimes(1);
+  });
+
+  it('waits for the last of several overlapping mutations', async () => {
+    const reread = vi.fn();
+    const tracker = trackerWithReread(reread);
+    const first = deferred();
+    const second = deferred();
+    const firstSettled = tracker.track(() => first.promise);
+    const secondSettled = tracker.track(() => second.promise);
+
+    tracker.rereadWhenIdle();
+    first.resolve();
+    await firstSettled;
+    expect(reread).not.toHaveBeenCalled();
+
+    second.resolve();
+    await secondSettled;
+    expect(reread).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-reads once however many reads are dropped meanwhile', async () => {
+    const reread = vi.fn();
+    const tracker = trackerWithReread(reread);
+    const request = deferred();
+    const settled = tracker.track(() => request.promise);
+
+    tracker.rereadWhenIdle();
+    tracker.rereadWhenIdle();
+    tracker.rereadWhenIdle();
+    request.resolve();
+    await settled;
+
+    expect(reread).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-reads only once: a later settle does not run it again', async () => {
+    const reread = vi.fn();
+    const tracker = trackerWithReread(reread);
+    const first = deferred();
+    const firstSettled = tracker.track(() => first.promise);
+
+    tracker.rereadWhenIdle();
+    first.resolve();
+    await firstSettled;
+    await tracker.track(async () => 'another edit');
+
+    expect(reread).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends nothing while a mutation is stalled, however long it takes', async () => {
+    vi.useFakeTimers();
+    try {
+      const reread = vi.fn();
+      const tracker = trackerWithReread(reread);
+      void tracker.track(() => new Promise(() => {}));
+
+      tracker.rereadWhenIdle();
+      await vi.advanceTimersByTimeAsync(10 * 60_000);
+
+      expect(reread).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does nothing while no re-read is set, even once one is', async () => {
+    const tracker = createMutationTracker();
+    expect(() => tracker.rereadWhenIdle()).not.toThrow();
+
+    const request = deferred();
+    const settled = tracker.track(() => request.promise);
+    tracker.rereadWhenIdle();
+    const reread = vi.fn();
+    tracker.setReread(reread);
+    request.resolve();
+    await settled;
+
+    expect(reread).not.toHaveBeenCalled();
+  });
+
+  // The page clears it when its polling stops (Manage opened, or the page left).
+  it('drops a waiting re-read once cleared, and asking again then does nothing', async () => {
+    const reread = vi.fn();
+    const tracker = trackerWithReread(reread);
+    const request = deferred();
+    const settled = tracker.track(() => request.promise);
+
+    tracker.rereadWhenIdle();
+    tracker.setReread(null);
+    // A read still in flight when the polling stopped lands stale later.
+    tracker.rereadWhenIdle();
+    request.resolve();
+    await settled;
+    tracker.rereadWhenIdle();
+
+    expect(reread).not.toHaveBeenCalled();
+  });
+});
+
 describe('prependCreatedItem', () => {
   it('puts a new item at the top of the list', () => {
     const a = item({ name: 'a' });
@@ -160,10 +328,10 @@ describe('prependCreatedItem', () => {
 });
 
 // The wishlist page's sequence, replayed with the helpers: `fetchItems(true)`
-// stamps `startedAt` and drops a result `mutations.isStale` calls stale, and
-// every item mutation runs its request through `mutations.track` (an update
-// applies its optimistic change first, and merges the server's item once the
-// request settles; an add or proposal prepends the server's item). That the
+// drops a result `mutations.isStale` calls stale, judged by when its read was
+// sent, and every item mutation runs its request through `mutations.track` (an
+// update applies its optimistic change first, and merges the server's item once
+// the request settles; an add or proposal prepends the server's item). That the
 // page does this on the real flows is pinned by e2e/itemPolling.authed.spec.ts.
 function wishlistPage(items: ApiItem[]) {
   const { tracker: mutations, at } = trackerAt();
@@ -172,8 +340,8 @@ function wishlistPage(items: ApiItem[]) {
     mutations,
     at,
     // `fetchItems(true)` resolving with the list its read got.
-    pollLands(startedAt: number, polled: ApiItem[]) {
-      if (!mutations.isStale(startedAt)) page.items = polled;
+    pollLands(sentAt: number, polled: ApiItem[]) {
+      if (!mutations.isStale(sentAt)) page.items = polled;
     },
   };
   return page;
@@ -301,5 +469,133 @@ describe('an update racing the 5 s poll', () => {
     page.pollLands(1_050, fromServer);
 
     expect(page.items).toBe(fromServer);
+  });
+});
+
+// `fetchItems` in full, on the tracker's own clock: `read()` sends a read,
+// stamped as it goes out, and `land(list)` hands it the list it got. A stale
+// result is followed by a re-read once no mutation is in flight, and dropped
+// if it was a background read; the first load (`read(false)`) still lands.
+function pageWithReads(items: ApiItem[]) {
+  const mutations = createMutationTracker();
+  const page = {
+    items,
+    mutations,
+    // Every read the page has sent, in order.
+    sent: [] as Array<{ land(list: ApiItem[]): void }>,
+    read(silent = true) {
+      const sentAt = mutations.stamp();
+      const read = {
+        land(list: ApiItem[]) {
+          if (mutations.isStale(sentAt)) {
+            mutations.rereadWhenIdle();
+            if (silent) return;
+          }
+          page.items = list;
+        },
+      };
+      page.sent.push(read);
+      return read;
+    },
+  };
+  // As the page's polling sets it while it runs.
+  mutations.setReread(() => page.read());
+  return page;
+}
+
+describe('a read that turns out stale', () => {
+  const existing = item({ _id: 'existing', name: 'Existing' });
+  const created = item({ _id: 'created', name: 'Just added' });
+  const gift = item({ _id: 'gift', name: 'Gift', status: 'available' });
+  const booked = { ...gift, status: 'booked' as const, bookedBy: 'me' };
+
+  it('is dropped and read again straight away once the mutation has settled', async () => {
+    const page = pageWithReads([gift]);
+    const poll = page.read();
+    page.items = [booked];
+    await page.mutations.track(async () => booked);
+
+    poll.land([gift]);
+    expect(page.items).toEqual([booked]);
+    expect(page.sent).toHaveLength(2);
+
+    page.sent[1].land([booked]);
+    expect(page.items).toEqual([booked]);
+  });
+
+  // regression: only background reads were checked, so the initial load, sent
+  // before an add (the "+ Add Item" button shows before the items have loaded)
+  // and landing after it, replaced the list without the new item, and nothing
+  // read it again until the next poll.
+  it('regression: the initial load that read before an add still lands, then a fresh read lists the new item', async () => {
+    const page = pageWithReads([]);
+    const load = page.read(false);
+    page.items = prependCreatedItem(page.items, await page.mutations.track(async () => created));
+
+    // It lands, so the list isn't just the new item, and is read again at once.
+    load.land([existing]);
+    expect(ids(page.items)).toEqual(['existing']);
+    expect(page.sent).toHaveLength(2);
+
+    page.sent[1].land([created, existing]);
+    expect(ids(page.items)).toEqual(['created', 'existing']);
+  });
+
+  it('lands if it is the initial load and an add is still in flight, and is read again once the add settles', async () => {
+    const page = pageWithReads([]);
+    const load = page.read(false);
+    const post = deferred<ApiItem>();
+    const add = page.mutations.track(() => post.promise);
+
+    load.land([existing]);
+    expect(ids(page.items)).toEqual(['existing']);
+    expect(page.sent).toHaveLength(1);
+
+    post.resolve(created);
+    page.items = prependCreatedItem(page.items, await add);
+    expect(page.sent).toHaveLength(2);
+
+    page.sent[1].land([created, existing]);
+    expect(ids(page.items)).toEqual(['created', 'existing']);
+  });
+
+  // regression: after a failed update the page reconciles with a read, which
+  // was dropped if another item mutation was still in flight when it landed
+  // (or had settled while it was in flight) and never retried, so the failed
+  // booking stayed on screen until the next poll.
+  it("regression: a failed update's reconcile read dropped behind another mutation is read again once that settles", async () => {
+    const page = pageWithReads([gift]);
+    page.items = [booked];
+    await page.mutations.track(async () => null);
+    const reconcile = page.read();
+    const post = deferred<ApiItem>();
+    const propose = page.mutations.track(() => post.promise);
+
+    // Dropped while the proposal is in flight, and nothing is read until it settles.
+    reconcile.land([gift]);
+    expect(page.items).toEqual([booked]);
+    expect(page.sent).toHaveLength(1);
+
+    post.resolve(created);
+    page.items = prependCreatedItem(page.items, await propose);
+    expect(page.sent).toHaveLength(2);
+
+    page.sent[1].land([created, gift]);
+    expect(page.items).toEqual([created, gift]);
+  });
+
+  it('ends in one re-read however many polls are dropped behind a slow mutation', async () => {
+    const page = pageWithReads([gift]);
+    page.items = [booked];
+    const patch = deferred<ApiItem>();
+    const booking = page.mutations.track(() => patch.promise);
+
+    for (let i = 0; i < 5; i += 1) page.read().land([gift]);
+    expect(page.items).toEqual([booked]);
+    expect(page.sent).toHaveLength(5);
+
+    patch.resolve(booked);
+    await booking;
+    expect(page.sent).toHaveLength(6);
   });
 });

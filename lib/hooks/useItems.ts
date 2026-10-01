@@ -140,16 +140,30 @@ export function useDeleteItem(onSuccess?: () => void, onError?: (error: string) 
   );
 }
 
+/** A read of a wishlist's items, and when the request that read them was sent. */
+export interface ItemsRead {
+  items: ApiItem[];
+  /** What the caller's `stamp` returned as the request was sent. */
+  sentAt: number;
+}
+
 /**
  * Hook for fetching items. Rejects when the read fails (network error, a non-2xx
  * or unparseable response, `success: false`), so the caller keeps the list it
  * already has: a resolved `[]` only ever means the list really is empty.
+ *
+ * Concurrent reads of a list share one request, so a caller that asks while
+ * one is in flight gets that request's items, which may predate a change made
+ * since it was sent. `stamp` (e.g. the page's `mutations.stamp`) is called as
+ * the shared request goes out, and everyone who joined it resolves with that
+ * same `sentAt`, so each can tell how old its items really are.
  */
 export function useFetchItems() {
-  return useCallback(async (wishlistId: string): Promise<ApiItem[]> => {
+  return useCallback(async (wishlistId: string, stamp: () => number): Promise<ItemsRead> => {
     const requestKey = createRequestKey(`/api/wishlists/${wishlistId}/items`, 'GET');
 
     return deduplicateRequest(requestKey, async () => {
+      const sentAt = stamp();
       const response = await fetch(`/api/wishlists/${wishlistId}/items`, { cache: 'no-store' });
       const result: ApiResponse<ApiItem[]> = await response.json();
 
@@ -157,7 +171,7 @@ export function useFetchItems() {
         throw new Error(result.error || 'Failed to fetch items');
       }
 
-      return result.data;
+      return { items: result.data, sentAt };
     });
   }, []);
 }
