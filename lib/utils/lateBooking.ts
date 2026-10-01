@@ -2,11 +2,18 @@ import type { Types } from 'mongoose';
 import Item from '@/models/Item';
 import Wishlist from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
-import { deleteReservations } from '@/lib/utils/reservationSnapshots';
+import Reservation, { type IReservation } from '@/models/Reservation';
+import { deleteReservations, releaseSnapshots } from '@/lib/utils/reservationSnapshots';
 import { isWishlistOwner } from '@/lib/utils/wishlistOwners';
 import { isHiddenByArchive } from '@/lib/utils/wishlistAccess';
 
 type Id = string | Types.ObjectId;
+
+/** What a booking's Reservation write replaced, for putting it back. */
+type PreviousReservation = Pick<
+  IReservation,
+  'wishlist' | 'owner' | 'itemName' | 'itemImage' | 'itemPrice' | 'wishlistName'
+>;
 
 /**
  * Why a member's booking that has just been written can't stand, because the
@@ -47,26 +54,27 @@ export type LostBookingReason = 'owner' | 'archived' | 'not-member';
  *
  * The undo is a conditional write, so it can't free an item that's since been
  * booked by someone else or moved on by an owner. It then ends the Reservation
- * this booking wrote, through `deleteReservations`, which frees its snapshot. A
- * reservation that was already there before the booking (`createdReservation:
- * false`, a rebooking over one an owner's status change kept) stays, as the role
- * change would have kept it, unless they're now an owner: an owner holds no
- * reservation on their own list (`releaseGifterHoldings`).
+ * this booking wrote, through `deleteReservations`. A rebooking over a reservation
+ * an owner's status change kept overwrote that one instead (`previous`, the
+ * document as it was): it's put back as it was, as the role change would have left
+ * it, unless they're now an owner, who holds no reservation on their own list
+ * (`releaseGifterHoldings`).
  *
- * Runs before the booking copies the item's image for its reservation
- * (`snapshotReservationImage`), so an undone booking copies nothing. A role change
- * during that copy is the release paths' to settle, since both writes are done.
+ * Runs before the booking frees the snapshot it overwrote and copies the item's
+ * image for its own (`snapshotReservationImage`), so an undone booking copies
+ * nothing and a restored reservation gets its snapshot back. A role change during
+ * that copy is the release paths' to settle, since both writes are done.
  */
 export async function undoBookingUnlessMember({
   wishlistId,
   itemId,
   gifterId,
-  createdReservation,
+  previous,
 }: {
   wishlistId: Id;
   itemId: Id;
   gifterId: string;
-  createdReservation: boolean;
+  previous: PreviousReservation | null;
 }): Promise<LostBookingReason | null> {
   // The membership first. Deleting a list removes the list before its memberships,
   // so a row that's gone because the list was deleted can't be followed by a read
@@ -87,8 +95,17 @@ export async function undoBookingUnlessMember({
     { _id: itemId, status: 'booked', bookedBy: gifterId },
     { $set: { status: 'available', bookedBy: null } }
   );
-  if (reason === 'owner' || createdReservation) {
+  if (previous && reason !== 'owner') {
+    const { wishlist: list, owner, itemName, itemImage, itemPrice, wishlistName } = previous;
+    await Reservation.updateOne(
+      { gifter: gifterId, item: itemId },
+      { $set: { wishlist: list, owner, itemName, itemImage, itemPrice, wishlistName } }
+    );
+  } else {
     await deleteReservations({ gifter: gifterId, item: itemId });
   }
+  // The snapshot the booking overwrote, unless the reservation holds it again:
+  // freed after a delete, or when the gifter dismissed or logged it meanwhile.
+  if (previous) await releaseSnapshots(gifterId, [previous.itemImage]);
   return reason;
 }

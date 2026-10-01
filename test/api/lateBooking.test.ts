@@ -43,6 +43,7 @@ import Item from '@/models/Item';
 import Reservation from '@/models/Reservation';
 import Notification from '@/models/Notification';
 import { isWishlistOwner } from '@/lib/utils/wishlistOwners';
+import { deleteReservations } from '@/lib/utils/reservationSnapshots';
 
 const session = vi.mocked(auth);
 
@@ -300,14 +301,29 @@ describe('PATCH /api/items/[id] — a booking whose member is removed or leaves 
     expect(reservations.map((r) => r.gifter.toString())).toEqual([bob]);
   });
 
-  // Rebooking an item over a reservation that an owner's status change kept: the
-  // removal would have kept that reservation had it come first, so the undo does.
-  it('a rebooking undone by a removal keeps the reservation that was already there', async () => {
+  /** Alice books, and the owner completes and reopens the item, renaming it. */
+  async function keptReservation() {
     expect((await book()).status).toBe(200);
     expect((await patchItemAs(owner, 'completed')).status).toBe(200);
-    expect((await patchItemAs(owner, 'available')).status).toBe(200);
-    const earlier = (await Reservation.findOne({ gifter: alice }).lean())?.itemImage;
-    expect(isSnapshot(earlier)).toBe(true);
+    as(owner);
+    const reopened = await patchItem(
+      json(`/api/items/${itemId}`, 'PATCH', { status: 'available', name: 'Red Mug' }),
+      { params: Promise.resolve({ id: itemId }) }
+    );
+    expect(reopened.status).toBe(200);
+    const reservation = await Reservation.findOne({ gifter: alice }).lean();
+    expect(reservation?.itemName).toBe('Blue Mug');
+    expect(isSnapshot(reservation?.itemImage)).toBe(true);
+    del.mockClear();
+    copy.mockClear();
+    return reservation!;
+  }
+
+  // Rebooking an item over a reservation that an owner's status change kept: the
+  // removal would have left that reservation as it was had it come first, so the
+  // undo puts it back, snapshot and all.
+  it('a rebooking undone by a removal puts back the reservation it overwrote', async () => {
+    const earlier = await keptReservation();
 
     whileBookingWriteHeld(kickAlice);
     const rebooking = await book();
@@ -315,11 +331,32 @@ describe('PATCH /api/items/[id] — a booking whose member is removed or leaves 
     expect(rebooking.status).toBe(403);
     await expectItemFree();
     const reservations = await Reservation.find().lean();
-    expect(reservations.map((r) => r.gifter.toString())).toEqual([alice]);
-    // The rebooking pointed it at the item's own image, freeing the snapshot it
-    // replaced, and stopped before taking a new one: the item's blob is never freed.
-    expect(reservations[0].itemImage).toBe(`${HOST}/uploads/${owner}/image-abc.jpg`);
-    expect(del.mock.calls).toEqual([[earlier]]);
+    expect(reservations).toHaveLength(1);
+    expect(reservations[0]).toMatchObject({
+      _id: earlier._id,
+      itemName: 'Blue Mug',
+      itemImage: earlier.itemImage,
+    });
+    expect(copy).not.toHaveBeenCalled();
+    expect(del).not.toHaveBeenCalled();
+  });
+
+  // Nothing holds the overwritten snapshot once the reservation has gone, so the
+  // undo frees it instead of leaking it.
+  it('a rebooking undone after its reservation was dismissed meanwhile frees the snapshot it overwrote', async () => {
+    const earlier = await keptReservation();
+
+    // Held at the re-check, after both of the booking's writes.
+    holdFirstCall(WishlistMember, 'exists', async () => {
+      expect((await kickAlice()).status).toBe(200);
+      await deleteReservations({ gifter: alice });
+    });
+    const rebooking = await book();
+
+    expect(rebooking.status).toBe(403);
+    await expectItemFree();
+    expect(await Reservation.countDocuments()).toBe(0);
+    expect(del.mock.calls).toEqual([[earlier.itemImage]]);
   });
 });
 
@@ -379,6 +416,7 @@ describe('PATCH /api/items/[id] — a booking whose member becomes an owner mean
     expect((await patchItemAs(owner, 'completed')).status).toBe(200);
     expect((await patchItemAs(owner, 'available')).status).toBe(200);
     const earlier = (await Reservation.findOne({ gifter: alice }).lean())?.itemImage;
+    expect(isSnapshot(earlier)).toBe(true);
 
     whileBookingWriteHeld(aliceAcceptsPromotion);
     const rebooking = await book();

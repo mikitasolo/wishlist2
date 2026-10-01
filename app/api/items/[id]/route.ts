@@ -370,7 +370,6 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         // The document as it was, so a rebooking can free the snapshot it replaces.
         { upsert: true, new: false }
       ).lean();
-      if (previous) await releaseSnapshots(session.user.id, [previous.itemImage]);
       // The caller was read as a member at the top of the request. If they've
       // since left, been removed, become an owner, or the list was archived, the
       // booking is undone rather than left where nobody can release it.
@@ -378,9 +377,10 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         wishlistId: wishlist._id,
         itemId: item._id,
         gifterId: session.user.id,
-        createdReservation: !previous,
+        previous,
       });
       if (lost) return lostBookingResponse(lost);
+      if (previous) await releaseSnapshots(session.user.id, [previous.itemImage]);
       // Then swap in our own copy of the image, since the owner frees the item's
       // blob when they delete the item or replace its image.
       await snapshotReservationImage(session.user.id, item._id, item.imageUrl);
