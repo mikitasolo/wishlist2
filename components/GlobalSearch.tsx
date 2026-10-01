@@ -16,11 +16,22 @@ interface WishlistResult {
   ownerUsername: string | null;
 }
 
+interface GlobalSearchProps {
+  /**
+   * `header` (the default): a search icon that expands into a field.
+   * `inline`: an always-open field with the results underneath it, as the
+   * signed-out landing page's "find someone's wishlist" entry point.
+   */
+  variant?: 'header' | 'inline';
+}
+
 /**
- * Unified search: a search icon that expands into a field, querying both
- * usernames and public wishlist names with a live results dropdown.
+ * Unified search over usernames and the wishlists you can open, with a live
+ * results dropdown: the header's search and the landing page's. (The invite
+ * form's username suggestions call `/api/search` on their own.)
  */
-export default function GlobalSearch() {
+export default function GlobalSearch({ variant = 'header' }: GlobalSearchProps) {
+  const inline = variant === 'inline';
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
@@ -30,14 +41,20 @@ export default function GlobalSearch() {
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Close on outside click / Escape
+  // Close on outside click / Escape. The header search folds back into its
+  // icon; the inline one only hides its results, keeping the field and what
+  // was typed in it.
   useEffect(() => {
     if (!open) return;
+    const dismiss = () => {
+      setOpen(false);
+      if (!inline) reset();
+    };
     const onPointer = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) collapse();
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) dismiss();
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') collapse();
+      if (e.key === 'Escape') dismiss();
     };
     document.addEventListener('mousedown', onPointer);
     document.addEventListener('keydown', onKey);
@@ -45,9 +62,10 @@ export default function GlobalSearch() {
       document.removeEventListener('mousedown', onPointer);
       document.removeEventListener('keydown', onKey);
     };
-  }, [open]);
+  }, [open, inline]);
 
-  // Debounced query
+  // Debounced query. A response for a term that's since changed (or been
+  // cleared) is dropped, so it can't overwrite newer results.
   useEffect(() => {
     const term = q.trim();
     if (term.length < 3) {
@@ -56,29 +74,42 @@ export default function GlobalSearch() {
       setLoading(false);
       return;
     }
+    let current = true;
     setLoading(true);
     const t = setTimeout(async () => {
       try {
         const res = await fetch(`/api/search?q=${encodeURIComponent(term)}`, { cache: 'no-store' });
         const result = await res.json();
-        if (result.success) {
+        if (current && result.success) {
           setUsers(result.data.users || []);
           setWishlists(result.data.wishlists || []);
         }
       } catch {
         /* ignore */
       } finally {
-        setLoading(false);
+        if (current) setLoading(false);
       }
     }, 250);
-    return () => clearTimeout(t);
+    return () => {
+      current = false;
+      clearTimeout(t);
+    };
   }, [q]);
 
-  function collapse() {
-    setOpen(false);
+  function reset() {
     setQ('');
     setUsers([]);
     setWishlists([]);
+  }
+
+  function collapse() {
+    setOpen(false);
+    reset();
+  }
+
+  function clear() {
+    reset();
+    inputRef.current?.focus();
   }
 
   function go(href: string) {
@@ -86,7 +117,15 @@ export default function GlobalSearch() {
     router.push(href);
   }
 
-  if (!open) {
+  // Enter opens the person whose username is exactly what was typed, as the
+  // landing page's old find-by-username field did.
+  function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key !== 'Enter' || loading) return;
+    const exact = users.find((u) => u.username === q.trim().toLowerCase());
+    if (exact) go(`/users/${exact.username}`);
+  }
+
+  if (!inline && !open) {
     return (
       <button
         onClick={() => {
@@ -103,40 +142,74 @@ export default function GlobalSearch() {
 
   const term = q.trim();
   const hasResults = users.length > 0 || wishlists.length > 0;
+  const dropdownClass = inline
+    ? 'animate-fade-in absolute inset-x-0 top-full z-20 mt-2 overflow-hidden rounded-2xl border border-border bg-surface py-1.5 text-left shadow-lg'
+    : 'animate-fade-in absolute left-4 right-4 top-[3.5rem] overflow-hidden rounded-2xl border border-border bg-surface py-1.5 shadow-lg sm:left-auto sm:right-0 sm:top-full sm:mt-2 sm:w-80';
 
   return (
     <div
       ref={containerRef}
-      className="fixed inset-x-0 top-0 z-50 flex h-14 items-center gap-2 border-b border-border bg-surface px-4 sm:relative sm:inset-auto sm:top-auto sm:z-auto sm:h-auto sm:border-0 sm:bg-transparent sm:px-0"
+      className={
+        inline
+          ? 'relative w-full'
+          : 'fixed inset-x-0 top-0 z-50 flex h-14 items-center gap-2 border-b border-border bg-surface px-4 sm:relative sm:inset-auto sm:top-auto sm:z-auto sm:h-auto sm:border-0 sm:bg-transparent sm:px-0'
+      }
     >
-      <div className="flex min-w-0 flex-1 items-center gap-2 rounded-full border border-border-strong bg-surface pl-3.5 pr-1.5 shadow-xs sm:w-72 sm:flex-none">
+      <div
+        className={
+          inline
+            ? 'flex w-full items-center gap-2 rounded-full border border-border-strong bg-surface pl-4 pr-1.5 shadow-xs'
+            : 'flex min-w-0 flex-1 items-center gap-2 rounded-full border border-border-strong bg-surface pl-3.5 pr-1.5 shadow-xs sm:w-72 sm:flex-none'
+        }
+      >
         <Icon name="search" size={17} className="flex-shrink-0 text-muted-foreground" />
         <input
           ref={inputRef}
           value={q}
-          onChange={(e) => setQ(e.target.value)}
+          onChange={(e) => {
+            setQ(e.target.value);
+            setOpen(true);
+          }}
+          onFocus={() => setOpen(true)}
+          onClick={() => setOpen(true)}
+          onKeyDown={onKeyDown}
           placeholder="Search people & wishlists…"
-          className="h-10 min-w-0 flex-1 border-0 bg-transparent text-[15px] outline-none"
+          aria-label="Search people and wishlists"
+          className={`${inline ? 'h-11' : 'h-10'} min-w-0 flex-1 border-0 bg-transparent text-[15px] outline-none`}
+          autoComplete="off"
           autoCapitalize="none"
           spellCheck={false}
         />
-        <button
-          onClick={collapse}
-          aria-label="Close search"
-          className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        >
-          <Icon name="close" size={16} />
-        </button>
+        {inline ? (
+          q && (
+            <button
+              type="button"
+              onClick={clear}
+              aria-label="Clear search"
+              className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              <Icon name="close" size={16} />
+            </button>
+          )
+        ) : (
+          <button
+            onClick={collapse}
+            aria-label="Close search"
+            className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <Icon name="close" size={16} />
+          </button>
+        )}
       </div>
 
-      {term.length > 0 && term.length < 3 && (
-        <div className="animate-fade-in absolute left-4 right-4 top-[3.5rem] overflow-hidden rounded-2xl border border-border bg-surface py-1.5 shadow-lg sm:left-auto sm:right-0 sm:top-full sm:mt-2 sm:w-80">
+      {open && term.length > 0 && term.length < 3 && (
+        <div className={dropdownClass}>
           <p className="px-4 py-3 text-sm text-muted-foreground">Type at least 3 characters…</p>
         </div>
       )}
 
-      {term.length >= 3 && (
-        <div className="animate-fade-in absolute left-4 right-4 top-[3.5rem] overflow-hidden rounded-2xl border border-border bg-surface py-1.5 shadow-lg sm:left-auto sm:right-0 sm:top-full sm:mt-2 sm:w-80">
+      {open && term.length >= 3 && (
+        <div className={dropdownClass}>
           {loading && !hasResults && (
             <p className="px-4 py-3 text-sm text-muted-foreground">Searching…</p>
           )}
