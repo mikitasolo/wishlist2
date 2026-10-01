@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { SMTP_ENV_VARS, type EmailTransport } from '@/lib/env';
 import type { RateLimiter, RateLimitResult } from '@/lib/rateLimit';
+import { asVerifiedSignIn, isMagicLinkSignInPath, isVerifiedSignIn } from '@/lib/signInEmail';
 
 // Stand-in for nodemailer: proves whether anything is ever sent.
 const { createTransport, sendMail } = vi.hoisted(() => {
@@ -45,11 +46,18 @@ async function load(transport: EmailTransport) {
     for (const name of SMTP_ENV_VARS) vi.stubEnv(name, undefined);
   }
   vi.resetModules();
-  const [{ sendVerificationRequest }, { __setRateLimiters }] = await Promise.all([
+  const [signInEmail, { __setRateLimiters }] = await Promise.all([
     import('@/lib/signInEmail'),
     import('@/lib/rateLimit'),
   ]);
-  return { sendVerificationRequest, __setRateLimiters };
+  // As the sign-in form's server action calls it, once its Turnstile check passed.
+  const sendVerificationRequest = (request: ReturnType<typeof verificationRequest>) =>
+    signInEmail.asVerifiedSignIn(() => signInEmail.sendVerificationRequest(request));
+  return {
+    sendVerificationRequest,
+    sendUnverified: signInEmail.sendVerificationRequest,
+    __setRateLimiters,
+  };
 }
 
 let log: ReturnType<typeof vi.spyOn>;
@@ -131,5 +139,67 @@ describe('sendVerificationRequest in smtp mode', () => {
 
     expect(sendMail).toHaveBeenCalledTimes(1);
     expect(sendMail.mock.calls[0]![0]).toMatchObject({ to: EMAIL });
+  });
+});
+
+// A magic link is only sent from the sign-in form's server action, after its
+// Turnstile check: Auth.js's own sign-in POST is refused at the route, and a send
+// that didn't start inside `asVerifiedSignIn` is refused here too.
+describe.each(['console', 'smtp'] as const)(
+  'sendVerificationRequest outside the sign-in form (EMAIL_TRANSPORT=%s)',
+  (mode) => {
+    it('is refused before the rate limiter, and neither sent nor printed', async () => {
+      const { sendUnverified, __setRateLimiters } = await load(mode);
+      const signinEmail = limiter(true);
+      const signinIp = limiter(true);
+      __setRateLimiters({ signinEmail, signinIp });
+
+      await expect(sendUnverified(verificationRequest())).rejects.toThrow(
+        'Magic links are only sent from the sign-in form.'
+      );
+
+      expect(signinEmail.limit).not.toHaveBeenCalled();
+      expect(signinIp.limit).not.toHaveBeenCalled();
+      expect(log).not.toHaveBeenCalled();
+      expect(sendMail).not.toHaveBeenCalled();
+    });
+  }
+);
+
+describe('asVerifiedSignIn', () => {
+  it('marks only the calls made inside it, through awaits, and returns their result', async () => {
+    expect(isVerifiedSignIn()).toBe(false);
+    const seen = await asVerifiedSignIn(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      return isVerifiedSignIn();
+    });
+    expect(seen).toBe(true);
+    expect(isVerifiedSignIn()).toBe(false);
+  });
+});
+
+describe('isMagicLinkSignInPath', () => {
+  it.each([
+    '/api/auth/signin/nodemailer',
+    '/api/auth/signin/anything',
+    // Auth.js drops empty segments, so these are the same action to it.
+    '/api/auth//signin/nodemailer',
+    '/api/auth/signin//nodemailer/',
+  ])('matches %s, the POST that sends a magic link', (path) => {
+    expect(isMagicLinkSignInPath(path)).toBe(true);
+  });
+
+  it.each([
+    '/api/auth/signin',
+    '/api/auth/signin/',
+    '/api/auth/signout',
+    '/api/auth/session',
+    '/api/auth/csrf',
+    '/api/auth/callback/nodemailer',
+    '/api/auth/verify-request',
+    '/auth/signin',
+    '/api/upload',
+  ])('leaves %s alone', (path) => {
+    expect(isMagicLinkSignInPath(path)).toBe(false);
   });
 });

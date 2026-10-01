@@ -6,6 +6,7 @@ import {
   inviteMemberSchema,
   createItemSchema,
   updateItemSchema,
+  magicLinkRequestSchema,
 } from '@/lib/validations';
 
 describe('createWishlistSchema', () => {
@@ -289,5 +290,48 @@ describe('updateItemSchema', () => {
     // With nothing else, there's no field left to update.
     expect(updateItemSchema.safeParse({ bookedBy: 'a' }).success).toBe(false);
     expect(updateItemSchema.safeParse({ bookedBy: null }).success).toBe(false);
+  });
+});
+
+describe('magicLinkRequestSchema', () => {
+  it('trims the email and defaults callbackUrl to /', () => {
+    const ok = magicLinkRequestSchema.safeParse({ email: '  me@example.com ' });
+    expect(ok.success && ok.data).toEqual({ email: 'me@example.com', callbackUrl: '/' });
+  });
+
+  it('keeps a callbackUrl and a token', () => {
+    const ok = magicLinkRequestSchema.safeParse({
+      email: 'me@example.com',
+      callbackUrl: '/invites',
+      turnstileToken: 'XXXX.DUMMY.TOKEN.XXXX',
+    });
+    expect(ok.success && ok.data).toEqual({
+      email: 'me@example.com',
+      callbackUrl: '/invites',
+      turnstileToken: 'XXXX.DUMMY.TOKEN.XXXX',
+    });
+  });
+
+  it('rejects a missing, blank, non-string or over-long email', () => {
+    for (const email of [undefined, '', '   ', 42, `${'a'.repeat(243)}@example.com`]) {
+      expect(magicLinkRequestSchema.safeParse({ email }).success).toBe(false);
+    }
+  });
+
+  it('rejects an over-long callbackUrl and a non-string token', () => {
+    const email = 'me@example.com';
+    expect(
+      magicLinkRequestSchema.safeParse({ email, callbackUrl: `/${'x'.repeat(2048)}` }).success
+    ).toBe(false);
+    expect(magicLinkRequestSchema.safeParse({ email, turnstileToken: 42 }).success).toBe(false);
+  });
+
+  // The token's own checks (missing, too long) belong to verifyTurnstileToken,
+  // which answers them as a failed check rather than as bad input.
+  it('lets a null, empty or long token through to the Turnstile check', () => {
+    const email = 'me@example.com';
+    for (const turnstileToken of [null, '', 'x'.repeat(5000)]) {
+      expect(magicLinkRequestSchema.safeParse({ email, turnstileToken }).success).toBe(true);
+    }
   });
 });

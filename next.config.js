@@ -13,16 +13,24 @@ const isDev = process.env.NODE_ENV !== 'production';
 //
 // Follow-up for a stricter policy: nonce-based script-src via middleware, which
 // lets us drop 'unsafe-inline' for scripts (tracked in the security notes).
+//
+// Cloudflare Turnstile on the sign-in form (components/TurnstileWidget.tsx)
+// loads its script from, and renders its challenge in an iframe on,
+// challenges.cloudflare.com: that one origin is allowed for script and frame,
+// nothing else. On every route, not just /auth/signin: a client-side navigation
+// to the sign-in page keeps the CSP of the page the visitor landed on.
+const TURNSTILE_ORIGIN = 'https://challenges.cloudflare.com';
+
 const csp = [
   "default-src 'self'",
-  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ''}`,
+  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ''} ${TURNSTILE_ORIGIN}`,
   "style-src 'self' 'unsafe-inline'",
   // Vercel Blob serves public images over https; next/image also emits data URIs.
   "img-src 'self' data: blob: https:",
   "font-src 'self' data:",
   `connect-src 'self'${isDev ? ' ws:' : ''}`,
   "frame-ancestors 'none'",
-  "frame-src 'none'",
+  `frame-src ${TURNSTILE_ORIGIN}`,
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'self'",
@@ -56,13 +64,17 @@ const securityHeaders = [
 // (WIS-156: sign-in and uploads returned 500). Ship libvips with every API
 // route: the upload route runs sharp, and everything that reaches lib/email.ts
 // (auth, the invite routes) can, and nearly every route imports lib/auth, so
-// listing them one by one would miss the next one. `npm run check:trace`
-// asserts after a build that every API route shipping the binding ships libvips.
+// listing them one by one would miss the next one. The sign-in page too: its
+// server action (app/auth/signin/actions.ts) sends the magic link, so it's the
+// sign-in page's function, not /api/auth's, that renders the email's logo.
+// `npm run check:trace` asserts after a build that every API route shipping the
+// binding, and the sign-in page, ship libvips.
 const SHARP_NATIVE_LIBS = ['./node_modules/@img/sharp-libvips-*/lib/**/*'];
 
 const nextConfig = {
   outputFileTracingIncludes: {
     '/api/**/*': SHARP_NATIVE_LIBS,
+    '/auth/signin': SHARP_NATIVE_LIBS,
   },
   images: {
     remotePatterns: [
