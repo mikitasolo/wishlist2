@@ -12,6 +12,8 @@ import Wishlist from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
 import Item from '@/models/Item';
 import Reservation from '@/models/Reservation';
+import WishlistInvite from '@/models/WishlistInvite';
+import Notification from '@/models/Notification';
 
 const session = vi.mocked(auth);
 
@@ -74,4 +76,66 @@ describe('DELETE /api/wishlists/[id]/members/me (leave)', () => {
     await DELETE(req, { params: Promise.resolve({ id: wishlistId }) });
     expect(await Reservation.findOne({ gifter: memberId, item: itemId })).not.toBeNull();
   });
+
+  // regression: leaving logged `Unbooked <n> item(s) for user <id> in wishlist <id>`,
+  // and a failed invite-notification cleanup on the way named the list too. That
+  // put who left which list, and how much of it they had booked, in the server log.
+  it.each(['member', 'co-owner'] as const)(
+    'regression: a %s leaving logs no user id, wishlist id or booking count',
+    async (role) => {
+      const methods = ['log', 'info', 'warn', 'error', 'debug'] as const;
+      const spies = methods.map((m) => vi.spyOn(console, m).mockImplementation(() => {}));
+      try {
+        const owner = (await Wishlist.findById(wishlistId))!.owners[0];
+        if (role === 'co-owner') {
+          // The other branch of the route: an owner stepping down.
+          await WishlistMember.deleteOne({ wishlist: wishlistId, user: memberId });
+          await Wishlist.updateOne({ _id: wishlistId }, { $push: { owners: memberId } });
+        }
+        // A second booking, so there's a count worth hiding.
+        await Item.create({
+          wishlist: wishlistId,
+          name: 'Gift 2',
+          status: 'booked',
+          bookedBy: memberId,
+        });
+        // A pending invite, which leaving cancels. Its notification cleanup then
+        // fails, so the one best-effort log line on this path fires too.
+        await WishlistInvite.create({
+          wishlist: wishlistId,
+          invitedBy: owner,
+          invitedUser: memberId,
+          role: 'owner',
+        });
+        vi.spyOn(Notification, 'deleteMany').mockRejectedValueOnce(new Error('db down'));
+
+        session.mockResolvedValue({ user: { id: memberId } } as never);
+        const res = await DELETE(
+          new NextRequest('http://localhost/api/wishlists/' + wishlistId + '/members/me', {
+            method: 'DELETE',
+          }),
+          { params: Promise.resolve({ id: wishlistId }) }
+        );
+        expect(res.status).toBe(200);
+        const count = (await res.json()).data.unbookedItemsCount;
+        expect(count).toBe(2);
+
+        const calls = spies.flatMap((spy) => spy.mock.calls);
+        expect(calls.length).toBeGreaterThan(0); // the cleanup failure was logged
+        // An error's message and own properties (where Mongo puts `keyValue`), not
+        // its stack, which is code locations only.
+        const logged = calls
+          .flat()
+          .map((arg) =>
+            arg instanceof Error ? `${arg.message} ${JSON.stringify(arg)}` : String(arg)
+          )
+          .join('\n');
+        expect(logged).not.toContain(memberId);
+        expect(logged).not.toContain(wishlistId);
+        expect(logged).not.toMatch(new RegExp(`\\b${count}\\b`));
+      } finally {
+        vi.restoreAllMocks();
+      }
+    }
+  );
 });

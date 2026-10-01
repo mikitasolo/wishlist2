@@ -60,7 +60,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         return true;
       } catch (error) {
-        console.error('Error in signIn callback:', error);
+        // A duplicate-key error (two first sign-ins for one email racing) quotes the
+        // clashing email in its message and `keyValue`, so only its kind is logged.
+        const duplicateKey = (error as { code?: unknown } | null)?.code === 11000;
+        console.error('Error in signIn callback:', duplicateKey ? 'duplicate key' : error);
         return false;
       }
     },
@@ -83,8 +86,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             session.user.image = dbUser.image || undefined;
             session.user.defaultCurrency = dbUser.defaultCurrency || 'USD';
           } else {
-            // This shouldn't happen, but handle gracefully
-            console.error('User not found in database during session callback:', user.email);
+            // This shouldn't happen, but handle gracefully. Logged without the email
+            // or any other identifier: anyone with project access reads these logs.
+            console.error('User not found in database during session callback');
           }
         } catch (error) {
           console.error('Error in session callback:', error);
