@@ -12,6 +12,7 @@ import Select from './Select';
 import { visibilityMeta, type Visibility } from '@/lib/utils/visibility';
 import { currencySelectOptions } from '@/lib/utils/currencies';
 import { useBodyScrollLock } from '@/lib/hooks/useBodyScrollLock';
+import { useFocusTrap } from '@/lib/hooks/useFocusTrap';
 
 interface CreateWishlistModalProps {
   isOpen: boolean;
@@ -34,6 +35,7 @@ export default function CreateWishlistModal({ isOpen, onClose }: CreateWishlistM
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showConfirmClose, setShowConfirmClose] = useState(false);
+  const dialogRef = useRef<HTMLDivElement>(null);
   const firstInputRef = useRef<HTMLInputElement>(null);
 
   // Reset form when modal closes
@@ -55,10 +57,9 @@ export default function CreateWishlistModal({ isOpen, onClose }: CreateWishlistM
     setHasUnsavedChanges(hasChanges);
   }, [formData]);
 
-  // Focus first input + prefill the currency from the user's default when opening.
+  // Prefill the currency from the user's default when opening.
   useEffect(() => {
     if (isOpen) {
-      if (firstInputRef.current) setTimeout(() => firstInputRef.current?.focus(), 100);
       const cur = session?.user?.defaultCurrency || 'USD';
       setFormData((f) => ({ ...f, currency: cur }));
     }
@@ -66,6 +67,11 @@ export default function CreateWishlistModal({ isOpen, onClose }: CreateWishlistM
 
   // Prevent body scroll while the modal is open (shared, ref-counted lock)
   useBodyScrollLock(isOpen);
+
+  // Focus starts on the name field, stays inside while it's open (the currency
+  // menu included), and goes back on close. While the form submits, it's held
+  // on the panel, then goes back to the control that had it if the submit fails.
+  useFocusTrap(isOpen, dialogRef, firstInputRef, { busy: isSubmitting });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -150,6 +156,8 @@ export default function CreateWishlistModal({ isOpen, onClose }: CreateWishlistM
       }}
     >
       <div
+        ref={dialogRef}
+        tabIndex={-1}
         className="animate-dialog-in flex max-h-full w-full max-w-md flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-lg"
         onClick={(e) => e.stopPropagation()}
         role="dialog"

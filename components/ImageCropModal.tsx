@@ -1,10 +1,11 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Cropper from 'react-easy-crop';
 import Icon from './Icon';
 import { getCroppedBlob, type PixelCrop } from '@/lib/utils/cropImage';
 import { useBodyScrollLock } from '@/lib/hooks/useBodyScrollLock';
+import { useFocusTrap } from '@/lib/hooks/useFocusTrap';
 
 interface ImageCropModalProps {
   file: File;
@@ -30,6 +31,12 @@ export default function ImageCropModal({
   const [working, setWorking] = useState(false);
 
   useBodyScrollLock(true);
+
+  // Focus starts on the close button and stays inside while it's open, even
+  // over the item modal whose form holds it, then goes back to what opened it.
+  // While the crop runs (its buttons disabled), it's held on the panel.
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(true, dialogRef, undefined, { busy: working });
 
   // Load the selected file into an object URL for the cropper.
   useEffect(() => {
@@ -70,6 +77,8 @@ export default function ImageCropModal({
       }}
     >
       <div
+        ref={dialogRef}
+        tabIndex={-1}
         className="animate-dialog-in flex max-h-full w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-lg"
         role="dialog"
         aria-modal="true"

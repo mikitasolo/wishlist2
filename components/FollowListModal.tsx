@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import Icon from './Icon';
 import Avatar from './Avatar';
 import { useBodyScrollLock } from '@/lib/hooks/useBodyScrollLock';
+import { useFocusTrap } from '@/lib/hooks/useFocusTrap';
 
 export type FollowTab = 'followers' | 'following';
 
@@ -35,6 +36,11 @@ export default function FollowListModal({
   const [loading, setLoading] = useState(false);
 
   useBodyScrollLock(true);
+
+  // Focus starts on the close button, stays inside while it's open, and goes
+  // back to the count that opened it on close.
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(true, dialogRef);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -73,6 +79,8 @@ export default function FollowListModal({
       }}
     >
       <div
+        ref={dialogRef}
+        tabIndex={-1}
         className="animate-dialog-in flex max-h-[80vh] w-full max-w-sm flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-lg"
         role="dialog"
         aria-modal="true"
