@@ -17,7 +17,7 @@ npx tsc --noEmit     # typecheck — must pass before done
 npm run test:cov     # full Vitest suite (unit + component + API) + the coverage floor in vitest.config.mts — must pass before done
 npm run build        # production build — must pass before done
 npm run check:trace  # after a build: sharp's native libvips ships with the sign-in page and every API route that ships sharp (CI runs it)
-npm run smoke:deploy -- <url>  # read-only GET smoke of a deployed host (auth + upload routes start); safe on staging/previews
+npm run smoke:deploy -- <url>  # read-only GET smoke of a deployed host (auth + upload routes start); safe on staging
 npm run test:e2e     # Playwright end-to-end suite
 npm run test:watch   # watch mode
 npm test             # the same suite without coverage
@@ -31,7 +31,7 @@ Tasks live in **Linear** — workspace `mikitasolo`, team **Wishlist**, issue ke
 
 ### Branches
 
-- **`staging`** is the default and integration branch. Every change reaches it through a **pull request**, which the operator **squash-merges**. CI (`ci.yml`, `e2e.yml`) runs on every PR; `audit.yml` runs only on a PR that changes `package.json` or `package-lock.json`, plus daily on `staging` and on demand (see the `overrides` item under Conventions).
+- **`staging`** is the default and integration branch. Every change reaches it through a **pull request**, which the operator **squash-merges**. CI (`ci.yml`, `e2e.yml`) runs on every PR; `audit.yml` runs only on a PR that changes `package.json` or `package-lock.json`, plus daily on `staging` and on demand (see the `overrides` item under Conventions). **Vercel builds only `staging` and `main`** (`git.deploymentEnabled` in `vercel.json`): a PR branch gets no preview deployment, because on the Hobby plan a busy day of PR pushes used up the daily deployment cap and left `staging` itself undeployed. CI is the PR's check; a change's first real Vercel build is its `staging` deploy, so smoke `staging` after a merge that touches the build, env or runtime setup.
 - **`main` is production** (Vercel deploys on push). It only ever moves by **fast-forwarding to `staging`** (`npm run release`, i.e. `git push origin origin/staging:main`) — never commit to `main`, never open a PR into it. This keeps `main` a strict prefix of `staging` (identical hashes, no divergence).
 - **A push to `main` is a release.** `.github/workflows/release-notify.yml` posts the changelog to a Telegram channel (built from the commit subjects in the pushed range by `.github/scripts/telegram-release-notes.py`) and moves the Linear issues those commits close from **On Staging** to **Done** (`.github/scripts/linear-mark-released.py`). Secrets: `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` / `LINEAR_API_KEY`; without them each job prints a preview and changes nothing.
 
