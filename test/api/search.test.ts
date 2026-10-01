@@ -326,11 +326,13 @@ describe('GET /api/search — people only (`sections=users`, the invite form’s
   beforeEach(async () => {
     me = await user('searcher');
     const friend = await user('alizfriend');
-    await user('aliastranger');
+    const stranger = await user('aliastranger');
     await user('alihidden', { searchable: false });
     await befriend(me, friend);
     // Private, so it's found only through the searcher's membership.
     await join(await list('Ali birthday', [friend], 'private'), me);
+    // Public, so a full search finds a list (and its owner's name) signed out too.
+    await list('Ali wedding', [stranger]);
   });
 
   afterEach(() => vi.restoreAllMocks());
@@ -347,6 +349,7 @@ describe('GET /api/search — people only (`sections=users`, the invite form’s
     async (who) => {
       const as = who === 'signed in' ? me : null;
       const both = await search('ali', as);
+      expect(both.wishlists.map((w) => w.name)).toContain('Ali wedding');
       const reads = spyOnListReads();
       const people = await search('ali', as, 'users');
 
@@ -381,6 +384,12 @@ describe('GET /api/search — people only (`sections=users`, the invite form’s
             name: 'Ali birthday',
             slug: 'ali-birthday',
             ownerUsername: 'alizfriend',
+          },
+          {
+            _id: expect.any(String),
+            name: 'Ali wedding',
+            slug: 'ali-wedding',
+            ownerUsername: 'aliastranger',
           },
         ],
       });
