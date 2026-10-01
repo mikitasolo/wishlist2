@@ -39,4 +39,23 @@ describe('security floors of installed dependencies', () => {
     expect(atLeast(versions.heif, '1.23.2'), `libheif ${versions.heif}`).toBe(true);
     expect(atLeast(versions.rsvg, '2.63.2'), `librsvg ${versions.rsvg}`).toBe(true);
   });
+
+  // regression: nodemailer 9.0.3 was inside GHSA-2x7j-588g-ccc2 (addressparser
+  // DoS), GHSA-8m3c-c648-2xjj, GHSA-wmmp-3585-3rmp and GHSA-cc9r-2j5m-2m83, all
+  // patched in 9.1.1. It sends the sign-in and invite mail.
+  it('runs a nodemailer with the 9.1.1 security fixes', () => {
+    const { version } = require('nodemailer/package.json') as { version: string };
+    expect(atLeast(version, '9.1.1'), `nodemailer ${version}`).toBe(true);
+  });
+
+  // regression: the undici @vercel/blob ships with (6.28.0) was inside
+  // GHSA-rfgv-xxqx-mfg5, GHSA-3wwx-pv8p-q78v and GHSA-r53p-7pc4-xj5r, patched in
+  // 6.28.1, and the nanoid postcss ships with (3.3.16) inside GHSA-2v37-7h3g-55p8,
+  // patched in 3.3.18. Both resolve to the hoisted copy checked here.
+  it('runs the undici and nanoid with their security fixes', () => {
+    const undici = (require('undici/package.json') as { version: string }).version;
+    const nanoid = (require('nanoid/package.json') as { version: string }).version;
+    expect(atLeast(undici, '6.28.1'), `undici ${undici}`).toBe(true);
+    expect(atLeast(nanoid, '3.3.18'), `nanoid ${nanoid}`).toBe(true);
+  });
 });
