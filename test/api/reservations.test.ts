@@ -143,25 +143,40 @@ describe('POST /api/reservations/[id]/gift', () => {
     }
   );
 
-  // The answer's wishlist slug is read before the entry is written, so failing
-  // to read it is a gift that can be retried, not a 500 for a logged one.
-  it("keeps the reservation and logs nothing when the answer's slug can't be read", async () => {
+  // The slug is read once the gift is logged, so failing to read it must not
+  // answer 500: the page would keep the card, and its retry could only 404.
+  it("answers 201 without the slug when the entry's wishlist slug can't be read", async () => {
+    const wishlist = await Wishlist.create({
+      name: 'Birthday',
+      owners: [ownerId],
+      slug: 'birthday-a1b2c',
+    });
+    await Reservation.updateOne({ _id: reservationId }, { wishlist: wishlist._id });
     session.mockResolvedValue({ user: { id: gifterId } } as never);
-    const find = vi
-      .spyOn(Wishlist, 'find')
-      .mockImplementationOnce(
-        () => ({ select: () => Promise.reject(new Error('db down')) }) as never
-      );
+    const find = vi.spyOn(Wishlist, 'find').mockImplementationOnce(() => {
+      throw new Error('db down');
+    });
     const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {});
+    let res;
     try {
-      expect((await call(GIFT, reservationId, 'POST')).status).toBe(500);
+      res = await call(GIFT, reservationId, 'POST');
+      expect(errorLog).toHaveBeenCalledWith(
+        'Could not read the wishlist slug of a logged gift:',
+        expect.any(Error)
+      );
     } finally {
       find.mockRestore();
       errorLog.mockRestore();
     }
 
-    expect(await GiftLog.countDocuments()).toBe(0);
-    expect((await Reservation.findById(reservationId))?.itemName).toBe('Blue Mug');
+    expect(res.status).toBe(201);
+    expect((await res.json()).data).toMatchObject({
+      itemName: 'Blue Mug',
+      wishlistId: wishlist._id.toString(),
+      wishlistSlug: null,
+    });
+    expect(await GiftLog.countDocuments()).toBe(1);
+    expect(await Reservation.findById(reservationId)).toBeNull();
   });
 
   it("cannot gift someone else's reservation", async () => {

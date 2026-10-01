@@ -340,9 +340,11 @@ describe('BookedPage — gift history while actions settle', () => {
     expect(historyNames()).toEqual(['Lego set', 'Mug']);
   });
 
-  // The issue's other face: of two gifts, the answer settling last must not
-  // drop the other one, though its toast said "Added to your gift history".
-  it('keeps both gifts, newest first, when two "Mark as gifted" answers arrive out of order', async () => {
+  // regression: the same whole-list re-read, done by each of two "Mark as
+  // gifted" requests, let the one answering last overwrite the other's: a
+  // re-read built before the newer gift was logged dropped it from the history,
+  // though its toast had said "Added to your gift history".
+  it('regression: keeps both gifts, newest first, when two "Mark as gifted" answers arrive out of order', async () => {
     const { answer } = await renderHeld();
 
     markGifted('Lego set');
