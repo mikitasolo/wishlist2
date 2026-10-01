@@ -27,8 +27,8 @@ interface GlobalSearchProps {
 
 /**
  * Unified search over usernames and the wishlists you can open, with a live
- * results dropdown. Every search box in the app is this one component on
- * `/api/search`.
+ * results dropdown: the header's search and the landing page's. (The invite
+ * form's username suggestions call `/api/search` on their own.)
  */
 export default function GlobalSearch({ variant = 'header' }: GlobalSearchProps) {
   const inline = variant === 'inline';
@@ -64,7 +64,8 @@ export default function GlobalSearch({ variant = 'header' }: GlobalSearchProps) 
     };
   }, [open, inline]);
 
-  // Debounced query
+  // Debounced query. A response for a term that's since changed (or been
+  // cleared) is dropped, so it can't overwrite newer results.
   useEffect(() => {
     const term = q.trim();
     if (term.length < 3) {
@@ -73,22 +74,26 @@ export default function GlobalSearch({ variant = 'header' }: GlobalSearchProps) 
       setLoading(false);
       return;
     }
+    let current = true;
     setLoading(true);
     const t = setTimeout(async () => {
       try {
         const res = await fetch(`/api/search?q=${encodeURIComponent(term)}`, { cache: 'no-store' });
         const result = await res.json();
-        if (result.success) {
+        if (current && result.success) {
           setUsers(result.data.users || []);
           setWishlists(result.data.wishlists || []);
         }
       } catch {
         /* ignore */
       } finally {
-        setLoading(false);
+        if (current) setLoading(false);
       }
     }, 250);
-    return () => clearTimeout(t);
+    return () => {
+      current = false;
+      clearTimeout(t);
+    };
   }, [q]);
 
   function reset() {
@@ -108,9 +113,16 @@ export default function GlobalSearch({ variant = 'header' }: GlobalSearchProps) 
   }
 
   function go(href: string) {
-    setOpen(false);
-    reset();
+    collapse();
     router.push(href);
+  }
+
+  // Enter opens the person whose username is exactly what was typed, as the
+  // landing page's old find-by-username field did.
+  function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key !== 'Enter' || loading) return;
+    const exact = users.find((u) => u.username === q.trim().toLowerCase());
+    if (exact) go(`/users/${exact.username}`);
   }
 
   if (!inline && !open) {
@@ -159,6 +171,8 @@ export default function GlobalSearch({ variant = 'header' }: GlobalSearchProps) 
             setOpen(true);
           }}
           onFocus={() => setOpen(true)}
+          onClick={() => setOpen(true)}
+          onKeyDown={onKeyDown}
           placeholder="Search people & wishlists…"
           aria-label="Search people and wishlists"
           className={`${inline ? 'h-11' : 'h-10'} min-w-0 flex-1 border-0 bg-transparent text-[15px] outline-none`}

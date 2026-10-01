@@ -73,8 +73,47 @@ describe('GlobalSearch — inline (landing page)', () => {
     await waitFor(() => expect(screen.queryByText('@alice')).toBeNull());
     expect(field()).toHaveValue('ali');
 
-    fireEvent.focus(field());
+    // The field kept focus, so it's a click that brings the results back.
+    fireEvent.click(field());
     expect(await screen.findByText('@alice')).toBeInTheDocument();
+  });
+
+  it('opens the exact username match on Enter, and nothing else', async () => {
+    render(<GlobalSearch variant="inline" />);
+    type('ali');
+    await screen.findByText('@alice');
+    fireEvent.keyDown(field(), { key: 'Enter' });
+    expect(push).not.toHaveBeenCalled();
+
+    type('Alice');
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    await screen.findByText('@alice');
+    fireEvent.keyDown(field(), { key: 'Enter' });
+    expect(push).toHaveBeenCalledWith('/users/alice');
+  });
+
+  // regression: the debounced fetch set the results from whichever response
+  // landed, with no check that its term was still the one in the field. A slow
+  // response for a cleared or replaced term refilled the dropdown, and the next
+  // search showed those stale rows instead of "Searching…".
+  it('regression: drops a response that arrives after the field was cleared', async () => {
+    let respond!: (value: unknown) => void;
+    fetchMock.mockReturnValueOnce(new Promise((resolve) => (respond = resolve)));
+    render(<GlobalSearch variant="inline" />);
+    type('ali');
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear search' }));
+    respond({
+      json: async () => ({
+        success: true,
+        data: { users: [{ username: 'alice', image: null }], wishlists: [] },
+      }),
+    });
+    type('bob');
+    // Still searching for "bob": the stale "ali" rows must not stand in for its results.
+    expect(await screen.findByText('Searching…')).toBeInTheDocument();
+    expect(screen.queryByText('@alice')).toBeNull();
   });
 
   it('empties the field with the clear button', async () => {

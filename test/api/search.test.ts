@@ -227,6 +227,20 @@ describe('GET /api/search — privacy settings', () => {
   });
 });
 
+describe('GET /api/search — the query', () => {
+  it('matches a query that looks like an aggregation expression as plain text', async () => {
+    await user('$$root');
+    await user('ali');
+    // Each would be a bad field path or an undefined variable if it reached the
+    // pipeline as an expression; `search` asserts every one answers 200.
+    for (const q of ['$$x', '$a.', '$..', '$username']) {
+      expect(await usernames(q, null)).toEqual([]);
+    }
+    expect(await usernames('$', null)).toEqual(['$$root']);
+    expect(await usernames('$$ROOT', null)).toEqual(['$$root']);
+  });
+});
+
 describe('GET /api/search — ranking', () => {
   it('ranks people: exact match, friends, following, followers, everyone else; prefix before substring', async () => {
     const me = await user('searcher');

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import mongoose, { type FilterQuery, type PipelineStage } from 'mongoose';
+import mongoose, { type PipelineStage } from 'mongoose';
 import { auth } from '@/lib/auth';
 import connectDB from '@/lib/mongodb';
 import { enforce, ipKey } from '@/lib/rateLimit';
@@ -7,7 +7,8 @@ import User from '@/models/User';
 import Follow from '@/models/Follow';
 import Wishlist, { type IWishlist } from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
-import { ownedByFilter, primaryOwnerId } from '@/lib/utils/wishlistOwners';
+import { getFriendIds } from '@/lib/utils/friends';
+import { primaryOwnerId } from '@/lib/utils/wishlistOwners';
 import { viewableWishlistsFilter } from '@/lib/utils/wishlistAccess';
 
 /** Results per section. */
@@ -21,7 +22,7 @@ interface Searcher {
   oid: ObjectId;
   following: ObjectId[];
   followers: ObjectId[];
-  /** Mutual follows. */
+  /** Mutual follows, from `getFriendIds` like every other friends check. */
   friends: ObjectId[];
   /** Lists they're a member of. */
   memberOf: ObjectId[];
@@ -29,13 +30,14 @@ interface Searcher {
 
 async function loadSearcher(id: string): Promise<Searcher> {
   const oid = new mongoose.Types.ObjectId(id);
-  const [following, followers, memberOf] = await Promise.all([
+  const [following, followers, friendIds, memberOf] = await Promise.all([
     Follow.distinct('following', { follower: oid }),
     Follow.distinct('follower', { following: oid }),
+    getFriendIds(oid),
     WishlistMember.distinct('wishlist', { user: oid }),
   ]);
-  const followsMe = new Set(followers.map(String));
-  const friends = following.filter((f) => followsMe.has(String(f)));
+  // Aggregation expressions don't cast, so every id has to be an ObjectId.
+  const friends = friendIds.map((f) => new mongoose.Types.ObjectId(f));
   return { id, oid, following, followers, friends, memberOf };
 }
 
@@ -52,7 +54,8 @@ function substringRank(field: string, prefix: RegExp) {
  */
 function searchPeople(q: string, rx: RegExp, prefix: RegExp, searcher: Searcher | null) {
   const branches: { case: unknown; then: number }[] = [
-    { case: { $eq: ['$username', q] }, then: 0 },
+    // `$literal`, or a query starting with `$` would be read as a field path.
+    { case: { $eq: ['$username', { $literal: q }] }, then: 0 },
   ];
   if (searcher) {
     branches.push(
@@ -79,38 +82,15 @@ function searchPeople(q: string, rx: RegExp, prefix: RegExp, searcher: Searcher 
  * Lists whose name contains the query, out of the ones the searcher may open
  * (`viewableWishlistsFilter`, the query form of `getWishlistViewAccess`).
  *
- * A list the searcher doesn't own or belong to also has to get past every
- * owner's `profileVisibility`: an owner who shows their wishlists to friends
- * only keeps their lists out of a non-friend's results, as on their profile.
- *
  * Ranked: lists you own or are a member of, friends' lists (any owner is a
  * friend), everyone else's; then a prefix match before a substring match; then
  * the most recently updated.
+ *
+ * A list outside the first tier also has to get past every owner's
+ * `profileVisibility`: an owner who shows their wishlists to friends only keeps
+ * their lists out of a non-friend's results, as on their profile.
  */
-async function searchWishlists(rx: RegExp, prefix: RegExp, searcher: Searcher | null) {
-  const scope: FilterQuery<IWishlist> = {
-    $and: [
-      { name: rx },
-      viewableWishlistsFilter(
-        searcher && { id: searcher.id, memberOf: searcher.memberOf, friendIds: searcher.friends }
-      ),
-    ],
-  };
-
-  // Owners of the matching lists who hide their wishlists from this searcher.
-  const candidateOwners = await Wishlist.distinct('owners', scope);
-  const hidingOwners = await User.distinct('_id', {
-    _id: { $in: candidateOwners, $nin: searcher ? [searcher.oid, ...searcher.friends] : [] },
-    'privacy.profileVisibility': 'friends',
-  });
-  const insider: FilterQuery<IWishlist>[] = searcher
-    ? [ownedByFilter(searcher.id), { _id: { $in: searcher.memberOf } }]
-    : [];
-  const match: FilterQuery<IWishlist> =
-    hidingOwners.length === 0
-      ? scope
-      : { $and: [scope, { $or: [...insider, { owners: { $nin: hidingOwners } }] }] };
-
+function searchWishlists(rx: RegExp, prefix: RegExp, searcher: Searcher | null) {
   const owners = { $ifNull: ['$owners', []] };
   const tier = searcher
     ? {
@@ -131,10 +111,39 @@ async function searchWishlists(rx: RegExp, prefix: RegExp, searcher: Searcher | 
         },
       }
     : { $literal: 2 };
+  // Whose lists a friends-only profile never hides from the searcher: their own and their friends'.
+  const unhidden = searcher ? [searcher.oid, ...searcher.friends] : [];
+  const viewer = searcher && {
+    id: searcher.id,
+    memberOf: searcher.memberOf,
+    friendIds: searcher.friends,
+  };
 
   const pipeline: PipelineStage[] = [
-    { $match: match },
+    { $match: { $and: [{ name: rx }, viewableWishlistsFilter(viewer)] } },
     { $addFields: { _tier: tier, _substring: substringRank('$name', prefix) } },
+    {
+      $lookup: {
+        from: User.collection.collectionName,
+        localField: 'owners',
+        foreignField: '_id',
+        as: '_owners',
+      },
+    },
+    {
+      $match: {
+        $or: [
+          { _tier: 0 },
+          {
+            _owners: {
+              $not: {
+                $elemMatch: { 'privacy.profileVisibility': 'friends', _id: { $nin: unhidden } },
+              },
+            },
+          },
+        ],
+      },
+    },
     { $sort: { _tier: 1, _substring: 1, updatedAt: -1, _id: 1 } },
     { $limit: LIMIT },
     { $project: { name: 1, slug: 1, owners: 1 } },
