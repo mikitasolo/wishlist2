@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Icon, { IconName } from '@/components/Icon';
 import { useBodyScrollLock } from '@/lib/hooks/useBodyScrollLock';
+import { useFocusTrap } from '@/lib/hooks/useFocusTrap';
 
 interface ConfirmDialogProps {
   isOpen: boolean;
@@ -37,12 +38,17 @@ export default function ConfirmDialog({
   // The ref blocks a second click synchronously, before the disabled state renders.
   const [isPending, setIsPending] = useState(false);
   const pendingRef = useRef(false);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
 
   const handleConfirm = async () => {
     if (pendingRef.current) return;
     const result = onConfirm();
     if (!(result instanceof Promise)) return;
     pendingRef.current = true;
+    // Disabling the focused button would drop focus to <body>, behind the
+    // backdrop: hold it on the dialog itself until the action settles.
+    dialogRef.current?.focus();
     setIsPending(true);
     try {
       await result;
@@ -71,6 +77,10 @@ export default function ConfirmDialog({
 
   // Prevent body scroll while the dialog is open (shared, ref-counted lock)
   useBodyScrollLock(isOpen);
+
+  // Focus starts on Cancel, the choice that loses nothing if Enter is pressed
+  // straight away, stays inside while it's open, and goes back on close.
+  useFocusTrap(isOpen, dialogRef, cancelRef);
 
   const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
     // Only close if clicking the backdrop itself, not the dialog content
@@ -109,6 +119,8 @@ export default function ConfirmDialog({
       onClick={handleBackdropClick}
     >
       <div
+        ref={dialogRef}
+        tabIndex={-1}
         className="animate-dialog-in w-full max-w-md rounded-2xl border border-border bg-surface p-5 shadow-lg sm:p-6"
         onClick={(e) => e.stopPropagation()}
         role="alertdialog"
@@ -128,6 +140,7 @@ export default function ConfirmDialog({
 
         <div className="mt-6 flex flex-col justify-end gap-2 sm:flex-row sm:gap-3">
           <button
+            ref={cancelRef}
             onClick={onCancel}
             disabled={isPending}
             className="order-2 h-10 rounded-xl bg-muted px-4 text-sm font-medium text-foreground transition-colors hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50 sm:order-1"

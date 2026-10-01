@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup, waitFor, act, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 
 const { push, showToast } = vi.hoisted(() => ({ push: vi.fn(), showToast: vi.fn() }));
 
@@ -272,5 +273,57 @@ describe('BookedPage — acting on several cards at once', () => {
 
     await answer(markGiftedKey('res-lego'), failed('Failed to log gift'));
     await waitFor(() => expectReservationEnabled('Lego set'));
+  });
+});
+
+describe('BookedPage — keyboard focus in a confirmation', () => {
+  // regression: nothing kept Tab inside a confirmation, so with "Mark as
+  // gifted?" open for a card, Tab reached the same card's Dismiss button behind
+  // the backdrop, and Enter opened "Remove from reservations?" on top of it.
+  // Confirming both sent two conflicting requests for one reservation.
+  it('regression: Tab and Shift+Tab never reach the cards behind an open confirmation', async () => {
+    const user = userEvent.setup();
+    const { sent } = await renderHeld();
+    const lego = reservationButtons('Lego set');
+
+    await user.click(lego.gift);
+    const dialog = screen.getByRole('alertdialog');
+    expect(within(dialog).getByRole('button', { name: 'Cancel' })).toHaveFocus();
+
+    // More presses than there are buttons on the page, in each direction.
+    const presses = screen.getAllByRole('button').length + 1;
+    for (const shift of [false, true]) {
+      for (let i = 0; i < presses; i++) {
+        await user.tab({ shift });
+        expect(dialog).toContainElement(document.activeElement as HTMLElement);
+      }
+    }
+    expect(lego.dismiss).not.toHaveFocus();
+
+    // Closing it hands focus back to the card's button that opened it.
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(lego.gift).toHaveFocus();
+    expect(sent(markGiftedKey('res-lego'))).toBe(0);
+    expect(sent(dismissKey('res-lego'))).toBe(0);
+  });
+
+  it("hands focus back to the card's button once a failed request re-enables it", async () => {
+    const user = userEvent.setup();
+    const { answer } = await renderHeld();
+    const lego = reservationButtons('Lego set');
+
+    await user.click(lego.gift);
+    await user.click(
+      within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Mark as gifted' })
+    );
+    // The confirmation is gone and the card's buttons are disabled while its
+    // request runs, so focus has nowhere to go yet.
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expectReservationDisabled('Lego set');
+    expect(document.body).toHaveFocus();
+
+    await answer(markGiftedKey('res-lego'), failed('Failed to log gift'));
+    await waitFor(() => expect(lego.gift).toHaveFocus());
   });
 });

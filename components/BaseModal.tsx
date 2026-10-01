@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useCallback, ReactNode } from 'react';
+import { useEffect, useCallback, useRef, ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import Icon from '@/components/Icon';
 import { useBodyScrollLock } from '@/lib/hooks/useBodyScrollLock';
+import { useFocusTrap } from '@/lib/hooks/useFocusTrap';
 
 interface BaseModalProps {
   isOpen: boolean;
@@ -53,6 +54,12 @@ export default function BaseModal({
   // Prevent body scroll while the modal is open (shared, ref-counted lock)
   useBodyScrollLock(isOpen);
 
+  // Focus starts on the close button (unless the content has an `autoFocus`),
+  // stays inside while it's open, and goes back on close.
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  useFocusTrap(isOpen, dialogRef, closeButtonRef);
+
   const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
     // Only close if clicking the backdrop itself, not the modal content
     if (e.target === e.currentTarget && !isSubmitting) {
@@ -78,6 +85,8 @@ export default function BaseModal({
       }}
     >
       <div
+        ref={dialogRef}
+        tabIndex={-1}
         className="animate-dialog-in flex max-h-full w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-lg"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
@@ -93,6 +102,7 @@ export default function BaseModal({
             {title}
           </h2>
           <button
+            ref={closeButtonRef}
             onClick={handleClose}
             className="-mr-1 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed"
             disabled={isSubmitting}

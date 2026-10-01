@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within, cleanup } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import type { ApiItem } from '@/types/api';
 
 // ImageUpload pulls in react-easy-crop; stub it out.
@@ -110,6 +111,24 @@ describe.each(modals)('$name — delete outcome', ({ renderModal, submitLabel, s
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     expect(screen.getByLabelText(/item name/i)).toHaveValue('Bike');
     expect(deleteItemButton()).toBeEnabled();
+  });
+
+  // regression: the confirmation's buttons are disabled while the delete runs,
+  // which dropped focus to <body>; after a failed delete it stayed there, and
+  // the next Tab started from the top of the page instead of the modal.
+  it('regression: hands focus back to Delete Item in the modal when the delete fails', async () => {
+    const user = userEvent.setup();
+    const onDelete = vi.fn().mockRejectedValue(new Error('Something went wrong'));
+    renderModal(onDelete, vi.fn());
+
+    await user.click(deleteItemButton());
+    expect(within(confirmation()!).getByRole('button', { name: 'Cancel' })).toHaveFocus();
+    await user.click(within(confirmation()!).getByRole('button', { name: /^delete$/i }));
+
+    await waitFor(() => expect(confirmation()).toBeNull());
+    expect(deleteItemButton()).toHaveFocus();
+    await user.tab();
+    expect(screen.getByRole('dialog')).toContainElement(document.activeElement as HTMLElement);
   });
 
   it('lets the user retry after a failure, and closes once it succeeds', async () => {
