@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useSession, signIn } from 'next-auth/react';
 import AuthButton from '@/components/AuthButton';
 import AppHeader from '@/components/AppHeader';
-import UserSearch from '@/components/UserSearch';
+import GlobalSearch from '@/components/GlobalSearch';
 import CreateWishlistModal from '@/components/CreateWishlistModal';
 import WishlistCard from '@/components/WishlistCard';
 import Cover from '@/components/Cover';
@@ -236,10 +236,10 @@ export default function Home() {
               Find someone’s wishlist
             </h3>
             <p className="mx-auto mt-2 max-w-md text-center text-[15px] text-muted-foreground">
-              Find people and view their public wishlists.
+              Search for people and their public wishlists.
             </p>
             <div className="mx-auto mt-6 max-w-md">
-              <UserSearch />
+              <GlobalSearch variant="inline" />
             </div>
           </div>
         </main>

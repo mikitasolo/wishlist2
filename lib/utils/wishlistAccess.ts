@@ -1,9 +1,10 @@
+import mongoose, { type FilterQuery } from 'mongoose';
 import connectDB from '@/lib/mongodb';
 import Wishlist, { IWishlist } from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
 import { areFriends } from '@/lib/utils/friends';
 import { getVisibility, type Visibility } from '@/lib/utils/visibility';
-import { isWishlistOwner, ownerIds } from '@/lib/utils/wishlistOwners';
+import { isWishlistOwner, ownedByFilter, ownerIds } from '@/lib/utils/wishlistOwners';
 
 /**
  * Management access to a wishlist: owners only. There's no middle tier — anyone
@@ -38,10 +39,65 @@ type ViewedWishlist = Pick<IWishlist, '_id' | 'owners' | 'visibility' | 'isPubli
  * write. A list saved before `visibility` existed has only `isPublic`, but a
  * hydrated doc fills the missing field with the schema default `everyone` (and
  * a `save()` of one stores it), so `isPublic: false` wins: that list is private.
+ *
+ * `EVERYONE_TIER` below is the same rule as a query. Change the two together.
  */
 function viewTier(wishlist: ViewedWishlist): Visibility {
   const tier = getVisibility(wishlist);
   return tier === 'everyone' && wishlist.isPublic === false ? 'private' : tier;
+}
+
+/**
+ * `viewTier(w) === 'everyone'` as a query, over the stored document. A missing
+ * `visibility` hydrates as `everyone`, so it counts as `everyone` here too, and
+ * `isPublic: false` wins over both, as in `viewTier`.
+ */
+const EVERYONE_TIER: FilterQuery<IWishlist> = {
+  visibility: { $in: ['everyone', null] },
+  isPublic: { $ne: false },
+};
+
+type Id = string | mongoose.Types.ObjectId;
+const toObjectIds = (ids: Id[]) => ids.map((id) => new mongoose.Types.ObjectId(id.toString()));
+
+/** A signed-in viewer's relationships, as `viewableWishlistsFilter` needs them. */
+export interface WishlistViewer {
+  id: string;
+  /** The lists they're a member of (their `WishlistMember` rows). */
+  memberOf: Id[];
+  /** Their friends (mutual follows). */
+  friendIds: Id[];
+}
+
+/**
+ * `getWishlistViewAccess` as a query: it matches exactly the lists `viewer` may
+ * open (pass `null` when signed out). It's for listings that can't check every
+ * document one by one, such as search. Its ids are ObjectIds, so it also works
+ * as an aggregation `$match`, which doesn't cast.
+ *
+ * A table test pins it to `getWishlistViewAccess` over every visibility,
+ * archived and relationship combination (`test/api/viewableWishlistsFilter.test.ts`),
+ * so the two can't drift apart.
+ */
+export function viewableWishlistsFilter(viewer: WishlistViewer | null): FilterQuery<IWishlist> {
+  if (!viewer) return { archived: { $ne: true }, ...EVERYONE_TIER };
+  const owned = ownedByFilter(viewer.id);
+  return {
+    $and: [
+      // isHiddenByArchive: an archived list is its owners' alone.
+      { $or: [{ archived: { $ne: true } }, owned] },
+      {
+        $or: [
+          EVERYONE_TIER,
+          // Owners and members get in at every tier.
+          owned,
+          { _id: { $in: toObjectIds(viewer.memberOf) } },
+          // `friends` admits a friend of *any* owner.
+          { visibility: 'friends', owners: { $in: toObjectIds(viewer.friendIds) } },
+        ],
+      },
+    ],
+  };
 }
 
 /**
