@@ -8,6 +8,8 @@ import Icon from './Icon';
 import { Skeleton } from './Skeleton';
 import { useToast } from './ToastProvider';
 import type { ApiItem, ApiResponse } from '@/types/api';
+import type { MutationTracker } from '@/lib/utils/itemListMerge';
+import { RequestTimeoutError, withRequestTimeout } from '@/lib/utils/requestTimeout';
 
 /** The fields of one of the viewer's lists (`GET /api/wishlists` → `owned`) the picker uses. */
 interface OwnList {
@@ -22,6 +24,8 @@ interface SaveToListModalProps {
   /** The item to save a copy of. */
   item: ApiItem;
   userCurrency: string | null | undefined;
+  /** The page's item mutations: the copy's request goes through `track`, like the others. */
+  mutations: Pick<MutationTracker, 'track'>;
   onClose: () => void;
 }
 
@@ -34,7 +38,12 @@ interface SaveToListModalProps {
  * the server checks you can see the source and gives the copy its own image
  * blob (see `POST /api/wishlists/[id]/items`).
  */
-export default function SaveToListModal({ item, userCurrency, onClose }: SaveToListModalProps) {
+export default function SaveToListModal({
+  item,
+  userCurrency,
+  mutations,
+  onClose,
+}: SaveToListModalProps) {
   const { showToast } = useToast();
   // null while loading; the picker's lists once they're in.
   const [lists, setLists] = useState<OwnList[] | null>(null);
@@ -95,17 +104,27 @@ export default function SaveToListModal({ item, userCurrency, onClose }: SaveToL
   const handleSave = useCallback(
     async (data: NewItemData) => {
       if (!target) return;
-      let result: ApiResponse<ApiItem> | null = null;
-      try {
-        const res = await fetch(`/api/wishlists/${target._id}/items`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...data, sourceItemId: item._id }),
-        });
-        result = await res.json();
-      } catch (error) {
-        console.error('Error saving a copy of an item:', error);
-      }
+      const result = await mutations.track(async (): Promise<ApiResponse<ApiItem>> => {
+        try {
+          // Given up on after ITEM_REQUEST_TIMEOUT_MS, like the page's other item requests.
+          return await withRequestTimeout(async (signal) => {
+            const res = await fetch(`/api/wishlists/${target._id}/items`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ ...data, sourceItemId: item._id }),
+              signal,
+            });
+            return await res.json();
+          });
+        } catch (error) {
+          console.error('Error saving a copy of an item:', error);
+          // A timeout says so; any other failure gets the generic message.
+          return {
+            success: false,
+            error: error instanceof RequestTimeoutError ? error.message : undefined,
+          };
+        }
+      });
       if (!result?.success) {
         const message = result?.error || 'Failed to save the item';
         showToast(message, 'error');
@@ -114,7 +133,7 @@ export default function SaveToListModal({ item, userCurrency, onClose }: SaveToL
       showToast(`Saved to ${target.name}`, 'success');
       if (result.notice) showToast(result.notice, 'info');
     },
-    [target, item._id, showToast]
+    [target, item._id, showToast, mutations]
   );
 
   if (target) {

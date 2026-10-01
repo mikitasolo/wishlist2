@@ -27,6 +27,7 @@ vi.mock('next/link', () => ({
 }));
 
 import SaveToListModal from '@/components/SaveToListModal';
+import { ITEM_REQUEST_TIMEOUT_MS, REQUEST_TIMEOUT_MESSAGE } from '@/lib/utils/requestTimeout';
 
 const IMAGE = 'https://store.public.blob.vercel-storage.com/uploads/alice/image-abc.jpg';
 
@@ -56,24 +57,45 @@ const MEMBER = [{ _id: 'w-friend', name: "Friend's list", currency: 'USD', isMem
 
 type Reply = { success: boolean; data?: unknown; error?: string; notice?: string };
 
+// The page's mutation tracker, counting the requests in flight through it.
+let tracked = 0;
+const trackCalls = vi.fn();
+const mutations = {
+  async track<T>(mutation: () => Promise<T>): Promise<T> {
+    trackCalls();
+    tracked += 1;
+    try {
+      return await mutation();
+    } finally {
+      tracked -= 1;
+    }
+  },
+};
+
 /** Serves the viewer's lists, and answers the copy's POST with `post`. */
 function stubFetch({
   owned = OWNED,
   post = async (): Promise<Reply> => ({ success: true, data: { _id: 'copy-1' } }),
 }: { owned?: unknown[]; post?: () => Promise<Reply> } = {}) {
+  const postedWhileTracked: number[] = [];
   const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
-    if (init?.method === 'POST') return { json: post };
+    if (init?.method === 'POST') {
+      postedWhileTracked.push(tracked);
+      return { json: post };
+    }
     if (url === '/api/wishlists') {
       return { json: async () => ({ success: true, data: { owned, member: MEMBER } }) };
     }
     throw new Error(`unexpected fetch ${url}`);
   });
   vi.stubGlobal('fetch', fetchMock);
-  return fetchMock;
+  return Object.assign(fetchMock, { postedWhileTracked });
 }
 
 function open(onClose = vi.fn()) {
-  render(<SaveToListModal item={source} userCurrency="USD" onClose={onClose} />);
+  render(
+    <SaveToListModal item={source} userCurrency="USD" mutations={mutations} onClose={onClose} />
+  );
   return { onClose };
 }
 
@@ -99,8 +121,13 @@ afterAll(() => vi.restoreAllMocks());
 beforeEach(() => {
   cleanup();
   showToast.mockReset();
+  trackCalls.mockClear();
+  tracked = 0;
 });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
+});
 
 describe('SaveToListModal — the list picker', () => {
   it("offers only the viewer's own lists that aren't archived, without the item's own", async () => {
@@ -150,7 +177,12 @@ describe('SaveToListModal — the list picker', () => {
         <>
           <button onClick={() => setOpen(true)}>Save to my list</button>
           {isOpen && (
-            <SaveToListModal item={source} userCurrency="USD" onClose={() => setOpen(false)} />
+            <SaveToListModal
+              item={source}
+              userCurrency="USD"
+              mutations={mutations}
+              onClose={() => setOpen(false)}
+            />
           )}
         </>
       );
@@ -220,6 +252,37 @@ describe('SaveToListModal — the prefilled form', () => {
       sourceItemId: 'item-1',
     });
     expect(showToast).toHaveBeenCalledWith('Saved to Birthday', 'success');
+    // Through the page's tracker, with a signal to drop it on a timeout, like
+    // every other item request on the page.
+    expect(trackCalls).toHaveBeenCalledTimes(1);
+    expect(fetchMock.postedWhileTracked).toEqual([1]);
+    const post = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST');
+    expect(post?.[1]?.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it('gives up on a stalled save after the item request timeout, keeping the form', async () => {
+    let signal: AbortSignal | undefined;
+    const fetchMock = stubFetch();
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (init?.method === 'POST') {
+        signal = init.signal ?? undefined;
+        return new Promise(() => {}); // a request that never answers
+      }
+      return { json: async () => ({ success: true, data: { owned: OWNED, member: MEMBER } }) };
+    });
+    const { onClose } = open();
+    const form = await pick('Birthday');
+
+    vi.useFakeTimers();
+    fireEvent.click(within(form).getByRole('button', { name: /^add item$/i }));
+    await vi.advanceTimersByTimeAsync(ITEM_REQUEST_TIMEOUT_MS);
+    vi.useRealTimers();
+
+    await waitFor(() => expect(showToast).toHaveBeenCalledWith(REQUEST_TIMEOUT_MESSAGE, 'error'));
+    expect(signal?.aborted).toBe(true);
+    expect(tracked).toBe(0); // the tracker has let go, so the page's polls resume
+    expect(onClose).not.toHaveBeenCalled();
+    expect(within(form).getByRole('button', { name: /^add item$/i })).toBeEnabled();
   });
 
   it('leaves out a field the user cleared, rather than sending null', async () => {

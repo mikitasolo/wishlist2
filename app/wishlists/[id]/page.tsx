@@ -1906,6 +1906,7 @@ export default function WishlistDetail() {
         <SaveToListModal
           item={itemToSave}
           userCurrency={session?.user?.defaultCurrency}
+          mutations={mutations}
           onClose={() => setItemToSave(null)}
         />
       )}
