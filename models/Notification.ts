@@ -43,6 +43,26 @@ const NotificationSchema = new Schema<INotification>(
 // Feed queries (newest first per user) and the unread-count query.
 NotificationSchema.index({ user: 1, createdAt: -1 });
 NotificationSchema.index({ user: 1, read: 1 });
+// Deleting a wishlist clears its notifications (`deleteMany({ wishlist })` in
+// DELETE /api/wishlists/[id]), which without this is a full collection scan.
+// Partial, so notifications that carry no list (follows) stay out of it. The
+// filter has to keep those out *and* let the planner use the index for that
+// delete, and the two obvious ones each manage only one:
+//  - `$exists: true` keeps nothing out: `wishlist` defaults to null, so every
+//    notification has the field.
+//  - `$type: 'objectId'` keeps the nulls out, but the query planner can't tell
+//    that `{ wishlist: <id> }` falls inside it, so the delete never uses it.
+// `$gte` the lowest ObjectId does both: a comparison only matches values of
+// its own type, so this is "any ObjectId", and the planner can prove an
+// equality on an id satisfies it.
+NotificationSchema.index(
+  { wishlist: 1 },
+  {
+    partialFilterExpression: {
+      wishlist: { $gte: new mongoose.Types.ObjectId('000000000000000000000000') },
+    },
+  }
+);
 
 export default (mongoose.models.Notification as mongoose.Model<INotification>) ||
   mongoose.model<INotification>('Notification', NotificationSchema);
