@@ -274,6 +274,28 @@ describe('InvitesPage — answering several invites at once', () => {
     expect(patchesFor('inv-birthday')).toBe(1);
   });
 
+  // regression: only the card's disabled buttons kept a second answer off a busy
+  // invite; respond itself didn't check, so an answer reaching it before the
+  // buttons re-rendered went out too.
+  it('regression: ignores a second answer for an invite whose first is in flight', async () => {
+    const { answer, patchesFor } = await renderHeld();
+    const birthday = cardButtons('Birthday');
+
+    // Both clicks inside one act, so the buttons haven't re-rendered as
+    // disabled when the second lands.
+    act(() => {
+      fireEvent.click(birthday.accept);
+      fireEvent.click(birthday.decline);
+    });
+    expect(patchesFor('inv-birthday')).toBe(1);
+    expectDisabled('Birthday');
+
+    await answer('inv-birthday', failed);
+    await waitFor(() => expectEnabled('Birthday'));
+    expect(showToast).toHaveBeenCalledTimes(1);
+    expect(patchesFor('inv-birthday')).toBe(1);
+  });
+
   it('re-enables a card whose answer failed while another is still in flight', async () => {
     const { answer } = await renderHeld();
 

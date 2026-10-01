@@ -314,6 +314,40 @@ describe('BookedPage — acting on several cards at once', () => {
     await answer(markGiftedKey('res-lego'), failed('Failed to log gift'));
     await waitFor(() => expectReservationEnabled('Lego set'));
   });
+
+  // regression: only the card's disabled buttons kept a second action off a busy
+  // card; the actions themselves didn't check. With two confirmations open for
+  // one card (Tab could leave the first for the card's other button before
+  // WIS-116), confirming both sent a gift and a dismiss for one reservation, and
+  // whichever settled first re-enabled the card while the other was in flight.
+  it('regression: ignores a second action confirmed for a card whose first is in flight', async () => {
+    const { answer, sent } = await renderHeld();
+    const lego = reservationButtons('Lego set');
+
+    // Both confirmations for one card, opened before either is confirmed.
+    fireEvent.click(lego.gift);
+    fireEvent.click(lego.dismiss);
+    const confirm = (title: string, confirmText: string) =>
+      fireEvent.click(
+        within(screen.getByRole('alertdialog', { name: title })).getByRole('button', {
+          name: confirmText,
+        })
+      );
+
+    confirm('Mark as gifted?', 'Mark as gifted');
+    expectReservationDisabled('Lego set');
+    confirm('Remove from reservations?', 'Remove');
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+
+    expect(sent(markGiftedKey('res-lego'))).toBe(1);
+    expect(sent(dismissKey('res-lego'))).toBe(0);
+    expectReservationDisabled('Lego set');
+
+    await answer(markGiftedKey('res-lego'), failed('Failed to log gift'));
+    await waitFor(() => expectReservationEnabled('Lego set'));
+    expect(showToast).toHaveBeenCalledTimes(1);
+    expect(sent(dismissKey('res-lego'))).toBe(0);
+  });
 });
 
 describe('BookedPage — gift history while actions settle', () => {
