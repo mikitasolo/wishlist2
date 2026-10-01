@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   e2e:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     # Fail a hung run instead of letting it burn GitHub's 6-hour default. The
     # slowest recent healthy run took 9 min (a slow browser install, below),
     # so 30 leaves 3x headroom and must stay above the install step's own 20.
