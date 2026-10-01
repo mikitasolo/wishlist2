@@ -70,7 +70,8 @@ export default function NotificationsPage() {
       <main className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
         <h1 className="text-3xl font-semibold tracking-tight text-foreground">Notifications</h1>
         <p className="mt-1 text-muted-foreground">
-          Follows, invitations, and updates on items you proposed or were proposed to you.
+          Follows, invitations, changes to your role on a wishlist, and updates on items you
+          proposed or were proposed to you.
         </p>
 
         {loading ? (
@@ -101,14 +102,13 @@ export default function NotificationsPage() {
           </div>
         ) : (
           <ul className="mt-8 space-y-2">
-            {items.map((n) => (
-              <li key={n._id}>
-                <Link
-                  href={notificationLink(n)}
-                  className={`flex items-center gap-3 rounded-2xl border p-4 transition-colors hover:bg-muted ${
-                    n.read ? 'border-border bg-surface' : 'border-primary-500/40 bg-primary-500/5'
-                  }`}
-                >
+            {items.map((n) => {
+              const href = notificationLink(n);
+              const className = `flex items-center gap-3 rounded-2xl border p-4 ${
+                n.read ? 'border-border bg-surface' : 'border-primary-500/40 bg-primary-500/5'
+              }`;
+              const content = (
+                <>
                   <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-surface-2 text-muted-foreground">
                     <Icon name={notificationIcon(n)} size={18} />
                   </span>
@@ -124,9 +124,21 @@ export default function NotificationsPage() {
                       aria-label="Unread"
                     />
                   )}
-                </Link>
-              </li>
-            ))}
+                </>
+              );
+              return (
+                <li key={n._id}>
+                  {/* No link: e.g. a removal, whose list they may no longer see. */}
+                  {href ? (
+                    <Link href={href} className={`${className} transition-colors hover:bg-muted`}>
+                      {content}
+                    </Link>
+                  ) : (
+                    <div className={className}>{content}</div>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         )}
       </main>

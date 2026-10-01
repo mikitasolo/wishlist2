@@ -1,7 +1,7 @@
 import mongoose, { Schema, Document } from 'mongoose';
+import { NOTIFICATION_TYPES, type NotificationType } from '@/lib/utils/notifications';
 
-export type NotificationType =
-  'follow' | 'wishlist_invite' | 'invite_accepted' | 'proposal' | 'proposal_approved';
+export type { NotificationType };
 
 export interface INotification extends Document {
   _id: mongoose.Types.ObjectId;
@@ -10,7 +10,8 @@ export interface INotification extends Document {
   type: NotificationType;
   // Public username of whoever triggered it, snapshotted so rendering needs no
   // extra lookup. NULL on purpose for events where the actor must stay hidden
-  // (e.g. a proposal — owners must never learn who proposed an item).
+  // (e.g. a proposal — owners must never learn who proposed an item — or a role
+  // change, which never says which owner made it).
   actorUsername?: string | null;
   // How many events this row stands for. A burst of follows (or of proposals on
   // one list) is coalesced at write time into a single unread row, so it can't
@@ -35,7 +36,7 @@ const NotificationSchema = new Schema<INotification>(
     user: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     type: {
       type: String,
-      enum: ['follow', 'wishlist_invite', 'invite_accepted', 'proposal', 'proposal_approved'],
+      enum: NOTIFICATION_TYPES,
       required: true,
     },
     actorUsername: { type: String, default: null },

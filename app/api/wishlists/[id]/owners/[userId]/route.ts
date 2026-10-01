@@ -21,6 +21,7 @@ import {
 } from '@/lib/utils/wishlistInvites';
 import { publicDisplayName } from '@/lib/utils/displayName';
 import { isObjectIdParam } from '@/lib/utils/objectId';
+import { createNotification } from '@/lib/notifications';
 
 /**
  * Who owns a wishlist. Owners have no `WishlistMember` row (they live in
@@ -253,6 +254,16 @@ export async function PATCH(
     // Nothing left for them to accept: a pending invite would undo the demotion.
     await cancelPendingInvites(authorized.id, userId);
 
+    // Only now that it has landed. Just to them, and without naming who did it.
+    // Links to the list, which they can still open as a member.
+    await createNotification({
+      user: userId,
+      type: 'role_changed',
+      wishlist: authorized.id,
+      wishlistName: authorized.wishlist.name,
+      wishlistSlug: authorized.wishlist.slug ?? null,
+    });
+
     const user = await User.findById(userId).select('username image');
     return NextResponse.json({ success: true, data: { role: 'member', user } }, { status: 200 });
   } catch (error) {
@@ -304,6 +315,15 @@ export async function DELETE(
     await releaseUserBookings(authorized.id, userId);
     // Otherwise accepting a leftover invite would bring them straight back.
     await cancelPendingInvites(authorized.id, userId);
+
+    // Just to them, without naming who did it. No slug: the notification doesn't
+    // link to a list they may no longer be able to see.
+    await createNotification({
+      user: userId,
+      type: 'removed_from_wishlist',
+      wishlist: authorized.id,
+      wishlistName: authorized.wishlist.name,
+    });
 
     return NextResponse.json({ success: true, data: {} }, { status: 200 });
   } catch (error) {
