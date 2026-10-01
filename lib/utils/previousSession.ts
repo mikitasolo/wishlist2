@@ -3,9 +3,11 @@ import type { Adapter } from 'next-auth/adapters';
 import { errorKind } from './errorKind';
 
 /**
- * Auth.js's default database-session cookie (we don't override `cookies`): the
- * `__Secure-` prefixed name on https, the bare one on http (local dev, E2E).
- * A test pins these to Auth.js's own defaults, so a rename upstream fails CI.
+ * Auth.js's default database-session cookie: the `__Secure-` prefixed name on
+ * https, the bare one on http (local dev, E2E). Tests pin these to Auth.js's
+ * own defaults and check lib/auth.ts doesn't override them (`cookies`,
+ * `useSecureCookies`), so neither a rename upstream nor an override here can
+ * quietly turn this cleanup off.
  */
 export const SESSION_COOKIE_NAMES = [
   '__Secure-authjs.session-token',
@@ -16,7 +18,9 @@ export const SESSION_COOKIE_NAMES = [
  * End the session a sign-up request carried, when it belongs to another
  * account. `events.signIn` (lib/auth.ts) calls it once Auth.js has signed a
  * brand-new account in, i.e. after that account's own session exists, so a
- * failed sign-up can't log the browser out for nothing.
+ * sign-up that fails to create its session doesn't end the old one. (The
+ * response setting the new cookie can still be lost on the way, which leaves
+ * the browser signed out, as signing in to an existing account can too.)
  *
  * Signing in to an existing account already does this (Auth.js's
  * existing-user branch deletes the session it replaces), but its new-user
@@ -33,15 +37,26 @@ export async function endPreviousSession(
   adapter: Pick<Adapter, 'getSessionAndUser' | 'deleteSession'>,
   newUserId: string
 ): Promise<void> {
+  let tokens: Set<string>;
   try {
     const jar = await cookies();
-    const tokens = new Set(SESSION_COOKIE_NAMES.flatMap((name) => jar.get(name)?.value || []));
-    for (const token of tokens) {
+    tokens = new Set(SESSION_COOKIE_NAMES.flatMap((name) => jar.get(name)?.value || []));
+  } catch (error) {
+    logFailure(error);
+    return;
+  }
+  // Each on its own, so one that fails doesn't keep the other alive.
+  for (const token of tokens) {
+    try {
       const current = await adapter.getSessionAndUser?.(token);
       if (current?.user.id === newUserId) continue;
       await adapter.deleteSession?.(token);
+    } catch (error) {
+      logFailure(error);
     }
-  } catch (error) {
-    console.error('Could not end the previous session on sign-up:', errorKind(error));
   }
+}
+
+function logFailure(error: unknown) {
+  console.error('Could not end the previous session on sign-up:', errorKind(error));
 }

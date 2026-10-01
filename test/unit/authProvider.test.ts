@@ -166,6 +166,14 @@ describe('lib/auth: sign-up', () => {
     expect(endPreviousSession).not.toHaveBeenCalled();
   });
 
+  // endPreviousSession reads Auth.js's default session cookie names; a cookie
+  // override here would rename the cookie and quietly turn that cleanup off.
+  it('keeps Auth.js’s default session cookie, which endPreviousSession reads', async () => {
+    const auth = (await config()) as unknown as Record<string, unknown>;
+    expect(auth.cookies).toBeUndefined();
+    expect(auth.useSecureCookies).toBeUndefined();
+  });
+
   it('sends a new account’s first sign-in to the welcome page', async () => {
     expect((await config()).pages.newUser).toBe('/welcome');
   });

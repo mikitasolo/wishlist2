@@ -1,12 +1,12 @@
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import { format } from 'node:util';
+import { createRequire } from 'node:module';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import mongoose from 'mongoose';
 import { MongoDBAdapter } from '@auth/mongodb-adapter';
 import type { MongoClient } from 'mongodb';
 import type { Adapter } from 'next-auth/adapters';
-// Not in @auth/core's package exports, so by path: these are Auth.js's own
-// cookie defaults, which SESSION_COOKIE_NAMES has to match.
-import { defaultCookies } from '../../node_modules/@auth/core/lib/utils/cookie.js';
 import { connectTestDB, disconnectTestDB, clearTestDB } from '../db';
 
 // The cookies the sign-up request carries, per test.
@@ -97,10 +97,31 @@ describe('endPreviousSession', () => {
     expect(await tokensLeft()).toEqual([]);
   });
 
-  it('reads the cookies Auth.js actually names its session with', () => {
+  it('reads the cookies Auth.js actually names its session with', async () => {
+    // Auth.js's own cookie defaults, from the @auth/core next-auth runs on (it
+    // isn't in the package's exports, so located through next-auth).
+    const require = createRequire(import.meta.url);
+    const core = createRequire(require.resolve('next-auth/package.json')).resolve('@auth/core');
+    const { defaultCookies } = await import(
+      pathToFileURL(path.join(path.dirname(core), 'lib/utils/cookie.js')).href
+    );
+
     expect([...SESSION_COOKIE_NAMES].sort()).toEqual(
       [defaultCookies(true).sessionToken.name, defaultCookies(false).sessionToken.name].sort()
     );
+  });
+
+  it('ends each carried session on its own, so one failing doesn’t keep the other', async () => {
+    await seedSession('alice-https', alice);
+    await seedSession('alice-http', alice);
+    jar.set('__Secure-authjs.session-token', 'alice-https');
+    jar.set('authjs.session-token', 'alice-http');
+    vi.spyOn(adapter, 'deleteSession').mockRejectedValueOnce(new Error('timed out'));
+
+    await endPreviousSession(adapter, newcomer.toString());
+
+    expect(await tokensLeft()).toEqual(['alice-https']);
+    expect(errorLog).toHaveBeenCalledTimes(1);
   });
 
   it('does nothing when the request carried no session', async () => {
