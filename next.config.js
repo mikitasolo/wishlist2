@@ -77,6 +77,11 @@ const nextConfig = {
   // that runs the dev server with an uncommitted change (WIS-171). AGENTS.md is
   // ours, written by hand.
   agentRules: false,
+  // `next dev` otherwise logs every server function call with its arguments,
+  // so the terminal prints the address typed into the sign-in form (its server
+  // action, requestMagicLink), and whatever a later action takes (WIS-178).
+  // Production never logs these. Other logging keeps Next's defaults.
+  logging: { serverFunctions: false },
   outputFileTracingIncludes: {
     '/api/**/*': SHARP_NATIVE_LIBS,
     '/auth/signin': SHARP_NATIVE_LIBS,
