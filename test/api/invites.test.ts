@@ -359,6 +359,25 @@ describe('PATCH /api/invites/[inviteId] racing a list delete', () => {
     expect(await Notification.countDocuments({ wishlist: wishlistId })).toBe(0);
   });
 
+  // regression: the accept was granted while the list still existed, and the delete
+  // then ran to completion, notification cleanup included, before the accept wrote
+  // the inviter's `invite_accepted`. Nothing took that one, so it outlived the list
+  // as a link to a 404 in the inviter's notifications.
+  it('regression: a delete that lands just before the inviter is told leaves no notification for the list', async () => {
+    const race = holdFirstCall(Notification, 'create', deleteList);
+
+    const accepted = await respond(inviteId, 'accept', inviteeId);
+
+    expect(race.held()).toBe(true);
+    // The accept had already won (the grant landed first), so it still answers 200.
+    expect(accepted.status).toBe(200);
+    expect(race.outcome()?.status).toBe(200);
+    expect(await Wishlist.exists({ _id: wishlistId })).toBeNull();
+    expect(await WishlistMember.countDocuments({ wishlist: wishlistId })).toBe(0);
+    expect(await Notification.countDocuments({ wishlist: wishlistId })).toBe(0);
+    expect(await Notification.countDocuments({ user: ownerId })).toBe(0);
+  });
+
   // The claimed invite goes with the list, as the delete's own invite cleanup would
   // have taken it (and the invite's notification with it), even when that cleanup
   // failed. It isn't reopened: accepting again could never succeed.
