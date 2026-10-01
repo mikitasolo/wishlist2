@@ -1,5 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
-import { createMutationTracker, prependCreatedItem } from '@/lib/utils/itemListMerge';
+import {
+  createMutationTracker,
+  prependCreatedItem,
+  updateItemOptimistically,
+} from '@/lib/utils/itemListMerge';
 import type { ApiItem } from '@/types/api';
 
 function item(overrides: Partial<ApiItem>): ApiItem {
@@ -327,11 +331,224 @@ describe('prependCreatedItem', () => {
   });
 });
 
+// The page's `items` state as `updateItemOptimistically` sees it. React may
+// run a state updater when it's queued or only at the next render, so `later`
+// holds every updater until `render()` runs them, in the order they were queued.
+function itemsState(items: ApiItem[], { later = false } = {}) {
+  const queued: Array<(items: ApiItem[]) => ApiItem[]> = [];
+  const state = {
+    items,
+    setItems(update: (items: ApiItem[]) => ApiItem[]) {
+      if (later) queued.push(update);
+      else state.items = update(state.items);
+    },
+    render() {
+      for (const update of queued.splice(0)) state.items = update(state.items);
+    },
+  };
+  return state;
+}
+
+describe('updateItemOptimistically', () => {
+  const gift = item({ _id: 'gift', name: 'Gift', status: 'available', bookedBy: null });
+  const other = item({ _id: 'other', name: 'Other' });
+  const book = (i: ApiItem): ApiItem => ({ ...i, status: 'booked', bookedBy: 'me' });
+
+  // An update of `gift` (a booking, unless `apply` says otherwise), as
+  // handleUpdateItem sends one.
+  function update(
+    state: ReturnType<typeof itemsState>,
+    request: () => Promise<ApiItem | null>,
+    {
+      apply = book,
+      reconcile = vi.fn(),
+      mutations = createMutationTracker(),
+    }: {
+      apply?: (item: ApiItem) => ApiItem;
+      reconcile?: () => void;
+      mutations?: ReturnType<typeof createMutationTracker>;
+    } = {}
+  ) {
+    return updateItemOptimistically({
+      id: gift._id,
+      apply,
+      request,
+      setItems: state.setItems,
+      mutations,
+      reconcile,
+    });
+  }
+
+  it('shows the change before the request is sent, and counts the request in flight', async () => {
+    const state = itemsState([gift, other]);
+    const mutations = createMutationTracker();
+    let shownAsSent: ApiItem[] = [];
+    let staleAsSent = false;
+    await update(
+      state,
+      async () => {
+        shownAsSent = state.items;
+        staleAsSent = mutations.isStale(mutations.stamp());
+        return book(gift);
+      },
+      { mutations }
+    );
+
+    expect(shownAsSent).toEqual([book(gift), other]);
+    expect(staleAsSent).toBe(true);
+  });
+
+  it("merges the server's item into just that item, resolves with it, and reads nothing", async () => {
+    const state = itemsState([gift, other]);
+    const fromServer = { ...book(gift), priceInUsdCents: 1_200, updatedAt: '2024-02-01' };
+    const reconcile = vi.fn();
+
+    await expect(update(state, async () => fromServer, { reconcile })).resolves.toBe(fromServer);
+    expect(state.items).toEqual([fromServer, other]);
+    expect(state.items[1]).toBe(other);
+    expect(reconcile).not.toHaveBeenCalled();
+  });
+
+  // regression: only an approve put the item back when its request failed;
+  // every other update (a booking, an edit, ...) was undone by the reconcile
+  // read alone. A failed read keeps the list, so when the network was down the
+  // failed booking stayed on screen as "Booked by you" until a later read got
+  // through.
+  it('regression: puts a failed booking back at once, even when the reconcile read fails too', async () => {
+    const state = itemsState([gift, other]);
+    // A failed read keeps the list as it is.
+    const failedRead = vi.fn();
+
+    await expect(update(state, async () => null, { reconcile: failedRead })).resolves.toBeNull();
+    expect(state.items).toEqual([gift, other]);
+    expect(failedRead).toHaveBeenCalledTimes(1);
+  });
+
+  it('reconciles a failure only once the item is back and the request has settled, so its read counts as fresh', async () => {
+    const state = itemsState([gift, other]);
+    const mutations = createMutationTracker();
+    let shownAtReconcile: ApiItem[] = [];
+    let staleAtReconcile = true;
+    const reconcile = () => {
+      shownAtReconcile = state.items;
+      staleAtReconcile = mutations.isStale(mutations.stamp());
+    };
+    await update(state, async () => null, { reconcile, mutations });
+
+    expect(shownAtReconcile).toEqual([gift, other]);
+    expect(staleAtReconcile).toBe(false);
+  });
+
+  it('undoes a request that rejects too, and passes the rejection on', async () => {
+    const state = itemsState([gift, other]);
+    const reconcile = vi.fn();
+    const error = new Error('boom');
+
+    await expect(update(state, () => Promise.reject(error), { reconcile })).rejects.toBe(error);
+    expect(state.items).toEqual([gift, other]);
+    expect(reconcile).toHaveBeenCalledTimes(1);
+  });
+
+  it('puts back only the failed item, keeping what else changed meanwhile', async () => {
+    const state = itemsState([gift, other]);
+    const patch = deferred<ApiItem | null>();
+    const settled = update(state, () => patch.promise);
+
+    // Another update lands while this one is in flight.
+    const renamed = { ...other, name: 'Other, renamed' };
+    state.setItems((items) => items.map((i) => (i._id === other._id ? renamed : i)));
+    patch.resolve(null);
+    await settled;
+
+    expect(state.items).toEqual([gift, renamed]);
+  });
+
+  it("keeps another update's change to the same item, undoing only the failed one's", async () => {
+    const state = itemsState([gift, other]);
+    const patch = deferred<ApiItem | null>();
+    const settled = update(state, () => patch.promise);
+
+    state.setItems((items) => items.map((i) => (i._id === gift._id ? { ...i, name: 'Bike' } : i)));
+    patch.resolve(null);
+    await settled;
+
+    expect(state.items).toEqual([{ ...gift, name: 'Bike' }, other]);
+  });
+
+  for (const failsFirst of ['the first', 'the second']) {
+    it(`leaves the item as it was when two overlapping updates to it both fail, ${failsFirst} first`, async () => {
+      const state = itemsState([gift, other]);
+      const complete = deferred<ApiItem | null>();
+      const rename = deferred<ApiItem | null>();
+      const completing = update(state, () => complete.promise, {
+        apply: (i) => ({ ...i, status: 'completed' }),
+      });
+      const renaming = update(state, () => rename.promise, {
+        apply: (i) => ({ ...i, name: 'Bike' }),
+      });
+      expect(state.items[0]).toMatchObject({ status: 'completed', name: 'Bike' });
+
+      const [first, second] = failsFirst === 'the first' ? [complete, rename] : [rename, complete];
+      first.resolve(null);
+      await (first === complete ? completing : renaming);
+      expect(state.items[0]).not.toEqual(gift);
+      second.resolve(null);
+      await Promise.all([completing, renaming]);
+
+      expect(state.items).toEqual([gift, other]);
+    });
+  }
+
+  it("keeps the server's copy that a read brought in while the request was in flight", async () => {
+    const state = itemsState([gift, other]);
+    const patch = deferred<ApiItem | null>();
+    const settled = update(state, () => patch.promise);
+
+    // The first load, which is never dropped, lands with a co-owner's rename.
+    const fromServer = { ...gift, name: 'Renamed by a co-owner' };
+    state.setItems(() => [fromServer, other]);
+    patch.resolve(null);
+    await settled;
+
+    expect(state.items[0]).toBe(fromServer);
+  });
+
+  it('does not bring back an item that left the list while its request was in flight', async () => {
+    const state = itemsState([gift, other]);
+    const patch = deferred<ApiItem | null>();
+    const settled = update(state, () => patch.promise);
+
+    // The first load, which is never dropped, lands without it.
+    state.setItems(() => [other]);
+    patch.resolve(null);
+    await settled;
+
+    expect(state.items).toEqual([other]);
+  });
+
+  it('puts the item back when the updaters only run at the next render', async () => {
+    const state = itemsState([gift, other], { later: true });
+    await update(state, async () => null);
+    state.render();
+
+    expect(state.items).toEqual([gift, other]);
+  });
+
+  it('merges the server response when the updaters only run at the next render', async () => {
+    const state = itemsState([gift, other], { later: true });
+    const fromServer = { ...book(gift), priceInUsdCents: 1_200 };
+    await update(state, async () => fromServer);
+    state.render();
+
+    expect(state.items).toEqual([fromServer, other]);
+  });
+});
+
 // The wishlist page's sequence, replayed with the helpers: `fetchItems(true)`
 // drops a result `mutations.isStale` calls stale, judged by when its read was
 // sent, and every item mutation runs its request through `mutations.track` (an
-// update applies its optimistic change first, and merges the server's item once
-// the request settles; an add or proposal prepends the server's item). That the
+// update goes through `updateItemOptimistically`; an add or proposal prepends
+// the server's item once its request settles). That the
 // page does this on the real flows is pinned by e2e/itemPolling.authed.spec.ts.
 function wishlistPage(items: ApiItem[]) {
   const { tracker: mutations, at } = trackerAt();
@@ -416,17 +633,25 @@ describe('an update racing the 5 s poll', () => {
   const gift = item({ _id: 'gift', name: 'Gift', status: 'available' });
   const booked = { ...gift, status: 'booked' as const, bookedBy: 'me' };
 
-  // Apply the optimistic change and start the PATCH, as handleUpdateItem does.
+  // Book the gift through handleUpdateItem's path, holding the PATCH until
+  // `settle`.
   function startBooking(page: ReturnType<typeof wishlistPage>) {
     const patch = deferred<ApiItem>();
-    page.items = page.items.map((i) => (i._id === gift._id ? booked : i));
-    const settled = page.mutations.track(() => patch.promise);
+    const settled = updateItemOptimistically({
+      id: gift._id,
+      apply: () => booked,
+      request: () => patch.promise,
+      setItems: (update) => {
+        page.items = update(page.items);
+      },
+      mutations: page.mutations,
+      reconcile: () => {},
+    });
     return {
       async settle(at: number) {
         page.at(at);
         patch.resolve(booked);
-        const updated = await settled;
-        page.items = page.items.map((i) => (i._id === updated._id ? { ...i, ...updated } : i));
+        await settled;
       },
     };
   }

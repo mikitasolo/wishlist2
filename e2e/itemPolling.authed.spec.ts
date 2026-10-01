@@ -569,28 +569,33 @@ test("regression: a poll that joins a read sent before an edit settled doesn't u
 
 // regression: after a failed update the page reconciles the list with a read,
 // which was dropped if another item mutation was still in flight when it
-// landed, and nothing read the list again until the next poll: the booking
-// that failed stayed on the card as "Booked by you".
+// landed, and nothing read the list again until the next poll. The booking here
+// fails as far as the page can tell (a gateway timeout), though the server did
+// save it, so the page puts the item back at once and only that read shows it
+// booked.
 test("regression: a failed booking's reconcile read dropped behind a proposal is read again once it's saved", async ({
   page,
 }) => {
   const bookable = cardOf(page, polledBookable.name);
   const bookedByMe = bookable.getByText('Booked by you');
+  const bookButton = bookable.getByRole('button', { name: 'Book this item', exact: true });
   const userId = await signedInUserId(page);
 
-  // The booking fails. The proposal is saved once its POST arrives, but its
-  // response is held until the reconcile read has landed.
-  await page.route('**/api/items/*', (route: Route) =>
-    route.request().method() === 'PATCH'
-      ? route.fulfill({ status: 500, json: { success: false, error: 'Something went wrong' } })
-      : route.fallback()
-  );
+  // Reads the server answers once the PATCH has arrived list the item booked.
+  // The proposal is saved once its POST arrives, but its response is held until
+  // the reconcile read has landed.
+  let bookedOnServer = false;
+  await page.route('**/api/items/*', (route: Route) => {
+    if (route.request().method() !== 'PATCH') return route.fallback();
+    bookedOnServer = true;
+    return route.fulfill({ status: 504, json: { success: false, error: 'Something went wrong' } });
+  });
   let proposal: ListedItem | undefined;
   const postArrived = deferred();
   const answerPost = deferred();
   const reads = await holdItemReads(page, (items) => [
     ...(proposal ? [proposal] : []),
-    polledBookable,
+    bookedOnServer ? { ...polledBookable, status: 'booked', bookedBy: userId } : polledBookable,
     ...items,
   ]);
   await page.route('**/api/wishlists/*/items', async (route: Route) => {
@@ -605,11 +610,12 @@ test("regression: a failed booking's reconcile read dropped behind a proposal is
   await page.goto('/wishlists/e2e-friend');
   await (await reads.next()).land();
 
-  await bookable.getByRole('button', { name: 'Book this item', exact: true }).click();
+  await bookButton.click();
   await expect(page.getByRole('status').getByText('Something went wrong')).toBeVisible();
-  // The failed booking shows until the reconcile read lands.
+  // The failed booking is put back without waiting for the reconcile read.
   const reconcile = await reads.next();
-  await expect(bookedByMe).toBeVisible();
+  await expect(bookButton).toBeVisible();
+  expect(await bookedByMe.count()).toBe(0);
 
   await page.getByRole('button', { name: '+ Propose Item' }).click();
   const dialog = page.getByRole('dialog', { name: 'Propose New Item' });
@@ -620,13 +626,59 @@ test("regression: a failed booking's reconcile read dropped behind a proposal is
   // The reconcile read lands while the proposal's POST is in flight, so it's
   // dropped, and the page reads nothing more until the POST settles.
   await reconcile.land();
-  expect(await bookedByMe.count()).toBe(1);
+  expect(await bookedByMe.count()).toBe(0);
   expect(reads.untaken).toBe(0);
 
   answerPost.resolve();
   await expect(page.getByRole('status').getByText('Item proposed successfully')).toBeVisible();
   await (await reads.next()).land();
-  await expect(bookable.getByRole('button', { name: 'Book this item', exact: true })).toBeVisible();
-  expect(await bookedByMe.count()).toBe(0);
+  await expect(bookedByMe).toBeVisible();
   expect(reads.untaken).toBe(0);
+});
+
+// regression: only an approve put the item back when its PATCH failed; any
+// other update was undone by the reconcile read alone, and a failed read keeps
+// the list. So a booking that failed because the network was down stayed on the
+// card as "Booked by you" (on an item nobody booked) until a later poll got
+// through.
+test('regression: a booking that fails while offline is put back at once, though the reconcile read fails too', async ({
+  page,
+}) => {
+  const bookable = cardOf(page, polledBookable.name);
+  const bookedByMe = bookable.getByText('Booked by you');
+  const bookButton = bookable.getByRole('button', { name: 'Book this item', exact: true });
+
+  // The list loads, then the network goes down: the PATCH, held until the
+  // booking shows, and every read after the first fail.
+  const failPatch = deferred();
+  await page.route('**/api/items/*', async (route: Route) => {
+    if (route.request().method() !== 'PATCH') return route.fallback();
+    await failPatch.promise;
+    await route.abort('internetdisconnected');
+  });
+  let loaded = false;
+  await page.route('**/api/wishlists/*/items', async (route: Route) => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    if (loaded) return route.abort('internetdisconnected');
+    loaded = true;
+    const response = await route.fetch();
+    const body = await response.json();
+    await route.fulfill({ response, json: { ...body, data: [polledBookable, ...body.data] } });
+  });
+
+  await takeOverPolling(page);
+  await page.goto('/wishlists/e2e-friend');
+  await bookButton.click();
+  await expect(bookedByMe).toBeVisible();
+
+  const reconcileFailed = page.waitForEvent(
+    'requestfailed',
+    (r) => r.method() === 'GET' && new URL(r.url()).pathname.endsWith('/items')
+  );
+  failPatch.resolve();
+  // Only the page can put the item back now: the reconcile read fails, and no
+  // poll runs.
+  await reconcileFailed;
+  await expect(bookedByMe).toHaveCount(0);
+  await expect(bookButton).toBeVisible();
 });

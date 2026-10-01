@@ -23,7 +23,11 @@ import { SkeletonGrid, MemberRowSkeleton } from '@/components/Skeleton';
 import Avatar from '@/components/Avatar';
 import { getVisibility, visibilityMeta, type Visibility } from '@/lib/utils/visibility';
 import { currencySelectOptions } from '@/lib/utils/currencies';
-import { createMutationTracker, prependCreatedItem } from '@/lib/utils/itemListMerge';
+import {
+  createMutationTracker,
+  prependCreatedItem,
+  updateItemOptimistically,
+} from '@/lib/utils/itemListMerge';
 import { useToast } from '@/components/ToastProvider';
 import { ApiItem, ApiResponse } from '@/types/api';
 import { IWishlist } from '@/models/Wishlist';
@@ -461,12 +465,17 @@ export default function WishlistDetail() {
     [createItemHook, wishlistId, mutations]
   );
 
+  // Every item update (edit, book, publish, approve, ...) goes through here.
+  // On success the server's item is merged into just this one: the PATCH
+  // response carries a fresh priceInUsdCents, so a re-priced item sorts by its
+  // new price straight away. On failure the hook has toasted the error, the
+  // change is undone at once, the list is reconciled with the server, and this
+  // resolves null (see updateItemOptimistically).
   const handleUpdateItem = useCallback(
-    async (id: string, updates: Partial<ApiItem>) => {
-      // Optimistic: reflect the change immediately.
-      setItems((prevItems) =>
-        prevItems.map((item) => {
-          if (item._id !== id) return item;
+    (id: string, updates: Partial<ApiItem>) =>
+      updateItemOptimistically({
+        id,
+        apply: (item) => {
           const optimistic = { ...item, ...updates };
           if (updates.status === 'booked' && session?.user?.id) {
             optimistic.bookedBy = session.user.id;
@@ -479,26 +488,12 @@ export default function WishlistDetail() {
             optimistic.bookedBy = null;
           }
           return optimistic;
-        })
-      );
-
-      // Tracked, so no poll lands until it settles, and one that read across it
-      // is dropped afterwards.
-      const updated = await mutations.track(() => updateItemHook(id, updates));
-
-      if (updated) {
-        // Merge authoritative server fields into just this item. The PATCH
-        // response carries a fresh priceInUsdCents, so a re-priced item sorts
-        // by its new price straight away.
-        setItems((prevItems) =>
-          prevItems.map((item) => (item._id === id ? { ...item, ...updated } : item))
-        );
-      } else {
-        // Mutation failed — reconcile this list with the server.
-        fetchItems(true);
-      }
-      return updated;
-    },
+        },
+        request: () => updateItemHook(id, updates),
+        setItems,
+        mutations,
+        reconcile: () => fetchItems(true),
+      }),
     [updateItemHook, session?.user?.id, fetchItems, mutations]
   );
 
@@ -544,41 +539,18 @@ export default function WishlistDetail() {
     [wishlistId, showToast, mutations]
   );
 
-  // Approving has its own optimistic path rather than handleUpdateItem's: a
-  // failure must put the proposal back at once and reach ReviewItemModal, and
-  // the owner is only told "approved" once the server agreed.
   const handleReviewItem = useCallback(
     async (updates: Partial<ApiItem> & { status: 'draft' | 'available' }) => {
       if (!itemToReview) return;
-      const itemId = itemToReview._id;
-      // The proposal as the list shows it now, to put back if the approve fails.
-      const proposal = items.find((item) => item._id === itemId);
-
-      setItems((prevItems) =>
-        prevItems.map((item) => (item._id === itemId ? { ...item, ...updates } : item))
-      );
-
-      // Same poll guard as handleUpdateItem.
-      const approved = await mutations.track(() => updateItemHook(itemId, updates));
-
-      if (!approved) {
-        // The hook has already toasted the API's error. Roll the optimistic
-        // approve back, then reconcile with the server in case the write landed
-        // after all. Reject so ReviewItemModal stays open with the edits.
-        if (proposal) {
-          setItems((prevItems) => prevItems.map((item) => (item._id === itemId ? proposal : item)));
-        }
-        fetchItems(true);
-        throw new Error('Failed to approve item');
-      }
-
-      setItems((prevItems) =>
-        prevItems.map((item) => (item._id === itemId ? { ...item, ...approved } : item))
-      );
-      // ReviewItemModal closes itself on success.
+      // A failed approve is toasted and the proposal put back by
+      // handleUpdateItem. Reject so ReviewItemModal stays open with the edits
+      // (it closes itself on success): the owner is told "approved" only once
+      // the server agreed.
+      const approved = await handleUpdateItem(itemToReview._id, updates);
+      if (!approved) throw new Error('Failed to approve item');
       showToast('Item approved successfully', 'success');
     },
-    [itemToReview, items, updateItemHook, fetchItems, showToast, mutations]
+    [itemToReview, handleUpdateItem, showToast]
   );
 
   const handleDeleteProposedItem = useCallback(async () => {
@@ -602,8 +574,8 @@ export default function WishlistDetail() {
     async (updates: Partial<ApiItem>) => {
       if (!itemToEdit) return;
       const itemId = itemToEdit._id;
-      // handleUpdateItem toasts a failure, reconciles the list with the server
-      // and resolves null. Reject so EditItemModal stays open with the user's
+      // handleUpdateItem toasts a failure, puts the item back as it was and
+      // resolves null. Reject so EditItemModal stays open with the user's
       // changes; it closes itself on success.
       const updated = await handleUpdateItem(itemId, updates);
       if (!updated) throw new Error('Failed to update item');
