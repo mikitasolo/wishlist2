@@ -34,7 +34,8 @@ test('the landing search finds a public list and a person', async ({ page }) => 
   await search.fill('e2e friend');
   await expect(page.getByRole('button', { name: /E2E Friend List/ })).toBeVisible();
 
-  await search.fill('e2efriend');
+  // A handle as it's shown and shared, @ included.
+  await search.fill('@e2efriend');
   // Exact: the list row's name ends in its owner's "@e2efriend" too.
   await page.getByRole('button', { name: '@e2efriend', exact: true }).click();
   await expect(page).toHaveURL('/users/e2efriend');

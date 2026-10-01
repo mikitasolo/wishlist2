@@ -128,6 +128,31 @@ describe('GlobalSearch — inline (landing page)', () => {
   });
 });
 
+describe('GlobalSearch — a handle typed as it’s shown, with its @', () => {
+  it.each(['inline', 'header'] as const)(
+    'sends it as typed and opens the exact match on Enter (%s)',
+    async (variant) => {
+      render(<GlobalSearch variant={variant} />);
+      if (variant === 'header') fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+      type('@Alice');
+      await screen.findByText('@alice');
+      // As typed: the server drops the @ for people and keeps it for list names.
+      expect(fetchMock.mock.calls[0][0]).toBe('/api/search?q=%40Alice');
+
+      fireEvent.keyDown(field(), { key: 'Enter' });
+      expect(push).toHaveBeenCalledWith('/users/alice');
+    }
+  );
+
+  it('doesn’t open a partial match on Enter', async () => {
+    render(<GlobalSearch variant="inline" />);
+    type('@ali');
+    await screen.findByText('@alice');
+    fireEvent.keyDown(field(), { key: 'Enter' });
+    expect(push).not.toHaveBeenCalled();
+  });
+});
+
 describe('GlobalSearch — header', () => {
   it('starts as an icon that expands into the field and folds back on close', async () => {
     render(<GlobalSearch />);

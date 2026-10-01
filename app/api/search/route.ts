@@ -10,6 +10,7 @@ import WishlistMember from '@/models/WishlistMember';
 import { getFriendIds } from '@/lib/utils/friends';
 import { primaryOwnerId } from '@/lib/utils/wishlistOwners';
 import { viewableWishlistsFilter } from '@/lib/utils/wishlistAccess';
+import { usernameQuery } from '@/lib/utils/searchQuery';
 
 /** Results per section. */
 const LIMIT = 6;
@@ -46,16 +47,28 @@ function substringRank(field: string, prefix: RegExp) {
   return { $cond: [{ $regexMatch: { input: field, regex: prefix } }, 0, 1] };
 }
 
+/** Case-insensitive patterns for `term` as plain text: anywhere in a field, and at its start. */
+function matchers(term: string) {
+  const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return { rx: new RegExp(escaped, 'i'), prefix: new RegExp(`^${escaped}`, 'i') };
+}
+
+type PersonRow = { username: string; image?: string | null };
+
 /**
- * People whose username contains the query. `privacy.searchable: false` hides
- * someone from everyone, friends included. Ranked: exact username, friends,
- * people you follow, your followers, everyone else; then a prefix match before
- * a substring match; then by username.
+ * People whose username contains the query, without a leading `@`
+ * (`usernameQuery`), so `@alice` finds alice. Nobody for a bare `@`.
+ * `privacy.searchable: false` hides someone from everyone, friends included.
+ * Ranked: exact username, friends, people you follow, your followers, everyone
+ * else; then a prefix match before a substring match; then by username.
  */
-function searchPeople(q: string, rx: RegExp, prefix: RegExp, searcher: Searcher | null) {
+async function searchPeople(q: string, searcher: Searcher | null): Promise<PersonRow[]> {
+  const term = usernameQuery(q);
+  if (!term) return [];
+  const { rx, prefix } = matchers(term);
   const branches: { case: unknown; then: number }[] = [
     // `$literal`, or a query starting with `$` would be read as a field path.
-    { case: { $eq: ['$username', { $literal: q }] }, then: 0 },
+    { case: { $eq: ['$username', { $literal: term }] }, then: 0 },
   ];
   if (searcher) {
     branches.push(
@@ -64,7 +77,7 @@ function searchPeople(q: string, rx: RegExp, prefix: RegExp, searcher: Searcher 
       { case: { $in: ['$_id', searcher.followers] }, then: 3 }
     );
   }
-  return User.aggregate<{ username: string; image?: string | null }>([
+  return User.aggregate<PersonRow>([
     { $match: { username: rx, 'privacy.searchable': { $ne: false } } },
     {
       $addFields: {
@@ -166,16 +179,14 @@ export async function GET(request: NextRequest) {
 
     await connectDB();
 
-    // Escape regex special chars, match as a substring (case-insensitive)
-    const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const rx = new RegExp(escaped, 'i');
-    const prefix = new RegExp(`^${escaped}`, 'i');
+    // List names match the query as typed (`searchPeople` drops a leading `@`).
+    const { rx, prefix } = matchers(q);
 
     const session = await auth();
     const searcher = session?.user?.id ? await loadSearcher(session.user.id) : null;
 
     const [users, wishlists] = await Promise.all([
-      searchPeople(q, rx, prefix, searcher),
+      searchPeople(q, searcher),
       searchWishlists(rx, prefix, searcher),
     ]);
 
