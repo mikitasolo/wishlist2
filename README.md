@@ -62,7 +62,7 @@ Copy `.env.example` to `.env.local` and fill in:
 | `MONGODB_URI`              | yes      | Connection string **including the database name** in the path                 |
 | `NEXTAUTH_SECRET`          | yes      | Session secret — generate with `openssl rand -base64 32`                      |
 | `NEXTAUTH_URL`             | yes\*    | App URL (e.g. `http://localhost:3000`). \*Derived from `VERCEL_URL` on Vercel |
-| `EMAIL_TRANSPORT`          | no       | `smtp` (default) sends mail; `console` prints it to the server log. See below |
+| `EMAIL_TRANSPORT`          | no       | `smtp` (default) or `console` (logs mail; local/Development only). See below  |
 | `SMTP_HOST`                | yes\*\*  | SMTP server host                                                              |
 | `SMTP_PORT`                | yes\*\*  | SMTP port (e.g. `587`)                                                        |
 | `SMTP_SECURE`              | yes\*\*  | `true` for port 465, otherwise `false`                                        |
@@ -74,7 +74,7 @@ Copy `.env.example` to `.env.local` and fill in:
 | `UPSTASH_REDIS_REST_URL`   | no       | Upstash Redis REST URL for rate limiting. Unset ⇒ rate limiting disabled      |
 | `UPSTASH_REDIS_REST_TOKEN` | no       | Upstash Redis REST token (set together with the URL)                          |
 
-\*\*Only when `EMAIL_TRANSPORT` is `smtp` (the default). With `EMAIL_TRANSPORT=console` no email is sent: each one is printed to the server log (recipient, subject and its link, e.g. the magic link), so the `SMTP_*` variables are optional. It's meant for local dev and the Vercel Development environment. It's refused in production (`VERCEL_ENV=production`): env validation throws, which fails the build and every request, so a misconfigured deploy can't silently drop sign-in emails. Any other value is an error. Rate limits apply in both modes, since the sign-in limiter runs before the email goes anywhere.
+\*\*Only when `EMAIL_TRANSPORT` is `smtp` (the default). With `EMAIL_TRANSPORT=console` no email is sent: each one is printed to the server log (recipient, subject and its link, e.g. the magic link), so the `SMTP_*` variables are optional. It's meant for local dev, CI and E2E (`VERCEL_ENV` unset) and the Vercel Development environment (`VERCEL_ENV=development`), and refused with any other `VERCEL_ENV`, Preview and Production included: env validation throws, which fails the build and every request, so a misconfigured Vercel deploy can neither silently drop sign-in emails nor print working magic links into its runtime logs. The check keys on `VERCEL_ENV`, so it guards Vercel deployments only. Any other `EMAIL_TRANSPORT` value is an error. Rate limits apply in both modes, since the sign-in limiter runs before the email goes anywhere.
 
 `KV_REST_API_URL` / `KV_REST_API_TOKEN` (the names the Vercel Marketplace integration injects) are accepted as fallbacks for the two Upstash variables — so a `.env` pulled with `npm run vercel:env` turns rate limiting **on** against that store.
 

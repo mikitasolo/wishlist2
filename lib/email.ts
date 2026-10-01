@@ -100,7 +100,7 @@ function describeSendError(error: unknown): string {
  * none of them can bypass the configured `EMAIL_TRANSPORT`.
  *
  * - `console`: print the recipient, subject and link to the server log and send
- *   nothing. For local dev; `lib/env` refuses it in production.
+ *   nothing. For local dev; `lib/env` refuses it on Vercel Preview and Production.
  * - `smtp`: send it. Never log the recipient or the link: a magic link in a log
  *   is a working sign-in credential. That holds on failure too, so the error is
  *   logged and rethrown in a form that carries neither (callers log it again).
