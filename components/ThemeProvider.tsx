@@ -16,6 +16,17 @@ function applyTheme(theme: Theme) {
   document.documentElement.setAttribute('data-theme', theme);
 }
 
+/**
+ * The theme the page is showing: `<html data-theme>`, which the layout's inline
+ * script sets before paint and `applyTheme` keeps current. Read it where the
+ * theme has to be right on the first client render, e.g. for a third-party
+ * widget that takes it once: `useTheme().theme` starts at light until the
+ * provider's effect has read the saved choice. Needs no provider. Client-only.
+ */
+export function appliedTheme(): Theme {
+  return document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+}
+
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   // Light is the default. An inline script in <head> sets the attribute before
   // paint (no flash); here we sync React state to whatever was chosen.
