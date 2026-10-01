@@ -676,11 +676,9 @@ test('regression: a booking that fails while offline is put back at once, though
     (r) => r.method() === 'GET' && new URL(r.url()).pathname.endsWith('/items')
   );
   failPatch.resolve();
+  // Only the page can put the item back now: the reconcile read fails, and no
+  // poll runs.
   await reconcileFailed;
-  // Give the page a moment to handle the failed read, so this is the state it
-  // keeps until a read gets through.
-  await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 250)));
-
-  expect(await bookedByMe.count()).toBe(0);
+  await expect(bookedByMe).toHaveCount(0);
   await expect(bookButton).toBeVisible();
 });

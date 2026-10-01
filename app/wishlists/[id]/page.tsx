@@ -469,8 +469,8 @@ export default function WishlistDetail() {
   // On success the server's item is merged into just this one: the PATCH
   // response carries a fresh priceInUsdCents, so a re-priced item sorts by its
   // new price straight away. On failure the hook has toasted the error, the
-  // item is put back as it was, the list is reconciled with the server, and
-  // this resolves null.
+  // change is undone at once, the list is reconciled with the server, and this
+  // resolves null (see updateItemOptimistically).
   const handleUpdateItem = useCallback(
     (id: string, updates: Partial<ApiItem>) =>
       updateItemOptimistically({
@@ -543,8 +543,9 @@ export default function WishlistDetail() {
     async (updates: Partial<ApiItem> & { status: 'draft' | 'available' }) => {
       if (!itemToReview) return;
       // A failed approve is toasted and the proposal put back by
-      // handleUpdateItem. Reject so ReviewItemModal stays open with the edits;
-      // it closes itself on success, and only then is the owner told "approved".
+      // handleUpdateItem. Reject so ReviewItemModal stays open with the edits
+      // (it closes itself on success): the owner is told "approved" only once
+      // the server agreed.
       const approved = await handleUpdateItem(itemToReview._id, updates);
       if (!approved) throw new Error('Failed to approve item');
       showToast('Item approved successfully', 'success');
