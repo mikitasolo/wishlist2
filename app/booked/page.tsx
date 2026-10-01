@@ -10,6 +10,7 @@ import Icon from '@/components/Icon';
 import { useToast } from '@/components/ToastProvider';
 import SnapshotThumb from '@/components/SnapshotThumb';
 import ConfirmDialog from '@/components/ConfirmDialog';
+import { useBusyIds } from '@/lib/hooks/useBusyIds';
 import { formatPriceFromObject } from '@/lib/utils/currency';
 import { partitionReservations, reservationNote } from '@/lib/utils/reservations';
 
@@ -49,11 +50,8 @@ export default function BookedPage() {
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [gifts, setGifts] = useState<Gift[]>([]);
   const [loading, setLoading] = useState(true);
-  // Reservations and gift-log entries whose action is still in flight. Tracked
-  // per id, not as one id for the page: acting on another card must not
-  // re-enable this one's buttons, and that action settling first must not
-  // unlock this one while its own request is still pending.
-  const [busyIds, setBusyIds] = useState<ReadonlySet<string>>(() => new Set());
+  // Reservations and gift-log entries whose action is still in flight, per id.
+  const { busy, run } = useBusyIds();
   const [giftConfirm, setGiftConfirm] = useState<string | null>(null);
   const [dismissConfirm, setDismissConfirm] = useState<string | null>(null);
   const [deleteGiftConfirm, setDeleteGiftConfirm] = useState<string | null>(null);
@@ -95,18 +93,6 @@ export default function BookedPage() {
     );
   }
 
-  // A functional update, so actions settling in any order each touch only their
-  // own entry and never write back a stale copy of the set.
-  function setBusy(id: string, busy: boolean) {
-    setBusyIds((prev) => {
-      if (prev.has(id) === busy) return prev;
-      const next = new Set(prev);
-      if (busy) next.add(id);
-      else next.delete(id);
-      return next;
-    });
-  }
-
   // The route's own 404: the record went away while this page was open. A
   // reservation was gifted, dismissed or unbooked in another tab or on another
   // device, or cleared when we became an owner of its list; a gift-history entry
@@ -122,75 +108,72 @@ export default function BookedPage() {
     showToast('This gift is no longer in your history', 'info');
   }
 
-  async function markGifted(id: string) {
-    setBusy(id, true);
-    try {
-      const res = await fetch(`/api/reservations/${id}/gift`, { method: 'POST' });
-      // Parsed first, so a 404 that isn't the route's own JSON answer (an HTML
-      // page from the platform) lands in the catch below and keeps the card.
-      const result = await res.json();
-      if (res.status === 404) {
-        reservationGone(id);
-        return;
+  function markGifted(id: string) {
+    return run(id, async () => {
+      try {
+        const res = await fetch(`/api/reservations/${id}/gift`, { method: 'POST' });
+        // Parsed first, so a 404 that isn't the route's own JSON answer (an HTML
+        // page from the platform) lands in the catch below and keeps the card.
+        const result = await res.json();
+        if (res.status === 404) {
+          reservationGone(id);
+          return;
+        }
+        if (result.success) {
+          setReservations((prev) => prev.filter((r) => r._id !== id));
+          addGift(result.data);
+          showToast('Added to your gift history', 'success');
+        } else {
+          showToast(result.error || 'Something went wrong', 'error');
+        }
+      } catch {
+        showToast('Something went wrong', 'error');
       }
-      if (result.success) {
-        setReservations((prev) => prev.filter((r) => r._id !== id));
-        addGift(result.data);
-        showToast('Added to your gift history', 'success');
-      } else {
-        showToast(result.error || 'Something went wrong', 'error');
-      }
-    } catch {
-      showToast('Something went wrong', 'error');
-    } finally {
-      setBusy(id, false);
-    }
+    });
   }
 
-  async function dismiss(id: string) {
-    setBusy(id, true);
-    try {
-      const res = await fetch(`/api/reservations/${id}`, { method: 'DELETE' });
-      // Parsed first, as in markGifted.
-      const result = await res.json();
-      if (res.status === 404) {
-        reservationGone(id);
-        return;
+  function dismiss(id: string) {
+    return run(id, async () => {
+      try {
+        const res = await fetch(`/api/reservations/${id}`, { method: 'DELETE' });
+        // Parsed first, as in markGifted.
+        const result = await res.json();
+        if (res.status === 404) {
+          reservationGone(id);
+          return;
+        }
+        if (result.success) {
+          setReservations((prev) => prev.filter((r) => r._id !== id));
+          showToast('Removed from your reservations', 'success');
+        } else {
+          showToast(result.error || 'Something went wrong', 'error');
+        }
+      } catch {
+        showToast('Something went wrong', 'error');
       }
-      if (result.success) {
-        setReservations((prev) => prev.filter((r) => r._id !== id));
-        showToast('Removed from your reservations', 'success');
-      } else {
-        showToast(result.error || 'Something went wrong', 'error');
-      }
-    } catch {
-      showToast('Something went wrong', 'error');
-    } finally {
-      setBusy(id, false);
-    }
+    });
   }
 
-  async function deleteGift(id: string) {
-    setBusy(id, true);
-    try {
-      const res = await fetch(`/api/gifts/${id}`, { method: 'DELETE' });
-      // Parsed first, as in markGifted.
-      const result = await res.json();
-      if (res.status === 404) {
-        giftGone(id);
-        return;
+  function deleteGift(id: string) {
+    return run(id, async () => {
+      try {
+        const res = await fetch(`/api/gifts/${id}`, { method: 'DELETE' });
+        // Parsed first, as in markGifted.
+        const result = await res.json();
+        if (res.status === 404) {
+          giftGone(id);
+          return;
+        }
+        if (result.success) {
+          setGifts((prev) => prev.filter((g) => g._id !== id));
+          showToast('Removed from your gift history', 'success');
+        } else {
+          showToast(result.error || 'Something went wrong', 'error');
+        }
+      } catch {
+        showToast('Something went wrong', 'error');
       }
-      if (result.success) {
-        setGifts((prev) => prev.filter((g) => g._id !== id));
-        showToast('Removed from your gift history', 'success');
-      } else {
-        showToast(result.error || 'Something went wrong', 'error');
-      }
-    } catch {
-      showToast('Something went wrong', 'error');
-    } finally {
-      setBusy(id, false);
-    }
+    });
   }
 
   return (
@@ -259,7 +242,7 @@ export default function BookedPage() {
                             <ReservationCard
                               key={r._id}
                               r={r}
-                              busy={busyIds.has(r._id)}
+                              busy={busy(r._id)}
                               highlight
                               onGift={() => setGiftConfirm(r._id)}
                               onDismiss={() => setDismissConfirm(r._id)}
@@ -282,7 +265,7 @@ export default function BookedPage() {
                             <ReservationCard
                               key={r._id}
                               r={r}
-                              busy={busyIds.has(r._id)}
+                              busy={busy(r._id)}
                               onGift={() => setGiftConfirm(r._id)}
                               onDismiss={() => setDismissConfirm(r._id)}
                             />
@@ -321,7 +304,7 @@ export default function BookedPage() {
                           </p>
                         </div>
                         <button
-                          disabled={busyIds.has(g._id)}
+                          disabled={busy(g._id)}
                           onClick={() => setDeleteGiftConfirm(g._id)}
                           className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-red-600 disabled:opacity-50"
                           aria-label="Delete from gift history"
