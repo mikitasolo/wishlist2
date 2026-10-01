@@ -30,11 +30,25 @@ jobs:
         run: npm ci
 
       - name: Install Playwright browser
-        run: npx playwright install --with-deps chromium
-        # Usually ~30 s, but --with-deps pulls ~32 MB from the Ubuntu apt
-        # mirror, which has taken up to 7.6 min in a run that then passed
-        # (and hung past 11 min once). 20 is 2.6x the slowest healthy install
-        # and names this step as the one that timed out.
+        # The browser only, without --with-deps: the runner image already has
+        # every library Chromium links against. --with-deps only added package
+        # upgrades and fallback fonts for scripts the suite never shows (Latin,
+        # Cyrillic and emoji render pixel-identical without them; CJK and Thai
+        # don't, so restore it if a test ever screenshots those), yet its
+        # ~35 MB apt download has taken up to 7.6 min on a slow Ubuntu mirror
+        # (and hung past 11 min once). If a future image drops a library, ldd
+        # reports it and the apt install runs after all.
+        run: |
+          npx playwright install chromium
+          browsers=~/.cache/ms-playwright
+          if ! libs=$(ldd "$browsers"/chromium-*/chrome-linux64/chrome \
+            "$browsers"/chromium_headless_shell-*/chrome-headless-shell-linux64/chrome-headless-shell) ||
+            grep 'not found' <<<"$libs"; then
+            echo "::warning::The runner image lacks libraries Chromium needs; installing them with apt"
+            npx playwright install-deps chromium
+          fi
+        # Sized for that apt fallback: 20 is 2.6x the slowest healthy
+        # --with-deps install, and names this step if one hangs.
         timeout-minutes: 20
 
       - name: Run E2E tests
