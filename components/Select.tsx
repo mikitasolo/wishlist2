@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Icon from './Icon';
+import { useFocusTrapPortal } from '@/lib/hooks/useFocusTrap';
 
 export interface SelectOption {
   value: string;
@@ -31,7 +32,9 @@ const sizeStyles = {
  * A custom, fully styled dropdown that replaces the native <select> so both the
  * trigger and the option list look identical across browsers/OSes. The menu is
  * rendered in a portal (fixed-positioned to the trigger) so it never gets
- * clipped by an ancestor's overflow:hidden.
+ * clipped by an ancestor's overflow:hidden. Inside a dialog, the menu is part
+ * of its focus trap: Tab goes from the trigger into the options, and past the
+ * last one on to the next field, which closes the menu.
  */
 export default function Select({
   value,
@@ -48,6 +51,17 @@ export default function Select({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
+  // The menu only renders once the trigger has been measured.
+  const menuShown = open && !!rect;
+  useFocusTrapPortal(menuShown, menuRef, triggerRef);
+
+  // Closing the menu removes whatever option had focus; hand it to the trigger
+  // rather than let it drop to <body>.
+  const close = useCallback(() => {
+    if (menuRef.current?.contains(document.activeElement)) triggerRef.current?.focus();
+    setOpen(false);
+  }, []);
+
   useEffect(() => {
     if (!open) return;
     if (triggerRef.current) setRect(triggerRef.current.getBoundingClientRect());
@@ -58,7 +72,7 @@ export default function Select({
       setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
+      if (e.key === 'Escape') close();
     };
     // Keep the menu glued to the trigger on scroll/resize instead of closing.
     // Scrolling the page moves the trigger → we follow it; scrolling the menu's
@@ -76,7 +90,7 @@ export default function Select({
       window.removeEventListener('scroll', reposition, true);
       window.removeEventListener('resize', reposition);
     };
-  }, [open]);
+  }, [open, close]);
 
   const selected = options.find((o) => o.value === value);
 
@@ -106,6 +120,15 @@ export default function Select({
           <div
             ref={menuRef}
             role="listbox"
+            // Tabbing on past the last option (or focus going anywhere else but
+            // back to the trigger) closes the menu, as a native select's does,
+            // rather than leave it open over the fields after it.
+            onBlur={(e) => {
+              const to = e.relatedTarget;
+              if (to && !menuRef.current?.contains(to) && !triggerRef.current?.contains(to)) {
+                setOpen(false);
+              }
+            }}
             className="animate-fade-in fixed z-[70] max-h-72 overflow-auto rounded-xl border border-border bg-surface py-1.5 shadow-lg"
             style={{
               top: rect.bottom + 6,
@@ -124,7 +147,7 @@ export default function Select({
                   aria-selected={isSel}
                   onClick={() => {
                     onChange(o.value);
-                    setOpen(false);
+                    close();
                   }}
                   className={`flex w-full items-center justify-between gap-4 whitespace-nowrap px-3.5 py-2 text-left text-sm transition-colors hover:bg-muted ${
                     isSel ? 'font-semibold text-accent' : 'text-foreground'

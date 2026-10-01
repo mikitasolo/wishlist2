@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { StrictMode, useState, type FormEvent, type ReactNode } from 'react';
 import BaseModal from '@/components/BaseModal';
 import ConfirmDialog from '@/components/ConfirmDialog';
+import Select from '@/components/Select';
 import { emulateFocusFixup } from '../focusFixup';
 
 // useBodyScrollLock restores the scroll position on close; jsdom lacks scrollTo.
@@ -321,5 +322,159 @@ describe('BaseModal — keyboard focus while submitting', () => {
     await succeed();
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(button('Open')).toHaveFocus();
+  });
+});
+
+/**
+ * A modal whose content has a Select between a field and a button that opens
+ * a confirmation over the modal.
+ */
+function SelectPage() {
+  const [modalOpen, setModalOpen] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [sort, setSort] = useState('newest');
+  return (
+    <>
+      <button onClick={() => setModalOpen(true)}>Open</button>
+      <BaseModal
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+        title="Edit Item"
+        titleId="edit-item-title"
+      >
+        <input aria-label="Item Name" />
+        <Select
+          value={sort}
+          onChange={setSort}
+          options={[
+            { value: 'newest', label: 'Newest' },
+            { value: 'oldest', label: 'Oldest' },
+          ]}
+          ariaLabel="Sort by"
+        />
+        <button onClick={() => setConfirmOpen(true)}>Delete Item</button>
+      </BaseModal>
+      <ConfirmDialog
+        isOpen={confirmOpen}
+        title="Delete Item"
+        message="Are you sure?"
+        onConfirm={() => setConfirmOpen(false)}
+        onCancel={() => setConfirmOpen(false)}
+        confirmText="Delete"
+        type="danger"
+      />
+    </>
+  );
+}
+
+describe('BaseModal — a Select menu portalled out of it', () => {
+  const trigger = () => button('Sort by');
+  const option = (name: string) => screen.getByRole('option', { name });
+
+  async function openMenu() {
+    const user = userEvent.setup();
+    render(<SelectPage />);
+    await user.click(button('Open'));
+    await user.tab();
+    await user.tab();
+    expect(trigger()).toHaveFocus();
+    await user.keyboard('{Enter}');
+    expect(screen.getByRole('listbox')).toBeInTheDocument();
+    return user;
+  }
+
+  // regression: the menu is rendered on <body>, outside the modal, so its
+  // options weren't among the trap's Tab stops: Tab skipped them, and focus
+  // on one counted as outside the modal.
+  it('regression: puts the options in its Tab order right after their trigger', async () => {
+    const user = await openMenu();
+
+    await user.tab();
+    expect(option('Newest')).toHaveFocus();
+    await user.tab();
+    expect(option('Oldest')).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(option('Newest')).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(trigger()).toHaveFocus();
+    expect(screen.getByRole('listbox')).toBeInTheDocument();
+
+    // On past the last option to the next field, which closes the menu.
+    await user.tab();
+    await user.tab();
+    await user.tab();
+    expect(button('Delete Item')).toHaveFocus();
+    expect(screen.queryByRole('listbox')).toBeNull();
+
+    // Once it's closed, Tab goes straight from the trigger to the next field.
+    await user.tab({ shift: true });
+    expect(trigger()).toHaveFocus();
+    await user.tab();
+    expect(button('Delete Item')).toHaveFocus();
+  });
+
+  // With the menu open and focus elsewhere in the modal (moved there from the
+  // trigger), Shift+Tab from the next field goes back into the menu.
+  it('puts the options before the field after their trigger for Shift+Tab', async () => {
+    const user = await openMenu();
+
+    act(() => button('Delete Item').focus());
+    expect(screen.getByRole('listbox')).toBeInTheDocument();
+    await user.tab({ shift: true });
+    expect(option('Oldest')).toHaveFocus();
+  });
+
+  it('wraps from its last Tab stop to its first when the menu is the last thing in it', async () => {
+    const user = userEvent.setup();
+    const Last = () => {
+      const [sort, setSort] = useState('newest');
+      return (
+        <ModalPage
+          content={
+            <Select
+              value={sort}
+              onChange={setSort}
+              options={[{ value: 'newest', label: 'Newest' }]}
+              ariaLabel="Sort by"
+            />
+          }
+        />
+      );
+    };
+    render(<Last />);
+    await user.click(button('Open'));
+    await user.tab();
+    await user.keyboard('{Enter}');
+
+    await user.tab();
+    expect(option('Newest')).toHaveFocus();
+    await user.tab();
+    expect(button('Close modal')).toHaveFocus();
+
+    // And back the other way, with the menu open again.
+    await user.tab({ shift: true });
+    expect(trigger()).toHaveFocus();
+    await user.keyboard('{Enter}');
+    act(() => button('Close modal').focus());
+    await user.tab({ shift: true });
+    expect(option('Newest')).toHaveFocus();
+  });
+
+  it("leaves the menu out of a confirmation's trap when one opens over the modal", async () => {
+    const user = await openMenu();
+
+    // Opened from the keyboard, so the menu stays open behind it.
+    act(() => button('Delete Item').focus());
+    await user.keyboard('{Enter}');
+    expect(screen.getByRole('listbox')).toBeInTheDocument();
+    const confirmation = within(screen.getByRole('alertdialog'));
+
+    expect(confirmation.getByRole('button', { name: 'Cancel' })).toHaveFocus();
+    await user.tab();
+    expect(confirmation.getByRole('button', { name: 'Delete' })).toHaveFocus();
+    await user.tab();
+    expect(confirmation.getByRole('button', { name: 'Cancel' })).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(confirmation.getByRole('button', { name: 'Delete' })).toHaveFocus();
   });
 });
