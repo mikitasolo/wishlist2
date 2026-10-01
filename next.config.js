@@ -72,6 +72,11 @@ const securityHeaders = [
 const SHARP_NATIVE_LIBS = ['./node_modules/@img/sharp-libvips-*/lib/**/*'];
 
 const nextConfig = {
+  // `next dev` otherwise appends a managed "nextjs-agent-rules" block to
+  // AGENTS.md whenever it detects an AI coding agent, leaving every workspace
+  // that runs the dev server with an uncommitted change (WIS-171). AGENTS.md is
+  // ours, written by hand.
+  agentRules: false,
   outputFileTracingIncludes: {
     '/api/**/*': SHARP_NATIVE_LIBS,
     '/auth/signin': SHARP_NATIVE_LIBS,
