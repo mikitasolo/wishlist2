@@ -17,7 +17,7 @@ function errorMessage(fn: () => unknown): string {
 }
 
 beforeEach(() => {
-  // Not production unless a test says so, whatever the shell running the suite has.
+  // Not on Vercel unless a test says so, whatever the shell running the suite has.
   vi.stubEnv('VERCEL_ENV', undefined);
 });
 
@@ -26,7 +26,9 @@ afterEach(() => {
 });
 
 describe('validateEnvVars: EMAIL_TRANSPORT', () => {
-  it('passes without any SMTP_* vars when EMAIL_TRANSPORT=console', () => {
+  // Local dev, CI and E2E (VERCEL_ENV unset, as beforeEach leaves it) and
+  // Vercel's Development environment are the only places console mode may run.
+  it('passes without any SMTP_* vars when EMAIL_TRANSPORT=console and VERCEL_ENV is unset', () => {
     withoutSmtp();
     vi.stubEnv('EMAIL_TRANSPORT', 'console');
     expect(() => validateEnvVars()).not.toThrow();
@@ -80,23 +82,55 @@ describe('validateEnvVars: EMAIL_TRANSPORT', () => {
     expect(() => validateEnvVars()).toThrow(/Invalid EMAIL_TRANSPORT/);
   });
 
+  it('allows console mode on VERCEL_ENV=development', () => {
+    withoutSmtp();
+    vi.stubEnv('VERCEL_ENV', 'development');
+    vi.stubEnv('EMAIL_TRANSPORT', 'console');
+    expect(() => validateEnvVars()).not.toThrow();
+  });
+
   it('refuses EMAIL_TRANSPORT=console in production, even with SMTP configured', () => {
     vi.stubEnv('VERCEL_ENV', 'production');
     vi.stubEnv('EMAIL_TRANSPORT', 'console');
-    expect(() => validateEnvVars()).toThrow(/EMAIL_TRANSPORT=console is not allowed in production/);
+    expect(() => validateEnvVars()).toThrow(
+      'EMAIL_TRANSPORT=console is not allowed with VERCEL_ENV="production"'
+    );
   });
 
   it('refuses EMAIL_TRANSPORT=console in production without SMTP configured', () => {
     withoutSmtp();
     vi.stubEnv('VERCEL_ENV', 'production');
     vi.stubEnv('EMAIL_TRANSPORT', 'console');
-    expect(() => validateEnvVars()).toThrow(/not allowed in production/);
+    expect(() => validateEnvVars()).toThrow(/EMAIL_TRANSPORT=console is not allowed/);
   });
 
-  it.each(['preview', 'development'])('allows console mode on VERCEL_ENV=%s', (vercelEnv) => {
+  // regression: the check only refused VERCEL_ENV=production, so a Preview
+  // deployment (the staging URL, used by real staging accounts) accepted the
+  // console transport and printed every magic link, a working sign-in
+  // credential, to Vercel's runtime logs.
+  it('refuses EMAIL_TRANSPORT=console on a preview deployment', () => {
+    withoutSmtp();
+    vi.stubEnv('VERCEL_ENV', 'preview');
+    vi.stubEnv('EMAIL_TRANSPORT', 'console');
+    expect(() => validateEnvVars()).toThrow(
+      'EMAIL_TRANSPORT=console is not allowed with VERCEL_ENV="preview"'
+    );
+  });
+
+  // An allow-list, not a deny-list: a value it doesn't know (including an
+  // empty one, which is set, not unset) fails closed.
+  it.each(['staging', ''])('refuses console mode on VERCEL_ENV="%s"', (vercelEnv) => {
     withoutSmtp();
     vi.stubEnv('VERCEL_ENV', vercelEnv);
     vi.stubEnv('EMAIL_TRANSPORT', 'console');
+    expect(() => validateEnvVars()).toThrow(
+      `EMAIL_TRANSPORT=console is not allowed with VERCEL_ENV="${vercelEnv}"`
+    );
+  });
+
+  it('allows smtp mode on a preview deployment', () => {
+    vi.stubEnv('VERCEL_ENV', 'preview');
+    vi.stubEnv('EMAIL_TRANSPORT', 'smtp');
     expect(() => validateEnvVars()).not.toThrow();
   });
 
@@ -127,9 +161,9 @@ describe('getEnvVars: EMAIL_TRANSPORT', () => {
     expect(env.EMAIL_FROM).toBe('test@example.com');
   });
 
-  it('throws for console mode in production', () => {
-    vi.stubEnv('VERCEL_ENV', 'production');
+  it.each(['preview', 'production'])('throws for console mode on VERCEL_ENV=%s', (vercelEnv) => {
+    vi.stubEnv('VERCEL_ENV', vercelEnv);
     vi.stubEnv('EMAIL_TRANSPORT', 'console');
-    expect(() => getEnvVars()).toThrow(/not allowed in production/);
+    expect(() => getEnvVars()).toThrow(/EMAIL_TRANSPORT=console is not allowed/);
   });
 });

@@ -7,7 +7,8 @@
  * How outgoing email leaves the app (`EMAIL_TRANSPORT`):
  *  - `smtp` (the default): sent through the `SMTP_*` server.
  *  - `console`: printed to the server log and never sent — for local dev, so
- *    signing in doesn't need a real SMTP account. Refused in production.
+ *    signing in doesn't need a real SMTP account. Only allowed with
+ *    `VERCEL_ENV` unset (local dev, CI, E2E) or `development`.
  */
 export const EMAIL_TRANSPORTS = ['smtp', 'console'] as const;
 export type EmailTransport = (typeof EMAIL_TRANSPORTS)[number];
@@ -95,13 +96,19 @@ export function validateEnvVars(): void {
 
   const transport = resolveEmailTransport();
 
-  // The console transport drops every email, sign-in links included. A
-  // production deploy configured that way would look healthy while nobody can
-  // sign in, so refuse to start instead.
-  if (transport === 'console' && process.env.VERCEL_ENV === 'production') {
+  // The console transport prints every email, sign-in links included, to the
+  // log instead of sending it. On a deployment that means nobody receives a
+  // sign-in email, and every magic link sits in the runtime logs as a working
+  // credential for anyone who can read them, so refuse to start instead.
+  // An allow-list: only unset (local dev, CI, E2E) or `development` passes, so
+  // `preview`, `production`, an empty value and anything Vercel adds later fail.
+  const vercelEnv = process.env.VERCEL_ENV;
+  if (transport === 'console' && vercelEnv !== undefined && vercelEnv !== 'development') {
     throw new Error(
-      'EMAIL_TRANSPORT=console is not allowed in production (VERCEL_ENV=production): ' +
-        'it prints emails to the log instead of sending them, so nobody could sign in. ' +
+      `EMAIL_TRANSPORT=console is not allowed with VERCEL_ENV="${vercelEnv}", only with ` +
+        'VERCEL_ENV unset (local dev) or "development": it prints emails, sign-in links ' +
+        'included, to the log instead of sending them, so nobody could sign in and anyone ' +
+        'who can read the logs could sign in as the recipient. ' +
         'Unset EMAIL_TRANSPORT (or set it to "smtp") and configure the SMTP_* variables.'
     );
   }
