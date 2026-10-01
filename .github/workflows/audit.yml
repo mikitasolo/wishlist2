@@ -1,0 +1,66 @@
+name: Audit
+
+# Kept out of ci.yml so that a new upstream advisory never turns an unrelated
+# PR red: agents are told both to get CI green and to stay in scope, which
+# would conflict. So it runs:
+# - daily, on the default branch (staging), to catch an advisory published
+#   against something we already ship (WIS-140: a critical Next.js RCE sat on
+#   staging unnoticed until someone ran `npm audit` by hand). GitHub emails a
+#   failed scheduled run to whoever last changed the cron line. Minute 17
+#   avoids the top-of-the-hour queue, where scheduled runs get delayed.
+# - on demand (workflow_dispatch), e.g. to confirm a fix.
+# - on a PR that changes dependencies, so it can't add a runtime high/critical
+#   advisory or keep one.
+on:
+  schedule:
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - package.json
+      - package-lock.json
+      - .github/workflows/audit.yml
+
+permissions:
+  contents: read
+
+# Cancel superseded runs on the same ref (e.g. force-pushes to a PR branch).
+concurrency:
+  group: audit-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    # Fail a hung run instead of letting it burn GitHub's 6-hour default. The
+    # audit is one registry request and takes seconds.
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      # No `cache: npm` and no `npm ci`: --package-lock-only audits the
+      # lockfile alone, with the same findings as an audit of the installed tree.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      # Informational only, never fails the job: dev-only findings don't ship,
+      # and the known ones are listed (with their follow-ups) in AGENTS.md.
+      - name: Full audit report (all dependencies, dev included)
+        run: |
+          report=$(npm audit --package-lock-only) || true
+          echo "$report"
+          {
+            echo '## `npm audit` (all dependencies, dev included)'
+            echo
+            echo '```text'
+            echo "$report"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # The gate: fails on any high or critical advisory in the runtime tree,
+      # i.e. in code that ships to production. Moderate/low findings and
+      # dev-only ones (eslint, vitest, ...) are left to the report above and
+      # the exceptions list in AGENTS.md. A registry outage fails it too: re-run.
+      - name: Fail on a high or critical runtime advisory
+        run: npm audit --package-lock-only --omit=dev --audit-level=high
