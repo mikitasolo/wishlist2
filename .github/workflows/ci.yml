@@ -38,7 +38,7 @@ jobs:
         run: npx tsc --noEmit
 
       # Runs the full Vitest suite with coverage, so a drop below the
-      # thresholds ratchet in vitest.config.ts fails the job.
+      # thresholds ratchet in vitest.config.mts fails the job.
       - name: Test (with coverage thresholds)
         run: npm run test:cov
 
