@@ -331,6 +331,33 @@ describe('POST /api/wishlists and PATCH /api/wishlists/[id] — name validation'
     expect((await Wishlist.findById(id))?.name).toBe('Birthday');
   });
 
+  // regression: the schema checked the name's length before trimming it, so
+  // "   " passed as a name, trimmed to "", and the model's `required` refused it
+  // inside the route: a 500 "Failed to create/update wishlist" instead of a 400.
+  it('regression: refuses to create a list whose name is only spaces (400), and stores nothing', async () => {
+    const res = await CREATE(send('http://localhost/api/wishlists', 'POST', { name: '   ' }));
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe('Validation error: name: Wishlist name is required');
+    expect(await Wishlist.countDocuments()).toBe(0);
+  });
+
+  it('regression: refuses to rename a list to a name that is only spaces (400), and keeps the old name', async () => {
+    const wl = await Wishlist.create({ name: 'Birthday', owners: [ownerId], slug: 'birthday' });
+    const id = wl._id.toString();
+
+    const res = await PATCH(
+      send(`http://localhost/api/wishlists/${id}`, 'PATCH', { name: '   ' }),
+      {
+        params: Promise.resolve({ id }),
+      }
+    );
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe('Validation error: name: Wishlist name is required');
+    expect((await Wishlist.findById(id))?.name).toBe('Birthday');
+  });
+
   it('still creates a list whose name only has a line break at the end, trimmed', async () => {
     const res = await CREATE(
       send('http://localhost/api/wishlists', 'POST', { name: 'Birthday\n' })

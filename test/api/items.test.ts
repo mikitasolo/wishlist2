@@ -395,6 +395,36 @@ describe('Creating an item never books it', () => {
   });
 });
 
+describe('POST /api/wishlists/[id]/items and PATCH /api/items/[id] — name validation', () => {
+  const as = (userId: string) => session.mockResolvedValue({ user: { id: userId } } as never);
+
+  // regression: the schemas checked the name's length before trimming it, so
+  // "   " passed as a name and trimmed to "". The model's `required` then
+  // refused it inside the route: a 500 instead of a 400.
+  it('regression: a create or proposal whose name is only spaces is a 400, and stores nothing', async () => {
+    for (const [userId, status] of [
+      [ownerId, 'available'],
+      [memberId, 'proposed'],
+    ] as const) {
+      as(userId);
+      const res = await create({ name: '   ', status });
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toBe('Validation error: name: Item name is required');
+    }
+    expect(await Item.countDocuments()).toBe(0);
+  });
+
+  it('regression: renaming an item to a name that is only spaces is a 400, and keeps the old name', async () => {
+    as(ownerId);
+    const id = await makeItem('available');
+
+    const res = await patch(id, { name: '   ' });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe('Validation error: name: Item name is required');
+    expect((await Item.findById(id))?.name).toBe('Gift');
+  });
+});
+
 describe('Most wanted flag', () => {
   const as = (userId: string) => session.mockResolvedValue({ user: { id: userId } } as never);
 

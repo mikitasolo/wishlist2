@@ -2,6 +2,11 @@ import { z } from 'zod';
 
 /**
  * Validation schemas for API endpoints
+ *
+ * Zod runs `.trim()` and the checks in the order they're chained, so chain
+ * `.trim()` before a string's length checks. A check chained ahead of it
+ * measures the untrimmed value: `min(1)` passes "   ", which trims to "" and
+ * only fails later at the model's `required`, as a 500 instead of a 400.
  */
 
 // Wishlist schemas
@@ -17,16 +22,16 @@ const LINE_BREAK_OR_CONTROL_CHAR = /[\p{Cc}\p{Zl}\p{Zp}]/u;
 // runs after `.trim()`, so a line break at either end is just trimmed off.
 const wishlistNameSchema = z
   .string()
+  .trim()
   .min(1, 'Wishlist name is required')
   .max(100, 'Name must be 100 characters or less')
-  .trim()
   .refine((name) => !LINE_BREAK_OR_CONTROL_CHAR.test(name), {
     message: "Name can't contain line breaks or control characters",
   });
 
 export const createWishlistSchema = z.object({
   name: wishlistNameSchema,
-  description: z.string().max(500, 'Description must be 500 characters or less').trim().optional(),
+  description: z.string().trim().max(500, 'Description must be 500 characters or less').optional(),
   visibility: z.enum(['everyone', 'friends', 'private']).default('everyone'),
   bannerUrl: z.url('Invalid image URL').optional().nullable().or(z.literal('')),
   currency: z
@@ -42,8 +47,8 @@ export const updateWishlistSchema = z
     name: wishlistNameSchema.optional(),
     description: z
       .string()
-      .max(500, 'Description must be 500 characters or less')
       .trim()
+      .max(500, 'Description must be 500 characters or less')
       .optional()
       .nullable(),
     visibility: z.enum(['everyone', 'friends', 'private']).optional(),
@@ -88,7 +93,7 @@ export const updateProfileSchema = z
   .object({
     username: usernameSchema.optional(),
     image: z.url('Invalid image URL').nullable().or(z.literal('')).optional(),
-    bio: z.string().max(300, 'Bio must be 300 characters or less').trim().nullable().optional(),
+    bio: z.string().trim().max(300, 'Bio must be 300 characters or less').nullable().optional(),
     defaultCurrency: z
       .string()
       .trim()
@@ -122,9 +127,9 @@ export const inviteMemberSchema = z.object({
 export const createItemSchema = z.object({
   name: z
     .string()
+    .trim()
     .min(1, 'Item name is required')
-    .max(200, 'Name must be 200 characters or less')
-    .trim(),
+    .max(200, 'Name must be 200 characters or less'),
   imageUrl: z.url('Invalid image URL').optional(),
   price: z
     .object({
@@ -137,7 +142,7 @@ export const createItemSchema = z.object({
     .optional()
     .nullable(), // Price object is optional, but if provided, both value and currency are required
   link: z.url('Invalid link URL').optional(),
-  notes: z.string().max(100, 'Notes must be 100 characters or less').trim().optional(),
+  notes: z.string().trim().max(100, 'Notes must be 100 characters or less').optional(),
   mostWanted: z.boolean().optional(),
   // A new item is never booked or completed, and takes no `bookedBy`: a booking
   // only comes from a member booking it (PATCH), which also writes the
@@ -151,9 +156,9 @@ export const updateItemSchema = z
   .object({
     name: z
       .string()
+      .trim()
       .min(1, 'Item name is required')
       .max(200, 'Name must be 200 characters or less')
-      .trim()
       .optional(),
     imageUrl: z.url('Invalid image URL').optional().nullable(),
     price: z
@@ -167,7 +172,7 @@ export const updateItemSchema = z
       .optional()
       .nullable(), // Price object is optional, but if provided, both value and currency are required
     link: z.url('Invalid link URL').optional().nullable(),
-    notes: z.string().max(100, 'Notes must be 100 characters or less').trim().optional().nullable(),
+    notes: z.string().trim().max(100, 'Notes must be 100 characters or less').optional().nullable(),
     mostWanted: z.boolean().optional(),
     // The route narrows this per role: members only book/unbook, owners only
     // draft/available/completed (draft/available when approving a proposal).
