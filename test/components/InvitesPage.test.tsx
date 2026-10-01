@@ -2,10 +2,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup, waitFor, act, within } from '@testing-library/react';
 
-const { push, showToast } = vi.hoisted(() => ({ push: vi.fn(), showToast: vi.fn() }));
+const { push, showToast, signedIn } = vi.hoisted(() => ({
+  push: vi.fn(),
+  showToast: vi.fn(),
+  // Mutable, so a test can sign another account in while the page is open.
+  signedIn: { userId: 'me' },
+}));
 
 vi.mock('next-auth/react', () => ({
-  useSession: () => ({ data: { user: { id: 'me' } }, status: 'authenticated' }),
+  useSession: () => ({ data: { user: { id: signedIn.userId } }, status: 'authenticated' }),
 }));
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push }) }));
@@ -39,6 +44,17 @@ const invites = [
     invitedByImage: null,
   },
 ];
+type Invite = (typeof invites)[number];
+const [, housewarming] = invites;
+const anniversary: Invite = {
+  _id: 'inv-anniversary',
+  role: 'member',
+  wishlistId: 'w3',
+  wishlistName: 'Anniversary',
+  wishlistSlug: 'anniversary',
+  invitedByUsername: 'carol',
+  invitedByImage: null,
+};
 
 /** A JSON answer, a non-JSON one (`html`), or a network failure. */
 type Reply = { status: number; body: unknown } | { status: number; html: true } | Error;
@@ -54,12 +70,28 @@ function toResponse(reply: Reply) {
   return { ok: reply.status < 400, status: reply.status, json };
 }
 
-/** Serves the invite list, and answers each PATCH with whatever `patch` resolves to. */
-function stubFetch(patch: (url: string) => Promise<Reply>) {
+/** The invite list answering with `data`. */
+const listed = (data: Invite[]): Reply => ({ status: 200, body: { success: true, data } });
+
+/**
+ * Answers each PATCH with whatever `patch` resolves to, and each list request
+ * with whatever `list` resolves to. By default the list is the server's: both
+ * invites, less any that a PATCH has answered or found gone.
+ */
+function stubFetch(patch: (url: string) => Promise<Reply>, list?: () => Promise<Reply>) {
+  const settled = new Set<string>();
   const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
-    if (init?.method === 'PATCH') return toResponse(await patch(url));
+    if (init?.method === 'PATCH') {
+      const reply = await patch(url);
+      if ('body' in reply && (reply.status < 400 || reply.status === 404)) {
+        settled.add(url.slice('/api/invites/'.length));
+      }
+      return toResponse(reply);
+    }
     if (url === '/api/users/me/invites') {
-      return { ok: true, status: 200, json: async () => ({ success: true, data: invites }) };
+      return toResponse(
+        await (list?.() ?? listed(invites.filter((invite) => !settled.has(invite._id))))
+      );
     }
     throw new Error(`unexpected fetch ${url}`);
   });
@@ -74,14 +106,25 @@ function mockFetch(reply: Reply) {
 
 /**
  * Serves the invite list, and holds every PATCH open until the test settles it
- * with `answer`, so several invites can be in flight at once.
+ * with `answer`, so several invites can be in flight at once. With `holdLists`,
+ * every list request is held too, until the test answers it with `list`, so a
+ * refetch can still be on its way while the user answers a card, or several
+ * can settle out of order.
  */
-function mockHeldFetch() {
+function mockHeldFetch({ holdLists = false } = {}) {
   const held = new Map<string, ((reply: Reply) => void)[]>();
+  const lists: ((reply: Reply) => void)[] = [];
   const fetchMock = stubFetch(
-    (url) => new Promise<Reply>((resolve) => held.set(url, [...(held.get(url) ?? []), resolve]))
+    (url) => new Promise<Reply>((resolve) => held.set(url, [...(held.get(url) ?? []), resolve])),
+    holdLists ? () => new Promise<Reply>((resolve) => lists.push(resolve)) : undefined
   );
   return {
+    /** How many times the page has asked for the list (with `holdLists`). */
+    listRequests: () => lists.length,
+    /** Answers the page's `n`th request for the list, counting from 0 (with `holdLists`). */
+    list: async (n: number, reply: Reply) => {
+      await act(async () => lists[n](reply));
+    },
     /** How many answers the page has sent for this invite, settled or not. */
     patchesFor: (inviteId: string) =>
       fetchMock.mock.calls.filter(
@@ -109,6 +152,25 @@ function cardButtons(wishlistName: string) {
   };
 }
 
+const expectDisabled = (wishlistName: string) => {
+  const { accept, decline } = cardButtons(wishlistName);
+  expect(accept).toBeDisabled();
+  expect(decline).toBeDisabled();
+};
+const expectEnabled = (wishlistName: string) => {
+  const { accept, decline } = cardButtons(wishlistName);
+  expect(accept).toBeEnabled();
+  expect(decline).toBeEnabled();
+};
+
+const declined: Reply = { status: 200, body: { success: true, data: { status: 'declined' } } };
+const failed: Reply = { status: 500, body: { success: false, error: 'Failed to update invite' } };
+const gone: Reply = { status: 404, body: { success: false, error: 'Invite not found' } };
+const joined = (wishlistSlug: string, wishlistId: string): Reply => ({
+  status: 200,
+  body: { success: true, data: { status: 'accepted', wishlistSlug, wishlistId } },
+});
+
 const invitesChanged = vi.fn();
 
 async function clickOnFirstCard(name: 'Accept' | 'Decline') {
@@ -125,6 +187,7 @@ beforeEach(() => {
   push.mockReset();
   showToast.mockReset();
   invitesChanged.mockReset();
+  signedIn.userId = 'me';
   window.addEventListener('invites-changed', invitesChanged);
 });
 afterEach(() => {
@@ -216,31 +279,12 @@ describe('InvitesPage — answering an invite', () => {
 });
 
 describe('InvitesPage — answering several invites at once', () => {
-  const declined: Reply = { status: 200, body: { success: true, data: { status: 'declined' } } };
-  const failed: Reply = { status: 500, body: { success: false, error: 'Failed to update invite' } };
-  const gone: Reply = { status: 404, body: { success: false, error: 'Invite not found' } };
-  const joined = (wishlistSlug: string, wishlistId: string): Reply => ({
-    status: 200,
-    body: { success: true, data: { status: 'accepted', wishlistSlug, wishlistId } },
-  });
-
   async function renderHeld() {
     const held = mockHeldFetch();
     render(<InvitesPage />);
     await screen.findByText('Birthday');
     return held;
   }
-
-  const expectDisabled = (wishlistName: string) => {
-    const { accept, decline } = cardButtons(wishlistName);
-    expect(accept).toBeDisabled();
-    expect(decline).toBeDisabled();
-  };
-  const expectEnabled = (wishlistName: string) => {
-    const { accept, decline } = cardButtons(wishlistName);
-    expect(accept).toBeEnabled();
-    expect(decline).toBeEnabled();
-  };
 
   // regression: the page tracked one busy id for all its cards, so answering
   // card B while A's answer was in flight re-enabled A's buttons, and whichever
@@ -366,4 +410,240 @@ describe('InvitesPage — answering several invites at once', () => {
       expect(push).toHaveBeenCalledTimes(1);
     });
   });
+});
+
+describe('InvitesPage — keeping the list fresh while it is open', () => {
+  const graduation: Invite = { ...anniversary, _id: 'inv-graduation', wishlistName: 'Graduation' };
+  const loadFailed: Reply = {
+    status: 500,
+    body: { success: false, error: 'Failed to load invites' },
+  };
+  const skeleton = () => document.querySelector('.skeleton');
+  const refetchOn = (event: 'focus' | 'invites-changed') =>
+    act(() => {
+      window.dispatchEvent(new Event(event));
+    });
+
+  /** Renders the page with every list request held, and lets the first load land. */
+  async function renderLoaded() {
+    const held = mockHeldFetch({ holdLists: true });
+    const view = render(<InvitesPage />);
+    expect(held.listRequests()).toBe(1);
+    await held.list(0, listed(invites));
+    expect(screen.getByText('Birthday')).toBeInTheDocument();
+    return { ...held, rerender: view.rerender };
+  }
+
+  it.each(['focus', 'invites-changed'] as const)(
+    'a refetch on %s replaces the list, without flashing the skeleton',
+    async (event) => {
+      const { list, listRequests } = await renderLoaded();
+
+      refetchOn(event);
+      expect(listRequests()).toBe(2);
+      // The cards stay up while it's on its way.
+      expect(skeleton()).toBeNull();
+      expect(screen.getByText('Birthday')).toBeInTheDocument();
+
+      // Meanwhile an owner cancelled Birthday, and someone sent Anniversary.
+      await list(1, listed([anniversary, housewarming]));
+      expect(screen.queryByText('Birthday')).toBeNull();
+      expect(screen.getByText('Anniversary')).toBeInTheDocument();
+      expect(screen.getByText('Housewarming')).toBeInTheDocument();
+      expect(skeleton()).toBeNull();
+    }
+  );
+
+  it('ignores a refetch that settles after a newer one', async () => {
+    const { list } = await renderLoaded();
+
+    refetchOn('focus');
+    refetchOn('focus');
+    await list(2, listed([anniversary]));
+    await list(1, listed(invites));
+
+    expect(screen.getByText('Anniversary')).toBeInTheDocument();
+    expect(screen.queryByText('Birthday')).toBeNull();
+    expect(screen.queryByText('Housewarming')).toBeNull();
+  });
+
+  it('a first load overtaken by a refetch still lands, even if the refetch fails', async () => {
+    const { list } = mockHeldFetch({ holdLists: true });
+    render(<InvitesPage />);
+
+    refetchOn('focus');
+    await list(0, listed(invites));
+    expect(screen.getByText('Birthday')).toBeInTheDocument();
+    expect(skeleton()).toBeNull();
+
+    await list(1, loadFailed);
+    expect(screen.getByText('Birthday')).toBeInTheDocument();
+    expect(showToast).not.toHaveBeenCalled();
+  });
+
+  it('a refetch failing while the first load is on its way keeps the skeleton up', async () => {
+    const { list } = mockHeldFetch({ holdLists: true });
+    render(<InvitesPage />);
+
+    refetchOn('focus');
+    await list(1, loadFailed);
+    expect(skeleton()).not.toBeNull();
+    expect(screen.queryByText('No pending invitations')).toBeNull();
+
+    await list(0, listed(invites));
+    expect(screen.getByText('Birthday')).toBeInTheDocument();
+    expect(showToast).not.toHaveBeenCalled();
+  });
+
+  // regression: refetching replaces the cards with the server's list, so a list
+  // read before an answer landed would bring the answered card back, its next
+  // click 404'ing into "no longer available".
+  it('regression: a list read before an answer landed does not bring the card back', async () => {
+    const { list, listRequests, answer } = await renderLoaded();
+
+    refetchOn('focus');
+    fireEvent.click(cardButtons('Birthday').decline);
+    await answer('inv-birthday', declined);
+    await waitFor(() => expect(screen.queryByText('Birthday')).toBeNull());
+    // Dropping the card fired invites-changed, which re-reads the list.
+    expect(listRequests()).toBe(3);
+
+    // The focus refetch lands now, still listing Birthday, and is dropped,
+    // without another read: the one sent after the answer is on its way...
+    await list(1, listed(invites));
+    expect(screen.queryByText('Birthday')).toBeNull();
+    expect(screen.getByText('Housewarming')).toBeInTheDocument();
+    expect(listRequests()).toBe(3);
+
+    // ...and lands.
+    await list(2, listed([anniversary, housewarming]));
+    expect(screen.queryByText('Birthday')).toBeNull();
+    expect(screen.getByText('Anniversary')).toBeInTheDocument();
+  });
+
+  // A list read while an answer is on its way can't tell whether the server
+  // has taken it yet, so it leaves the cards alone: the card being answered
+  // stays as it is, disabled, until its own answer decides it.
+  it('a refetch landing while an answer is in flight leaves the cards alone', async () => {
+    const { list, listRequests, answer } = await renderLoaded();
+
+    fireEvent.click(cardButtons('Birthday').accept);
+    refetchOn('focus');
+    await list(1, listed([anniversary, housewarming]));
+    expect(screen.getByText('Birthday')).toBeInTheDocument();
+    expect(screen.queryByText('Anniversary')).toBeNull();
+    expectDisabled('Birthday');
+    expectEnabled('Housewarming');
+
+    // Once the answer settles (here, a failure worth retrying), the list is read
+    // again, and that read has the last word: an owner had cancelled Birthday.
+    expect(listRequests()).toBe(2);
+    await answer('inv-birthday', failed);
+    await waitFor(() => expect(showToast).toHaveBeenCalledWith('Failed to update invite', 'error'));
+    expect(listRequests()).toBe(3);
+    await list(2, listed([anniversary, housewarming]));
+    expect(screen.queryByText('Birthday')).toBeNull();
+    expect(screen.getByText('Anniversary')).toBeInTheDocument();
+  });
+
+  it('a refetch that fails keeps the cards, without an error toast', async () => {
+    const { list } = await renderLoaded();
+
+    refetchOn('focus');
+    await list(1, loadFailed);
+
+    expect(screen.getByText('Birthday')).toBeInTheDocument();
+    expect(screen.getByText('Housewarming')).toBeInTheDocument();
+    expect(showToast).not.toHaveBeenCalled();
+  });
+
+  it('the first load failing says so, and a later refetch fills the list in', async () => {
+    const { list } = mockHeldFetch({ holdLists: true });
+    render(<InvitesPage />);
+
+    await list(0, loadFailed);
+    expect(showToast).toHaveBeenCalledWith('Failed to load invites', 'error');
+    expect(screen.getByText('No pending invitations')).toBeInTheDocument();
+
+    // A refetch failing too doesn't say so again, on every return to the tab.
+    refetchOn('focus');
+    await list(1, loadFailed);
+    expect(showToast).toHaveBeenCalledTimes(1);
+
+    refetchOn('focus');
+    await list(2, listed(invites));
+    expect(screen.getByText('Birthday')).toBeInTheDocument();
+    expect(showToast).toHaveBeenCalledTimes(1);
+  });
+
+  // regression: the page loaded its invites once, when the session became
+  // 'authenticated'. Another account signing in from another tab leaves the
+  // status 'authenticated', so the previous account's cards (its list names and
+  // inviters) stayed up, and every answer to them got a 403.
+  it("regression: another account signing in never shows the previous account's invites", async () => {
+    const { list, listRequests, rerender } = await renderLoaded();
+
+    // A refetch for the previous account is still on its way when the account changes.
+    refetchOn('focus');
+    signedIn.userId = 'someone-else';
+    rerender(<InvitesPage />);
+
+    // Its cards are gone at once, and the skeleton stands in for the new account's list.
+    expect(screen.queryByText('Birthday')).toBeNull();
+    expect(screen.queryByText('Housewarming')).toBeNull();
+    expect(skeleton()).not.toBeNull();
+    expect(listRequests()).toBe(3);
+
+    // The new account's list replaces the skeleton...
+    await list(2, listed([graduation]));
+    expect(screen.getByText('Graduation')).toBeInTheDocument();
+    expect(skeleton()).toBeNull();
+
+    // ...and the previous account's refetch, landing late, changes nothing.
+    await list(1, listed(invites));
+    expect(screen.getByText('Graduation')).toBeInTheDocument();
+    expect(screen.queryByText('Birthday')).toBeNull();
+    expect(screen.queryByText('Housewarming')).toBeNull();
+  });
+
+  it("the new account's list failing to load doesn't bring the previous account's cards back", async () => {
+    const { list, rerender } = await renderLoaded();
+
+    signedIn.userId = 'someone-else';
+    rerender(<InvitesPage />);
+    await list(1, loadFailed);
+
+    expect(showToast).toHaveBeenCalledWith('Failed to load invites', 'error');
+    expect(screen.getByText('No pending invitations')).toBeInTheDocument();
+    expect(screen.queryByText('Birthday')).toBeNull();
+  });
+
+  it.each([
+    { outcome: 'succeeding', reply: joined('birthday', 'w1') },
+    { outcome: 'failing', reply: new TypeError('Failed to fetch') },
+  ])(
+    'an answer the previous account gave, $outcome after the switch, stays off the new page',
+    async ({ reply }) => {
+      const { list, answer, rerender } = await renderLoaded();
+
+      fireEvent.click(cardButtons('Birthday').accept);
+      signedIn.userId = 'someone-else';
+      rerender(<InvitesPage />);
+
+      // While that answer is still on its way, the new account's list loads and
+      // keeps fresh: the answer isn't one of its own, so it holds nothing up.
+      await list(1, listed([graduation]));
+      expect(screen.getByText('Graduation')).toBeInTheDocument();
+      refetchOn('focus');
+      await list(2, listed([anniversary, graduation]));
+      expect(screen.getByText('Anniversary')).toBeInTheDocument();
+
+      await answer('inv-birthday', reply);
+      expect(push).not.toHaveBeenCalled();
+      expect(showToast).not.toHaveBeenCalled();
+      expect(invitesChanged).not.toHaveBeenCalled();
+      expect(screen.getByText('Graduation')).toBeInTheDocument();
+      expect(screen.queryByText('Birthday')).toBeNull();
+    }
+  );
 });
