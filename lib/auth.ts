@@ -6,6 +6,7 @@ import { adapter } from './authAdapter';
 import { getEnvVars } from './env';
 import { generateUniqueUsername } from './utils/username';
 import { endPreviousSession } from './utils/previousSession';
+import { sessionPayload, type SessionDbUser } from './utils/sessionPayload';
 import { isVerifiedSignIn, sendVerificationRequest } from './signInEmail';
 
 // Get validated environment variables
@@ -57,24 +58,26 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (email?.verificationRequest && !isVerifiedSignIn()) return false;
       return true;
     },
+    // With database sessions Auth.js passes `session` as `{ ...sessionRow,
+    // user: userRow }`, the raw rows, session token included, and whatever this
+    // returns is what `auth()` and GET /api/auth/session give out. So it
+    // returns sessionPayload's explicit allowlist, built fresh, never `session`
+    // or anything spread from it.
     async session({ session, user }) {
-      if (session.user && user?.email) {
+      const row = user as unknown as Record<string, unknown> | undefined;
+      let dbUser: SessionDbUser | null = null;
+      if (user?.email) {
         try {
           await connectDB();
-          const dbUser = await User.findOne({ email: user.email.toLowerCase() });
+          const found = await User.findOne({ email: user.email.toLowerCase() });
 
-          if (dbUser) {
+          if (found) {
             // Lazily backfill a username for legacy users who predate the field.
-            if (!dbUser.username) {
-              dbUser.username = await generateUniqueUsername();
-              await dbUser.save();
+            if (!found.username) {
+              found.username = await generateUniqueUsername();
+              await found.save();
             }
-            // Always set identity fields when the user exists
-            session.user.id = dbUser._id.toString();
-            session.user.email = user.email;
-            session.user.username = dbUser.username || undefined;
-            session.user.image = dbUser.image || undefined;
-            session.user.defaultCurrency = dbUser.defaultCurrency || 'USD';
+            dbUser = found;
           } else {
             // This shouldn't happen, but handle gracefully. Logged without the email
             // or any other identifier: anyone with project access reads these logs.
@@ -84,7 +87,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           console.error('Error in session callback:', error);
         }
       }
-      return session;
+      // Without a read of their own (none found, or it failed), the adapter's
+      // row stands in, as it did when this returned that row as is.
+      return sessionPayload(row, dbUser, session.expires);
     },
   },
   events: {
