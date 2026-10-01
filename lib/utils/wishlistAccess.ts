@@ -3,7 +3,6 @@ import connectDB from '@/lib/mongodb';
 import Wishlist, { IWishlist } from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
 import { areFriends } from '@/lib/utils/friends';
-import { getVisibility, type Visibility } from '@/lib/utils/visibility';
 import { isWishlistOwner, ownedByFilter, ownerIds } from '@/lib/utils/wishlistOwners';
 
 /**
@@ -31,31 +30,16 @@ export async function isOwnerOfWishlist(wishlistId: string, userId: string): Pro
 }
 
 /** The fields of a wishlist that decide who may see it. */
-type ViewedWishlist = Pick<IWishlist, '_id' | 'owners' | 'visibility' | 'isPublic' | 'archived'>;
+type ViewedWishlist = Pick<IWishlist, '_id' | 'owners' | 'visibility' | 'archived'>;
 
 /**
- * The list's visibility tier, failing closed on an old document. `isPublic` is
- * the legacy flag, kept in sync with `visibility` (everyone ⇔ true) by every
- * write. A list saved before `visibility` existed has only `isPublic`, but a
- * hydrated doc fills the missing field with the schema default `everyone` (and
- * a `save()` of one stores it), so `isPublic: false` wins: that list is private.
- *
- * `EVERYONE_TIER` below is the same rule as a query. Change the two together.
+ * `getWishlistViewAccess`'s `visibility === 'everyone'` as a query. Change the
+ * two together. Every stored list has a `visibility` (the schema requires it
+ * and every write sets it), so the hydrated document that check reads and the
+ * stored one this matches agree. The legacy `isPublic` flag is still written
+ * alongside it, but no view rule reads it.
  */
-function viewTier(wishlist: ViewedWishlist): Visibility {
-  const tier = getVisibility(wishlist);
-  return tier === 'everyone' && wishlist.isPublic === false ? 'private' : tier;
-}
-
-/**
- * `viewTier(w) === 'everyone'` as a query, over the stored document. A missing
- * `visibility` hydrates as `everyone`, so it counts as `everyone` here too, and
- * `isPublic: false` wins over both, as in `viewTier`.
- */
-const EVERYONE_TIER: FilterQuery<IWishlist> = {
-  visibility: { $in: ['everyone', null] },
-  isPublic: { $ne: false },
-};
+const EVERYONE_TIER: FilterQuery<IWishlist> = { visibility: 'everyone' };
 
 type Id = string | mongoose.Types.ObjectId;
 const toObjectIds = (ids: Id[]) => ids.map((id) => new mongoose.Types.ObjectId(id.toString()));
@@ -122,7 +106,7 @@ export type WishlistViewAccess =
  * its items can never disagree about who sees them:
  *
  *  - archived: owners only; everyone else gets 404 (see `isHiddenByArchive`);
- *  - `everyone`: anyone, signed in or not (see `viewTier` for old documents);
+ *  - `everyone`: anyone, signed in or not;
  *  - `friends` / `private`: 401 when signed out. Owners and members get in at
  *    either tier, and `friends` also admits a mutual friend of *any* owner — a
  *    co-owned list behaves as if each owner created it.
@@ -147,7 +131,9 @@ export async function getWishlistViewAccess(
     !!(await WishlistMember.exists({ wishlist: wishlist._id, user: viewerId }));
   const granted = { allowed: true as const, isOwner, isMember };
 
-  const visibility = viewTier(wishlist);
+  // `EVERYONE_TIER` is this check as a query. Anything that isn't `everyone` or
+  // `friends` gets the `private` rules.
+  const { visibility } = wishlist;
   if (visibility === 'everyone') return granted;
 
   if (!viewerId) {

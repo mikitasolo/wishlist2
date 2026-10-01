@@ -6,6 +6,7 @@ import User from '@/models/User';
 import { resolveWishlistId } from '@/lib/utils/wishlistSlug';
 import { ogGradient, withTimeout } from '@/lib/utils/og';
 import { primaryOwnerId } from '@/lib/utils/wishlistOwners';
+import { getWishlistViewAccess } from '@/lib/utils/wishlistAccess';
 
 // Runs on the Node runtime (default) because it touches Mongoose.
 export const alt = 'Wishlist';
@@ -25,20 +26,22 @@ interface CardData {
 export default async function Image({ params }: { params: Promise<{ id: string }> }) {
   const { id: idOrSlug } = await params;
 
-  // Privacy: crawlers are unauthenticated, so only public, non-archived lists
-  // reveal their name / owner / item count. Everything else gets a generic card.
+  // Privacy: crawlers are unauthenticated, so only a list a signed-out visitor
+  // may open (public, non-archived) reveals its name / owner / item count.
+  // Everything else gets a generic card.
   let data: CardData = { title: 'A wishlist', subtitle: 'on Wishlist', seed: idOrSlug };
 
   async function gather(): Promise<CardData> {
     await connectDB();
     const wid = await resolveWishlistId(idOrSlug);
     const w = wid
-      ? await Wishlist.findById(wid).select('name owners visibility isPublic archived').lean()
+      ? await Wishlist.findById(wid).select('name owners visibility archived').lean()
       : null;
     if (!w) return data;
     const seed = w._id.toString();
-    const isPublic = (w.visibility ? w.visibility === 'everyone' : w.isPublic) && !w.archived;
-    if (!isPublic) return { ...data, seed, title: 'A private wishlist' };
+    if (!(await getWishlistViewAccess(w, null)).allowed) {
+      return { ...data, seed, title: 'A private wishlist' };
+    }
     const [owner, count] = await Promise.all([
       // Co-owned lists are credited to their primary owner on the share card.
       User.findById(primaryOwnerId(w)).select('username').lean(),

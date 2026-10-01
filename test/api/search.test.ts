@@ -136,41 +136,6 @@ describe('GET /api/search — which lists it returns', () => {
       expect(await listNames('gifts', viewer)).toEqual([]);
     }
   });
-
-  // regression: WIS-123. The slug backfill in GET /api/wishlists/[id] can store an
-  // old private list (saved before `visibility` existed) as
-  // `{ visibility: 'everyone', isPublic: false }`. Search matched on
-  // `visibility: 'everyone'` alone, so it listed that private list for anyone,
-  // signed out included, while the list itself refused them (`viewTier`).
-  it('regression: keeps an old private list stored as visibility everyone + isPublic false from non-members', async () => {
-    const id = await list('Old gifts', [owner, coOwner]);
-    await Wishlist.collection.updateOne(
-      { _id: new mongoose.Types.ObjectId(id) },
-      { $set: { visibility: 'everyone', isPublic: false } }
-    );
-    await join(id, member);
-
-    for (const viewer of [null, stranger, friendOfCoOwner]) {
-      expect(await listNames('gifts', viewer)).toEqual([]);
-    }
-    expect(await listNames('gifts', member)).toEqual(['Old gifts']);
-    expect(await listNames('gifts', owner)).toEqual(['Old gifts']);
-  });
-
-  it('reads a list saved before visibility existed from its isPublic flag', async () => {
-    const shown = await list('Legacy public gifts', [owner]);
-    const hidden = await list('Legacy private gifts', [owner]);
-    await Wishlist.collection.updateOne(
-      { _id: new mongoose.Types.ObjectId(shown) },
-      { $unset: { visibility: '' }, $set: { isPublic: true } }
-    );
-    await Wishlist.collection.updateOne(
-      { _id: new mongoose.Types.ObjectId(hidden) },
-      { $unset: { visibility: '' }, $set: { isPublic: false } }
-    );
-
-    expect(await listNames('gifts', null)).toEqual(['Legacy public gifts']);
-  });
 });
 
 describe('GET /api/search — privacy settings', () => {

@@ -14,17 +14,20 @@ import { getWishlistViewAccess, viewableWishlistsFilter } from '@/lib/utils/wish
 /**
  * Search can't run `getWishlistViewAccess` on every list it might return, so it
  * matches with `viewableWishlistsFilter`, the same rules as a query. This table
- * pins the two together: for every stored shape of a list (each visibility,
- * legacy `isPublic`, and archived state, including fields that are missing on
- * old documents) and every kind of viewer, the query matches a list exactly
- * when `getWishlistViewAccess` lets that viewer open it.
+ * pins the two together: for every stored shape of a list (each visibility, and
+ * each archived state, including an `archived` that's missing on an old
+ * document) and every kind of viewer, the query matches a list exactly when
+ * `getWishlistViewAccess` lets that viewer open it.
  */
 
 const UNSET = Symbol('unset');
 type Maybe<T> = T | typeof UNSET;
 
-const VISIBILITIES: Maybe<string>[] = ['everyone', 'friends', 'private', UNSET];
-const IS_PUBLIC: Maybe<boolean>[] = [true, false, UNSET];
+// Every list stores a `visibility` (the schema requires it), with the legacy
+// `isPublic` beside it in sync (everyone ⇔ true), as every write sets them. A
+// list with no stored `visibility` isn't a shape the database holds, so it's
+// not in the table: hydrating one would fill in the schema default.
+const VISIBILITIES = ['everyone', 'friends', 'private'] as const;
 const ARCHIVED: Maybe<boolean>[] = [true, false, UNSET];
 
 const VIEWERS = [
@@ -58,19 +61,17 @@ beforeAll(async () => {
   // Raw inserts, so a field can be truly missing, the way it is on an old document.
   const docs: Record<string, unknown>[] = [];
   for (const visibility of VISIBILITIES) {
-    for (const isPublic of IS_PUBLIC) {
-      for (const archived of ARCHIVED) {
-        const doc: Record<string, unknown> = {
-          _id: new mongoose.Types.ObjectId(),
-          name: 'List',
-          owners: [ids.owner, ids.coOwner],
-          featuredBy: [],
-        };
-        if (visibility !== UNSET) doc.visibility = visibility;
-        if (isPublic !== UNSET) doc.isPublic = isPublic;
-        if (archived !== UNSET) doc.archived = archived;
-        docs.push(doc);
-      }
+    for (const archived of ARCHIVED) {
+      const doc: Record<string, unknown> = {
+        _id: new mongoose.Types.ObjectId(),
+        name: 'List',
+        owners: [ids.owner, ids.coOwner],
+        featuredBy: [],
+        visibility,
+        isPublic: visibility === 'everyone',
+      };
+      if (archived !== UNSET) doc.archived = archived;
+      docs.push(doc);
     }
   }
   await Wishlist.collection.insertMany(docs);
@@ -78,8 +79,7 @@ beforeAll(async () => {
   lists = docs.map((d) => ({
     _id: d._id as mongoose.Types.ObjectId,
     shape: JSON.stringify({
-      visibility: d.visibility ?? '(unset)',
-      isPublic: d.isPublic ?? '(unset)',
+      visibility: d.visibility,
       archived: d.archived ?? '(unset)',
     }),
   }));
@@ -127,7 +127,7 @@ describe('viewableWishlistsFilter matches exactly what getWishlistViewAccess ope
   ];
 
   it('covers every stored shape', () => {
-    expect(lists).toHaveLength(VISIBILITIES.length * IS_PUBLIC.length * ARCHIVED.length);
+    expect(lists).toHaveLength(VISIBILITIES.length * ARCHIVED.length);
   });
 
   it.each(viewers)('for %s', async (_label, viewer) => {

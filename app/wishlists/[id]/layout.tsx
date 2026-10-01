@@ -4,11 +4,13 @@ import Wishlist from '@/models/Wishlist';
 import User from '@/models/User';
 import { resolveWishlistId } from '@/lib/utils/wishlistSlug';
 import { primaryOwnerId } from '@/lib/utils/wishlistOwners';
+import { getWishlistViewAccess } from '@/lib/utils/wishlistAccess';
 
 // Per-wishlist share metadata (og:title/description + twitter card). The
-// og:image is supplied separately by opengraph-image.tsx. Only public,
-// non-archived lists reveal their name; everything else stays generic so a
-// shared link never leaks a private list's title.
+// og:image is supplied separately by opengraph-image.tsx. Only a list a
+// signed-out visitor may open (public, non-archived) reveals its name;
+// everything else stays generic so a shared link never leaks a private list's
+// title.
 export async function generateMetadata({
   params,
 }: {
@@ -19,11 +21,10 @@ export async function generateMetadata({
     await connectDB();
     const wid = await resolveWishlistId(id);
     const w = wid
-      ? await Wishlist.findById(wid).select('name owners visibility isPublic archived').lean()
+      ? await Wishlist.findById(wid).select('name owners visibility archived').lean()
       : null;
     if (w) {
-      const isPublic = (w.visibility ? w.visibility === 'everyone' : w.isPublic) && !w.archived;
-      if (isPublic) {
+      if ((await getWishlistViewAccess(w, null)).allowed) {
         // A co-owned list is credited to its primary owner in share metadata.
         const owner = await User.findById(primaryOwnerId(w)).select('username').lean();
         const title = w.name;
