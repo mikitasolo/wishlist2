@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { copy, del, list } from '@vercel/blob';
+import { copy, del, head, list } from '@vercel/blob';
 
 /**
  * Per-user upload quota. Generous on purpose: images are re-encoded on upload
@@ -182,32 +182,48 @@ export async function snapshotBlob(url: string | null | undefined): Promise<stri
   const parsed = parseOwnBlobUrl(url);
   if (!parsed) return url;
 
-  // Keep the extension: the store derives the copy's content type from it.
-  const ext = /\.[a-z0-9]{1,8}$/i.exec(parsed.pathname)?.[0] ?? '';
-  // Raced against a timer rather than just passed an `AbortSignal.timeout`: the
-  // SDK retries a failing request with growing backoff, and an abort only lands
-  // on the next attempt, so the signal alone doesn't bound the wait.
+  try {
+    const copied = await withTimeout(SNAPSHOT_COPY_TIMEOUT_MS, (abortSignal) =>
+      copy(url, `${SNAPSHOT_FOLDER}${randomUUID()}${extensionOf(parsed)}`, {
+        access: 'public',
+        abortSignal,
+      })
+    );
+    return copied.url;
+  } catch (err) {
+    console.error(`Snapshot copy failed, keeping the original image URL (${errorReason(err)})`);
+    return url;
+  }
+}
+
+/** A copy keeps its source's extension: the store derives its content type from it. */
+function extensionOf(parsed: URL): string {
+  return /\.[a-z0-9]{1,8}$/i.exec(parsed.pathname)?.[0] ?? '';
+}
+
+/** An error's name and message, for a log line that mustn't carry a URL of ours. */
+function errorReason(err: unknown): string {
+  return err instanceof Error ? `${err.name}: ${err.message}` : 'unknown error';
+}
+
+/**
+ * `work`, given up on after `ms`: rejects then, and aborts the signal `work` was
+ * handed. Raced against a timer rather than just giving `work` an
+ * `AbortSignal.timeout`: the SDK retries a failing request with growing backoff,
+ * and an abort only lands on the next attempt, so the signal alone doesn't bound
+ * the wait. A request under way at the timeout may still complete after it.
+ */
+async function withTimeout<T>(ms: number, work: (signal: AbortSignal) => Promise<T>): Promise<T> {
   const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
       controller.abort();
-      reject(new Error(`timed out after ${SNAPSHOT_COPY_TIMEOUT_MS}ms`));
-    }, SNAPSHOT_COPY_TIMEOUT_MS);
+      reject(new Error(`timed out after ${ms}ms`));
+    }, ms);
   });
   try {
-    const copied = await Promise.race([
-      copy(url, `${SNAPSHOT_FOLDER}${randomUUID()}${ext}`, {
-        access: 'public',
-        abortSignal: controller.signal,
-      }),
-      timeout,
-    ]);
-    return copied.url;
-  } catch (err) {
-    const reason = err instanceof Error ? `${err.name}: ${err.message}` : 'unknown error';
-    console.error(`Snapshot copy failed, keeping the original image URL (${reason})`);
-    return url;
+    return await Promise.race([work(controller.signal), timeout]);
   } finally {
     clearTimeout(timer);
   }
@@ -227,4 +243,63 @@ export async function getUserUploadBytes(userId: string): Promise<number> {
     cursor = res.cursor;
   } while (cursor);
   return total;
+}
+
+/** What `copyBlobToUploads` made: the copy's URL, or why there is none. */
+export type UploadCopy = { ok: true; url: string } | { ok: false; reason: 'quota' | 'failed' };
+
+/** How long saving a copy of an item waits for its image copy before saving without it. */
+export const UPLOAD_COPY_TIMEOUT_MS = 5000;
+
+/**
+ * Copy one of our blobs into `uploads/<userId>/` as that user's own file. Used
+ * when they save a copy of an item ("Save to my list"): the source and the copy
+ * must never share a blob, because deleting either item frees its image, which
+ * would break the other's.
+ *
+ * The copy is the user's like any upload of theirs: it counts against their
+ * `USER_UPLOAD_QUOTA_BYTES`, so it isn't made when it wouldn't fit (`quota`),
+ * and it's one `canAttachImage` accepts from them. It needs no `sharp` pass,
+ * as the source was sanitized when it was uploaded.
+ *
+ * Never throws, and gives up after `UPLOAD_COPY_TIMEOUT_MS`: anything else that
+ * goes wrong is `failed`, and the caller saves the item without an image (a
+ * copy that lands after the timeout is freed then). `url` must be one of our
+ * blobs (`isOwnBlob`); anything else is `failed` too. Its own log lines carry
+ * no URL, since a blob's path names the user who uploaded it.
+ */
+export async function copyBlobToUploads(url: string, userId: string): Promise<UploadCopy> {
+  const parsed = parseOwnBlobUrl(url);
+  if (!parsed || !userId) return { ok: false, reason: 'failed' };
+  const started: { copy?: Promise<{ url: string }> } = {};
+  try {
+    const copied = await withTimeout(UPLOAD_COPY_TIMEOUT_MS, async (abortSignal) => {
+      const [source, used] = await Promise.all([
+        head(url, { abortSignal }),
+        getUserUploadBytes(userId),
+      ]);
+      if (used + source.size > USER_UPLOAD_QUOTA_BYTES) return null;
+      abortSignal.throwIfAborted(); // too late: don't start a copy nobody will keep
+      started.copy = copy(url, `uploads/${userId}/image${extensionOf(parsed)}`, {
+        access: 'public',
+        addRandomSuffix: true,
+        abortSignal,
+      });
+      return started.copy;
+    });
+    if (!copied) return { ok: false, reason: 'quota' };
+    if (isUploadedBy(copied.url, userId)) return { ok: true, url: copied.url };
+    // Not a file directly in their folder, so not one they could keep: drop it.
+    await deleteOwnBlob(copied.url);
+    console.error('Copying an image into uploads gave a path outside the folder; dropped it');
+  } catch (err) {
+    // A copy still under way at the timeout may land later, in their folder and
+    // on their quota, with nothing holding it: free it then.
+    started.copy?.then(
+      (late) => deleteOwnBlob(late.url),
+      () => {}
+    );
+    console.error(`Copying an image into uploads failed (${errorReason(err)})`);
+  }
+  return { ok: false, reason: 'failed' };
 }

@@ -9,6 +9,7 @@ import EditItemModal from '@/components/EditItemModal';
 import AddItemModal from '@/components/AddItemModal';
 import ProposeItemModal from '@/components/ProposeItemModal';
 import ReviewItemModal from '@/components/ReviewItemModal';
+import SaveToListModal from '@/components/SaveToListModal';
 import AuthButton from '@/components/AuthButton';
 import AppHeader from '@/components/AppHeader';
 import ConfirmDialog from '@/components/ConfirmDialog';
@@ -29,6 +30,7 @@ import {
   updateItemOptimistically,
 } from '@/lib/utils/itemListMerge';
 import { RequestTimeoutError, withRequestTimeout } from '@/lib/utils/requestTimeout';
+import { canCopyItem } from '@/lib/utils/itemCopy';
 import { useToast } from '@/components/ToastProvider';
 import { ApiItem, ApiResponse } from '@/types/api';
 import { IWishlist } from '@/models/Wishlist';
@@ -93,6 +95,8 @@ export default function WishlistDetail() {
   const [rates, setRates] = useState<Record<string, number> | null>(null);
   const [itemToEdit, setItemToEdit] = useState<ApiItem | null>(null);
   const [itemToReview, setItemToReview] = useState<ApiItem | null>(null);
+  // "Save to my list": the item being copied to one of the viewer's own lists.
+  const [itemToSave, setItemToSave] = useState<ApiItem | null>(null);
   const [showAddItemModal, setShowAddItemModal] = useState(false);
   const [showProposeItemModal, setShowProposeItemModal] = useState(false);
   const [isInviting, setIsInviting] = useState(false);
@@ -1298,6 +1302,10 @@ export default function WishlistDetail() {
                         ? () => setItemToReview(item)
                         : undefined
                     }
+                    onSaveToList={
+                      // Any signed-in viewer, owners too (to copy between their lists)
+                      canCopyItem(item, session?.user?.id) ? setItemToSave : undefined
+                    }
                     isAuthenticated={!!session?.user}
                     isOwner={isOwner}
                     isMember={isMember}
@@ -1891,6 +1899,14 @@ export default function WishlistDetail() {
           item={itemToReview}
           wishlistCurrency={wishlist?.currency}
           userCurrency={session?.user?.defaultCurrency}
+        />
+      )}
+
+      {itemToSave && (
+        <SaveToListModal
+          item={itemToSave}
+          userCurrency={session?.user?.defaultCurrency}
+          onClose={() => setItemToSave(null)}
         />
       )}
 

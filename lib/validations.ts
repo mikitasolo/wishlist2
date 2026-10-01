@@ -150,6 +150,11 @@ export const createItemSchema = z.object({
   // owners create draft/available, members only propose. No `proposedBy`
   // either: the route sets the proposer from the session.
   status: z.enum(['draft', 'available', 'proposed']).default('available'),
+  // "Save to my list": the item this one is a copy of. The copy's fields are
+  // the ones sent here, never the source's; the id only lets the route check
+  // that the caller can see the source, and copy its image blob for them
+  // rather than share it. The route checks its shape (`isObjectIdParam`).
+  sourceItemId: z.string().optional(),
 });
 
 export const updateItemSchema = z

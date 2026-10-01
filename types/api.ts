@@ -37,4 +37,7 @@ export interface ApiResponse<T> {
   success: boolean;
   data?: T;
   error?: string;
+  // Something about a success the user should hear (e.g. a saved copy of an
+  // item whose image couldn't be copied). Shown in a toast.
+  notice?: string;
 }

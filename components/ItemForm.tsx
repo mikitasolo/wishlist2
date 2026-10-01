@@ -493,7 +493,10 @@ export default function ItemForm({
 // defaultItemCurrency), so a price added while editing or reviewing it lands in
 // the wishlist's currency rather than USD. Being part of the form's initial data,
 // that prefill never reads as an unsaved change.
-export function itemToFormData(item: ApiItem, defaultCurrency: string): ItemFormData {
+export function itemToFormData(
+  item: Pick<ApiItem, 'name' | 'imageUrl' | 'price' | 'link' | 'notes' | 'mostWanted' | 'status'>,
+  defaultCurrency: string
+): ItemFormData {
   // Convert cents to dollars for display. A price of 0 is a real price ("0.00"),
   // not a missing one: an empty field would submit `price: null` and clear it.
   const priceInDollars = item.price?.value != null ? (item.price.value / 100).toFixed(2) : '';
