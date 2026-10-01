@@ -83,14 +83,16 @@ export default function BookedPage() {
     if (status === 'authenticated') load();
   }, [status, showToast]);
 
-  async function refreshGifts() {
-    try {
-      const res = await fetch('/api/users/me/gifts', { cache: 'no-store' });
-      const json = await res.json();
-      if (json.success) setGifts(json.data);
-    } catch {
-      /* ignore */
-    }
+  // Adds the entry "Mark as gifted" got back, in the history's newest-first
+  // order. The page never re-reads the whole list after loading it: a re-read
+  // answering after a delete or another gift settled meanwhile would overwrite
+  // them with an older copy, putting a deleted entry back or dropping a new one.
+  function addGift(entry: Gift) {
+    setGifts((prev) =>
+      [entry, ...prev.filter((g) => g._id !== entry._id)].sort(
+        (a, b) => Date.parse(b.giftedAt) - Date.parse(a.giftedAt)
+      )
+    );
   }
 
   // A functional update, so actions settling in any order each touch only their
@@ -133,7 +135,7 @@ export default function BookedPage() {
       }
       if (result.success) {
         setReservations((prev) => prev.filter((r) => r._id !== id));
-        await refreshGifts();
+        addGift(result.data);
         showToast('Added to your gift history', 'success');
       } else {
         showToast(result.error || 'Something went wrong', 'error');

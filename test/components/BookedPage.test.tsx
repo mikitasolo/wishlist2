@@ -61,10 +61,29 @@ const gifts = [
   { ...gift, _id: 'gift-mug', itemName: 'Mug' },
 ];
 
+/** The gift-history entries "Mark as gifted" writes for each reservation. */
+const legoGift = {
+  ...gift,
+  _id: 'gift-lego',
+  itemName: 'Lego set',
+  giftedAt: '2026-10-01T10:00:00.000Z',
+};
+const scarfGift = {
+  ...gift,
+  _id: 'gift-scarf',
+  itemName: 'Scarf',
+  giftedAt: '2026-10-01T10:05:00.000Z',
+};
+
 /** A JSON answer, a non-JSON one (`html`), or a network failure. */
 type Reply = { status: number; body: unknown } | { status: number; html: true } | Error;
 
 const ok: Reply = { status: 200, body: { success: true } };
+/** The gift route's answer: the gift-history entry it wrote. */
+const gifted = (entry: typeof legoGift): Reply => ({
+  status: 201,
+  body: { success: true, data: entry },
+});
 const failed = (error: string): Reply => ({ status: 500, body: { success: false, error } });
 /** The route's own answer for a reservation or gift-history entry that's gone. */
 const notFound = (error: string): Reply => ({ status: 404, body: { success: false, error } });
@@ -135,6 +154,19 @@ function reservationButtons(itemName: string) {
     dismiss: scope.getByRole('button', { name: 'Dismiss' }),
   };
 }
+
+/**
+ * The name on the reservation card for `itemName`, or null once the card is off
+ * the page. Its gift-history row, once it's gifted, doesn't count.
+ */
+const cardName = (itemName: string) =>
+  screen.queryAllByText(itemName).find((el) => !el.closest('li')) ?? null;
+
+/** The item names in the gift history (the page's only list), top to bottom. */
+const historyNames = () =>
+  within(screen.getByRole('list'))
+    .getAllByRole('listitem')
+    .map((row) => row.querySelector('p')?.textContent);
 
 /** The delete button on the gift-history row for `itemName`. */
 function deleteGiftButton(itemName: string) {
@@ -234,8 +266,8 @@ describe('BookedPage — acting on several cards at once', () => {
     expectReservationEnabled('Lego set');
     expectReservationDisabled('Scarf');
 
-    await answer(markGiftedKey('res-scarf'), ok);
-    await waitFor(() => expect(screen.queryByText('Scarf')).toBeNull());
+    await answer(markGiftedKey('res-scarf'), gifted(scarfGift));
+    await waitFor(() => expect(cardName('Scarf')).toBeNull());
     expect(showToast).toHaveBeenCalledWith('Added to your gift history', 'success');
     expectReservationEnabled('Lego set');
   });
@@ -246,8 +278,8 @@ describe('BookedPage — acting on several cards at once', () => {
     markGifted('Lego set');
     dismiss('Scarf');
 
-    await answer(markGiftedKey('res-lego'), ok);
-    await waitFor(() => expect(screen.queryByText('Lego set')).toBeNull());
+    await answer(markGiftedKey('res-lego'), gifted(legoGift));
+    await waitFor(() => expect(cardName('Lego set')).toBeNull());
     expectReservationDisabled('Scarf');
 
     await answer(dismissKey('res-scarf'), failed('Failed to remove reservation'));
@@ -255,7 +287,7 @@ describe('BookedPage — acting on several cards at once', () => {
       expect(showToast).toHaveBeenCalledWith('Failed to remove reservation', 'error')
     );
     expectReservationEnabled('Scarf');
-    expect(screen.queryByText('Lego set')).toBeNull();
+    expect(cardName('Lego set')).toBeNull();
   });
 
   it("keeps a gift-history entry's delete disabled until its own request settles", async () => {
@@ -281,6 +313,50 @@ describe('BookedPage — acting on several cards at once', () => {
 
     await answer(markGiftedKey('res-lego'), failed('Failed to log gift'));
     await waitFor(() => expectReservationEnabled('Lego set'));
+  });
+});
+
+describe('BookedPage — gift history while actions settle', () => {
+  // regression: a successful "Mark as gifted" re-read the whole gift history
+  // and replaced the page's copy with the answer, unordered against anything
+  // else settling on the list. A re-read the server answered before a
+  // concurrent delete was saved, landing after that delete's success (here,
+  // the history as the page loaded it), put the deleted entry back, and
+  // deleting it again answered "Gift entry not found".
+  it('regression: an entry deleted while "Mark as gifted" is in flight stays deleted', async () => {
+    const { answer } = await renderHeld();
+
+    markGifted('Lego set');
+    deleteGift('Cookbook');
+
+    await answer(deleteGiftKey('gift-book'), ok);
+    await waitFor(() => expect(screen.queryByText('Cookbook')).toBeNull());
+
+    await answer(markGiftedKey('res-lego'), gifted(legoGift));
+    await waitFor(() =>
+      expect(showToast).toHaveBeenCalledWith('Added to your gift history', 'success')
+    );
+    expect(cardName('Lego set')).toBeNull();
+    expect(historyNames()).toEqual(['Lego set', 'Mug']);
+  });
+
+  // The issue's other face: of two gifts, the answer settling last must not
+  // drop the other one, though its toast said "Added to your gift history".
+  it('keeps both gifts, newest first, when two "Mark as gifted" answers arrive out of order', async () => {
+    const { answer } = await renderHeld();
+
+    markGifted('Lego set');
+    markGifted('Scarf');
+
+    // The Scarf entry is the newer one, and its answer lands first.
+    await answer(markGiftedKey('res-scarf'), gifted(scarfGift));
+    await waitFor(() => expect(historyNames()).toEqual(['Scarf', 'Cookbook', 'Mug']));
+
+    await answer(markGiftedKey('res-lego'), gifted(legoGift));
+    await waitFor(() => expect(cardName('Lego set')).toBeNull());
+    expect(historyNames()).toEqual(['Scarf', 'Lego set', 'Cookbook', 'Mug']);
+    expect(showToast).toHaveBeenCalledTimes(2);
+    expect(showToast).toHaveBeenNthCalledWith(2, 'Added to your gift history', 'success');
   });
 });
 

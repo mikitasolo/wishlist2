@@ -5,11 +5,21 @@ import Reservation from '@/models/Reservation';
 import GiftLog from '@/models/GiftLog';
 import User from '@/models/User';
 import { isObjectIdParam } from '@/lib/utils/objectId';
+import {
+  giftWishlistSlugs,
+  serializeGiftLog,
+  type GiftWishlistSlugs,
+} from '@/lib/utils/giftHistory';
 
 // POST /api/reservations/[id]/gift - mark a reservation as gifted. Writes a
 // permanent GiftLog entry from the reservation's snapshot and removes the
 // reservation. Deliberately does NOT touch the live item — completing it on the
 // owner's list is the owner's decision, not the gifter's.
+//
+// Answers 201 with the new entry, shaped as `GET /api/users/me/gifts` lists it,
+// so the Booked page can add it to its gift history without re-reading the
+// whole list (a re-read could land after a delete settling meanwhile and put
+// the deleted entry back).
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth();
@@ -30,9 +40,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     let entry;
+    let slugs: GiftWishlistSlugs;
     try {
       // Snapshot the recipient's username at gift time (best-effort).
       const recipient = await User.findById(reservation.owner).select('username');
+      // The answer's wishlist slug is read here too, where a failure still puts
+      // the reservation back. Once the entry is written, nothing may fail: that
+      // would answer 500 for a gift that was logged.
+      slugs = await giftWishlistSlugs([reservation]);
 
       entry = await GiftLog.create({
         gifter: session.user.id,
@@ -55,7 +70,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     return NextResponse.json(
-      { success: true, data: { _id: entry._id.toString() } },
+      { success: true, data: serializeGiftLog(entry.toObject(), slugs) },
       { status: 201 }
     );
   } catch (error) {

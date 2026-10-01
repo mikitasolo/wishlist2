@@ -9,10 +9,12 @@ import { auth } from '@/lib/auth';
 import { POST as GIFT } from '@/app/api/reservations/[id]/gift/route';
 import { DELETE as DISMISS } from '@/app/api/reservations/[id]/route';
 import { DELETE as DELETE_GIFT } from '@/app/api/gifts/[id]/route';
+import { GET as LIST_GIFTS } from '@/app/api/users/me/gifts/route';
 import User from '@/models/User';
 import Item from '@/models/Item';
 import Reservation from '@/models/Reservation';
 import GiftLog from '@/models/GiftLog';
+import Wishlist from '@/models/Wishlist';
 
 const session = vi.mocked(auth);
 
@@ -78,6 +80,88 @@ describe('POST /api/reservations/[id]/gift', () => {
     const item = await Item.findById(itemId);
     expect(item?.status).toBe('booked');
     expect(item?.bookedBy?.toString()).toBe(gifterId);
+  });
+
+  // The Booked page adds the answer's entry to its gift history as is, rather
+  // than re-reading the list, so it must be the entry the list would hold.
+  it.each([
+    {
+      wishlist: 'a live wishlist',
+      setUp: async () => {
+        const wishlist = await Wishlist.create({
+          name: 'Birthday',
+          owners: [ownerId],
+          slug: 'birthday-a1b2c',
+        });
+        await Reservation.updateOne(
+          { _id: reservationId },
+          {
+            wishlist: wishlist._id,
+            itemImage: 'https://shop.example/mug.png',
+            itemPrice: { value: 1250, currency: 'usd' },
+          }
+        );
+        return {
+          wishlistId: wishlist._id.toString(),
+          wishlistSlug: 'birthday-a1b2c',
+          itemImage: 'https://shop.example/mug.png',
+          itemPrice: { value: 1250, currency: 'usd' },
+        };
+      },
+    },
+    {
+      // The reservation from beforeEach points at a wishlist with no row.
+      wishlist: 'a deleted wishlist',
+      setUp: async () => ({
+        wishlistId: '507f1f77bcf86cd799439011',
+        wishlistSlug: null,
+        itemImage: null,
+        itemPrice: null,
+      }),
+    },
+  ])(
+    'answers with the new entry as the gift history lists it, for $wishlist',
+    async ({ setUp }) => {
+      const expected = await setUp();
+      session.mockResolvedValue({ user: { id: gifterId } } as never);
+
+      const res = await call(GIFT, reservationId, 'POST');
+      expect(res.status).toBe(201);
+      const { data } = await res.json();
+
+      const entry = await GiftLog.findOne({ gifter: gifterId });
+      expect(data).toEqual({
+        _id: entry!._id.toString(),
+        itemName: 'Blue Mug',
+        recipientUsername: 'owner',
+        wishlistName: 'Birthday',
+        giftedAt: entry!.giftedAt.toISOString(),
+        ...expected,
+      });
+      const history = await (await LIST_GIFTS()).json();
+      expect(history.data).toEqual([data]);
+    }
+  );
+
+  // The answer's wishlist slug is read before the entry is written, so failing
+  // to read it is a gift that can be retried, not a 500 for a logged one.
+  it("keeps the reservation and logs nothing when the answer's slug can't be read", async () => {
+    session.mockResolvedValue({ user: { id: gifterId } } as never);
+    const find = vi
+      .spyOn(Wishlist, 'find')
+      .mockImplementationOnce(
+        () => ({ select: () => Promise.reject(new Error('db down')) }) as never
+      );
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      expect((await call(GIFT, reservationId, 'POST')).status).toBe(500);
+    } finally {
+      find.mockRestore();
+      errorLog.mockRestore();
+    }
+
+    expect(await GiftLog.countDocuments()).toBe(0);
+    expect((await Reservation.findById(reservationId))?.itemName).toBe('Blue Mug');
   });
 
   it("cannot gift someone else's reservation", async () => {
