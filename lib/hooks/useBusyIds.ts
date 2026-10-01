@@ -4,15 +4,16 @@ import { useCallback, useRef, useState } from 'react';
 
 /**
  * Tracks which cards in a list have an action in flight, so each card's buttons
- * stay disabled until its own request settles (the Invitations and Booked
- * pages).
+ * stay disabled until its own request settles.
  *
  * - `run(id, fn)` marks `id` busy, runs `fn`, and frees `id` once `fn` settles,
- *   whether it resolves or throws (the rejection still reaches the caller). A
- *   call for an id that's already in flight is ignored: `fn` doesn't run. The
- *   check is synchronous, so it holds even for a call that lands before the
- *   card re-renders as disabled, or that doesn't come from the card's buttons
- *   at all (a confirmation dialog's).
+ *   whether it resolves or throws. A rejection still reaches the caller, so a
+ *   caller that doesn't await `run` reports its failures inside `fn`. A call for
+ *   an id that's already in flight is ignored: `fn` doesn't run, and the call
+ *   resolves at once rather than waiting for the one in flight. The check is
+ *   synchronous, so it holds even for a call that lands before the card
+ *   re-renders as disabled, or that doesn't come from the card's buttons at all
+ *   (a confirmation dialog's).
  * - `busy(id)` says whether `id` is in flight, for rendering.
  *
  * Tracked per id, not as one id for the page: acting on another card doesn't
