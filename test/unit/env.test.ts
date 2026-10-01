@@ -7,7 +7,7 @@ import {
   TURNSTILE_ENV_VARS,
 } from '@/lib/env';
 
-// vitest.config.ts injects a full dummy SMTP config (EMAIL_TRANSPORT=smtp);
+// vitest.config.mts injects a full dummy SMTP config (EMAIL_TRANSPORT=smtp);
 // each test strips or overrides what it needs and `unstubAllEnvs` puts it back.
 function withoutSmtp() {
   for (const name of SMTP_ENV_VARS) vi.stubEnv(name, undefined);

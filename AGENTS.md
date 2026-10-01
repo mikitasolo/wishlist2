@@ -14,7 +14,7 @@ npm run dev          # local dev server — in Conductor: npm run dev -- --port 
 npm run lint         # eslint — must pass before done
 npm run format:check # prettier --check — must pass before done (npm run format fixes it)
 npx tsc --noEmit     # typecheck — must pass before done
-npm run test:cov     # full Vitest suite (unit + component + API) + the coverage floor in vitest.config.ts — must pass before done
+npm run test:cov     # full Vitest suite (unit + component + API) + the coverage floor in vitest.config.mts — must pass before done
 npm run build        # production build — must pass before done
 npm run check:trace  # after a build: sharp's native libvips ships with the sign-in page and every API route that ships sharp (CI runs it)
 npm run smoke:deploy -- <url>  # read-only GET smoke of a deployed host (auth + upload routes start); safe on staging/previews
@@ -104,7 +104,7 @@ Chase meaningful coverage of logic/authorization, not a headline line-coverage n
   - Mock `@/lib/email` / `@/lib/utils/currencyRates` when a route would otherwise send mail or hit the rates API.
   - `connectTestDB` / `disconnectTestDB` / `clearTestDB` from `test/db.ts` in `beforeAll` / `afterAll` / `beforeEach`.
 - **Mock lifecycle (Vitest 5).** Every mock's call history is cleared before each test (`clearMocks` is on by default and runs before `beforeEach`), but its implementation isn't: `vi.restoreAllMocks()` only puts back what `vi.spyOn` replaced, and leaves a `vi.fn()`'s `mockResolvedValue` / `mockImplementation` in place for the next test (Vitest 3 used to reset those too). So a shared `vi.fn()` that tests configure (the mocked `auth`, `sendEmail`, `fetch`) gets a `mockReset()` in `beforeEach`, as the API tests do with `session.mockReset()`. `vi.mock` / `vi.hoisted` must sit at the top level of the file (nested, they throw), and an un-awaited `expect(…).resolves` / `.rejects` fails the test.
-- Vitest config injects dummy env vars (see `vitest.config.ts`) so import-time env reads don't throw. Vitest only picks up `test/**/*.test.{ts,tsx}`; Playwright specs live in `e2e/**`.
+- Vitest config injects dummy env vars (see `vitest.config.mts`) so import-time env reads don't throw. Vitest only picks up `test/**/*.test.{ts,tsx}`; Playwright specs live in `e2e/**`.
 - `e2e/**` — Playwright (`npm run test:e2e`). `e2e/global-setup.ts` starts an ephemeral MongoDB, seeds a user who owns the `e2e-birthday` list and is a member of another user's `e2e-friend` list (so specs can take either side), plus a database session (writing a `authjs.session-token` storageState so the `authed` project is logged in without magic-link), and unused magic-link tokens (`e2e/magicLinks.ts`: three for emails with no account yet, one for the friend, plus a session for the friend) so a spec can sign up or sign in through Auth.js's real callback without any email (each link works once), then builds and starts the app; `global-teardown` stops both. Specs are `*.public.spec.ts` (signed-out) or `*.authed.spec.ts` (signed-in). Keep E2E to a few resilient smoke tests per flow — unit/component/API tests carry the detailed coverage.
 
 ## Domain invariants — do not regress
