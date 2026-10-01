@@ -5,6 +5,7 @@ import User from '@/models/User';
 import { adapter } from './authAdapter';
 import { getEnvVars } from './env';
 import { generateUniqueUsername } from './utils/username';
+import { endPreviousSession } from './utils/previousSession';
 import { isVerifiedSignIn, sendVerificationRequest } from './signInEmail';
 
 // Get validated environment variables
@@ -84,6 +85,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         }
       }
       return session;
+    },
+  },
+  events: {
+    // A sign-up ends the session the browser was signed in with as someone
+    // else, as Auth.js already does when signing in to an existing account.
+    // Here rather than in `createUser`: this runs once the new account's own
+    // session exists, so a sign-up that fails can't sign the browser out.
+    async signIn({ user, isNewUser }) {
+      if (isNewUser && user.id) await endPreviousSession(adapter, user.id);
     },
   },
   pages: {

@@ -10,7 +10,7 @@ import User from '../models/User';
 import Wishlist from '../models/Wishlist';
 import Item from '../models/Item';
 import WishlistMember from '../models/WishlistMember';
-import { E2E_AUTH_SECRET, MAGIC_LINKS } from './magicLinks';
+import { E2E_AUTH_SECRET, FRIEND_SESSION_TOKEN, MAGIC_LINKS } from './magicLinks';
 
 const BASE_URL = `http://localhost:${E2E_PORT}`;
 
@@ -83,11 +83,11 @@ export default async function globalSetup(_config: FullConfig) {
 
   const sessionToken = randomUUID();
   const expires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-  await mongoose.connection.collection('sessions').insertOne({
-    sessionToken,
-    userId: user._id,
-    expires,
-  });
+  await mongoose.connection.collection('sessions').insertMany([
+    { sessionToken, userId: user._id, expires },
+    // For the spec that signs up while signed in as someone else (magicLinks.ts).
+    { sessionToken: FRIEND_SESSION_TOKEN, userId: friend._id, expires },
+  ]);
 
   // Unused magic links (see magicLinks.ts), stored the way Auth.js stores the
   // token it emails, so the sign-up spec can follow one without any email.

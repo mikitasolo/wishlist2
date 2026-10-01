@@ -5,6 +5,7 @@ import { SMTP_ENV_VARS, type EmailTransport } from '@/lib/env';
 interface CapturedConfig {
   providers: Array<{ id: string; options: Record<string, unknown> }>;
   pages: Record<string, string>;
+  events: { signIn: (args: { user: { id?: string }; isNewUser?: boolean }) => Promise<void> };
   callbacks: {
     signIn: (args: {
       user: { email?: string | null };
@@ -31,6 +32,8 @@ vi.mock('next-auth', () => ({ default: nextAuth }));
 vi.mock('@/lib/authAdapter', () => ({ adapter: {} }));
 vi.mock('@/lib/mongodb', () => ({ default: vi.fn() }));
 vi.mock('@/models/User', () => ({ default: users }));
+const { endPreviousSession } = vi.hoisted(() => ({ endPreviousSession: vi.fn() }));
+vi.mock('@/lib/utils/previousSession', () => ({ endPreviousSession }));
 
 async function magicLinkProvider(transport: EmailTransport) {
   vi.stubEnv('EMAIL_TRANSPORT', transport);
@@ -144,6 +147,25 @@ describe('lib/auth: sign-up', () => {
 
   // Auth.js only redirects to pages.newUser when its adapter created the account
   // during that sign-in, which is why the signIn callback above creates none.
+  // Auth.js's new-user branch doesn't end the session the browser carried, the
+  // way its existing-user branch does; this event does it instead, once the new
+  // account's session exists (covered in test/api/previousSession.test.ts).
+  it('ends the browser’s previous session once a sign-in has created an account', async () => {
+    endPreviousSession.mockReset();
+    const { events } = await config();
+    const { adapter } = await import('@/lib/authAdapter');
+
+    await events.signIn({ user: { id: '64b7f0c2a1b2c3d4e5f60718' }, isNewUser: true });
+    expect(endPreviousSession).toHaveBeenCalledExactlyOnceWith(adapter, '64b7f0c2a1b2c3d4e5f60718');
+
+    // Signing in to an existing account: Auth.js ends the old session itself.
+    endPreviousSession.mockClear();
+    await events.signIn({ user: { id: '64b7f0c2a1b2c3d4e5f60718' }, isNewUser: false });
+    await events.signIn({ user: { id: '64b7f0c2a1b2c3d4e5f60718' } });
+    await events.signIn({ user: {}, isNewUser: true });
+    expect(endPreviousSession).not.toHaveBeenCalled();
+  });
+
   it('sends a new account’s first sign-in to the welcome page', async () => {
     expect((await config()).pages.newUser).toBe('/welcome');
   });

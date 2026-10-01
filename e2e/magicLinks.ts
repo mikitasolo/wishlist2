@@ -13,6 +13,7 @@ export const MAGIC_LINKS = {
   /** Emails with no account yet: following one is a sign-up. */
   newcomerKeeps: { email: 'e2e-newcomer-keeps@example.com', token: 'e2e-signup-keeps' },
   newcomerPicks: { email: 'e2e-newcomer-picks@example.com', token: 'e2e-signup-picks' },
+  newcomerSwitches: { email: 'e2e-newcomer-switches@example.com', token: 'e2e-signup-switches' },
   /** The seeded friend account, so following it is a returning sign-in. */
   returning: { email: 'e2e-friend@example.com', token: 'e2e-signin-returning' },
 } as const;
@@ -24,3 +25,9 @@ export function magicLinkPath(
 ): string {
   return `/api/auth/callback/nodemailer?${new URLSearchParams({ callbackUrl, token, email })}`;
 }
+
+/**
+ * A database session global-setup gives the seeded friend (`e2efriend`), for a
+ * browser that is already signed in as them when it opens a sign-up link.
+ */
+export const FRIEND_SESSION_TOKEN = 'e2e-friend-session';
