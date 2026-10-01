@@ -83,22 +83,36 @@ describe('createUserAccount', () => {
     expect(await User.countDocuments({ email: EMAIL })).toBe(1);
   });
 
+  /** The error the unique username index gives an insert that lost a race for `username`. */
+  const usernameTaken = (username: string) =>
+    Object.assign(
+      new Error(
+        `E11000 duplicate key error collection: test.users index: username_1 dup key: { username: "${username}" }`
+      ),
+      { code: 11000, keyPattern: { username: 1 }, keyValue: { username } }
+    );
+
+  // Another sign-up can take the generated username between its check and this insert.
+  it('draws another username when the generated one was taken in the meantime', async () => {
+    const insert = vi.spyOn(User, 'create').mockRejectedValueOnce(usernameTaken('user_clash000'));
+
+    const created = await createUserAccount(signUp());
+
+    expect(insert).toHaveBeenCalledTimes(2);
+    const row = await User.findById(created.id).lean();
+    expect(row!.email).toBe(EMAIL);
+    expect(row!.username).toMatch(/^user_[a-z0-9]{8}$/);
+    insert.mockRestore();
+  });
+
   // Auth.js logs every adapter error whole (cause and all), and a MongoDB
   // duplicate-key error quotes the clashing value.
-  it('fails any other duplicate without the value it clashed on', async () => {
-    const insert = vi
-      .spyOn(User, 'create')
-      .mockRejectedValueOnce(
-        Object.assign(
-          new Error(
-            `E11000 duplicate key error collection: test.users index: username_1 dup key: { username: "user_clash000" }`
-          ),
-          { code: 11000, keyPattern: { username: 1 }, keyValue: { username: 'user_clash000' } }
-        )
-      );
+  it('gives up on a username clash that keeps happening, without the value it clashed on', async () => {
+    const insert = vi.spyOn(User, 'create').mockRejectedValue(usernameTaken('user_clash000'));
 
     const failure = await createUserAccount(signUp()).catch((e: unknown) => e);
 
+    expect(insert).toHaveBeenCalledTimes(3);
     expect(failure).toBeInstanceOf(Error);
     const printed = format(failure);
     expect(printed).toContain('duplicate username');

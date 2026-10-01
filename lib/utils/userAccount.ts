@@ -1,6 +1,7 @@
 import type { AdapterUser } from 'next-auth/adapters';
 import connectDB from '@/lib/mongodb';
 import User, { type IUser } from '@/models/User';
+import { duplicateKeyField } from './mongoErrors';
 import { generateUniqueUsername } from './username';
 
 function toAdapterUser(user: Pick<IUser, '_id' | 'email' | 'emailVerified' | 'image'>) {
@@ -12,12 +13,11 @@ function toAdapterUser(user: Pick<IUser, '_id' | 'email' | 'emailVerified' | 'im
   } satisfies AdapterUser;
 }
 
-/** The index a MongoDB duplicate-key error tripped (`email`, `username`), or null for any other error. */
-function duplicateKeyField(error: unknown): string | null {
-  const e = error as { code?: unknown; keyPattern?: Record<string, unknown> } | null;
-  if (e?.code !== 11000) return null;
-  return Object.keys(e.keyPattern ?? {})[0] ?? 'key';
-}
+/**
+ * How many generated usernames to try. `generateUniqueUsername` checks each is
+ * free, but another sign-up could take the same one before this insert lands.
+ */
+const MAX_USERNAME_ATTEMPTS = 3;
 
 /**
  * The adapter's `createUser` (`lib/authAdapter.ts`), and so the one place an
@@ -33,24 +33,32 @@ function duplicateKeyField(error: unknown): string | null {
  *
  * Two first sign-ins for one email (two links clicked at once) race here, and
  * the loser's insert hits the unique email index: it resolves to the winner's
- * row instead of failing the sign-in. No error leaves with the database's own
+ * row instead of failing the sign-in. A generated username someone else took
+ * in the meantime is drawn again. No error leaves with the database's own
  * duplicate-key message, which quotes the clashing value: Auth.js logs every
  * adapter error whole, and that value is an email.
  */
 export async function createUserAccount(data: AdapterUser): Promise<AdapterUser> {
   await connectDB();
   const email = data.email.toLowerCase();
-  const username = await generateUniqueUsername();
-  try {
-    const user = await User.create({ email, emailVerified: data.emailVerified ?? null, username });
-    return toAdapterUser(user);
-  } catch (error) {
-    const field = duplicateKeyField(error);
-    if (field === null) throw error;
-    if (field === 'email') {
-      const existing = await User.findOne({ email });
-      if (existing) return toAdapterUser(existing);
+  for (let attempt = 1; ; attempt++) {
+    const username = await generateUniqueUsername();
+    try {
+      const user = await User.create({
+        email,
+        emailVerified: data.emailVerified ?? null,
+        username,
+      });
+      return toAdapterUser(user);
+    } catch (error) {
+      const field = duplicateKeyField(error);
+      if (field === null) throw error;
+      if (field === 'username' && attempt < MAX_USERNAME_ATTEMPTS) continue;
+      if (field === 'email') {
+        const existing = await User.findOne({ email });
+        if (existing) return toAdapterUser(existing);
+      }
+      throw new Error(`Could not create the account (duplicate ${field})`);
     }
-    throw new Error(`Could not create the account (duplicate ${field})`);
   }
 }

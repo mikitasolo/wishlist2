@@ -5,8 +5,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const { users } = vi.hoisted(() => ({ users: { exists: vi.fn() } }));
 vi.mock('@/models/User', () => ({ default: users }));
 
-import { USERNAME_REGEX, generateUniqueUsername, isReservedUsername } from '@/lib/utils/username';
-import { usernameSchema } from '@/lib/validations';
+import { generateUniqueUsername, isReservedUsername } from '@/lib/utils/username';
+import { USERNAME_REGEX, usernameSchema } from '@/lib/validations';
 
 describe('USERNAME_REGEX', () => {
   it('accepts 3–20 chars starting with a letter', () => {

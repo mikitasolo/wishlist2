@@ -144,6 +144,24 @@ describe('Welcome page', () => {
     expect(showToast).toHaveBeenCalledWith('Username saved', 'success');
   });
 
+  it('keeps naming the replaced username while it moves on', async () => {
+    // The refreshed session carries the new name before the next page loads.
+    update.mockImplementation(async () => {
+      auth.username = 'jane_d';
+      return null;
+    });
+    const { rerender } = render(<WelcomePage />);
+    await chooseAvailable('jane_d');
+
+    fireEvent.click(save());
+    await waitFor(() => expect(replace).toHaveBeenCalledWith('/invites'));
+    rerender(<WelcomePage />); // what the session change does
+
+    expect(screen.getByText('@user_4f9k2x7q')).toBeInTheDocument();
+    expect(keep()).toBeDisabled();
+    expect(save()).toBeDisabled();
+  });
+
   it('can’t save a name that is taken', async () => {
     available = false;
     render(<WelcomePage />);

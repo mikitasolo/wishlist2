@@ -124,6 +124,24 @@ describe('UsernameField + useUsernameAvailability', () => {
     expect(screen.getByText('Taken')).toBeInTheDocument();
   });
 
+  // regression: the settings page read any answer without `available: true` as
+  // taken, so a refused check (the usernameCheck rate limit's 429, a 401 or a
+  // 500, none of which carry a verdict) showed a free name as Taken.
+  it('regression: a refused check falls back to idle instead of reading as taken', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 429,
+      json: async () => ({ success: false, error: 'Too many requests. Please slow down.' }),
+    });
+    render(<Harness current="user_abc12345" />);
+    type('jane');
+    await pause();
+    await act(async () => {});
+
+    expect(availability()).toBe('idle');
+    expect(screen.queryByText('Taken')).toBeNull();
+  });
+
   it('falls back to idle when the check fails', async () => {
     fetchMock.mockRejectedValueOnce(new TypeError('Failed to fetch'));
     render(<Harness current="user_abc12345" />);

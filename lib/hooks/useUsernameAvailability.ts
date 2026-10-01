@@ -15,7 +15,8 @@ export const USERNAME_CHECK_DEBOUNCE_MS = 400;
  * check. A malformed one is `invalid` straight away (the same `USERNAME_REGEX`
  * the API validates with); anything else is checked against
  * `/api/users/check-username` once typing pauses, and a reserved name counts
- * as `taken`. A failed check falls back to `idle`, and an answer for a value
+ * as `taken`. A check that fails or is refused (a non-2xx answer, e.g. the
+ * rate limit) falls back to `idle`, and an answer for a value
  * that has since been edited is dropped, so it can't mark the newer one
  * available. The API re-checks on save either way.
  */
@@ -42,6 +43,13 @@ export function useUsernameAvailability(
         const res = await fetch(`/api/users/check-username?username=${encodeURIComponent(u)}`, {
           cache: 'no-store',
         });
+        if (stale) return;
+        // A refused check (rate-limited, signed out, a server error) has no
+        // verdict in it, so it mustn't read as "taken".
+        if (!res.ok) {
+          setAvailability('idle');
+          return;
+        }
         const result = await res.json();
         if (stale) return;
         setAvailability(

@@ -1,9 +1,5 @@
 import { randomInt } from 'node:crypto';
 import User from '@/models/User';
-import { USERNAME_REGEX } from '@/lib/validations';
-
-/** Usernames: 3–20 chars, start with a letter, then letters/digits/underscore. */
-export { USERNAME_REGEX };
 
 const RESERVED = new Set([
   'admin',

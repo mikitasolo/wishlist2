@@ -43,7 +43,11 @@ function Welcome() {
   const current = session?.user?.username ?? '';
   // Null until edited, so the field starts on the current name once the session loads.
   const [draft, setDraft] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
+  // While saving, the name being replaced: the session takes the new one before
+  // the next page loads, and the copy shouldn't change under the user meanwhile.
+  const [replacing, setReplacing] = useState<string | null>(null);
+  const saving = replacing !== null;
+  const shownCurrent = replacing ?? current;
   const username = draft ?? current;
   const availability = useUsernameAvailability(
     username,
@@ -64,7 +68,7 @@ function Welcome() {
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     if (!canSave) return;
-    setSaving(true);
+    setReplacing(current);
     try {
       const res = await fetch('/api/users/me', {
         method: 'PATCH',
@@ -86,7 +90,7 @@ function Welcome() {
     } catch {
       showToast(SAVE_FAILED, 'error');
     }
-    setSaving(false);
+    setReplacing(null);
   }
 
   if (status !== 'authenticated') return <Loading />;
@@ -108,10 +112,10 @@ function Welcome() {
         >
           <h2 className="mb-1 text-lg font-semibold text-foreground">Pick a username</h2>
           <p className="mb-5 text-sm text-muted-foreground">
-            {current && (
+            {shownCurrent && (
               <>
-                We&apos;ve given you <strong className="text-foreground">@{current}</strong> for
-                now.{' '}
+                We&apos;ve given you <strong className="text-foreground">@{shownCurrent}</strong>{' '}
+                for now.{' '}
               </>
             )}
             Your username is how other people find and see you. Your email stays private. You can
@@ -128,7 +132,7 @@ function Welcome() {
 
           <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
             <Button type="button" variant="secondary" onClick={continueOn} disabled={saving}>
-              {current ? `Keep @${current}` : 'Skip for now'}
+              {shownCurrent ? `Keep @${shownCurrent}` : 'Skip for now'}
             </Button>
             <Button type="submit" disabled={!canSave}>
               {saving ? 'Saving…' : 'Save username'}
