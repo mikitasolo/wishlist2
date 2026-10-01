@@ -188,6 +188,41 @@ describe('PATCH /api/items/[id] — a book or unbook racing another change', () 
     }
   );
 
+  // The write requires only what the decision rests on, so a change to anything
+  // else, like an owner's content edit, lands alongside it instead of refusing it.
+  it("an owner's content edit landing during a booking doesn't stop it, and neither write is lost", async () => {
+    const race = whileItemWriteHeld(() => patchAs(owner, { name: 'Green Mug', mostWanted: true }));
+    const booking = await patchAs(alice, { status: 'booked' });
+
+    expect(race.held()).toBe(true);
+    expect(race.outcome()?.status).toBe(200);
+    expect(booking.status).toBe(200);
+    const item = await Item.findById(itemId);
+    expect([item?.name, item?.mostWanted, item?.status]).toEqual(['Green Mug', true, 'booked']);
+    expect(item?.bookedBy?.toString()).toBe(alice);
+    // The reservation snapshots the item as the booking left it.
+    const reservation = await Reservation.findOne({ gifter: alice }).lean();
+    expect(reservation?.itemName).toBe('Green Mug');
+    expect(isSnapshot(reservation?.itemImage)).toBe(true);
+  });
+
+  it("an owner's content edit landing during an unbook doesn't stop it, and neither write is lost", async () => {
+    expect((await patchAs(alice, { status: 'booked' })).status).toBe(200);
+    const snapshot = (await Reservation.findOne({ gifter: alice }).lean())?.itemImage;
+
+    const race = whileItemWriteHeld(() => patchAs(owner, { name: 'Green Mug', mostWanted: true }));
+    const unbook = await patchAs(alice, { status: 'available' });
+
+    expect(race.held()).toBe(true);
+    expect(race.outcome()?.status).toBe(200);
+    expect(unbook.status).toBe(200);
+    const item = await Item.findById(itemId);
+    expect([item?.name, item?.mostWanted, item?.status]).toEqual(['Green Mug', true, 'available']);
+    expect(item?.bookedBy).toBeNull();
+    expect(await Reservation.countDocuments()).toBe(0);
+    expect(del.mock.calls).toEqual([[snapshot]]);
+  });
+
   it('a booking that lands after the item was deleted gets a 404 and reserves nothing', async () => {
     const race = whileItemWriteHeld(async () => {
       await Item.deleteOne({ _id: itemId });
