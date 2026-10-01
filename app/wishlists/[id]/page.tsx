@@ -767,10 +767,18 @@ export default function WishlistDetail() {
     [wishlistId, showToast, refreshInvites]
   );
 
+  // Owners whose demotion is still in flight. Tracked per row, so demoting one
+  // owner doesn't lock or unlock another's buttons. The ref is what turns a
+  // second click away: it's set before the disabled state has rendered.
+  const demotingRef = useRef<Set<string>>(new Set());
+  const [demotingIds, setDemotingIds] = useState<ReadonlySet<string>>(() => new Set());
+
   /** Step an owner down to a plain member. */
   const demoteOwner = useCallback(
     async (userId: string) => {
-      if (!wishlistId) return;
+      if (!wishlistId || demotingRef.current.has(userId)) return;
+      demotingRef.current.add(userId);
+      setDemotingIds(new Set(demotingRef.current));
       try {
         const res = await fetch(`/api/wishlists/${wishlistId}/owners/${userId}`, {
           method: 'PATCH',
@@ -786,6 +794,12 @@ export default function WishlistDetail() {
       } catch (error) {
         console.error('Error demoting owner:', error);
         showToast('Failed to update owner', 'error');
+      } finally {
+        // After a success the refresh above has usually moved the row to
+        // Members by now. After a failure this gives the buttons back, so the
+        // owner can try again.
+        demotingRef.current.delete(userId);
+        setDemotingIds(new Set(demotingRef.current));
       }
     },
     [wishlistId, showToast, refreshMembers, refreshInvites]
@@ -1372,7 +1386,8 @@ export default function WishlistDetail() {
                             <>
                               <button
                                 onClick={() => demoteOwner(memberUserId)}
-                                className="cursor-pointer whitespace-nowrap rounded-xl px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted sm:px-4"
+                                disabled={demotingIds.has(memberUserId)}
+                                className="cursor-pointer whitespace-nowrap rounded-xl px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 sm:px-4"
                               >
                                 Make member
                               </button>
@@ -1384,7 +1399,8 @@ export default function WishlistDetail() {
                                     true
                                   )
                                 }
-                                className="cursor-pointer whitespace-nowrap rounded-xl px-3 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10 sm:px-4"
+                                disabled={demotingIds.has(memberUserId)}
+                                className="cursor-pointer whitespace-nowrap rounded-xl px-3 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-red-400 dark:hover:bg-red-500/10 sm:px-4"
                               >
                                 Remove
                               </button>
