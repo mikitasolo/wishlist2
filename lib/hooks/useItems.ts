@@ -1,10 +1,17 @@
 /**
  * Reusable API hooks for wishlist items
+ *
+ * The update, create and delete hooks give up on a request that hasn't
+ * answered within `ITEM_REQUEST_TIMEOUT_MS` (see `withRequestTimeout`). A
+ * timeout is reported like any other failure: `onError` gets the "took too
+ * long" message and the hook resolves `null` / `false`. A retry then sends a
+ * new request, because the abandoned one is no longer shared.
  */
 
 import { useCallback } from 'react';
 import { ApiItem, ApiResponse } from '@/types/api';
 import { deduplicateRequest, createRequestKey } from '@/lib/utils/requestDeduplication';
+import { withRequestTimeout } from '@/lib/utils/requestTimeout';
 
 /**
  * Hook for updating an item
@@ -18,26 +25,29 @@ export function useUpdateItem(
       const requestKey = createRequestKey(`/api/items/${id}`, 'PATCH', updates);
 
       try {
-        const data = await deduplicateRequest(requestKey, async () => {
-          const response = await fetch(`/api/items/${id}`, {
-            method: 'PATCH',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(updates),
-          });
+        const data = await deduplicateRequest(requestKey, () =>
+          withRequestTimeout(async (signal) => {
+            const response = await fetch(`/api/items/${id}`, {
+              method: 'PATCH',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(updates),
+              signal,
+            });
 
-          const result: ApiResponse<ApiItem> = await response.json();
+            const result: ApiResponse<ApiItem> = await response.json();
 
-          if (!result.success) {
-            if (response.status === 403 && result.error?.includes('archived')) {
-              throw new Error(result.error);
+            if (!result.success) {
+              if (response.status === 403 && result.error?.includes('archived')) {
+                throw new Error(result.error);
+              }
+              throw new Error(result.error || 'Failed to update item');
             }
-            throw new Error(result.error || 'Failed to update item');
-          }
 
-          return result.data!;
-        });
+            return result.data!;
+          })
+        );
 
         onSuccess?.(data);
         return data;
@@ -75,23 +85,26 @@ export function useCreateItem(
       const requestKey = createRequestKey(`/api/wishlists/${wishlistId}/items`, 'POST', newItem);
 
       try {
-        const data = await deduplicateRequest(requestKey, async () => {
-          const response = await fetch(`/api/wishlists/${wishlistId}/items`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(newItem),
-          });
+        const data = await deduplicateRequest(requestKey, () =>
+          withRequestTimeout(async (signal) => {
+            const response = await fetch(`/api/wishlists/${wishlistId}/items`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(newItem),
+              signal,
+            });
 
-          const result: ApiResponse<ApiItem> = await response.json();
+            const result: ApiResponse<ApiItem> = await response.json();
 
-          if (!result.success) {
-            throw new Error(result.error || 'Failed to create item');
-          }
+            if (!result.success) {
+              throw new Error(result.error || 'Failed to create item');
+            }
 
-          return result.data!;
-        });
+            return result.data!;
+          })
+        );
 
         onSuccess?.(data);
         return data;
@@ -115,17 +128,20 @@ export function useDeleteItem(onSuccess?: () => void, onError?: (error: string) 
       const requestKey = createRequestKey(`/api/items/${id}`, 'DELETE');
 
       try {
-        await deduplicateRequest(requestKey, async () => {
-          const response = await fetch(`/api/items/${id}`, {
-            method: 'DELETE',
-          });
+        await deduplicateRequest(requestKey, () =>
+          withRequestTimeout(async (signal) => {
+            const response = await fetch(`/api/items/${id}`, {
+              method: 'DELETE',
+              signal,
+            });
 
-          const result: ApiResponse<void> = await response.json();
+            const result: ApiResponse<void> = await response.json();
 
-          if (!result.success) {
-            throw new Error(result.error || 'Failed to delete item');
-          }
-        });
+            if (!result.success) {
+              throw new Error(result.error || 'Failed to delete item');
+            }
+          })
+        );
 
         onSuccess?.();
         return true;
