@@ -25,6 +25,16 @@ export const COALESCE_WINDOW_MS = 24 * 60 * 60 * 1000;
 export const MAX_ACTOR_USERNAMES = 3;
 
 /**
+ * Types that never name their actor, whatever a caller passes: owners must never
+ * learn who proposed an item, and a role change never says which owner made it.
+ */
+const ANONYMOUS_TYPES: ReadonlySet<NotificationType> = new Set([
+  'proposal',
+  'role_changed',
+  'removed_from_wishlist',
+]);
+
+/**
  * Create a notification. Best-effort: a notification is a side effect, so it
  * must never fail (or slow to a crawl) the action that triggered it — any error
  * is logged and swallowed. Assumes the caller has already connected to the DB.
@@ -35,8 +45,9 @@ export const MAX_ACTOR_USERNAMES = 3;
  *    last 24h (follow → unfollow → follow notifies once).
  *  - `proposal`: folds into the recipient's unread proposal row for the same
  *    wishlist from the last 24h. Still anonymous: it never carries an actor.
- *  - Everything else (`wishlist_invite`, `invite_accepted`, `proposal_approved`)
- *    is one row per event; an invite in particular is actionable on its own.
+ *  - Everything else (`wishlist_invite`, `invite_accepted`, `proposal_approved`,
+ *    `role_changed`, `removed_from_wishlist`) is one row per event; an invite in
+ *    particular is actionable on its own.
  */
 export async function createNotification(args: CreateNotificationArgs): Promise<void> {
   try {
@@ -48,8 +59,7 @@ export async function createNotification(args: CreateNotificationArgs): Promise<
       await Notification.create({
         user: args.user,
         type: args.type,
-        // Owners must never learn who proposed an item, whatever a caller passes.
-        actorUsername: args.type === 'proposal' ? null : (args.actorUsername ?? null),
+        actorUsername: ANONYMOUS_TYPES.has(args.type) ? null : (args.actorUsername ?? null),
         wishlist: args.wishlist ?? null,
         wishlistName: args.wishlistName ?? null,
         wishlistSlug: args.wishlistSlug ?? null,

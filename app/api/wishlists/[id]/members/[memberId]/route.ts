@@ -8,6 +8,7 @@ import { isWishlistOwner } from '@/lib/utils/wishlistOwners';
 import { releaseUserBookings } from '@/lib/utils/wishlistOwnership';
 import { cancelPendingInvites } from '@/lib/utils/wishlistInvites';
 import { isObjectIdParam } from '@/lib/utils/objectId';
+import { createNotification } from '@/lib/notifications';
 
 const notOwnerError = () =>
   NextResponse.json(
@@ -109,6 +110,15 @@ export async function DELETE(
     // And once more: a promotion issued between the cancel above and the delete
     // would otherwise leave them an owner invite on a list they're no longer on.
     await cancelPendingInvites(id, membershipUserId);
+
+    // Only for a kick that removed them. Just to them, without naming who did it,
+    // and with no link: they may no longer be able to see the list.
+    await createNotification({
+      user: membershipUserId,
+      type: 'removed_from_wishlist',
+      wishlist: id,
+      wishlistName: current.wishlist.name,
+    });
 
     return NextResponse.json({ success: true, data: {} }, { status: 200 });
   } catch (error) {

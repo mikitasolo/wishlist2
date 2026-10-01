@@ -19,7 +19,7 @@ A modern wishlist app: create wishlists, share them, follow friends, and quietly
 - **Profiles** with avatar, bio, follower/following counts, and privacy controls.
 - **Magic-link sign-in** (no passwords), image uploads, responsive Apple-inspired UI, light/dark themes.
 - **Rich link previews** — dynamic Open Graph / Twitter images for shared wishlist and profile links (privacy-aware: private/archived lists and friends-only bios never leak into a preview).
-- **Notification center** — an in-app feed (with a header bell + unread badge) for follows, wishlist invitations, accepted invites, and item-proposal activity. Proposal notifications are anonymous to the owner.
+- **Notification center** — an in-app feed (with a header bell + unread badge) for follows, wishlist invitations, accepted invites, item-proposal activity, and being demoted from owner to member of a list or removed from one. Proposal notifications are anonymous to the owner, and demotions and removals never say which owner made them.
 
 ## 🛠️ Tech stack
 

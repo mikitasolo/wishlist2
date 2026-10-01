@@ -68,6 +68,41 @@ describe('notificationText', () => {
   });
 });
 
+describe('notificationText — role changes', () => {
+  it('tells a demoted owner they are now a member', () => {
+    expect(notificationText(make({ type: 'role_changed', wishlistName: 'Family list' }))).toBe(
+      'You’re now a member of “Family list”'
+    );
+  });
+
+  it('tells a removed owner or kicked member they were removed', () => {
+    expect(
+      notificationText(make({ type: 'removed_from_wishlist', wishlistName: 'Family list' }))
+    ).toBe('You were removed from “Family list”');
+  });
+
+  it('falls back when the list name is missing, without quoting the fallback', () => {
+    expect(notificationText(make({ type: 'role_changed' }))).toBe(
+      'You’re now a member of a wishlist'
+    );
+    expect(notificationText(make({ type: 'removed_from_wishlist' }))).toBe(
+      'You were removed from a wishlist'
+    );
+  });
+
+  // Neutral on purpose: neither names the owner who made the change, whatever
+  // actor a row carries, and neither mentions bookings.
+  it('never names who made the change', () => {
+    for (const type of ['role_changed', 'removed_from_wishlist'] as const) {
+      const text = notificationText(
+        make({ type, actorUsername: 'should-not-appear', wishlistName: 'Family list' })
+      );
+      expect(text).not.toContain('should-not-appear');
+      expect(text).not.toMatch(/book|item/i);
+    }
+  });
+});
+
 describe('notificationText — coalesced rows', () => {
   // A coalesced follow row keeps the latest 3 actors, oldest first; the last
   // one is also `actorUsername`.
@@ -197,6 +232,25 @@ describe('notificationLink', () => {
     }
   });
 
+  it('links a demotion to the list, which they can still open as a member', () => {
+    expect(
+      notificationLink(make({ type: 'role_changed', wishlistSlug: 'family', wishlistId: 'w1' }))
+    ).toBe('/wishlists/family');
+    expect(notificationLink(make({ type: 'role_changed', wishlistId: 'w1' }))).toBe(
+      '/wishlists/w1'
+    );
+    expect(notificationLink(make({ type: 'role_changed' }))).toBe('/notifications');
+  });
+
+  it('never links a removal anywhere, since the list may be hidden from them now', () => {
+    expect(
+      notificationLink(
+        make({ type: 'removed_from_wishlist', wishlistSlug: 'family', wishlistId: 'w1' })
+      )
+    ).toBeNull();
+    expect(notificationLink(make({ type: 'removed_from_wishlist' }))).toBeNull();
+  });
+
   it('degrades to the notifications page when a link target is missing', () => {
     expect(notificationLink(make({ type: 'follow', actorUsername: null }))).toBe('/notifications');
     expect(notificationLink(make({ type: 'proposal' }))).toBe('/notifications');
@@ -208,5 +262,7 @@ describe('notificationIcon', () => {
     expect(notificationIcon(make({ type: 'follow' }))).toBe('user');
     expect(notificationIcon(make({ type: 'wishlist_invite' }))).toBe('inbox');
     expect(notificationIcon(make({ type: 'proposal' }))).toBe('sparkles');
+    expect(notificationIcon(make({ type: 'role_changed' }))).toBe('users');
+    expect(notificationIcon(make({ type: 'removed_from_wishlist' }))).toBe('logout');
   });
 });
