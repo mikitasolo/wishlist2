@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { enforce, userKey } from '@/lib/rateLimit';
 import connectDB from '@/lib/mongodb';
-import mongoose from 'mongoose';
+import mongoose, { type FilterQuery } from 'mongoose';
 import Item, { IItem } from '@/models/Item';
 import User from '@/models/User';
 import Wishlist from '@/models/Wishlist';
@@ -116,6 +116,11 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     // creates their durable Reservation; unbooking removes it. Gifting is handled
     // separately (on the Reservation, not the item) so it survives item changes.
     let reservationAction: 'create' | 'delete' | null = null;
+
+    // A member's book or unbook: what it requires of the item when its write
+    // lands (see the write below), and the answer when the item no longer is
+    // that way. Null for every other change.
+    let bookingGuard: { filter: FilterQuery<IItem>; conflict: string } | null = null;
 
     let updateData: Partial<
       Pick<
@@ -247,6 +252,10 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
           updateData.status = 'booked';
           updateData.bookedBy = new mongoose.Types.ObjectId(session.user.id);
           reservationAction = 'create';
+          bookingGuard = {
+            filter: { status: 'available' },
+            conflict: 'This item is no longer available to book',
+          };
         }
         // Allow unbooking only items booked by the current user
         else if (validatedData.status === 'available' && currentItem.status === 'booked') {
@@ -259,6 +268,10 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
           updateData.status = 'available';
           updateData.bookedBy = null;
           reservationAction = 'delete';
+          bookingGuard = {
+            filter: { status: 'booked', bookedBy: session.user.id },
+            conflict: 'This item is no longer booked by you',
+          };
         }
         // Don't allow other status changes
         else {
@@ -288,19 +301,31 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       return NextResponse.json({ success: false, error: FOREIGN_IMAGE_ERROR }, { status: 400 });
     }
 
-    const item = await Item.findByIdAndUpdate(
-      id,
+    // A book or unbook was decided on the item as read above, so it's written
+    // only if the item is still that way: still available to book, or still the
+    // caller's booking to unbook. Otherwise another member's booking, or an
+    // owner's status change, landing in between would be overwritten by this
+    // write, and the Reservation below would no longer match the item.
+    const item = await Item.findOneAndUpdate(
+      { _id: id, ...bookingGuard?.filter },
       { $set: updateData },
       { new: true, runValidators: true }
     );
 
     if (!item) {
+      // The item changed, or went, since it was read. Nothing was written, so the
+      // Reservation isn't touched either: a booking that lost creates none, and
+      // an unbook that lost leaves the gifter's in place.
+      if (bookingGuard && (await Item.exists({ _id: id }))) {
+        return NextResponse.json({ success: false, error: bookingGuard.conflict }, { status: 409 });
+      }
       return NextResponse.json({ success: false, error: 'Item not found' }, { status: 404 });
     }
 
-    // Keep the gifter's durable Reservation in sync with their booking. Only the
-    // gifter's own book/unbook touches it; owner status changes never do, so the
-    // reservation (and the ability to log the gift) survives them.
+    // Keep the gifter's durable Reservation in sync with their booking, now that
+    // the item write above has matched. Only the gifter's own book/unbook touches
+    // it; owner status changes never do, so the reservation (and the ability to
+    // log the gift) survives them.
     if (reservationAction === 'create') {
       const previous = await Reservation.findOneAndUpdate(
         { gifter: session.user.id, item: item._id },
