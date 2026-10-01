@@ -14,6 +14,8 @@ interface WishlistItemProps {
   onUpdate: (id: string, updates: Partial<ApiItem>) => Promise<unknown>;
   onEdit?: (item: ApiItem) => void;
   onReview?: (item: ApiItem) => void;
+  /** "Save to my list": shown when given (the page decides who may copy what). */
+  onSaveToList?: (item: ApiItem) => void;
   isAuthenticated: boolean;
   isOwner?: boolean;
   isMember?: boolean;
@@ -28,6 +30,7 @@ function WishlistItem({
   onUpdate,
   onEdit,
   onReview,
+  onSaveToList,
   isAuthenticated,
   isOwner = false,
   isMember = false,
@@ -375,6 +378,19 @@ function WishlistItem({
                   </>
                 )}
               </>
+            )}
+
+            {/* Save a copy to one of the viewer's own lists */}
+            {onSaveToList && (
+              <button
+                onClick={() => onSaveToList(item)}
+                className="flex items-center justify-center gap-1.5 rounded-xl bg-muted px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-surface-2"
+                aria-label="Save to my list"
+                title="Save to my list"
+              >
+                <Icon name="plus" size={16} />
+                Save
+              </button>
             )}
           </div>
         )}

@@ -13,7 +13,37 @@ import { resolveWishlistId } from '@/lib/utils/wishlistSlug';
 import { createNotifications } from '@/lib/notifications';
 import { isWishlistOwner, ownerIds } from '@/lib/utils/wishlistOwners';
 import { getWishlistViewAccess, isHiddenByArchive } from '@/lib/utils/wishlistAccess';
-import { canAttachImage, FOREIGN_IMAGE_ERROR } from '@/lib/utils/blob';
+import {
+  canAttachImage,
+  copyBlobToUploads,
+  deleteOwnBlob,
+  FOREIGN_IMAGE_ERROR,
+  isOwnBlob,
+} from '@/lib/utils/blob';
+import { isObjectIdParam } from '@/lib/utils/objectId';
+import {
+  canCopyItem,
+  COPY_IMAGE_FAILED_NOTICE,
+  COPY_IMAGE_QUOTA_NOTICE,
+} from '@/lib/utils/itemCopy';
+
+/**
+ * The item a "Save to my list" copy is made from, if `viewerId` may copy it:
+ * it's on a list they can open right now (`getWishlistViewAccess`, the rules
+ * the list and its items are read with), and `canCopyItem` allows it (not a
+ * draft, nor someone else's proposal). Null otherwise, and the caller answers
+ * every null with the same 404, so a refusal tells them nothing a missing item
+ * wouldn't: not that a list they can't see exists, nor that an item is a draft.
+ */
+async function findCopySource(sourceItemId: string, viewerId: string) {
+  if (!isObjectIdParam(sourceItemId)) return null;
+  const source = await Item.findById(sourceItemId);
+  if (!source || !canCopyItem(source, viewerId)) return null;
+  const sourceList = await Wishlist.findById(source.wishlist);
+  if (!sourceList) return null;
+  const access = await getWishlistViewAccess(sourceList, viewerId);
+  return access.allowed ? source : null;
+}
 
 // GET /api/wishlists/[id]/items - Get all items for a wishlist
 // Owners and public users don't see bookedBy to avoid spoiling surprises
@@ -149,6 +179,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 // POST /api/wishlists/[id]/items - Create a new item
 // Owners create draft/available items; members can only propose.
 // A new item is never booked: a client-sent `bookedBy` is dropped by the schema.
+// With `sourceItemId`, an owner saves a copy of an item they can see ("Save to
+// my list"): the fields are the ones sent, and the source's image blob, if sent
+// back unchanged, is copied into the caller's own uploads (see findCopySource).
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth();
@@ -204,10 +237,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       );
     }
 
-    const { name, imageUrl, price, link, notes, mostWanted, status } = validation.data;
+    const { name, imageUrl, price, link, notes, mostWanted, status, sourceItemId } =
+      validation.data;
+    const isCopy = sourceItemId !== undefined;
 
-    // Covers owner-created items and member proposals alike.
-    if (!canAttachImage(imageUrl, session.user.id)) {
+    // Covers owner-created items and member proposals alike. A copy's image is
+    // checked against its source, below.
+    if (!isCopy && !canAttachImage(imageUrl, session.user.id)) {
       return NextResponse.json({ success: false, error: FOREIGN_IMAGE_ERROR }, { status: 400 });
     }
 
@@ -245,6 +281,47 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       );
     }
 
+    // "Save to my list": a copy goes into a list of your own (members only ever
+    // propose). Checked last, after everything cheaper that can refuse it, and
+    // so is the image copy: a refused request never leaves a copied blob behind.
+    let storedImageUrl = imageUrl;
+    let copiedImageUrl: string | undefined;
+    let notice: string | undefined;
+    if (isCopy) {
+      if (!isOwner) {
+        return NextResponse.json(
+          { success: false, error: 'Only owners can save an item to this list' },
+          { status: 403 }
+        );
+      }
+      const source = await findCopySource(sourceItemId, session.user.id);
+      if (!source) {
+        return NextResponse.json({ success: false, error: 'Item not found' }, { status: 404 });
+      }
+
+      if (imageUrl && imageUrl === source.imageUrl && isOwnBlob(imageUrl)) {
+        // The source's own blob (whoever uploaded it, the caller included) is
+        // copied, never shared: deleting either item frees its image. A copy
+        // that can't be made (no quota left, or the store failed) doesn't fail
+        // the save: the item is saved without an image, and the reply says why.
+        const copied = await copyBlobToUploads(imageUrl, session.user.id);
+        if (copied.ok) {
+          storedImageUrl = copiedImageUrl = copied.url;
+        } else {
+          storedImageUrl = undefined;
+          notice = copied.reason === 'quota' ? COPY_IMAGE_QUOTA_NOTICE : COPY_IMAGE_FAILED_NOTICE;
+        }
+      } else if (!canAttachImage(imageUrl, session.user.id)) {
+        // Someone else's blob that isn't the source's image, typically the one
+        // the source had when the form was filled, replaced since. Never
+        // attached, as anywhere else; the copy is saved without it.
+        storedImageUrl = undefined;
+        notice = COPY_IMAGE_FAILED_NOTICE;
+      }
+      // Otherwise it's the caller's own upload or an external URL, which we
+      // never delete, so it's kept as it is.
+    }
+
     interface ItemCreateData {
       wishlist: string;
       name: string;
@@ -264,7 +341,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const itemData: ItemCreateData = {
       wishlist: wishlistId,
       name,
-      imageUrl,
+      imageUrl: storedImageUrl,
       price: price
         ? {
             value: price.value, // Already in cents (integer)
@@ -286,7 +363,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       itemData.proposedBy = new mongoose.Types.ObjectId(session.user.id);
     }
 
-    const item = await Item.create(itemData);
+    const item = await Item.create(itemData).catch(async (err) => {
+      // Nothing holds the copy now, so free it rather than leak it.
+      await deleteOwnBlob(copiedImageUrl);
+      throw err;
+    });
 
     // Tell every owner a new item was proposed — anonymously: owners must never
     // learn who proposed an item (they can't see proposedBy elsewhere either).
@@ -303,11 +384,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     // Carries the list read's `priceInUsdCents`, so the page can sort the new
-    // item by price before the next poll brings it in.
+    // item by price before the next poll brings it in. A copy's reply describes
+    // only the copy: nothing in it depends on the source's status or bookings.
     return NextResponse.json(
       {
         success: true,
         data: { ...item.toObject(), priceInUsdCents: itemPriceInUsdCents(item.price, rates) },
+        ...(notice ? { notice } : {}),
       },
       { status: 201 }
     );

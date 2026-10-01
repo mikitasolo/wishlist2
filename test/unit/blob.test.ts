@@ -4,10 +4,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 const del = vi.fn().mockResolvedValue(undefined);
 const list = vi.fn();
 const copy = vi.fn();
+const head = vi.fn();
 vi.mock('@vercel/blob', () => ({
   del: (...a: unknown[]) => del(...a),
   list: (...a: unknown[]) => list(...a),
   copy: (...a: unknown[]) => copy(...a),
+  head: (...a: unknown[]) => head(...a),
 }));
 
 import {
@@ -21,6 +23,9 @@ import {
   isSnapshotBlob,
   snapshotBlob,
   SNAPSHOT_COPY_TIMEOUT_MS,
+  copyBlobToUploads,
+  UPLOAD_COPY_TIMEOUT_MS,
+  USER_UPLOAD_QUOTA_BYTES,
 } from '@/lib/utils/blob';
 
 // A fake read-write token in the SDK's `vercel_blob_rw_<storeId>_<secret>` shape.
@@ -333,5 +338,130 @@ describe('snapshotBlob', () => {
 
     expect(await pending).toBe(OWN);
     expect(signal?.aborted).toBe(true);
+  });
+});
+
+describe('copyBlobToUploads', () => {
+  let errorLog: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    copy.mockReset();
+    head.mockReset();
+    list.mockReset();
+    del.mockClear();
+    head.mockResolvedValue({ size: 1000 });
+    list.mockResolvedValue({ blobs: [{ size: 5000 }], cursor: undefined });
+    // The SDK adds a random suffix before the extension.
+    copy.mockImplementation(async (_from: string, to: string) => ({
+      url: `https://${HOST}/${to.replace(/(\.[a-z]+)$/, '-Xy12$1')}`,
+    }));
+    errorLog = vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    errorLog.mockRestore();
+    vi.useRealTimers();
+  });
+
+  it("copies our blob into the user's own uploads folder, keeping the extension", async () => {
+    const result = await copyBlobToUploads(OTHER_USERS, 'u1');
+
+    expect(copy).toHaveBeenCalledWith(
+      OTHER_USERS,
+      'uploads/u1/image.jpg',
+      expect.objectContaining({ access: 'public', addRandomSuffix: true })
+    );
+    expect(result).toEqual({ ok: true, url: `https://${HOST}/uploads/u1/image-Xy12.jpg` });
+    if (!result.ok) throw new Error('expected a copy');
+    // One the user may attach, as their own upload.
+    expect(isUploadedBy(result.url, 'u1')).toBe(true);
+    expect(canAttachImage(result.url, 'u1')).toBe(true);
+    expect(list).toHaveBeenCalledWith(expect.objectContaining({ prefix: 'uploads/u1/' }));
+    expect(head).toHaveBeenCalledWith(OTHER_USERS, expect.anything());
+  });
+
+  it('gives up after the timeout, aborting, and frees a copy that lands later', async () => {
+    vi.useFakeTimers();
+    let land: (value: { url: string }) => void = () => {};
+    let signal: AbortSignal | undefined;
+    copy.mockImplementationOnce(
+      (_from: string, _to: string, options: { abortSignal: AbortSignal }) => {
+        signal = options.abortSignal;
+        return new Promise((resolve) => (land = resolve)); // a store that's slow to answer
+      }
+    );
+
+    const pending = copyBlobToUploads(OTHER_USERS, 'u1');
+    await vi.advanceTimersByTimeAsync(UPLOAD_COPY_TIMEOUT_MS);
+
+    expect(await pending).toEqual({ ok: false, reason: 'failed' });
+    expect(signal?.aborted).toBe(true);
+    expect(del).not.toHaveBeenCalled();
+
+    const late = `https://${HOST}/uploads/u1/image-late.jpg`;
+    land({ url: late });
+    await vi.runAllTimersAsync();
+    expect(del).toHaveBeenCalledWith(late);
+    vi.useRealTimers();
+  });
+
+  it("doesn't start the copy once the size checks have run past the timeout", async () => {
+    vi.useFakeTimers();
+    let sized: (value: { size: number }) => void = () => {};
+    head.mockImplementationOnce(() => new Promise((resolve) => (sized = resolve)));
+
+    const pending = copyBlobToUploads(OTHER_USERS, 'u1');
+    await vi.advanceTimersByTimeAsync(UPLOAD_COPY_TIMEOUT_MS);
+    expect(await pending).toEqual({ ok: false, reason: 'failed' });
+
+    sized({ size: 1000 });
+    await vi.runAllTimersAsync();
+    expect(copy).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it("refuses with 'quota' when the copy wouldn't fit, without copying", async () => {
+    list.mockResolvedValue({ blobs: [{ size: USER_UPLOAD_QUOTA_BYTES - 999 }], cursor: undefined });
+
+    expect(await copyBlobToUploads(OTHER_USERS, 'u1')).toEqual({ ok: false, reason: 'quota' });
+    expect(copy).not.toHaveBeenCalled();
+  });
+
+  it('copies when it just fits', async () => {
+    list.mockResolvedValue({
+      blobs: [{ size: USER_UPLOAD_QUOTA_BYTES - 1000 }],
+      cursor: undefined,
+    });
+
+    expect((await copyBlobToUploads(OTHER_USERS, 'u1')).ok).toBe(true);
+  });
+
+  it("fails without touching the store for anything that isn't our blob", async () => {
+    for (const url of [EXTERNAL, OTHER_STORE, 'not a url']) {
+      expect(await copyBlobToUploads(url, 'u1')).toEqual({ ok: false, reason: 'failed' });
+    }
+    expect(await copyBlobToUploads(OWN, '')).toEqual({ ok: false, reason: 'failed' });
+    expect(head).not.toHaveBeenCalled();
+    expect(copy).not.toHaveBeenCalled();
+  });
+
+  it('fails, logging neither URL nor user, when the store does', async () => {
+    copy.mockRejectedValueOnce(new Error('The blob service is currently not available.'));
+    expect(await copyBlobToUploads(OTHER_USERS, 'u1')).toEqual({ ok: false, reason: 'failed' });
+
+    head.mockRejectedValueOnce(new Error('The requested blob does not exist'));
+    expect(await copyBlobToUploads(OTHER_USERS, 'u1')).toEqual({ ok: false, reason: 'failed' });
+
+    expect(errorLog).toHaveBeenCalledTimes(2);
+    const logged = errorLog.mock.calls.flat().join(' ');
+    expect(logged).not.toContain(HOST);
+    expect(logged).not.toContain('u1');
+    expect(logged).not.toContain('u2');
+  });
+
+  it("drops a copy that didn't land directly in the user's folder", async () => {
+    const stray = `https://${HOST}/uploads/u1/nested/image.jpg`;
+    copy.mockResolvedValueOnce({ url: stray });
+
+    expect(await copyBlobToUploads(OTHER_USERS, 'u1')).toEqual({ ok: false, reason: 'failed' });
+    expect(del).toHaveBeenCalledWith(stray);
   });
 });

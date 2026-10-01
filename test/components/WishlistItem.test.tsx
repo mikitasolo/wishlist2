@@ -315,3 +315,43 @@ describe('WishlistItem — most wanted badge', () => {
     }
   });
 });
+
+describe('WishlistItem — "Save to my list"', () => {
+  const saveButton = () => screen.queryByRole('button', { name: 'Save to my list' });
+
+  it('is offered to signed-in owners, members and visitors, and hands over the item', () => {
+    const shown = item({ status: 'booked', bookedBy: 'someone-else' });
+    for (const props of [{ isOwner: true }, { isMember: true }, {}]) {
+      const onSaveToList = vi.fn();
+      const { unmount } = render(
+        <WishlistItem
+          item={shown}
+          onUpdate={vi.fn()}
+          onSaveToList={onSaveToList}
+          isAuthenticated
+          {...props}
+        />
+      );
+      fireEvent.click(saveButton()!);
+      expect(onSaveToList).toHaveBeenCalledWith(shown);
+      unmount();
+    }
+  });
+
+  it('is not offered when signed out', () => {
+    render(
+      <WishlistItem
+        item={item({})}
+        onUpdate={vi.fn()}
+        onSaveToList={vi.fn()}
+        isAuthenticated={false}
+      />
+    );
+    expect(saveButton()).toBeNull();
+  });
+
+  it('is not offered when the page gives no handler', () => {
+    render(<WishlistItem item={item({})} onUpdate={vi.fn()} isAuthenticated isMember />);
+    expect(saveButton()).toBeNull();
+  });
+});
