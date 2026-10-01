@@ -11,6 +11,8 @@ function make(overrides: Partial<NotificationView>): NotificationView {
     _id: 'n1',
     type: 'follow',
     actorUsername: null,
+    count: 1,
+    actorUsernames: [],
     wishlistName: null,
     wishlistSlug: null,
     wishlistId: null,
@@ -24,7 +26,7 @@ function make(overrides: Partial<NotificationView>): NotificationView {
 describe('notificationText', () => {
   it('names the actor for follows and invites', () => {
     expect(notificationText(make({ type: 'follow', actorUsername: 'alice' }))).toBe(
-      '@alice started following you'
+      '@alice followed you'
     );
     expect(
       notificationText(
@@ -61,8 +63,93 @@ describe('notificationText', () => {
 
   it('falls back to "Someone" when an actor is missing', () => {
     expect(notificationText(make({ type: 'follow', actorUsername: null }))).toBe(
-      'Someone started following you'
+      'Someone followed you'
     );
+  });
+});
+
+describe('notificationText — coalesced rows', () => {
+  // A coalesced follow row keeps the latest 3 actors, oldest first; the last
+  // one is also `actorUsername`.
+  it('names one, two, or the latest follower and a count', () => {
+    expect(
+      notificationText(
+        make({ type: 'follow', count: 1, actorUsername: 'alice', actorUsernames: ['alice'] })
+      )
+    ).toBe('@alice followed you');
+    expect(
+      notificationText(
+        make({ type: 'follow', count: 2, actorUsername: 'bob', actorUsernames: ['alice', 'bob'] })
+      )
+    ).toBe('@bob and @alice followed you');
+    expect(
+      notificationText(
+        make({
+          type: 'follow',
+          count: 5,
+          actorUsername: 'eve',
+          actorUsernames: ['cat', 'dan', 'eve'],
+        })
+      )
+    ).toBe('@eve and 4 others followed you');
+  });
+
+  it('counts the rest when it can name only one, and says "1 other" in the singular', () => {
+    expect(
+      notificationText(
+        make({ type: 'follow', count: 3, actorUsername: 'cat', actorUsernames: ['bob', 'cat'] })
+      )
+    ).toBe('@cat and 2 others followed you');
+    // Two follows, but one follower had no username to record.
+    expect(
+      notificationText(
+        make({ type: 'follow', count: 2, actorUsername: 'bob', actorUsernames: ['bob'] })
+      )
+    ).toBe('@bob and 1 other followed you');
+    expect(notificationText(make({ type: 'follow', count: 3, actorUsernames: [] }))).toBe(
+      '3 people followed you'
+    );
+  });
+
+  it('reads a row from before coalescing (no count, no actor list) as one event', () => {
+    const legacy = make({ type: 'follow', actorUsername: 'alice' });
+    delete legacy.count;
+    delete legacy.actorUsernames;
+    expect(notificationText(legacy)).toBe('@alice followed you');
+    expect(notificationLink(legacy)).toBe('/users/alice');
+  });
+
+  it('counts proposals on a list', () => {
+    expect(notificationText(make({ type: 'proposal', count: 1, wishlistName: 'Kitchen' }))).toBe(
+      'Someone proposed an item for Kitchen'
+    );
+    expect(notificationText(make({ type: 'proposal', count: 2, wishlistName: 'Kitchen' }))).toBe(
+      '2 new proposals on “Kitchen”'
+    );
+    expect(notificationText(make({ type: 'proposal', count: 5, wishlistName: 'Kitchen' }))).toBe(
+      '5 new proposals on “Kitchen”'
+    );
+    expect(notificationText(make({ type: 'proposal', count: 5 }))).toBe(
+      '5 new proposals on a wishlist'
+    );
+  });
+
+  // regression: proposals are anonymous to the owner. A coalesced proposal row
+  // must stay anonymous too, even if an actor somehow reached it.
+  it('never names a proposer, however many proposals a row counts', () => {
+    for (const count of [1, 2, 5]) {
+      const text = notificationText(
+        make({
+          type: 'proposal',
+          count,
+          actorUsername: 'should-not-appear',
+          actorUsernames: ['also-hidden', 'should-not-appear'],
+          wishlistName: 'Kitchen',
+        })
+      );
+      expect(text).not.toContain('should-not-appear');
+      expect(text).not.toContain('also-hidden');
+    }
   });
 });
 
@@ -77,6 +164,37 @@ describe('notificationLink', () => {
     expect(notificationLink(make({ type: 'proposal', wishlistId: 'abc123' }))).toBe(
       '/wishlists/abc123'
     );
+  });
+
+  it('links a single follow to the follower, several to your followers on the dashboard', () => {
+    expect(
+      notificationLink(
+        make({ type: 'follow', count: 1, actorUsername: 'alice', actorUsernames: ['alice'] })
+      )
+    ).toBe('/users/alice');
+    expect(
+      notificationLink(
+        make({ type: 'follow', count: 2, actorUsername: 'bob', actorUsernames: ['alice', 'bob'] })
+      )
+    ).toBe('/');
+    expect(
+      notificationLink(
+        make({
+          type: 'follow',
+          count: 5,
+          actorUsername: 'eve',
+          actorUsernames: ['cat', 'dan', 'eve'],
+        })
+      )
+    ).toBe('/');
+  });
+
+  it('links proposals to the list whatever the count', () => {
+    for (const count of [1, 2, 5]) {
+      expect(notificationLink(make({ type: 'proposal', count, wishlistSlug: 'kitchen' }))).toBe(
+        '/wishlists/kitchen'
+      );
+    }
   });
 
   it('degrades to the notifications page when a link target is missing', () => {

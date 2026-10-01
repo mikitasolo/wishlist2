@@ -23,6 +23,9 @@ export async function GET() {
       _id: n._id.toString(),
       type: n.type,
       actorUsername: n.actorUsername ?? null,
+      // Rows from before coalescing carry neither field: each is one event.
+      count: n.count ?? 1,
+      actorUsernames: n.actorUsernames ?? [],
       wishlistName: n.wishlistName ?? null,
       wishlistSlug: n.wishlistSlug ?? null,
       wishlistId: n.wishlist ? n.wishlist.toString() : null,

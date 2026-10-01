@@ -41,6 +41,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     );
 
     // Only notify on a genuinely new follow, not on a repeat/idempotent call.
+    // The helper folds a burst of follows into one row and drops a re-follow by
+    // someone who already notified this user in the last 24h (unfollow deletes
+    // the edge, so follow → unfollow → follow lands here again).
     if (result.upsertedCount > 0) {
       await createNotification({
         user: targetId,

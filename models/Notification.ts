@@ -12,6 +12,14 @@ export interface INotification extends Document {
   // extra lookup. NULL on purpose for events where the actor must stay hidden
   // (e.g. a proposal — owners must never learn who proposed an item).
   actorUsername?: string | null;
+  // How many events this row stands for. A burst of follows (or of proposals on
+  // one list) is coalesced at write time into a single unread row, so it can't
+  // push everything else out of the feed. Absent on rows written before
+  // coalescing existed, which each stand for one event.
+  count?: number;
+  // Coalesced follows only: the latest few actors, oldest first (the last one is
+  // also `actorUsername`). Never set on a proposal, which carries no actor.
+  actorUsernames?: string[];
   // Optional context, snapshotted for cheap, privacy-safe rendering.
   wishlist?: mongoose.Types.ObjectId | null;
   wishlistName?: string | null;
@@ -31,11 +39,24 @@ const NotificationSchema = new Schema<INotification>(
       required: true,
     },
     actorUsername: { type: String, default: null },
+    count: { type: Number, default: 1, min: 1 },
+    // No default: a row that never had an actor list (a proposal) has no field.
+    actorUsernames: { type: [String], default: undefined },
     wishlist: { type: Schema.Types.ObjectId, ref: 'Wishlist', default: null },
     wishlistName: { type: String, default: null },
     wishlistSlug: { type: String, default: null },
     itemName: { type: String, default: null },
     read: { type: Boolean, default: false },
+    // Immutable, as the timestamps plugin would declare it, except for a query
+    // that opts in with `overwriteImmutable: true`: a coalesced row bumps it to
+    // the latest event through an upsert (lib/notifications.ts), and Mongoose
+    // moves a plainly immutable path out of an upsert's $set whatever the
+    // options. The plugin still sets it on insert.
+    createdAt: {
+      type: Date,
+      immutable: (ctx: unknown) =>
+        !(ctx instanceof mongoose.Query && ctx.mongooseOptions().overwriteImmutable === true),
+    },
   },
   { timestamps: true }
 );
