@@ -66,6 +66,36 @@ export const SMTP_ENV_VARS = [
 ] as const;
 
 /**
+ * Cloudflare Turnstile on the sign-in form (`lib/turnstile.ts`): all or nothing.
+ * Both set turns it on, neither leaves it off (local dev, CI, E2E). Exactly one
+ * is refused by `validateEnvVars`: a secret without a site key would refuse
+ * every sign-in (no widget, so no token), and a site key without a secret would
+ * show a widget that nothing checks.
+ */
+export const TURNSTILE_ENV_VARS = [
+  'NEXT_PUBLIC_TURNSTILE_SITE_KEY',
+  'TURNSTILE_SECRET_KEY',
+] as const;
+
+export interface TurnstileKeys {
+  siteKey: string;
+  secretKey: string;
+}
+
+/**
+ * The Turnstile keys, or `null` while Turnstile is off. Read at call time, by a
+ * computed name, so Next never inlines the public key at build time: the sign-in
+ * page renders the widget and the server action checks its token from one read
+ * of the same environment. `validateEnvVars` refuses a half config at startup;
+ * should one get here anyway (a caller that skipped validation), it reads as
+ * off, rather than as a check nobody can pass or a widget nobody checks.
+ */
+export function getTurnstileKeys(): TurnstileKeys | null {
+  const [siteKey, secretKey] = TURNSTILE_ENV_VARS.map((name) => process.env[name]);
+  return siteKey && secretKey ? { siteKey, secretKey } : null;
+}
+
+/**
  * The configured email transport. Unset (or empty) means `smtp`; anything else
  * that isn't a known transport throws rather than silently falling back.
  */
@@ -142,6 +172,17 @@ export function validateEnvVars(): void {
   if (!process.env.NEXTAUTH_URL && !process.env.VERCEL_URL) {
     if (!missing['auth']) missing['auth'] = [];
     missing['auth'].push('NEXTAUTH_URL (or deploy on Vercel where VERCEL_URL is automatic)');
+  }
+
+  // Turnstile is optional, but once one of its keys is set the other is required.
+  // Only the names are reported: the secret's value must never reach a log.
+  const turnstileSet = TURNSTILE_ENV_VARS.filter((name) => process.env[name]);
+  if (turnstileSet.length === 1) {
+    const [set] = turnstileSet;
+    const unset = TURNSTILE_ENV_VARS.find((name) => name !== set)!;
+    missing['turnstile'] = [
+      `${unset} (${set} is set: set both to turn Turnstile on, or neither to leave it off)`,
+    ];
   }
 
   if (Object.keys(missing).length > 0) {

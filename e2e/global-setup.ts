@@ -131,6 +131,17 @@ export default async function globalSetup(_config: FullConfig) {
     EMAIL_TRANSPORT: 'console',
     EMAIL_FROM: 'e2e@example.com',
     MIGRATION_SECRET: 'e2e-migration',
+    // Turnstile off and no rate-limit store, whatever a local .env holds (one
+    // pulled from Vercel carries the KV_* store): an empty value counts as set,
+    // so Next's env loading doesn't fill it in from a file. The sign-in spec
+    // sends a magic link, and its fail-closed limiters would otherwise count
+    // every workspace's runs from localhost against one shared store.
+    NEXT_PUBLIC_TURNSTILE_SITE_KEY: '',
+    TURNSTILE_SECRET_KEY: '',
+    UPSTASH_REDIS_REST_URL: '',
+    UPSTASH_REDIS_REST_TOKEN: '',
+    KV_REST_API_URL: '',
+    KV_REST_API_TOKEN: '',
   };
 
   // Call the local next binary directly (package-manager agnostic).

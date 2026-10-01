@@ -13,6 +13,16 @@ test('sign-in page shows the magic-link email field', async ({ page }) => {
   await expect(page.locator('input[type="email"]')).toBeVisible();
 });
 
+// Through the sign-in form's server action, with Turnstile off (no keys in
+// E2E). The console transport prints the link to the server log; nothing is sent.
+test('the sign-in form sends a magic link', async ({ page }) => {
+  await page.goto('/auth/signin?callbackUrl=%2Finvites');
+  await page.getByLabel('Email address').fill('e2e-signin@example.com');
+  await page.getByRole('button', { name: 'Send magic link' }).click();
+  await expect(page.getByText('Check your email')).toBeVisible();
+  await expect(page.getByText('e2e-signin@example.com')).toBeVisible();
+});
+
 test('a protected page redirects a signed-out visitor home', async ({ page }) => {
   await page.goto('/notifications');
   await expect(page).toHaveURL('/');

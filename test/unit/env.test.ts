@@ -1,5 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { validateEnvVars, getEnvVars, SMTP_ENV_VARS } from '@/lib/env';
+import {
+  validateEnvVars,
+  getEnvVars,
+  getTurnstileKeys,
+  SMTP_ENV_VARS,
+  TURNSTILE_ENV_VARS,
+} from '@/lib/env';
 
 // vitest.config.ts injects a full dummy SMTP config (EMAIL_TRANSPORT=smtp);
 // each test strips or overrides what it needs and `unstubAllEnvs` puts it back.
@@ -19,6 +25,8 @@ function errorMessage(fn: () => unknown): string {
 beforeEach(() => {
   // Not on Vercel unless a test says so, whatever the shell running the suite has.
   vi.stubEnv('VERCEL_ENV', undefined);
+  // Turnstile off unless a test turns it on.
+  for (const name of TURNSTILE_ENV_VARS) vi.stubEnv(name, undefined);
 });
 
 afterEach(() => {
@@ -165,5 +173,72 @@ describe('getEnvVars: EMAIL_TRANSPORT', () => {
     vi.stubEnv('VERCEL_ENV', vercelEnv);
     vi.stubEnv('EMAIL_TRANSPORT', 'console');
     expect(() => getEnvVars()).toThrow(/EMAIL_TRANSPORT=console is not allowed/);
+  });
+});
+
+// Cloudflare's always-pass test keys: what .env.example suggests for a local run.
+const SITE_KEY = '1x00000000000000000000AA';
+const SECRET_KEY = '1x0000000000000000000000000000000AA';
+
+describe('validateEnvVars: Turnstile keys', () => {
+  it('passes with neither key (Turnstile off)', () => {
+    expect(() => validateEnvVars()).not.toThrow();
+  });
+
+  it('passes with both keys (Turnstile on)', () => {
+    vi.stubEnv('NEXT_PUBLIC_TURNSTILE_SITE_KEY', SITE_KEY);
+    vi.stubEnv('TURNSTILE_SECRET_KEY', SECRET_KEY);
+    expect(() => validateEnvVars()).not.toThrow();
+  });
+
+  // A secret with no site key: no widget, so no token, so every sign-in refused.
+  it('refuses a secret without a site key, naming the missing one and not the value', () => {
+    vi.stubEnv('TURNSTILE_SECRET_KEY', SECRET_KEY);
+    const message = errorMessage(validateEnvVars);
+    expect(message).toMatch(/^Missing required environment variables/);
+    expect(message).toContain(
+      'NEXT_PUBLIC_TURNSTILE_SITE_KEY (TURNSTILE_SECRET_KEY is set: set both to turn Turnstile on, or neither to leave it off)'
+    );
+    expect(message).not.toContain(SECRET_KEY);
+  });
+
+  // A site key with no secret: a widget nothing checks.
+  it('refuses a site key without a secret', () => {
+    vi.stubEnv('NEXT_PUBLIC_TURNSTILE_SITE_KEY', SITE_KEY);
+    const message = errorMessage(validateEnvVars);
+    expect(message).toContain(
+      'TURNSTILE_SECRET_KEY (NEXT_PUBLIC_TURNSTILE_SITE_KEY is set: set both to turn Turnstile on, or neither to leave it off)'
+    );
+    expect(message).not.toContain(SITE_KEY);
+  });
+
+  it('treats an empty key as unset', () => {
+    vi.stubEnv('NEXT_PUBLIC_TURNSTILE_SITE_KEY', '');
+    vi.stubEnv('TURNSTILE_SECRET_KEY', SECRET_KEY);
+    expect(() => validateEnvVars()).toThrow(
+      /NEXT_PUBLIC_TURNSTILE_SITE_KEY \(TURNSTILE_SECRET_KEY is set/
+    );
+  });
+});
+
+describe('getTurnstileKeys', () => {
+  it('returns both keys when both are set', () => {
+    vi.stubEnv('NEXT_PUBLIC_TURNSTILE_SITE_KEY', SITE_KEY);
+    vi.stubEnv('TURNSTILE_SECRET_KEY', SECRET_KEY);
+    expect(getTurnstileKeys()).toEqual({ siteKey: SITE_KEY, secretKey: SECRET_KEY });
+  });
+
+  it('is off (null) with neither', () => {
+    expect(getTurnstileKeys()).toBeNull();
+  });
+
+  // validateEnvVars refuses a half config, but should one get past it, it reads
+  // as off: no widget nobody checks, and no check nobody can pass.
+  it.each([
+    ['only the secret', { TURNSTILE_SECRET_KEY: SECRET_KEY }],
+    ['only the site key', { NEXT_PUBLIC_TURNSTILE_SITE_KEY: SITE_KEY }],
+  ])('is off (null) with %s', (_label, vars) => {
+    for (const [name, value] of Object.entries(vars)) vi.stubEnv(name, value);
+    expect(getTurnstileKeys()).toBeNull();
   });
 });

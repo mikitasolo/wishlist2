@@ -112,6 +112,22 @@ export const updateProfileSchema = z
     message: 'At least one field must be provided for update',
   });
 
+// Sign-in: the magic-link request the sign-in form's server action receives
+// (`app/auth/signin/actions.ts`). Only the shape is checked here. Auth.js
+// normalizes and validates the address itself, and keeps `callbackUrl` on our
+// own origin. The Turnstile token is judged by `verifyTurnstileToken`, which
+// refuses a missing or oversized one as a failed check rather than bad input.
+export const magicLinkRequestSchema = z.object({
+  email: z.string().trim().min(1).max(254),
+  // Missing, empty or absurdly long (Auth.js reflects it into the link): home.
+  callbackUrl: z
+    .string()
+    .trim()
+    .optional()
+    .transform((url) => (url && url.length <= 2048 ? url : '/')),
+  turnstileToken: z.string().nullish(),
+});
+
 // Member schemas — invite an existing account by username.
 // A wishlist has two kinds of people: owners (manage it, never see bookings) and
 // members (gift). `owner` is a real invite role because co-ownership can only be

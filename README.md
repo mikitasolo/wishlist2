@@ -17,7 +17,7 @@ A modern wishlist app: create wishlists, share them, follow friends, and quietly
 - **Save to my list** — see something you want too on a list you can view? Save a copy of it to one of your own wishlists (or copy between your own lists), editable before it's saved. The copy is independent and gets its own copy of the image; the list it came from isn't told, and its notes and bookings never come across.
 - **Multi-currency** prices with live conversion to any currency you pick.
 - **Profiles** with avatar, bio, follower/following counts, and privacy controls.
-- **Magic-link sign-in** (no passwords), image uploads, responsive Apple-inspired UI, light/dark themes.
+- **Magic-link sign-in** (no passwords), behind an optional, usually invisible Cloudflare Turnstile bot check; image uploads, responsive Apple-inspired UI, light/dark themes.
 - **A private handle from the start** — a new account gets a random username (`user_…`), never one taken from the email, and its first sign-in opens a welcome step offering to pick one of its own. It's skippable, and either way it continues to wherever the sign-in was headed (an invite, a list).
 - **Rich link previews** — dynamic Open Graph / Twitter images for shared wishlist and profile links (privacy-aware: private/archived lists and friends-only bios never leak into a preview).
 - **Notification center** — an in-app feed (with a header bell + unread badge) for follows, wishlist invitations, accepted invites, item-proposal activity, and being demoted from owner to member of a list or removed from one. Proposal notifications are anonymous to the owner, and demotions and removals never say which owner made them.
@@ -30,6 +30,7 @@ A modern wishlist app: create wishlists, share them, follow friends, and quietly
 - **Email**: SMTP via Nodemailer (works with Brevo, Postmark, Gmail, etc.), or printed to the server log in local dev (`EMAIL_TRANSPORT=console`)
 - **Image uploads**: Vercel Blob
 - **Rate limiting**: Upstash Redis (`@upstash/ratelimit`) — optional; disabled when unconfigured
+- **Bot protection**: Cloudflare Turnstile on the sign-in form (Cloudflare's script, no npm dependency) — optional; off when unconfigured
 - **Styling**: Tailwind CSS v4
 - **Testing**: Vitest + Testing Library + `mongodb-memory-server`, Playwright for E2E
 - **Deployment**: Vercel
@@ -60,26 +61,30 @@ Open [http://localhost:3000](http://localhost:3000). Sign in from `/auth/signin`
 
 Copy `.env.example` to `.env.local` and fill in:
 
-| Variable                   | Required | Description                                                                   |
-| -------------------------- | -------- | ----------------------------------------------------------------------------- |
-| `MONGODB_URI`              | yes      | Connection string **including the database name** in the path                 |
-| `NEXTAUTH_SECRET`          | yes      | Session secret — generate with `openssl rand -base64 32`                      |
-| `NEXTAUTH_URL`             | yes\*    | App URL (e.g. `http://localhost:3000`). \*Derived from `VERCEL_URL` on Vercel |
-| `EMAIL_TRANSPORT`          | no       | `smtp` (default) or `console` (logs mail; local/Development only). See below  |
-| `SMTP_HOST`                | yes\*\*  | SMTP server host                                                              |
-| `SMTP_PORT`                | yes\*\*  | SMTP port (e.g. `587`)                                                        |
-| `SMTP_SECURE`              | yes\*\*  | `true` for port 465, otherwise `false`                                        |
-| `SMTP_USER`                | yes\*\*  | SMTP username                                                                 |
-| `SMTP_PASSWORD`            | yes\*\*  | SMTP password                                                                 |
-| `EMAIL_FROM`               | yes      | From address for outgoing mail                                                |
-| `MIGRATION_SECRET`         | yes      | Shared secret guarding migration endpoints                                    |
-| `BLOB_READ_WRITE_TOKEN`    | yes      | Vercel Blob token for uploads. Its store ID says which blob URLs are ours     |
-| `UPSTASH_REDIS_REST_URL`   | no       | Upstash Redis REST URL for rate limiting. Unset ⇒ rate limiting disabled      |
-| `UPSTASH_REDIS_REST_TOKEN` | no       | Upstash Redis REST token (set together with the URL)                          |
+| Variable                         | Required | Description                                                                          |
+| -------------------------------- | -------- | ------------------------------------------------------------------------------------ |
+| `MONGODB_URI`                    | yes      | Connection string **including the database name** in the path                        |
+| `NEXTAUTH_SECRET`                | yes      | Session secret — generate with `openssl rand -base64 32`                             |
+| `NEXTAUTH_URL`                   | yes\*    | App URL (e.g. `http://localhost:3000`). \*Derived from `VERCEL_URL` on Vercel        |
+| `EMAIL_TRANSPORT`                | no       | `smtp` (default) or `console` (logs mail; local/Development only). See below         |
+| `SMTP_HOST`                      | yes\*\*  | SMTP server host                                                                     |
+| `SMTP_PORT`                      | yes\*\*  | SMTP port (e.g. `587`)                                                               |
+| `SMTP_SECURE`                    | yes\*\*  | `true` for port 465, otherwise `false`                                               |
+| `SMTP_USER`                      | yes\*\*  | SMTP username                                                                        |
+| `SMTP_PASSWORD`                  | yes\*\*  | SMTP password                                                                        |
+| `EMAIL_FROM`                     | yes      | From address for outgoing mail                                                       |
+| `MIGRATION_SECRET`               | yes      | Shared secret guarding migration endpoints                                           |
+| `BLOB_READ_WRITE_TOKEN`          | yes      | Vercel Blob token for uploads. Its store ID says which blob URLs are ours            |
+| `UPSTASH_REDIS_REST_URL`         | no       | Upstash Redis REST URL for rate limiting. Unset ⇒ rate limiting disabled             |
+| `UPSTASH_REDIS_REST_TOKEN`       | no       | Upstash Redis REST token (set together with the URL)                                 |
+| `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | no       | Cloudflare Turnstile site key for the sign-in form. Unset ⇒ Turnstile off. See below |
+| `TURNSTILE_SECRET_KEY`           | no       | Cloudflare Turnstile secret key (set together with the site key)                     |
 
 \*\*Only when `EMAIL_TRANSPORT` is `smtp` (the default). With `EMAIL_TRANSPORT=console` no email is sent: each one is printed to the server log (recipient, subject and its link, e.g. the magic link), so the `SMTP_*` variables are optional. It's meant for local dev, CI and E2E (`VERCEL_ENV` unset) and the Vercel Development environment (`VERCEL_ENV=development`), and refused with any other `VERCEL_ENV`, Preview and Production included: env validation throws, which fails the build and every request, so a misconfigured Vercel deploy can neither silently drop sign-in emails nor print working magic links into its runtime logs. The check keys on `VERCEL_ENV`, so it guards Vercel deployments only. Any other `EMAIL_TRANSPORT` value is an error. Rate limits apply in both modes, since the sign-in limiter runs before the email goes anywhere.
 
 `KV_REST_API_URL` / `KV_REST_API_TOKEN` (the names the Vercel Marketplace integration injects) are accepted as fallbacks for the two Upstash variables — so a `.env` pulled with `npm run vercel:env` turns rate limiting **on** against that store.
+
+The two Turnstile keys are **all or nothing**: both set turns the sign-in bot check on, neither leaves it off (local dev, CI and E2E need no keys), and setting only one is refused by env validation, which fails the build and every request. Half a config would otherwise either refuse every sign-in (a secret but no widget to earn a token) or show a widget nothing checks. The site key is public; it's read on the server per request and handed to the form, so the widget and the check always come from the same environment. A widget only runs on the hostnames registered for it in Cloudflare, so set the keys only for environments whose hostnames are on it (e.g. Production and the staging domain). Leave them unset where they aren't, such as per-deployment preview URLs: the check would fail there and every sign-in be refused. To see the widget locally, use Cloudflare's always-pass test keys, `NEXT_PUBLIC_TURNSTILE_SITE_KEY=1x00000000000000000000AA` and `TURNSTILE_SECRET_KEY=1x0000000000000000000000000000000AA` (more in [Cloudflare's testing docs](https://developers.cloudflare.com/turnstile/troubleshooting/testing/)); they load Cloudflare's real script, so they need network access.
 
 > ⚠️ Never commit real secrets. `.env*` is gitignored; only the placeholder `.env.example` is tracked.
 
@@ -88,7 +93,7 @@ Copy `.env.example` to `.env.local` and fill in:
 ```bash
 npm run dev          # dev server
 npm run build        # production build
-npm run check:trace  # after a build: every API route that ships sharp also ships its native libvips
+npm run check:trace  # after a build: the sign-in page and every API route that ships sharp also ship its native libvips
 npm run smoke:deploy -- <url>  # read-only GET smoke of a deployed host: auth and upload routes start (no emails, no uploads)
 npm start            # run the production build
 npm run lint         # eslint (flat config)
@@ -171,11 +176,12 @@ docs/           # brand assets and their generators
 - Archived wishlists 404 for everyone except the owners, even by direct link.
 - `friends`-only profile visibility hides the bio and the browsable wishlist list from non-friends (on the profile and in search) while keeping the profile discoverable.
 - Search returns only the lists the searcher could open. It matches with `viewableWishlistsFilter`, the query form of the access check every wishlist read uses, and a table test keeps the two identical.
-- Security headers (CSP, `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`, HSTS) are set for every route in `next.config.js`.
+- Security headers (CSP, `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`, HSTS) are set for every route in `next.config.js`. The CSP allows one third-party origin, `https://challenges.cloudflare.com`, for scripts and frames only (Turnstile's script and its challenge iframe).
 - Migration endpoints compare their secret in constant time (`crypto.timingSafeEqual`) to avoid a timing side-channel.
-- **Rate limiting** (`lib/rateLimit.ts`) guards abuse-prone surfaces — magic-link sign-in (keyed on both email and IP), uploads, invites, follows, content creation, booking toggles, username checks, and public search/profile lookups. It uses Upstash Redis (`@upstash/ratelimit`), so counters are shared across Vercel's ephemeral function instances. When Upstash isn't configured, limiting is **disabled** (dev/CI); when configured but the store errors or doesn't answer within `STORE_TIMEOUT_MS` (2 s), it fails **open** for reads/writes but **closed** for the sign-in email path. Each limiter that turns a request away logs one JSON line, `{"event":"rate_limited","name":"<limiter>","keyKind":"user|ip|email"}` (a Redis error or timeout logs `rate_limit_store_error` instead), so Vercel's logs show which surfaces actually hit their limits. The key itself (an email, IP or user id) is never logged. Upstash's own `analytics` option stays off, because it stores those raw keys in Redis. Turn rate limiting on by adding an Upstash Redis store via the Vercel Marketplace integration and setting the two env vars above. Deferred hardening (Cloudflare Turnstile on sign-in, a Vercel WAF per-IP edge ceiling, per-target caps, notification coalescing, new-account friction) is tracked in the Linear project [Rate-limit hardening](https://linear.app/mikitasolo/project/rate-limit-hardening-5ddda788ac4f).
+- **Rate limiting** (`lib/rateLimit.ts`) guards abuse-prone surfaces — magic-link sign-in (keyed on both email and IP), uploads, invites, follows, content creation, booking toggles, username checks, and public search/profile lookups. It uses Upstash Redis (`@upstash/ratelimit`), so counters are shared across Vercel's ephemeral function instances. When Upstash isn't configured, limiting is **disabled** (dev/CI); when configured but the store errors or doesn't answer within `STORE_TIMEOUT_MS` (2 s), it fails **open** for reads/writes but **closed** for the sign-in email path. Each limiter that turns a request away logs one JSON line, `{"event":"rate_limited","name":"<limiter>","keyKind":"user|ip|email"}` (a Redis error or timeout logs `rate_limit_store_error` instead), so Vercel's logs show which surfaces actually hit their limits. The key itself (an email, IP or user id) is never logged. Upstash's own `analytics` option stays off, because it stores those raw keys in Redis. Turn rate limiting on by adding an Upstash Redis store via the Vercel Marketplace integration and setting the two env vars above. Deferred hardening (a Vercel WAF per-IP edge ceiling, per-target caps, notification coalescing, new-account friction) is tracked in the Linear project [Rate-limit hardening](https://linear.app/mikitasolo/project/rate-limit-hardening-5ddda788ac4f).
   - **Block counters.** Vercel keeps runtime logs only briefly (about an hour on Hobby, a day on Pro), so each block is also counted in the same Redis store, once the response has gone out: `rl:stats:<env>:<limiter>:<YYYY-MM-DD>`, per UTC day, where `env` is `VERCEL_ENV` (`local` when unset; a `.env` pulled from Vercel sets it to `development`), so dev and preview blocks never mix with production's. Each counted block costs one extra Upstash request (an `INCR` + `EXPIRE` pipeline, billed as two commands); allowed requests cost nothing extra. Only blocks Redis answered are counted: once a key is blocked, the SDK turns away its repeat requests on that instance from an in-memory cache, at no Redis cost, and counting those would let a flood from one source use up the store's command quota. So a counter reads as "times a key hit the limit", not "requests rejected". The `rate_limited` log line still covers every block. Each day's counter expires about 60 days after its last block. The counter key holds only the limiter's name, never its key. A failed or timed-out increment doesn't affect the response; it logs `rate_limit_store_error` with `"op":"count"` in place of `policy`.
   - **Reading them**: open the store in the Upstash console and filter the **Data Browser** by `rl:stats:production:*`. Each key's value is that surface's block count for that day. In the console's **CLI** tab, `SCAN 0 MATCH rl:stats:production:* COUNT 1000` lists the keys (repeat with the returned cursor until it comes back `0`), and `MGET <keys…>` reads their counts.
+- **Cloudflare Turnstile on sign-in** (`lib/turnstile.ts`, on when both keys are set). The sign-in form gets a token from Turnstile's widget (rendered `interaction-only`, so most visitors never see it), and its server action (`app/auth/signin/actions.ts`) checks the token with Cloudflare's `siteverify` before anything else happens, then calls Auth.js's server-side `signIn`. That action is the only way a magic link is sent: Auth.js's own `POST /api/auth/signin/<provider>` answers 403, and a request that didn't start in the action is refused by the `signIn` callback (when the link is requested) and by `sendVerificationRequest` (before the send). An invalid or spent token is refused ("Please complete the check"), and so is a missing one, which is still put to Cloudflare: the form sends none when Turnstile's script couldn't load or run, as in a Cloudflare outage. When Cloudflare can't give a verdict (unreachable, no answer within 3 s, a 5xx, its own `internal-error`, or a secret it rejects) sign-in fails **open**, and the per-email and per-IP limiters above, which fail closed, stay the backstop. Each such case logs one `{"event":"turnstile_unavailable","reason":"…"}` line, and each refusal a `turnstile_refused` line with Cloudflare's error codes. Neither ever carries the token, the visitor's IP or the email.
 
 ## 📄 License
 
