@@ -42,10 +42,13 @@ describe('security floors of installed dependencies', () => {
 
   // regression: nodemailer 9.0.3 was inside GHSA-2x7j-588g-ccc2 (addressparser
   // DoS), GHSA-8m3c-c648-2xjj, GHSA-wmmp-3585-3rmp and GHSA-cc9r-2j5m-2m83, all
-  // patched in 9.1.1. It sends the sign-in and invite mail.
-  it('runs a nodemailer with the 9.1.1 security fixes', () => {
+  // patched in 9.1.1, and 9.1.1 inside GHSA-v53p-9fqp-m79j and GHSA-prgh-xp8r-p3m5
+  // (both addressparser DoS), GHSA-6vj9-mwq6-2f5v, GHSA-8vvx-rff5-p5rq and
+  // GHSA-g57g-f23g-4646, all patched in 10.0.9. It sends the sign-in and invite
+  // mail, and the sign-in form hands it whatever address the visitor typed.
+  it('runs a nodemailer with the 10.0.9 security fixes', () => {
     const { version } = require('nodemailer/package.json') as { version: string };
-    expect(atLeast(version, '9.1.1'), `nodemailer ${version}`).toBe(true);
+    expect(atLeast(version, '10.0.9'), `nodemailer ${version}`).toBe(true);
   });
 
   // regression: the undici @vercel/blob ships with (6.28.0) was inside
