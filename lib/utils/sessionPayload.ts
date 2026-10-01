@@ -37,9 +37,11 @@ export type SessionDbUser = Pick<IUser, '_id' | 'username' | 'image' | 'defaultC
  * cookie keeps from scripts, into `GET /api/auth/session`, along with every
  * field of the user's row.
  *
- * `row` is the adapter's user row Auth.js passed in; `dbUser` the callback's own
- * read of it (null when that read found nothing or failed, in which case the
- * row stands in, as it did before).
+ * `row` is the adapter's user row Auth.js passed in, read for this very check,
+ * and normally all there is. `dbUser` is the account as the callback just
+ * backfilled a username into it (a legacy row without one), or null, in which
+ * case the row stands in. A raw row has no schema defaults, hence the
+ * fallbacks below (`defaultCurrency` 'USD'; `image` is null by default).
  */
 export function sessionPayload(
   row: Record<string, unknown> | null | undefined,

@@ -13,6 +13,38 @@ import { isVerifiedSignIn, sendVerificationRequest } from './signInEmail';
 // Get validated environment variables
 const env = getEnvVars();
 
+/**
+ * Give a legacy account that predates usernames a generated one, and return
+ * the account as saved, or null when it isn't found or the read or save fails
+ * (the session callback then falls back to the adapter's row, without one).
+ */
+async function backfillUsername(email: string): Promise<SessionDbUser | null> {
+  try {
+    await connectDB();
+    const found = await User.findOne({ email: email.toLowerCase() });
+    if (!found) {
+      // This shouldn't happen, but handle gracefully. Logged without the email
+      // or any other identifier: anyone with project access reads these logs.
+      console.error('User not found in database during session callback');
+      return null;
+    }
+    // A concurrent check may have backfilled it since the adapter's read.
+    if (!found.username) {
+      found.username = await generateUniqueUsername();
+      await found.save();
+    }
+    return found;
+  } catch (error) {
+    // A duplicate-key error (the username backfill losing a race) quotes the
+    // clashing value, so only its kind is logged.
+    console.error(
+      'Error in session callback:',
+      isDuplicateKeyError(error) ? 'duplicate key' : error
+    );
+    return null;
+  }
+}
+
 // NextAuth v5 (Auth.js): a single config exports the route `handlers`, the
 // server-side `auth()` helper (replaces v4's getServerSession(authOptions)),
 // and the `signIn`/`signOut` server actions.
@@ -64,37 +96,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     // returns is what `auth()` and GET /api/auth/session give out. So it
     // returns sessionPayload's explicit allowlist, built fresh, never `session`
     // or anything spread from it.
+    //
+    // `user` is the account's row, which the adapter read for this very check
+    // (`getSessionAndUser`), so the session is built from it with no read of
+    // our own. The one exception is a legacy account with no username, which
+    // is read through the model to backfill one.
     async session({ session, user }) {
       const row = user as unknown as Record<string, unknown> | undefined;
-      let dbUser: SessionDbUser | null = null;
-      if (user?.email) {
-        try {
-          await connectDB();
-          const found = await User.findOne({ email: user.email.toLowerCase() });
-
-          if (found) {
-            // Lazily backfill a username for legacy users who predate the field.
-            if (!found.username) {
-              found.username = await generateUniqueUsername();
-              await found.save();
-            }
-            dbUser = found;
-          } else {
-            // This shouldn't happen, but handle gracefully. Logged without the email
-            // or any other identifier: anyone with project access reads these logs.
-            console.error('User not found in database during session callback');
-          }
-        } catch (error) {
-          // A duplicate-key error (the username backfill losing a race) quotes the
-          // clashing value, so only its kind is logged.
-          console.error(
-            'Error in session callback:',
-            isDuplicateKeyError(error) ? 'duplicate key' : error
-          );
-        }
-      }
-      // Without a read of their own (none found, or it failed), the adapter's
-      // row stands in, as it did when this returned that row as is.
+      const needsUsername = !(typeof row?.username === 'string' && row.username);
+      const dbUser = needsUsername && user?.email ? await backfillUsername(user.email) : null;
+      // Without a backfilled read (none found, or it failed), the row stands in.
       return sessionPayload(row, dbUser, session.expires);
     },
   },
