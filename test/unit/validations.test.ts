@@ -70,6 +70,25 @@ describe('wishlist name on createWishlistSchema and updateWishlistSchema', () =>
     }
   );
 
+  // regression: the name was checked for length before it was trimmed, so
+  // `min(1)` saw "   ", passed it, and the trim left "". The model's `required`
+  // then refused the empty name, which the routes answered as a 500.
+  it.each(schemas)('regression: %s rejects a name that is only whitespace', (_, schema) => {
+    for (const name of ['   ', '\t\n ', '  ']) {
+      expect(nameIssues(schema, name)).toEqual([
+        { path: ['name'], message: 'Wishlist name is required' },
+      ]);
+    }
+  });
+
+  it.each(schemas)('%s counts the 100-character limit after trimming', (_, schema) => {
+    const res = schema.safeParse({ name: `  ${'x'.repeat(100)}  ` });
+    expect(res.success && res.data.name).toBe('x'.repeat(100));
+    expect(nameIssues(schema, `  ${'x'.repeat(101)}  `)).toEqual([
+      { path: ['name'], message: 'Name must be 100 characters or less' },
+    ]);
+  });
+
   it.each(schemas)('%s still just trims a line break at either end', (_, schema) => {
     const res = schema.safeParse({ name: '\r\n  Birthday \n' });
     expect(res.success && res.data.name).toBe('Birthday');
@@ -80,6 +99,55 @@ describe('wishlist name on createWishlistSchema and updateWishlistSchema', () =>
       const res = schema.safeParse({ name });
       expect(res.success && res.data.name).toBe(name);
     }
+  });
+});
+
+describe('item name on createItemSchema and updateItemSchema', () => {
+  const schemas = [
+    ['create', createItemSchema],
+    ['update', updateItemSchema],
+  ] as const;
+
+  function nameIssues(schema: (typeof schemas)[number][1], name: string) {
+    const res = schema.safeParse({ name });
+    return res.success ? [] : res.error.issues.map((i) => ({ path: i.path, message: i.message }));
+  }
+
+  // regression: same check-before-trim order as the wishlist name: "   " passed
+  // `min(1)`, trimmed to "", and the model's `required` turned it into a 500.
+  it.each(schemas)('regression: %s rejects a name that is only whitespace', (_, schema) => {
+    for (const name of ['   ', '\t\n ']) {
+      expect(nameIssues(schema, name)).toEqual([
+        { path: ['name'], message: 'Item name is required' },
+      ]);
+    }
+  });
+
+  it.each(schemas)('%s counts the 200-character limit after trimming', (_, schema) => {
+    const res = schema.safeParse({ name: `  ${'x'.repeat(200)}  ` });
+    expect(res.success && res.data.name).toBe('x'.repeat(200));
+    expect(nameIssues(schema, `  ${'x'.repeat(201)}  `)).toEqual([
+      { path: ['name'], message: 'Name must be 200 characters or less' },
+    ]);
+  });
+});
+
+// The free-text fields trim before they check their length, so padding around a
+// value that fits doesn't push it over the limit.
+describe('length limits on trimmed free-text fields', () => {
+  const fields = [
+    ['wishlist description (create)', createWishlistSchema, { name: 'x' }, 'description', 500],
+    ['wishlist description (update)', updateWishlistSchema, {}, 'description', 500],
+    ['item notes (create)', createItemSchema, { name: 'x' }, 'notes', 100],
+    ['item notes (update)', updateItemSchema, {}, 'notes', 100],
+    ['profile bio', updateProfileSchema, {}, 'bio', 300],
+  ] as const;
+
+  it.each(fields)('%s counts its limit after trimming', (_, schema, base, field, max) => {
+    const fits = schema.safeParse({ ...base, [field]: `  ${'x'.repeat(max)}  ` });
+    expect(fits.success && (fits.data as Record<string, unknown>)[field]).toBe('x'.repeat(max));
+    const tooLong = schema.safeParse({ ...base, [field]: `  ${'x'.repeat(max + 1)}  ` });
+    expect(tooLong.success).toBe(false);
   });
 });
 
