@@ -1,5 +1,7 @@
 import { MongoClient } from 'mongodb';
 import { MongoDBAdapter } from '@auth/mongodb-adapter';
+import type { Adapter } from 'next-auth/adapters';
+import { createUserAccount } from './utils/userAccount';
 
 // MONGODB_URI is validated by validateEnvVars() in lib/env.ts
 const uri = process.env.MONGODB_URI;
@@ -30,4 +32,10 @@ if (process.env.NODE_ENV === 'development') {
   clientPromise = client.connect();
 }
 
-export const adapter = MongoDBAdapter(clientPromise);
+// Accounts are created through our own `createUser`, on the first verified
+// sign-in: it gives the row the User model's defaults and a generated username
+// (see lib/utils/userAccount.ts).
+export const adapter: Adapter = {
+  ...MongoDBAdapter(clientPromise),
+  createUser: createUserAccount,
+};

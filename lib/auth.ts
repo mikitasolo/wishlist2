@@ -41,31 +41,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     }),
   ],
   callbacks: {
+    // Registration is open, but this callback doesn't create the account: it
+    // runs when the magic link is requested as well as when it's clicked, and
+    // an account made at the request made Auth.js treat every sign-up as a
+    // returning user, so `pages.newUser` never fired. The adapter's
+    // `createUser` (lib/utils/userAccount.ts) creates it on the first verified
+    // sign-in instead.
     async signIn({ user }) {
-      if (!user.email) return false;
-
-      try {
-        await connectDB();
-        let existingUser = await User.findOne({ email: user.email.toLowerCase() });
-
-        // If user doesn't exist, create them (open registration) with a
-        // generated username derived from their email.
-        if (!existingUser) {
-          const username = await generateUniqueUsername(user.email.toLowerCase());
-          existingUser = await User.create({
-            email: user.email.toLowerCase(),
-            username,
-          });
-        }
-
-        return true;
-      } catch (error) {
-        // A duplicate-key error (two first sign-ins for one email racing) quotes the
-        // clashing email in its message and `keyValue`, so only its kind is logged.
-        const duplicateKey = (error as { code?: unknown } | null)?.code === 11000;
-        console.error('Error in signIn callback:', duplicateKey ? 'duplicate key' : error);
-        return false;
-      }
+      return !!user.email;
     },
     async session({ session, user }) {
       if (session.user && user?.email) {
@@ -76,7 +59,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           if (dbUser) {
             // Lazily backfill a username for legacy users who predate the field.
             if (!dbUser.username) {
-              dbUser.username = await generateUniqueUsername(dbUser.email);
+              dbUser.username = await generateUniqueUsername();
               await dbUser.save();
             }
             // Always set identity fields when the user exists
@@ -101,6 +84,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     signIn: '/auth/signin',
     verifyRequest: '/auth/verify-request',
     error: '/auth/error',
+    // A brand-new account's first sign-in lands here (with the original
+    // `callbackUrl` passed along) to offer a username of their own in place of
+    // the generated one. Auth.js only sends a sign-in here when the adapter
+    // created the account during it, so existing accounts never see it.
+    newUser: '/welcome',
   },
   session: {
     strategy: 'database',

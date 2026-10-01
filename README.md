@@ -18,6 +18,7 @@ A modern wishlist app: create wishlists, share them, follow friends, and quietly
 - **Multi-currency** prices with live conversion to any currency you pick.
 - **Profiles** with avatar, bio, follower/following counts, and privacy controls.
 - **Magic-link sign-in** (no passwords), image uploads, responsive Apple-inspired UI, light/dark themes.
+- **A private handle from the start** — a new account gets a random username (`user_…`), never one taken from the email, and its first sign-in opens a welcome step offering to pick one of its own. It's skippable, and either way it continues to wherever the sign-in was headed (an invite, a list).
 - **Rich link previews** — dynamic Open Graph / Twitter images for shared wishlist and profile links (privacy-aware: private/archived lists and friends-only bios never leak into a preview).
 - **Notification center** — an in-app feed (with a header bell + unread badge) for follows, wishlist invitations, accepted invites, item-proposal activity, and being demoted from owner to member of a list or removed from one. Proposal notifications are anonymous to the owner, and demotions and removals never say which owner made them.
 
@@ -53,7 +54,7 @@ npm run dev
 
 You don't need an SMTP account to run locally: set `EMAIL_TRANSPORT=console` in `.env.local` (the `SMTP_*` variables can then stay empty) and every email the app would send, the magic link included, is printed to the terminal running `npm run dev` instead. Nothing is sent.
 
-Open [http://localhost:3000](http://localhost:3000). Sign in from `/auth/signin` with your email, then click the magic link in the email, or, in console mode, copy the link from the terminal into your browser. On first sign-in an account (with an auto-generated username) is created — there is no separate admin/seed step. Each wishlist has owners (any number, all equal) and members.
+Open [http://localhost:3000](http://localhost:3000). Sign in from `/auth/signin` with your email, then click the magic link in the email, or, in console mode, copy the link from the terminal into your browser. On first sign-in an account is created with a random username (`user_…`), and you land on `/welcome`, which offers to pick your own — there is no separate admin/seed step. Each wishlist has owners (any number, all equal) and members.
 
 ## 🔑 Environment variables
 
@@ -113,7 +114,7 @@ Tests live in `test/` and run on Vitest:
 - `test/unit/**` — pure logic and Zod schemas (currency, slugs, filters, validation, …)
 - `test/components/**` — React Testing Library (jsdom)
 - `test/api/**` — route handlers against an in-memory MongoDB with a mocked session
-- `e2e/**` — Playwright end-to-end smoke tests (`npm run test:e2e`). `global-setup` boots an ephemeral MongoDB, seeds a signed-in user (owner of one list, member of another), builds and starts the app — no external services needed. Public and signed-in flows run as separate projects.
+- `e2e/**` — Playwright end-to-end smoke tests (`npm run test:e2e`). `global-setup` boots an ephemeral MongoDB, seeds a signed-in user (owner of one list, member of another) and a few unused magic links for the sign-up specs, builds and starts the app — no external services needed. Public and signed-in flows run as separate projects.
 
 **Every change that touches logic should add or update tests, and every bug fix should add a regression test.** See [AGENTS.md](AGENTS.md) for the full policy, the API-test harness pattern, and the domain invariants that must not regress.
 

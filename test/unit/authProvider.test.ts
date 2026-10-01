@@ -4,8 +4,9 @@ import { SMTP_ENV_VARS, type EmailTransport } from '@/lib/env';
 
 interface CapturedConfig {
   providers: Array<{ id: string; options: Record<string, unknown> }>;
+  pages: Record<string, string>;
   callbacks: {
-    signIn: (args: { user: { email: string } }) => Promise<boolean>;
+    signIn: (args: { user: { email?: string | null } }) => Promise<boolean>;
     session: (args: {
       session: { user: Record<string, unknown> };
       user: { id: string; email: string };
@@ -112,32 +113,65 @@ describe('lib/auth callbacks: logging', () => {
     expect(logged()).not.toContain(USER_ID);
   });
 
-  // regression: two first sign-ins for one email race to create the user, and the
-  // loser's duplicate-key error, logged whole, quotes the email
-  // (`dup key: { email: "…" }`, plus `keyValue`).
-  it('regression: the signIn callback logs a duplicate-key error without the email', async () => {
-    users.findOne.mockResolvedValueOnce(null);
-    users.create.mockRejectedValueOnce(
-      Object.assign(
-        new Error(
-          `E11000 duplicate key error collection: test.users index: email_1 dup key: { email: "${EMAIL.toLowerCase()}" }`
-        ),
-        { code: 11000, keyValue: { email: EMAIL.toLowerCase() } }
-      )
-    );
+  it('creates no account in the signIn callback, so it has nothing to fail on or log', async () => {
     const { signIn } = await callbacks();
 
-    expect(await signIn({ user: { email: EMAIL } })).toBe(false);
-    expect(errorLog).toHaveBeenCalledWith('Error in signIn callback:', 'duplicate key');
-    expect(logged()).not.toContain(EMAIL.toLowerCase());
+    // Both the link request and the click run it; with an email it lets them through...
+    expect(await signIn({ user: { email: EMAIL } })).toBe(true);
+    // ...without one it refuses.
+    expect(await signIn({ user: { email: null } })).toBe(false);
+    // The adapter's createUser makes the account, on the first verified sign-in.
+    expect(users.findOne).not.toHaveBeenCalled();
+    expect(users.create).not.toHaveBeenCalled();
+    expect(errorLog).not.toHaveBeenCalled();
+  });
+});
+
+describe('lib/auth: sign-up', () => {
+  async function config() {
+    vi.resetModules();
+    await import('@/lib/auth');
+    return nextAuth.mock.calls[0]![0];
+  }
+
+  beforeEach(() => {
+    users.findOne.mockReset();
+    users.exists.mockReset().mockResolvedValue(null);
   });
 
-  it('still logs any other signIn error whole', async () => {
-    const failure = new Error('connection refused');
-    users.findOne.mockRejectedValueOnce(failure);
-    const { signIn } = await callbacks();
+  // Auth.js only redirects to pages.newUser when its adapter created the account
+  // during that sign-in, which is why the signIn callback above creates none.
+  it('sends a new account’s first sign-in to the welcome page', async () => {
+    expect((await config()).pages.newUser).toBe('/welcome');
+  });
 
-    expect(await signIn({ user: { email: EMAIL } })).toBe(false);
-    expect(errorLog).toHaveBeenCalledWith('Error in signIn callback:', failure);
+  // regression: the lazy username backfill for legacy accounts called
+  // generateUniqueUsername(dbUser.email), which built the handle from the
+  // email's local part (alice.smith@… → @alicesmith).
+  it('regression: backfills a legacy account with a random handle, not one from its email', async () => {
+    const save = vi.fn();
+    const dbUser = {
+      _id: { toString: () => '64b7f0c2a1b2c3d4e5f60718' },
+      email: 'alice.smith@example.com',
+      username: undefined as string | undefined,
+      image: null,
+      defaultCurrency: 'USD',
+      save,
+    };
+    users.findOne.mockResolvedValueOnce(dbUser);
+    const { callbacks } = await config();
+
+    const session = { user: {} as Record<string, unknown> };
+    await callbacks.session({
+      session,
+      user: { id: '64b7f0c2a1b2c3d4e5f60718', email: 'alice.smith@example.com' },
+    });
+
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(dbUser.username).toMatch(/^user_[a-z0-9]{8}$/);
+    expect(session.user.username).toBe(dbUser.username);
+    for (const part of ['alice', 'smith', 'example']) {
+      expect(dbUser.username).not.toContain(part);
+    }
   });
 });

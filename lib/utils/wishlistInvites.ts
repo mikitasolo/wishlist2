@@ -3,6 +3,7 @@ import WishlistInvite, { IWishlistInvite } from '@/models/WishlistInvite';
 import Notification from '@/models/Notification';
 import { sendWishlistInvitationEmail } from '@/lib/email';
 import { createNotification } from '@/lib/notifications';
+import { isDuplicateKeyError } from '@/lib/utils/mongoErrors';
 
 type Id = string | mongoose.Types.ObjectId;
 
@@ -20,11 +21,6 @@ interface IssueInviteArgs {
   invitedUserId: Id;
   /** Account email of the invitee — fetched by the caller, never stored on the invite. */
   invitedUserEmail?: string | null;
-}
-
-/** MongoDB's duplicate-key error — here, the unique pending-invite index refusing a second row. */
-function isDuplicateKeyError(err: unknown): boolean {
-  return typeof err === 'object' && err !== null && (err as { code?: unknown }).code === 11000;
 }
 
 /**

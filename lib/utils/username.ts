@@ -1,7 +1,5 @@
+import { randomInt } from 'node:crypto';
 import User from '@/models/User';
-
-/** Usernames: 3–20 chars, start with a letter, then letters/digits/underscore. */
-export const USERNAME_REGEX = /^[a-z][a-z0-9_]{2,19}$/;
 
 const RESERVED = new Set([
   'admin',
@@ -26,28 +24,39 @@ export function isReservedUsername(name: string): boolean {
   return RESERVED.has(name.toLowerCase());
 }
 
-/** Turn an email (or any string) into a valid username base. */
-function baseFromEmail(email: string): string {
-  let base = (email.split('@')[0] || '').toLowerCase().replace(/[^a-z0-9_]/g, '');
-  if (!/^[a-z]/.test(base)) base = `u${base}`;
-  base = base.slice(0, 18);
-  while (base.length < 3) base += '0';
-  return base;
+/** Generated handles: `user_` plus this many random lowercase base36 characters. */
+export const GENERATED_USERNAME_PREFIX = 'user_';
+const SUFFIX_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
+const SUFFIX_LENGTH = 8;
+/**
+ * How many taken handles in a row it takes to give up. 36^8 (about 2.8 × 10^12)
+ * suffixes make even one collision vanishingly rare, so hitting this means the
+ * lookup is broken, not that the namespace is full.
+ */
+const MAX_ATTEMPTS = 20;
+
+function randomHandle(): string {
+  let suffix = '';
+  for (let i = 0; i < SUFFIX_LENGTH; i++) {
+    suffix += SUFFIX_ALPHABET[randomInt(SUFFIX_ALPHABET.length)];
+  }
+  return `${GENERATED_USERNAME_PREFIX}${suffix}`;
 }
 
 /**
- * Generate a unique username derived from an email, appending a numeric
- * suffix on collision. Requires an active DB connection.
+ * A fresh, unused username for a new account (or a legacy one without a
+ * username), e.g. `user_4f9k2x7q`. Its suffix is crypto-random, so the handle
+ * carries nothing about the person: it deliberately takes no input, and in
+ * particular never sees the email, since a handle is public and the email
+ * never is. The user can pick their own on the welcome page or in settings.
+ * Requires an active DB connection.
  */
-export async function generateUniqueUsername(email: string): Promise<string> {
-  const base = baseFromEmail(email);
-  const candidates = [base, ...Array.from({ length: 9999 }, (_, i) => `${base}${i + 2}`)];
-  for (const candidate of candidates) {
-    const trimmed = candidate.slice(0, 20);
-    if (isReservedUsername(trimmed)) continue;
-    const taken = await User.exists({ username: trimmed });
-    if (!taken) return trimmed;
+export async function generateUniqueUsername(): Promise<string> {
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    // Never reserved: every reserved name is shorter than a generated handle.
+    const candidate = randomHandle();
+    const taken = await User.exists({ username: candidate });
+    if (!taken) return candidate;
   }
-  // Extremely unlikely fallback
-  return `${base.slice(0, 12)}${Date.now().toString(36)}`.slice(0, 20);
+  throw new Error('Could not generate an unused username');
 }
