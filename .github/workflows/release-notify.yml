@@ -18,7 +18,7 @@ jobs:
     # already happened by this point and nothing here gates it.
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # Full history: the changelog walks `before..after`.
           fetch-depth: 0
@@ -38,7 +38,7 @@ jobs:
     # Same as above: the release already happened; a Linear hiccup is cosmetic.
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # Full history: the released commits' `Closes WIS-…` lines are read
           # from `before..after`.
