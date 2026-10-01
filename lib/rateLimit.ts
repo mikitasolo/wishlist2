@@ -282,9 +282,13 @@ async function run(name: LimiterName, key: string): Promise<RateLimitResult> {
   }
 
   if (!result.success) {
-    // One line and one count per block, for tuning SPECS from real traffic. Never the key.
+    // One line per block, for tuning SPECS from real traffic. Never the key.
     console.warn(JSON.stringify({ event: 'rate_limited', name, keyKind: spec.keyKind }));
-    countBlockAfterResponse(name);
+    // And one count per block Redis answered. A repeat block the SDK answers from
+    // its in-memory cache (`cacheBlock`) costs no Redis command; counting it would
+    // let a flood from one source spend the store's command quota, which every
+    // limiter depends on (sign-in fails closed without it).
+    if (result.reason !== 'cacheBlock') countBlockAfterResponse(name);
   }
   return result;
 }
@@ -293,7 +297,8 @@ async function run(name: LimiterName, key: string): Promise<RateLimitResult> {
  * The counter a block is added to: `rl:stats:<env>:<name>:<YYYY-MM-DD>`, the UTC
  * day. `env` is `VERCEL_ENV` (`'local'` when unset), so dev and preview traffic
  * sharing the store never mixes with production's. Built from the limiter's name
- * alone — never from its key, nor anything derived from it.
+ * alone — never from its key, nor anything derived from it. (It shares the
+ * limiters' `rl:<name>` prefix space, so `stats` can't be a limiter name.)
  */
 function blockStatsKey(name: LimiterName): string {
   const env = process.env.VERCEL_ENV || 'local';
@@ -303,14 +308,14 @@ function blockStatsKey(name: LimiterName): string {
 
 /**
  * Count a block in Redis, once the response is out: `INCR` + `EXPIRE` in one
- * pipeline, so one Upstash request per block and none for allowed requests.
- * Nothing when limiting is disabled.
+ * pipeline, so one Upstash request (two billed commands) per counted block and
+ * none for allowed requests. Nothing when limiting is disabled.
  *
  * Inside a request scope — route handlers, and Auth.js's `sendVerificationRequest`
  * — it goes through Next's `after()`, which runs it after the response is sent
- * and keeps the function alive until it's done. Outside one, `after()` throws
- * and the count is fired and forgotten. Either way it can't slow down or fail the
- * request: `countBlock` never rejects.
+ * and keeps the function alive until it's done. Outside one (or where Next can't
+ * wait on it), `after()` throws and the count is fired and forgotten. Either way
+ * it can't slow down or fail the request: `countBlock` never rejects.
  */
 function countBlockAfterResponse(name: LimiterName): void {
   const store = statsStore;

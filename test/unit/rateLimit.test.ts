@@ -564,6 +564,18 @@ describe('the block counter', () => {
     expect(pipelines).toEqual([]);
   });
 
+  it('does not count a repeat block the SDK answered from its in-memory cache', async () => {
+    // `cacheBlock` costs no Redis command; counting it would let a flood from one
+    // source spend the store's quota. The block is still logged.
+    const { store, pipelines } = fakeStats();
+    __setRateLimiters({ signinIp: fake({ success: false, reason: 'cacheBlock' }) }, store);
+
+    expect(await checkRateLimit('signinIp', ipKey(new Headers()))).toBe(false);
+    expect(pipelines).toEqual([]);
+    expect(after).not.toHaveBeenCalled();
+    expect(lines('warn')).toEqual([{ event: 'rate_limited', name: 'signinIp', keyKind: 'ip' }]);
+  });
+
   it('counts after the response when there is a request scope', async () => {
     const deferred = inRequestScope();
     const { store, pipelines } = fakeStats();
