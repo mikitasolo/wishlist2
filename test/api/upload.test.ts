@@ -72,16 +72,29 @@ describe('POST /api/upload', () => {
     expect(await res.json()).toEqual({ success: true, url: expect.stringContaining(pathname) });
   });
 
-  it('accepts a benign AVIF and keeps it AVIF', async () => {
-    const avif = await solidImage().avif().toBuffer();
+  // A sharp bump for its libheif advisory (WIS-140) must leave AVIF uploads as
+  // they were: accepted, re-encoded as AVIF, metadata dropped.
+  it('accepts a benign AVIF, re-encodes it as AVIF and drops its EXIF', async () => {
+    const avif = await solidImage()
+      .withExif({ IFD0: { Copyright: 'wishlist test fixture' } })
+      .avif()
+      .toBuffer();
+    // The fixture really is an AVIF with EXIF, or the assertions below prove nothing.
+    const before = await sharp(avif).metadata();
+    expect(before).toMatchObject({ format: 'heif', compression: 'av1' });
+    expect(before.exif).toBeDefined();
 
     const res = await POST(uploadRequest(avif, 'image/avif', 'a.avif'));
 
     expect(res.status).toBe(200);
     const [pathname, stored, options] = put.mock.calls[0]!;
     expect(pathname).toBe(`uploads/${USER_ID}/image.avif`);
-    expect(options).toMatchObject({ contentType: 'image/avif' });
-    expect((await sharp(stored as Buffer).metadata()).format).toBe('heif');
+    expect(options).toEqual({ access: 'public', addRandomSuffix: true, contentType: 'image/avif' });
+    // Re-encoded, not passed through: still an 8×8 AVIF, but with the EXIF gone.
+    expect(Buffer.compare(stored as Buffer, avif)).not.toBe(0);
+    const after = await sharp(stored as Buffer).metadata();
+    expect(after).toMatchObject({ format: 'heif', compression: 'av1', width: 8, height: 8 });
+    expect(after.exif).toBeUndefined();
   });
 
   it('answers 400, not 500, for bytes sharp cannot decode', async () => {
