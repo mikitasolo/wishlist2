@@ -192,6 +192,17 @@ export type OwnerRemoval = 'removed' | 'actor-not-owner' | 'last-owner';
  * other still there, and two owners removing each other at once would each still
  * see themselves as an owner. Callers still pre-check (`isLastOwner`, and that the
  * caller owns the list) for the common case.
+ *
+ * A demotion writes the membership *before* it takes the ownership, so a failure
+ * between the two writes can't leave the user with neither, locked out of the list
+ * with a retry that 404s because they're no longer an owner. If the membership
+ * write fails, nothing has changed. If the ownership write fails, the row stays:
+ * that write may have landed (only its acknowledgement lost), and then the row is
+ * all they have. If it didn't land, they're still an owner with a spare row.
+ * Routes check ownership before membership, so the row gives them nothing they
+ * don't already have as an owner, though the members list shows them twice. A
+ * retry of the demotion reuses it. A refused demotion takes back the row it
+ * created (see `writeDemotedMembership`).
  */
 export async function removeWishlistOwner(
   wishlist: WishlistShape,
@@ -202,6 +213,8 @@ export async function removeWishlistOwner(
 
   const wishlistId = wishlist._id.toString();
   const uid = new mongoose.Types.ObjectId(userId);
+  const created = keepAsMember ? await writeDemotedMembership(wishlistId, userId) : null;
+
   // One conditional write: only matches while the actor and the user are both
   // owners *and* a second owner exists (`owners.1`). So of two racing removals on
   // a two-owner list exactly one lands, and an owner whom a concurrent request
@@ -217,21 +230,55 @@ export async function removeWishlistOwner(
     { $pull: { owners: uid, featuredBy: uid } }
   );
   if (modifiedCount === 0) {
+    // Refused, so the membership this demotion wrote goes again. Otherwise a
+    // demotion that lost to the user leaving, or to a co-owner removing them, would
+    // bring them back as a member.
+    if (created) await WishlistMember.deleteOne(created);
     // The write already refused, so this read only picks the answer. It can be a
     // moment newer than the write; nothing was changed either way.
     return (await isOwnerOfWishlist(wishlistId, actorId)) ? 'last-owner' : 'actor-not-owner';
   }
 
-  if (keepAsMember) {
-    await WishlistMember.findOneAndUpdate(
-      { wishlist: wishlistId, user: userId },
-      { $set: { wishlist: wishlistId, user: userId } },
-      { upsert: true }
-    );
-  } else {
-    await WishlistMember.deleteMany({ wishlist: wishlistId, user: userId });
-  }
+  if (!keepAsMember) await WishlistMember.deleteMany({ wishlist: wishlistId, user: userId });
   return 'removed';
+}
+
+/**
+ * Write the membership a demotion leaves the user with, ahead of the write that
+ * takes their ownership. Returns a filter matching that row for as long as only
+ * this call has touched it, for taking it back if the ownership write refuses. It
+ * returns `null` when no row this call may delete exists.
+ *
+ * A row that was already there is never this call's to delete. It's a membership
+ * someone else made: typically the user was already demoted and the caller's read
+ * of them as an owner is stale, so deleting it would lock them out. A row another
+ * demotion reuses before this one is refused is left alone too, because that
+ * demotion's ownership write may be the one that lands. Every demotion bumps the
+ * row's version (`__v`), and the filter pins the version this call created.
+ * Nothing else changes `__v` on this model (it has no arrays, and optimistic
+ * concurrency is off), so a changed version means another demotion.
+ *
+ * One case this leaves open: two demotions that are both refused because the user
+ * has already left or been removed. The second one's bump spares the row from the
+ * first, and the second didn't create it, so neither deletes it. That needs three
+ * requests on the same person at once. Only a transaction around both writes
+ * would close it.
+ */
+async function writeDemotedMembership(
+  wishlistId: string,
+  userId: string
+): Promise<{ _id: mongoose.Types.ObjectId; __v: number } | null> {
+  // An insert takes `wishlist` and `user` from the filter. Nothing sets them in the
+  // update, because MongoDB only retries an upsert that hit the unique index (two
+  // owners demoting the same co-owner at once) when the update leaves the
+  // filter's fields alone.
+  const { value, lastErrorObject } = await WishlistMember.findOneAndUpdate(
+    { wishlist: wishlistId, user: userId },
+    { $inc: { __v: 1 } },
+    { upsert: true, new: true, includeResultMetadata: true }
+  );
+  if (!value || lastErrorObject?.updatedExisting) return null;
+  return { _id: value._id, __v: value.__v };
 }
 
 /**
