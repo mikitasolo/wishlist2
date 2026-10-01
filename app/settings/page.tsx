@@ -10,7 +10,9 @@ import Icon from '@/components/Icon';
 import ImageUpload from '@/components/ImageUpload';
 import Select from '@/components/Select';
 import Toggle from '@/components/Toggle';
+import UsernameField from '@/components/UsernameField';
 import { currencySelectOptions } from '@/lib/utils/currencies';
+import { useUsernameAvailability } from '@/lib/hooks/useUsernameAvailability';
 import { useToast } from '@/components/ToastProvider';
 
 type InvitePolicy = 'everyone' | 'friends' | 'nobody';
@@ -29,8 +31,6 @@ interface Profile {
   };
 }
 
-const USERNAME_RE = /^[a-z][a-z0-9_]{2,19}$/;
-
 export default function SettingsPage() {
   const { status, update } = useSession();
   const router = useRouter();
@@ -46,9 +46,7 @@ export default function SettingsPage() {
   const [searchable, setSearchable] = useState(true);
   const [whoCanInvite, setWhoCanInvite] = useState<InvitePolicy>('everyone');
   const [profileVisibility, setProfileVisibility] = useState<ProfileVisibility>('everyone');
-  const [availability, setAvailability] = useState<
-    'idle' | 'checking' | 'ok' | 'taken' | 'invalid'
-  >('idle');
+  const availability = useUsernameAvailability(username, initial?.username ?? null);
 
   useEffect(() => {
     if (status === 'unauthenticated') router.push('/');
@@ -89,34 +87,6 @@ export default function SettingsPage() {
     }
     if (status === 'authenticated') load();
   }, [status, showToast]);
-
-  // Debounced username availability check
-  useEffect(() => {
-    const u = username.toLowerCase();
-    if (!initial || u === initial.username) {
-      setAvailability('idle');
-      return;
-    }
-    if (!USERNAME_RE.test(u)) {
-      setAvailability('invalid');
-      return;
-    }
-    setAvailability('checking');
-    const t = setTimeout(async () => {
-      try {
-        const res = await fetch(`/api/users/check-username?username=${encodeURIComponent(u)}`, {
-          cache: 'no-store',
-        });
-        const result = await res.json();
-        setAvailability(
-          result.available ? 'ok' : result.reason === 'invalid' ? 'invalid' : 'taken'
-        );
-      } catch {
-        setAvailability('idle');
-      }
-    }, 400);
-    return () => clearTimeout(t);
-  }, [username, initial]);
 
   const imageChanged = !!initial && (image ?? null) !== (initial.image ?? null);
   const bioChanged = !!initial && bio.trim() !== initial.bio;
@@ -203,41 +173,7 @@ export default function SettingsPage() {
             <ImageUpload value={image} onChange={setImage} disabled={saving} circle />
           </div>
 
-          <label htmlFor="username" className="mb-1.5 block text-sm font-medium text-foreground">
-            Username
-          </label>
-          <div className="flex items-center gap-2 rounded-xl border border-border-strong bg-surface px-3 focus-within:border-border-strong">
-            <span className="text-muted-foreground">@</span>
-            <input
-              id="username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value.toLowerCase())}
-              className="h-11 min-w-0 flex-1 border-0 bg-transparent text-[15px] outline-none focus-visible:outline-none"
-              autoCapitalize="none"
-              autoComplete="off"
-              spellCheck={false}
-              maxLength={20}
-            />
-            {usernameChanged && (
-              <span className="flex-shrink-0 text-sm">
-                {availability === 'checking' && (
-                  <span className="text-muted-foreground">Checking…</span>
-                )}
-                {availability === 'ok' && (
-                  <span className="text-emerald-600 dark:text-emerald-400">Available</span>
-                )}
-                {availability === 'taken' && (
-                  <span className="text-red-600 dark:text-red-400">Taken</span>
-                )}
-                {availability === 'invalid' && (
-                  <span className="text-red-600 dark:text-red-400">Invalid</span>
-                )}
-              </span>
-            )}
-          </div>
-          <p className="mt-2 text-xs text-muted-foreground">
-            3–20 characters, starting with a letter. Letters, numbers, and underscores only.
-          </p>
+          <UsernameField value={username} onChange={setUsername} availability={availability} />
 
           <div className="mt-5">
             <label htmlFor="bio" className="mb-1.5 block text-sm font-medium text-foreground">
