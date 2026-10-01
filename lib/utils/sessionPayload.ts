@@ -46,15 +46,22 @@ export function sessionPayload(
   dbUser: SessionDbUser | null,
   expires: unknown
 ): Session {
+  const id = dbUser ? dbUser._id.toString() : text(row?.id);
+  // Fail closed: a session without its user's id would still read as signed
+  // in. Auth.js answers a session callback that throws with no session at all.
+  if (!id) throw new Error('No user id for the session');
+  // `satisfies` ties this literal to SESSION_USER_FIELDS: a field missing from
+  // either, or added to only one, is a type error.
+  const user = {
+    id,
+    email: text(row?.email) ?? '',
+    username: (dbUser ? dbUser.username : text(row?.username)) || undefined,
+    name: text(row?.name),
+    image: (dbUser ? dbUser.image : text(row?.image)) || undefined,
+    defaultCurrency: (dbUser ? dbUser.defaultCurrency : text(row?.defaultCurrency)) || 'USD',
+  } satisfies Record<(typeof SESSION_USER_FIELDS)[number], unknown>;
   return {
-    user: {
-      id: dbUser ? dbUser._id.toString() : (text(row?.id) ?? ''),
-      email: text(row?.email) ?? '',
-      username: (dbUser ? dbUser.username : text(row?.username)) || undefined,
-      name: text(row?.name),
-      image: (dbUser ? dbUser.image : text(row?.image)) || undefined,
-      defaultCurrency: (dbUser ? dbUser.defaultCurrency : text(row?.defaultCurrency)) || 'USD',
-    },
+    user,
     expires: expires instanceof Date ? expires.toISOString() : (text(expires) ?? ''),
   };
 }

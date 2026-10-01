@@ -270,10 +270,9 @@ describe('lib/auth: the session payload', () => {
   const TOKEN = 'a7c3e1f0-6d2b-4c8e-9f1a-session-token';
   const EXPIRES = new Date('2026-10-31T12:00:00.000Z');
 
-  /** The adapter's user row, the way Auth.js passes it: every field it has. */
+  /** The adapter's user row, the way Auth.js passes it (`_id` already mapped to `id`): every field it has. */
   const userRow = () => ({
     id: USER_ID,
-    _id: USER_ID,
     email: 'alice.smith@example.com',
     emailVerified: new Date('2026-10-01T00:00:00Z'),
     username: 'alice',
@@ -287,7 +286,7 @@ describe('lib/auth: the session payload', () => {
   });
   /** What Auth.js passes as `session` with database sessions: `{ ...sessionRow, user }`. */
   const sessionArg = () => ({
-    _id: 'sess-row-id',
+    id: 'sess-row-id',
     sessionToken: TOKEN,
     userId: USER_ID,
     expires: EXPIRES,
@@ -341,7 +340,7 @@ describe('lib/auth: the session payload', () => {
     expect(Object.keys(result).sort()).toEqual(['expires', 'user']);
     expect(Object.keys(result.user).sort()).toEqual([...SESSION_USER_FIELDS].sort());
     const wire = JSON.stringify(result);
-    for (const leak of [TOKEN, 'sessionToken', 'userId', '_id', 'sess-row-id', 'emailVerified']) {
+    for (const leak of [TOKEN, 'sessionToken', 'userId', 'sess-row-id', 'emailVerified', 'bio']) {
       expect(wire).not.toContain(leak);
     }
   });
@@ -400,7 +399,48 @@ describe('lib/auth: the session payload', () => {
       trigger: 'update',
     } as never);
 
-    expect(result.user.username).toBe('alice_new');
-    expect(result.user.id).toBe(USER_ID);
+    // All of it from the account; none of what the client sent.
+    expect(result).toEqual({
+      user: {
+        id: USER_ID,
+        email: 'alice.smith@example.com',
+        username: 'alice_new',
+        name: undefined,
+        image: 'https://blob.example/uploads/me/a.webp',
+        defaultCurrency: 'EUR',
+      },
+      expires: '2026-10-31T12:00:00.000Z',
+    });
+  });
+
+  // A username backfill that loses a race fails on the unique index, and that
+  // error quotes the clashing username.
+  it('logs a duplicate-key error by its kind only', async () => {
+    const legacy = { ...dbUser(), username: undefined as string | undefined };
+    legacy.save.mockRejectedValueOnce(
+      Object.assign(new Error('E11000 dup key: { username: "user_clash000" }'), { code: 11000 })
+    );
+    users.findOne.mockResolvedValueOnce(legacy);
+    users.exists.mockResolvedValue(null);
+    const callback = await sessionCallback();
+
+    const result = await callback({ session: sessionArg(), user: userRow() });
+
+    expect(errorLog).toHaveBeenCalledWith('Error in session callback:', 'duplicate key');
+    expect(format(...errorLog.mock.calls[0])).not.toContain('user_clash000');
+    // Still signed in, on the adapter's row.
+    expect(result.user.username).toBe('alice');
+  });
+
+  // Fail closed: Auth.js answers a callback that throws with no session.
+  it('refuses a session it can’t name a user id for', async () => {
+    users.findOne.mockRejectedValueOnce(new Error('connection refused'));
+    const callback = await sessionCallback();
+    const { id: _, ...withoutId } = userRow();
+    void _;
+
+    await expect(callback({ session: sessionArg(), user: withoutId })).rejects.toThrow(
+      'No user id for the session'
+    );
   });
 });

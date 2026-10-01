@@ -57,14 +57,21 @@ describe('sessionPayload', () => {
 
   it('ignores row values that aren’t strings', () => {
     const payload = sessionPayload(
-      { id: 42, email: null, username: { $ne: '' }, name: ['x'], image: 7, defaultCurrency: false },
+      {
+        id: 'row-id',
+        email: null,
+        username: { $ne: '' },
+        name: ['x'],
+        image: 7,
+        defaultCurrency: false,
+      },
       null,
       'not-a-date-object'
     );
 
     expect(payload).toEqual({
       user: {
-        id: '',
+        id: 'row-id',
         email: '',
         username: undefined,
         name: undefined,
@@ -75,17 +82,15 @@ describe('sessionPayload', () => {
     });
   });
 
-  it('copes with no row and no expiry at all', () => {
-    expect(sessionPayload(undefined, null, undefined)).toEqual({
-      user: {
-        id: '',
-        email: '',
-        username: undefined,
-        name: undefined,
-        image: undefined,
-        defaultCurrency: 'USD',
-      },
-      expires: '',
-    });
+  it('gives an empty expiry when there is none', () => {
+    expect(sessionPayload({ id: 'row-id' }, null, undefined).expires).toBe('');
+  });
+
+  // A session whose user has no id would still read as signed in; Auth.js
+  // answers a session callback that throws with no session at all.
+  it('refuses to build a session without its user’s id', () => {
+    expect(() => sessionPayload(undefined, null, EXPIRES)).toThrow('No user id for the session');
+    expect(() => sessionPayload({ id: 42, email: 'me@example.com' }, null, EXPIRES)).toThrow();
+    expect(() => sessionPayload({ id: '' }, null, EXPIRES)).toThrow();
   });
 });

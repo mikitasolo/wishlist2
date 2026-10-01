@@ -7,6 +7,7 @@ import { getEnvVars } from './env';
 import { generateUniqueUsername } from './utils/username';
 import { endPreviousSession } from './utils/previousSession';
 import { sessionPayload, type SessionDbUser } from './utils/sessionPayload';
+import { isDuplicateKeyError } from './utils/mongoErrors';
 import { isVerifiedSignIn, sendVerificationRequest } from './signInEmail';
 
 // Get validated environment variables
@@ -84,7 +85,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             console.error('User not found in database during session callback');
           }
         } catch (error) {
-          console.error('Error in session callback:', error);
+          // A duplicate-key error (the username backfill losing a race) quotes the
+          // clashing value, so only its kind is logged.
+          console.error(
+            'Error in session callback:',
+            isDuplicateKeyError(error) ? 'duplicate key' : error
+          );
         }
       }
       // Without a read of their own (none found, or it failed), the adapter's
