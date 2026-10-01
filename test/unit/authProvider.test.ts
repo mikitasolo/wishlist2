@@ -357,48 +357,133 @@ describe('lib/auth: the session payload', () => {
     expect(passed.user).toEqual(userRow());
   });
 
-  // Not found, or the read failed: still signed in on the adapter's row, as
-  // before, but through the same allowlist.
-  it.each([
-    ['the account isn’t found', () => users.findOne.mockResolvedValueOnce(null)],
-    [
-      'the database read fails',
-      () => users.findOne.mockRejectedValueOnce(new Error('connection refused')),
-    ],
-  ])('keeps the allowlist when %s', async (_, arrange) => {
-    arrange();
+  // The adapter read the row for this very check, so reading the account
+  // again (as the callback used to, on every auth()) only cost a round trip.
+  it('builds the session from the adapter’s row, without reading the account again', async () => {
     const callback = await sessionCallback();
+    const connectDB = vi.mocked((await import('@/lib/mongodb')).default);
+    connectDB.mockClear();
 
     const result = await callback({ session: sessionArg(), user: userRow() });
 
-    expect(result).toEqual({
-      user: {
-        id: USER_ID,
-        email: 'alice.smith@example.com',
-        username: 'alice',
-        name: undefined,
-        image: 'https://blob.example/uploads/me/a.webp',
-        defaultCurrency: 'EUR',
-      },
-      expires: '2026-10-31T12:00:00.000Z',
+    expect(users.findOne).not.toHaveBeenCalled();
+    expect(connectDB).not.toHaveBeenCalled();
+    expect(result.user).toEqual({
+      id: USER_ID,
+      email: 'alice.smith@example.com',
+      username: 'alice',
+      name: undefined,
+      image: 'https://blob.example/uploads/me/a.webp',
+      defaultCurrency: 'EUR',
     });
-    expect(JSON.stringify(result)).not.toContain(TOKEN);
-    expect(errorLog).toHaveBeenCalledTimes(1);
   });
 
-  // update() (settings, welcome) re-runs the callback: it reads the account
-  // again rather than taking anything the client sent.
-  it('reflects a changed username on the next read, and ignores what update() sends', async () => {
-    users.findOne.mockResolvedValueOnce({ ...dbUser(), username: 'alice_new' });
+  // A raw row has only what was written to it: Mongoose's schema defaults
+  // (defaultCurrency 'USD', image null) were applied by the read this replaces.
+  it('fills in the schema defaults a raw row can lack', async () => {
+    const callback = await sessionCallback();
+    const { image: _image, defaultCurrency: _currency, ...bare } = userRow();
+    void _image;
+    void _currency;
+
+    const result = await callback({ session: sessionArg(), user: bare });
+
+    expect(users.findOne).not.toHaveBeenCalled();
+    expect(result.user.defaultCurrency).toBe('USD');
+    expect(result.user.image).toBeUndefined();
+  });
+
+  describe('a legacy account without a username', () => {
+    const legacyRow = () => ({ ...userRow(), username: undefined });
+
+    it('backfills one, saves it, and puts it in the session', async () => {
+      const account = { ...dbUser(), username: undefined as string | undefined };
+      users.findOne.mockResolvedValueOnce(account);
+      users.exists.mockResolvedValue(null);
+      const callback = await sessionCallback();
+
+      const result = await callback({ session: sessionArg(), user: legacyRow() });
+
+      expect(users.findOne).toHaveBeenCalledTimes(1);
+      expect(account.save).toHaveBeenCalledTimes(1);
+      expect(account.username).toMatch(/^user_[a-z0-9]{8}$/);
+      expect(result.user.username).toBe(account.username);
+    });
+
+    it('takes the one a concurrent check backfilled since the adapter’s read', async () => {
+      const account = { ...dbUser(), username: 'user_abcd1234' };
+      users.findOne.mockResolvedValueOnce(account);
+      const callback = await sessionCallback();
+
+      const result = await callback({ session: sessionArg(), user: legacyRow() });
+
+      expect(account.save).not.toHaveBeenCalled();
+      expect(result.user.username).toBe('user_abcd1234');
+    });
+
+    // Not found, or the read failed: still signed in on the adapter's row, as
+    // before, but through the same allowlist.
+    it.each([
+      ['the account isn’t found', () => users.findOne.mockResolvedValueOnce(null)],
+      [
+        'the database read fails',
+        () => users.findOne.mockRejectedValueOnce(new Error('connection refused')),
+      ],
+    ])('keeps the allowlist when %s', async (_, arrange) => {
+      arrange();
+      const callback = await sessionCallback();
+
+      const result = await callback({ session: sessionArg(), user: legacyRow() });
+
+      expect(result).toEqual({
+        user: {
+          id: USER_ID,
+          email: 'alice.smith@example.com',
+          username: undefined,
+          name: undefined,
+          image: 'https://blob.example/uploads/me/a.webp',
+          defaultCurrency: 'EUR',
+        },
+        expires: '2026-10-31T12:00:00.000Z',
+      });
+      expect(JSON.stringify(result)).not.toContain(TOKEN);
+      expect(errorLog).toHaveBeenCalledTimes(1);
+    });
+
+    // A backfill that loses a race fails on the unique index, and that error
+    // quotes the clashing username.
+    it('logs a duplicate-key error by its kind only', async () => {
+      const account = { ...dbUser(), username: undefined as string | undefined };
+      account.save.mockRejectedValueOnce(
+        Object.assign(new Error('E11000 dup key: { username: "user_clash000" }'), { code: 11000 })
+      );
+      users.findOne.mockResolvedValueOnce(account);
+      users.exists.mockResolvedValue(null);
+      const callback = await sessionCallback();
+
+      const result = await callback({ session: sessionArg(), user: legacyRow() });
+
+      expect(errorLog).toHaveBeenCalledWith('Error in session callback:', 'duplicate key');
+      expect(format(...errorLog.mock.calls[0])).not.toContain('user_clash000');
+      // Still signed in, on the adapter's row; the next check backfills again.
+      expect(result.user.username).toBeUndefined();
+    });
+  });
+
+  // update() (settings, welcome) re-runs the check, and Auth.js reads the
+  // row afresh for it, so a changed username is in the row this gets; nothing
+  // the client sent is taken.
+  it('reflects a changed username on the next check, and ignores what update() sends', async () => {
     const callback = await sessionCallback();
 
     const result = await callback({
       session: sessionArg(),
-      user: userRow(),
-      newSession: { user: { username: 'forged', id: 'someone-else' } },
+      user: { ...userRow(), username: 'alice_new' },
+      newSession: { user: { username: 'forged', id: 'someone-else', image: 'evil.webp' } },
       trigger: 'update',
     } as never);
 
+    expect(users.findOne).not.toHaveBeenCalled();
     // All of it from the account; none of what the client sent.
     expect(result).toEqual({
       user: {
@@ -411,25 +496,6 @@ describe('lib/auth: the session payload', () => {
       },
       expires: '2026-10-31T12:00:00.000Z',
     });
-  });
-
-  // A username backfill that loses a race fails on the unique index, and that
-  // error quotes the clashing username.
-  it('logs a duplicate-key error by its kind only', async () => {
-    const legacy = { ...dbUser(), username: undefined as string | undefined };
-    legacy.save.mockRejectedValueOnce(
-      Object.assign(new Error('E11000 dup key: { username: "user_clash000" }'), { code: 11000 })
-    );
-    users.findOne.mockResolvedValueOnce(legacy);
-    users.exists.mockResolvedValue(null);
-    const callback = await sessionCallback();
-
-    const result = await callback({ session: sessionArg(), user: userRow() });
-
-    expect(errorLog).toHaveBeenCalledWith('Error in session callback:', 'duplicate key');
-    expect(format(...errorLog.mock.calls[0])).not.toContain('user_clash000');
-    // Still signed in, on the adapter's row.
-    expect(result.user.username).toBe('alice');
   });
 
   // Fail closed: Auth.js answers a callback that throws with no session.

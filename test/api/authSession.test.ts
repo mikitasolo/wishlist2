@@ -72,6 +72,64 @@ describe('GET /api/auth/session', () => {
     }
   });
 
+  // Auth.js's adapter has just read the account for this check; the callback
+  // used to read it again through the model on every auth().
+  it('reads the account once per check, through the adapter only', async () => {
+    const findOne = vi.spyOn(User, 'findOne');
+
+    const body = await (await getSession(`authjs.session-token=${TOKEN}`)).json();
+
+    expect(body.user.username).toBe('alice');
+    expect(findOne).not.toHaveBeenCalled();
+    findOne.mockRestore();
+  });
+
+  // update() (settings, welcome) is just another check: the row is read afresh.
+  it('shows a changed username on the next check', async () => {
+    await User.updateOne({ _id: userId }, { $set: { username: 'alice_new' } });
+
+    const body = await (await getSession(`authjs.session-token=${TOKEN}`)).json();
+
+    expect(body.user.username).toBe('alice_new');
+  });
+
+  it('backfills a legacy account’s username once, and fills in the defaults its raw row lacks', async () => {
+    // A row from before usernames, written raw: no username, no schema defaults.
+    const legacy = new mongoose.Types.ObjectId();
+    await mongoose.connection.collection('users').insertOne({
+      _id: legacy,
+      email: 'legacy@example.com',
+      emailVerified: new Date(),
+    });
+    await mongoose.connection.collection('sessions').insertOne({
+      sessionToken: 'legacy-session',
+      userId: legacy,
+      expires: new Date(Date.now() + 86_400_000),
+    });
+    const findOne = vi.spyOn(User, 'findOne');
+
+    const first = await (await getSession('authjs.session-token=legacy-session')).json();
+
+    expect(first.user).toEqual({
+      id: legacy.toString(),
+      email: 'legacy@example.com',
+      username: expect.stringMatching(/^user_[a-z0-9]{8}$/),
+      defaultCurrency: 'USD',
+    });
+    expect((await User.findById(legacy).lean())!.username).toBe(first.user.username);
+    // One read of the account (the generator's own `exists` checks also run
+    // through findOne, so count the lookup by email).
+    const accountReads = findOne.mock.calls.filter(([filter]) => filter && 'email' in filter);
+    expect(accountReads).toHaveLength(1);
+
+    // From then on its row has one, so checks are back to the adapter's read.
+    findOne.mockClear();
+    const next = await (await getSession('authjs.session-token=legacy-session')).json();
+    expect(next.user.username).toBe(first.user.username);
+    expect(findOne).not.toHaveBeenCalled();
+    findOne.mockRestore();
+  });
+
   it('answers null without a session', async () => {
     const res = await getSession();
     expect(await res.json()).toBeNull();
