@@ -131,7 +131,13 @@ export async function deleteOwnBlob(url: string | null | undefined): Promise<voi
   try {
     await del(url);
   } catch (err) {
-    console.error('Blob cleanup failed for', url, err);
+    // Masked: an `uploads/<userId>/` folder names the uploader. The file name,
+    // random-suffixed on upload, still identifies the blob left behind.
+    console.error(
+      'Blob cleanup failed for',
+      url.replace(/\/uploads\/[^/]+\//, '/uploads/<user>/'),
+      err
+    );
   }
 }
 

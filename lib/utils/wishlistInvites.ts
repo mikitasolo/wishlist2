@@ -182,6 +182,8 @@ async function clearInviteNotifications(wishlistId: Id, userId: Id): Promise<voi
   try {
     await Notification.deleteMany({ user: userId, wishlist: wishlistId, type: 'wishlist_invite' });
   } catch (err) {
-    console.error(`Invite notification cleanup failed for wishlist ${wishlistId}:`, err);
+    // No wishlist id: this runs when someone leaves a list or loses a role on it,
+    // and the logs must not record who left which list.
+    console.error('Invite notification cleanup failed:', err);
   }
 }

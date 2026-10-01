@@ -296,7 +296,12 @@ describe('cancelPendingInvites', () => {
     const res = await kickCarol();
     expect(res.status).toBe(200);
     expect(await WishlistInvite.findById(inviteId)).toBeNull();
-    expect(error).toHaveBeenCalledWith(expect.stringContaining(wid), expect.any(Error));
+    expect(error).toHaveBeenCalledWith('Invite notification cleanup failed:', expect.any(Error));
+    // regression: the line named the list (`…failed for wishlist <id>`), which put
+    // which list carol was removed from into the server log.
+    const logged = JSON.stringify(error.mock.calls);
+    expect(logged).not.toContain(wid);
+    expect(logged).not.toContain(carol);
   });
 
   // The invite delete is the whole fix. Swallowing its failure would quietly bring

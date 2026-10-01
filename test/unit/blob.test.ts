@@ -200,6 +200,23 @@ describe('deleteOwnBlob', () => {
     await expect(deleteOwnBlob(OWN)).resolves.toBeUndefined();
   });
 
+  // regression: a failed delete logged the whole URL, and its `uploads/<userId>/`
+  // folder put the uploader's user id in the server log.
+  it('regression: logs a failed delete without the uploader’s user id', async () => {
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const url = `https://${HOST}/uploads/64b7f0c2a1b2c3d4e5f60718/image-AbC123.jpg`;
+    del.mockRejectedValueOnce(new Error('network'));
+
+    await deleteOwnBlob(url);
+
+    expect(errorLog).toHaveBeenCalledTimes(1);
+    const logged = errorLog.mock.calls[0]!.map(String).join(' ');
+    expect(logged).not.toContain('64b7f0c2a1b2c3d4e5f60718');
+    // Still enough to find the blob that was left behind.
+    expect(logged).toContain(`https://${HOST}/uploads/<user>/image-AbC123.jpg`);
+    errorLog.mockRestore();
+  });
+
   it('deleteOwnBlobs filters to only our blobs', async () => {
     await deleteOwnBlobs([OWN, EXTERNAL, null, OTHER_STORE, OWN]);
     expect(del).toHaveBeenCalledTimes(2);

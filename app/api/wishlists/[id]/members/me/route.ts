@@ -88,12 +88,6 @@ export async function DELETE(
     // can still log a gift they went on to give.
     const unbookedCount = await releaseUserBookings(wishlistId, session.user.id);
 
-    if (unbookedCount > 0) {
-      console.log(
-        `Unbooked ${unbookedCount} item(s) for user ${session.user.id} in wishlist ${wishlistId}`
-      );
-    }
-
     // Leaving means no way back in through an invite that was already pending.
     // Cancelled before the membership goes and again after it, as a kick does
     // (see `cancelPendingInvites`).
