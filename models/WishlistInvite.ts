@@ -40,8 +40,8 @@ WishlistInviteSchema.index({ invitedUser: 1, status: 1 });
 // both land (`issueWishlistInvite` answers the duplicate-key error as "already
 // pending"). Partial on purpose: accepting or declining keeps the row and only
 // changes `status`, and a full unique index would then block re-inviting someone
-// who declined. Environments that predate it are deduped and indexed by the
-// `dedupe-pending-invites` migration.
+// who declined. Environments that predated it were deduped and indexed by the
+// since-deleted `dedupe-pending-invites` migration (see git history).
 WishlistInviteSchema.index(
   { wishlist: 1, invitedUser: 1 },
   { unique: true, partialFilterExpression: { status: 'pending' } }

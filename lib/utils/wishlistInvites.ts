@@ -50,8 +50,7 @@ function mailFailure(err: unknown) {
  * partial index on `WishlistInvite`, so two concurrent calls can't both create
  * one: the loser's insert fails with a duplicate-key error and is answered as
  * "already pending". The `findOne` before it is only a fast path for the common
- * case — and the sole guard on an environment where the index isn't built yet
- * (between a deploy and the `dedupe-pending-invites` migration).
+ * case — and the sole guard on an environment where the index isn't built.
  *
  * Once the invite exists it is real — the invitee sees it on their Invitations
  * page — so nothing after that depends on the email: the notification is created
