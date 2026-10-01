@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi, type MockInstance } from 'vitest';
+import { after } from 'next/server';
 import {
   enforce,
   checkRateLimit,
@@ -7,13 +8,24 @@ import {
   ipKey,
   emailKey,
   STORE_TIMEOUT_MS,
+  BLOCK_STATS_TTL_SECONDS,
   __setRateLimiters,
+  type BlockStatsPipeline,
+  type BlockStatsStore,
   type KeyKind,
   type LimiterName,
   type RateLimitKey,
   type RateLimiter,
   type RateLimitResult,
 } from '@/lib/rateLimit';
+
+// The real `after()` throws outside a request scope, as every test here is, so
+// the block counter takes its fire-and-forget path unless a test swaps in an
+// implementation that stands in for a request scope.
+vi.mock('next/server', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('next/server')>();
+  return { ...actual, after: vi.fn(actual.after) };
+});
 
 // A controllable fake limiter — no Redis, no network.
 function fake(result: Partial<RateLimitResult> | (() => never)): RateLimiter {
@@ -42,6 +54,7 @@ beforeEach(() => {
 afterEach(() => {
   __setRateLimiters(null); // reset to real (env-driven) registry
   vi.restoreAllMocks();
+  vi.mocked(after).mockReset(); // back to the real `after()`
 });
 
 /**
@@ -376,6 +389,326 @@ describe('failure policy when the store times out', () => {
           name: 'signinEmail',
           policy: 'fail-closed',
         }),
+      ]);
+      expect(everythingLogged()).not.toContain(IDENTIFIERS.email);
+    });
+  });
+});
+
+/** A fake Redis for the block counter: records every pipeline it hands out. */
+function fakeStats(exec: () => Promise<unknown> = async () => [1, 1]) {
+  const pipelines: { commands: unknown[][]; execs: number }[] = [];
+  const store: BlockStatsStore = {
+    pipeline() {
+      const p = { commands: [] as unknown[][], execs: 0 };
+      pipelines.push(p);
+      const chain: BlockStatsPipeline = {
+        incr(key) {
+          p.commands.push(['incr', key]);
+          return chain;
+        },
+        expire(key, seconds) {
+          p.commands.push(['expire', key, seconds]);
+          return chain;
+        },
+        exec() {
+          p.execs++;
+          return exec();
+        },
+      };
+      return chain;
+    },
+  };
+  return { store, pipelines };
+}
+
+/** One block's pipeline: INCR the day's counter, then EXPIRE it, sent once. */
+const counted = (statsKey: string) => ({
+  commands: [
+    ['incr', statsKey],
+    ['expire', statsKey, BLOCK_STATS_TTL_SECONDS],
+  ],
+  execs: 1,
+});
+
+/** Make `after()` behave as in a request scope: queue the task instead of running it. */
+function inRequestScope(): (() => unknown)[] {
+  const deferred: (() => unknown)[] = [];
+  vi.mocked(after).mockImplementation((task) => {
+    deferred.push(task as () => unknown);
+  });
+  return deferred;
+}
+
+describe('the block counter', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-01T12:00:00Z'));
+    vi.stubEnv('VERCEL_ENV', 'production');
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
+  it('keeps a day counter for about 60 days', () => {
+    expect(BLOCK_STATS_TTL_SECONDS).toBe(60 * 24 * 60 * 60);
+  });
+
+  it.each(LIMITERS)(
+    '%s: a block increments rl:stats:production:<name>:<today> and sets its expiry, never with the key',
+    async (name, kind) => {
+      const { store, pipelines } = fakeStats();
+      __setRateLimiters({ [name]: deny() }, store);
+      const key = keyOf(kind);
+
+      expect((await enforceAny(name, key))?.status).toBe(429);
+      expect(await checkAny(name, key)).toBe(false);
+
+      // One pipeline per blocked call, whichever entry point blocked it.
+      const statsKey = `rl:stats:production:${name}:2026-10-01`;
+      expect(pipelines).toEqual([counted(statsKey), counted(statsKey)]);
+
+      const written = JSON.stringify(pipelines);
+      expect(written).not.toContain(key);
+      expect(written).not.toContain(IDENTIFIERS[kind]);
+      expect(spies.error).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each([
+    ['preview', 'preview'],
+    ['development', 'development'],
+    [undefined, 'local'],
+  ] as const)('keeps VERCEL_ENV=%s apart from production, under "%s"', async (vercelEnv, env) => {
+    vi.stubEnv('VERCEL_ENV', vercelEnv);
+    const { store, pipelines } = fakeStats();
+    __setRateLimiters({ search: deny() }, store);
+
+    await enforce('search', ipKey(new Headers()));
+    expect(pipelines).toEqual([counted(`rl:stats:${env}:search:2026-10-01`)]);
+  });
+
+  it('counts by the UTC day of the block', async () => {
+    const { store, pipelines } = fakeStats();
+    __setRateLimiters({ upload: deny() }, store);
+
+    vi.setSystemTime(new Date('2026-10-01T23:59:59.999Z'));
+    await enforce('upload', userKey(IDENTIFIERS.user));
+    vi.setSystemTime(new Date('2026-10-02T00:00:00.000Z'));
+    await enforce('upload', userKey(IDENTIFIERS.user));
+
+    expect(pipelines).toEqual([
+      counted('rl:stats:production:upload:2026-10-01'),
+      counted('rl:stats:production:upload:2026-10-02'),
+    ]);
+  });
+
+  it('writes nothing for an allowed request', async () => {
+    const { store, pipelines } = fakeStats();
+    __setRateLimiters(
+      { upload: fake({ success: true }), signinEmail: fake({ success: true }) },
+      store
+    );
+
+    expect(await enforce('upload', userKey('user-1'))).toBeNull();
+    expect(await checkRateLimit('signinEmail', emailKey('a@b.com'))).toBe(true);
+    expect(pipelines).toEqual([]);
+    expect(after).not.toHaveBeenCalled();
+  });
+
+  it('writes nothing when no limiter is configured', async () => {
+    const { store, pipelines } = fakeStats();
+    __setRateLimiters({}, store);
+
+    expect(await enforce('search', ipKey(new Headers()))).toBeNull();
+    expect(await checkRateLimit('signinIp', ipKey(new Headers()))).toBe(true);
+    expect(pipelines).toEqual([]);
+  });
+
+  it('sends nothing anywhere without Redis credentials (limiting disabled)', async () => {
+    for (const name of [
+      'UPSTASH_REDIS_REST_URL',
+      'UPSTASH_REDIS_REST_TOKEN',
+      'KV_REST_API_URL',
+      'KV_REST_API_TOKEN',
+    ]) {
+      vi.stubEnv(name, undefined);
+    }
+    vi.stubGlobal('fetch', vi.fn());
+    __setRateLimiters(null); // the real, env-driven registry
+
+    expect(await enforce('search', ipKey(new Headers()))).toBeNull();
+    expect(await checkRateLimit('signinEmail', emailKey('a@b.com'))).toBe(true);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(after).not.toHaveBeenCalled();
+  });
+
+  it('does not count a store failure, even one that turns the request away', async () => {
+    const { store, pipelines } = fakeStats();
+    __setRateLimiters(
+      {
+        signinEmail: fake(() => {
+          throw new Error('redis down');
+        }),
+        signinIp: fake({ success: true, reason: 'timeout' }),
+      },
+      store
+    );
+
+    // Both fail closed — but neither is the limit being hit.
+    expect(await checkRateLimit('signinEmail', emailKey('a@b.com'))).toBe(false);
+    expect(await checkRateLimit('signinIp', ipKey(new Headers()))).toBe(false);
+    expect(pipelines).toEqual([]);
+  });
+
+  it('does not count a repeat block the SDK answered from its in-memory cache', async () => {
+    // `cacheBlock` costs no Redis command; counting it would let a flood from one
+    // source spend the store's quota. The block is still logged.
+    const { store, pipelines } = fakeStats();
+    __setRateLimiters({ signinIp: fake({ success: false, reason: 'cacheBlock' }) }, store);
+
+    expect(await checkRateLimit('signinIp', ipKey(new Headers()))).toBe(false);
+    expect(pipelines).toEqual([]);
+    expect(after).not.toHaveBeenCalled();
+    expect(lines('warn')).toEqual([{ event: 'rate_limited', name: 'signinIp', keyKind: 'ip' }]);
+  });
+
+  it('counts after the response when there is a request scope', async () => {
+    const deferred = inRequestScope();
+    const { store, pipelines } = fakeStats();
+    __setRateLimiters({ booking: deny() }, store);
+
+    expect((await enforce('booking', userKey(IDENTIFIERS.user)))?.status).toBe(429);
+    // Answered, and nothing written yet: the count waits for the response.
+    expect(after).toHaveBeenCalledTimes(1);
+    expect(pipelines).toEqual([]);
+
+    await Promise.all(deferred.map((task) => task()));
+    expect(pipelines).toEqual([counted('rl:stats:production:booking:2026-10-01')]);
+  });
+
+  it('counts the day the block happened, even if the task runs after midnight', async () => {
+    const deferred = inRequestScope();
+    const { store, pipelines } = fakeStats();
+    __setRateLimiters({ content: deny() }, store);
+
+    vi.setSystemTime(new Date('2026-10-01T23:59:59.999Z'));
+    await enforce('content', userKey(IDENTIFIERS.user));
+    vi.setSystemTime(new Date('2026-10-02T00:00:00.500Z'));
+    await deferred[0]!();
+
+    expect(pipelines).toEqual([counted('rl:stats:production:content:2026-10-01')]);
+  });
+
+  describe('when the increment fails', () => {
+    // What Upstash throws on an HTTP error: the whole pipeline is in the message.
+    const upstashError = (statsKey: string) => {
+      const err = new Error(
+        `ERR max requests limit exceeded, command was: ` +
+          JSON.stringify([
+            ['incr', statsKey],
+            ['expire', statsKey, BLOCK_STATS_TTL_SECONDS],
+          ])
+      );
+      err.name = 'UpstashError';
+      return err;
+    };
+
+    it.each(LIMITERS)(
+      '%s: neither throws into the request nor logs the key, and logs one store-error line',
+      async (name, kind) => {
+        const { store } = fakeStats(async () => {
+          throw upstashError(`rl:stats:production:${name}:2026-10-01`);
+        });
+        __setRateLimiters({ [name]: deny() }, store);
+        const key = keyOf(kind);
+
+        // Still the limiter's answer: a 429 / `false`, not a throw.
+        expect((await enforceAny(name, key))?.status).toBe(429);
+        expect(await checkAny(name, key)).toBe(false);
+
+        const expected = {
+          event: 'rate_limit_store_error',
+          name,
+          keyKind: kind,
+          op: 'count',
+          error: 'UpstashError: ERR max requests limit exceeded',
+        };
+        await vi.waitFor(() => expect(lines('error')).toEqual([expected, expected]));
+        // The blocks themselves are still logged, once each.
+        const blocked = { event: 'rate_limited', name, keyKind: kind };
+        expect(lines('warn')).toEqual([blocked, blocked]);
+
+        const logged = everythingLogged();
+        expect(logged).not.toContain(key);
+        expect(logged).not.toContain(IDENTIFIERS[kind]);
+      }
+    );
+
+    it('hands after() a task that never rejects', async () => {
+      // Next logs a rejected `after()` task's error raw; the store-error line must
+      // be the only thing a failed count logs.
+      const deferred = inRequestScope();
+      const { store } = fakeStats(async () => {
+        throw upstashError('rl:stats:production:invite:2026-10-01');
+      });
+      __setRateLimiters({ invite: deny() }, store);
+
+      expect((await enforce('invite', userKey(IDENTIFIERS.user)))?.status).toBe(429);
+      await expect(deferred[0]!()).resolves.toBeUndefined();
+      expect(lines('error')).toEqual([
+        expect.objectContaining({ event: 'rate_limit_store_error', name: 'invite', op: 'count' }),
+      ]);
+    });
+
+    it('also catches a store that throws before sending anything', async () => {
+      const store: BlockStatsStore = {
+        pipeline() {
+          throw new TypeError('pipeline unavailable');
+        },
+      };
+      __setRateLimiters({ follow: deny() }, store);
+
+      expect((await enforce('follow', userKey(IDENTIFIERS.user)))?.status).toBe(429);
+      await vi.waitFor(() =>
+        expect(lines('error')).toEqual([
+          {
+            event: 'rate_limit_store_error',
+            name: 'follow',
+            keyKind: 'user',
+            op: 'count',
+            error: 'TypeError: pipeline unavailable',
+          },
+        ])
+      );
+    });
+
+    it('gives up on a store that never answers after STORE_TIMEOUT_MS', async () => {
+      vi.useRealTimers(); // re-install, this time with the timers faked too
+      vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+      vi.setSystemTime(new Date('2026-10-01T12:00:00Z'));
+      const { store, pipelines } = fakeStats(() => new Promise<never>(() => {}));
+      __setRateLimiters({ signinEmail: deny() }, store);
+
+      // The request isn't held up by the hung store.
+      expect(await checkRateLimit('signinEmail', emailKey(IDENTIFIERS.email))).toBe(false);
+      expect(pipelines).toEqual([counted('rl:stats:production:signinEmail:2026-10-01')]);
+
+      await vi.advanceTimersByTimeAsync(STORE_TIMEOUT_MS - 1);
+      expect(spies.error).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(1);
+      expect(lines('error')).toEqual([
+        {
+          event: 'rate_limit_store_error',
+          name: 'signinEmail',
+          keyKind: 'email',
+          op: 'count',
+          error: `Timeout: no answer from the store within ${STORE_TIMEOUT_MS} ms`,
+        },
       ]);
       expect(everythingLogged()).not.toContain(IDENTIFIERS.email);
     });

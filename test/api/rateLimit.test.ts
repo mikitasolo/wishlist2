@@ -8,7 +8,12 @@ vi.mock('@/lib/auth', () => ({ auth: vi.fn() }));
 import { auth } from '@/lib/auth';
 import { POST as FOLLOW } from '@/app/api/users/[id]/follow/route';
 import { GET as SEARCH } from '@/app/api/search/route';
-import { __setRateLimiters, type RateLimiter } from '@/lib/rateLimit';
+import {
+  __setRateLimiters,
+  type BlockStatsPipeline,
+  type BlockStatsStore,
+  type RateLimiter,
+} from '@/lib/rateLimit';
 import User from '@/models/User';
 import Follow from '@/models/Follow';
 
@@ -74,6 +79,43 @@ describe('rate limiting on a write route (follow)', () => {
     expect((await follow()).status).toBe(429);
     expect(warnings.lines()).toEqual([{ event: 'rate_limited', name: 'follow', keyKind: 'user' }]);
     expect(warnings.raw()).not.toContain(actorId);
+  });
+
+  it('counts the block in the day\'s "follow" counter, without the user id', async () => {
+    vi.stubEnv('VERCEL_ENV', undefined);
+    const commands: unknown[][] = [];
+    const pipeline: BlockStatsPipeline = {
+      incr(key) {
+        commands.push(['incr', key]);
+        return pipeline;
+      },
+      expire(key, seconds) {
+        commands.push(['expire', key, seconds]);
+        return pipeline;
+      },
+      exec: async () => [1, 1],
+    };
+    const stats: BlockStatsStore = { pipeline: () => pipeline };
+    __setRateLimiters({ follow: denyAll }, stats);
+    captureWarnings();
+
+    try {
+      const today = () => new Date().toISOString().slice(0, 10);
+      const dayBefore = today();
+      expect((await follow()).status).toBe(429);
+      // Either side of midnight, should the request straddle it.
+      const days = new Set([dayBefore, today()]);
+
+      const statsKey = commands[0]?.[1] as string;
+      expect([...days].map((day) => `rl:stats:local:follow:${day}`)).toContain(statsKey);
+      expect(commands).toEqual([
+        ['incr', statsKey],
+        ['expire', statsKey, expect.any(Number)],
+      ]);
+      expect(JSON.stringify(commands)).not.toContain(actorId);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it('proceeds normally when limiting is disabled', async () => {

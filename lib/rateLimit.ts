@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, after } from 'next/server';
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
 
@@ -20,12 +20,14 @@ import { Redis } from '@upstash/redis';
  *    bomb through because Redis hiccuped).
  *
  * Observability: each time a limiter turns a request away it logs one JSON
- * line, `{"event":"rate_limited","name":…,"keyKind":…}`, so Vercel's logs give
- * per-surface block counts to tune `SPECS` from. A store failure (a throw or a
- * timeout) logs one `rate_limit_store_error` line instead. Neither ever includes
- * the key — it's an email, an IP or a user id — so a key's *kind* is declared per
- * limiter and enforced at compile time (see `RateLimitKey`) rather than read from
- * the key.
+ * line, `{"event":"rate_limited","name":…,"keyKind":…}`, and — after the
+ * response — bumps a per-surface, per-day counter in Redis (see
+ * `countBlockAfterResponse`), which outlives Vercel's short log retention, so
+ * there are block counts to tune `SPECS` from. A store failure (a throw or a
+ * timeout) logs one `rate_limit_store_error` line instead. Neither line, nor the
+ * counter's key, ever includes the limiter key — it's an email, an IP or a user
+ * id — so a key's *kind* is declared per limiter and enforced at compile time
+ * (see `RateLimitKey`) rather than read from the key.
  */
 
 export interface RateLimitResult {
@@ -71,7 +73,7 @@ interface LimiterSpec {
 }
 
 // One entry per surface. Limits are starting points to tune from real traffic —
-// the `rate_limited` log lines count blocks per surface.
+// the `rl:stats:*` counters (and the `rate_limited` log lines) count blocks per surface.
 const SPECS = {
   // Sign-in magic link — the top abuse target (email bombing + SMTP cost). Fail
   // closed: better to reject a legitimate retry than to let a flood through.
@@ -134,7 +136,30 @@ export function emailKey(email: string): RateLimitKey<'email'> {
  */
 export const STORE_TIMEOUT_MS = 2_000;
 
+/** What a store failure logs when Redis didn't answer within `STORE_TIMEOUT_MS`. */
+const STORE_TIMEOUT_ERROR = `Timeout: no answer from the store within ${STORE_TIMEOUT_MS} ms`;
+
+/**
+ * How long a day's block counter lives: about 60 days, comfortably past the 2–4
+ * week window `SPECS` is tuned from. `EXPIRE` runs on every block, so it counts
+ * from the day's last block.
+ */
+export const BLOCK_STATS_TTL_SECONDS = 60 * 24 * 60 * 60;
+
+/** The slice of `@upstash/redis` the block counter uses — lets tests inject a fake. */
+export interface BlockStatsStore {
+  pipeline(): BlockStatsPipeline;
+}
+
+export interface BlockStatsPipeline {
+  incr(key: string): BlockStatsPipeline;
+  expire(key: string, seconds: number): BlockStatsPipeline;
+  exec(): Promise<unknown>;
+}
+
 let registry: Partial<Record<LimiterName, RateLimiter>> | null = null;
+/** Where blocks are counted — the limiters' Redis; `null` while limiting is disabled. */
+let statsStore: BlockStatsStore | null = null;
 let warned = false;
 
 /**
@@ -173,13 +198,14 @@ function getRegistry(): Partial<Record<LimiterName, RateLimiter>> {
       limiter: Ratelimit.slidingWindow(spec.tokens, spec.window),
       prefix: `rl:${name}`,
       timeout: STORE_TIMEOUT_MS,
-      // Off: the `rate_limited` log line already counts blocks per surface.
+      // Off: `countBlockAfterResponse` already counts blocks per surface.
       // Upstash analytics would add a ZINCRBY to every `limit()` call, allowed
       // or blocked, and store the raw key (email / IP / user id) in Redis.
       analytics: false,
     });
   }
   registry = built;
+  statsStore = redis;
   return registry;
 }
 
@@ -188,7 +214,7 @@ function getRegistry(): Partial<Record<LimiterName, RateLimiter>> {
  * appends the whole command (`…, command was: ["evalsha",…,"rl:<name>:<key>:…"]`),
  * so that tail is cut, and any other occurrence of the key is masked.
  */
-function describeStoreError(error: unknown, key: string): string {
+function describeStoreError(error: unknown, key = ''): string {
   let text = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
   if (error instanceof Error && error.cause instanceof Error) {
     text += ` (cause: ${error.cause.message})`;
@@ -198,20 +224,33 @@ function describeStoreError(error: unknown, key: string): string {
 }
 
 /**
+ * Log one `rate_limit_store_error` line. `error` must already be free of the key.
+ * `policy` says how the request was answered; a failed block count carries
+ * `op: 'count'` instead, since the request had already been turned away.
+ */
+function logStoreError(
+  name: LimiterName,
+  detail: { policy: Policy } | { op: 'count' },
+  error: string
+): void {
+  console.error(
+    JSON.stringify({
+      event: 'rate_limit_store_error',
+      name,
+      keyKind: SPECS[name].keyKind,
+      ...detail,
+      error,
+    })
+  );
+}
+
+/**
  * The store failed to answer (it threw or timed out): log one line — `error`
  * must already be free of the key — and apply the limiter's failure policy.
  */
 function storeFailure(name: LimiterName, error: string): RateLimitResult {
   const spec = SPECS[name];
-  console.error(
-    JSON.stringify({
-      event: 'rate_limit_store_error',
-      name,
-      keyKind: spec.keyKind,
-      policy: spec.policy,
-      error,
-    })
-  );
+  logStoreError(name, { policy: spec.policy }, error);
   return {
     success: spec.policy === 'fail-open',
     reset: Date.now() + 60_000,
@@ -239,14 +278,87 @@ async function run(name: LimiterName, key: string): Promise<RateLimitResult> {
   // Not a verdict: the SDK gave up waiting on Redis and defaulted to allow (see
   // `STORE_TIMEOUT_MS`). Taking its `success` would fail the sign-in limiters open.
   if (result.reason === 'timeout') {
-    return storeFailure(name, `Timeout: no answer from the store within ${STORE_TIMEOUT_MS} ms`);
+    return storeFailure(name, STORE_TIMEOUT_ERROR);
   }
 
   if (!result.success) {
     // One line per block, for tuning SPECS from real traffic. Never the key.
     console.warn(JSON.stringify({ event: 'rate_limited', name, keyKind: spec.keyKind }));
+    // And one count per block Redis answered. A repeat block the SDK answers from
+    // its in-memory cache (`cacheBlock`) costs no Redis command; counting it would
+    // let a flood from one source spend the store's command quota, which every
+    // limiter depends on (sign-in fails closed without it).
+    if (result.reason !== 'cacheBlock') countBlockAfterResponse(name);
   }
   return result;
+}
+
+/**
+ * The counter a block is added to: `rl:stats:<env>:<name>:<YYYY-MM-DD>`, the UTC
+ * day. `env` is `VERCEL_ENV` (`'local'` when unset), so dev and preview traffic
+ * sharing the store never mixes with production's. Built from the limiter's name
+ * alone — never from its key, nor anything derived from it. (It shares the
+ * limiters' `rl:<name>` prefix space, so `stats` can't be a limiter name.)
+ */
+function blockStatsKey(name: LimiterName): string {
+  const env = process.env.VERCEL_ENV || 'local';
+  const day = new Date().toISOString().slice(0, 10);
+  return `rl:stats:${env}:${name}:${day}`;
+}
+
+/**
+ * Count a block in Redis, once the response is out: `INCR` + `EXPIRE` in one
+ * pipeline, so one Upstash request (two billed commands) per counted block and
+ * none for allowed requests. Nothing when limiting is disabled.
+ *
+ * Inside a request scope — route handlers, and Auth.js's `sendVerificationRequest`
+ * — it goes through Next's `after()`, which runs it after the response is sent
+ * and keeps the function alive until it's done. Outside one (or where Next can't
+ * wait on it), `after()` throws and the count is fired and forgotten. Either way
+ * it can't slow down or fail the request: `countBlock` never rejects.
+ */
+function countBlockAfterResponse(name: LimiterName): void {
+  const store = statsStore;
+  if (!store) return;
+  const statsKey = blockStatsKey(name); // now, so a block just before midnight counts that day
+  const task = () => countBlock(store, name, statsKey);
+  try {
+    after(task);
+  } catch {
+    void task();
+  }
+}
+
+/**
+ * Run the counter pipeline. A failure — a throw, or no answer within
+ * `STORE_TIMEOUT_MS` (a hung store would otherwise keep the function alive via
+ * `after()`) — logs one `rate_limit_store_error` line and is otherwise ignored.
+ */
+async function countBlock(
+  store: BlockStatsStore,
+  name: LimiterName,
+  statsKey: string
+): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const answered = await Promise.race([
+      store
+        .pipeline()
+        .incr(statsKey)
+        .expire(statsKey, BLOCK_STATS_TTL_SECONDS)
+        .exec()
+        .then(() => true),
+      new Promise<false>((resolve) => {
+        timer = setTimeout(resolve, STORE_TIMEOUT_MS, false);
+      }),
+    ]);
+    if (!answered) logStoreError(name, { op: 'count' }, STORE_TIMEOUT_ERROR);
+  } catch (error) {
+    // The command carries only the counter key, but cut it like any other.
+    logStoreError(name, { op: 'count' }, describeStoreError(error));
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /**
@@ -289,7 +401,14 @@ export function clientIp(headers: Headers): string {
   return headers.get('x-real-ip')?.trim() || 'unknown';
 }
 
-/** Test-only: inject a fake limiter registry (or `null` to reset to real). */
-export function __setRateLimiters(r: Partial<Record<LimiterName, RateLimiter>> | null): void {
+/**
+ * Test-only: inject a fake limiter registry, and optionally a fake store to count
+ * blocks in (none by default, so nothing is counted), or `null` to reset both to real.
+ */
+export function __setRateLimiters(
+  r: Partial<Record<LimiterName, RateLimiter>> | null,
+  stats: BlockStatsStore | null = null
+): void {
   registry = r;
+  statsStore = stats;
 }
