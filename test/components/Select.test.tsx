@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach } from 'vitest';
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen, cleanup, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import Select from '@/components/Select';
@@ -57,6 +57,25 @@ describe('Select — keyboard focus', () => {
     expect(menu()).toBeNull();
     expect(trigger()).toHaveTextContent('Newest');
     expect(trigger()).toHaveFocus();
+  });
+
+  it('closes the menu when focus moves on from an option, but not back to the trigger', async () => {
+    const user = await openMenu();
+
+    act(() => option('Oldest').focus());
+    act(() => trigger().focus());
+    expect(menu()).toBeInTheDocument();
+
+    act(() => option('Oldest').focus());
+    act(() => screen.getByRole('button', { name: 'After' }).focus());
+    expect(menu()).toBeNull();
+    expect(trigger()).toHaveTextContent('Newest');
+    expect(screen.getByRole('button', { name: 'After' })).toHaveFocus();
+
+    // Focus leaving the trigger, rather than the menu, leaves it open.
+    await user.click(trigger());
+    act(() => screen.getByRole('button', { name: 'After' }).focus());
+    expect(menu()).toBeInTheDocument();
   });
 
   it('leaves focus alone when the menu closes without it', async () => {

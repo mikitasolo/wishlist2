@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import Cropper from 'react-easy-crop';
 import Icon from './Icon';
 import { getCroppedBlob, type PixelCrop } from '@/lib/utils/cropImage';
@@ -34,8 +34,10 @@ export default function ImageCropModal({
 
   // Focus starts on the close button and stays inside while it's open, even
   // over the item modal whose form holds it, then goes back to what opened it.
-  // While the crop runs (its buttons disabled), it's held on the panel.
+  // While the crop runs (Cancel and Crop & upload disabled), it's held on the
+  // panel if the focused one of them was.
   const dialogRef = useRef<HTMLDivElement>(null);
+  const titleId = useId();
   useFocusTrap(true, dialogRef, undefined, { busy: working });
 
   // Load the selected file into an object URL for the cropper.
@@ -45,12 +47,16 @@ export default function ImageCropModal({
     return () => URL.revokeObjectURL(url);
   }, [file]);
 
+  // Capture phase + stopImmediatePropagation, as in ConfirmDialog: Escape
+  // cancels only the crop, not the item or create-wishlist modal it opened in.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onCancel();
+      if (e.key !== 'Escape') return;
+      e.stopImmediatePropagation();
+      onCancel();
     };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
+    document.addEventListener('keydown', onKey, { capture: true });
+    return () => document.removeEventListener('keydown', onKey, { capture: true });
   }, [onCancel]);
 
   const onCropComplete = useCallback((_area: unknown, areaPx: PixelCrop) => {
@@ -82,10 +88,15 @@ export default function ImageCropModal({
         className="animate-dialog-in flex max-h-full w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-lg"
         role="dialog"
         aria-modal="true"
+        aria-labelledby={titleId}
       >
         <div className="flex items-center justify-between px-5 pt-4">
-          <h2 className="text-lg font-semibold tracking-tight text-foreground">Crop image</h2>
+          <h2 id={titleId} className="text-lg font-semibold tracking-tight text-foreground">
+            Crop image
+          </h2>
+          {/* A plain button: the dialog sits inside the item or wishlist form. */}
           <button
+            type="button"
             onClick={onCancel}
             aria-label="Cancel"
             className="flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"

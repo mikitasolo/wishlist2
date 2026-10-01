@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import Link from 'next/link';
 import Icon from './Icon';
 import Avatar from './Avatar';
@@ -40,6 +40,7 @@ export default function FollowListModal({
   // Focus starts on the close button, stays inside while it's open, and goes
   // back to the count that opened it on close.
   const dialogRef = useRef<HTMLDivElement>(null);
+  const titleId = useId();
   useFocusTrap(true, dialogRef);
 
   useEffect(() => {
@@ -84,10 +85,13 @@ export default function FollowListModal({
         className="animate-dialog-in flex max-h-[80vh] w-full max-w-sm flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-lg"
         role="dialog"
         aria-modal="true"
+        aria-labelledby={titleId}
       >
         {/* Header + tabs */}
         <div className="flex items-center justify-between px-4 pt-3">
-          <h2 className="text-base font-semibold text-foreground">Connections</h2>
+          <h2 id={titleId} className="text-base font-semibold text-foreground">
+            Connections
+          </h2>
           <button
             onClick={onClose}
             aria-label="Close"

@@ -35,6 +35,9 @@ export default function ImageUpload({
   const [error, setError] = useState<string | null>(null);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const replaceRef = useRef<HTMLButtonElement>(null);
+  // Set by an upload into the empty drop zone, which the preview replaces.
+  const focusPreview = useRef(false);
 
   // Open the cropper for a chosen file.
   const handleFile = useCallback((file: File) => {
@@ -55,16 +58,28 @@ export default function ImageUpload({
         fd.append('file', blob, 'upload.webp');
         const res = await fetch('/api/upload', { method: 'POST', body: fd });
         const result = await res.json();
-        if (result.success) onChange(result.url);
-        else setError(result.error || 'Upload failed.');
+        if (result.success) {
+          focusPreview.current = !value;
+          onChange(result.url);
+        } else setError(result.error || 'Upload failed.');
       } catch {
         setError('Upload failed.');
       } finally {
         setUploading(false);
       }
     },
-    [onChange]
+    [onChange, value]
   );
+
+  // The crop dialog hands focus back to the drop zone that opened it, but an
+  // upload into it swaps the drop zone for the preview, and focus would drop
+  // to <body> with it: move it to the preview's Replace instead.
+  useEffect(() => {
+    if (!value || !focusPreview.current) return;
+    focusPreview.current = false;
+    const focused = document.activeElement;
+    if (!focused || focused === document.body) replaceRef.current?.focus();
+  }, [value]);
 
   // Paste an image from the clipboard anywhere while this control is mounted.
   useEffect(() => {
@@ -182,6 +197,7 @@ export default function ImageUpload({
           <BannerImage src={value} alt="Uploaded image" sizes="(max-width: 640px) 100vw, 40rem" />
           <div className="absolute right-2 top-2 flex gap-1.5">
             <button
+              ref={replaceRef}
               type="button"
               onClick={openPicker}
               disabled={disabled || uploading}

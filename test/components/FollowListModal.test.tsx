@@ -84,6 +84,13 @@ describe('FollowListModal — keyboard focus', () => {
     expect(button('Close')).toHaveFocus();
   });
 
+  // Focus moving in has a screen reader announce the dialog, by its title.
+  it('is named by its title', async () => {
+    await openModal();
+
+    expect(screen.getByRole('dialog', { name: 'Connections' })).toBeInTheDocument();
+  });
+
   // StrictMode (on in `next dev`) runs the effects of a modal that mounts open twice.
   it('moves focus into it under StrictMode too', async () => {
     await openModal({ strict: true });

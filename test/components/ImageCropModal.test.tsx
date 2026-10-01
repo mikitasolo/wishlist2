@@ -5,7 +5,8 @@ import userEvent from '@testing-library/user-event';
 import { emulateFocusFixup } from '../focusFixup';
 
 // react-easy-crop needs real image loading and layout; a stand-in reports a
-// crop area as soon as it mounts, as the real one does once the image loads.
+// crop area as soon as it mounts, as the real one does once the image loads,
+// and is a Tab stop, as the real crop area is (it moves with the arrow keys).
 vi.mock('react-easy-crop', async () => {
   const { useEffect } = await import('react');
   return {
@@ -17,7 +18,7 @@ vi.mock('react-easy-crop', async () => {
       useEffect(() => {
         onCropComplete({}, { x: 0, y: 0, width: 10, height: 10 });
       }, [onCropComplete]);
-      return <div data-testid="cropper" />;
+      return <div tabIndex={0} aria-label="Crop area" data-testid="cropper" />;
     },
   };
 });
@@ -52,7 +53,7 @@ beforeEach(() => {
 });
 
 const itemModal = () => screen.getByRole('dialog', { name: 'Add New Item' });
-const cropDialog = () => screen.getByText('Crop image').closest<HTMLElement>('[role="dialog"]')!;
+const cropDialog = () => screen.getByRole('dialog', { name: 'Crop image' });
 const inCrop = () => within(cropDialog());
 const dropZone = () => screen.getByRole('button', { name: /click to upload/i });
 
@@ -60,17 +61,24 @@ const dropZone = () => screen.getByRole('button', { name: /click to upload/i });
  * Opens the Add Item modal and picks an image in its form, as a click on the
  * drop zone and a choice in the file picker would.
  */
-async function openCropOverItemModal() {
+async function openCropOverItemModal({
+  onAdd = vi.fn(),
+  onClose = vi.fn(),
+}: { onAdd?: () => Promise<void>; onClose?: () => void } = {}) {
   const user = userEvent.setup();
   render(
     <AddItemModal
       isOpen
-      onClose={vi.fn()}
-      onAdd={vi.fn()}
+      onClose={onClose}
+      onAdd={onAdd}
       wishlistCurrency="USD"
       userCurrency="USD"
     />
   );
+  // Named, so the form would submit. Filled without typing: user-event fires
+  // `change` (in an act) when a field it saw edited loses focus, which here is
+  // inside React's commit.
+  fireEvent.change(screen.getByLabelText(/item name/i), { target: { value: 'Bike' } });
   await user.click(dropZone());
   expect(dropZone()).toHaveFocus();
 
@@ -102,6 +110,8 @@ describe('ImageCropModal — keyboard focus over an item modal', () => {
 
     expect(close).toHaveFocus();
     await user.tab();
+    expect(inCrop().getByLabelText('Crop area')).toHaveFocus();
+    await user.tab();
     expect(inCrop().getByLabelText('Zoom')).toHaveFocus();
     await user.tab();
     expect(cancel).toHaveFocus();
@@ -129,6 +139,41 @@ describe('ImageCropModal — keyboard focus over an item modal', () => {
     expect(closeItemModal).toHaveFocus();
     await user.tab({ shift: true });
     expect(addItem).toHaveFocus();
+  });
+
+  // regression: the crop dialog's own Escape listener and the item modal's
+  // both handled the key, so Escape closed the item modal too (or, with
+  // unsaved changes, asked to discard them).
+  it('regression: cancels only the crop on Escape, then the item modal traps Tab again', async () => {
+    const onClose = vi.fn();
+    const user = await openCropOverItemModal({ onClose });
+
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog', { name: 'Crop image' })).toBeNull();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(itemModal()).toBeInTheDocument();
+    expect(dropZone()).toHaveFocus();
+    await user.tab();
+    expect(itemModal()).toContainElement(document.activeElement as HTMLElement);
+
+    // The next Escape is the item modal's again.
+    await user.keyboard('{Escape}');
+    expect(screen.getByRole('alertdialog', { name: 'Discard Changes?' })).toBeInTheDocument();
+  });
+
+  // regression: the crop dialog's close button had no type, so inside the
+  // item form it was a submit button, and it's what has focus when the dialog
+  // opens: Enter on it submitted the item.
+  it("regression: Enter on the crop dialog's close button cancels the crop without submitting the item", async () => {
+    const onAdd = vi.fn().mockResolvedValue(undefined);
+    const user = await openCropOverItemModal({ onAdd });
+
+    await user.keyboard('{Enter}');
+    expect(screen.queryByRole('dialog', { name: 'Crop image' })).toBeNull();
+    expect(onAdd).not.toHaveBeenCalled();
+    expect(itemModal()).toBeInTheDocument();
+    expect(dropZone()).toHaveFocus();
   });
 });
 
@@ -194,5 +239,34 @@ describe('ImageCropModal — keyboard focus while it crops', () => {
     expect(screen.getByText('Upload failed.')).toBeInTheDocument();
     expect(opener).toBeEnabled();
     expect(opener).toHaveFocus();
+  });
+
+  // regression: a successful upload swaps the drop zone the crop dialog had
+  // handed focus back to for the preview, and focus dropped to <body> with it.
+  it("regression: hands focus to the preview's Replace once the upload replaces the drop zone", async () => {
+    const crop = pendingCrop();
+    let answerUpload!: (body: unknown) => void;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        () =>
+          new Promise((resolve) => {
+            answerUpload = (body) => resolve({ json: async () => body });
+          })
+      )
+    );
+    const user = await openCropOverItemModal();
+
+    await user.click(inCrop().getByRole('button', { name: 'Crop & upload' }));
+    await crop.succeed();
+    await act(async () =>
+      answerUpload({
+        success: true,
+        url: 'https://teststore42.public.blob.vercel-storage.com/uploads/u1/gift.webp',
+      })
+    );
+
+    expect(screen.queryByRole('button', { name: /click to upload/i })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Replace' })).toHaveFocus();
   });
 });

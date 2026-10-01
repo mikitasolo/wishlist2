@@ -198,8 +198,13 @@ describe('CreateWishlistModal — the currency Select by keyboard', () => {
     expect(options[options.length - 1]).toHaveFocus();
     await user.tab();
     expect(button('Upload banner')).toHaveFocus();
+
+    // Leaving the menu closes it, rather than leave it open over the fields
+    // after it, so Shift+Tab goes straight back to the trigger.
+    expect(menu()).toBeNull();
+    expect(currency()).toHaveTextContent('USD · US Dollar');
     await user.tab({ shift: true });
-    expect(options[options.length - 1]).toHaveFocus();
+    expect(currency()).toHaveFocus();
   });
 
   it('keeps Tab inside the modal with the menu open, wrapping past it at both ends', async () => {

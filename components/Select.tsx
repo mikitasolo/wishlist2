@@ -33,8 +33,8 @@ const sizeStyles = {
  * trigger and the option list look identical across browsers/OSes. The menu is
  * rendered in a portal (fixed-positioned to the trigger) so it never gets
  * clipped by an ancestor's overflow:hidden. Inside a dialog, the menu is part
- * of its focus trap: Tab goes from the trigger into the options, and on to the
- * next field after the last one.
+ * of its focus trap: Tab goes from the trigger into the options, and past the
+ * last one on to the next field, which closes the menu.
  */
 export default function Select({
   value,
@@ -120,6 +120,15 @@ export default function Select({
           <div
             ref={menuRef}
             role="listbox"
+            // Tabbing on past the last option (or focus going anywhere else but
+            // back to the trigger) closes the menu, as a native select's does,
+            // rather than leave it open over the fields after it.
+            onBlur={(e) => {
+              const to = e.relatedTarget;
+              if (to && !menuRef.current?.contains(to) && !triggerRef.current?.contains(to)) {
+                setOpen(false);
+              }
+            }}
             className="animate-fade-in fixed z-[70] max-h-72 overflow-auto rounded-xl border border-border bg-surface py-1.5 shadow-lg"
             style={{
               top: rect.bottom + 6,

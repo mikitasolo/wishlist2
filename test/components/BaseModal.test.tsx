@@ -393,21 +393,35 @@ describe('BaseModal — a Select menu portalled out of it', () => {
     expect(option('Newest')).toHaveFocus();
     await user.tab();
     expect(option('Oldest')).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(option('Newest')).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(trigger()).toHaveFocus();
+    expect(screen.getByRole('listbox')).toBeInTheDocument();
+
+    // On past the last option to the next field, which closes the menu.
+    await user.tab();
+    await user.tab();
     await user.tab();
     expect(button('Delete Item')).toHaveFocus();
+    expect(screen.queryByRole('listbox')).toBeNull();
+
+    // Once it's closed, Tab goes straight from the trigger to the next field.
+    await user.tab({ shift: true });
+    expect(trigger()).toHaveFocus();
+    await user.tab();
+    expect(button('Delete Item')).toHaveFocus();
+  });
+
+  // With the menu open and focus elsewhere in the modal (moved there from the
+  // trigger), Shift+Tab from the next field goes back into the menu.
+  it('puts the options before the field after their trigger for Shift+Tab', async () => {
+    const user = await openMenu();
+
+    act(() => button('Delete Item').focus());
+    expect(screen.getByRole('listbox')).toBeInTheDocument();
     await user.tab({ shift: true });
     expect(option('Oldest')).toHaveFocus();
-    await user.tab({ shift: true });
-    await user.tab({ shift: true });
-    expect(trigger()).toHaveFocus();
-
-    // Once it closes, Tab goes straight from the trigger to the next field.
-    await user.tab();
-    await user.keyboard('{Enter}');
-    expect(screen.queryByRole('listbox')).toBeNull();
-    expect(trigger()).toHaveFocus();
-    await user.tab();
-    expect(button('Delete Item')).toHaveFocus();
   });
 
   it('wraps from its last Tab stop to its first when the menu is the last thing in it', async () => {
@@ -436,6 +450,12 @@ describe('BaseModal — a Select menu portalled out of it', () => {
     expect(option('Newest')).toHaveFocus();
     await user.tab();
     expect(button('Close modal')).toHaveFocus();
+
+    // And back the other way, with the menu open again.
+    await user.tab({ shift: true });
+    expect(trigger()).toHaveFocus();
+    await user.keyboard('{Enter}');
+    act(() => button('Close modal').focus());
     await user.tab({ shift: true });
     expect(option('Newest')).toHaveFocus();
   });
