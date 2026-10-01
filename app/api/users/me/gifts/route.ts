@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import connectDB from '@/lib/mongodb';
 import GiftLog from '@/models/GiftLog';
-import Wishlist from '@/models/Wishlist';
+import { giftWishlistSlugs, serializeGiftLog } from '@/lib/utils/giftHistory';
 
 // GET /api/users/me/gifts - the current user's gift history (permanent log of
 // gifts they've marked as given), newest first.
@@ -17,25 +17,8 @@ export async function GET() {
     const gifts = await GiftLog.find({ gifter: session.user.id }).sort({ giftedAt: -1 }).lean();
 
     // Resolve current wishlist slugs for still-valid soft pointers (for links).
-    const wishlistIds = Array.from(
-      new Set(gifts.map((g) => g.wishlist?.toString()).filter(Boolean) as string[])
-    );
-    const wishlists = wishlistIds.length
-      ? await Wishlist.find({ _id: { $in: wishlistIds } }).select('slug')
-      : [];
-    const slugMap = new Map(wishlists.map((w) => [w._id.toString(), w.slug ?? null]));
-
-    const data = gifts.map((g) => ({
-      _id: g._id.toString(),
-      itemName: g.itemName,
-      itemImage: g.itemImage ?? null,
-      itemPrice: g.itemPrice ?? null,
-      recipientUsername: g.recipientUsername ?? null,
-      wishlistName: g.wishlistName ?? null,
-      wishlistId: g.wishlist?.toString() ?? null,
-      wishlistSlug: g.wishlist ? (slugMap.get(g.wishlist.toString()) ?? null) : null,
-      giftedAt: g.giftedAt,
-    }));
+    const slugs = await giftWishlistSlugs(gifts);
+    const data = gifts.map((g) => serializeGiftLog(g, slugs));
 
     return NextResponse.json({ success: true, data }, { status: 200 });
   } catch (error) {
