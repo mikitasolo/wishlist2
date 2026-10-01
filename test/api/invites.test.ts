@@ -262,6 +262,16 @@ describe('PATCH /api/invites/[inviteId] claims the invite first', () => {
 // first and only then its memberships, invites and notifications, so an accept that
 // read the list before it must not grant anything on it afterwards.
 describe('PATCH /api/invites/[inviteId] racing a list delete', () => {
+  beforeEach(async () => {
+    // What issuing the invite left behind.
+    await Notification.create({
+      user: inviteeId,
+      type: 'wishlist_invite',
+      wishlist: wishlistId,
+      wishlistName: 'List',
+    });
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
   });
@@ -330,12 +340,32 @@ describe('PATCH /api/invites/[inviteId] racing a list delete', () => {
     await expectDeleteWon(accepted, race);
   });
 
+  // The other half of what joining relies on: a delete removes the list before its
+  // memberships. So an accept that finds the list still there once it has joined is
+  // followed by the delete's membership cleanup, which takes the row.
+  it('an accept that completes while the delete is about to remove the list leaves no membership either', async () => {
+    const race = holdFirstCall(Wishlist, 'findOneAndDelete', () =>
+      respond(inviteId, 'accept', inviteeId)
+    );
+
+    const deleted = await deleteList();
+
+    expect(race.held()).toBe(true);
+    // The accept landed first, so it got in, and then the list went with everything on it.
+    expect(race.outcome()?.status).toBe(200);
+    expect(deleted.status).toBe(200);
+    expect(await WishlistMember.countDocuments({ wishlist: wishlistId })).toBe(0);
+    expect(await WishlistInvite.countDocuments({ wishlist: wishlistId })).toBe(0);
+    expect(await Notification.countDocuments({ wishlist: wishlistId })).toBe(0);
+  });
+
   // The claimed invite goes with the list, as the delete's own invite cleanup would
-  // have taken it, even when that cleanup failed. It isn't reopened: accepting again
-  // could never succeed.
+  // have taken it (and the invite's notification with it), even when that cleanup
+  // failed. It isn't reopened: accepting again could never succeed.
   it("withdraws the claimed invite even when the delete's own invite cleanup fails", async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.spyOn(WishlistInvite, 'deleteMany').mockRejectedValueOnce(new Error('db hiccup'));
+    vi.spyOn(Notification, 'deleteMany').mockRejectedValueOnce(new Error('db hiccup'));
     const race = holdFirstCall(WishlistMember, 'findOneAndUpdate', deleteList);
 
     const accepted = await respond(inviteId, 'accept', inviteeId);
