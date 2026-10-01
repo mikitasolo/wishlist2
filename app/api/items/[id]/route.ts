@@ -465,10 +465,21 @@ export async function DELETE(
       );
     }
 
-    await Item.findByIdAndDelete(id);
+    // The owner check above is already the last read before this delete, so
+    // re-reading the list here wouldn't narrow the gap a co-owner's removal could
+    // land in. An item can't carry its list's owners, so closing that gap would
+    // take a transaction.
+    //
+    // A concurrent request (another owner's delete) may have taken the item
+    // since it was read: then this deleted nothing, and frees nothing either.
+    const deleted = await Item.findOneAndDelete({ _id: id });
+    if (!deleted) {
+      return NextResponse.json({ success: false, error: 'Item not found' }, { status: 404 });
+    }
 
-    // Free the item's uploaded image, if it was one of ours.
-    await deleteOwnBlob(item.imageUrl);
+    // Free the item's uploaded image, if it was one of ours: the one it had when
+    // it was deleted, since an edit since the read may have replaced it.
+    await deleteOwnBlob(deleted.imageUrl);
 
     return NextResponse.json({ success: true, data: {} }, { status: 200 });
   } catch (error) {

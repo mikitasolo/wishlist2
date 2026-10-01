@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import mongoose from 'mongoose';
+import mongoose, { type UpdateQuery } from 'mongoose';
 import { auth } from '@/lib/auth';
 import connectDB from '@/lib/mongodb';
 import Wishlist, { IWishlist } from '@/models/Wishlist';
@@ -182,26 +182,43 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     // "Featured" pins a list to the *caller's* dashboard hero, so it's stored
     // per-owner in `featuredBy`: on a co-owned list one owner can feature it
-    // without touching anyone else's dashboard. At most one of their lists is
-    // pinned at a time.
-    if (validatedData.featured !== undefined) {
-      const viewer = new mongoose.Types.ObjectId(session.user.id);
-      if (validatedData.featured) {
-        // Unpin whichever of the caller's other lists was pinned.
-        await Wishlist.updateMany(
-          { featuredBy: viewer, _id: { $ne: id } },
-          { $pull: { featuredBy: viewer } }
-        );
-        await Wishlist.updateOne({ _id: id }, { $addToSet: { featuredBy: viewer } });
-      } else {
-        await Wishlist.updateOne({ _id: id }, { $pull: { featuredBy: viewer } });
+    // without touching anyone else's dashboard.
+    const viewer = new mongoose.Types.ObjectId(session.user.id);
+    const update: UpdateQuery<IWishlist> = { $set: updateData };
+    if (validatedData.featured === true) update.$addToSet = { featuredBy: viewer };
+    if (validatedData.featured === false) update.$pull = { featuredBy: viewer };
+
+    // The whole edit is one write that only matches while the caller still owns
+    // the list. The check above ran against the list as it was read at the start
+    // of the request, and a co-owner may have removed the caller since: someone
+    // who no longer owns the list can't change it, or pin it back onto their
+    // dashboard after losing ownership cleared their pin.
+    const updatedWishlist = await Wishlist.findOneAndUpdate(
+      { _id: id, ...ownedByFilter(session.user.id) },
+      update,
+      { new: true, runValidators: true }
+    );
+    if (!updatedWishlist) {
+      // Nothing was written, so this read only picks the answer: the list is
+      // gone, or the caller doesn't own it (any more).
+      if (!(await Wishlist.exists({ _id: id }))) {
+        return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
       }
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized - Owner access required' },
+        { status: 403 }
+      );
     }
 
-    const updatedWishlist = await Wishlist.findByIdAndUpdate(id, updateData, {
-      new: true,
-      runValidators: true,
-    });
+    // At most one of the caller's lists is pinned at a time, so unpin whichever
+    // other one was. Only once the pin above landed, so a refused edit leaves
+    // their other pin alone.
+    if (validatedData.featured === true) {
+      await Wishlist.updateMany(
+        { featuredBy: viewer, _id: { $ne: id } },
+        { $pull: { featuredBy: viewer } }
+      );
+    }
 
     // Free the previous cover image if this edit replaced or cleared it.
     if (updateData.bannerUrl !== undefined && wishlist.bannerUrl !== updateData.bannerUrl) {
@@ -209,10 +226,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     }
 
     return NextResponse.json(
-      {
-        success: true,
-        data: updatedWishlist ? serializeWishlist(updatedWishlist, session.user.id) : null,
-      },
+      { success: true, data: serializeWishlist(updatedWishlist, session.user.id) },
       { status: 200 }
     );
   } catch (error) {
