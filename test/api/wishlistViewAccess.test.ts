@@ -9,8 +9,15 @@ vi.mock('@/lib/utils/currencyRates', () => ({
   ensureCurrencyRatesUpToDate: vi.fn().mockResolvedValue({ rates: new Map([['usd', 1]]) }),
   convertToUsdCents: vi.fn(),
 }));
+// The real slug generator, wrapped so a test can run something in between the
+// backfill's read and its write.
+vi.mock('@/lib/utils/wishlistSlug', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/utils/wishlistSlug')>();
+  return { ...actual, generateUniqueWishlistSlug: vi.fn(actual.generateUniqueWishlistSlug) };
+});
 
 import { auth } from '@/lib/auth';
+import { generateUniqueWishlistSlug } from '@/lib/utils/wishlistSlug';
 import { GET as GET_WISHLIST } from '@/app/api/wishlists/[id]/route';
 import { GET as LIST_ITEMS, POST as CREATE_ITEM } from '@/app/api/wishlists/[id]/items/route';
 import { PATCH as PATCH_ITEM, DELETE as DELETE_ITEM } from '@/app/api/items/[id]/route';
@@ -245,7 +252,7 @@ describe('the wishlist and its items share one set of access rules', () => {
 
   // regression: a list saved before `visibility` existed has only isPublic, and
   // a hydrated doc fills the missing field with the schema default 'everyone'
-  // (the slug backfill's save() even stores it), so the wishlist read admitted
+  // (the old slug backfill's save() even stored it), so the wishlist read admitted
   // anyone to an old private list, and sharing its rules would have opened the
   // items too. isPublic: false has to win.
   it.each([
@@ -266,6 +273,81 @@ describe('the wishlist and its items share one set of access rules', () => {
     const { list, items } = await statuses(wishlistId);
     expect(list).toEqual(expected.private);
     expect(items).toEqual(expected.private);
+  });
+});
+
+describe('GET /api/wishlists/[id] — slug backfill on an old list', () => {
+  // Saved before slugs and `visibility` existed (they came in the same commit):
+  // only the legacy `isPublic` flag, and no slug.
+  async function oldPrivateList() {
+    const { insertedId } = await Wishlist.collection.insertOne({
+      name: 'Old list',
+      owners: [new mongoose.Types.ObjectId(owner)],
+      featuredBy: [],
+      isPublic: false,
+    });
+    wishlistId = insertedId.toString();
+    await WishlistMember.create({ wishlist: insertedId, user: member });
+    return insertedId;
+  }
+
+  const raw = (id: mongoose.Types.ObjectId) => Wishlist.collection.findOne({ _id: id });
+
+  // regression: the backfill was `wishlist.save()` on the hydrated doc, and that
+  // save also stored the schema default `visibility: 'everyone'` the old list
+  // never had, so its first view left `{ visibility: 'everyone', isPublic: false }`:
+  // public to search, the profile listing and the share card.
+  it.each([
+    ['an owner', () => owner],
+    ['a member', () => member],
+  ])('regression: stores only the slug when %s views an old private list', async (_, viewer) => {
+    const id = await oldPrivateList();
+    const before = await raw(id);
+
+    const res = await getWishlist(wishlistId, viewer());
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+
+    const { slug, ...rest } = (await raw(id))!;
+    expect(slug).toMatch(/^old-list-[a-z0-9]+$/);
+    expect(data.slug).toBe(slug);
+    // Nothing else: `visibility` stays absent, and not even `updatedAt` moves.
+    expect(rest).toEqual(before);
+    expect(rest).not.toHaveProperty('visibility');
+
+    // Still private, by its id and by its new slug.
+    expect((await getWishlist(wishlistId, null)).status).toBe(401);
+    expect((await getWishlist(slug, stranger)).status).toBe(403);
+    expect((await listItems(wishlistId, null)).status).toBe(401);
+  });
+
+  // regression: the backfill ran before the access check, so anyone asking for
+  // the list, signed out included, triggered the write, refused or not.
+  it('regression: writes nothing when the viewer is refused', async () => {
+    const id = await oldPrivateList();
+    const before = await raw(id);
+
+    expect((await getWishlist(wishlistId, null)).status).toBe(401);
+    expect((await getWishlist(wishlistId, stranger)).status).toBe(403);
+    expect((await getWishlist(wishlistId, friendOfOwner)).status).toBe(403);
+
+    expect(await raw(id)).toEqual(before);
+  });
+
+  // regression: the backfill wrote whatever it generated over the stored slug,
+  // so a slug set between its read and its write (an owner choosing the URL in
+  // settings, another viewer's backfill) was replaced by a random one.
+  it('regression: keeps a slug set while the backfill was generating one', async () => {
+    const id = await oldPrivateList();
+    vi.mocked(generateUniqueWishlistSlug).mockImplementationOnce(async () => {
+      await Wishlist.collection.updateOne({ _id: id }, { $set: { slug: 'chosen-by-owner' } });
+      return 'old-list-zzzzz';
+    });
+
+    const res = await getWishlist(wishlistId, owner);
+    expect(res.status).toBe(200);
+    expect((await res.json()).data.slug).toBe('chosen-by-owner');
+    expect((await raw(id))?.slug).toBe('chosen-by-owner');
   });
 });
 
