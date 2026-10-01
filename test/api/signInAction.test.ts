@@ -238,6 +238,14 @@ describe('requestMagicLink: the send', () => {
     expect(await requestMagicLink({ email: EMAIL })).toEqual({ ok: false, error: 'send_failed' });
   });
 
+  // Only the verify-request page means sent: e.g. a caller adding
+  // X-Auth-Return-Redirect gets Auth.js's JSON answer, and signIn falls back to
+  // returning its own sign-in URL, whether or not anything went out.
+  it('reports send_failed for any URL but the verify-request page', async () => {
+    mockedSignIn.mockResolvedValue('http://localhost:3000/api/auth/signin/nodemailer?');
+    expect(await requestMagicLink({ email: EMAIL })).toEqual({ ok: false, error: 'send_failed' });
+  });
+
   // e.g. AccessDenied, when the signIn callback refuses (a database error).
   it('reports send_failed when Auth.js throws', async () => {
     mockedSignIn.mockRejectedValue(

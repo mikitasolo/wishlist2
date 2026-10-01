@@ -16,9 +16,9 @@ import { useEffect, useImperativeHandle, useRef, type Ref } from 'react';
  *
  * The caller asks for the token when it needs it (`getToken`), rather than
  * waiting on it up front: a visitor who submits a moment after the page loads
- * waits for it then, and when the check can't produce one (Cloudflare's script
- * didn't load, or the widget errored) the caller goes ahead without one and the
- * server decides. It refuses a missing token unless Cloudflare is down for it
+ * waits for it then (Turnstile also retries by itself after an error). When the
+ * check can't produce one (Cloudflare's script didn't load, or no token came in
+ * time), the caller goes ahead without one and the server decides. It refuses a missing token unless Cloudflare is down for it
  * too, which is what makes a Cloudflare outage fail open instead of locking
  * everyone out (`lib/turnstile.ts`).
  */
@@ -84,8 +84,9 @@ export function loadTurnstile(): Promise<TurnstileApi> {
 export interface TurnstileHandle {
   /**
    * The current token, or the next one if it's on its way (waiting at most
-   * `timeoutMs`). `null` when there's none to have: the check failed to load or
-   * errored, or no token arrived in time (an interactive challenge left unsolved).
+   * `timeoutMs`). `null` when there's none to have: the check couldn't load, or
+   * no token arrived in time (an interactive challenge left unsolved, or a
+   * widget that keeps erroring).
    */
   getToken(timeoutMs: number): Promise<string | null>;
   /** Drop the current token and fetch a fresh one: each token passes one check. */
@@ -96,7 +97,10 @@ interface TurnstileWidgetProps {
   siteKey: string;
   /** Shown in Cloudflare's analytics; up to 32 of `[A-Za-z0-9_-]`. */
   action: string;
-  /** Cloudflare's script couldn't be loaded (offline, or a content blocker). */
+  /**
+   * The check can't run: Cloudflare's script didn't load (offline, a content
+   * blocker), or rendering the widget threw.
+   */
   onLoadError?: () => void;
   ref?: Ref<TurnstileHandle>;
 }
@@ -110,7 +114,7 @@ export default function TurnstileWidget({
   const container = useRef<HTMLDivElement>(null);
   const widgetId = useRef<string | null>(null);
   const token = useRef<string | null>(null);
-  /** No token is coming until a reset or a retry succeeds. */
+  /** No widget, so no token is ever coming: the script didn't load or render threw. */
   const failed = useRef(false);
   /** `getToken` calls waiting for the next token (or for a failure). */
   const waiters = useRef(new Set<(token: string | null) => void>());
@@ -137,9 +141,7 @@ export default function TurnstileWidget({
       },
       reset() {
         token.current = null;
-        if (!widgetId.current) return; // never rendered: nothing to retry
-        failed.current = false;
-        window.turnstile?.reset(widgetId.current);
+        if (widgetId.current) window.turnstile?.reset(widgetId.current);
       },
     }),
     []
@@ -152,44 +154,47 @@ export default function TurnstileWidget({
     const settleAll = (value: string | null) => {
       for (const settle of [...pending]) settle(value);
     };
+    /** There'll be no widget: answer `null` from now on, and say so. */
     const fail = () => {
       token.current = null;
       failed.current = true;
       settleAll(null);
+      onLoadErrorRef.current?.();
+    };
+    const clearToken = () => {
+      token.current = null;
     };
 
     loadTurnstile().then(
       (turnstile) => {
         if (cancelled || !container.current) return;
-        widgetId.current =
-          turnstile.render(container.current, {
-            sitekey: siteKey,
-            action,
-            appearance: 'interaction-only',
-            size: 'flexible',
-            theme: 'auto',
-            // The token goes to the server action, not into a form field.
-            'response-field': false,
-            callback: (value) => {
-              token.current = value;
-              failed.current = false;
-              settleAll(value);
-            },
-            // Turnstile fetches a fresh token by itself after these two.
-            'expired-callback': () => {
-              token.current = null;
-            },
-            'timeout-callback': () => {
-              token.current = null;
-            },
-            // Turnstile retries by itself; returning nothing lets it log the code.
-            'error-callback': fail,
-          }) ?? null;
+        try {
+          widgetId.current =
+            turnstile.render(container.current, {
+              sitekey: siteKey,
+              action,
+              appearance: 'interaction-only',
+              size: 'flexible',
+              theme: 'auto',
+              // The token goes to the server action, not into a form field.
+              'response-field': false,
+              callback: (value) => {
+                token.current = value;
+                settleAll(value);
+              },
+              // Turnstile tries again by itself after each of these, so a
+              // waiting `getToken` keeps waiting for the next token.
+              'expired-callback': clearToken,
+              'timeout-callback': clearToken,
+              // Returning nothing lets Turnstile log the error code to the console.
+              'error-callback': clearToken,
+            }) ?? null;
+        } catch {
+          fail();
+        }
       },
       () => {
-        if (cancelled) return;
-        fail();
-        onLoadErrorRef.current?.();
+        if (!cancelled) fail();
       }
     );
     return () => {

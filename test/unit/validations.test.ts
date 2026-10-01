@@ -299,8 +299,8 @@ describe('magicLinkRequestSchema', () => {
     expect(ok.success && ok.data).toEqual({ email: 'me@example.com', callbackUrl: '/' });
   });
 
-  it('turns an empty callbackUrl into /', () => {
-    for (const callbackUrl of ['', '   ']) {
+  it('turns an empty or absurdly long callbackUrl into /', () => {
+    for (const callbackUrl of ['', '   ', `/${'x'.repeat(2048)}`]) {
       const ok = magicLinkRequestSchema.safeParse({ email: 'me@example.com', callbackUrl });
       expect(ok.success && ok.data.callbackUrl).toBe('/');
     }
@@ -325,11 +325,9 @@ describe('magicLinkRequestSchema', () => {
     }
   });
 
-  it('rejects an over-long callbackUrl and a non-string token', () => {
+  it('rejects a non-string callbackUrl or token', () => {
     const email = 'me@example.com';
-    expect(
-      magicLinkRequestSchema.safeParse({ email, callbackUrl: `/${'x'.repeat(2048)}` }).success
-    ).toBe(false);
+    expect(magicLinkRequestSchema.safeParse({ email, callbackUrl: 42 }).success).toBe(false);
     expect(magicLinkRequestSchema.safeParse({ email, turnstileToken: 42 }).success).toBe(false);
   });
 

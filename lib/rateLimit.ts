@@ -394,11 +394,14 @@ export async function checkRateLimit<N extends LimiterName>(
   return (await run(name, key)).success;
 }
 
+/** What `clientIp` answers when the request carries no client IP. */
+export const UNKNOWN_CLIENT_IP = 'unknown';
+
 /** First hop of `x-forwarded-for` (the client) for IP-keyed limits. */
 export function clientIp(headers: Headers): string {
   const xff = headers.get('x-forwarded-for');
   if (xff) return xff.split(',')[0]!.trim();
-  return headers.get('x-real-ip')?.trim() || 'unknown';
+  return headers.get('x-real-ip')?.trim() || UNKNOWN_CLIENT_IP;
 }
 
 /**

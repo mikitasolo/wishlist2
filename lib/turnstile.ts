@@ -46,7 +46,7 @@ const NOT_A_VERDICT = new Set(['internal-error', 'missing-input-secret', 'invali
  * - `skipped`: Turnstile is off (keys unset), so there's nothing to check.
  * - `passed`: Cloudflare accepted the token.
  * - `failed`: Cloudflare refused the token (a missing one included), or it was
- *   too long or not a string to send at all. The only refusal.
+ *   too long to send at all. The only refusal.
  * - `unavailable`: no verdict from Cloudflare; sign-in fails open.
  */
 export type TurnstileOutcome = 'skipped' | 'passed' | 'failed' | 'unavailable';
@@ -80,7 +80,7 @@ type SiteverifyAnswer =
  * when it served the widget); omit it when unknown.
  */
 export async function verifyTurnstileToken(
-  token: unknown,
+  token: string | null | undefined,
   remoteIp?: string | null
 ): Promise<TurnstileOutcome> {
   const keys = getTurnstileKeys();
@@ -92,7 +92,6 @@ export async function verifyTurnstileToken(
   // couldn't load or run, which is what a Cloudflare outage looks like from the
   // browser, and refusing it here would lock everyone out for the outage.
   const response = token ?? '';
-  if (typeof response !== 'string') return refused(['invalid-input-response']);
   if (response.length > MAX_TOKEN_LENGTH) return refused(['invalid-input-response']);
 
   const form = new URLSearchParams({ secret: keys.secretKey, response });

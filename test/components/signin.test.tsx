@@ -230,7 +230,7 @@ describe('SignInForm — Turnstile widget', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
       mockedRequest.mockResolvedValue({ ok: false, error: 'challenge' });
-      await renderWithWidget();
+      const { turnstile } = await renderWithWidget();
       const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 
       await user.type(screen.getByLabelText(/email address/i), 'me@example.com');
@@ -246,21 +246,47 @@ describe('SignInForm — Turnstile widget', () => {
       // The server decides; with Cloudflare up it refuses.
       expect(sentToken()).toBeNull();
       expect(await screen.findByRole('alert')).toHaveTextContent(CHALLENGE_FAILED_MESSAGE);
+      // No token was spent, so the widget is left alone: a reset would throw
+      // away an interactive challenge the visitor may be halfway through.
+      expect(turnstile.api.reset).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
     }
   });
 
-  // The widget gave up (e.g. a site key not allowed on this hostname): the form
-  // doesn't wait, or lock its button. The server refuses a missing token unless
-  // Cloudflare is down, so an outage doesn't lock everyone out.
-  it('sends without a token straight away when the widget errors', async () => {
+  // Turnstile retries by itself after an error, so the submit keeps waiting
+  // for the token that retry brings, and the button never locks up meanwhile.
+  it('keeps waiting through a widget error for the retried token', async () => {
     mockedRequest.mockResolvedValue({ ok: true });
     const { turnstile } = await renderWithWidget();
 
+    await turnstile.pass('old-token');
     await turnstile.error();
     await typeEmail();
     expect(sendButton()).toBeEnabled();
+    await userEvent.click(sendButton());
+    expect(mockedRequest).not.toHaveBeenCalled();
+
+    await turnstile.pass();
+    await vi.waitFor(() => expect(sentToken()).toBe(TOKEN));
+  });
+
+  // No widget at all: the form doesn't wait, and the server refuses a missing
+  // token unless Cloudflare is down, so an outage doesn't lock everyone out.
+  it('sends without a token straight away when the widget fails to render', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    mockedRequest.mockResolvedValue({ ok: true });
+    window.turnstile = {
+      render: vi.fn(() => {
+        throw new Error('Invalid site key');
+      }),
+      reset: vi.fn(),
+      remove: vi.fn(),
+    };
+    render(<SignInForm turnstileSiteKey={SITE_KEY} />);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(CHALLENGE_LOAD_FAILED_MESSAGE);
+    await typeEmail();
     await userEvent.click(sendButton());
 
     expect(sentToken()).toBeNull();

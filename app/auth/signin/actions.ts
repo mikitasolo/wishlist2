@@ -3,7 +3,7 @@
 import { headers } from 'next/headers';
 import { unstable_rethrow } from 'next/navigation';
 import { signIn } from '@/lib/auth';
-import { clientIp } from '@/lib/rateLimit';
+import { clientIp, UNKNOWN_CLIENT_IP } from '@/lib/rateLimit';
 import { asVerifiedSignIn } from '@/lib/signInEmail';
 import { verifyTurnstileToken } from '@/lib/turnstile';
 import { magicLinkRequestSchema } from '@/lib/validations';
@@ -29,9 +29,12 @@ export type MagicLinkResult = { ok: true } | { ok: false; error: 'challenge' | '
  * `redirect: false` makes `signIn` return the URL it would have redirected to
  * instead of throwing a redirect: the verify-request page on success, the error
  * page (`?error=…`) when the send failed, so the form can stay put and show the
- * outcome. `redirectTo` becomes the link's `callbackUrl`, which Auth.js keeps on
- * our own origin (its `redirect` callback). A refused sign-in (`AccessDenied`,
- * from the `signIn` callback) is thrown rather than returned.
+ * outcome. Only the verify-request page counts as sent, so anything unexpected
+ * (a caller adding `X-Auth-Return-Redirect`, which `signIn` passes on to Auth.js
+ * with the rest of the request's headers) reads as a failure, not a success.
+ * `redirectTo` becomes the link's `callbackUrl`, which Auth.js keeps on our own
+ * origin (its `redirect` callback). A refused sign-in (`AccessDenied`, from the
+ * `signIn` callback) is thrown rather than returned.
  */
 export async function requestMagicLink(input: {
   email: string;
@@ -44,7 +47,7 @@ export async function requestMagicLink(input: {
   const { email, callbackUrl, turnstileToken } = parsed.data;
 
   const ip = clientIp(await headers());
-  const outcome = await verifyTurnstileToken(turnstileToken, ip === 'unknown' ? null : ip);
+  const outcome = await verifyTurnstileToken(turnstileToken, ip === UNKNOWN_CLIENT_IP ? null : ip);
   if (outcome === 'failed') return { ok: false, error: 'challenge' };
 
   let url: string;
@@ -58,7 +61,8 @@ export async function requestMagicLink(input: {
     return { ok: false, error: 'send_failed' };
   }
 
-  return new URL(url, 'http://localhost').searchParams.has('error')
-    ? { ok: false, error: 'send_failed' }
-    : { ok: true };
+  const { pathname, searchParams } = new URL(url, 'http://localhost');
+  return pathname.endsWith('/verify-request') && !searchParams.has('error')
+    ? { ok: true }
+    : { ok: false, error: 'send_failed' };
 }

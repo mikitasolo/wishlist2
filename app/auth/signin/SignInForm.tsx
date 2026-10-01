@@ -49,14 +49,15 @@ export default function SignInForm({ turnstileSiteKey }: SignInFormProps) {
     if (isLoading) return;
     setIsLoading(true);
     setSubmitError(null);
+    let turnstileToken: string | null = null;
 
     try {
       // Turnstile on: wait for its token if it isn't there yet. Without one
       // (the check couldn't load or run) the server decides: it refuses unless
       // Cloudflare is down, so an outage doesn't lock everyone out.
-      const turnstileToken = turnstileSiteKey
-        ? ((await turnstile.current?.getToken(TOKEN_WAIT_MS)) ?? null)
-        : null;
+      if (turnstileSiteKey) {
+        turnstileToken = (await turnstile.current?.getToken(TOKEN_WAIT_MS)) ?? null;
+      }
       const result = await requestMagicLink({ email, callbackUrl, turnstileToken });
       if (result.ok) {
         setIsSubmitted(true);
@@ -75,8 +76,10 @@ export default function SignInForm({ turnstileSiteKey }: SignInFormProps) {
     } finally {
       setIsLoading(false);
     }
-    // The token was spent (or refused) either way: fetch a fresh one for the retry.
-    turnstile.current?.reset();
+    // A token we sent is spent (or was refused): fetch a fresh one for the retry.
+    // Without one there's nothing to replace, and a reset would throw away an
+    // interactive challenge the visitor may be halfway through.
+    if (turnstileToken) turnstile.current?.reset();
   };
 
   const bannerMessage = submitError

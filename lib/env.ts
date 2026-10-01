@@ -86,8 +86,9 @@ export interface TurnstileKeys {
  * The Turnstile keys, or `null` while Turnstile is off. Read at call time, by a
  * computed name, so Next never inlines the public key at build time: the sign-in
  * page renders the widget and the server action checks its token from one read
- * of the same environment. A half config also reads as off here, whatever
- * `validateEnvVars` made of it, so neither half can lock everyone out.
+ * of the same environment. `validateEnvVars` refuses a half config at startup;
+ * should one get here anyway (a caller that skipped validation), it reads as
+ * off, rather than as a check nobody can pass or a widget nobody checks.
  */
 export function getTurnstileKeys(): TurnstileKeys | null {
   const [siteKey, secretKey] = TURNSTILE_ENV_VARS.map((name) => process.env[name]);

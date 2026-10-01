@@ -136,11 +136,6 @@ describe('verifyTurnstileToken: a verdict', () => {
     );
   });
 
-  it('refuses a token that is not a string without calling Cloudflare', async () => {
-    expect(await verifyTurnstileToken(42, IP)).toBe('failed');
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
   it('refuses a token longer than Cloudflare allows without calling it', async () => {
     expect(await verifyTurnstileToken('x'.repeat(MAX_TOKEN_LENGTH + 1), IP)).toBe('failed');
     expect(fetchMock).not.toHaveBeenCalled();
