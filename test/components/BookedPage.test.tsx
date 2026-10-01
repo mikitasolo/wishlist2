@@ -61,11 +61,13 @@ const gifts = [
   { ...gift, _id: 'gift-mug', itemName: 'Mug' },
 ];
 
-/** A JSON answer, or a network failure. */
-type Reply = { status: number; body: unknown } | Error;
+/** A JSON answer, a non-JSON one (`html`), or a network failure. */
+type Reply = { status: number; body: unknown } | { status: number; html: true } | Error;
 
 const ok: Reply = { status: 200, body: { success: true } };
 const failed = (error: string): Reply => ({ status: 500, body: { success: false, error } });
+/** The route's own answer for a reservation or gift-history entry that's gone. */
+const notFound = (error: string): Reply => ({ status: 404, body: { success: false, error } });
 
 /**
  * Serves both lists, and holds every action (POST / DELETE) open until the test
@@ -89,7 +91,13 @@ function mockHeldFetch() {
       held.set(key, [...(held.get(key) ?? []), resolve])
     );
     if (reply instanceof Error) throw reply;
-    return { ok: reply.status < 400, status: reply.status, json: async () => reply.body };
+    const json =
+      'html' in reply
+        ? async () => {
+            throw new SyntaxError('Unexpected token <');
+          }
+        : async () => reply.body;
+    return { ok: reply.status < 400, status: reply.status, json };
   });
   vi.stubGlobal('fetch', fetchMock);
 
@@ -274,6 +282,117 @@ describe('BookedPage — acting on several cards at once', () => {
     await answer(markGiftedKey('res-lego'), failed('Failed to log gift'));
     await waitFor(() => expectReservationEnabled('Lego set'));
   });
+});
+
+/** Each card action, with the route's 404 for it and what the page says then. */
+const cardActions = [
+  {
+    action: 'Mark as gifted',
+    run: () => markGifted('Lego set'),
+    key: markGiftedKey('res-lego'),
+    itemName: 'Lego set',
+    neighbour: 'Scarf',
+    gone: notFound('Reservation not found'),
+    goneToast: 'This reservation no longer exists',
+    expectEnabled: () => expectReservationEnabled('Lego set'),
+  },
+  {
+    action: 'Dismiss',
+    run: () => dismiss('Scarf'),
+    key: dismissKey('res-scarf'),
+    itemName: 'Scarf',
+    neighbour: 'Lego set',
+    gone: notFound('Reservation not found'),
+    goneToast: 'This reservation no longer exists',
+    expectEnabled: () => expectReservationEnabled('Scarf'),
+  },
+  {
+    action: 'Delete from gift history',
+    run: () => deleteGift('Cookbook'),
+    key: deleteGiftKey('gift-book'),
+    itemName: 'Cookbook',
+    neighbour: 'Mug',
+    gone: notFound('Gift entry not found'),
+    goneToast: 'This gift is no longer in your history',
+    expectEnabled: () => expect(deleteGiftButton('Cookbook')).toBeEnabled(),
+  },
+];
+
+describe('BookedPage — a reservation or gift that no longer exists', () => {
+  // regression: a 404 from the gift, dismiss or gift-delete route (the record
+  // was already gifted, dismissed or deleted in another tab or on another
+  // device, or the reservation was cleared when the user became an owner of the
+  // list) was shown as an error toast and the card stayed, so every retry 404'd
+  // again until a reload.
+  it.each(cardActions)(
+    'regression: drops the card with an info toast when $action gets a 404',
+    async ({ run, key, itemName, neighbour, gone, goneToast }) => {
+      const { answer, sent } = await renderHeld();
+
+      run();
+      await answer(key, gone);
+
+      await waitFor(() => expect(screen.queryByText(itemName)).toBeNull());
+      expect(screen.getByText(neighbour)).toBeInTheDocument();
+      expect(showToast).toHaveBeenCalledTimes(1);
+      expect(showToast).toHaveBeenCalledWith(goneToast, 'info');
+      expect(sent(key)).toBe(1);
+    }
+  );
+
+  it('drops a card whose reservation is gone while another is still in flight', async () => {
+    const { answer } = await renderHeld();
+
+    markGifted('Lego set');
+    dismiss('Scarf');
+
+    await answer(markGiftedKey('res-lego'), notFound('Reservation not found'));
+    await waitFor(() => expect(screen.queryByText('Lego set')).toBeNull());
+    expectReservationDisabled('Scarf');
+
+    await answer(dismissKey('res-scarf'), failed('Failed to dismiss reservation'));
+    await waitFor(() => expectReservationEnabled('Scarf'));
+    expect(screen.queryByText('Lego set')).toBeNull();
+  });
+});
+
+describe('BookedPage — failures worth retrying keep the card', () => {
+  // Only the route's own JSON 404 means the record is gone; an HTML 404 from the
+  // platform says nothing about it.
+  const failures: { failure: string; reply: Reply; toast: string }[] = [
+    {
+      failure: 'a 429',
+      reply: { status: 429, body: { success: false, error: 'Too many requests' } },
+      toast: 'Too many requests',
+    },
+    { failure: 'a 500', reply: failed('Server error'), toast: 'Server error' },
+    {
+      failure: 'a 404 that is not JSON',
+      reply: { status: 404, html: true },
+      toast: 'Something went wrong',
+    },
+    {
+      failure: 'a network error',
+      reply: new TypeError('Failed to fetch'),
+      toast: 'Something went wrong',
+    },
+  ];
+
+  it.each(cardActions.flatMap((a) => failures.map((f) => ({ ...a, ...f }))))(
+    'keeps the card and re-enables it when $action gets $failure',
+    async ({ run, key, itemName, reply, toast, expectEnabled }) => {
+      const { answer } = await renderHeld();
+
+      run();
+      await answer(key, reply);
+
+      await waitFor(() => expect(showToast).toHaveBeenCalledWith(toast, 'error'));
+      expect(screen.getByText(itemName)).toBeInTheDocument();
+      // Re-enabled, so the user can try again.
+      await waitFor(expectEnabled);
+      expect(showToast).not.toHaveBeenCalledWith(expect.anything(), 'info');
+    }
+  );
 });
 
 describe('BookedPage — keyboard focus in a confirmation', () => {
