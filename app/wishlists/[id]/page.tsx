@@ -28,6 +28,7 @@ import {
   prependCreatedItem,
   updateItemOptimistically,
 } from '@/lib/utils/itemListMerge';
+import { RequestTimeoutError, withRequestTimeout } from '@/lib/utils/requestTimeout';
 import { useToast } from '@/components/ToastProvider';
 import { ApiItem, ApiResponse } from '@/types/api';
 import { IWishlist } from '@/models/Wishlist';
@@ -339,7 +340,9 @@ export default function WishlistDetail() {
   // flight, or whose read was in flight across one, is stale and must be
   // discarded, otherwise it clobbers the optimistic state and the UI flickers;
   // the list is read again once they've settled. Every item mutation's request
-  // goes through `mutations.track`.
+  // goes through `mutations.track`, and is given up on after
+  // ITEM_REQUEST_TIMEOUT_MS (`withRequestTimeout`), so a stalled one can't hold
+  // off the polls for longer than that.
   const [mutations] = useState(createMutationTracker);
 
   // Whether a read of the list has landed yet. Until one has, an empty `items`
@@ -509,18 +512,25 @@ export default function WishlistDetail() {
       if (!wishlistId) return;
       const result = await mutations.track(async (): Promise<ApiResponse<ApiItem> | null> => {
         try {
-          const response = await fetch(`/api/wishlists/${wishlistId}/items`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(itemData),
-          });
+          // Given up on after ITEM_REQUEST_TIMEOUT_MS, like the hooks' requests.
+          return await withRequestTimeout(async (signal) => {
+            const response = await fetch(`/api/wishlists/${wishlistId}/items`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(itemData),
+              signal,
+            });
 
-          return await response.json();
+            return await response.json();
+          });
         } catch (error) {
           console.error('Error proposing item:', error);
-          return null;
+          // A timeout says so; any other failure gets the generic message.
+          return error instanceof RequestTimeoutError
+            ? { success: false, error: error.message }
+            : null;
         }
       });
 

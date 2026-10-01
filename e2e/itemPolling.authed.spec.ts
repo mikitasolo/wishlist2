@@ -1,5 +1,6 @@
 import { test, expect, type Page, type Request, type Route } from '@playwright/test';
 import { randomBytes } from 'crypto';
+import { ITEM_REQUEST_TIMEOUT_MS, REQUEST_TIMEOUT_MESSAGE } from '../lib/utils/requestTimeout';
 
 // The wishlist page polls its items every 5 s (and whenever the tab becomes
 // visible), replacing the whole list with the server's, and reads the list
@@ -681,4 +682,130 @@ test('regression: a booking that fails while offline is put back at once, though
   await reconcileFailed;
   await expect(bookedByMe).toHaveCount(0);
   await expect(bookButton).toBeVisible();
+});
+
+// Another owner's item, added to the list's reads in the browser while the
+// spec's own request is stalled.
+const coOwnersItem = {
+  _id: '0000000000000000000e2e04',
+  wishlist: 'e2e',
+  name: "E2E Co-owner's Item",
+  status: 'available',
+  bookedBy: null,
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
+};
+
+// regression: item requests had no timeout, and the page holds off its polls
+// while one is in flight. So a PATCH that stalled (on a dropped connection the
+// browser takes minutes to notice) kept the modal on "Saving...", the card
+// showing the unsaved edit, and the whole list frozen, until the browser gave
+// up on it. The page's clock is faked, so the spec jumps past the timeout.
+test('regression: a stalled edit is given up on, the item goes back to its server state, and polls land again', async ({
+  page,
+}) => {
+  const renamed = cardOf(page, 'E2E Renamed Gift');
+  const original = cardOf(page, 'E2E Gift');
+  const coOwners = cardOf(page, coOwnersItem.name);
+  const later = cardOf(page, 'E2E Added Later');
+
+  // The PATCH never answers. Reads list what the co-owner has added so far.
+  const patchArrived = deferred();
+  await page.route('**/api/items/*', async (route: Route) => {
+    if (route.request().method() !== 'PATCH') return route.fallback();
+    patchArrived.resolve();
+    await new Promise(() => {});
+  });
+  const addedByCoOwner: ListedItem[] = [];
+  const reads = await holdItemReads(page, (items) => [...addedByCoOwner, ...items]);
+
+  await page.clock.install();
+  await takeOverPolling(page);
+  await page.goto('/wishlists/e2e-birthday');
+  await (await reads.next()).land();
+
+  await renameGift(page);
+  await patchArrived.promise;
+  const dialog = page.getByRole('dialog', { name: 'Edit Item' });
+  await expect(dialog.getByRole('button', { name: 'Saving...' })).toBeVisible();
+  await expect(renamed).toBeVisible();
+
+  // A poll while the PATCH is stalled is dropped, so the co-owner's item
+  // doesn't show, and nothing reads the list again yet.
+  addedByCoOwner.push(coOwnersItem);
+  await pollOnce(page);
+  await (await reads.next()).land();
+  expect(await coOwners.count()).toBe(0);
+  expect(reads.untaken).toBe(0);
+
+  await page.clock.fastForward(ITEM_REQUEST_TIMEOUT_MS);
+
+  // Treated as a failure: the toast, the item put back as the server has it,
+  // and the modal kept open with the user's edit.
+  await expect(page.getByRole('status').getByText(REQUEST_TIMEOUT_MESSAGE)).toBeVisible();
+  await expect(original).toBeVisible();
+  expect(await renamed.count()).toBe(0);
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByLabel('Item Name')).toHaveValue('E2E Renamed Gift');
+  await expect(dialog.getByRole('button', { name: 'Save Changes' })).toBeEnabled();
+
+  // The reconcile read, which the dropped poll's re-read joins, lands.
+  await (await reads.next()).land();
+  await expect(coOwners).toBeVisible();
+  await expect(original).toBeVisible();
+  expect(reads.untaken).toBe(0);
+
+  // And a later poll lands too.
+  addedByCoOwner.push({
+    ...coOwnersItem,
+    _id: '0000000000000000000e2e05',
+    name: 'E2E Added Later',
+  });
+  await pollOnce(page);
+  await (await reads.next()).land();
+  await expect(later).toBeVisible();
+});
+
+// A proposal given up on may still have been saved. The member is told it
+// failed, keeps what they typed, and the next poll lists it if it went through,
+// so they can see it before proposing it again.
+test('a stalled proposal is given up on, keeping the modal open, and the next poll shows it if it was saved', async ({
+  page,
+}) => {
+  const name = 'E2E Stalled Proposal';
+  const card = cardOf(page, name);
+  const userId = await signedInUserId(page);
+
+  // The server saves the proposal as its POST arrives, but never answers it.
+  let saved: ListedItem | undefined;
+  const postArrived = deferred();
+  await page.route('**/api/wishlists/*/items', async (route: Route) => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    saved = createdItem(route.request(), userId);
+    postArrived.resolve();
+    await new Promise(() => {});
+  });
+  const reads = await holdItemReads(page, (items) => (saved ? [saved, ...items] : items));
+
+  await page.clock.install();
+  await takeOverPolling(page);
+  await page.goto('/wishlists/e2e-friend');
+  await (await reads.next()).land();
+
+  await page.getByRole('button', { name: '+ Propose Item' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Propose New Item' });
+  await dialog.getByLabel('Item Name').fill(name);
+  await dialog.getByRole('button', { name: 'Propose Item', exact: true }).click();
+  await postArrived.promise;
+
+  await page.clock.fastForward(ITEM_REQUEST_TIMEOUT_MS);
+  await expect(page.getByRole('status').getByText(REQUEST_TIMEOUT_MESSAGE)).toBeVisible();
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByLabel('Item Name')).toHaveValue(name);
+  await expect(dialog.getByRole('button', { name: 'Propose Item', exact: true })).toBeEnabled();
+  expect(await card.count()).toBe(0);
+
+  await pollOnce(page);
+  await (await reads.next()).land();
+  await expect(card).toHaveCount(1);
 });
