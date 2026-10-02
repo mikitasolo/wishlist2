@@ -97,7 +97,9 @@ beforeEach(() => {
   fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     if (init?.method === 'PATCH') return json({ success: true });
     if (url === '/api/wishlists') return json({ success: true, data: { owned, member: shared } });
-    if (url === '/api/users/me/reservations') return json({ success: true, data: [] });
+    if (url === '/api/users/me/reservations/count') {
+      return json({ success: true, data: { count: 0 } });
+    }
     if (url === '/api/users/me') {
       return json({ success: true, data: { _id: 'me', followerCount: 0, followingCount: 0 } });
     }
