@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import { NextRequest } from 'next/server';
 import mongoose from 'mongoose';
 import { connectTestDB, disconnectTestDB, clearTestDB } from '../db';
@@ -210,9 +210,23 @@ describe('an owner going', () => {
 });
 
 describe('PATCH /api/users/me', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   function patchProfile(body: Record<string, unknown>) {
     as(alice);
     return patchMe(req('/api/users/me', 'PATCH', body));
+  }
+
+  /** Have another tab's save land just after the request has read the profile. */
+  function landAfterRead(change: Record<string, unknown>) {
+    const findById = User.findById.bind(User);
+    vi.spyOn(User, 'findById').mockImplementationOnce(((id: string) =>
+      findById(id).then(async (user) => {
+        await User.updateOne({ _id: id }, { $set: change });
+        return user;
+      })) as never);
   }
 
   // Their profile card, and the cards of the lists they're primary owner of,
@@ -243,7 +257,8 @@ describe('PATCH /api/users/me', () => {
     expect(deleteByTag).not.toHaveBeenCalled();
   });
 
-  // The settings form sends the bio and every privacy setting with each save.
+  // A tab still running the previous settings page sends the bio and every
+  // privacy setting with each save.
   it("leaves the cards alone when the form's save changes nothing they show", async () => {
     await User.updateOne({ _id: alice }, { $set: { bio: 'Collector of mugs' } });
     const res = await patchProfile({
@@ -251,6 +266,42 @@ describe('PATCH /api/users/me', () => {
       defaultCurrency: 'EUR',
       privacy: { searchable: false, whoCanInvite: 'friends', profileVisibility: 'everyone' },
     });
+    expect(res.status).toBe(200);
+    expect(deleteByTag).not.toHaveBeenCalled();
+  });
+
+  // regression: the route compared what it wrote with its own read, so when
+  // another tab's save landed between the two, a write that put the card back
+  // the way that read saw it looked like no change: the card cached after the
+  // other tab's save (showing the bio, or the old one) stayed up for a day.
+  it.each([
+    [
+      'profile visibility',
+      { 'privacy.profileVisibility': 'everyone' },
+      { privacy: { profileVisibility: 'friends' } },
+    ],
+    ['bio', { bio: 'Collector of plants' }, { bio: 'Collector of mugs' }],
+  ])(
+    'regression: purges when its %s write changes what another tab saved after the read',
+    async (_, theirs, ours) => {
+      await User.updateOne(
+        { _id: alice },
+        { $set: { bio: 'Collector of mugs', 'privacy.profileVisibility': 'friends' } }
+      );
+      landAfterRead(theirs);
+
+      const res = await patchProfile(ours);
+
+      expect(res.status).toBe(200);
+      expect(purged()).toEqual([[`og-user-${alice}`]]);
+    }
+  );
+
+  it('leaves the cards alone when another tab already saved the same change', async () => {
+    landAfterRead({ 'privacy.profileVisibility': 'friends' });
+
+    const res = await patchProfile({ privacy: { profileVisibility: 'friends' } });
+
     expect(res.status).toBe(200);
     expect(deleteByTag).not.toHaveBeenCalled();
   });
