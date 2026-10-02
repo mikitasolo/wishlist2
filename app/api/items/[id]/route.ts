@@ -361,8 +361,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       // The item changed, or went, since it was read. Nothing was written, so the
       // Reservation isn't touched either: a booking that lost creates none, and
       // an unbook that lost leaves the gifter's in place. Nor is any image freed
-      // below, so an approved item keeps the one it has, and an approval that
-      // lost tells the proposer nothing: the one that won already did.
+      // below, so an approved item keeps the one it has, and no proposer is told
+      // of an approval that didn't land.
       if (writeGuard && (await Item.exists({ _id: id }))) {
         return NextResponse.json({ success: false, error: writeGuard.conflict }, { status: 409 });
       }

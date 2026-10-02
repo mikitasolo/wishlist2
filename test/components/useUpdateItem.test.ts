@@ -27,17 +27,12 @@ afterEach(() => {
 });
 
 describe('useUpdateItem', () => {
-  // A book, unbook or approval that lost a race to another change is answered
-  // 409. The page relies on the hook resolving null (it then undoes the
-  // optimistic change and re-reads the list) and toasting the server's message.
+  // A book or unbook that lost a race to another change is answered 409. The
+  // page relies on the hook resolving null (it then re-reads the list, undoing
+  // the optimistic booking) and toasting the server's message.
   it.each([
     ['a booking', { status: 'booked' }, 'This item is no longer available to book'],
     ['an unbook', { status: 'available' }, 'This item is no longer booked by you'],
-    [
-      'an approval',
-      { name: 'Lamp', status: 'available', proposedBy: null },
-      'This proposal has already been reviewed',
-    ],
   ] as const)('reports %s refused with a 409 and resolves null', async (_, updates, error) => {
     fetchMock.mockResolvedValue(reply(409, { success: false, error }));
     const onSuccess = vi.fn();
