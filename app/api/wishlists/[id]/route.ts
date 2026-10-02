@@ -29,6 +29,14 @@ import {
   primaryOwnerId,
   serializeWishlist,
 } from '@/lib/utils/wishlistOwners';
+import { purgeShareCards } from '@/lib/og/purge';
+
+/**
+ * The settings a list's share card depends on: its name, banner and owner, and
+ * whether a signed-out visitor may open it (visibility, archived). The URL too,
+ * since a renamed slug leaves the old one's cached card naming the list.
+ */
+const SHARE_CARD_FIELDS = ['name', 'slug', 'visibility', 'archived', 'bannerUrl'] as const;
 
 // GET /api/wishlists/[id] - Get a specific wishlist
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -239,6 +247,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       );
     }
 
+    // A change to anything the list's share card shows drops the cached card, now
+    // that it has landed (lib/og/purge.ts).
+    if (SHARE_CARD_FIELDS.some((field) => field in updateData)) {
+      await purgeShareCards({ wishlistIds: [id] });
+    }
+
     // At most one of the caller's lists is pinned at a time, so unpin whichever
     // other one was. Only once the pin above landed, so a refused edit leaves
     // their other pin alone.
@@ -365,6 +379,8 @@ export async function DELETE(
       bestEffort('Invite', id, () => WishlistInvite.deleteMany({ wishlist: id })),
       bestEffort('Notification', id, () => Notification.deleteMany({ wishlist: id })),
       deleteOwnBlob(wishlist.bannerUrl),
+      // Its cached share card, which would otherwise go on naming it for a day.
+      purgeShareCards({ wishlistIds: [id] }),
     ]);
 
     return NextResponse.json({ success: true, data: {} }, { status: 200 });

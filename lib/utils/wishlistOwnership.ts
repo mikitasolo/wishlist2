@@ -7,6 +7,7 @@ import WishlistMember from '@/models/WishlistMember';
 import { ownedByFilter, ownerIds } from '@/lib/utils/wishlistOwners';
 import { isOwnerOfWishlist } from '@/lib/utils/wishlistAccess';
 import { errorKind } from '@/lib/utils/errorKind';
+import { purgeShareCards } from '@/lib/og/purge';
 
 /**
  * Changing who owns a wishlist. Ownership is consequential in both directions,
@@ -276,6 +277,10 @@ export async function removeWishlistOwner(
     return (await isOwnerOfWishlist(wishlistId, actorId)) ? 'last-owner' : 'actor-not-owner';
   }
 
+  // The list's share card names its primary owner, and this may have been them,
+  // so it goes as soon as the write has landed, before anything else can fail.
+  // (Adding an owner appends, so it never changes who that is.)
+  await purgeShareCards({ wishlistIds: [wishlistId] });
   if (!keepAsMember) await WishlistMember.deleteMany({ wishlist: wishlistId, user: userId });
   return 'removed';
 }

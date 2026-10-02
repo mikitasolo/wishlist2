@@ -26,6 +26,8 @@ import {
   COPY_IMAGE_FAILED_NOTICE,
   COPY_IMAGE_QUOTA_NOTICE,
 } from '@/lib/utils/itemCopy';
+import { isCountedOnShareCard } from '@/lib/og/data';
+import { purgeShareCards } from '@/lib/og/purge';
 
 /**
  * The item a "Save to my list" copy is made from, if `viewerId` may copy it:
@@ -368,6 +370,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       await deleteOwnBlob(copiedImageUrl);
       throw err;
     });
+
+    // A visible new item changes the count on the list's share card.
+    if (isCountedOnShareCard(item.status)) await purgeShareCards({ wishlistIds: [wishlistId] });
 
     // Tell every owner a new item was proposed — anonymously: owners must never
     // learn who proposed an item (they can't see proposedBy elsewhere either).

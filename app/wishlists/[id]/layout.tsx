@@ -1,16 +1,12 @@
 import type { Metadata } from 'next';
-import connectDB from '@/lib/mongodb';
-import Wishlist from '@/models/Wishlist';
-import User from '@/models/User';
-import { resolveWishlistId } from '@/lib/utils/wishlistSlug';
-import { primaryOwnerId } from '@/lib/utils/wishlistOwners';
-import { getWishlistViewAccess } from '@/lib/utils/wishlistAccess';
+import { readWishlistCard } from '@/lib/og/data';
+import { METADATA_BUDGET_MS, withTimeout } from '@/lib/utils/og';
 
-// Per-wishlist share metadata (og:title/description + twitter card). The
+// Per-wishlist share metadata (og:title/description/url + twitter card). The
 // og:image is supplied separately by opengraph-image.tsx. Only a list a
 // signed-out visitor may open (public, non-archived) reveals its name;
 // everything else stays generic so a shared link never leaks a private list's
-// title.
+// title (lib/og/data.ts).
 export async function generateMetadata({
   params,
 }: {
@@ -18,28 +14,26 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   try {
     const { id } = await params;
-    await connectDB();
-    const wid = await resolveWishlistId(id);
-    const w = wid
-      ? await Wishlist.findById(wid).select('name owners visibility archived').lean()
-      : null;
-    if (w) {
-      if ((await getWishlistViewAccess(w, null)).allowed) {
-        // A co-owned list is credited to its primary owner in share metadata.
-        const owner = await User.findById(primaryOwnerId(w)).select('username').lean();
-        const title = w.name;
-        const by = owner?.username ? ` by @${owner.username}` : '';
-        const description = `Browse “${w.name}”${by} on Wishlist and quietly reserve a gift without spoiling the surprise for them.`;
-        return {
+    const card = await withTimeout(readWishlistCard(id), METADATA_BUDGET_MS);
+    if (card.kind === 'public') {
+      const title = card.name;
+      const by = card.ownerUsername ? ` by @${card.ownerUsername}` : '';
+      const description = `Browse “${card.name}”${by} on Wishlist and quietly reserve a gift without spoiling the surprise for them.`;
+      return {
+        title,
+        description,
+        openGraph: {
+          siteName: 'Wishlist',
           title,
           description,
-          openGraph: { siteName: 'Wishlist', title, description, type: 'website' },
-          twitter: { card: 'summary_large_image', title, description },
-        };
-      }
+          type: 'website',
+          url: `/wishlists/${card.slug ?? card.id}`,
+        },
+        twitter: { card: 'summary_large_image', title, description },
+      };
     }
   } catch {
-    // fall through to the generic default
+    // A timeout or failed read falls through to the generic default.
   }
   return {};
 }

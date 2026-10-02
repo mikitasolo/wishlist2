@@ -20,7 +20,7 @@ A modern wishlist app: create wishlists, share them, follow friends, and quietly
 - **Profiles** with avatar, bio, follower/following counts, and privacy controls.
 - **Magic-link sign-in** (no passwords), behind an optional, usually invisible Cloudflare Turnstile bot check; image uploads, responsive Apple-inspired UI, light/dark themes.
 - **A private handle from the start** — a new account gets a random username (`user_…`), never one taken from the email, and its first sign-in opens a welcome step offering to pick one of its own. It's skippable, and either way it continues to wherever the sign-in was headed (an invite, a list).
-- **Rich link previews** — dynamic Open Graph / Twitter images for shared wishlist and profile links (privacy-aware: private/archived lists and friends-only bios never leak into a preview).
+- **Rich link previews** — a shared wishlist or profile link shows its own card in messengers and social networks (Telegram, WhatsApp, iMessage, Viber, Facebook, X, Slack…): a public list's name, owner, item count and cover photo, or a profile's avatar, username and bio. Privacy-aware: friends-only, private and archived lists get a generic card that looks just like a missing list's, and friends-only bios never show. Cards are cached on Vercel's CDN for a day and dropped as soon as anything on them changes.
 - **Notification center** — an in-app feed (with a header bell + unread badge) for follows, wishlist invitations, accepted invites, item-proposal activity, and being demoted from owner to member of a list or removed from one. Proposal notifications are anonymous to the owner, and demotions and removals never say which owner made them.
 
 ## 🛠️ Tech stack
@@ -30,6 +30,7 @@ A modern wishlist app: create wishlists, share them, follow friends, and quietly
 - **Auth**: NextAuth v5 / Auth.js (`next-auth@5`) with the MongoDB adapter — **database sessions**, magic-link email (Nodemailer provider)
 - **Email**: SMTP via Nodemailer (works with Brevo, Postmark, Gmail, etc.), or printed to the server log in local dev (`EMAIL_TRANSPORT=console`)
 - **Image uploads**: Vercel Blob
+- **Link previews**: `next/og` share cards in bundled Geist fonts, cached on Vercel's CDN and purged by tag (`@vercel/functions`)
 - **Rate limiting**: Upstash Redis (`@upstash/ratelimit`) — optional; disabled when unconfigured
 - **Bot protection**: Cloudflare Turnstile on the sign-in form (Cloudflare's script, no npm dependency) — optional; off when unconfigured
 - **Styling**: Tailwind CSS v4
@@ -94,7 +95,7 @@ The two Turnstile keys are **all or nothing**: both set turns the sign-in bot ch
 ```bash
 npm run dev          # dev server
 npm run build        # production build
-npm run check:trace  # after a build: the sign-in page and every API route that ships sharp also ship its native libvips
+npm run check:trace  # after a build: the sign-in page and every route that ships sharp (API routes, share cards) also ship its native libvips
 npm run smoke:deploy -- <url>  # read-only GET smoke of a deployed host: auth and upload routes start (no emails, no uploads)
 npm start            # run the production build
 npm run lint         # eslint (flat config)
