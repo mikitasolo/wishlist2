@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
@@ -12,6 +12,8 @@ import SnapshotThumb from '@/components/SnapshotThumb';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import { useBusyIds } from '@/lib/hooks/useBusyIds';
 import { formatPriceFromObject } from '@/lib/utils/currency';
+import { createListChangeLog, mergeRefreshedList } from '@/lib/utils/listRefresh';
+import { withRequestTimeout } from '@/lib/utils/requestTimeout';
 import { partitionReservations, reservationNote } from '@/lib/utils/reservations';
 
 interface Price {
@@ -43,54 +45,152 @@ interface Gift {
   giftedAt: string;
 }
 
+/** The gift history's order, as `GET /api/users/me/gifts` gives it: newest first. */
+const newestFirst = (a: Gift, b: Gift) => Date.parse(b.giftedAt) - Date.parse(a.giftedAt);
+
+/**
+ * One of the page's lists, as the server has it, or `null` if reading it
+ * failed. Bounded, so a read that stalls lets go of the page's next refresh
+ * (see `load`) instead of holding it off for as long as the browser waits.
+ */
+async function readList<T>(url: string): Promise<T[] | null> {
+  try {
+    const json = await withRequestTimeout(async (signal) => {
+      const res = await fetch(url, { cache: 'no-store', signal });
+      return res.json();
+    });
+    return json.success ? json.data : null;
+  } catch {
+    return null;
+  }
+}
+
 export default function BookedPage() {
-  const { status } = useSession();
+  const { data: session, status } = useSession();
+  const userId = session?.user?.id;
   const router = useRouter();
   const { showToast } = useToast();
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [gifts, setGifts] = useState<Gift[]>([]);
   const [loading, setLoading] = useState(true);
   // Reservations and gift-log entries whose action is still in flight, per id.
-  const { busy, run } = useBusyIds();
+  const { busy, run, running } = useBusyIds();
   const [giftConfirm, setGiftConfirm] = useState<string | null>(null);
   const [dismissConfirm, setDismissConfirm] = useState<string | null>(null);
   const [deleteGiftConfirm, setDeleteGiftConfirm] = useState<string | null>(null);
+  // The page's own changes to both lists (their ids never clash), so a read of
+  // them is merged with the changes made while it was on its way instead of
+  // undoing them. See `load`.
+  const [changes] = useState(createListChangeLog);
+  // The stamp of the latest read sent, until it settles.
+  const readInFlight = useRef<number | null>(null);
+  // The account whose lists the page shows.
+  const account = useRef(userId);
 
   useEffect(() => {
     if (status === 'unauthenticated') router.push('/');
   }, [status, router]);
 
-  useEffect(() => {
-    async function load() {
-      try {
-        const [rRes, gRes] = await Promise.all([
-          fetch('/api/users/me/reservations', { cache: 'no-store' }),
-          fetch('/api/users/me/gifts', { cache: 'no-store' }),
-        ]);
-        const rJson = await rRes.json();
-        const gJson = await gRes.json();
-        if (rJson.success) setReservations(rJson.data);
-        if (gJson.success) setGifts(gJson.data);
-        if (!rJson.success || !gJson.success) showToast('Failed to load some data', 'error');
-      } catch {
-        showToast('Failed to load your reservations', 'error');
-      } finally {
+  // Another account signed in (from another tab): `status` stays
+  // 'authenticated', so key on the user id. A layout effect, so the previous
+  // account's cards are gone before the browser paints, and nothing still on its
+  // way for that account, a read or an action's answer, lands on the new one's
+  // page. A confirmation still open for one of its cards closes, so it can't
+  // send that card's action as the new account. The busy ids stay: an action
+  // still in flight frees its own card's id when it settles, and the new
+  // account has no card with that id.
+  useLayoutEffect(() => {
+    account.current = userId;
+    changes.reset();
+    setReservations((prev) => (prev.length ? [] : prev));
+    setGifts((prev) => (prev.length ? [] : prev));
+    setGiftConfirm(null);
+    setDismissConfirm(null);
+    setDeleteGiftConfirm(null);
+    setLoading(true);
+  }, [userId, changes]);
+
+  // Reads both lists. An account's first load (`quiet` false) shows the
+  // skeleton until it lands, and says so if it fails. A later read updates the
+  // cards in place, and one that fails keeps them, silently. Every read is
+  // merged with what the page did while it was on its way (a gift, dismissal or
+  // delete it may predate) and leaves a card whose action is in flight alone.
+  // One outdated by a newer read, or by another account signing in, is ignored.
+  const load = useCallback(
+    (quiet: boolean) => {
+      const sentAt = changes.stamp();
+      readInFlight.current = sentAt;
+      void Promise.all([
+        readList<Reservation>('/api/users/me/reservations'),
+        readList<Gift>('/api/users/me/gifts'),
+      ]).then(([readReservations, readGifts]) => {
+        if (readInFlight.current === sentAt) readInFlight.current = null;
+        if (!readReservations && !readGifts) {
+          if (quiet || changes.outdated(sentAt)) return;
+          showToast('Failed to load your reservations', 'error');
+          setLoading(false);
+          return;
+        }
+        const since = changes.land(sentAt);
+        if (!since) return;
+        if (readReservations) {
+          setReservations((prev) =>
+            mergeRefreshedList(prev, readReservations, since, { held: running })
+          );
+        }
+        if (readGifts) {
+          setGifts((prev) =>
+            mergeRefreshedList(prev, readGifts, since, { held: running, compare: newestFirst })
+          );
+        }
+        if (quiet) return;
+        if (!readReservations || !readGifts) showToast('Failed to load some data', 'error');
         setLoading(false);
-      }
-    }
-    if (status === 'authenticated') load();
-  }, [status, showToast]);
+      });
+    },
+    [changes, running, showToast]
+  );
+
+  // Load, then read both lists again whenever the user comes back to the tab,
+  // for reservations made, gifted or released, and gifts logged or deleted, in
+  // another tab or on another device. Coming back to a tab fires both events,
+  // and one read is enough: a return while a read is still on its way sends
+  // none.
+  useEffect(() => {
+    if (status !== 'authenticated') return;
+    const refresh = () => {
+      if (readInFlight.current === null) load(true);
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') refresh();
+    };
+    load(false);
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [status, userId, load]);
 
   // Adds the entry "Mark as gifted" got back, in the history's newest-first
-  // order. The page never re-reads the whole list after loading it: a re-read
-  // answering after a delete or another gift settled meanwhile would overwrite
-  // them with an older copy, putting a deleted entry back or dropping a new one.
+  // order. A read on its way meanwhile may predate it, so it's recorded for
+  // that read to keep (see `load`).
   function addGift(entry: Gift) {
-    setGifts((prev) =>
-      [entry, ...prev.filter((g) => g._id !== entry._id)].sort(
-        (a, b) => Date.parse(b.giftedAt) - Date.parse(a.giftedAt)
-      )
-    );
+    changes.added(entry._id);
+    setGifts((prev) => [entry, ...prev.filter((g) => g._id !== entry._id)].sort(newestFirst));
+  }
+
+  // Takes a card off the page. A read on its way meanwhile may predate that,
+  // so it's recorded for that read to leave off (see `load`).
+  function dropReservation(id: string) {
+    changes.removed(id);
+    setReservations((prev) => prev.filter((r) => r._id !== id));
+  }
+
+  function dropGift(id: string) {
+    changes.removed(id);
+    setGifts((prev) => prev.filter((g) => g._id !== id));
   }
 
   // The route's own 404: the record went away while this page was open. A
@@ -98,80 +198,95 @@ export default function BookedPage() {
   // device, or cleared when we became an owner of its list; a gift-history entry
   // was deleted elsewhere. Every retry would 404 the same way, so take the card
   // off the page. Any other failure keeps it, so the user can retry.
+  //
+  // The page is out of date, so both lists are read again too. A reservation
+  // gone this way was most likely gifted, in another tab or by this tab's own
+  // earlier "Mark as gifted" whose answer was lost, and its gift-history entry
+  // should show, not look lost until a reload.
   function reservationGone(id: string) {
-    setReservations((prev) => prev.filter((r) => r._id !== id));
+    dropReservation(id);
     showToast('This reservation no longer exists', 'info');
+    load(true);
   }
 
   function giftGone(id: string) {
-    setGifts((prev) => prev.filter((g) => g._id !== id));
+    dropGift(id);
     showToast('This gift is no longer in your history', 'info');
+    load(true);
   }
 
   function markGifted(id: string) {
     return run(id, async () => {
+      const actedFor = account.current;
       try {
         const res = await fetch(`/api/reservations/${id}/gift`, { method: 'POST' });
         // Parsed first, so a 404 that isn't the route's own JSON answer (an HTML
         // page from the platform) lands in the catch below and keeps the card.
         const result = await res.json();
+        // Another account signed in while this was on its way. What came of it
+        // belongs to the account that did it, here and in the catch below.
+        if (account.current !== actedFor) return;
         if (res.status === 404) {
           reservationGone(id);
           return;
         }
         if (result.success) {
-          setReservations((prev) => prev.filter((r) => r._id !== id));
+          dropReservation(id);
           addGift(result.data);
           showToast('Added to your gift history', 'success');
         } else {
           showToast(result.error || 'Something went wrong', 'error');
         }
       } catch {
-        showToast('Something went wrong', 'error');
+        if (account.current === actedFor) showToast('Something went wrong', 'error');
       }
     });
   }
 
   function dismiss(id: string) {
     return run(id, async () => {
+      const actedFor = account.current;
       try {
         const res = await fetch(`/api/reservations/${id}`, { method: 'DELETE' });
-        // Parsed first, as in markGifted.
+        // Parsed first, and dropped after another account signs in, as in markGifted.
         const result = await res.json();
+        if (account.current !== actedFor) return;
         if (res.status === 404) {
           reservationGone(id);
           return;
         }
         if (result.success) {
-          setReservations((prev) => prev.filter((r) => r._id !== id));
+          dropReservation(id);
           showToast('Removed from your reservations', 'success');
         } else {
           showToast(result.error || 'Something went wrong', 'error');
         }
       } catch {
-        showToast('Something went wrong', 'error');
+        if (account.current === actedFor) showToast('Something went wrong', 'error');
       }
     });
   }
 
   function deleteGift(id: string) {
     return run(id, async () => {
+      const actedFor = account.current;
       try {
         const res = await fetch(`/api/gifts/${id}`, { method: 'DELETE' });
-        // Parsed first, as in markGifted.
+        // Parsed first, and dropped after another account signs in, as in markGifted.
         const result = await res.json();
+        if (account.current !== actedFor) return;
         if (res.status === 404) {
           giftGone(id);
           return;
         }
         if (result.success) {
-          setGifts((prev) => prev.filter((g) => g._id !== id));
+          dropGift(id);
           showToast('Removed from your gift history', 'success');
         } else {
           showToast(result.error || 'Something went wrong', 'error');
         }
       } catch {
-        showToast('Something went wrong', 'error');
+        if (account.current === actedFor) showToast('Something went wrong', 'error');
       }
     });
   }

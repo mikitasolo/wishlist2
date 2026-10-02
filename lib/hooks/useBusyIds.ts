@@ -15,6 +15,10 @@ import { useCallback, useRef, useState } from 'react';
  *   re-renders as disabled, or that doesn't come from the card's buttons at all
  *   (a confirmation dialog's).
  * - `busy(id)` says whether `id` is in flight, for rendering.
+ * - `running(id)` says the same outside rendering (a list refresh deciding
+ *   which cards to leave alone): it reads the set `run` keeps, so it's already
+ *   true for an action started since the last render, and false for one that
+ *   has settled since.
  *
  * Tracked per id, not as one id for the page: acting on another card doesn't
  * re-enable this one, and that action settling first doesn't unlock this one
@@ -43,5 +47,7 @@ export function useBusyIds() {
 
   const busy = useCallback((id: string) => busyIds.has(id), [busyIds]);
 
-  return { busy, run };
+  const running = useCallback((id: string) => inFlight.current.has(id), []);
+
+  return { busy, run, running };
 }

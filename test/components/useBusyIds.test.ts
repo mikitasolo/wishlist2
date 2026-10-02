@@ -19,6 +19,8 @@ function renderBusyIds() {
   const run = (id: string, fn: () => Promise<unknown>) => result.current.run(id, fn);
   return {
     busy: (id: string) => result.current.busy(id),
+    /** `running` as a caller holding on to it from an earlier render sees it. */
+    running: result.current.running,
     run,
     /**
      * Calls `run` inside act, so the busy state it sets has rendered. The call's
@@ -159,5 +161,26 @@ describe('useBusyIds', () => {
 
     await expect(running).rejects.toBe(error);
     expect(busy('a')).toBe(false);
+  });
+
+  it('says whether an id is in flight outside rendering, even before its state has rendered', async () => {
+    const { running, run } = renderBusyIds();
+    const request = deferred();
+    expect(running('a')).toBe(false);
+
+    let settled!: Promise<void>;
+    // Read inside the same act as the call, before anything has re-rendered.
+    await act(async () => {
+      settled = run('a', () => request.promise);
+      expect(running('a')).toBe(true);
+      expect(running('b')).toBe(false);
+    });
+
+    await act(async () => {
+      request.resolve();
+      await settled;
+      // Freed as the action settles, again before the next render.
+      expect(running('a')).toBe(false);
+    });
   });
 });

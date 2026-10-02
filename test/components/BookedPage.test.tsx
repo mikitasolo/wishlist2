@@ -3,10 +3,15 @@ import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } 
 import { render, screen, fireEvent, cleanup, waitFor, act, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-const { push, showToast } = vi.hoisted(() => ({ push: vi.fn(), showToast: vi.fn() }));
+const { push, showToast, signedIn } = vi.hoisted(() => ({
+  push: vi.fn(),
+  showToast: vi.fn(),
+  // Mutable, so a test can sign another account in while the page is open.
+  signedIn: { userId: 'me' },
+}));
 
 vi.mock('next-auth/react', () => ({
-  useSession: () => ({ data: { user: { id: 'me' } }, status: 'authenticated' }),
+  useSession: () => ({ data: { user: { id: signedIn.userId } }, status: 'authenticated' }),
 }));
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push }) }));
@@ -18,6 +23,7 @@ vi.mock('@/components/AuthButton', () => ({ default: () => null }));
 vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }));
 
 import BookedPage from '@/app/booked/page';
+import { ITEM_REQUEST_TIMEOUT_MS } from '@/lib/utils/requestTimeout';
 
 const reservation = {
   itemImage: null,
@@ -75,52 +81,124 @@ const scarfGift = {
   giftedAt: '2026-10-01T10:05:00.000Z',
 };
 
+type Reservation = (typeof reservations)[number];
+type Gift = typeof legoGift;
+
 /** A JSON answer, a non-JSON one (`html`), or a network failure. */
 type Reply = { status: number; body: unknown } | { status: number; html: true } | Error;
 
 const ok: Reply = { status: 200, body: { success: true } };
 /** The gift route's answer: the gift-history entry it wrote. */
-const gifted = (entry: typeof legoGift): Reply => ({
+const gifted = (entry: Gift): Reply => ({
   status: 201,
   body: { success: true, data: entry },
 });
 const failed = (error: string): Reply => ({ status: 500, body: { success: false, error } });
 /** The route's own answer for a reservation or gift-history entry that's gone. */
 const notFound = (error: string): Reply => ({ status: 404, body: { success: false, error } });
+/** A list route's answer. */
+const listed = (data: unknown[]): Reply => ({ status: 200, body: { success: true, data } });
+
+/** What one read of the page's two lists is answered with. */
+interface Lists {
+  reservations: Reply;
+  gifts: Reply;
+}
+
+const newestFirst = (a: Gift, b: Gift) => Date.parse(b.giftedAt) - Date.parse(a.giftedAt);
+
+function toResponse(reply: Reply) {
+  if (reply instanceof Error) throw reply;
+  const json =
+    'html' in reply
+      ? async () => {
+          throw new SyntaxError('Unexpected token <');
+        }
+      : async () => reply.body;
+  return { ok: reply.status < 400, status: reply.status, json };
+}
 
 /**
- * Serves both lists, and holds every action (POST / DELETE) open until the test
- * settles it with `answer`, so several cards can be in flight at once.
+ * A fake server holding the user's reservations and gift history, which serves
+ * both lists as they stand, and holds every action (POST / DELETE) open until
+ * the test settles it with `answer`, so several cards can be in flight at once.
+ * An action settled with a success, or with the route's own 404, is saved as
+ * the route would save it, so the lists read afterwards reflect it. The test
+ * can change the lists itself too (`server`), as another tab or device would.
+ *
+ * With `holdReads`, every read of the lists is held as well, until the test
+ * answers it with `answerRead`: with the lists as they stand then, or with
+ * any it gives (an older `snapshot()`, say, for a read the server answered
+ * before a change was saved).
  */
-function mockHeldFetch() {
+function mockHeldFetch({ holdReads = false } = {}) {
+  const lists = { reservations: [...reservations], gifts: [...gifts] };
+  const server = {
+    /** Both lists as the server holds them right now. */
+    snapshot: (): Lists => ({
+      reservations: listed([...lists.reservations]),
+      gifts: listed([...lists.gifts]),
+    }),
+    /** A reservation is gifted elsewhere: it goes, and `entry` joins the history. */
+    gift(reservationId: string, entry: Gift) {
+      lists.reservations = lists.reservations.filter((r) => r._id !== reservationId);
+      lists.gifts = [entry, ...lists.gifts].sort(newestFirst);
+    },
+    /** A reservation is dismissed, or released, elsewhere. */
+    dropReservation(id: string) {
+      lists.reservations = lists.reservations.filter((r) => r._id !== id);
+    },
+    /** A gift-history entry is deleted elsewhere. */
+    dropGift(id: string) {
+      lists.gifts = lists.gifts.filter((g) => g._id !== id);
+    },
+    /** A gift is reserved elsewhere. */
+    reserve(entry: Reservation) {
+      lists.reservations = [entry, ...lists.reservations];
+    },
+  };
+
+  /** Saves an action the way its route would, once it has answered `reply`. */
+  function save(key: string, reply: Reply) {
+    if (reply instanceof Error || !('body' in reply)) return;
+    if (reply.status >= 400 && reply.status !== 404) return;
+    const [method, url] = key.split(' ');
+    const id = url.split('/')[3];
+    if (url.startsWith('/api/gifts/')) server.dropGift(id);
+    else if (method === 'POST' && reply.status === 201) {
+      server.gift(id, (reply.body as { data: Gift }).data);
+    } else server.dropReservation(id);
+  }
+
   const held = new Map<string, ((reply: Reply) => void)[]>();
+  const heldReads: Record<'reservations' | 'gifts', ((reply: Reply) => void)[]> = {
+    reservations: [],
+    gifts: [],
+  };
   const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     const method = init?.method ?? 'GET';
     if (method === 'GET') {
-      if (url === '/api/users/me/reservations') {
-        return { ok: true, status: 200, json: async () => ({ success: true, data: reservations }) };
-      }
-      if (url === '/api/users/me/gifts') {
-        return { ok: true, status: 200, json: async () => ({ success: true, data: gifts }) };
-      }
-      throw new Error(`unexpected fetch ${url}`);
+      const list =
+        url === '/api/users/me/reservations'
+          ? 'reservations'
+          : url === '/api/users/me/gifts'
+            ? 'gifts'
+            : null;
+      if (!list) throw new Error(`unexpected fetch ${url}`);
+      if (!holdReads) return toResponse(server.snapshot()[list]);
+      return toResponse(await new Promise<Reply>((resolve) => heldReads[list].push(resolve)));
     }
     const key = `${method} ${url}`;
     const reply = await new Promise<Reply>((resolve) =>
       held.set(key, [...(held.get(key) ?? []), resolve])
     );
-    if (reply instanceof Error) throw reply;
-    const json =
-      'html' in reply
-        ? async () => {
-            throw new SyntaxError('Unexpected token <');
-          }
-        : async () => reply.body;
-    return { ok: reply.status < 400, status: reply.status, json };
+    save(key, reply);
+    return toResponse(reply);
   });
   vi.stubGlobal('fetch', fetchMock);
 
   return {
+    server,
     /** How many requests the page has sent for this action, settled or not. */
     sent: (key: string) =>
       fetchMock.mock.calls.filter(([url, init]) => `${init?.method ?? 'GET'} ${url}` === key)
@@ -134,6 +212,17 @@ function mockHeldFetch() {
       held.delete(key);
       await act(async () => pending[0](reply));
     },
+    /** How many times the page has read its lists, counting the first load. */
+    reads: () =>
+      fetchMock.mock.calls.filter(([url]) => url === '/api/users/me/reservations').length,
+    /** Answers the page's `n`th read of its lists, counting from 0 (with `holdReads`). */
+    answerRead: async (n: number, answers: Partial<Lists> = {}) => {
+      const now = server.snapshot();
+      await act(async () => {
+        heldReads.reservations[n](answers.reservations ?? now.reservations);
+        heldReads.gifts[n](answers.gifts ?? now.gifts);
+      });
+    },
   };
 }
 
@@ -144,7 +233,8 @@ const deleteGiftKey = (id: string) => `DELETE /api/gifts/${id}`;
 /** The "Mark as gifted" and "Dismiss" buttons on the reservation card for `itemName`. */
 function reservationButtons(itemName: string) {
   // The card is the nearest ancestor of its name that holds its buttons.
-  let card: HTMLElement | null = screen.getByText(itemName);
+  let card: HTMLElement | null = cardName(itemName);
+  if (!card) throw new Error(`no reservation card for ${itemName}`);
   while (card && !within(card).queryByRole('button', { name: 'Mark as gifted' })) {
     card = card.parentElement;
   }
@@ -200,6 +290,8 @@ function expectReservationEnabled(itemName: string) {
   expect(buttons.dismiss).toBeEnabled();
 }
 
+type Held = ReturnType<typeof mockHeldFetch>;
+
 async function renderHeld() {
   const held = mockHeldFetch();
   render(<BookedPage />);
@@ -216,6 +308,7 @@ beforeEach(() => {
   cleanup();
   push.mockReset();
   showToast.mockReset();
+  signedIn.userId = 'me';
 });
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -452,6 +545,51 @@ describe('BookedPage — a reservation or gift that no longer exists', () => {
     }
   );
 
+  // regression: the page read its gift history once, so a reservation gifted
+  // elsewhere left the history as it was. "Mark as gifted" 404'd, the card
+  // went with "This reservation no longer exists", and the gift wasn't listed
+  // until a reload, so it looked lost.
+  it.each([
+    {
+      how: 'in another tab',
+      giftElsewhere: async ({ server }: Held) => server.gift('res-lego', legoGift),
+    },
+    {
+      how: "by this tab's own earlier request, whose answer was lost",
+      giftElsewhere: async ({ server, answer }: Held) => {
+        markGifted('Lego set');
+        // The route saved the gift, but its answer never reached the page.
+        server.gift('res-lego', legoGift);
+        await answer(markGiftedKey('res-lego'), new TypeError('Failed to fetch'));
+        await waitFor(() =>
+          expect(showToast).toHaveBeenCalledWith('Something went wrong', 'error')
+        );
+        await waitFor(() => expectReservationEnabled('Lego set'));
+      },
+    },
+  ])(
+    'regression: shows the gift-history entry of a reservation gifted $how once "Mark as gifted" 404s',
+    async ({ giftElsewhere }) => {
+      const held = await renderHeld();
+      const { answer, reads } = held;
+      await giftElsewhere(held);
+      // The page can't tell yet.
+      expect(historyNames()).toEqual(['Cookbook', 'Mug']);
+      expect(reads()).toBe(1);
+
+      // Trying it (again) finds the reservation gone...
+      markGifted('Lego set');
+      await answer(markGiftedKey('res-lego'), notFound('Reservation not found'));
+      await waitFor(() => expect(cardName('Lego set')).toBeNull());
+      expect(showToast).toHaveBeenLastCalledWith('This reservation no longer exists', 'info');
+
+      // ...and the gift it was given shows in the history, without a reload.
+      await waitFor(() => expect(historyNames()).toEqual(['Lego set', 'Cookbook', 'Mug']));
+      expect(reads()).toBe(2);
+      expect(screen.getByText('Scarf')).toBeInTheDocument();
+    }
+  );
+
   it('drops a card whose reservation is gone while another is still in flight', async () => {
     const { answer } = await renderHeld();
 
@@ -503,6 +641,426 @@ describe('BookedPage — failures worth retrying keep the card', () => {
       // Re-enabled, so the user can try again.
       await waitFor(expectEnabled);
       expect(showToast).not.toHaveBeenCalledWith(expect.anything(), 'info');
+    }
+  );
+});
+
+describe('BookedPage — reading both lists again while the page is open', () => {
+  const headphones = {
+    ...reservation,
+    _id: 'res-headphones',
+    itemName: 'Headphones',
+    itemStatus: 'booked',
+    stillReserved: true,
+  };
+  const skeleton = () => document.querySelector('.skeleton');
+  const comeBack = (event: 'focus' | 'visibilitychange') =>
+    act(() => {
+      (event === 'focus' ? window : document).dispatchEvent(new Event(event));
+    });
+
+  /** Renders the page with every read held, and lets the first load land. */
+  async function renderLoaded() {
+    const held = mockHeldFetch({ holdReads: true });
+    const view = render(<BookedPage />);
+    expect(held.reads()).toBe(1);
+    await held.answerRead(0);
+    expect(screen.getByText('Lego set')).toBeInTheDocument();
+    return { ...held, rerender: view.rerender };
+  }
+
+  it.each(['focus', 'visibilitychange'] as const)(
+    'coming back to the tab (%s) picks up what changed elsewhere, without the skeleton',
+    async (event) => {
+      const { server, reads, answerRead } = await renderLoaded();
+
+      // Elsewhere: Lego is gifted, Headphones reserved, and Mug deleted from the history.
+      server.gift('res-lego', legoGift);
+      server.reserve(headphones);
+      server.dropGift('gift-mug');
+
+      comeBack(event);
+      expect(reads()).toBe(2);
+      // The cards stay up while it's on its way.
+      expect(skeleton()).toBeNull();
+      expect(cardName('Lego set')).not.toBeNull();
+
+      await answerRead(1);
+      expect(cardName('Lego set')).toBeNull();
+      expect(screen.getByText('Headphones')).toBeInTheDocument();
+      expect(screen.getByText('Scarf')).toBeInTheDocument();
+      expect(historyNames()).toEqual(['Lego set', 'Cookbook']);
+      expect(skeleton()).toBeNull();
+      expect(showToast).not.toHaveBeenCalled();
+    }
+  );
+
+  it('sends one read for a return that fires both events, and none while the tab is hidden', async () => {
+    const { reads, answerRead } = await renderLoaded();
+
+    comeBack('visibilitychange');
+    comeBack('focus');
+    expect(reads()).toBe(2);
+    await answerRead(1);
+
+    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+    comeBack('visibilitychange');
+    expect(reads()).toBe(2);
+    visibility.mockRestore();
+
+    comeBack('focus');
+    expect(reads()).toBe(3);
+  });
+
+  it('a read that fails keeps the cards, without an error toast', async () => {
+    const { reads, answerRead } = await renderLoaded();
+
+    comeBack('focus');
+    await answerRead(1, {
+      reservations: failed('Failed to fetch reservations'),
+      gifts: new TypeError('Failed to fetch'),
+    });
+    expect(screen.getByText('Lego set')).toBeInTheDocument();
+    expect(historyNames()).toEqual(['Cookbook', 'Mug']);
+    expect(showToast).not.toHaveBeenCalled();
+
+    // The next return reads again.
+    comeBack('focus');
+    expect(reads()).toBe(3);
+  });
+
+  it('a read where one list fails still updates the other', async () => {
+    const { server, answerRead } = await renderLoaded();
+
+    server.gift('res-lego', legoGift);
+    comeBack('focus');
+    await answerRead(1, { gifts: failed('Failed to fetch gift history') });
+
+    expect(cardName('Lego set')).toBeNull();
+    expect(historyNames()).toEqual(['Cookbook', 'Mug']);
+    expect(showToast).not.toHaveBeenCalled();
+  });
+
+  it('the first load failing says so, and a later read fills the lists in', async () => {
+    const { reads, answerRead } = mockHeldFetch({ holdReads: true });
+    render(<BookedPage />);
+
+    await answerRead(0, {
+      reservations: new TypeError('Failed to fetch'),
+      gifts: new TypeError('Failed to fetch'),
+    });
+    expect(showToast).toHaveBeenCalledWith('Failed to load your reservations', 'error');
+    expect(screen.getByText('Nothing reserved yet')).toBeInTheDocument();
+
+    comeBack('focus');
+    expect(reads()).toBe(2);
+    await answerRead(1);
+    expect(screen.getByText('Lego set')).toBeInTheDocument();
+    expect(historyNames()).toEqual(['Cookbook', 'Mug']);
+    expect(showToast).toHaveBeenCalledTimes(1);
+  });
+
+  it('the first load failing for one list says so, and shows the other', async () => {
+    const { answerRead } = mockHeldFetch({ holdReads: true });
+    render(<BookedPage />);
+
+    await answerRead(0, { gifts: failed('Failed to fetch gift history') });
+    expect(showToast).toHaveBeenCalledWith('Failed to load some data', 'error');
+    expect(screen.getByText('Lego set')).toBeInTheDocument();
+    expect(screen.queryByRole('list')).toBeNull();
+  });
+
+  it('a return while the first load is on its way sends no second read', async () => {
+    const { reads, answerRead } = mockHeldFetch({ holdReads: true });
+    render(<BookedPage />);
+
+    comeBack('focus');
+    expect(reads()).toBe(1);
+    await answerRead(0);
+    expect(screen.getByText('Lego set')).toBeInTheDocument();
+    expect(skeleton()).toBeNull();
+  });
+
+  it.each([
+    {
+      action: 'Dismiss',
+      run: () => dismiss('Scarf'),
+      key: dismissKey('res-scarf'),
+      gone: notFound('Reservation not found'),
+    },
+    {
+      action: 'Delete from gift history',
+      run: () => deleteGift('Cookbook'),
+      key: deleteGiftKey('gift-book'),
+      gone: notFound('Gift entry not found'),
+    },
+  ])('a 404 on $action reads both lists again too', async ({ run, key, gone }) => {
+    const { server, answer, reads, answerRead } = await renderLoaded();
+
+    // Elsewhere, meanwhile: Scarf is gifted, and Cookbook deleted.
+    server.gift('res-scarf', scarfGift);
+    server.dropGift('gift-book');
+
+    run();
+    await answer(key, gone);
+    expect(reads()).toBe(2);
+    await answerRead(1);
+    expect(cardName('Scarf')).toBeNull();
+    expect(historyNames()).toEqual(['Scarf', 'Mug']);
+  });
+
+  // regression: a read of the gift history the server answered before a delete
+  // was saved, landing after that delete's success, put the deleted entry back
+  // (and deleting it again answered "Gift entry not found").
+  it('regression: an entry deleted while a read is on its way stays deleted', async () => {
+    const { server, answer, answerRead } = await renderLoaded();
+
+    server.gift('res-lego', legoGift);
+    markGifted('Lego set');
+    await answer(markGiftedKey('res-lego'), notFound('Reservation not found'));
+    // The read the 404 sent is answered with the lists as they stand now...
+    const beforeDelete = server.snapshot();
+
+    // ...but lands only after Cookbook's delete has.
+    deleteGift('Cookbook');
+    await answer(deleteGiftKey('gift-book'), ok);
+    await waitFor(() => expect(screen.queryByText('Cookbook')).toBeNull());
+
+    await answerRead(1, beforeDelete);
+    expect(historyNames()).toEqual(['Lego set', 'Mug']);
+  });
+
+  // regression: the same read, answered before another "Mark as gifted" was
+  // saved and landing after it, dropped that gift's new entry from the history
+  // and brought its card back.
+  it('regression: a reservation gifted while a read is on its way stays gifted', async () => {
+    const { server, answer, answerRead } = await renderLoaded();
+
+    markGifted('Scarf');
+    server.gift('res-lego', legoGift);
+    markGifted('Lego set');
+    await answer(markGiftedKey('res-lego'), notFound('Reservation not found'));
+    const beforeScarf = server.snapshot();
+
+    await answer(markGiftedKey('res-scarf'), gifted(scarfGift));
+    await waitFor(() => expect(cardName('Scarf')).toBeNull());
+
+    await answerRead(1, beforeScarf);
+    expect(cardName('Scarf')).toBeNull();
+    expect(cardName('Lego set')).toBeNull();
+    expect(historyNames()).toEqual(['Scarf', 'Lego set', 'Cookbook', 'Mug']);
+  });
+
+  it('a reservation dismissed while a read is on its way stays dismissed', async () => {
+    const { server, answer, answerRead } = await renderLoaded();
+
+    comeBack('focus');
+    const beforeDismiss = server.snapshot();
+    dismiss('Scarf');
+    await answer(dismissKey('res-scarf'), ok);
+    await waitFor(() => expect(screen.queryByText('Scarf')).toBeNull());
+
+    await answerRead(1, beforeDismiss);
+    expect(screen.queryByText('Scarf')).toBeNull();
+    expect(screen.getByText('Lego set')).toBeInTheDocument();
+  });
+
+  // A read can't tell whether the server has taken an action that's still on
+  // its way, so it leaves that card alone: the card stays as it is, disabled,
+  // until its own answer decides it.
+  it('a read landing while an action is in flight leaves that card alone', async () => {
+    const { answer, answerRead } = await renderLoaded();
+
+    markGifted('Lego set');
+    deleteGift('Cookbook');
+    comeBack('focus');
+    // The server has saved both already, and the read says so.
+    await answerRead(1, {
+      reservations: listed([reservations[1]]),
+      gifts: listed([legoGift, gifts[1]]),
+    });
+    expect(cardName('Lego set')).not.toBeNull();
+    expectReservationDisabled('Lego set');
+    expect(deleteGiftButton('Cookbook')).toBeDisabled();
+    // Everything else follows the read.
+    expect(historyNames()).toEqual(['Lego set', 'Cookbook', 'Mug']);
+
+    // Their answers then take them off, once each.
+    await answer(markGiftedKey('res-lego'), gifted(legoGift));
+    await answer(deleteGiftKey('gift-book'), ok);
+    await waitFor(() => expect(historyNames()).toEqual(['Lego set', 'Mug']));
+    expect(cardName('Lego set')).toBeNull();
+  });
+
+  it('a read landing while an action is in flight keeps the card if that action then fails', async () => {
+    const { answer, answerRead } = await renderLoaded();
+
+    dismiss('Scarf');
+    comeBack('focus');
+    await answerRead(1);
+    expectReservationDisabled('Scarf');
+
+    await answer(dismissKey('res-scarf'), failed('Failed to remove reservation'));
+    await waitFor(() => expectReservationEnabled('Scarf'));
+  });
+
+  it('ignores a read that lands after a newer one', async () => {
+    const { server, answer, reads, answerRead } = await renderLoaded();
+
+    comeBack('focus');
+    const older = server.snapshot();
+    // Mug is deleted elsewhere, then a 404 sends a newer read, which lands first.
+    server.dropGift('gift-mug');
+    dismiss('Scarf');
+    await answer(dismissKey('res-scarf'), notFound('Reservation not found'));
+    expect(reads()).toBe(3);
+    await answerRead(2);
+    expect(historyNames()).toEqual(['Cookbook']);
+
+    // The older read, landing late, changes nothing.
+    await answerRead(1, older);
+    expect(historyNames()).toEqual(['Cookbook']);
+    expect(screen.queryByText('Scarf')).toBeNull();
+  });
+
+  // regression: the page loaded its lists once, when the session became
+  // 'authenticated'. Another account signing in from another tab leaves the
+  // status 'authenticated', so the previous account's reservations and gift
+  // history stayed up, and every action on them failed.
+  it("regression: another account signing in never shows the previous account's lists", async () => {
+    const { reads, answerRead, rerender } = await renderLoaded();
+
+    // A read for the previous account is still on its way when the account changes.
+    comeBack('focus');
+    signedIn.userId = 'someone-else';
+    rerender(<BookedPage />);
+
+    // Its cards are gone at once, and the skeleton stands in for the new account's lists.
+    expect(screen.queryByText('Lego set')).toBeNull();
+    expect(screen.queryByText('Cookbook')).toBeNull();
+    expect(skeleton()).not.toBeNull();
+    expect(reads()).toBe(3);
+
+    // The previous account's read, landing first, changes nothing...
+    await answerRead(1);
+    expect(screen.queryByText('Lego set')).toBeNull();
+    expect(screen.queryByText('Cookbook')).toBeNull();
+    expect(skeleton()).not.toBeNull();
+
+    // ...and the new account's lists replace the skeleton.
+    await answerRead(2, { reservations: listed([headphones]), gifts: listed([]) });
+    expect(screen.getByText('Headphones')).toBeInTheDocument();
+    expect(screen.queryByText('Lego set')).toBeNull();
+    expect(screen.queryByRole('list')).toBeNull();
+    expect(skeleton()).toBeNull();
+  });
+
+  it.each([
+    { dialog: 'Mark as gifted?', open: () => reservationButtons('Lego set').gift },
+    { dialog: 'Remove from reservations?', open: () => reservationButtons('Scarf').dismiss },
+    { dialog: 'Delete from gift history?', open: () => deleteGiftButton('Cookbook') },
+  ])(
+    'another account signing in closes a "$dialog" confirmation left open for the previous one',
+    async ({ dialog, open }) => {
+      const { rerender, sent } = await renderLoaded();
+
+      fireEvent.click(open());
+      expect(screen.getByRole('alertdialog', { name: dialog })).toBeInTheDocument();
+      signedIn.userId = 'someone-else';
+      rerender(<BookedPage />);
+
+      expect(screen.queryByRole('alertdialog')).toBeNull();
+      expect(sent(markGiftedKey('res-lego'))).toBe(0);
+    }
+  );
+
+  it('a read that stalls is given up on, so the next return reads again', async () => {
+    const { reads, answerRead } = await renderLoaded();
+    vi.useFakeTimers();
+    try {
+      comeBack('focus');
+      expect(reads()).toBe(2);
+      // While it's on its way, a return sends nothing more...
+      comeBack('focus');
+      expect(reads()).toBe(2);
+
+      // ...until the page gives up on it, silently.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(ITEM_REQUEST_TIMEOUT_MS);
+      });
+      expect(showToast).not.toHaveBeenCalled();
+      expect(screen.getByText('Lego set')).toBeInTheDocument();
+
+      comeBack('focus');
+      expect(reads()).toBe(3);
+    } finally {
+      vi.useRealTimers();
+    }
+    await answerRead(2, { reservations: listed([headphones]) });
+    expect(screen.getByText('Headphones')).toBeInTheDocument();
+    expect(screen.queryByText('Lego set')).toBeNull();
+  });
+
+  it("the new account's first load failing doesn't bring the previous account's lists back", async () => {
+    const { answerRead, rerender } = await renderLoaded();
+
+    // The previous account's read lands while the new account's first load is on its way.
+    comeBack('focus');
+    signedIn.userId = 'someone-else';
+    rerender(<BookedPage />);
+    await answerRead(1);
+    await answerRead(2, {
+      reservations: new TypeError('Failed to fetch'),
+      gifts: new TypeError('Failed to fetch'),
+    });
+
+    expect(showToast).toHaveBeenCalledWith('Failed to load your reservations', 'error');
+    expect(screen.getByText('Nothing reserved yet')).toBeInTheDocument();
+    expect(screen.queryByText('Lego set')).toBeNull();
+    expect(screen.queryByRole('list')).toBeNull();
+  });
+
+  it("the previous account's first load failing late doesn't end the new account's skeleton", async () => {
+    const { answerRead } = mockHeldFetch({ holdReads: true });
+    const view = render(<BookedPage />);
+
+    signedIn.userId = 'someone-else';
+    view.rerender(<BookedPage />);
+    await answerRead(0, {
+      reservations: new TypeError('Failed to fetch'),
+      gifts: new TypeError('Failed to fetch'),
+    });
+    expect(showToast).not.toHaveBeenCalled();
+    expect(skeleton()).not.toBeNull();
+
+    await answerRead(1, { reservations: listed([headphones]), gifts: listed([]) });
+    expect(screen.getByText('Headphones')).toBeInTheDocument();
+  });
+
+  it.each([
+    { outcome: 'succeeding', reply: gifted(legoGift) },
+    { outcome: 'failing', reply: new TypeError('Failed to fetch') },
+    { outcome: 'finding it gone', reply: notFound('Reservation not found') },
+  ])(
+    'an action the previous account took, $outcome after the switch, stays off the new page',
+    async ({ reply }) => {
+      const { answer, reads, answerRead, rerender } = await renderLoaded();
+
+      markGifted('Lego set');
+      signedIn.userId = 'someone-else';
+      rerender(<BookedPage />);
+      await answerRead(1, { reservations: listed([headphones]), gifts: listed([]) });
+      expect(screen.getByText('Headphones')).toBeInTheDocument();
+      // Its card is still in flight, but it isn't the new account's to keep.
+      expect(cardName('Lego set')).toBeNull();
+
+      await answer(markGiftedKey('res-lego'), reply);
+      expect(showToast).not.toHaveBeenCalled();
+      expect(screen.queryByRole('list')).toBeNull();
+      expect(cardName('Lego set')).toBeNull();
+      expect(screen.getByText('Headphones')).toBeInTheDocument();
+      // Nor does it read the lists again on the new account's behalf.
+      expect(reads()).toBe(2);
     }
   );
 });
