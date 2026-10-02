@@ -19,6 +19,8 @@ import {
   canAttachImage,
   deleteOwnBlob,
   deleteOwnBlobs,
+  isSameImage,
+  freeReplacedImage,
   getUserUploadBytes,
   isSnapshotBlob,
   snapshotBlob,
@@ -225,6 +227,39 @@ describe('deleteOwnBlob', () => {
   it('deleteOwnBlobs filters to only our blobs', async () => {
     await deleteOwnBlobs([OWN, EXTERNAL, null, OTHER_STORE, OWN]);
     expect(del).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('isSameImage', () => {
+  it('compares URLs, with an empty one and none at all both meaning no image', () => {
+    expect(isSameImage(OWN, OWN)).toBe(true);
+    expect(isSameImage(OWN, OTHER_USERS)).toBe(false);
+    expect(isSameImage(OWN, null)).toBe(false);
+    expect(isSameImage('', null)).toBe(true);
+    expect(isSameImage(undefined, null)).toBe(true);
+    expect(isSameImage('', OWN)).toBe(false);
+  });
+});
+
+describe('freeReplacedImage', () => {
+  beforeEach(() => del.mockClear());
+
+  it('frees our own blob the write replaced, or cleared', async () => {
+    await freeReplacedImage(OWN, OTHER_USERS);
+    await freeReplacedImage(OWN, null);
+    expect(del.mock.calls).toEqual([[OWN], [OWN]]);
+  });
+
+  it('frees nothing when the write left the image as it was', async () => {
+    await freeReplacedImage(OWN, OWN);
+    await freeReplacedImage(null, '');
+    expect(del).not.toHaveBeenCalled();
+  });
+
+  it('never frees an external or other-store image it replaced', async () => {
+    await freeReplacedImage(EXTERNAL, OWN);
+    await freeReplacedImage(OTHER_STORE, null);
+    expect(del).not.toHaveBeenCalled();
   });
 });
 

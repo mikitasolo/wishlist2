@@ -13,6 +13,7 @@ import { GET as GET_USER } from '@/app/api/users/[id]/route';
 import { POST as FOLLOW, DELETE as UNFOLLOW } from '@/app/api/users/[id]/follow/route';
 import { GET as FOLLOWERS } from '@/app/api/users/[id]/followers/route';
 import { GET as FOLLOWING } from '@/app/api/users/[id]/following/route';
+import { PATCH as PATCH_ME } from '@/app/api/users/me/route';
 import User from '@/models/User';
 import Follow from '@/models/Follow';
 import Wishlist from '@/models/Wishlist';
@@ -180,5 +181,56 @@ describe('users/[id] routes — a malformed id', () => {
     expect((await UNFOLLOW(at('not-an-id/follow', 'DELETE'), params('not-an-id'))).status).toBe(
       401
     );
+  });
+});
+
+describe('PATCH /api/users/me — saving the settings', () => {
+  function save(body: unknown) {
+    session.mockResolvedValue({ user: { id: targetId } } as never);
+    return PATCH_ME(
+      new NextRequest('http://localhost/api/users/me', {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+    );
+  }
+
+  it("writes what it's sent, and keeps the privacy settings it isn't", async () => {
+    const res = await save({
+      username: 'MugFan',
+      bio: '  Still collecting mugs.  ',
+      defaultCurrency: 'eur',
+      privacy: { searchable: false },
+    });
+
+    expect(res.status).toBe(200);
+    const saved = {
+      username: 'mugfan',
+      bio: 'Still collecting mugs.',
+      defaultCurrency: 'EUR',
+      privacy: { searchable: false, whoCanInvite: 'everyone', profileVisibility: 'friends' },
+    };
+    expect((await res.json()).data).toMatchObject({ ...saved, email: 'target@x.com' });
+    expect(await User.findById(targetId).lean()).toMatchObject(saved);
+  });
+
+  it('clears the bio, and leaves what it was not sent alone', async () => {
+    expect((await save({ bio: '' })).status).toBe(200);
+    expect(await User.findById(targetId).lean()).toMatchObject({
+      username: 'target',
+      bio: null,
+      privacy: { profileVisibility: 'friends' },
+    });
+  });
+
+  it('refuses a username someone else has, and writes nothing', async () => {
+    const res = await save({ username: 'friend', bio: 'Changed' });
+
+    expect(res.status).toBe(409);
+    expect(await User.findById(targetId).lean()).toMatchObject({
+      username: 'target',
+      bio: 'Hi, I collect mugs.',
+    });
   });
 });
