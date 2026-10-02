@@ -4,7 +4,7 @@ import connectDB from '@/lib/mongodb';
 import WishlistInvite from '@/models/WishlistInvite';
 import Notification from '@/models/Notification';
 import { resolveWishlistId } from '@/lib/utils/wishlistSlug';
-import { isOwnerOfWishlist } from '@/lib/utils/wishlistAccess';
+import { getOwnerAccess } from '@/lib/utils/wishlistAccess';
 import { isObjectIdParam } from '@/lib/utils/objectId';
 
 // DELETE /api/wishlists/[id]/invites/[inviteId] - cancel a pending invite (owners).
@@ -14,16 +14,24 @@ export async function DELETE(
 ) {
   try {
     const session = await auth();
+    // Before the list is looked up, so a signed-out caller is told the same
+    // whether or not it exists (an archived list's existence is its owners').
+    if (!session?.user) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
     const { id: idParam, inviteId } = await params;
     const id = await resolveWishlistId(idParam);
     if (!id) {
       return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
     }
-    if (!session?.user) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
-    }
     await connectDB();
-    if (!(await isOwnerOfWishlist(id, session.user.id))) {
+    // An archived list comes back as no list at all to anyone but its owners
+    // (see `getOwnerAccess`).
+    const { isOwner, wishlist } = await getOwnerAccess(id, session.user.id);
+    if (!wishlist) {
+      return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
+    }
+    if (!isOwner) {
       return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
     }
 

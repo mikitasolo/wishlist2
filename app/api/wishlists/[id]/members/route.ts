@@ -23,12 +23,8 @@ const notOwnerError = () =>
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth();
-    const { id: idParam } = await params;
-    const id = await resolveWishlistId(idParam);
-    if (!id) {
-      return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
-    }
-
+    // Before the list is looked up, so a signed-out caller is told the same
+    // whether or not it exists (an archived list's existence is its owners').
     if (!session?.user) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized - Please sign in' },
@@ -36,9 +32,16 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       );
     }
 
+    const { id: idParam } = await params;
+    const id = await resolveWishlistId(idParam);
+    if (!id) {
+      return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
+    }
+
     await connectDB();
 
-    // Only owners can view the members list
+    // Only owners can view the members list. An archived list comes back as no
+    // list at all to anyone else (see `getOwnerAccess`).
     const { isOwner, wishlist } = await getOwnerAccess(id, session.user.id);
     if (!wishlist) {
       return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
@@ -119,12 +122,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth();
-    const { id: idParam } = await params;
-    const id = await resolveWishlistId(idParam);
-    if (!id) {
-      return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
-    }
-
     if (!session?.user) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized - Please sign in' },
@@ -132,17 +129,27 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       );
     }
 
-    // Throttle invites so one actor can't flood others' invitation/notification lists.
-    const limited = await enforce('invite', userKey(session.user.id));
-    if (limited) return limited;
+    const { id: idParam } = await params;
+    const id = await resolveWishlistId(idParam);
+    if (!id) {
+      return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
+    }
 
     await connectDB();
 
+    // An archived list comes back as no list at all to anyone but its owners
+    // (see `getOwnerAccess`), here and in the re-read below.
     const { isOwner, wishlist } = await getOwnerAccess(id, session.user.id);
     if (!wishlist) {
       return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
     }
     if (!isOwner) return notOwnerError();
+
+    // Throttle invites so one actor can't flood others' invitation/notification lists.
+    // Only once the caller is known to own the list: a 429 that only an existing
+    // list could answer with would give away an archived one.
+    const limited = await enforce('invite', userKey(session.user.id));
+    if (limited) return limited;
 
     // Validate request body
     const validation = await validateRequestBody(request, inviteMemberSchema);

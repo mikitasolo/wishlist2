@@ -10,7 +10,14 @@ import { isWishlistOwner, ownedByFilter, ownerIds } from '@/lib/utils/wishlistOw
  * trusted to manage a list is a co-owner of it (see `models/WishlistMember.ts`).
  *
  * Returns the wishlist doc too so callers can reuse it. `wishlist` is undefined
- * only when the id doesn't exist.
+ * when the id doesn't exist, and also when the list is archived and `userId`
+ * isn't one of its owners (`isHiddenByArchive`). An archived list is its owners'
+ * alone, so every owner-only request answers anyone else exactly as it answers
+ * for a list that doesn't exist, not with a 403 that would confirm it does. The
+ * same goes for the re-read that picks the answer once a conditional owner write
+ * has matched nothing: an owner who lost ownership mid-request is anyone else.
+ * A non-owner of a list that isn't archived gets `isOwner: false`, to be refused
+ * with a 403: that list's existence is no secret (see `getWishlistViewAccess`).
  */
 export async function getOwnerAccess(
   wishlistId: string,
@@ -18,11 +25,15 @@ export async function getOwnerAccess(
 ): Promise<{ isOwner: boolean; wishlist?: IWishlist }> {
   await connectDB();
   const wishlist = await Wishlist.findById(wishlistId);
-  if (!wishlist) return { isOwner: false };
+  if (!wishlist || isHiddenByArchive(wishlist, userId)) return { isOwner: false };
   return { isOwner: isWishlistOwner(wishlist, userId), wishlist };
 }
 
-/** Lightweight boolean variant — only fetches what's needed. */
+/**
+ * Lightweight boolean variant — only fetches what's needed. A bare ownership
+ * check: it can't tell a hidden archived list from a refused caller, so a route
+ * authorizes an owner-only request through `getOwnerAccess` instead.
+ */
 export async function isOwnerOfWishlist(wishlistId: string, userId: string): Promise<boolean> {
   await connectDB();
   const wishlist = await Wishlist.findById(wishlistId).select('owners');
@@ -87,7 +98,8 @@ export function viewableWishlistsFilter(viewer: WishlistViewer | null): FilterQu
 /**
  * Whether an archived list must look nonexistent to `userId`. Archived lists are
  * owner-only: anyone else, signed in or not, gets the same 404 as for a list
- * that doesn't exist, whatever they ask of it (view, propose, book).
+ * that doesn't exist, whatever they ask of it (view, propose, book, or anything
+ * only an owner may do, through `getOwnerAccess`).
  */
 export function isHiddenByArchive(
   wishlist: Pick<IWishlist, 'owners' | 'archived'>,
