@@ -143,7 +143,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     // lands (see the write below), and the answer when the item no longer is
     // that way. Null for every other change.
     let bookingGuard: { filter: FilterQuery<IItem>; conflict: string } | null = null;
-    // The same for a proposer's edit of their own proposal; null otherwise.
+    // The same for a proposer's edit of their own proposal, or an owner's
+    // approval of one; null otherwise.
     let proposalGuard: { filter: FilterQuery<IItem>; conflict: string } | null = null;
 
     let updateData: Partial<
@@ -192,6 +193,14 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
             // creates accepted it); don't carry it onto the live item.
             updateData.bookedBy = null;
             if (currentItem.proposedBy) approvedProposer = currentItem.proposedBy;
+            // An approval rests on the item as read still being a proposal, so
+            // it's written only while it is. A co-owner approving it in between
+            // already made it live: this one would overwrite their review (and
+            // unassign a booking made since) and notify the proposer twice.
+            proposalGuard = {
+              filter: { status: 'proposed' },
+              conflict: 'This proposal has already been reviewed',
+            };
           } else {
             return NextResponse.json(
               { success: false, error: 'Can only change proposed items to draft or available' },
@@ -338,7 +347,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     // owner's status change, landing in between would be overwritten by this
     // write, and the Reservation below would no longer match the item. A
     // proposer's edit, likewise, only while the item is still their proposal,
-    // or it would overwrite an owner's approval that landed in between.
+    // or it would overwrite an owner's approval that landed in between, and an
+    // owner's approval only while the item is still a proposal. An owner's
+    // edit that doesn't approve it is written unconditionally, as on any item.
     const writeGuard = bookingGuard ?? proposalGuard;
     const item = await Item.findOneAndUpdate(
       { _id: id, ...writeGuard?.filter },
@@ -350,7 +361,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       // The item changed, or went, since it was read. Nothing was written, so the
       // Reservation isn't touched either: a booking that lost creates none, and
       // an unbook that lost leaves the gifter's in place. Nor is any image freed
-      // below, so an approved item keeps the one it has.
+      // below, so an approved item keeps the one it has, and no proposer is told
+      // of an approval that didn't land.
       if (writeGuard && (await Item.exists({ _id: id }))) {
         return NextResponse.json({ success: false, error: writeGuard.conflict }, { status: 409 });
       }
