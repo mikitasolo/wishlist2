@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import { NextRequest } from 'next/server';
 import mongoose from 'mongoose';
 import { connectTestDB, disconnectTestDB, clearTestDB } from '../db';
@@ -26,6 +26,7 @@ import {
   PATCH as demote,
   DELETE as removeOwner,
 } from '@/app/api/wishlists/[id]/owners/[userId]/route';
+import { __setRateLimiters, type RateLimiter } from '@/lib/rateLimit';
 import User from '@/models/User';
 import Wishlist from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
@@ -177,6 +178,8 @@ const ROUTES: OwnerRoute[] = [
   },
 ];
 
+const route = (name: string) => ROUTES.find((r) => r.name === name)!;
+
 /** `GET /api/wishlists/[id]`, which any viewer may send. */
 const VIEW: Pick<OwnerRoute, 'send'> = {
   send: (id) => getWishlist(req(`/api/wishlists/${id}`), { params: Promise.resolve({ id }) }),
@@ -314,8 +317,6 @@ const RACES: [string, object, string][] = [
 // The answer was picked by a read that only asked whether the list exists, so it
 // still said 403, and that it exists.
 describe.each(RACES)('%s, as an owner removed mid-request', (name, model, method) => {
-  const route = ROUTES.find((r) => r.name === name)!;
-
   it.each([
     [true, NOT_FOUND.status],
     [false, 403],
@@ -325,7 +326,7 @@ describe.each(RACES)('%s, as an owner removed mid-request', (name, model, method
     const race = holdFirstCall(model, method, () => bobRemovesAlice(id));
     let raced: Awaited<ReturnType<typeof call>>;
     try {
-      raced = await call(route, id, alice);
+      raced = await call(route(name), id, alice);
       // Her request got as far as the held call, so the race really ran.
       expect(race.held()).toBe(true);
     } finally {
@@ -346,5 +347,70 @@ describe.each(RACES)('%s, as an owner removed mid-request', (name, model, method
     expect(after.members).toEqual([carol]);
     expect(after.invites).toEqual([`${frank}:member:pending`]);
     expect(after.emails).toBe(0);
+  });
+});
+
+describe.each([
+  'PATCH /api/wishlists/[id]/owners/[userId]',
+  'DELETE /api/wishlists/[id]/owners/[userId]',
+])('%s racing a co-owner deleting the list', (name) => {
+  it('answers with the 404 of a missing list, not "not an owner"', async () => {
+    const id = await makeList({ archived: false });
+
+    // Held right at the ownership write, by when bob has deleted the list.
+    const race = holdFirstCall(Wishlist, 'updateOne', () =>
+      call(route('DELETE /api/wishlists/[id]'), id, bob)
+    );
+    let raced: Awaited<ReturnType<typeof call>>;
+    try {
+      raced = await call(route(name), id, alice);
+      expect(race.held()).toBe(true);
+    } finally {
+      race.restore();
+    }
+
+    expect(race.outcome()?.status).toBe(200);
+    // Alice was an owner all along: the list is gone, not her ownership.
+    expect(raced).toEqual(NOT_FOUND);
+    expect(await WishlistMember.countDocuments()).toBe(0);
+  });
+});
+
+describe('POST /api/wishlists/[id]/members over the invite limit', () => {
+  const limit = vi.fn<RateLimiter['limit']>();
+  const invites = route('POST /api/wishlists/[id]/members');
+
+  beforeEach(() => {
+    limit.mockReset();
+    limit.mockResolvedValue({
+      success: false,
+      reset: Date.now() + 60_000,
+      limit: 30,
+      remaining: 0,
+    });
+    __setRateLimiters({ invite: { limit } });
+  });
+  afterEach(() => __setRateLimiters(null));
+
+  // regression: the invite route spent the caller's invite budget before checking
+  // that they own the list, so once they were over the limit, an archived list
+  // answered them 429 where a missing one answered 404.
+  it.each(NON_OWNERS)(
+    'regression: answers %s on an archived list as for a missing one, without spending it',
+    async (_, caller) => {
+      const id = await makeList({ archived: true });
+
+      expect(await call(invites, id, caller())).toEqual(NOT_FOUND);
+      expect(await call(invites, missingId(), caller())).toEqual(NOT_FOUND);
+      expect(limit).not.toHaveBeenCalled();
+    }
+  );
+
+  it('still limits an owner, before anything is sent', async () => {
+    const id = await makeList({ archived: true });
+
+    expect((await call(invites, id, alice)).status).toBe(429);
+    expect(limit).toHaveBeenCalledWith(alice);
+    expect(sendEmail).not.toHaveBeenCalled();
   });
 });

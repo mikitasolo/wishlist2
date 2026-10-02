@@ -263,7 +263,9 @@ export async function PATCH(
       actorId: session.user.id,
       keepAsMember: true,
     });
-    if (removal !== 'removed') return removalRefused(authorized.id, session.user.id, removal);
+    if (removal !== 'removed') {
+      return await removalRefused(authorized.id, session.user.id, removal);
+    }
 
     // Nothing left for them to accept: a pending invite would undo the demotion.
     await cancelPendingInvites(authorized.id, userId);
@@ -324,7 +326,9 @@ export async function DELETE(
       actorId: session.user.id,
       keepAsMember: false,
     });
-    if (removal !== 'removed') return removalRefused(authorized.id, session.user.id, removal);
+    if (removal !== 'removed') {
+      return await removalRefused(authorized.id, session.user.id, removal);
+    }
     // Defensive: an owner shouldn't hold a booking on their own list, but if a
     // stale one exists don't leave the item stuck as claimed.
     await releaseUserBookings(authorized.id, userId);

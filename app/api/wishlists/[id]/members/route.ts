@@ -129,13 +129,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       );
     }
 
-    // Throttle invites so one actor can't flood others' invitation/notification lists.
-    // Like the sign-in check, it comes before the list is looked up, so neither
-    // answer depends on whether it exists (an archived list's existence is its
-    // owners').
-    const limited = await enforce('invite', userKey(session.user.id));
-    if (limited) return limited;
-
     const { id: idParam } = await params;
     const id = await resolveWishlistId(idParam);
     if (!id) {
@@ -151,6 +144,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
     }
     if (!isOwner) return notOwnerError();
+
+    // Throttle invites so one actor can't flood others' invitation/notification lists.
+    // Only once the caller is known to own the list: a 429 that only an existing
+    // list could answer with would give away an archived one.
+    const limited = await enforce('invite', userKey(session.user.id));
+    if (limited) return limited;
 
     // Validate request body
     const validation = await validateRequestBody(request, inviteMemberSchema);

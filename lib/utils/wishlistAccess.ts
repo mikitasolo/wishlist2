@@ -29,7 +29,11 @@ export async function getOwnerAccess(
   return { isOwner: isWishlistOwner(wishlist, userId), wishlist };
 }
 
-/** Lightweight boolean variant — only fetches what's needed. */
+/**
+ * Lightweight boolean variant — only fetches what's needed. A bare ownership
+ * check: it can't tell a hidden archived list from a refused caller, so a route
+ * authorizes an owner-only request through `getOwnerAccess` instead.
+ */
 export async function isOwnerOfWishlist(wishlistId: string, userId: string): Promise<boolean> {
   await connectDB();
   const wishlist = await Wishlist.findById(wishlistId).select('owners');
