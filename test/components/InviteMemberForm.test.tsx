@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { createRef } from 'react';
+import { render, screen, fireEvent, cleanup, waitFor, act } from '@testing-library/react';
 
-import InviteMemberForm from '@/components/InviteMemberForm';
+import InviteMemberForm, { type InviteMemberFormHandle } from '@/components/InviteMemberForm';
 
 beforeEach(() => {
   cleanup();
@@ -96,5 +97,53 @@ describe('InviteMemberForm — username suggestions', () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     expect(fetchMock.mock.calls[0][0]).toBe('/api/search?q=al%26sections%3Dall&sections=users');
     expect(await screen.findByText(/No people match/)).toBeInTheDocument();
+  });
+});
+
+describe('InviteMemberForm — startOwnerInvite', () => {
+  // jsdom has no scrollIntoView: stand one in, to see what the form scrolls to.
+  const scrollIntoView = vi.fn();
+  beforeEach(() => {
+    scrollIntoView.mockReset();
+    Element.prototype.scrollIntoView = scrollIntoView;
+  });
+  afterEach(() => {
+    delete (Element.prototype as Partial<Element>).scrollIntoView;
+  });
+
+  function renderWithHandle(onInvite = vi.fn().mockResolvedValue(undefined)) {
+    const handle = createRef<InviteMemberFormHandle>();
+    render(<InviteMemberForm ref={handle} onInvite={onInvite} isInviting={false} />);
+    return { handle, onInvite };
+  }
+
+  it('picks the Owner role, shows its warning, and puts the cursor in the username field', () => {
+    const { handle } = renderWithHandle();
+    const field = screen.getByPlaceholderText(/search by username/i);
+    expect(field).not.toHaveFocus();
+
+    act(() => handle.current!.startOwnerInvite());
+
+    expect(screen.getByRole('button', { name: 'Role' })).toHaveTextContent('Owner');
+    expect(screen.getByText(/released when they accept/i)).toBeInTheDocument();
+    expect(field).toHaveFocus();
+    // The whole form, from its heading, not just the field.
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    const scrolled = scrollIntoView.mock.contexts[0] as HTMLElement;
+    expect(scrolled).toContainElement(screen.getByRole('heading', { name: 'Invite someone' }));
+    expect(scrolled).toContainElement(field);
+    expect(scrollIntoView.mock.calls[0][0]).toMatchObject({ block: 'start' });
+  });
+
+  it('sends an owner invite for the username typed next', async () => {
+    const { handle, onInvite } = renderWithHandle();
+    act(() => handle.current!.startOwnerInvite());
+
+    fireEvent.change(screen.getByPlaceholderText(/search by username/i), {
+      target: { value: 'bob' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^invite$/i }));
+
+    await waitFor(() => expect(onInvite).toHaveBeenCalledWith({ username: 'bob', role: 'owner' }));
   });
 });

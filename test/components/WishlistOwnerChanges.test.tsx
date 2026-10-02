@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup, waitFor, within, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
@@ -73,6 +73,12 @@ function listBody(s: Server) {
 const person = (id: string) => ({ _id: id, username: id, image: null });
 
 const fetchMock = vi.fn();
+
+// useBodyScrollLock restores the scroll position on close; jsdom lacks scrollTo.
+beforeAll(() => {
+  vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
+});
+afterAll(() => vi.restoreAllMocks());
 
 /** Something to await that resolves once `release` is called. */
 function gate() {
@@ -150,6 +156,9 @@ async function openManage() {
   render(<WishlistDetail />);
   await user.click(await screen.findByRole('button', { name: 'Manage wishlist' }));
   await screen.findAllByRole('button', { name: 'Make member' });
+  // The page's first read of the list, and the one opening Manage takes.
+  await waitFor(() => expect(listReads).toBe(2));
+  await settle();
   return user;
 }
 
@@ -157,8 +166,20 @@ async function openManage() {
 const byline = () => screen.getByRole('heading', { level: 1, name: 'Birthday' }).parentElement!;
 /** The header's Leave and the one on Alice's own owner row. */
 const leaveButtons = () => screen.queryAllByRole('button', { name: 'Leave' });
+/** The header's Leave alone: only an owner who may leave (one with a co-owner) gets it. */
+const headerLeave = () => within(byline().parentElement!).queryByRole('button', { name: 'Leave' });
 const credited = (username: string) =>
   within(byline()).queryByRole('link', { name: `@${username}` });
+
+/**
+ * Alice is the only owner left, so nothing offers to take her off the list (the
+ * server would refuse it): the header's Leave is gone, and the one on her own
+ * row only explains why.
+ */
+function expectSoleOwner() {
+  expect(headerLeave()).toBeNull();
+  expect(leaveButtons()).toHaveLength(1);
+}
 
 /** Make the first co-owner listed a member, and wait for the members to move them. */
 async function demoteFirst(user: ReturnType<typeof userEvent.setup>) {
@@ -180,20 +201,27 @@ describe('the wishlist page after an owner is demoted or removed', () => {
   // list, so the page still counted Bob as an owner. Alice, now the only one,
   // was still offered Leave, which the server refuses ("You are the only
   // owner"), and the byline still credited him.
-  it('regression: after demoting the only other co-owner, Leave is gone and the byline drops them', async () => {
+  it('regression: after demoting the only other co-owner, Leave no longer leaves and the byline drops them', async () => {
     const user = await openManage();
     expect(leaveButtons()).toHaveLength(2);
+    expect(headerLeave()).toBeInTheDocument();
     expect(credited('bob')).toBeInTheDocument();
 
     await demoteFirst(user);
 
-    expect(leaveButtons()).toHaveLength(0);
+    expectSoleOwner();
     expect(credited('bob')).not.toBeInTheDocument();
     expect(within(byline()).getByText('you')).toBeInTheDocument();
+    // Her row's Leave explains instead of asking to confirm a leave.
+    await user.click(leaveButtons()[0]);
+    expect(
+      await screen.findByRole('alertdialog', { name: "You're the only owner" })
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('alertdialog', { name: 'Leave Wishlist' })).toBeNull();
   });
 
   // regression: Remove on an owner row had the same gap as Make member.
-  it('regression: after removing the only other co-owner, Leave is gone and the byline drops them', async () => {
+  it('regression: after removing the only other co-owner, Leave no longer leaves and the byline drops them', async () => {
     const user = await openManage();
     expect(leaveButtons()).toHaveLength(2);
 
@@ -204,7 +232,7 @@ describe('the wishlist page after an owner is demoted or removed', () => {
     await waitFor(() => expect(showToast).toHaveBeenCalledWith('Owner removed', 'success'));
     await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
 
-    expect(leaveButtons()).toHaveLength(0);
+    expectSoleOwner();
     expect(credited('bob')).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: '@bob' })).not.toBeInTheDocument();
   });
@@ -216,6 +244,7 @@ describe('the wishlist page after an owner is demoted or removed', () => {
     await demoteFirst(user);
 
     expect(leaveButtons()).toHaveLength(2);
+    expect(headerLeave()).toBeInTheDocument();
     expect(credited('bob')).not.toBeInTheDocument();
     expect(credited('carol')).toBeInTheDocument();
     // Carol can still be stepped down: there are two owners left.
@@ -261,13 +290,13 @@ describe('the wishlist page after an owner is demoted or removed', () => {
     await user.click(screen.getByRole('button', { name: 'Save Changes' }));
     await screen.findByRole('button', { name: 'Saving...' });
     await demoteFirst(user);
-    expect(leaveButtons()).toHaveLength(0);
+    expectSoleOwner();
 
     save.release();
     await waitFor(() =>
       expect(showToast).toHaveBeenCalledWith('Wishlist updated successfully', 'success')
     );
-    expect(leaveButtons()).toHaveLength(0);
+    expectSoleOwner();
     expect(credited('bob')).not.toBeInTheDocument();
   });
 
@@ -282,14 +311,14 @@ describe('the wishlist page after an owner is demoted or removed', () => {
 
     await demoteFirst(user); // Bob; the read that follows is held.
     await demoteFirst(user); // Carol; the read that follows lands.
-    await waitFor(() => expect(listReads).toBe(2));
-    await settle();
-    expect(leaveButtons()).toHaveLength(0);
-
-    firstRead.release();
     await waitFor(() => expect(listReads).toBe(3));
     await settle();
-    expect(leaveButtons()).toHaveLength(0);
+    expectSoleOwner();
+
+    firstRead.release();
+    await waitFor(() => expect(listReads).toBe(4));
+    await settle();
+    expectSoleOwner();
     expect(credited('carol')).not.toBeInTheDocument();
   });
 });
