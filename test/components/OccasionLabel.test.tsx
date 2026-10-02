@@ -6,7 +6,9 @@ import { hydrateRoot } from 'react-dom/client';
 import OccasionLabel from '@/components/OccasionLabel';
 import { formatCalendarDate, type Occasion } from '@/lib/utils/occasion';
 
-const BIRTHDAY: Occasion = { kind: 'birthday', date: '1990-10-14', recurrence: 'yearly' };
+// As stored: a yearly occasion's year is the placeholder, which must never show.
+const BIRTHDAY: Occasion = { kind: 'birthday', date: '2000-10-14', recurrence: 'yearly' };
+const PLACEHOLDER_YEAR = '2000';
 
 /** Local noon on a day, so the local date is that day in any time zone. */
 const localNoon = (y: number, m: number, d: number) => new Date(y, m - 1, d, 12);
@@ -35,6 +37,20 @@ describe('OccasionLabel', () => {
     expect(label.tagName).toBe('TIME');
     expect(label).toHaveAttribute('dateTime', '2026-10-14');
     expect(label.parentElement).toHaveAttribute('title', formatCalendarDate('2026-10-14'));
+  });
+
+  it("never renders a yearly occasion's placeholder year, in its text or its attributes", () => {
+    for (const day of [2, 13, 14, 15]) {
+      vi.setSystemTime(localNoon(2026, 10, day));
+      const { container, unmount } = render(<OccasionLabel occasion={BIRTHDAY} />);
+      expect(container.innerHTML).not.toContain(PLACEHOLDER_YEAR);
+      unmount();
+    }
+    // Not even for a malformed stored date, which has no next occurrence.
+    const malformed: Occasion = { ...BIRTHDAY, date: '2000-02-30' };
+    const { container } = render(<OccasionLabel occasion={malformed} />);
+    expect(container).toHaveTextContent('Birthday');
+    expect(container.innerHTML).not.toContain(PLACEHOLDER_YEAR);
   });
 
   it('says today and tomorrow', () => {
@@ -97,6 +113,7 @@ describe('OccasionLabel', () => {
     const html = renderToString(<OccasionLabel occasion={BIRTHDAY} />);
     expect(html).toContain('Birthday');
     expect(html).not.toMatch(/today|tomorrow|days/);
+    expect(html).not.toContain(PLACEHOLDER_YEAR);
 
     // …and the browser hydrates it on Oct 2.
     vi.setSystemTime(localNoon(2026, 10, 2));
@@ -115,6 +132,7 @@ describe('OccasionLabel', () => {
     expect(onRecoverableError).not.toHaveBeenCalled();
     expect(consoleError).not.toHaveBeenCalled();
     expect(container.textContent).toBe('Birthday · in 12 days');
+    expect(container.innerHTML).not.toContain(PLACEHOLDER_YEAR);
 
     act(() => root?.unmount());
     container.remove();

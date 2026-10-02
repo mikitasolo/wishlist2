@@ -21,6 +21,8 @@ interface SelectProps {
   menuAlign?: 'left' | 'right';
   /** Trigger height. 'sm' (h-9) for toolbars, 'md' (h-11) to sit beside inputs. */
   size?: 'sm' | 'md';
+  /** Shown, muted, on the trigger while `value` matches no option (nothing picked yet). */
+  placeholder?: string;
 }
 
 const sizeStyles = {
@@ -45,6 +47,7 @@ export default function Select({
   triggerClassName = '',
   menuAlign = 'left',
   size = 'sm',
+  placeholder,
 }: SelectProps) {
   const [open, setOpen] = useState(false);
   const [rect, setRect] = useState<DOMRect | null>(null);
@@ -106,7 +109,11 @@ export default function Select({
         onClick={() => setOpen((v) => !v)}
         className={`flex items-center justify-between gap-2 rounded-xl border border-border-strong bg-surface px-3.5 font-medium text-foreground outline-none transition-colors hover:bg-surface-hover disabled:opacity-50 ${sizeStyles[size]} ${triggerClassName}`}
       >
-        <span className="truncate">{selected?.label ?? ''}</span>
+        {selected ? (
+          <span className="truncate">{selected.label}</span>
+        ) : (
+          <span className="truncate text-muted-foreground">{placeholder ?? ''}</span>
+        )}
         <Icon
           name="chevron-down"
           size={16}

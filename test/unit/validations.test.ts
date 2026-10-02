@@ -166,68 +166,92 @@ describe('updateWishlistSchema', () => {
 });
 
 describe('occasion on updateWishlistSchema', () => {
-  const occasion = { kind: 'birthday', date: '2026-10-14', recurrence: 'yearly' } as const;
+  const yearly = { kind: 'birthday', date: '2000-10-14', recurrence: 'yearly' } as const;
+  const once = { kind: 'wedding', date: '2027-06-12', recurrence: null } as const;
+  const parse = (value: unknown) => updateWishlistSchema.safeParse({ occasion: value });
   const issues = (value: unknown) => {
-    const res = updateWishlistSchema.safeParse({ occasion: value });
+    const res = parse(value);
     return res.success ? [] : res.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`);
   };
 
-  it('accepts an occasion, a one-off (recurrence null) and null, which clears it', () => {
-    expect(updateWishlistSchema.safeParse({ occasion }).data).toEqual({ occasion });
-    const once = { kind: 'wedding', date: '2027-06-12', recurrence: null };
-    expect(updateWishlistSchema.safeParse({ occasion: once }).data).toEqual({ occasion: once });
-    expect(updateWishlistSchema.safeParse({ occasion: null }).data).toEqual({ occasion: null });
+  it('accepts a yearly occasion, a one-off (recurrence null), and null, which clears it', () => {
+    expect(parse(yearly).data).toEqual({ occasion: yearly });
+    expect(parse(once).data).toEqual({ occasion: once });
+    expect(parse(null).data).toEqual({ occasion: null });
   });
 
   it('accepts every kind', () => {
     for (const kind of ['birthday', 'holiday', 'wedding', 'other']) {
-      expect(occasionSchema.safeParse({ ...occasion, kind }).success).toBe(true);
+      expect(occasionSchema.safeParse({ ...once, kind }).success).toBe(true);
     }
   });
 
-  it('accepts Feb 29 in a leap year only', () => {
-    expect(issues({ ...occasion, date: '2028-02-29' })).toEqual([]);
-    expect(issues({ ...occasion, date: '2027-02-29' })).toEqual([
-      'occasion.date: Pick a real date',
-    ]);
+  // A yearly occasion keeps only its day and month: whatever year it's sent
+  // with (a birth year, say) is replaced, so no real year is ever stored.
+  it("replaces a yearly occasion's year with the placeholder year", () => {
+    for (const date of ['1990-10-14', '2027-10-14', '2000-10-14']) {
+      expect(parse({ ...yearly, date }).data).toEqual({
+        occasion: { ...yearly, date: '2000-10-14' },
+      });
+    }
+  });
+
+  it('accepts Feb 29 as a yearly date, whatever year it comes with, and refuses Feb 30', () => {
+    expect(parse({ ...yearly, date: '1990-02-29' }).data?.occasion?.date).toBe('2000-02-29');
+    expect(parse({ ...yearly, date: '2027-02-29' }).data?.occasion?.date).toBe('2000-02-29');
+    expect(issues({ ...yearly, date: '1990-02-30' })).toEqual(['occasion.date: Pick a real date']);
+    expect(issues({ ...yearly, date: '1990-04-31' })).toEqual(['occasion.date: Pick a real date']);
+  });
+
+  it("keeps a one-off's real year, and accepts its Feb 29 only in a leap year", () => {
+    expect(parse({ ...once, date: '2028-02-29' }).data?.occasion?.date).toBe('2028-02-29');
+    expect(issues({ ...once, date: '2027-02-29' })).toEqual(['occasion.date: Pick a real date']);
+  });
+
+  // The server can't know the viewer's date, and every one-off ends up past.
+  it('accepts a one-off whose date has passed', () => {
+    expect(parse({ ...once, date: '2020-06-12' }).data).toEqual({
+      occasion: { ...once, date: '2020-06-12' },
+    });
   });
 
   it('refuses a date that does not exist or is not a plain YYYY-MM-DD date', () => {
-    for (const date of [
-      '2026-02-30',
-      '2026-13-01',
-      '2026-1-5',
-      '2026-10-14T00:00:00.000Z',
-      '14/10/2026',
-      '',
-    ]) {
-      expect(issues({ ...occasion, date })).toEqual(['occasion.date: Pick a real date']);
+    for (const occasion of [yearly, once]) {
+      for (const date of [
+        '2026-02-30',
+        '2026-13-01',
+        '2026-1-5',
+        '2026-10-14T00:00:00.000Z',
+        '14/10/2026',
+        '10-14',
+        '',
+      ]) {
+        expect(issues({ ...occasion, date })).toEqual(['occasion.date: Pick a real date']);
+      }
+      expect(issues({ ...occasion, date: 1791936000000 })).toHaveLength(1);
     }
-    expect(issues({ ...occasion, date: 1791936000000 })).toHaveLength(1);
   });
 
   it('refuses an occasion without a kind, or with one it does not know', () => {
-    expect(issues({ date: occasion.date, recurrence: null })).toEqual([
+    expect(issues({ date: once.date, recurrence: null })).toEqual([
       'occasion.kind: Pick an occasion',
     ]);
-    expect(issues({ ...occasion, kind: 'anniversary' })).toEqual([
-      'occasion.kind: Pick an occasion',
-    ]);
+    expect(issues({ ...once, kind: 'anniversary' })).toEqual(['occasion.kind: Pick an occasion']);
   });
 
   it('refuses an occasion without a date or a recurrence', () => {
     expect(issues({ kind: 'birthday', recurrence: null })).toHaveLength(1);
-    expect(issues({ kind: 'birthday', date: occasion.date })).toEqual([
+    expect(issues({ kind: 'birthday', date: once.date })).toEqual([
       expect.stringMatching(/^occasion\.recurrence: /),
     ]);
-    expect(issues({ ...occasion, recurrence: 'monthly' })).toEqual([
+    expect(issues({ ...yearly, recurrence: 'monthly' })).toEqual([
       expect.stringMatching(/^occasion\.recurrence: /),
     ]);
   });
 
   it('drops fields an occasion does not have', () => {
-    const res = occasionSchema.safeParse({ ...occasion, remindDaysBefore: 3 });
-    expect(res.data).toEqual(occasion);
+    const res = occasionSchema.safeParse({ ...once, remindDaysBefore: 3 });
+    expect(res.data).toEqual(once);
   });
 });
 

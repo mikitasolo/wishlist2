@@ -27,9 +27,10 @@ import Avatar from '@/components/Avatar';
 import { getVisibility, visibilityMeta, type Visibility } from '@/lib/utils/visibility';
 import { currencySelectOptions } from '@/lib/utils/currencies';
 import {
-  draftToOccasion,
+  missingFromDraft,
+  occasionChange,
   occasionToDraft,
-  sameOccasion,
+  type Occasion,
   type OccasionDraft,
 } from '@/lib/utils/occasion';
 import {
@@ -125,6 +126,10 @@ export default function WishlistDetail() {
     currency: 'USD',
     occasion: occasionToDraft(null),
   });
+  // The occasion the settings form was last filled from. Only an occasion
+  // changed from it is sent, so saving the other settings can't undo one a
+  // co-owner set in the meantime.
+  const [occasionBaseline, setOccasionBaseline] = useState<Occasion | null>(null);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<{
     type: 'member' | 'owner' | 'leave' | 'wishlist';
@@ -285,6 +290,7 @@ export default function WishlistDetail() {
                 currency: wishlistData.currency || 'USD',
                 occasion: occasionToDraft(wishlistData.occasion),
               });
+              setOccasionBaseline(wishlistData.occasion ?? null);
             }
 
             // Only set loading to false after successfully setting the wishlist
@@ -1561,8 +1567,14 @@ export default function WishlistDetail() {
               <form
                 onSubmit={async (e) => {
                   e.preventDefault();
+                  // A one-off's date input is `required`; a yearly one's day
+                  // and month pickers can't be, so they're checked here.
+                  const missing = missingFromDraft(settingsForm.occasion);
+                  if (missing) {
+                    showToast(missing, 'error');
+                    return;
+                  }
                   setIsSavingSettings(true);
-                  const occasion = draftToOccasion(settingsForm.occasion);
 
                   try {
                     const response = await fetch(`/api/wishlists/${wishlistId}`, {
@@ -1570,12 +1582,11 @@ export default function WishlistDetail() {
                       headers: {
                         'Content-Type': 'application/json',
                       },
-                      // The occasion only goes when it was changed here, so
-                      // saving the other settings can't undo one a co-owner
-                      // set since this form was filled in.
+                      // The occasion only goes when it was changed here
+                      // (`occasionChange` is `undefined` otherwise).
                       body: JSON.stringify({
                         ...settingsForm,
-                        occasion: sameOccasion(occasion, wishlist.occasion) ? undefined : occasion,
+                        occasion: occasionChange(settingsForm.occasion, occasionBaseline),
                       }),
                     });
 
@@ -1583,6 +1594,11 @@ export default function WishlistDetail() {
 
                     if (result.success) {
                       setWishlist(result.data);
+                      // Refill the occasion from the list as saved: what was
+                      // sent, or a co-owner's, left alone because it wasn't.
+                      const saved: Occasion | null = result.data?.occasion ?? null;
+                      setSettingsForm((form) => ({ ...form, occasion: occasionToDraft(saved) }));
+                      setOccasionBaseline(saved);
                       settingsFormDirtyRef.current = false;
                       showToast('Wishlist updated successfully', 'success');
                       // Keep the URL in sync when the slug changes (or upgrade
@@ -1681,6 +1697,7 @@ export default function WishlistDetail() {
 
                 <OccasionField
                   value={settingsForm.occasion}
+                  saved={occasionBaseline}
                   onChange={(occasion) => {
                     setSettingsForm({ ...settingsForm, occasion });
                     settingsFormDirtyRef.current = true;

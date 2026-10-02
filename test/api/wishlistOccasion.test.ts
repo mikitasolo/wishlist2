@@ -9,13 +9,15 @@ vi.mock('@/lib/auth', () => ({ auth: vi.fn() }));
 import { auth } from '@/lib/auth';
 import { GET, PATCH } from '@/app/api/wishlists/[id]/route';
 import { GET as LIST_MINE } from '@/app/api/wishlists/route';
+import { GET as PROFILE_LISTS } from '@/app/api/users/[id]/wishlists/route';
 import User from '@/models/User';
 import Wishlist from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
 
 const session = vi.mocked(auth);
 
-const BIRTHDAY = { kind: 'birthday', date: '1990-10-14', recurrence: 'yearly' } as const;
+// A yearly occasion as stored: on the placeholder year, never a real one.
+const BIRTHDAY = { kind: 'birthday', date: '2000-10-14', recurrence: 'yearly' } as const;
 const WEDDING = { kind: 'wedding', date: '2027-06-12', recurrence: null } as const;
 
 let owner: string;
@@ -170,8 +172,9 @@ describe('PATCH /api/wishlists/[id] — occasion', () => {
     const id = await list({ occasion: WEDDING });
 
     for (const occasion of [
-      { ...BIRTHDAY, date: '2026-02-30' },
-      { ...BIRTHDAY, date: '2027-02-29' },
+      { ...WEDDING, date: '2026-02-30' },
+      { ...WEDDING, date: '2027-02-29' },
+      { ...BIRTHDAY, date: '1990-02-30' },
       { date: BIRTHDAY.date, recurrence: 'yearly' },
       { kind: 'birthday', date: BIRTHDAY.date },
     ]) {
@@ -183,11 +186,73 @@ describe('PATCH /api/wishlists/[id] — occasion', () => {
     expect((await Wishlist.findById(id))?.name).toBe('Birthday');
   });
 
-  it('accepts Feb 29 in a leap year', async () => {
+  it('accepts a one-off on Feb 29 of a leap year, and a yearly Feb 29 from any year', async () => {
     const id = await list();
-    const leap = { kind: 'birthday', date: '2028-02-29', recurrence: 'yearly' };
+    const leap = { kind: 'wedding', date: '2028-02-29', recurrence: null };
     expect((await patch(id, owner, { occasion: leap })).status).toBe(200);
     expect(await storedOccasion(id)).toEqual(leap);
+
+    const yearly = { kind: 'birthday', date: '1991-02-29', recurrence: 'yearly' };
+    expect((await patch(id, owner, { occasion: yearly })).status).toBe(200);
+    expect(await storedOccasion(id)).toEqual({ ...yearly, date: '2000-02-29' });
+  });
+
+  it('accepts a one-off whose date has passed, as a list keeps it once it has', async () => {
+    const id = await list();
+    const past = { kind: 'wedding', date: '2020-06-12', recurrence: null };
+    expect((await patch(id, owner, { occasion: past })).status).toBe(200);
+    expect(await storedOccasion(id)).toEqual(past);
+  });
+});
+
+// The operator's rule: only the day and month of a repeating occasion matter,
+// so a real year (a birth year, typically) must never be stored or shown.
+describe("a yearly occasion's real year", () => {
+  const REAL_YEAR = '1990-';
+
+  it('never reaches the database or any response, only the placeholder year does', async () => {
+    const id = await list({ visibility: 'everyone' });
+
+    const res = await patch(id, owner, {
+      occasion: { kind: 'birthday', date: '1990-05-14', recurrence: 'yearly' },
+    });
+    expect(res.status).toBe(200);
+    const patched = await res.json();
+    expect(patched.data.occasion).toEqual({
+      kind: 'birthday',
+      date: '2000-05-14',
+      recurrence: 'yearly',
+    });
+    const bodies: unknown[] = [patched];
+
+    // The stored document, read around the model.
+    const raw = await Wishlist.collection.findOne({ _id: new mongoose.Types.ObjectId(id) });
+    expect(raw?.occasion).toEqual({ kind: 'birthday', date: '2000-05-14', recurrence: 'yearly' });
+    bodies.push(raw);
+
+    for (const viewer of [owner, coOwner, member, stranger, null]) {
+      bodies.push(await (await get(id, viewer)).json());
+    }
+    for (const viewer of [owner, member]) {
+      signIn(viewer);
+      bodies.push(
+        await (await LIST_MINE(new NextRequest('http://localhost/api/wishlists'))).json()
+      );
+    }
+    for (const viewer of [stranger, null]) {
+      signIn(viewer);
+      const req = new NextRequest(`http://localhost/api/users/${owner}/wishlists`);
+      const profile = await (
+        await PROFILE_LISTS(req, { params: Promise.resolve({ id: owner }) })
+      ).json();
+      expect(profile.data).toEqual([expect.objectContaining({ occasion: patched.data.occasion })]);
+      bodies.push(profile);
+    }
+
+    for (const body of bodies) {
+      expect(JSON.stringify(body)).toContain('2000-05-14');
+      expect(JSON.stringify(body)).not.toContain(REAL_YEAR);
+    }
   });
 });
 
@@ -204,6 +269,22 @@ describe('Wishlist model — occasion', () => {
         /occasion/
       );
     }
+  });
+
+  it('refuses a yearly occasion stored with a real year, on create and on update', async () => {
+    const real = { kind: 'birthday', date: '1990-10-14', recurrence: 'yearly' };
+    await expect(Wishlist.create({ name: 'L', owners: [owner], occasion: real })).rejects.toThrow(
+      /occasion/
+    );
+    const id = await list();
+    await expect(
+      Wishlist.findOneAndUpdate(
+        { _id: id },
+        { $set: { occasion: real } },
+        { new: true, runValidators: true }
+      )
+    ).rejects.toThrow(/occasion/);
+    expect(await storedOccasion(id)).toBeNull();
   });
 
   it('stores a one-off with recurrence null, and a list with none as null', async () => {

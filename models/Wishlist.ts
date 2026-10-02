@@ -1,10 +1,11 @@
 import mongoose, { Schema, Model } from 'mongoose';
-import { OCCASION_KINDS, type Occasion } from '@/lib/utils/occasion';
+import { normalizeOccasionDate, OCCASION_KINDS, type Occasion } from '@/lib/utils/occasion';
 
 // A list's one occasion (see `lib/utils/occasion.ts`). `date` is a plain
 // calendar date, `YYYY-MM-DD`, never a timestamp: no time zone is stored or
-// applied here. `lib/validations.ts` checks it's a real date; the pattern here
-// is a backstop for a write that skips it.
+// applied here. A yearly one is stored on the placeholder year, never a real
+// one. `occasionSchema` (`lib/validations.ts`) checks and normalizes it; the
+// checks here are a backstop for a write that skips it.
 const OccasionSchema = new Schema(
   {
     kind: { type: String, enum: OCCASION_KINDS, required: true },
@@ -95,6 +96,13 @@ const WishlistSchema = new Schema(
     occasion: {
       type: OccasionSchema,
       default: null,
+      validate: {
+        // Only as stored: a real date, and a yearly one on the placeholder year.
+        validator: (v: Occasion | null) =>
+          !v || normalizeOccasionDate(v.date, v.recurrence ?? null) === v.date,
+        message:
+          'Occasion date must be a real date, and a yearly one must be on the placeholder year',
+      },
     },
   },
   {

@@ -37,12 +37,14 @@ export default function OccasionLabel({
   if (!occasion) return null;
 
   const next = today ? nextOccurrence(occasion.date, occasion.recurrence, today) : null;
-  // The day it next falls on, or (a passed one-off) the day it was.
-  const shown = next ?? occasion.date;
+  // The day it next falls on, or (a passed one-off) the day it was. A yearly
+  // one's stored date is on the placeholder year, so it's never shown, not even
+  // in `dateTime` before the next one is known.
+  const shown = next ?? (occasion.recurrence === 'yearly' ? undefined : occasion.date);
   return (
     <span
       className={`${LAYOUT} ${className}`}
-      title={today ? formatCalendarDate(shown) : undefined}
+      title={today && shown ? formatCalendarDate(shown) : undefined}
     >
       <Icon name="calendar" size={12} />
       <time dateTime={shown}>
