@@ -136,4 +136,8 @@ test('a failed demotion gives the buttons back, so it can be retried', async ({ 
   await expect(toast(page, 'Owner is now a member')).toBeVisible();
   expect(requests).toBe(2);
   await expect(makeMember).toBeHidden();
+  // Make member goes as soon as the page counts one owner, before the members
+  // refresh lands: wait for that to move them to Members, so the test doesn't
+  // end with the refresh still in the route above.
+  await expect(page.getByRole('button', { name: 'Make owner' })).toBeVisible();
 });
