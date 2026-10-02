@@ -44,6 +44,25 @@ function lostBookingResponse(reason: LostBookingReason) {
   return NextResponse.json({ success: false, error: 'Item not found' }, { status: 404 });
 }
 
+/**
+ * A write or delete decided on the item as read at the top of the request, so
+ * made only while the item is still that way: what it requires of the item
+ * (merged into the write's filter), and the answer when the item no longer is.
+ */
+type ItemWriteGuard = { filter: FilterQuery<IItem>; conflict: string };
+
+/**
+ * The answer to an item write or delete that matched nothing. With a guard, an
+ * item that's still there changed since it was read: 409, with the guard's
+ * conflict. Otherwise the item has gone: 404.
+ */
+async function unmatchedItemResponse(id: string, guard: ItemWriteGuard | null) {
+  if (guard && (await Item.exists({ _id: id }))) {
+    return NextResponse.json({ success: false, error: guard.conflict }, { status: 409 });
+  }
+  return NextResponse.json({ success: false, error: 'Item not found' }, { status: 404 });
+}
+
 // PATCH /api/items/[id] - Update an item
 // Members can book/unbook items (only their own bookings)
 // Wishlist owners can edit content and publish/draft/complete/reopen, never book
@@ -142,10 +161,10 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     // A member's book or unbook: what it requires of the item when its write
     // lands (see the write below), and the answer when the item no longer is
     // that way. Null for every other change.
-    let bookingGuard: { filter: FilterQuery<IItem>; conflict: string } | null = null;
+    let bookingGuard: ItemWriteGuard | null = null;
     // The same for a proposer's edit of their own proposal, or an owner's
     // approval of one; null otherwise.
-    let proposalGuard: { filter: FilterQuery<IItem>; conflict: string } | null = null;
+    let proposalGuard: ItemWriteGuard | null = null;
 
     let updateData: Partial<
       Pick<
@@ -363,10 +382,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       // an unbook that lost leaves the gifter's in place. Nor is any image freed
       // below, so an approved item keeps the one it has, and no proposer is told
       // of an approval that didn't land.
-      if (writeGuard && (await Item.exists({ _id: id }))) {
-        return NextResponse.json({ success: false, error: writeGuard.conflict }, { status: 409 });
-      }
-      return NextResponse.json({ success: false, error: 'Item not found' }, { status: 404 });
+      return unmatchedItemResponse(id, writeGuard);
     }
 
     // Keep the gifter's durable Reservation in sync with their booking, now that
@@ -507,11 +523,22 @@ export async function DELETE(
     // land in. An item can't carry its list's owners, so closing that gap would
     // take a transaction.
     //
-    // A concurrent request (another owner's delete) may have taken the item
-    // since it was read: then this deleted nothing, and frees nothing either.
-    const deleted = await Item.findOneAndDelete({ _id: id });
+    // A proposer's withdrawal, though, rests on the item itself, as read above:
+    // still a proposal, and theirs. So, like their edit in PATCH, it's deleted
+    // only while it still is. An owner approving it in between makes it a live
+    // item, which only owners may delete.
+    const withdrawalGuard: ItemWriteGuard | null = isOwner
+      ? null
+      : {
+          filter: { status: 'proposed', proposedBy: session.user.id },
+          conflict: 'This item is no longer a proposal you can withdraw',
+        };
+    const deleted = await Item.findOneAndDelete({ _id: id, ...withdrawalGuard?.filter });
     if (!deleted) {
-      return NextResponse.json({ success: false, error: 'Item not found' }, { status: 404 });
+      // A withdrawal that lost to an approval gets the 409. An item another
+      // request deleted first (another owner's delete, a second tab) is a 404,
+      // for an owner too. Either way this deleted nothing, so frees nothing.
+      return unmatchedItemResponse(id, withdrawalGuard);
     }
 
     // Free the item's uploaded image, if it was one of ours: the one it had when
