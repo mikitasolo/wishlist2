@@ -26,13 +26,15 @@ import { SkeletonGrid, MemberRowSkeleton } from '@/components/Skeleton';
 import Avatar from '@/components/Avatar';
 import { getVisibility, visibilityMeta, type Visibility } from '@/lib/utils/visibility';
 import { currencySelectOptions } from '@/lib/utils/currencies';
+import { missingFromDraft } from '@/lib/utils/occasion';
 import {
-  missingFromDraft,
-  occasionChange,
-  occasionToDraft,
-  type Occasion,
-  type OccasionDraft,
-} from '@/lib/utils/occasion';
+  rebaseSettingsForm,
+  settingsChanges,
+  settingsFormFor,
+  wishlistSettings,
+  type WishlistSettings,
+  type WishlistSettingsForm,
+} from '@/lib/utils/wishlistSettings';
 import {
   createMutationTracker,
   prependCreatedItem,
@@ -109,27 +111,33 @@ export default function WishlistDetail() {
   const [showAddItemModal, setShowAddItemModal] = useState(false);
   const [showProposeItemModal, setShowProposeItemModal] = useState(false);
   const [isInviting, setIsInviting] = useState(false);
-  const [settingsForm, setSettingsForm] = useState<{
-    name: string;
-    slug: string;
-    description: string;
-    visibility: Visibility;
-    bannerUrl: string;
-    currency: string;
-    occasion: OccasionDraft;
-  }>({
-    name: '',
-    slug: '',
-    description: '',
-    visibility: 'everyone',
-    bannerUrl: '',
-    currency: 'USD',
-    occasion: occasionToDraft(null),
+  // The settings form, and the list's settings as it was last filled from them
+  // (`saved`). A save sends only what the form changed from `saved`
+  // (`settingsChanges`), so it can't undo a setting a co-owner changed in the
+  // meantime. Kept together, so a reload or a save's answer can refill the form
+  // and move its baseline in one update (`refillSettings`).
+  const [settings, setSettings] = useState<{
+    form: WishlistSettingsForm;
+    saved: WishlistSettings;
+  }>(() => {
+    const saved = wishlistSettings({ name: '', visibility: 'everyone' });
+    return { form: settingsFormFor(saved), saved };
   });
-  // The occasion the settings form was last filled from. Only an occasion
-  // changed from it is sent, so saving the other settings can't undo one a
-  // co-owner set in the meantime.
-  const [occasionBaseline, setOccasionBaseline] = useState<Occasion | null>(null);
+  const { form: settingsForm, saved: settingsBaseline } = settings;
+  // Onto the form as it is by then: a banner upload can finish after the
+  // render that started it.
+  const editSettings = useCallback((change: Partial<WishlistSettingsForm>) => {
+    setSettings((s) => ({ ...s, form: { ...s.form, ...change } }));
+  }, []);
+  // Take in the list as the server now has it. Every field the owner hasn't
+  // edited since `base` (by default: since the form was last filled) shows the
+  // list's value, and the next save diffs against it.
+  const refillSettings = useCallback((list: WishlistSettings, base?: WishlistSettingsForm) => {
+    setSettings((s) => ({
+      form: rebaseSettingsForm(s.form, base ?? settingsFormFor(s.saved), list),
+      saved: list,
+    }));
+  }, []);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<{
     type: 'member' | 'owner' | 'leave' | 'wishlist';
@@ -144,7 +152,6 @@ export default function WishlistDetail() {
     username: string;
   } | null>(null);
   const [isDeletingWishlist, setIsDeletingWishlist] = useState(false);
-  const settingsFormDirtyRef = useRef(false);
 
   const fetchItemsHook = useFetchItems();
 
@@ -280,18 +287,8 @@ export default function WishlistDetail() {
               setIsMember(userRole === 'member');
             }
 
-            if (!settingsFormDirtyRef.current) {
-              setSettingsForm({
-                name: wishlistData.name,
-                slug: wishlistData.slug || '',
-                description: wishlistData.description || '',
-                visibility: getVisibility(wishlistData),
-                bannerUrl: wishlistData.bannerUrl || '',
-                currency: wishlistData.currency || 'USD',
-                occasion: occasionToDraft(wishlistData.occasion),
-              });
-              setOccasionBaseline(wishlistData.occasion ?? null);
-            }
+            // Edits the owner hasn't saved yet stay in the form.
+            refillSettings(wishlistSettings(wishlistData));
 
             // Only set loading to false after successfully setting the wishlist
             // This prevents the "wishlist not found" flash
@@ -317,7 +314,7 @@ export default function WishlistDetail() {
     if (status !== 'loading') {
       fetchWishlist();
     }
-  }, [wishlistId, status, router, showToast]);
+  }, [wishlistId, status, router, showToast, refillSettings]);
 
   // Refresh the pending-invites list (owners only).
   const refreshInvites = useCallback(async () => {
@@ -1574,6 +1571,16 @@ export default function WishlistDetail() {
                     showToast(missing, 'error');
                     return;
                   }
+                  // Only the settings changed here go, so a co-owner's change
+                  // to any other one since the form was filled stays. With
+                  // nothing changed there's nothing to write (and the API
+                  // refuses an empty edit).
+                  const sent = settingsForm;
+                  const changes = settingsChanges(sent, settingsBaseline);
+                  if (Object.keys(changes).length === 0) {
+                    showToast('No changes to save', 'info');
+                    return;
+                  }
                   setIsSavingSettings(true);
 
                   try {
@@ -1582,24 +1589,17 @@ export default function WishlistDetail() {
                       headers: {
                         'Content-Type': 'application/json',
                       },
-                      // The occasion only goes when it was changed here
-                      // (`occasionChange` is `undefined` otherwise).
-                      body: JSON.stringify({
-                        ...settingsForm,
-                        occasion: occasionChange(settingsForm.occasion, occasionBaseline),
-                      }),
+                      body: JSON.stringify(changes),
                     });
 
                     const result = await response.json();
 
                     if (result.success) {
                       setWishlist(result.data);
-                      // Refill the occasion from the list as saved: what was
-                      // sent, or a co-owner's, left alone because it wasn't.
-                      const saved: Occasion | null = result.data?.occasion ?? null;
-                      setSettingsForm((form) => ({ ...form, occasion: occasionToDraft(saved) }));
-                      setOccasionBaseline(saved);
-                      settingsFormDirtyRef.current = false;
+                      // Refill the form from the list as saved: what was sent,
+                      // and a co-owner's change to anything that wasn't. The
+                      // next save then diffs against that, not the first load.
+                      refillSettings(wishlistSettings(result.data), sent);
                       showToast('Wishlist updated successfully', 'success');
                       // Keep the URL in sync when the slug changes (or upgrade
                       // an id-based URL to the slug).
@@ -1632,10 +1632,7 @@ export default function WishlistDetail() {
                     id="settings-name"
                     required
                     value={settingsForm.name}
-                    onChange={(e) => {
-                      setSettingsForm({ ...settingsForm, name: e.target.value });
-                      settingsFormDirtyRef.current = true;
-                    }}
+                    onChange={(e) => editSettings({ name: e.target.value })}
                     className="w-full px-4 py-2 border border-border-strong rounded-xl outline-none"
                     disabled={isSavingSettings}
                     autoComplete="off"
@@ -1655,13 +1652,11 @@ export default function WishlistDetail() {
                       type="text"
                       id="settings-slug"
                       value={settingsForm.slug}
-                      onChange={(e) => {
-                        setSettingsForm({
-                          ...settingsForm,
+                      onChange={(e) =>
+                        editSettings({
                           slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''),
-                        });
-                        settingsFormDirtyRef.current = true;
-                      }}
+                        })
+                      }
                       className="h-11 min-w-0 flex-1 border-0 bg-transparent text-[15px] outline-none"
                       disabled={isSavingSettings}
                       autoComplete="off"
@@ -1684,10 +1679,7 @@ export default function WishlistDetail() {
                   <textarea
                     id="settings-description"
                     value={settingsForm.description}
-                    onChange={(e) => {
-                      setSettingsForm({ ...settingsForm, description: e.target.value });
-                      settingsFormDirtyRef.current = true;
-                    }}
+                    onChange={(e) => editSettings({ description: e.target.value })}
                     className="w-full px-4 py-2 border border-border-strong rounded-xl outline-none"
                     rows={3}
                     disabled={isSavingSettings}
@@ -1697,11 +1689,8 @@ export default function WishlistDetail() {
 
                 <OccasionField
                   value={settingsForm.occasion}
-                  saved={occasionBaseline}
-                  onChange={(occasion) => {
-                    setSettingsForm({ ...settingsForm, occasion });
-                    settingsFormDirtyRef.current = true;
-                  }}
+                  saved={settingsBaseline.occasion}
+                  onChange={(occasion) => editSettings({ occasion })}
                   disabled={isSavingSettings}
                 />
 
@@ -1709,10 +1698,7 @@ export default function WishlistDetail() {
                   <label className="mb-1 block text-sm font-medium text-foreground">Currency</label>
                   <Select
                     value={settingsForm.currency}
-                    onChange={(v) => {
-                      setSettingsForm({ ...settingsForm, currency: v });
-                      settingsFormDirtyRef.current = true;
-                    }}
+                    onChange={(v) => editSettings({ currency: v })}
                     options={currencySelectOptions}
                     ariaLabel="Wishlist currency"
                     size="md"
@@ -1730,10 +1716,7 @@ export default function WishlistDetail() {
                   </label>
                   <ImageUpload
                     value={settingsForm.bannerUrl || null}
-                    onChange={(url) => {
-                      setSettingsForm({ ...settingsForm, bannerUrl: url ?? '' });
-                      settingsFormDirtyRef.current = true;
-                    }}
+                    onChange={(url) => editSettings({ bannerUrl: url ?? '' })}
                     disabled={isSavingSettings}
                   />
                   <p className="mt-1 text-xs text-muted-foreground">
@@ -1765,10 +1748,7 @@ export default function WishlistDetail() {
                       <button
                         key={v}
                         type="button"
-                        onClick={() => {
-                          setSettingsForm({ ...settingsForm, visibility: v });
-                          settingsFormDirtyRef.current = true;
-                        }}
+                        onClick={() => editSettings({ visibility: v })}
                         disabled={isSavingSettings}
                         className={`relative z-10 flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-semibold transition-colors ${
                           settingsForm.visibility === v
