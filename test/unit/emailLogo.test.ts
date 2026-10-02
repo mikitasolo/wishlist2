@@ -51,8 +51,9 @@ describe('the email logo (lib/emailLogo.ts)', () => {
   let logo: Awaited<ReturnType<typeof rgba>>;
 
   // `sharp.block` is libvips state for the whole process (the upload route and
-  // uploadImageFormat.test.ts set it), and Vitest may run other test files in
-  // this one, so make sure the two loaders this reads with are open.
+  // uploadImageFormat.test.ts set it). Vitest gives each test file a process of
+  // its own by default, but not with `--no-isolate`, so make sure the two
+  // loaders this reads with are open.
   beforeAll(async () => {
     sharp.unblock({ operation: ['VipsForeignLoadSvg', 'VipsForeignLoadPng'] });
     logo = await rgba(sharp(LOGO_PNG));

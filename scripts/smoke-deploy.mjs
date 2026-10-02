@@ -6,10 +6,11 @@
 //   npm run smoke:deploy -- https://wishlist-staging.mikitasolo.co
 //
 // It checks that sign-in's routes and /api/upload start, and that a share card
-// draws. /api/upload and the share cards load sharp, so on a bundle missing
-// sharp's native libvips they answer 500 (or, for a card, fall back to a slower
-// renderer). The /api/auth/* routes and the sign-in page used to load it too,
-// for the email logo (WIS-156); since WIS-208 they don't at all.
+// draws with sharp. /api/upload loads sharp, so on a bundle missing sharp's
+// native libvips it answers 500. A share card still draws without sharp, but
+// goes out as a PNG instead of a JPEG, so the card has to be a JPEG. The
+// /api/auth/* routes and the sign-in page used to load sharp too, for the
+// email logo (WIS-156); since WIS-208 they don't at all.
 const base = process.argv[2]?.replace(/\/$/, '');
 if (!base || !/^https?:\/\//.test(base)) {
   console.error('usage: npm run smoke:deploy -- <https://host>');
@@ -28,11 +29,12 @@ const checks = [
   { path: '/api/upload', expect: 405 },
   { path: '/auth/signin', expect: 200 },
   // A profile that doesn't exist gets the generic card, drawn on each request
-  // by next/og, which rasterizes it from an SVG with sharp.
+  // by next/og (which rasterizes it from an SVG with sharp) and encoded as a
+  // JPEG with sharp. Without sharp it would be a PNG.
   {
     path: '/users/smoke_deploy_no_such_user/opengraph-image',
     expect: 200,
-    type: /^image\/(jpeg|png)$/,
+    type: /^image\/jpeg$/,
   },
 ];
 

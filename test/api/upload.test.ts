@@ -75,7 +75,8 @@ async function expectRefused(res: Response, error: string) {
 
 beforeEach(() => {
   // As loading the route did. libvips' block is process-wide state, so it's set
-  // again in case another test file in this process changed it.
+  // again in case another test file ran in this process first (Vitest gives each
+  // file its own by default, but not with `--no-isolate`).
   restrictToUploadLoaders(sharp);
   put.mockReset();
   put.mockImplementation(async (pathname: string) => ({

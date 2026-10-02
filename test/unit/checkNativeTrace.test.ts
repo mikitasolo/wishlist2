@@ -32,7 +32,8 @@ describe('npm run check:trace', () => {
   // regression: Next's tracing ships sharp's binding but not the libvips it
   // links, so on Vercel such a route 500s on its first `import('sharp')`
   // (WIS-156). The check must still catch that.
-  it.each([RUNS_SHARP[0], RUNS_SHARP[1], API_ROUTE])(
+  // (`route.js.nft.json` alone: a route at the top of the app directory.)
+  it.each([RUNS_SHARP[0], RUNS_SHARP[1], API_ROUTE, 'route.js.nft.json'])(
     'fails a build in which %s ships the binding without libvips',
     (trace) => {
       const build = healthyBuild();

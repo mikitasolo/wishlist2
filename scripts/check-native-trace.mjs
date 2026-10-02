@@ -18,9 +18,9 @@
 // libvips with every page would only make each one heavier. A page that does run
 // sharp (its render or a server action) goes into outputFileTracingIncludes and
 // RUNS_SHARP below.
-import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
-import { join, relative } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { readFileSync, readdirSync, realpathSync, statSync, existsSync } from 'node:fs';
+import { basename, join, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const APP = '.next/server/app';
 
@@ -44,7 +44,7 @@ export const SHARP_FREE = ['api/auth/[...nextauth]/route.js.nft.json'];
 
 const BINDING = /@img\/sharp-(?!wasm32)[^/]+\/lib\/sharp-[^/]+\.node$/;
 const LIBVIPS = /@img\/sharp-libvips-[^/]+\/lib\/libvips-cpp\.[^/]+$/;
-const isRoute = (trace) => trace.endsWith('/route.js.nft.json');
+const isRoute = (trace) => basename(trace) === 'route.js.nft.json';
 
 /**
  * What's wrong with a build's traces.
@@ -113,4 +113,6 @@ function main() {
   );
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();
+// Run as a script (`npm run check:trace`), not when a test imports it. Both
+// paths resolved, so the check still runs when it's started through a symlink.
+if (process.argv[1] && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) main();

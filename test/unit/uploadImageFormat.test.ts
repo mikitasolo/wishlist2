@@ -154,9 +154,10 @@ describe('sniffsAsSvg', () => {
       );
   }
 
-  // `sharp.block` is libvips state for the whole process, and Vitest may run
-  // other test files in it, so set exactly the loaders this needs, whatever ran
-  // before, and leave libvips as a fresh process has it (nothing blocked).
+  // `sharp.block` is libvips state for the whole process. Vitest gives each
+  // test file a process of its own by default, but not with `--no-isolate`, so
+  // set exactly the loaders this needs, whatever ran before, and leave libvips
+  // as a fresh process has it (nothing blocked).
   beforeAll(() => {
     sharp.block({ operation: ['VipsForeignLoad'] });
     sharp.unblock({ operation: ['VipsForeignLoadSvg'] });
@@ -242,22 +243,29 @@ describe('sniffsAsSvg', () => {
       ...['\xef\xbf\xbd', '\xf0\x9f\x98\x80', '\xf4\x90\x80\x80', '\xc0\xbc', '\xf8\x88\x80\x80'],
       '\xff',
     ];
-    let seed = 208;
+    // xorshift32, seeded, so a failure reproduces.
+    let state = 208;
     const random = (n: number) => {
-      seed = (seed * 1103515245 + 12345) % 2 ** 31;
-      return seed % n;
+      state ^= state << 13;
+      state ^= state >>> 17;
+      state ^= state << 5;
+      return (state >>> 0) % n;
     };
     let claimed = 0;
-    for (let i = 0; i < 400; i++) {
-      const parts = Array.from({ length: 1 + random(12) }, () => tokens[random(tokens.length)]);
+    const lengths = new Set<number>();
+    for (let i = 0; i < 1000; i++) {
+      const length = 1 + random(12);
+      lengths.add(length);
+      const parts = Array.from({ length }, () => tokens[random(tokens.length)]);
       // Never a tag at the very end, where `sniffsAsSvg` refuses more on purpose.
       const bytes = latin1(`${parts.join('')} x`);
       const svg = await libvipsSniffsAsSvg(bytes);
       expect(sniffsAsSvg(bytes), JSON.stringify(bytes.toString('latin1'))).toBe(svg);
       if (svg) claimed++;
     }
-    // Plenty of both answers, or the comparison proves little.
-    expect(claimed).toBeGreaterThan(40);
-    expect(claimed).toBeLessThan(360);
+    // Every length, and plenty of both answers, or the comparison proves little.
+    expect(lengths.size).toBe(12);
+    expect(claimed).toBeGreaterThan(100);
+    expect(claimed).toBeLessThan(900);
   });
 });
