@@ -156,6 +156,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         | 'archived'
         | 'bannerUrl'
         | 'currency'
+        | 'occasion'
       >
     > = {};
     const validatedData = validation.data;
@@ -192,6 +193,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       updateData.isPublic = validatedData.visibility === 'everyone';
     }
     if (validatedData.archived !== undefined) updateData.archived = validatedData.archived;
+    // Set, changed or (null) cleared in the same write as the rest of the edit.
+    if (validatedData.occasion !== undefined) updateData.occasion = validatedData.occasion;
 
     // "Featured" pins a list to the *caller's* dashboard hero, so it's stored
     // per-owner in `featuredBy`: on a co-owned list one owner can feature it

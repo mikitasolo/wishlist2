@@ -111,4 +111,13 @@ describe('serializeWishlist', () => {
     expect(out.slug).toBe('bday');
     expect(out.createdAt).toEqual(new Date('2026-01-01'));
   });
+
+  it("returns the occasion to any viewer, and null for a list that's never had one", () => {
+    const occasion = { kind: 'birthday', date: '2000-10-14', recurrence: 'yearly' } as const;
+    expect(serializeWishlist(wishlist({ occasion }), null).occasion).toEqual(occasion);
+    expect(serializeWishlist(wishlist({ occasion }), C.toString()).occasion).toEqual(occasion);
+    expect(serializeWishlist(wishlist({ occasion: null }), null).occasion).toBeNull();
+    // A `.lean()` row from before occasions existed has no such field at all.
+    expect(serializeWishlist(wishlist(), null)).toHaveProperty('occasion', null);
+  });
 });

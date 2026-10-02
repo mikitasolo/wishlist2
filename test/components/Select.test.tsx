@@ -98,3 +98,37 @@ describe('Select — keyboard focus', () => {
     expect(option('Newest')).toHaveFocus();
   });
 });
+
+describe('Select — placeholder', () => {
+  function Picker() {
+    const [value, setValue] = useState('');
+    return (
+      <Select
+        value={value}
+        onChange={setValue}
+        options={options}
+        ariaLabel="Sort by"
+        placeholder="Pick one"
+      />
+    );
+  }
+
+  it('shows the placeholder, muted, until an option is picked, then the option', async () => {
+    const user = userEvent.setup();
+    render(<Picker />);
+    expect(trigger()).toHaveTextContent('Pick one');
+    expect(screen.getByText('Pick one')).toHaveClass('text-muted-foreground');
+    // The placeholder isn't an option of its own.
+    await user.click(trigger());
+    expect(screen.queryByRole('option', { name: 'Pick one' })).toBeNull();
+
+    await user.click(option('Price'));
+    expect(trigger()).toHaveTextContent('Price');
+    expect(screen.queryByText('Pick one')).toBeNull();
+  });
+
+  it('shows nothing when no option matches and there is no placeholder', () => {
+    render(<Select value="" onChange={() => {}} options={options} ariaLabel="Sort by" />);
+    expect(trigger()).toHaveTextContent(/^$/);
+  });
+});

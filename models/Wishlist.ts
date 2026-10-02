@@ -1,4 +1,19 @@
 import mongoose, { Schema, Model } from 'mongoose';
+import { normalizeOccasionDate, OCCASION_KINDS, type Occasion } from '@/lib/utils/occasion';
+
+// A list's one occasion (see `lib/utils/occasion.ts`). `date` is a plain
+// calendar date, `YYYY-MM-DD`, never a timestamp: no time zone is stored or
+// applied here. A yearly one is stored on the placeholder year, never a real
+// one. `occasionSchema` (`lib/validations.ts`) checks and normalizes it; the
+// checks here are a backstop for a write that skips it.
+const OccasionSchema = new Schema(
+  {
+    kind: { type: String, enum: OCCASION_KINDS, required: true },
+    date: { type: String, required: true, match: /^\d{4}-\d{2}-\d{2}$/ },
+    recurrence: { type: String, enum: ['yearly', null], default: null },
+  },
+  { _id: false }
+);
 
 const WishlistSchema = new Schema(
   {
@@ -75,6 +90,20 @@ const WishlistSchema = new Schema(
       type: [{ type: Schema.Types.ObjectId, ref: 'User' }],
       default: [],
     },
+    // The list's occasion (birthday, holiday, …) and its date, set by an owner
+    // in settings. Absent or null means none. It's shown to everyone who can
+    // see the list and never changes who that is.
+    occasion: {
+      type: OccasionSchema,
+      default: null,
+      validate: {
+        // Only as stored: a real date, and a yearly one on the placeholder year.
+        validator: (v: Occasion | null) =>
+          !v || normalizeOccasionDate(v.date, v.recurrence ?? null) === v.date,
+        message:
+          'Occasion date must be a real date, and a yearly one must be on the placeholder year',
+      },
+    },
   },
   {
     timestamps: true,
@@ -111,6 +140,8 @@ export interface IWishlist {
    */
   featured?: boolean;
   bannerUrl?: string | null;
+  /** Absent on lists saved before occasions existed: treat as none. */
+  occasion?: Occasion | null;
   createdAt: Date;
   updatedAt: Date;
 }

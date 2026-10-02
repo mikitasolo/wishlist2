@@ -20,10 +20,19 @@ import Cover from '@/components/Cover';
 import ShareButton from '@/components/ShareButton';
 import ImageUpload from '@/components/ImageUpload';
 import Select from '@/components/Select';
+import OccasionField from '@/components/OccasionField';
+import OccasionLabel from '@/components/OccasionLabel';
 import { SkeletonGrid, MemberRowSkeleton } from '@/components/Skeleton';
 import Avatar from '@/components/Avatar';
 import { getVisibility, visibilityMeta, type Visibility } from '@/lib/utils/visibility';
 import { currencySelectOptions } from '@/lib/utils/currencies';
+import {
+  missingFromDraft,
+  occasionChange,
+  occasionToDraft,
+  type Occasion,
+  type OccasionDraft,
+} from '@/lib/utils/occasion';
 import {
   createMutationTracker,
   prependCreatedItem,
@@ -107,6 +116,7 @@ export default function WishlistDetail() {
     visibility: Visibility;
     bannerUrl: string;
     currency: string;
+    occasion: OccasionDraft;
   }>({
     name: '',
     slug: '',
@@ -114,7 +124,12 @@ export default function WishlistDetail() {
     visibility: 'everyone',
     bannerUrl: '',
     currency: 'USD',
+    occasion: occasionToDraft(null),
   });
+  // The occasion the settings form was last filled from. Only an occasion
+  // changed from it is sent, so saving the other settings can't undo one a
+  // co-owner set in the meantime.
+  const [occasionBaseline, setOccasionBaseline] = useState<Occasion | null>(null);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<{
     type: 'member' | 'owner' | 'leave' | 'wishlist';
@@ -273,7 +288,9 @@ export default function WishlistDetail() {
                 visibility: getVisibility(wishlistData),
                 bannerUrl: wishlistData.bannerUrl || '',
                 currency: wishlistData.currency || 'USD',
+                occasion: occasionToDraft(wishlistData.occasion),
               });
+              setOccasionBaseline(wishlistData.occasion ?? null);
             }
 
             // Only set loading to false after successfully setting the wishlist
@@ -1035,7 +1052,13 @@ export default function WishlistDetail() {
             The title used to sit on the banner; it moved here so the banner can shrink
             into a side panel next to the stat cards below. */}
         <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
-          <div className="flex min-w-0 flex-1 items-baseline gap-3">
+          {/* With an occasion the row wraps, so on a phone its label can go under
+              the name rather than squeeze it down to nothing. */}
+          <div
+            className={`flex min-w-0 flex-1 items-baseline ${
+              wishlist.occasion ? 'flex-wrap gap-x-3 gap-y-1' : 'gap-3'
+            }`}
+          >
             <h1 className="min-w-0 truncate text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
               {wishlist.name}
             </h1>
@@ -1061,6 +1084,7 @@ export default function WishlistDetail() {
                 {ownerUsernames.length > 2 && ` +${ownerUsernames.length - 2}`}
               </span>
             )}
+            <OccasionLabel occasion={wishlist.occasion} />
           </div>
           <div className="flex flex-shrink-0 items-center gap-2">
             <ShareButton />
@@ -1543,6 +1567,13 @@ export default function WishlistDetail() {
               <form
                 onSubmit={async (e) => {
                   e.preventDefault();
+                  // A one-off's date input is `required`; a yearly one's day
+                  // and month pickers can't be, so they're checked here.
+                  const missing = missingFromDraft(settingsForm.occasion);
+                  if (missing) {
+                    showToast(missing, 'error');
+                    return;
+                  }
                   setIsSavingSettings(true);
 
                   try {
@@ -1551,13 +1582,23 @@ export default function WishlistDetail() {
                       headers: {
                         'Content-Type': 'application/json',
                       },
-                      body: JSON.stringify(settingsForm),
+                      // The occasion only goes when it was changed here
+                      // (`occasionChange` is `undefined` otherwise).
+                      body: JSON.stringify({
+                        ...settingsForm,
+                        occasion: occasionChange(settingsForm.occasion, occasionBaseline),
+                      }),
                     });
 
                     const result = await response.json();
 
                     if (result.success) {
                       setWishlist(result.data);
+                      // Refill the occasion from the list as saved: what was
+                      // sent, or a co-owner's, left alone because it wasn't.
+                      const saved: Occasion | null = result.data?.occasion ?? null;
+                      setSettingsForm((form) => ({ ...form, occasion: occasionToDraft(saved) }));
+                      setOccasionBaseline(saved);
                       settingsFormDirtyRef.current = false;
                       showToast('Wishlist updated successfully', 'success');
                       // Keep the URL in sync when the slug changes (or upgrade
@@ -1653,6 +1694,16 @@ export default function WishlistDetail() {
                     autoComplete="off"
                   />
                 </div>
+
+                <OccasionField
+                  value={settingsForm.occasion}
+                  saved={occasionBaseline}
+                  onChange={(occasion) => {
+                    setSettingsForm({ ...settingsForm, occasion });
+                    settingsFormDirtyRef.current = true;
+                  }}
+                  disabled={isSavingSettings}
+                />
 
                 <div>
                   <label className="mb-1 block text-sm font-medium text-foreground">Currency</label>

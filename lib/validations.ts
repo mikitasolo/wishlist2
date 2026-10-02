@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { normalizeOccasionDate, OCCASION_KINDS } from '@/lib/utils/occasion';
 
 /**
  * Validation schemas for API endpoints
@@ -27,6 +28,36 @@ const wishlistNameSchema = z
   .max(100, 'Name must be 100 characters or less')
   .refine((name) => !LINE_BREAK_OR_CONTROL_CHAR.test(name), {
     message: "Name can't contain line breaks or control characters",
+  });
+
+// A list's occasion. `date` is a plain calendar date, `YYYY-MM-DD`. A one-off's
+// must exist as it is: `2028-02-29` passes, `2027-02-29` and `2026-02-30`
+// don't. A yearly one keeps only its month and day: its year, whatever was sent
+// (a birth year, say), is replaced with the placeholder leap year, so Feb 29
+// passes and Feb 30 doesn't, and a real year never reaches the database or a
+// response (`normalizeOccasionDate`). A one-off in the past isn't refused: the
+// server can't know the viewer's date, and every one-off ends up there. `kind`
+// and `recurrence` are both required (`recurrence: null` for a one-off);
+// clearing the occasion is `occasion: null`, not an occasion with fields left
+// out.
+export const occasionSchema = z
+  .object({
+    kind: z.enum(OCCASION_KINDS, 'Pick an occasion'),
+    date: z.string(),
+    recurrence: z.literal('yearly').nullable(),
+  })
+  .transform((occasion, ctx) => {
+    const date = normalizeOccasionDate(occasion.date, occasion.recurrence);
+    if (date === null) {
+      ctx.issues.push({
+        code: 'custom',
+        path: ['date'],
+        message: 'Pick a real date',
+        input: occasion.date,
+      });
+      return z.NEVER;
+    }
+    return { ...occasion, date };
   });
 
 export const createWishlistSchema = z.object({
@@ -72,6 +103,7 @@ export const updateWishlistSchema = z
         'Use lowercase letters, numbers, and single hyphens (no leading/trailing hyphen)'
       )
       .optional(),
+    occasion: occasionSchema.nullable().optional(),
   })
   .refine((data) => Object.keys(data).length > 0, {
     message: 'At least one field must be provided for update',
