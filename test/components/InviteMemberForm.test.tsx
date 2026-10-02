@@ -124,7 +124,7 @@ describe('InviteMemberForm — startOwnerInvite', () => {
 
     act(() => handle.current!.startOwnerInvite());
 
-    expect(screen.getByRole('button', { name: 'Role' })).toHaveTextContent('Owner');
+    expect(screen.getByRole('combobox', { name: 'Role' })).toHaveTextContent('Owner');
     expect(screen.getByText(/released when they accept/i)).toBeInTheDocument();
     expect(field).toHaveFocus();
     // The whole form, from its heading, not just the field.
