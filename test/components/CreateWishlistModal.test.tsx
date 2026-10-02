@@ -58,7 +58,7 @@ function CreatePage() {
 const button = (name: string | RegExp) => screen.getByRole('button', { name });
 const modal = () => screen.getByRole('dialog', { name: 'Create new wishlist' });
 const nameField = () => screen.getByLabelText(/wishlist name/i);
-const currency = () => button('Wishlist currency');
+const currency = () => screen.getByRole('combobox', { name: 'Wishlist currency' });
 const option = (name: string | RegExp) => screen.getByRole('option', { name });
 const menu = () => screen.queryByRole('listbox');
 
@@ -153,26 +153,29 @@ describe('CreateWishlistModal — keyboard focus', () => {
 });
 
 describe('CreateWishlistModal — the currency Select by keyboard', () => {
+  /** The option the keyboard is on, as the trigger announces it. */
+  const activeOption = () =>
+    document.getElementById(currency().getAttribute('aria-activedescendant') ?? '');
+
   // regression: the Select's menu is portalled to <body>, outside the modal, so
-  // Tab from its trigger went on to the next field and the options could only
-  // be reached by tabbing past everything else on the page.
-  it('regression: opens the menu with Enter, reaches its options with Tab and chooses one with Enter', async () => {
+  // the keyboard couldn't reach its options from the trigger.
+  it('regression: opens the menu with Enter on the selected currency, moves with the arrows and chooses with Enter', async () => {
     const user = await openModal();
     await tabToCurrency(user);
     expect(currency()).toHaveTextContent('USD · US Dollar');
 
     await user.keyboard('{Enter}');
     expect(menu()).toBeInTheDocument();
+    expect(activeOption()).toBe(option('USD · US Dollar'));
     expect(currency()).toHaveFocus();
 
-    await user.tab();
-    expect(option('USD · US Dollar')).toHaveFocus();
-    await user.tab();
-    expect(option('EUR · Euro')).toHaveFocus();
+    await user.keyboard('{ArrowDown}');
+    expect(activeOption()).toBe(option('EUR · Euro'));
+    expect(currency()).toHaveFocus();
     await user.keyboard('{Enter}');
 
     // regression: choosing removed the focused option with the menu, which
-    // dropped focus to <body>; it goes back to the trigger.
+    // dropped focus to <body>; it stays on the trigger.
     expect(menu()).toBeNull();
     expect(currency()).toHaveTextContent('EUR · Euro');
     expect(currency()).toHaveFocus();
@@ -183,48 +186,70 @@ describe('CreateWishlistModal — the currency Select by keyboard', () => {
     expect(modal()).toBeInTheDocument();
   });
 
-  it('regression: walks back from the menu to its trigger, and on from its last option to the next field', async () => {
+  it('jumps to a currency by typing its code', async () => {
     const user = await openModal();
     await tabToCurrency(user);
+
+    await user.keyboard('gb');
+    expect(activeOption()).toBe(option('GBP · British Pound'));
     await user.keyboard('{Enter}');
-    const options = screen.getAllByRole('option');
-
-    await user.tab();
-    expect(options[0]).toHaveFocus();
-    await user.tab({ shift: true });
-    expect(currency()).toHaveFocus();
-
-    for (let i = 0; i < options.length; i++) await user.tab();
-    expect(options[options.length - 1]).toHaveFocus();
-    await user.tab();
-    expect(button('Upload banner')).toHaveFocus();
-
-    // Leaving the menu closes it, rather than leave it open over the fields
-    // after it, so Shift+Tab goes straight back to the trigger.
-    expect(menu()).toBeNull();
-    expect(currency()).toHaveTextContent('USD · US Dollar');
-    await user.tab({ shift: true });
+    expect(currency()).toHaveTextContent('GBP · British Pound');
     expect(currency()).toHaveFocus();
   });
 
-  it('keeps Tab inside the modal with the menu open, wrapping past it at both ends', async () => {
+  it('closes the menu without choosing on Tab or Shift+Tab, which move on inside the modal', async () => {
     const user = await openModal();
     await tabToCurrency(user);
-    await user.keyboard('{Enter}');
-    const options = screen.getAllByRole('option');
+    await user.keyboard('{Enter}{End}');
 
-    // From the last field, Tab wraps to the close button, not into the page.
-    act(() => button('Create Wishlist').focus());
     await user.tab();
-    expect(button('Close modal')).toHaveFocus();
-    await user.tab({ shift: true });
-    expect(button('Create Wishlist')).toHaveFocus();
-    expect(menu()).toBeInTheDocument();
+    expect(button('Upload banner')).toHaveFocus();
+    expect(menu()).toBeNull();
+    expect(currency()).toHaveTextContent('USD · US Dollar');
 
-    // The menu sits between its trigger and the next field.
-    act(() => button('Upload banner').focus());
     await user.tab({ shift: true });
-    expect(options[options.length - 1]).toHaveFocus();
+    expect(currency()).toHaveFocus();
+    await user.keyboard('{Enter}');
+    await user.tab({ shift: true });
+    expect(screen.getByLabelText('Description')).toHaveFocus();
+    expect(menu()).toBeNull();
+    expect(modal()).toBeInTheDocument();
+  });
+
+  // regression: the menu and the modal both closed on Escape through keydown
+  // listeners on `document`, and neither stopped the other.
+  it('regression: closes only the menu on Escape, and the next Escape closes the modal', async () => {
+    const user = await openModal();
+    await tabToCurrency(user);
+    await user.keyboard('{Enter}{ArrowDown}');
+
+    await user.keyboard('{Escape}');
+    expect(menu()).toBeNull();
+    expect(modal()).toBeInTheDocument();
+    expect(currency()).toHaveTextContent('USD · US Dollar');
+    expect(currency()).toHaveFocus();
+
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(button('New wishlist')).toHaveFocus();
+  });
+
+  it('regression: with a name typed, Escape on the open menu closes it without asking to discard', async () => {
+    const user = await openModal();
+    await user.type(nameField(), 'Birthday');
+    await user.tab();
+    await user.tab();
+    expect(currency()).toHaveFocus();
+    await user.keyboard('{Enter}');
+
+    await user.keyboard('{Escape}');
+    expect(menu()).toBeNull();
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(currency()).toHaveFocus();
+
+    // The next Escape is the modal's, which asks first.
+    await user.keyboard('{Escape}');
+    expect(screen.getByRole('alertdialog', { name: 'Discard Changes?' })).toBeInTheDocument();
   });
 
   it('chooses an option with the mouse and leaves focus on the trigger, so Tab carries on from there', async () => {
@@ -243,10 +268,7 @@ describe('CreateWishlistModal — the currency Select by keyboard', () => {
   it('returns focus to the opener when the modal closes after choosing a currency', async () => {
     const user = await openModal();
     await tabToCurrency(user);
-    await user.keyboard('{Enter}');
-    await user.tab();
-    await user.tab();
-    await user.keyboard('{Enter}');
+    await user.keyboard('{Enter}{ArrowDown}{Enter}');
     expect(currency()).toHaveTextContent('EUR · Euro');
     expect(currency()).toHaveFocus();
 

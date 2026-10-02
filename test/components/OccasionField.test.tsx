@@ -35,9 +35,9 @@ function Settings({ initial = null }: { initial?: Occasion | null }) {
 
 const sent = () => JSON.parse(screen.getByTestId('sent').textContent ?? 'null');
 const field = () => screen.getByRole('group', { name: /Occasion/ });
-const kindPicker = () => screen.getByRole('button', { name: 'Occasion' });
-const monthPicker = () => screen.queryByRole('button', { name: 'Occasion month' });
-const dayPicker = () => screen.queryByRole('button', { name: 'Occasion day' });
+const kindPicker = () => screen.getByRole('combobox', { name: 'Occasion' });
+const monthPicker = () => screen.queryByRole('combobox', { name: 'Occasion month' });
+const dayPicker = () => screen.queryByRole('combobox', { name: 'Occasion day' });
 const dateInput = () => screen.queryByLabelText('Occasion date');
 const yearly = () => screen.queryByRole('checkbox', { name: 'Repeats every year' });
 

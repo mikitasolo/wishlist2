@@ -16,11 +16,10 @@ import { useEffect, useRef, useState, type RefObject } from 'react';
  *   focus until it closes, then the modal does again. A dialog rendered inside
  *   another one's container (the crop dialog in an item modal's form) stacks
  *   the same way.
- * - Content a control in the dialog renders outside it (a `Select` menu,
- *   portalled to <body>) is part of the dialog while it's registered with
- *   `useFocusTrapPortal`: its Tab stops come right after that control's, as if
- *   it were rendered there, so Tab reaches the menu from its trigger and moves
- *   on to the next field from the menu's last option.
+ * - Only Tab stops inside the container count. A popup that a control in it
+ *   renders elsewhere (the `Select` menu, portalled to <body>) has to keep
+ *   focus on that control while it's open, and have no Tab stops of its own,
+ *   as `Select` does.
  * - While `busy` (its form is saving, its controls disabled), focus is held on
  *   the container if the control inside that had it was disabled, so it
  *   doesn't drop to <body> with it. When `busy` ends with the dialog still
@@ -81,61 +80,6 @@ function tabbables(container: HTMLElement): HTMLElement[] {
       (typeof el.checkVisibility !== 'function' ||
         el.checkVisibility({ visibilityProperty: true, checkVisibilityCSS: true }))
   );
-}
-
-// Content rendered outside a dialog's container on behalf of a control in it
-// (see useFocusTrapPortal): each portal, with the control it belongs to.
-const portals = new Map<HTMLElement, HTMLElement>();
-
-/** Whether `el` comes after `anchor` (and its contents) in document order. */
-function follows(anchor: Node, el: Node): boolean {
-  return (
-    !anchor.contains(el) &&
-    !!(anchor.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING)
-  );
-}
-
-/**
- * The dialog's Tab stops, given its container's own (`own`, in DOM order):
- * each portal of a control in it has its stops spliced in right after that
- * control, where the browser would put them were it rendered there.
- */
-function tabOrder(container: HTMLElement, own: HTMLElement[]): HTMLElement[] {
-  const inserts: { at: number; stops: HTMLElement[] }[] = [];
-  for (const [portal, anchor] of portals) {
-    if (!portal.isConnected || !container.contains(anchor)) continue;
-    const at = own.findIndex((el) => follows(anchor, el));
-    inserts.push({ at: at === -1 ? own.length : at, stops: tabbables(portal) });
-  }
-  if (!inserts.length) return own;
-  const order = [...own];
-  // Back to front, so each index still points into `own`'s order.
-  inserts.sort((a, b) => b.at - a.at);
-  for (const { at, stops } of inserts) order.splice(at, 0, ...stops);
-  return order;
-}
-
-/**
- * Makes the element in `portalRef`, while `shown`, part of whichever open
- * dialog holds the element in `anchorRef` (the control it belongs to): its Tab
- * stops follow the anchor's in that dialog's trap, instead of being skipped,
- * or treated as outside the dialog, because it's rendered elsewhere in the
- * DOM. Outside a dialog this does nothing. `Select` registers its menu.
- */
-export function useFocusTrapPortal(
-  shown: boolean,
-  portalRef: RefObject<HTMLElement | null>,
-  anchorRef: RefObject<HTMLElement | null>
-) {
-  useEffect(() => {
-    const portal = portalRef.current;
-    const anchor = anchorRef.current;
-    if (!shown || !portal || !anchor) return;
-    portals.set(portal, anchor);
-    return () => {
-      portals.delete(portal);
-    };
-  }, [shown, portalRef, anchorRef]);
 }
 
 /** Focuses `el`; returns whether it took focus. */
@@ -208,8 +152,7 @@ export function useFocusTrap(
       if (e.key !== 'Tab' || e.altKey || e.ctrlKey || e.metaKey) return;
       if (openTraps[openTraps.length - 1] !== trap) return;
 
-      const own = tabbables(container);
-      const items = tabOrder(container, own);
+      const items = tabbables(container);
       const current = document.activeElement;
       const at = current instanceof HTMLElement ? items.indexOf(current) : -1;
 
@@ -228,15 +171,11 @@ export function useFocusTrap(
         return;
       }
 
-      const next = items[(at + (e.shiftKey ? items.length - 1 : 1)) % items.length];
-      // The browser's own next stop: the neighbouring one in the container's
-      // DOM order, if any. It's the same one unless Tab wraps around an end, or
-      // moves into, out of or within a portal.
-      const ownAt = own.indexOf(items[at]);
-      const browserNext = ownAt === -1 ? undefined : own[ownAt + (e.shiftKey ? -1 : 1)];
-      if (next === browserNext) return;
+      // Between two stops inside, the browser moves focus itself; wrapping
+      // around an end is the trap's.
+      if (at !== (e.shiftKey ? 0 : items.length - 1)) return;
       e.preventDefault();
-      next.focus();
+      items[e.shiftKey ? items.length - 1 : 0].focus();
     };
     document.addEventListener('keydown', handleTab);
 
