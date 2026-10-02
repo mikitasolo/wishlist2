@@ -1,6 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { NextRequest } from 'next/server';
-import sharp from 'sharp';
+import { crc32 } from 'node:zlib';
+import sharp, { type Metadata, type Sharp } from 'sharp';
 
 // The real sharp runs here: these tests exercise the route's image processing,
 // not a stand-in. Storage, the session and the quota lookup are mocked.
@@ -13,10 +14,15 @@ vi.mock('@/lib/utils/blob', () => ({
 }));
 
 import { auth } from '@/lib/auth';
+import { getUserUploadBytes } from '@/lib/utils/blob';
+// Loading the route also runs its process-wide `sharp.block`, which the
+// "decoders" tests below rely on.
 import { POST } from '@/app/api/upload/route';
 
 const session = vi.mocked(auth) as unknown as ReturnType<typeof vi.fn>;
 const USER_ID = '64b7f0c2a1b2c3d4e5f60718';
+const UNSUPPORTED = 'Unsupported file type. Use JPEG, PNG, WebP, GIF, or AVIF.';
+const NOT_PROCESSED = 'That image could not be processed. Try a different file.';
 
 function uploadRequest(data: Buffer, type: string, name: string) {
   const form = new FormData();
@@ -29,6 +35,30 @@ function solidImage() {
   return sharp({ create: { width: 8, height: 8, channels: 3, background: '#5e5ce6' } });
 }
 
+const SVG = Buffer.from(
+  '<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8">' +
+    '<rect width="8" height="8" fill="#5e5ce6"/></svg>'
+);
+
+/**
+ * Watch every sharp instance from here on (pass-through spies, so nothing is
+ * stubbed): whether the route had sharp read the bytes, or decode them.
+ */
+function watchSharp() {
+  return {
+    metadata: vi.spyOn(sharp.prototype, 'metadata'),
+    toBuffer: vi.spyOn(sharp.prototype, 'toBuffer'),
+  };
+}
+
+/** The response refused the upload, and nothing was stored or counted against the quota. */
+async function expectRefused(res: Response, error: string) {
+  expect(res.status).toBe(400);
+  expect(await res.json()).toEqual({ success: false, error });
+  expect(put).not.toHaveBeenCalled();
+  expect(getUserUploadBytes).not.toHaveBeenCalled();
+}
+
 beforeEach(() => {
   put.mockReset();
   put.mockImplementation(async (pathname: string) => ({
@@ -36,6 +66,10 @@ beforeEach(() => {
   }));
   session.mockReset();
   session.mockResolvedValue({ user: { id: USER_ID } });
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 describe('POST /api/upload', () => {
@@ -97,10 +131,169 @@ describe('POST /api/upload', () => {
     expect(after.exif).toBeUndefined();
   });
 
-  it('answers 400, not 500, for bytes sharp cannot decode', async () => {
-    const res = await POST(uploadRequest(Buffer.from('not an image'), 'image/png', 'a.png'));
+  // Binding the decoder to the declared type (WIS-157) must not turn away any
+  // format the route took before it.
+  it.each([
+    ['image/jpeg', 'jpeg', 'jpg', () => solidImage().jpeg().toBuffer()],
+    ['image/webp', 'webp', 'webp', () => solidImage().webp().toBuffer()],
+    ['image/gif', 'gif', 'gif', () => solidImage().gif().toBuffer()],
+  ] as const)('still accepts a %s upload', async (type, format, ext, encode) => {
+    const res = await POST(uploadRequest(await encode(), type, `a.${ext}`));
 
-    expect(res.status).toBe(400);
-    expect(put).not.toHaveBeenCalled();
+    expect(res.status).toBe(200);
+    const [pathname, stored, options] = put.mock.calls[0]!;
+    expect(pathname).toBe(`uploads/${USER_ID}/image.${ext}`);
+    expect(options).toMatchObject({ contentType: type });
+    expect((await sharp(stored as Buffer).metadata()).format).toBe(format);
+  });
+
+  // Blocking libultrahdr's loader mustn't refuse an Ultra HDR photo (what
+  // recent phones take): it's a JPEG, so the plain JPEG loader reads it.
+  it('accepts an Ultra HDR JPEG through the plain JPEG decoder, without its gain map', async () => {
+    // `withGainMap()` (sharp 0.35, experimental) isn't in sharp's types yet.
+    const image = solidImage() as Sharp & { withGainMap(): Sharp };
+    const ultraHdr = await image.withGainMap().jpeg().toBuffer();
+    // The fixture really carries an ISO 21496-1 gain map.
+    expect(ultraHdr.includes('urn:iso:std:iso:ts:21496')).toBe(true);
+
+    const res = await POST(uploadRequest(ultraHdr, 'image/jpeg', 'a.jpg'));
+
+    expect(res.status).toBe(200);
+    const stored = put.mock.calls[0]![1] as Buffer;
+    expect((await sharp(stored).metadata()).format).toBe('jpeg');
+    expect(stored.includes('urn:iso:std:iso:ts:21496')).toBe(false);
+  });
+
+  // regression: the route checked only the MIME type the client declared, but
+  // sharp picks its decoder from the bytes, so another format sent as an
+  // accepted type was decoded by that format's library (librsvg, libtiff, …)
+  // before being re-encoded (WIS-157). It's now refused before sharp sees it.
+  it.each([
+    ['an SVG', 'image/png', async () => SVG],
+    ['a TIFF', 'image/png', () => solidImage().tiff().toBuffer()],
+    ['a TIFF', 'image/avif', () => solidImage().tiff().toBuffer()],
+    ['an SVG', 'image/gif', async () => SVG],
+    ['a PNG', 'image/jpeg', () => solidImage().png().toBuffer()],
+    ['a JPEG', 'image/webp', () => solidImage().jpeg().toBuffer()],
+    ['a WebP', 'image/avif', () => solidImage().webp().toBuffer()],
+  ] as const)('refuses %s declared as %s before sharp reads it', async (_kind, type, encode) => {
+    const bytes = await encode();
+    const watched = watchSharp();
+
+    const res = await POST(uploadRequest(bytes, type, 'a.img'));
+
+    await expectRefused(res, UNSUPPORTED);
+    expect(watched.metadata).not.toHaveBeenCalled();
+    expect(watched.toBuffer).not.toHaveBeenCalled();
+  });
+
+  // regression: an iPhone's HEIC shares AVIF's container and libheif's loader,
+  // so `image/avif` let one through to libheif (WIS-157). Its `ftyp` brands
+  // say HEIC, so it's refused before sharp sees it.
+  it('refuses a HEIC-branded file declared as AVIF before sharp reads it', async () => {
+    const avif = await solidImage().avif().toBuffer();
+    const heic = Buffer.from(avif);
+    // Rebrand the AVIF's `ftyp` box (major `avif`, compatible `mif1 avif miaf`) as HEIC.
+    const ftypSize = heic.readUInt32BE(0);
+    for (let at = 8; at < ftypSize; at += 4) {
+      if (heic.toString('latin1', at, at + 4) === 'avif') heic.write('heic', at, 'latin1');
+    }
+    expect(heic.toString('latin1', 4, 12)).toBe('ftypheic');
+    const watched = watchSharp();
+
+    const res = await POST(uploadRequest(heic, 'image/avif', 'a.avif'));
+
+    await expectRefused(res, UNSUPPORTED);
+    expect(watched.metadata).not.toHaveBeenCalled();
+  });
+
+  // regression: the declared type's signature alone doesn't name the decoder.
+  // libvips sniffs again, and HEIC can carry AVIF's brand, so the format sharp
+  // reports has to match too, before any pixels are decoded (WIS-157).
+  it.each([
+    ['HEVC (HEIC) content', 'image/avif', { format: 'heif', compression: 'hevc' }],
+    ['the SVG decoder', 'image/gif', { format: 'svg' }],
+  ] as const)(
+    'refuses a file whose decoder sharp reports as %s, instead of %s',
+    async (_kind, type, reported) => {
+      const encode = type === 'image/avif' ? solidImage().avif() : solidImage().gif();
+      const bytes = await encode.toBuffer();
+      const watched = watchSharp();
+      watched.metadata.mockResolvedValueOnce(reported as unknown as Metadata);
+
+      const res = await POST(uploadRequest(bytes, type, 'a.img'));
+
+      await expectRefused(res, UNSUPPORTED);
+      expect(watched.metadata).toHaveBeenCalledTimes(1);
+      expect(watched.toBuffer).not.toHaveBeenCalled();
+    }
+  );
+
+  it('answers 400, not 500, for bytes sharp cannot decode', async () => {
+    // A PNG signature, so it gets past the signature check, then garbage.
+    const corrupt = Buffer.concat([
+      Buffer.from('\x89PNG\r\n\x1a\n', 'latin1'),
+      Buffer.from('junk'),
+    ]);
+
+    const res = await POST(uploadRequest(corrupt, 'image/png', 'a.png'));
+
+    await expectRefused(res, NOT_PROCESSED);
+  });
+
+  // The header read that checks the format is bounded like the decode is: an
+  // image whose header claims more pixels than sharp's input limit is refused
+  // right there, before a single pixel is decoded.
+  it('refuses an image over the pixel limit at the header read, before decoding it', async () => {
+    const png = Buffer.from(await solidImage().png().toBuffer());
+    // Make the IHDR chunk claim 30000×30000 (900 megapixels) and fix its CRC.
+    png.writeUInt32BE(30000, 16);
+    png.writeUInt32BE(30000, 20);
+    png.writeUInt32BE(crc32(png.subarray(12, 29)), 29);
+    const watched = watchSharp();
+
+    const res = await POST(uploadRequest(png, 'image/png', 'a.png'));
+
+    await expectRefused(res, NOT_PROCESSED);
+    expect(watched.metadata).toHaveBeenCalledTimes(1);
+    expect(watched.toBuffer).not.toHaveBeenCalled();
+  });
+});
+
+describe("the upload route's libvips loaders", () => {
+  // Defence in depth behind the signature check: even bytes that got past it
+  // can't reach a decoder the route never accepts, because loading the route
+  // blocked every libvips loader but the ones it needs (WIS-157).
+  it('blocks the decoders it never accepts, process-wide', async () => {
+    const tiff = await solidImage().tiff().toBuffer();
+    expect(tiff.subarray(0, 4)).toEqual(Buffer.from('II*\0', 'latin1'));
+
+    await expect(sharp(tiff).metadata()).rejects.toThrow(/unsupported image format/);
+  });
+
+  // The block is process-wide, and lib/email.ts rasterizes the email logo from
+  // an SVG in the same process, so the SVG loader has to stay.
+  it('leaves the SVG decoder the email logo is rendered with', async () => {
+    const png = await sharp(SVG).resize(16, 16).png().toBuffer();
+
+    expect(await sharp(png).metadata()).toMatchObject({ format: 'png', width: 16, height: 16 });
+  });
+
+  // With SVG unblocked, the signature check is what keeps uploads from
+  // librsvg. JPEG, PNG and AVIF signatures can't also pass libvips' SVG sniff
+  // (it wants 24 leading ASCII bytes), but a GIF's or WebP's can, so this pins
+  // that libvips reads those with their own loader first. If a libvips upgrade
+  // changed that, POST would still refuse the file, but only after librsvg had
+  // parsed it.
+  it.each([
+    ['GIF', 'GIF89a', /gifload/],
+    ['WebP', 'RIFFAAAAWEBPVP8 ', /webp/],
+  ])('reads a %s that also looks like an SVG with its own decoder', async (_kind, head, loader) => {
+    const polyglot = Buffer.concat([Buffer.from(head.padEnd(24, 'A'), 'latin1'), SVG]);
+
+    const failure = sharp(polyglot).metadata();
+
+    await expect(failure).rejects.toThrow(loader);
+    await expect(failure).rejects.not.toThrow(/svg|XML/i);
   });
 });

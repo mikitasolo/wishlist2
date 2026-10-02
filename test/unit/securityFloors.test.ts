@@ -32,7 +32,8 @@ describe('security floors of installed dependencies', () => {
   // regression: sharp 0.35.3 bundled libheif 1.23.1 (GHSA-rgj7-g3m4-5g8c, patched
   // in sharp 0.35.4 / libheif 1.23.2) and librsvg 2.62.90 (GHSA-wq5f-xc86-pv6w,
   // patched in sharp 0.35.5 / librsvg 2.63.2). POST /api/upload decodes
-  // user-supplied bytes with it.
+  // user-supplied AVIFs with libheif. Since WIS-157 librsvg only renders our
+  // own email logo, but the process still loads it.
   it('runs a sharp whose bundled libheif and librsvg carry the fixes', () => {
     const { versions } = sharp;
     expect(atLeast(versions.sharp, '0.35.5'), `sharp ${versions.sharp}`).toBe(true);
