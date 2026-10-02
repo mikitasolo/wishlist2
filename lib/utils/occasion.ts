@@ -208,6 +208,25 @@ export function occasionSortKey(occasion: Occasion | null | undefined, today: st
   return daysUntil(occasion.date, occasion.recurrence, today) ?? NO_UPCOMING_OCCASION;
 }
 
+/**
+ * `lists` with the nearest occasion first (`occasionSortKey`): the lists with
+ * one coming up, soonest next occurrence first, then the rest (no occasion, or
+ * a one-off that has passed). Lists that tie (the same day, or nothing coming
+ * up) keep the order they came in, so this goes on top of the caller's own
+ * order. `today` is the viewer's local date (`useLocalToday`), and while it's
+ * `null` the order is left as it is. Returns a new array; `lists` is untouched.
+ */
+export function sortByUpcomingOccasion<T extends { occasion?: Occasion | null }>(
+  lists: readonly T[],
+  today: string | null
+): T[] {
+  if (!today) return [...lists];
+  return lists
+    .map((list, index) => ({ list, index, key: occasionSortKey(list.occasion, today) }))
+    .sort((a, b) => a.key - b.key || a.index - b.index)
+    .map(({ list }) => list);
+}
+
 /** The short name for an occasion's kind ("Birthday"), "Occasion" for an unknown one. */
 export function occasionKindLabel(kind: string): string {
   return OCCASION_KIND_LABELS[kind as OccasionKind] ?? OCCASION_KIND_LABELS.other;

@@ -15,6 +15,8 @@ import Button from '@/components/Button';
 import Icon, { IconName } from '@/components/Icon';
 import { SkeletonGrid } from '@/components/Skeleton';
 import { useToast } from '@/components/ToastProvider';
+import { useLocalToday } from '@/lib/hooks/useLocalToday';
+import { sortByUpcomingOccasion } from '@/lib/utils/occasion';
 import { getVisibility, visibilityMeta } from '@/lib/utils/visibility';
 import { IWishlist } from '@/models/Wishlist';
 
@@ -112,6 +114,14 @@ export default function Home() {
 
   const activeOwned = useMemo(() => owned.filter((w) => !w.archived), [owned]);
   const archivedOwned = useMemo(() => owned.filter((w) => w.archived), [owned]);
+  // "Your wishlists" puts the lists with an occasion coming up first, nearest
+  // first; the rest keep the API's order (newest first). Only that grid: the
+  // Featured pick, shared lists and archived ones keep their own order.
+  const today = useLocalToday();
+  const ownedByOccasion = useMemo(
+    () => sortByUpcomingOccasion(activeOwned, today),
+    [activeOwned, today]
+  );
   const totalItems = useMemo(
     () => activeOwned.reduce((n, w) => n + (w.itemCount ?? 0), 0),
     [activeOwned]
@@ -416,7 +426,7 @@ export default function Home() {
                   Your wishlists
                 </h2>
                 <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                  {activeOwned.map((w) => (
+                  {ownedByOccasion.map((w) => (
                     <WishlistCard key={w._id.toString()} wishlist={w} />
                   ))}
                 </div>

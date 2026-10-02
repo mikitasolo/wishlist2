@@ -379,3 +379,50 @@ describe('GET /api/wishlists — occasion on the list cards', () => {
     expect(shared).toEqual([expect.objectContaining({ _id: withOne, occasion: BIRTHDAY })]);
   });
 });
+
+describe('GET /api/users/[id]/wishlists — occasion on the profile cards', () => {
+  async function profile(viewer: string | null) {
+    signIn(viewer);
+    const req = new NextRequest(`http://localhost/api/users/${owner}/wishlists`);
+    const res = await PROFILE_LISTS(req, { params: Promise.resolve({ id: owner }) });
+    expect(res.status).toBe(200);
+    return (await res.json()).data as { _id: string; occasion: unknown }[];
+  }
+
+  it("gives a card the occasion of a list the viewer can see, and nothing of one they can't", async () => {
+    const open = await list({ occasion: BIRTHDAY });
+    const hidden = (
+      await Wishlist.create({
+        name: 'Wedding',
+        slug: 'wedding',
+        owners: [owner],
+        visibility: 'private',
+        occasion: WEDDING,
+      })
+    )._id.toString();
+    const archivedDate = '2028-01-20';
+    await Wishlist.create({
+      name: 'Put away',
+      slug: 'put-away',
+      owners: [owner],
+      archived: true,
+      occasion: { kind: 'other', date: archivedDate, recurrence: null },
+    });
+
+    for (const viewer of [stranger, null]) {
+      const cards = await profile(viewer);
+      expect(cards).toEqual([expect.objectContaining({ _id: open, occasion: BIRTHDAY })]);
+      expect(JSON.stringify(cards)).not.toContain(WEDDING.date);
+      expect(JSON.stringify(cards)).not.toContain(archivedDate);
+    }
+
+    // On their own profile, the owner sees the private list's occasion too.
+    const own = await profile(owner);
+    expect(new Map(own.map((c) => [c._id, c.occasion]))).toEqual(
+      new Map<string, unknown>([
+        [open, BIRTHDAY],
+        [hidden, WEDDING],
+      ])
+    );
+  });
+});
