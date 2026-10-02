@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Icon from '@/components/Icon';
 import Avatar from '@/components/Avatar';
+import { usernameQuery } from '@/lib/utils/searchQuery';
 
 interface UserResult {
   username: string;
@@ -27,8 +28,10 @@ interface GlobalSearchProps {
 
 /**
  * Unified search over usernames and the wishlists you can open, with a live
- * results dropdown: the header's search and the landing page's. (The invite
- * form's username suggestions call `/api/search` on their own.)
+ * results dropdown: the header's search and the landing page's. The query goes
+ * to `/api/search` as typed, which matches people without a leading `@` and
+ * list names as typed. (The invite form's username suggestions call
+ * `/api/search` on their own.)
  */
 export default function GlobalSearch({ variant = 'header' }: GlobalSearchProps) {
   const inline = variant === 'inline';
@@ -117,11 +120,11 @@ export default function GlobalSearch({ variant = 'header' }: GlobalSearchProps) 
     router.push(href);
   }
 
-  // Enter opens the person whose username is exactly what was typed, as the
-  // landing page's old find-by-username field did.
+  // Enter opens the person whose username is exactly what was typed, with or
+  // without its leading `@`, as the landing page's old find-by-username field did.
   function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key !== 'Enter' || loading) return;
-    const exact = users.find((u) => u.username === q.trim().toLowerCase());
+    const exact = users.find((u) => u.username === usernameQuery(q));
     if (exact) go(`/users/${exact.username}`);
   }
 

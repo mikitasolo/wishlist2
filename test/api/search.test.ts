@@ -239,6 +239,43 @@ describe('GET /api/search — the query', () => {
     expect(await usernames('$', null)).toEqual(['$$root']);
     expect(await usernames('$$ROOT', null)).toEqual(['$$root']);
   });
+
+  // People are shown as `@username`, so that's how a handle gets shared.
+  it('matches people without a leading @, exact match included', async () => {
+    const me = await user('searcher');
+    await user('alice');
+    const friend = await user('alicefriend');
+    await befriend(me, friend);
+
+    // The exact match outranks a friend only if it's compared without the @ too.
+    expect(await usernames('@alice', me)).toEqual(['alice', 'alicefriend']);
+    expect(await usernames(' @Alice ', null)).toEqual(['alice', 'alicefriend']);
+  });
+
+  it('finds no people for a bare @, rather than everyone', async () => {
+    await user('alice');
+    await user('bob');
+
+    expect(await usernames('@', null)).toEqual([]);
+    expect(await usernames(' @ ', null)).toEqual([]);
+  });
+
+  it('matches list names as typed, a leading @ included', async () => {
+    const owner = await user('owner');
+    await user('alice');
+    await list('@home', [owner]);
+    await list('Home office', [owner]);
+    await list('Alice birthday', [owner]);
+
+    expect(await listNames('@home', null)).toEqual(['@home']);
+    // A bare @ finds the lists with an @ in their name, and no people.
+    expect(await search('@', null)).toMatchObject({ users: [], wishlists: [{ name: '@home' }] });
+    // "@alice" is a person's handle: it finds them, not a list that only says "alice".
+    expect(await search('@alice', null)).toMatchObject({
+      users: [{ username: 'alice' }],
+      wishlists: [],
+    });
+  });
 });
 
 describe('GET /api/search — ranking', () => {
