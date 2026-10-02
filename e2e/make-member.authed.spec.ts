@@ -102,8 +102,11 @@ for (const variant of [
     // The refresh moved them to Members, where the row offers "Make owner".
     await expect(makeMember).toBeHidden();
     await expect(page.getByRole('button', { name: 'Make owner' })).toBeVisible();
-    // The signed-in user is the only owner left, so they can't leave.
-    await expect(leave).toHaveCount(0);
+    // The signed-in user is the only owner left, so they can't leave: the
+    // header's Leave is gone, and the one left on their own row explains why.
+    await expect(leave).toHaveCount(1);
+    await leave.click();
+    await expect(page.getByRole('alertdialog', { name: "You're the only owner" })).toBeVisible();
   });
 }
 
@@ -133,4 +136,8 @@ test('a failed demotion gives the buttons back, so it can be retried', async ({ 
   await expect(toast(page, 'Owner is now a member')).toBeVisible();
   expect(requests).toBe(2);
   await expect(makeMember).toBeHidden();
+  // Make member goes as soon as the page counts one owner, before the members
+  // refresh lands: wait for that to move them to Members, so the test doesn't
+  // end with the refresh still in the route above.
+  await expect(page.getByRole('button', { name: 'Make owner' })).toBeVisible();
 });

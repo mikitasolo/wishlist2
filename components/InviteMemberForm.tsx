@@ -1,28 +1,58 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react';
 import Icon from './Icon';
 import Avatar from './Avatar';
 import Select from './Select';
 
 type Role = 'owner' | 'member';
 
+export interface InviteMemberFormHandle {
+  /**
+   * Set the form up to invite a co-owner: the Owner role picked, the form
+   * scrolled into view and the cursor in its username field. The sole owner's
+   * "Invite a co-owner" (from Leave on their own row) lands here.
+   */
+  startOwnerInvite(): void;
+}
+
 interface InviteMemberFormProps {
   onInvite: (payload: { username: string; role: Role }) => Promise<void>;
   isInviting: boolean;
+  ref?: Ref<InviteMemberFormHandle>;
 }
 
 /**
  * Invite form — you can only invite people who already have an account, so it
  * searches by username with live, search-style suggestions of matching people.
  */
-export default function InviteMemberForm({ onInvite, isInviting }: InviteMemberFormProps) {
+export default function InviteMemberForm({ onInvite, isInviting, ref }: InviteMemberFormProps) {
   const [value, setValue] = useState('');
   const [role, setRole] = useState<Role>('member');
   const [suggestions, setSuggestions] = useState<{ username: string; image?: string | null }[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [loadingSuggest, setLoadingSuggest] = useState(false);
   const fieldRef = useRef<HTMLDivElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      startOwnerInvite() {
+        setRole('owner');
+        // To its top, so the owner warning the role adds shows below it.
+        // (jsdom has no scrollIntoView or matchMedia.)
+        const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+        cardRef.current?.scrollIntoView?.({
+          block: 'start',
+          behavior: reduceMotion ? 'auto' : 'smooth',
+        });
+        inputRef.current?.focus({ preventScroll: true });
+      },
+    }),
+    []
+  );
 
   // Live username suggestions, from the search endpoint's people section only
   // (`sections=users`), so it doesn't run the wishlist search for nothing.
@@ -75,7 +105,11 @@ export default function InviteMemberForm({ onInvite, isInviting }: InviteMemberF
   const term = value.trim().replace(/^@/, '');
 
   return (
-    <div className="rounded-2xl border border-border bg-surface p-5 shadow-md sm:p-6">
+    // scroll-mt clears the sticky app header (h-14) when it's scrolled to.
+    <div
+      ref={cardRef}
+      className="scroll-mt-20 rounded-2xl border border-border bg-surface p-5 shadow-md sm:p-6"
+    >
       <h2 className="mb-1 text-lg font-semibold text-foreground">Invite someone</h2>
       <p className="mb-4 text-sm text-muted-foreground">
         Search for someone by username. They’ll join this wishlist once they accept.
@@ -102,6 +136,7 @@ export default function InviteMemberForm({ onInvite, isInviting }: InviteMemberF
           <div className="flex h-11 items-center gap-2 rounded-xl border border-border-strong bg-surface px-3.5">
             <Icon name="search" size={16} className="flex-shrink-0 text-muted-foreground" />
             <input
+              ref={inputRef}
               type="text"
               value={value}
               onChange={(e) => {

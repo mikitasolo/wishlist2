@@ -15,7 +15,7 @@ import AppHeader from '@/components/AppHeader';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import Button from '@/components/Button';
 import Icon from '@/components/Icon';
-import InviteMemberForm from '@/components/InviteMemberForm';
+import InviteMemberForm, { type InviteMemberFormHandle } from '@/components/InviteMemberForm';
 import Cover from '@/components/Cover';
 import ShareButton from '@/components/ShareButton';
 import ImageUpload from '@/components/ImageUpload';
@@ -167,6 +167,15 @@ export default function WishlistDetail() {
     username: string;
   } | null>(null);
   const [isDeletingWishlist, setIsDeletingWishlist] = useState(false);
+  // The sole owner's Leave (on their own row in Manage) explains why they can't
+  // and offers the way out instead: invite a co-owner, then leave. Nothing in it
+  // leaves or deletes anything.
+  const [soleOwnerNotice, setSoleOwnerNotice] = useState(false);
+  const inviteFormRef = useRef<InviteMemberFormHandle>(null);
+  // Set by the notice's "Invite a co-owner", so the invite form is set up once
+  // the notice has closed: by then its scroll lock is gone (it puts the page
+  // back where it was) and focus can stay on the form.
+  const inviteOwnerOnClose = useRef(false);
 
   const fetchItemsHook = useFetchItems();
 
@@ -746,6 +755,14 @@ export default function WishlistDetail() {
     }
   }, [wishlistId, ownerRemovals]);
 
+  // Opening Manage reads the owners again too, as it does the members: a
+  // co-owner who accepted an invite since the page loaded then counts, so a
+  // sole owner who invited one (as their Leave's notice says to) can leave
+  // without reloading the page.
+  useEffect(() => {
+    if (isOwner && manageOpen) refreshOwners();
+  }, [isOwner, manageOpen, refreshOwners]);
+
   const confirmKickMember = useCallback(async () => {
     if (
       !wishlistId ||
@@ -879,6 +896,17 @@ export default function WishlistDetail() {
     });
   }, []);
 
+  const inviteCoOwnerInstead = useCallback(() => {
+    inviteOwnerOnClose.current = true;
+    setSoleOwnerNotice(false);
+  }, []);
+
+  useEffect(() => {
+    if (soleOwnerNotice || !inviteOwnerOnClose.current) return;
+    inviteOwnerOnClose.current = false;
+    inviteFormRef.current?.startOwnerInvite();
+  }, [soleOwnerNotice]);
+
   const confirmLeaveWishlist = useCallback(async () => {
     if (!wishlistId || !deleteConfirm || deleteConfirm.type !== 'leave') return;
 
@@ -936,7 +964,8 @@ export default function WishlistDetail() {
   }, [wishlistId, deleteConfirm, router, showToast]);
 
   const ownerCount = owners.ids.length;
-  // A co-owner may step down; the sole owner has to delete the list instead.
+  // A co-owner may step down. The sole owner can't: their Leave in Manage
+  // explains that they'd have to invite a co-owner first, or delete the list.
   const canLeave = isOwner ? ownerCount > 1 : isMember;
 
   // The members endpoint returns one list; the UI shows the two relationships
@@ -1398,7 +1427,13 @@ export default function WishlistDetail() {
         {/* Users Tab */}
         {manageOpen && (
           <div className="space-y-6">
-            {isOwner && <InviteMemberForm onInvite={handleInvite} isInviting={isInviting} />}
+            {isOwner && (
+              <InviteMemberForm
+                ref={inviteFormRef}
+                onInvite={handleInvite}
+                isInviting={isInviting}
+              />
+            )}
 
             {/* Owners and members are two different relationships to the list, not
                 two points on a scale — so they get their own blocks with their own
@@ -1472,9 +1507,13 @@ export default function WishlistDetail() {
                               </button>
                             </>
                           )}
-                          {isCurrentUser && canLeave && (
+                          {/* The sole owner can't leave (a list keeps an owner), so
+                              theirs explains how to instead of asking to confirm. */}
+                          {isCurrentUser && isOwner && (
                             <button
-                              onClick={handleLeaveWishlist}
+                              onClick={
+                                canLeave ? handleLeaveWishlist : () => setSoleOwnerNotice(true)
+                              }
                               className="cursor-pointer whitespace-nowrap rounded-xl px-3 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10 sm:px-4"
                             >
                               Leave
@@ -2028,6 +2067,19 @@ export default function WishlistDetail() {
           pendingText="Leaving..."
           cancelText="Cancel"
           type="danger"
+        />
+      )}
+
+      {soleOwnerNotice && (
+        <ConfirmDialog
+          isOpen={soleOwnerNotice}
+          title="You're the only owner"
+          message="A wishlist needs at least one owner. To leave, invite a co-owner first; once they accept, you can leave. Or delete the wishlist instead."
+          onConfirm={inviteCoOwnerInstead}
+          onCancel={() => setSoleOwnerNotice(false)}
+          confirmText="Invite a co-owner"
+          cancelText="Cancel"
+          type="info"
         />
       )}
 
