@@ -325,7 +325,10 @@ export async function DELETE(
     //  - Invites, whatever their status (accepted/declined rows are only
     //    history for a list that no longer exists).
     //  - Notifications that link to the list, which would now 404 (the
-    //    `wishlist_invite` ones even look actionable).
+    //    `wishlist_invite` ones even look actionable). One that a request
+    //    already past its checks writes after this is taken back by
+    //    `createNotification(s)` (lib/notifications.ts), which re-checks the
+    //    list once it's written.
     //  - Our own uploaded cover image.
     // Reservations and gift logs deliberately stay: they're the gifter's, so
     // they can still see what they claimed and log the gift.

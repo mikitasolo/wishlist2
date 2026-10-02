@@ -1,5 +1,7 @@
 import mongoose from 'mongoose';
 import Notification, { NotificationType } from '@/models/Notification';
+import Wishlist from '@/models/Wishlist';
+import { errorKind } from '@/lib/utils/errorKind';
 
 type Id = string | mongoose.Types.ObjectId;
 
@@ -48,41 +50,87 @@ const ANONYMOUS_TYPES: ReadonlySet<NotificationType> = new Set([
  *  - Everything else (`wishlist_invite`, `invite_accepted`, `proposal_approved`,
  *    `role_changed`, `removed_from_wishlist`) is one row per event; an invite in
  *    particular is actionable on its own.
+ *
+ * A notification about a wishlist is taken back if the list turns out to be
+ * gone once it's written: see `dropIfWishlistGone`.
  */
 export async function createNotification(args: CreateNotificationArgs): Promise<void> {
-  try {
-    if (args.type === 'follow') {
-      await notifyFollow(args);
-    } else if (args.type === 'proposal' && args.wishlist) {
-      await notifyProposal({ ...args, wishlist: args.wishlist });
-    } else {
-      await Notification.create({
-        user: args.user,
-        type: args.type,
-        actorUsername: ANONYMOUS_TYPES.has(args.type) ? null : (args.actorUsername ?? null),
-        wishlist: args.wishlist ?? null,
-        wishlistName: args.wishlistName ?? null,
-        wishlistSlug: args.wishlistSlug ?? null,
-        itemName: args.itemName ?? null,
-        read: false,
-      });
-    }
-  } catch (err) {
-    console.error('Failed to create notification:', err);
-  }
+  await createNotifications([args.user], args);
 }
 
 /**
  * Same notification to several recipients — used to fan an event out to every
  * owner of a co-owned wishlist, so no owner misses a proposal just because
- * someone else created the list. Duplicate ids are collapsed.
+ * someone else created the list. Duplicate ids are collapsed. The list is
+ * re-checked once for the whole fan-out, after every row is written.
  */
 export async function createNotifications(
   users: Id[],
   args: Omit<CreateNotificationArgs, 'user'>
 ): Promise<void> {
-  const unique = Array.from(new Set(users.map((u) => u.toString())));
-  await Promise.all(unique.map((user) => createNotification({ ...args, user })));
+  // `String`, not `.toString()`: a missing recipient must fail in the guarded
+  // write below, which logs it, not throw out of a best-effort side effect.
+  const unique = Array.from(new Set(users.map(String)));
+  const ids = await Promise.all(unique.map((user) => writeNotification({ ...args, user })));
+  const written = ids.filter((id): id is mongoose.Types.ObjectId => id !== null);
+  if (args.wishlist) await dropIfWishlistGone(args.wishlist, written);
+}
+
+/**
+ * Write one notification (or fold it into a coalesced row), and return the id of
+ * the row that now carries it. Null when there's no list notification to
+ * re-check: a follow (which never carries a list) or a failed write, which is
+ * logged and swallowed.
+ */
+async function writeNotification(
+  args: CreateNotificationArgs
+): Promise<mongoose.Types.ObjectId | null> {
+  try {
+    if (args.type === 'follow') {
+      await notifyFollow(args);
+      return null;
+    }
+    if (args.type === 'proposal' && args.wishlist) {
+      return await notifyProposal({ ...args, wishlist: args.wishlist });
+    }
+    const row = await Notification.create({
+      user: args.user,
+      type: args.type,
+      actorUsername: ANONYMOUS_TYPES.has(args.type) ? null : (args.actorUsername ?? null),
+      wishlist: args.wishlist ?? null,
+      wishlistName: args.wishlistName ?? null,
+      wishlistSlug: args.wishlistSlug ?? null,
+      itemName: args.itemName ?? null,
+      read: false,
+    });
+    return row._id;
+  } catch (err) {
+    // By kind only: a validation error quotes the values it refused, the recipient's id included.
+    console.error('Failed to create notification:', errorKind(err));
+    return null;
+  }
+}
+
+/**
+ * Take back the notifications just written about a wishlist if it no longer
+ * exists. Deleting a list (DELETE /api/wishlists/[id]) removes the list and only
+ * then clears its notifications, so a request that was already past its own
+ * checks can write one after that cleanup has run, which would outlive the list
+ * as a link to a 404. Re-reading the list once the row is written closes that: a
+ * list that's still there now can only be deleted later, and that delete's
+ * cleanup takes the row.
+ *
+ * Best-effort, like the write: a failed check or delete is logged by its kind
+ * only, and leaves the notification in place.
+ */
+async function dropIfWishlistGone(wishlist: Id, ids: mongoose.Types.ObjectId[]): Promise<void> {
+  if (ids.length === 0) return;
+  try {
+    if (await Wishlist.exists({ _id: wishlist })) return;
+    await Notification.deleteMany({ _id: { $in: ids }, wishlist });
+  } catch (err) {
+    console.error('Failed to re-check the wishlist of a new notification:', errorKind(err));
+  }
 }
 
 // One conditional upsert: fold into the newest matching row, or insert a fresh
@@ -90,12 +138,14 @@ export async function createNotifications(
 // an empty window can each insert — two rows now and then, which is acceptable.
 // `createdAt` is bumped on purpose, so the row climbs back to the top of the
 // feed; the timestamps plugin strips it from an update without this opt-in.
-// Nothing reads the result, so it comes back lean and as just its id.
+// Only the id of the row written is read (a proposal's, to re-check its list),
+// so it comes back lean, as just its id, and as it is after the write.
 const UPSERT_OPTIONS = {
   upsert: true,
   sort: { createdAt: -1 },
   overwriteImmutable: true,
   projection: { _id: 1 },
+  returnDocument: 'after',
   lean: true,
 } as const;
 
@@ -129,11 +179,13 @@ async function notifyFollow(args: CreateNotificationArgs): Promise<void> {
   );
 }
 
-async function notifyProposal(args: CreateNotificationArgs & { wishlist: Id }): Promise<void> {
+async function notifyProposal(
+  args: CreateNotificationArgs & { wishlist: Id }
+): Promise<mongoose.Types.ObjectId | null> {
   const now = new Date();
   const since = new Date(now.getTime() - COALESCE_WINDOW_MS);
 
-  await Notification.findOneAndUpdate(
+  const row = await Notification.findOneAndUpdate(
     {
       user: args.user,
       type: 'proposal',
@@ -155,4 +207,5 @@ async function notifyProposal(args: CreateNotificationArgs & { wishlist: Id }): 
     },
     UPSERT_OPTIONS
   );
+  return row?._id ?? null;
 }
