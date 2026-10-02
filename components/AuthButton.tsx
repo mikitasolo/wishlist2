@@ -107,10 +107,14 @@ export default function AuthButton() {
     const image = session.user.image || null;
     const displayName = username || email.split('@')[0];
     return (
-      <div className="relative" ref={containerRef}>
+      <div className="relative min-w-0" ref={containerRef}>
+        {/* Below `sm` it's just the avatar, a 40px circle the size of the
+            header's other buttons, so the header fits a 320px phone. From `sm`
+            up it can shrink, truncating the name (see AppHeader). The
+            aria-label names it either way. */}
         <button
           onClick={() => setOpen((v) => !v)}
-          className="flex items-center gap-1.5 rounded-full py-1 pl-1 pr-2 text-sm font-semibold text-foreground transition-colors hover:bg-muted"
+          className="flex max-w-full items-center gap-1.5 rounded-full p-1 text-sm font-semibold text-foreground transition-colors hover:bg-muted sm:pr-2"
           aria-label={`Account menu${hasInvites ? ' — new invitations' : ''}`}
           aria-haspopup="menu"
           aria-expanded={open}
@@ -124,11 +128,11 @@ export default function AuthButton() {
               />
             )}
           </span>
-          <span className="max-w-[10rem] truncate">{displayName}</span>
+          <span className="hidden max-w-[10rem] truncate sm:block">{displayName}</span>
           <Icon
             name="chevron-down"
             size={15}
-            className={`text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`}
+            className={`hidden text-muted-foreground transition-transform sm:block ${open ? 'rotate-180' : ''}`}
           />
         </button>
 

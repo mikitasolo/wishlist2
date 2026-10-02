@@ -18,6 +18,13 @@ interface AppHeaderProps {
 
 /**
  * Sticky, frosted-glass application shell header used across all pages.
+ *
+ * Below `sm` it has to fit a 320px phone, so the brand is just its logo there
+ * (the link keeps its accessible name) and `AuthButton` just its avatar, beside
+ * the round 40px search, New wishlist and bell buttons. None of those can
+ * shrink, so a new action has to fit in what's left at 320px
+ * (`e2e/header-mobile.authed.spec.ts`). From `sm` up the account button shrinks
+ * instead, truncating the name, when the open search needs the room.
  */
 export default function AppHeader({ actions, search = true }: AppHeaderProps) {
   const { data: session } = useSession();
@@ -32,9 +39,11 @@ export default function AppHeader({ actions, search = true }: AppHeaderProps) {
           aria-label="Wishlist home"
         >
           <Logo className="h-8 w-8 rounded-[9px] shadow-[0_4px_12px_-3px_rgba(94,92,230,0.6)] transition-transform group-hover:scale-105" />
-          <span className="text-[17px] font-semibold tracking-tight text-foreground">Wishlist</span>
+          <span className="hidden text-[17px] font-semibold tracking-tight text-foreground sm:inline">
+            Wishlist
+          </span>
         </Link>
-        <div className="flex items-center gap-2 sm:gap-3">
+        <div className="flex min-w-0 items-center gap-2 sm:gap-3">
           {search && <GlobalSearch />}
           {session?.user && (
             <button
