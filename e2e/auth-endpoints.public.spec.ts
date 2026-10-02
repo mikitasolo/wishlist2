@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures';
 
 // regression: WIS-156. Every /api/auth/* route and /api/upload answered 500
 // on Vercel because their modules loaded sharp, whose native libvips was

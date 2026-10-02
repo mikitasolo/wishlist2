@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures';
 import { FRIEND_SESSION_TOKEN, MAGIC_LINKS, magicLinkPath } from './magicLinks';
 
 // Signing in by following a magic link (seeded by global-setup) through

@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures';
 
 // Signed-in smoke tests (session cookie from global-setup). If the seeded
 // session weren't accepted, the auth-gated pages would redirect home and these

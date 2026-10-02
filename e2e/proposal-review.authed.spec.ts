@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, failedRequest } from './fixtures';
 import type { ApiItem } from '../types/api';
 
 // The seeded owner list has no proposals, so one is added to the items GET in
@@ -18,7 +18,14 @@ const RATE_LIMITED = 'Too many requests. Please slow down.';
 // in the list, so the owner believed a proposal was published when it wasn't.
 test('regression: a failed approve shows the error and leaves the item proposed', async ({
   page,
+  consoleErrors,
 }) => {
+  // The rate-limited approve, and the app's log lines for it.
+  consoleErrors.allow(
+    failedRequest(new RegExp(`/api/items/${proposal._id}`)),
+    /^Error updating item: /,
+    /^Error submitting form: /
+  );
   let listServed = false;
   await page.route('**/api/wishlists/*/items', async (route) => {
     if (route.request().method() !== 'GET') return route.fallback();

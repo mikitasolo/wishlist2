@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures';
 import type { ApiItem } from '../types/api';
 
 // "Save to my list" from a friend's list into one of your own. The friend's

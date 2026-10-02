@@ -1,4 +1,5 @@
-import { test, expect, type Locator, type Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
+import { test, expect, failedRequest } from './fixtures';
 
 // The seeded list has one owner, and "Make member" only shows on a co-owner's
 // row when there's more than one. So a co-owner is added in the browser, to the
@@ -110,7 +111,12 @@ for (const variant of [
   });
 }
 
-test('a failed demotion gives the buttons back, so it can be retried', async ({ page }) => {
+test('a failed demotion gives the buttons back, so it can be retried', async ({
+  page,
+  consoleErrors,
+}) => {
+  // The demotion failed on purpose (the page only toasts it).
+  consoleErrors.allow(failedRequest(new RegExp(`/api/wishlists/[^/]+/owners/${coOwnerId}`)));
   let requests = 0;
   let demoted = false;
   await addCoOwner(page, () => demoted);

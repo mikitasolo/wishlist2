@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures';
 
 // The seeded user is the only owner of e2e-birthday. Nothing here writes: the
 // explanation leaves nothing, and no invite is sent. A phone-sized window, so

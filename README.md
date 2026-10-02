@@ -121,7 +121,7 @@ Tests live in `test/` and run on Vitest:
 - `test/unit/**` — pure logic and Zod schemas (currency, slugs, filters, validation, …)
 - `test/components/**` — React Testing Library (jsdom)
 - `test/api/**` — route handlers against an in-memory MongoDB with a mocked session
-- `e2e/**` — Playwright end-to-end smoke tests (`npm run test:e2e`). `global-setup` boots an ephemeral MongoDB, seeds a signed-in user (owner of one list, member of another) and a few unused magic links for the sign-up specs, builds and starts the app — no external services needed. Public and signed-in flows run as separate projects.
+- `e2e/**` — Playwright end-to-end smoke tests (`npm run test:e2e`). `global-setup` boots an ephemeral MongoDB, seeds a signed-in user (owner of one list, member of another) and a few unused magic links for the sign-up specs, builds and starts the app — no external services needed. Public and signed-in flows run as separate projects. Specs import `test` from `e2e/fixtures.ts`, which fails any spec whose pages throw an uncaught error or log a `console.error` that isn't allowed.
 
 **Every change that touches logic should add or update tests, and every bug fix should add a regression test.** See [AGENTS.md](AGENTS.md) for the full policy, the API-test harness pattern, and the domain invariants that must not regress.
 

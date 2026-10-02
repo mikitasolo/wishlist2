@@ -1,4 +1,5 @@
-import { test, expect, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { test, expect } from './fixtures';
 
 // The prompt's suggestion comes from the browser's time zone. The seeded user
 // is on USD and hasn't answered it yet. Like the sign-up specs' magic links,
