@@ -9,6 +9,8 @@ import WishlistCard from '@/components/WishlistCard';
 import Icon from '@/components/Icon';
 import { SkeletonGrid } from '@/components/Skeleton';
 import { useToast } from '@/components/ToastProvider';
+import { useLocalToday } from '@/lib/hooks/useLocalToday';
+import { sortByUpcomingOccasion } from '@/lib/utils/occasion';
 import { IWishlist } from '@/models/Wishlist';
 
 type Wishlist = IWishlist & {
@@ -40,8 +42,25 @@ export default function MyWishlistsPage() {
       .finally(() => setLoading(false));
   }, [status, showToast]);
 
-  const active = useMemo(() => owned.filter((w) => !w.archived), [owned]);
-  const archived = useMemo(() => owned.filter((w) => w.archived), [owned]);
+  // In each section, the lists with an occasion coming up go first, nearest
+  // first; the rest keep the API's order (newest first).
+  const today = useLocalToday();
+  const active = useMemo(
+    () =>
+      sortByUpcomingOccasion(
+        owned.filter((w) => !w.archived),
+        today
+      ),
+    [owned, today]
+  );
+  const archived = useMemo(
+    () =>
+      sortByUpcomingOccasion(
+        owned.filter((w) => w.archived),
+        today
+      ),
+    [owned, today]
+  );
 
   return (
     <div className="min-h-screen">

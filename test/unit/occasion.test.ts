@@ -19,6 +19,7 @@ import {
   sameOccasion,
   setDraftMonth,
   setDraftYearly,
+  sortByUpcomingOccasion,
   YEARLY_PLACEHOLDER_YEAR,
   type Occasion,
   type OccasionDraft,
@@ -290,6 +291,102 @@ describe('occasionSortKey', () => {
       (a, b) => occasionSortKey(a.occasion, today) - occasionSortKey(b.occasion, today)
     );
     expect(sorted.map((l) => l.name)).toEqual(['sooner', 'soon', 'none', 'passed']);
+  });
+});
+
+describe('sortByUpcomingOccasion', () => {
+  const today = '2026-10-02';
+  const yearly = (date: string): Occasion => ({ kind: 'birthday', date, recurrence: 'yearly' });
+  const once = (date: string): Occasion => ({ kind: 'wedding', date, recurrence: null });
+  type Listed = { name: string; occasion?: Occasion | null };
+  const names = (lists: Listed[]) => lists.map((l) => l.name);
+
+  it('puts the nearest next occurrence first, today before tomorrow', () => {
+    const lists: Listed[] = [
+      { name: 'christmas', occasion: yearly('2000-12-25') }, // in 84 days
+      { name: 'wedding', occasion: once('2026-11-07') }, // in 36 days
+      { name: 'tomorrow', occasion: yearly('2000-10-03') },
+      { name: 'today', occasion: once('2026-10-02') },
+    ];
+    expect(names(sortByUpcomingOccasion(lists, today))).toEqual([
+      'today',
+      'tomorrow',
+      'wedding',
+      'christmas',
+    ]);
+  });
+
+  it("rolls a yearly occasion that has passed this year over to next year's", () => {
+    const lists: Listed[] = [
+      { name: 'last week', occasion: yearly('2000-09-25') }, // next on 2027-09-25
+      { name: 'new year', occasion: yearly('2000-01-01') }, // 2027-01-01, in 91 days
+      { name: 'march wedding', occasion: once('2027-03-01') }, // in 150 days
+    ];
+    expect(names(sortByUpcomingOccasion(lists, today))).toEqual([
+      'new year',
+      'march wedding',
+      'last week',
+    ]);
+
+    // On New Year's Eve, Jan 1 is tomorrow and this Christmas has gone.
+    const yearEnd: Listed[] = [
+      { name: 'christmas', occasion: yearly('2000-12-25') },
+      { name: 'new year', occasion: yearly('2000-01-01') },
+    ];
+    expect(names(sortByUpcomingOccasion(yearEnd, '2026-12-31'))).toEqual(['new year', 'christmas']);
+  });
+
+  it('puts lists with no occasion, and passed one-offs, last, in the order they came in', () => {
+    const lists: Listed[] = [
+      { name: 'none', occasion: null },
+      { name: 'passed', occasion: once('2026-06-12') },
+      { name: 'soon', occasion: yearly('2000-10-14') },
+      { name: 'legacy' }, // saved before occasions existed: no field at all
+      { name: 'passed yesterday', occasion: once('2026-10-01') },
+      { name: 'none again', occasion: null },
+    ];
+    expect(names(sortByUpcomingOccasion(lists, today))).toEqual([
+      'soon',
+      'none',
+      'passed',
+      'legacy',
+      'passed yesterday',
+      'none again',
+    ]);
+  });
+
+  it('keeps lists that fall on the same day in the order they came in', () => {
+    const lists: Listed[] = [
+      { name: 'b', occasion: yearly('2000-10-14') },
+      { name: 'a', occasion: once('2026-10-14') },
+      { name: 'c', occasion: { kind: 'holiday', date: '2000-10-14', recurrence: 'yearly' } },
+      { name: 'first', occasion: yearly('2000-10-05') },
+    ];
+    expect(names(sortByUpcomingOccasion(lists, today))).toEqual(['first', 'b', 'a', 'c']);
+
+    // A long list too, where an unstable sort would be most likely to shuffle them.
+    const many: Listed[] = Array.from({ length: 40 }, (_, i) => ({
+      name: `list ${i}`,
+      occasion: i % 3 === 0 ? yearly('2000-10-14') : null,
+    }));
+    const sorted = names(sortByUpcomingOccasion(many, today));
+    const inOrder = (pick: (i: number) => boolean) => names(many.filter((_, i) => pick(i)));
+    expect(sorted).toEqual([...inOrder((i) => i % 3 === 0), ...inOrder((i) => i % 3 !== 0)]);
+  });
+
+  it('keeps the order as it is while today is not known, and never changes its input', () => {
+    const lists: Listed[] = [
+      { name: 'none', occasion: null },
+      { name: 'soon', occasion: yearly('2000-10-14') },
+    ];
+    const before = [...lists];
+
+    const unknown = sortByUpcomingOccasion(lists, null);
+    expect(names(unknown)).toEqual(['none', 'soon']);
+    expect(unknown).not.toBe(lists);
+
+    expect(names(sortByUpcomingOccasion(lists, today))).toEqual(['soon', 'none']);
+    expect(lists).toEqual(before);
   });
 });
 

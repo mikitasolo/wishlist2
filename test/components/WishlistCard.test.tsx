@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import type { ComponentProps, ReactNode } from 'react';
 
@@ -13,6 +13,7 @@ vi.mock('next/link', () => ({
 
 import WishlistCard from '@/components/WishlistCard';
 import { coverGradient } from '@/lib/utils/cover';
+import { formatCalendarDate, type Occasion } from '@/lib/utils/occasion';
 
 type CardWishlist = ComponentProps<typeof WishlistCard>['wishlist'];
 
@@ -65,5 +66,49 @@ describe('WishlistCard — cover', () => {
     expect(coverOf(container).style.background).toBe(placeholderOf('w1'));
     // The badges on the band are still there.
     expect(screen.getByText('Public')).toBeInTheDocument();
+  });
+});
+
+describe('WishlistCard — occasion', () => {
+  // As stored: a yearly occasion's year is the placeholder, which must never show.
+  const BIRTHDAY: Occasion = { kind: 'birthday', date: '2000-10-14', recurrence: 'yearly' };
+
+  beforeEach(() => {
+    // Local noon on Oct 2, 2026, so the local date is that day in any time zone.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 9, 2, 12));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('shows the occasion and its countdown on the cover, with the other badges', () => {
+    const { container } = render(
+      <WishlistCard wishlist={wishlist({ occasion: BIRTHDAY, featured: true })} />
+    );
+    const label = screen.getByText('Birthday · in 12 days');
+    expect(label.tagName).toBe('TIME');
+    expect(label).toHaveAttribute('dateTime', '2026-10-14');
+    expect(coverOf(container)).toContainElement(label);
+    expect(screen.getByText('Featured')).toBeInTheDocument();
+    expect(screen.getByText('Public')).toBeInTheDocument();
+    // Not the placeholder year, anywhere on the card.
+    expect(container.innerHTML).not.toContain('2000');
+  });
+
+  it('shows a one-off that has passed as its kind and date, as the header does', () => {
+    const wedding: Occasion = { kind: 'wedding', date: '2026-06-12', recurrence: null };
+    render(<WishlistCard wishlist={wishlist({ occasion: wedding })} />);
+    expect(screen.getByText(`Wedding · ${formatCalendarDate('2026-06-12')}`)).toBeInTheDocument();
+  });
+
+  it('shows nothing for a list without one, or one saved before occasions existed', () => {
+    for (const occasion of [null, undefined]) {
+      const { container, unmount } = render(<WishlistCard wishlist={wishlist({ occasion })} />);
+      expect(container.querySelector('time')).toBeNull();
+      expect(container).not.toHaveTextContent('·');
+      unmount();
+    }
   });
 });

@@ -16,6 +16,10 @@ const LAYOUT = 'inline-flex flex-shrink-0 items-center gap-1 whitespace-nowrap';
 const PILL =
   'rounded-full border border-border bg-surface px-2.5 py-1 text-xs font-semibold text-foreground shadow-xs';
 
+/** The look over a cover image, like the other badges on a list's card. Add the position. */
+export const OCCASION_ON_COVER =
+  'rounded-full border border-white/25 bg-white/20 px-2.5 py-1 text-[11.5px] font-semibold text-white backdrop-blur-md';
+
 /**
  * A list's occasion with its countdown, e.g. "Birthday · in 12 days", for
  * whoever can see the list. Nothing for a list without one.
