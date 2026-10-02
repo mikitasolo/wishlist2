@@ -265,6 +265,24 @@ describe('updateProfileSchema', () => {
     expect(ok.success && ok.data.username).toBe('john_doe');
     expect(updateProfileSchema.safeParse({ username: 'ab' }).success).toBe(false);
   });
+  // The settings page sends only the privacy settings it changed, and the route
+  // writes only those, so the schema mustn't fill in the others.
+  it.each([{ searchable: false }, { whoCanInvite: 'nobody' }, { profileVisibility: 'friends' }])(
+    'accepts a single privacy setting, and adds none it was not sent (%o)',
+    (privacy) => {
+      const ok = updateProfileSchema.safeParse({ privacy });
+      expect(ok.success && ok.data).toEqual({ privacy });
+    }
+  );
+  it('refuses a privacy setting outside its options', () => {
+    expect(updateProfileSchema.safeParse({ privacy: { whoCanInvite: 'admins' } }).success).toBe(
+      false
+    );
+    expect(
+      updateProfileSchema.safeParse({ privacy: { profileVisibility: 'nobody' } }).success
+    ).toBe(false);
+    expect(updateProfileSchema.safeParse({ privacy: { searchable: 'no' } }).success).toBe(false);
+  });
 });
 
 describe('inviteMemberSchema', () => {

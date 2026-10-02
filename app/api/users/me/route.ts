@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import connectDB from '@/lib/mongodb';
-import User, { type IUser } from '@/models/User';
+import User, { type IUser, type IUserPrivacy } from '@/models/User';
 import Follow from '@/models/Follow';
 import { updateProfileSchema, validateRequestBody } from '@/lib/validations';
 import { isReservedUsername } from '@/lib/utils/username';
@@ -45,7 +45,19 @@ export async function GET() {
   }
 }
 
-// PATCH /api/users/me - update username and/or privacy settings
+/**
+ * What a save writes: each field it was sent that changes the profile, and each
+ * privacy setting it was sent by its own dotted path (`privacy.searchable`).
+ */
+type ProfileWrite = Partial<Pick<IUser, 'username' | 'image' | 'bio' | 'defaultCurrency'>> & {
+  [K in keyof IUserPrivacy as `privacy.${K}`]?: IUserPrivacy[K];
+};
+
+// PATCH /api/users/me - update the profile and privacy settings it's sent. The
+// settings page sends only what its form changed (`profileChanges`,
+// lib/utils/profileSettings.ts), and only that is written: a field left out
+// keeps what the profile has by then, even if another tab saved it after the
+// read below.
 export async function PATCH(request: NextRequest) {
   try {
     const session = await auth();
@@ -73,9 +85,7 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ success: false, error: FOREIGN_IMAGE_ERROR }, { status: 400 });
     }
 
-    const changes: Partial<
-      Pick<IUser, 'username' | 'image' | 'bio' | 'defaultCurrency' | 'privacy'>
-    > = {};
+    const changes: ProfileWrite = {};
 
     if (username && username !== user.username) {
       if (isReservedUsername(username)) {
@@ -109,56 +119,60 @@ export async function PATCH(request: NextRequest) {
       changes.defaultCurrency = defaultCurrency;
     }
 
-    if (privacy) {
-      changes.privacy = {
-        searchable: privacy.searchable ?? user.privacy?.searchable ?? true,
-        whoCanInvite: privacy.whoCanInvite ?? user.privacy?.whoCanInvite ?? 'everyone',
-        profileVisibility:
-          privacy.profileVisibility ?? user.privacy?.profileVisibility ?? 'everyone',
-      };
+    // Each privacy setting it's sent, on its own: never the whole `privacy`
+    // object rebuilt from the read above, which would write back a setting it
+    // wasn't sent as that read saw it, undoing another tab's change landing in
+    // between (making the profile friends-only, say).
+    if (privacy?.searchable !== undefined) {
+      changes['privacy.searchable'] = privacy.searchable;
+    }
+    if (privacy?.whoCanInvite !== undefined) {
+      changes['privacy.whoCanInvite'] = privacy.whoCanInvite;
+    }
+    if (privacy?.profileVisibility !== undefined) {
+      changes['privacy.profileVisibility'] = privacy.profileVisibility;
     }
 
-    // One write, so an edit that replaces or clears the avatar can free the one
-    // it replaced: the write hands back the profile as it was just before it
-    // landed. Two tabs replacing the avatar at once both read the same one, and
-    // freeing that read leaves the other tab's upload behind, never freed.
-    const replacesAvatar = changes.image !== undefined;
-    const written = await User.findOneAndUpdate(
+    // One write, which hands back the profile as it was just before it landed,
+    // so what follows works from what it replaced, not from the read above. Two
+    // tabs replacing the avatar at once both read the same one, and freeing that
+    // read leaves the other tab's upload behind, never freed.
+    const before = await User.findOneAndUpdate(
       { _id: user._id },
       { $set: changes },
-      { returnDocument: replacesAvatar ? 'before' : 'after', runValidators: true }
+      { returnDocument: 'before', runValidators: true }
     );
-    if (!written) {
+    if (!before) {
       return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
     }
 
     // Their profile's share card shows the username, avatar and (unless the
     // profile is friends-only) the bio, and their lists' cards the username, so
     // a change to any of them drops those cards now that it has landed. Compared
-    // with the read above, since the settings form sends the bio and every
-    // privacy setting with each save.
+    // with what the write replaced: a value it was sent may be one the profile
+    // already had (an older tab's save sends every privacy setting), and one
+    // another tab wrote after the read above is what a card may show by now.
+    const visibility = changes['privacy.profileVisibility'];
     const cardChanged =
-      changes.username !== undefined ||
-      changes.image !== undefined ||
-      (changes.bio !== undefined && changes.bio !== (user.bio ?? null)) ||
-      (changes.privacy !== undefined &&
-        changes.privacy.profileVisibility !== (user.privacy?.profileVisibility ?? 'everyone'));
+      (changes.username !== undefined && changes.username !== before.username) ||
+      (changes.image !== undefined && !isSameImage(changes.image, before.image)) ||
+      (changes.bio !== undefined && changes.bio !== (before.bio ?? null)) ||
+      (visibility !== undefined &&
+        visibility !== (before.privacy?.profileVisibility ?? 'everyone'));
     if (cardChanged) await purgeShareCards({ userIds: [session.user.id] });
 
-    let saved = written;
-    if (replacesAvatar) {
-      // An avatar has exactly one legitimate uploader, its user, so check that
-      // here as well as on write: it keeps a foreign blob URL saved before the
-      // write check existed from being freed. (Item images and banners can carry
-      // a co-owner's or proposer's upload, so they rely on the write check.)
-      if (isUploadedBy(written.image, session.user.id)) {
-        await freeReplacedImage(written.image, changes.image);
-      }
-      const now = await User.findById(user._id);
-      if (!now) {
-        return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
-      }
-      saved = now;
+    // An avatar has exactly one legitimate uploader, its user, so check that
+    // here as well as on write: it keeps a foreign blob URL saved before the
+    // write check existed from being freed. (Item images and banners can carry
+    // a co-owner's or proposer's upload, so they rely on the write check.)
+    if (changes.image !== undefined && isUploadedBy(before.image, session.user.id)) {
+      await freeReplacedImage(before.image, changes.image);
+    }
+
+    // The profile as it is now, which the settings form refills from.
+    const saved = await User.findById(user._id);
+    if (!saved) {
+      return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
     }
 
     return NextResponse.json(

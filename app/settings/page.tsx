@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import AppHeader from '@/components/AppHeader';
@@ -14,22 +14,13 @@ import UsernameField from '@/components/UsernameField';
 import { currencySelectOptions } from '@/lib/utils/currencies';
 import { useUsernameAvailability } from '@/lib/hooks/useUsernameAvailability';
 import { useToast } from '@/components/ToastProvider';
-
-type InvitePolicy = 'everyone' | 'friends' | 'nobody';
-type ProfileVisibility = 'everyone' | 'friends';
-
-interface Profile {
-  email: string;
-  username: string;
-  image: string | null;
-  bio: string;
-  defaultCurrency: string;
-  privacy: {
-    searchable: boolean;
-    whoCanInvite: InvitePolicy;
-    profileVisibility: ProfileVisibility;
-  };
-}
+import {
+  profileChanges,
+  profileSettings,
+  rebaseProfileForm,
+  type ProfileSettings,
+} from '@/lib/utils/profileSettings';
+import type { InvitePolicy, ProfileVisibility } from '@/models/User';
 
 export default function SettingsPage() {
   const { status, update } = useSession();
@@ -38,15 +29,37 @@ export default function SettingsPage() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [initial, setInitial] = useState<Profile | null>(null);
-  const [username, setUsername] = useState('');
-  const [image, setImage] = useState<string | null>(null);
-  const [bio, setBio] = useState('');
-  const [defaultCurrency, setDefaultCurrency] = useState('USD');
-  const [searchable, setSearchable] = useState(true);
-  const [whoCanInvite, setWhoCanInvite] = useState<InvitePolicy>('everyone');
-  const [profileVisibility, setProfileVisibility] = useState<ProfileVisibility>('everyone');
-  const availability = useUsernameAvailability(username, initial?.username ?? null);
+  const [email, setEmail] = useState('');
+  // The form, and the profile as it was last filled from it (`saved`, null
+  // until it has loaded). A save sends only what the form changed from `saved`
+  // (`profileChanges`), so it can't undo a setting saved from another tab in
+  // the meantime. Kept together, so a reload or a save's answer can refill the
+  // form and move its baseline in one update (`refill`).
+  const [settings, setSettings] = useState<{
+    form: ProfileSettings;
+    saved: ProfileSettings | null;
+  }>(() => ({ form: profileSettings({}), saved: null }));
+  const { form, saved } = settings;
+  // Onto the form as it is by then: a photo upload can finish after the render
+  // that started it.
+  const edit = useCallback((change: Partial<ProfileSettings>) => {
+    setSettings((s) => ({ ...s, form: { ...s.form, ...change } }));
+  }, []);
+  // Take in the profile as the server now has it. Every field not edited since
+  // `base` (by default: since the form was last filled) shows the profile's
+  // value, and the next save diffs against it.
+  const refill = useCallback((profile: ProfileSettings, base?: ProfileSettings) => {
+    setSettings((s) => ({
+      form: s.saved ? rebaseProfileForm(s.form, base ?? s.saved, profile) : profile,
+      saved: profile,
+    }));
+  }, []);
+  // Saves sent so far, and whether one is in flight. A reload sent before a
+  // save, or while one is in flight, may have read the profile from before that
+  // save's write: taken in once the save has answered, it would put back what
+  // the save replaced. So it's dropped, and the save's own answer stands.
+  const saves = useRef({ sent: 0, inFlight: false });
+  const availability = useUsernameAvailability(form.username, saved?.username ?? null);
 
   useEffect(() => {
     if (status === 'unauthenticated') router.push('/');
@@ -54,30 +67,14 @@ export default function SettingsPage() {
 
   useEffect(() => {
     async function load() {
+      const { sent, inFlight } = saves.current;
       try {
         const res = await fetch('/api/users/me', { cache: 'no-store' });
         const result = await res.json();
-        if (result.success) {
-          const p: Profile = {
-            email: result.data.email,
-            username: result.data.username || '',
-            image: result.data.image ?? null,
-            bio: result.data.bio ?? '',
-            defaultCurrency: result.data.defaultCurrency ?? 'USD',
-            privacy: {
-              searchable: result.data.privacy?.searchable ?? true,
-              whoCanInvite: result.data.privacy?.whoCanInvite ?? 'everyone',
-              profileVisibility: result.data.privacy?.profileVisibility ?? 'everyone',
-            },
-          };
-          setInitial(p);
-          setUsername(p.username);
-          setImage(p.image);
-          setBio(p.bio);
-          setDefaultCurrency(p.defaultCurrency);
-          setSearchable(p.privacy.searchable);
-          setWhoCanInvite(p.privacy.whoCanInvite);
-          setProfileVisibility(p.privacy.profileVisibility);
+        if (result.success && !inFlight && saves.current.sent === sent) {
+          setEmail(result.data.email);
+          // Edits not saved yet stay in the form.
+          refill(profileSettings(result.data));
         }
       } catch {
         showToast('Failed to load settings', 'error');
@@ -86,59 +83,54 @@ export default function SettingsPage() {
       }
     }
     if (status === 'authenticated') load();
-  }, [status, showToast]);
+  }, [status, showToast, refill]);
 
-  const imageChanged = !!initial && (image ?? null) !== (initial.image ?? null);
-  const bioChanged = !!initial && bio.trim() !== initial.bio;
-  const currencyChanged = !!initial && defaultCurrency !== initial.defaultCurrency;
-  const dirty =
-    !!initial &&
-    (username.toLowerCase() !== initial.username ||
-      imageChanged ||
-      bioChanged ||
-      currencyChanged ||
-      searchable !== initial.privacy.searchable ||
-      whoCanInvite !== initial.privacy.whoCanInvite ||
-      profileVisibility !== initial.privacy.profileVisibility);
-
-  const usernameChanged = !!initial && username.toLowerCase() !== initial.username;
+  const changes = saved ? profileChanges(form, saved) : {};
+  const dirty = Object.keys(changes).length > 0;
+  const usernameChanged = changes.username !== undefined;
   const canSave = dirty && !saving && (!usernameChanged || availability === 'ok');
 
   async function handleSave() {
     if (!canSave) return;
+    // Only the settings changed here go, so one saved from another tab since
+    // the form was filled stays as that tab left it.
+    const sent = form;
     setSaving(true);
+    saves.current = { sent: saves.current.sent + 1, inFlight: true };
     try {
-      const body: Record<string, unknown> = {
-        privacy: { searchable, whoCanInvite, profileVisibility },
-      };
-      if (usernameChanged) body.username = username.toLowerCase();
-      if (imageChanged) body.image = image ?? '';
-      if (bioChanged) body.bio = bio.trim();
-      if (currencyChanged) body.defaultCurrency = defaultCurrency;
-
       const res = await fetch('/api/users/me', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify(changes),
       });
       const result = await res.json();
+      // Before the session refresh below, whose reload is then read after
+      // this save.
+      saves.current.inFlight = false;
       if (result.success) {
         showToast('Settings saved', 'success');
-        setInitial({
-          email: result.data.email,
-          username: result.data.username,
-          image: result.data.image ?? null,
-          bio: result.data.bio ?? '',
-          defaultCurrency: result.data.defaultCurrency ?? 'USD',
-          privacy: result.data.privacy,
-        });
-        if (usernameChanged || imageChanged || currencyChanged) await update();
+        setEmail(result.data.email);
+        // Refill the form from the profile as saved: what was sent, and
+        // another tab's change to anything that wasn't. The next save then
+        // diffs against that, not the first load.
+        refill(profileSettings(result.data), sent);
+        if (
+          changes.username !== undefined ||
+          changes.image !== undefined ||
+          changes.defaultCurrency !== undefined
+        ) {
+          // The header shows the new name, photo or currency once the session
+          // is read again. A refresh that fails only delays that, so it
+          // doesn't fail a save that has landed.
+          await update().catch(() => null);
+        }
       } else {
         showToast(result.error || 'Failed to save settings', 'error');
       }
     } catch {
       showToast('Failed to save settings', 'error');
     } finally {
+      saves.current.inFlight = false;
       setSaving(false);
     }
   }
@@ -170,10 +162,19 @@ export default function SettingsPage() {
 
           <div className="mb-5">
             <span className="mb-1.5 block text-sm font-medium text-foreground">Profile photo</span>
-            <ImageUpload value={image} onChange={setImage} disabled={saving} circle />
+            <ImageUpload
+              value={form.image}
+              onChange={(image) => edit({ image })}
+              disabled={saving}
+              circle
+            />
           </div>
 
-          <UsernameField value={username} onChange={setUsername} availability={availability} />
+          <UsernameField
+            value={form.username}
+            onChange={(username) => edit({ username })}
+            availability={availability}
+          />
 
           <div className="mt-5">
             <label htmlFor="bio" className="mb-1.5 block text-sm font-medium text-foreground">
@@ -181,14 +182,14 @@ export default function SettingsPage() {
             </label>
             <textarea
               id="bio"
-              value={bio}
-              onChange={(e) => setBio(e.target.value.slice(0, 300))}
+              value={form.bio}
+              onChange={(e) => edit({ bio: e.target.value.slice(0, 300) })}
               rows={3}
               maxLength={300}
               placeholder="Tell people about your hobbies, interests, and passions…"
               className="w-full resize-none rounded-xl border border-border-strong bg-surface px-4 py-2.5 text-[15px] outline-none"
             />
-            <p className="mt-1 text-right text-xs text-muted-foreground">{bio.length}/300</p>
+            <p className="mt-1 text-right text-xs text-muted-foreground">{form.bio.length}/300</p>
           </div>
 
           <div className="mt-5">
@@ -196,8 +197,8 @@ export default function SettingsPage() {
               Default currency
             </label>
             <Select
-              value={defaultCurrency}
-              onChange={setDefaultCurrency}
+              value={form.defaultCurrency}
+              onChange={(defaultCurrency) => edit({ defaultCurrency })}
               options={currencySelectOptions}
               ariaLabel="Default currency"
               size="md"
@@ -211,7 +212,7 @@ export default function SettingsPage() {
 
           <div className="mt-5 border-t border-border pt-4">
             <span className="text-sm font-medium text-foreground">Email</span>
-            <p className="mt-0.5 text-sm text-muted-foreground">{initial?.email}</p>
+            <p className="mt-0.5 text-sm text-muted-foreground">{email}</p>
           </div>
         </section>
 
@@ -223,16 +224,17 @@ export default function SettingsPage() {
           <Toggle
             label="Searchable"
             description="Let people find your profile by searching your username."
-            checked={searchable}
-            onChange={setSearchable}
+            checked={form.searchable}
+            onChange={(searchable) => edit({ searchable })}
           />
 
           <div className="mt-6">
             <p className="text-sm font-medium text-foreground">Who can invite you to wishlists</p>
             <div className="mt-2">
               <Segmented
-                value={whoCanInvite}
-                onChange={(v) => setWhoCanInvite(v as InvitePolicy)}
+                ariaLabel="Who can invite you to wishlists"
+                value={form.whoCanInvite}
+                onChange={(v) => edit({ whoCanInvite: v as InvitePolicy })}
                 options={[
                   { value: 'everyone', label: 'Everyone' },
                   { value: 'friends', label: 'Friends' },
@@ -250,8 +252,9 @@ export default function SettingsPage() {
             </p>
             <div className="mt-2">
               <Segmented
-                value={profileVisibility}
-                onChange={(v) => setProfileVisibility(v as ProfileVisibility)}
+                ariaLabel="Who can see your wishlists"
+                value={form.profileVisibility}
+                onChange={(v) => edit({ profileVisibility: v as ProfileVisibility })}
                 options={[
                   { value: 'everyone', label: 'Everyone' },
                   { value: 'friends', label: 'Friends' },
@@ -272,10 +275,12 @@ export default function SettingsPage() {
 }
 
 function Segmented({
+  ariaLabel,
   value,
   onChange,
   options,
 }: {
+  ariaLabel: string;
   value: string;
   onChange: (v: string) => void;
   options: { value: string; label: string }[];
@@ -286,7 +291,11 @@ function Segmented({
     options.findIndex((o) => o.value === value)
   );
   return (
-    <div className="relative inline-flex w-full max-w-sm rounded-xl border border-border bg-surface-2 p-1">
+    <div
+      role="group"
+      aria-label={ariaLabel}
+      className="relative inline-flex w-full max-w-sm rounded-xl border border-border bg-surface-2 p-1"
+    >
       {/* Sliding selected indicator */}
       <span
         aria-hidden
@@ -300,6 +309,7 @@ function Segmented({
         <button
           key={o.value}
           type="button"
+          aria-pressed={value === o.value}
           onClick={() => onChange(o.value)}
           className={`relative z-10 flex-1 rounded-lg px-4 py-1.5 text-sm font-semibold transition-colors ${
             value === o.value ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
