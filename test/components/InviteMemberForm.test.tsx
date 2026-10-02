@@ -64,3 +64,37 @@ describe('InviteMemberForm — roles', () => {
     await waitFor(() => expect(onInvite).toHaveBeenCalledWith({ username: 'bob', role: 'member' }));
   });
 });
+
+describe('InviteMemberForm — username suggestions', () => {
+  function stubSearch(users: { username: string; image: string | null }[]) {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue({ json: async () => ({ success: true, data: { users, wishlists: [] } }) });
+    vi.stubGlobal('fetch', fetchMock);
+    return fetchMock;
+  }
+
+  const type = (value: string) =>
+    fireEvent.change(screen.getByPlaceholderText(/search by username/i), { target: { value } });
+
+  // It only shows people, so it asks the search for its people section only.
+  it('asks the search for people only, without the @', async () => {
+    const fetchMock = stubSearch([{ username: 'alice', image: null }]);
+    render(<InviteMemberForm onInvite={vi.fn()} isInviting={false} />);
+
+    type('@alice');
+    expect(await screen.findByRole('button', { name: '@alice' })).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/search?q=alice&sections=users');
+  });
+
+  it('keeps everything typed inside q, encoded', async () => {
+    const fetchMock = stubSearch([]);
+    render(<InviteMemberForm onInvite={vi.fn()} isInviting={false} />);
+
+    type('al&sections=all');
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/search?q=al%26sections%3Dall&sections=users');
+    expect(await screen.findByText(/No people match/)).toBeInTheDocument();
+  });
+});
