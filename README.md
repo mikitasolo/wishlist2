@@ -10,7 +10,7 @@ A modern wishlist app: create wishlists, share them, follow friends, and quietly
 - **Follows & friends** — follow people; a mutual follow makes you "friends", which unlocks friends-only content.
 - **Search** — one search for people and wishlists, in the header and on the signed-out landing page. A handle typed as it's shown (`@alice`) finds the person, while list names match as typed. It only returns lists you could open, including your friends' friends-only lists and private lists you belong to, and it puts the closest matches first: an exact username, then friends, people you follow and your followers; your own and shared lists, then friends' lists.
 - **Booking without spoilers** — friends reserve items to gift; the owner never sees what's been booked on their own list.
-- **Reservations & gift history** — a durable record of what you're giving, decoupled from the owner's item (see [AGENTS.md](AGENTS.md) for the invariants).
+- **Reservations & gift history** — a durable record of what you're giving, decoupled from the owner's item (see [AGENTS.md](AGENTS.md) for the invariants). The gifts you still have to give are grouped by their list's upcoming occasion, the nearest first, with the rest under "No date"; a list you can no longer see shows no date.
 - **Invitations** to a wishlist as an owner or a member, registered-users-only, with accept/decline.
 - **Most wanted** — owners can mark the items they want most. Everyone sees a star on them, and a list sorts them first unless you pick another sort.
 - **Item proposals** — members can propose items for the owners to approve.

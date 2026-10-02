@@ -1,20 +1,28 @@
 'use client';
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import AppHeader from '@/components/AppHeader';
 import AuthButton from '@/components/AuthButton';
 import Icon from '@/components/Icon';
+import OccasionLabel from '@/components/OccasionLabel';
 import { useToast } from '@/components/ToastProvider';
 import SnapshotThumb from '@/components/SnapshotThumb';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import { useBusyIds } from '@/lib/hooks/useBusyIds';
+import { useLocalToday } from '@/lib/hooks/useLocalToday';
 import { formatPriceFromObject } from '@/lib/utils/currency';
 import { createListChangeLog, mergeRefreshedList } from '@/lib/utils/listRefresh';
+import type { Occasion } from '@/lib/utils/occasion';
 import { withRequestTimeout } from '@/lib/utils/requestTimeout';
-import { partitionReservations, reservationNote } from '@/lib/utils/reservations';
+import {
+  groupByOccasion,
+  partitionReservations,
+  reservationNote,
+  type OccasionGroup,
+} from '@/lib/utils/reservations';
 
 interface Price {
   value: number;
@@ -29,6 +37,8 @@ interface Reservation {
   wishlistName: string;
   wishlistId: string;
   wishlistSlug: string | null;
+  /** The live list's occasion, `null` for none or a list the gifter can no longer see. */
+  wishlistOccasion: Occasion | null;
   itemStatus: string;
   stillReserved: boolean;
 }
@@ -70,6 +80,9 @@ export default function BookedPage() {
   const userId = session?.user?.id;
   const router = useRouter();
   const { showToast } = useToast();
+  // The viewer's local date, which "To give" is grouped by: `null` until it's
+  // known (see `useLocalToday`), and until then the cards aren't grouped.
+  const today = useLocalToday();
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [gifts, setGifts] = useState<Gift[]>([]);
   const [loading, setLoading] = useState(true);
@@ -337,6 +350,12 @@ export default function BookedPage() {
             ) : (
               (() => {
                 const { needsConfirm, active } = partitionReservations(reservations);
+                // "To give", grouped by each list's upcoming occasion, afresh on
+                // every render: a read or a card's action moves or drops cards
+                // between groups. With no occasion coming up on any list there's
+                // one group, and it needs no heading.
+                const toGive = groupByOccasion(active, today);
+                const headed = toGive.some((group) => group.occasion);
                 return (
                   <>
                     {/* Detached reservations: the item changed after it was reserved,
@@ -367,7 +386,7 @@ export default function BookedPage() {
                       </section>
                     )}
 
-                    {/* Active reservations */}
+                    {/* Active reservations, by their list's upcoming occasion */}
                     <section>
                       <SectionHeading title="To give" count={active.length} />
                       {active.length === 0 ? (
@@ -375,15 +394,19 @@ export default function BookedPage() {
                           Nothing actively reserved right now.
                         </p>
                       ) : (
-                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                          {active.map((r) => (
-                            <ReservationCard
-                              key={r._id}
-                              r={r}
-                              busy={busy(r._id)}
-                              onGift={() => setGiftConfirm(r._id)}
-                              onDismiss={() => setDismissConfirm(r._id)}
-                            />
+                        <div className="space-y-8">
+                          {toGive.map((group) => (
+                            <ReservationGroup key={group.key} group={group} headed={headed}>
+                              {group.reservations.map((r) => (
+                                <ReservationCard
+                                  key={r._id}
+                                  r={r}
+                                  busy={busy(r._id)}
+                                  onGift={() => setGiftConfirm(r._id)}
+                                  onDismiss={() => setDismissConfirm(r._id)}
+                                />
+                              ))}
+                            </ReservationGroup>
                           ))}
                         </div>
                       )}
@@ -551,6 +574,42 @@ function ReservationCard({
         </button>
       </div>
     </div>
+  );
+}
+
+/**
+ * One group of "To give": a list's reservations under its upcoming occasion
+ * ("Birthday · in 12 days", then the list's name), or the rest under "No date".
+ */
+function ReservationGroup({
+  group,
+  headed,
+  children,
+}: {
+  group: OccasionGroup<Reservation>;
+  headed: boolean;
+  children: React.ReactNode;
+}) {
+  const headingId = useId();
+  return (
+    <section aria-labelledby={headed ? headingId : undefined}>
+      {headed && (
+        <h3
+          id={headingId}
+          className="mb-3 flex min-w-0 items-center gap-2 px-1 text-sm font-semibold text-foreground"
+        >
+          {group.occasion ? (
+            <>
+              <OccasionLabel occasion={group.occasion} />{' '}
+              <span className="truncate">{group.wishlistName}</span>
+            </>
+          ) : (
+            'No date'
+          )}
+        </h3>
+      )}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">{children}</div>
+    </section>
   );
 }
 
