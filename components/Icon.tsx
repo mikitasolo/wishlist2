@@ -37,7 +37,10 @@ export type IconName =
   | 'sun'
   | 'moon'
   | 'bell'
-  | 'calendar';
+  | 'calendar'
+  | 'more'
+  | 'undo'
+  | 'link-off';
 
 const paths: Record<IconName, React.ReactNode> = {
   gift: (
@@ -196,6 +199,21 @@ const paths: Record<IconName, React.ReactNode> = {
       <path d="M16 2v4M8 2v4M3 10h18" />
     </>
   ),
+  // Three dots in a row: a menu of more actions.
+  more: (
+    <>
+      <circle cx="5" cy="12" r="1" />
+      <circle cx="12" cy="12" r="1" />
+      <circle cx="19" cy="12" r="1" />
+    </>
+  ),
+  undo: (
+    <>
+      <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+      <path d="M3 3v5h5" />
+    </>
+  ),
+  'link-off': <path d="M9 17H7A5 5 0 0 1 7 7M15 7h2a5 5 0 0 1 4 8M8 12h4M2 2l20 20" />,
 };
 
 interface IconProps extends Omit<SVGProps<SVGSVGElement>, 'name'> {
