@@ -7,13 +7,16 @@ import { viewableWishlistsFilter } from '@/lib/utils/wishlistAccess';
 
 type Id = string | mongoose.Types.ObjectId;
 
-/** What the Booked page gets of the live wishlist behind a gifter's reservation. */
+/**
+ * What the Booked page gets of the live wishlist behind one of a gifter's
+ * reservations or gift-history entries, while the gifter may still open it.
+ */
 export interface ReservationWishlist {
+  /** The list's current slug, which the card links it by (`null` if it has none). */
   slug: string | null;
   /**
    * The list's occasion, read live, so an owner changing or clearing it shows
-   * on the next read. `null` for a list with none, and for one the gifter may
-   * no longer open.
+   * on the next read. `null` for a list with none.
    */
   occasion: Occasion | null;
 }
@@ -24,22 +27,27 @@ interface StoredOccasion {
   recurrence?: Occasion['recurrence'];
 }
 
-interface Facets {
-  all: { _id: mongoose.Types.ObjectId; slug?: string | null }[];
-  viewable: { _id: mongoose.Types.ObjectId; occasion?: StoredOccasion | null }[];
+interface StoredWishlist {
+  _id: mongoose.Types.ObjectId;
+  slug?: string | null;
+  occasion?: StoredOccasion | null;
 }
 
 /**
- * The live wishlists behind a gifter's reservations, by id, read in a fixed
- * number of queries however many there are: one for the gifter's memberships of
- * them, `getFriendIds` for their friends, and one for the lists themselves.
- * A deleted list has no entry.
+ * The live wishlists behind a gifter's reservations, or their gift-history
+ * entries (`giftWishlistSlugs`), by id, read in a fixed number of queries
+ * however many there are: one for the gifter's memberships of them,
+ * `getFriendIds` for their friends, and one for the lists themselves.
  *
- * A Reservation outlives the gifter's access to its list (leave, kick, the list
- * archived or made private: see `models/Reservation.ts`), so a list's occasion
- * is only returned while the gifter may still open it. That's decided by
+ * A Reservation and a GiftLog outlive the gifter's access to their list (leave,
+ * kick, the list archived or made private: see `models/Reservation.ts`), so a
+ * list is only returned while the gifter may still open it. That's decided by
  * `viewableWishlistsFilter`, the query form of `getWishlistViewAccess`, applied
- * inside the same query. Every list's slug is returned, as before.
+ * inside that one query. A list they may no longer open has no entry, as a
+ * deleted one has none, so nothing it says now reaches them: not its occasion,
+ * and not its slug, which an owner can change, and which is made from its name.
+ * A reservation's card links the list by id instead, which answers them as it
+ * would any other outsider.
  */
 export async function readReservationWishlists(
   gifterId: string,
@@ -55,28 +63,14 @@ export async function readReservationWishlists(
     WishlistMember.distinct('wishlist', { user: gifter, wishlist: { $in: ids } }),
     getFriendIds(gifter),
   ]);
-  // One query for the lists, each one's occasion only where the filter admits
-  // the gifter. An aggregation doesn't cast, so every id above is an ObjectId.
-  // `$facet` answers with one document, even when no list is left.
-  const [{ all, viewable }] = await Wishlist.aggregate<Facets>([
-    { $match: { _id: { $in: ids } } },
-    {
-      $facet: {
-        all: [{ $project: { slug: 1 } }],
-        viewable: [
-          { $match: viewableWishlistsFilter({ id: gifterId, memberOf, friendIds }) },
-          { $project: { occasion: 1 } },
-        ],
-      },
-    },
-  ]);
+  const lists = await Wishlist.find({
+    $and: [{ _id: { $in: ids } }, viewableWishlistsFilter({ id: gifterId, memberOf, friendIds })],
+  })
+    .select('slug occasion')
+    .lean<StoredWishlist[]>();
 
-  const occasions = new Map(viewable.map((w) => [w._id.toString(), toOccasion(w.occasion)]));
   return new Map(
-    all.map((w) => {
-      const id = w._id.toString();
-      return [id, { slug: w.slug ?? null, occasion: occasions.get(id) ?? null }];
-    })
+    lists.map((w) => [w._id.toString(), { slug: w.slug ?? null, occasion: toOccasion(w.occasion) }])
   );
 }
 

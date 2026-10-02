@@ -1,6 +1,6 @@
 import type { Types } from 'mongoose';
-import Wishlist from '@/models/Wishlist';
 import type { IGiftLog } from '@/models/GiftLog';
+import { readReservationWishlists } from '@/lib/utils/reservationWishlists';
 
 // Server-side shaping of the gifter's gift history (`GiftLog`), shared by the
 // routes that return an entry: `GET /api/users/me/gifts` lists them, and
@@ -12,17 +12,22 @@ import type { IGiftLog } from '@/models/GiftLog';
 export type GiftWishlistSlugs = Map<string, string | null>;
 
 /**
- * Looks up the current slug of each wishlist these records point to. The
- * pointer is soft: a deleted wishlist has no row, so its entries get no slug.
+ * The current slug of each wishlist these entries of `gifterId`'s history point
+ * to, read the way the Booked page's reservations read theirs
+ * (`readReservationWishlists`): in a fixed number of queries, and only for a
+ * list the gifter may still open. The pointer is soft and an entry outlives
+ * the gifter's access, so a list that's been deleted, or that they may no
+ * longer open, has no slug here (its entry still has the list's id).
  */
 export async function giftWishlistSlugs(
+  gifterId: string,
   records: { wishlist?: Types.ObjectId | null }[]
 ): Promise<GiftWishlistSlugs> {
-  const ids = Array.from(
-    new Set(records.map((r) => r.wishlist?.toString()).filter(Boolean) as string[])
+  const wishlists = await readReservationWishlists(
+    gifterId,
+    records.flatMap((r) => (r.wishlist ? [r.wishlist] : []))
   );
-  const wishlists = ids.length ? await Wishlist.find({ _id: { $in: ids } }).select('slug') : [];
-  return new Map(wishlists.map((w) => [w._id.toString(), w.slug ?? null]));
+  return new Map(Array.from(wishlists, ([id, w]) => [id, w.slug]));
 }
 
 /** A gift-history entry as the API returns it. */

@@ -8,9 +8,9 @@ import { readReservationWishlists } from '@/lib/utils/reservationWishlists';
 // GET /api/users/me/reservations - the current user's active reservations
 // (gifts they're holding), across all wishlists. Each carries a frozen snapshot,
 // plus the live item's current status so the UI can hint when the owner has
-// since completed / drafted / removed it, and the live list's slug and occasion
-// (the occasion only while the gifter may still open the list), which the page
-// groups the gifts still to give by.
+// since completed / drafted / removed it, and, only while the gifter may still
+// open the list, its live slug (for the card's link, which falls back to the
+// id) and occasion (which the page groups the gifts still to give by).
 export async function GET() {
   try {
     const session = await auth();

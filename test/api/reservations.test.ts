@@ -88,10 +88,13 @@ describe('POST /api/reservations/[id]/gift', () => {
     {
       wishlist: 'a live wishlist',
       setUp: async () => {
+        // Public, so the gifter, who isn't a member, may still open it and
+        // gets its slug.
         const wishlist = await Wishlist.create({
           name: 'Birthday',
           owners: [ownerId],
           slug: 'birthday-a1b2c',
+          visibility: 'everyone',
         });
         await Reservation.updateOne(
           { _id: reservationId },
