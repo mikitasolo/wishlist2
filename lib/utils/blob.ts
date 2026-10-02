@@ -146,6 +146,34 @@ export async function deleteOwnBlobs(urls: Array<string | null | undefined>): Pr
   await Promise.all(urls.map(deleteOwnBlob));
 }
 
+/** Are these the same image? An empty URL and none at all both mean no image. */
+export function isSameImage(a: string | null | undefined, b: string | null | undefined): boolean {
+  return (a || null) === (b || null);
+}
+
+/**
+ * Free the image an edit's write replaced in an image field (`User.image`,
+ * `Wishlist.bannerUrl`, `Item.imageUrl`), if it was one of ours.
+ *
+ * `replaced` is the field's value in the document the write itself handed back
+ * from just before it landed (`returnDocument: 'before'`), and `written` the
+ * value it wrote. Never the value the request read earlier: two owners
+ * replacing the same image at once both read A, and the first write frees A.
+ * The second replaced the first's B, which nothing else would free (it'd be
+ * orphaned in storage, on its uploader's quota), and freeing A again instead
+ * frees whatever A is by then. A write that leaves the image as it was frees
+ * nothing. So does one that doesn't write the field at all, which is how a
+ * route should treat an edit that sends the image the field already holds
+ * (`isSameImage`): written back, it could restore one a concurrent edit has
+ * just replaced and freed, leaving the record pointing at a deleted blob.
+ */
+export async function freeReplacedImage(
+  replaced: string | null | undefined,
+  written: string | null | undefined
+): Promise<void> {
+  if (!isSameImage(replaced, written)) await deleteOwnBlob(replaced);
+}
+
 /**
  * Snapshot blobs: our own copies of item images, frozen onto a `Reservation`
  * (and the `GiftLog` it turns into) when the item is booked.

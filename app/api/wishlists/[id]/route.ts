@@ -14,6 +14,8 @@ import {
   deleteOwnBlob,
   deleteOwnBlobs,
   FOREIGN_IMAGE_ERROR,
+  freeReplacedImage,
+  isSameImage,
 } from '@/lib/utils/blob';
 import {
   resolveWishlistId,
@@ -168,7 +170,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       if (!canAttachImage(validatedData.bannerUrl, session.user.id, wishlist.bannerUrl)) {
         return NextResponse.json({ success: false, error: FOREIGN_IMAGE_ERROR }, { status: 400 });
       }
-      updateData.bannerUrl = validatedData.bannerUrl || null;
+      // The banner the list already has isn't written back: that would undo a
+      // co-owner's replacement landing after the read above, and restore the
+      // banner their edit had already freed.
+      if (!isSameImage(validatedData.bannerUrl, wishlist.bannerUrl)) {
+        updateData.bannerUrl = validatedData.bannerUrl || null;
+      }
     }
     if (validatedData.currency !== undefined) updateData.currency = validatedData.currency;
 
@@ -210,13 +217,16 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     // the list. The check above ran against the list as it was read at the start
     // of the request, and a co-owner may have removed the caller since: someone
     // who no longer owns the list can't change it, or pin it back onto their
-    // dashboard after losing ownership cleared their pin.
-    const updatedWishlist = await Wishlist.findOneAndUpdate(
+    // dashboard after losing ownership cleared their pin. An edit that replaces
+    // or clears the banner frees the one it replaced, so its write hands back the
+    // list as it was just before it landed.
+    const replacesBanner = updateData.bannerUrl !== undefined;
+    const written = await Wishlist.findOneAndUpdate(
       { _id: id, ...ownedByFilter(session.user.id) },
       update,
-      { new: true, runValidators: true }
+      { returnDocument: replacesBanner ? 'before' : 'after', runValidators: true }
     );
-    if (!updatedWishlist) {
+    if (!written) {
       // Nothing was written, so this read only picks the answer: the list is
       // gone (or archived, which looks the same to anyone but its owners), or the
       // caller doesn't own it (any more).
@@ -239,9 +249,19 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       );
     }
 
-    // Free the previous cover image if this edit replaced or cleared it.
-    if (updateData.bannerUrl !== undefined && wishlist.bannerUrl !== updateData.bannerUrl) {
-      await deleteOwnBlob(wishlist.bannerUrl);
+    let updatedWishlist = written;
+    if (replacesBanner) {
+      // Free the banner this write replaced: the one the list had as it landed,
+      // not the one read above. A co-owner replacing it in between has freed
+      // that one already, and nothing else would free theirs.
+      await freeReplacedImage(written.bannerUrl, updateData.bannerUrl);
+      // Answered with the list as it is now. One deleted since this write landed
+      // is answered like any other missing list.
+      const now = await Wishlist.findById(id);
+      if (!now) {
+        return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
+      }
+      updatedWishlist = now;
     }
 
     return NextResponse.json(

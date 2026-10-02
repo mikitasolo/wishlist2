@@ -1,11 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import connectDB from '@/lib/mongodb';
-import User from '@/models/User';
+import User, { type IUser } from '@/models/User';
 import Follow from '@/models/Follow';
 import { updateProfileSchema, validateRequestBody } from '@/lib/validations';
 import { isReservedUsername } from '@/lib/utils/username';
-import { canAttachImage, deleteOwnBlob, FOREIGN_IMAGE_ERROR, isUploadedBy } from '@/lib/utils/blob';
+import {
+  canAttachImage,
+  FOREIGN_IMAGE_ERROR,
+  freeReplacedImage,
+  isSameImage,
+  isUploadedBy,
+} from '@/lib/utils/blob';
 
 // GET /api/users/me - current user's profile + privacy settings
 export async function GET() {
@@ -66,6 +72,10 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ success: false, error: FOREIGN_IMAGE_ERROR }, { status: 400 });
     }
 
+    const changes: Partial<
+      Pick<IUser, 'username' | 'image' | 'bio' | 'defaultCurrency' | 'privacy'>
+    > = {};
+
     if (username && username !== user.username) {
       if (isReservedUsername(username)) {
         return NextResponse.json(
@@ -80,27 +90,26 @@ export async function PATCH(request: NextRequest) {
           { status: 409 }
         );
       }
-      user.username = username;
+      changes.username = username;
     }
 
-    // Remember the previous avatar so we can free it after a successful save if
-    // this update replaces or clears it (only our own uploads are deleted).
-    let previousAvatar: string | null | undefined;
-    if (image !== undefined) {
-      previousAvatar = user.image;
-      user.image = image || null;
+    // The avatar the profile already has isn't written back: that would undo a
+    // replacement from another tab landing after the read above, and restore the
+    // avatar it had already freed.
+    if (image !== undefined && !isSameImage(image, user.image)) {
+      changes.image = image || null;
     }
 
     if (bio !== undefined) {
-      user.bio = bio || null;
+      changes.bio = bio || null;
     }
 
     if (defaultCurrency !== undefined) {
-      user.defaultCurrency = defaultCurrency;
+      changes.defaultCurrency = defaultCurrency;
     }
 
     if (privacy) {
-      user.privacy = {
+      changes.privacy = {
         searchable: privacy.searchable ?? user.privacy?.searchable ?? true,
         whoCanInvite: privacy.whoCanInvite ?? user.privacy?.whoCanInvite ?? 'everyone',
         profileVisibility:
@@ -108,31 +117,47 @@ export async function PATCH(request: NextRequest) {
       };
     }
 
-    await user.save();
+    // One write, so an edit that replaces or clears the avatar can free the one
+    // it replaced: the write hands back the profile as it was just before it
+    // landed. Two tabs replacing the avatar at once both read the same one, and
+    // freeing that read leaves the other tab's upload behind, never freed.
+    const replacesAvatar = changes.image !== undefined;
+    const written = await User.findOneAndUpdate(
+      { _id: user._id },
+      { $set: changes },
+      { returnDocument: replacesAvatar ? 'before' : 'after', runValidators: true }
+    );
+    if (!written) {
+      return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
+    }
 
-    // An avatar has exactly one legitimate uploader, its user, so check that
-    // here as well as on write: it keeps a foreign blob URL saved before the
-    // write check existed from being freed. (Item images and banners can carry
-    // a co-owner's or proposer's upload, so they rely on the write check.)
-    if (
-      previousAvatar &&
-      previousAvatar !== user.image &&
-      isUploadedBy(previousAvatar, session.user.id)
-    ) {
-      await deleteOwnBlob(previousAvatar);
+    let saved = written;
+    if (replacesAvatar) {
+      // An avatar has exactly one legitimate uploader, its user, so check that
+      // here as well as on write: it keeps a foreign blob URL saved before the
+      // write check existed from being freed. (Item images and banners can carry
+      // a co-owner's or proposer's upload, so they rely on the write check.)
+      if (isUploadedBy(written.image, session.user.id)) {
+        await freeReplacedImage(written.image, changes.image);
+      }
+      const now = await User.findById(user._id);
+      if (!now) {
+        return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
+      }
+      saved = now;
     }
 
     return NextResponse.json(
       {
         success: true,
         data: {
-          _id: user._id,
-          email: user.email,
-          username: user.username,
-          image: user.image,
-          bio: user.bio,
-          defaultCurrency: user.defaultCurrency,
-          privacy: user.privacy,
+          _id: saved._id,
+          email: saved.email,
+          username: saved.username,
+          image: saved.image,
+          bio: saved.bio,
+          defaultCurrency: saved.defaultCurrency,
+          privacy: saved.privacy,
         },
       },
       { status: 200 }

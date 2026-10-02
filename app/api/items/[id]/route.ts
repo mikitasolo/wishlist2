@@ -10,7 +10,13 @@ import WishlistMember from '@/models/WishlistMember';
 import { updateItemSchema, validateRequestBody } from '@/lib/validations';
 import { ensureCurrencyRatesUpToDate } from '@/lib/utils/currencyRates';
 import { itemPriceInUsdCents } from '@/lib/utils/itemPrice';
-import { canAttachImage, deleteOwnBlob, FOREIGN_IMAGE_ERROR } from '@/lib/utils/blob';
+import {
+  canAttachImage,
+  deleteOwnBlob,
+  FOREIGN_IMAGE_ERROR,
+  freeReplacedImage,
+  isSameImage,
+} from '@/lib/utils/blob';
 import {
   cancelUnbookedReservation,
   settleBookingReservation,
@@ -360,6 +366,17 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       return NextResponse.json({ success: false, error: FOREIGN_IMAGE_ERROR }, { status: 400 });
     }
 
+    // The edit and review forms send the image back with every save, changed or
+    // not. An unchanged one isn't written: written back, it would undo a
+    // replacement (a co-owner's, or the proposer's) landing after the read
+    // above, and restore the image that replacement had already freed.
+    if (
+      updateData.imageUrl !== undefined &&
+      isSameImage(updateData.imageUrl, currentItem.imageUrl)
+    ) {
+      delete updateData.imageUrl;
+    }
+
     // A book or unbook was decided on the item as read above, so it's written
     // only if the item is still that way: still available to book, or still the
     // caller's booking to unbook. Otherwise another member's booking, or an
@@ -370,19 +387,39 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     // owner's approval only while the item is still a proposal. An owner's
     // edit that doesn't approve it is written unconditionally, as on any item.
     const writeGuard = bookingGuard ?? proposalGuard;
-    const item = await Item.findOneAndUpdate(
+    // An edit that replaces or clears the image frees the one it replaced, so its
+    // write hands back the item as it was just before it landed.
+    const replacesImage = updateData.imageUrl !== undefined;
+    const written = await Item.findOneAndUpdate(
       { _id: id, ...writeGuard?.filter },
       { $set: updateData },
-      { new: true, runValidators: true }
+      { returnDocument: replacesImage ? 'before' : 'after', runValidators: true }
     );
 
-    if (!item) {
+    if (!written) {
       // The item changed, or went, since it was read. Nothing was written, so the
       // Reservation isn't touched either: a booking that lost creates none, and
-      // an unbook that lost leaves the gifter's in place. Nor is any image freed
-      // below, so an approved item keeps the one it has, and no proposer is told
-      // of an approval that didn't land.
+      // an unbook that lost leaves the gifter's in place. Nor is any image freed,
+      // so an approved item keeps the one it has, and no proposer is told of an
+      // approval that didn't land.
       return unmatchedItemResponse(id, writeGuard);
+    }
+
+    let item = written;
+    if (replacesImage) {
+      // Free the image this write replaced: the one the item had as it landed,
+      // not the one read above. A co-owner (or the proposer) replacing it in
+      // between has freed that one already, and nothing else would free theirs.
+      // Only our own uploads are touched; pasted external URLs are left alone.
+      await freeReplacedImage(written.imageUrl, updateData.imageUrl);
+      // The rest of the request works on the item as it is now. One deleted
+      // since this write landed is answered like any other missing item (and a
+      // proposer isn't told their proposal was approved into the list).
+      const now = await Item.findById(id);
+      if (!now) {
+        return NextResponse.json({ success: false, error: 'Item not found' }, { status: 404 });
+      }
+      item = now;
     }
 
     // Keep the gifter's durable Reservation in sync with their booking, now that
@@ -406,12 +443,6 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       await settleBookingReservation(session.user.id, wishlist, item, previous);
     } else if (reservationAction === 'delete') {
       await cancelUnbookedReservation(session.user.id, wishlist, item._id);
-    }
-
-    // If this edit replaced or cleared the image, free the old uploaded blob.
-    // Only our own uploads are touched; pasted external URLs are left alone.
-    if (updateData.imageUrl !== undefined && currentItem.imageUrl !== updateData.imageUrl) {
-      await deleteOwnBlob(currentItem.imageUrl);
     }
 
     // Let the proposer know their item was accepted into the list.
