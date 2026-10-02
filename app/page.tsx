@@ -92,11 +92,13 @@ export default function Home() {
 
   useEffect(() => {
     if (status !== 'authenticated') return;
-    fetch('/api/users/me/reservations', { cache: 'no-store' })
+    // Just the count: the full list (`/api/users/me/reservations`) is the
+    // Booked page's, and costs far more to build.
+    fetch('/api/users/me/reservations/count', { cache: 'no-store' })
       .then((r) => r.json())
       .then((res) => {
-        if (res.success) {
-          setReservedCount((res.data as unknown[]).length);
+        if (res.success && typeof res.data?.count === 'number') {
+          setReservedCount(res.data.count);
         }
       })
       .catch(() => {});
