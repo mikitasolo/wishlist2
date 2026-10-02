@@ -30,10 +30,10 @@ test('a member saves a copy of a friend’s item to their own list', async ({ pa
   });
 
   await page.goto('/wishlists/e2e-friend');
-  await page
-    .getByRole('article', { name: `Item: ${friendsItem.name}` })
-    .getByRole('button', { name: 'Save to my list' })
-    .click();
+  // A member's card offers it in its "More actions" menu (Book is the primary).
+  const card = page.getByRole('article', { name: `Item: ${friendsItem.name}` });
+  await card.getByRole('button', { name: 'More actions' }).click();
+  await card.getByRole('menu').getByRole('menuitem', { name: 'Save to my list' }).click();
 
   // The picker offers the list the E2E user owns.
   await page

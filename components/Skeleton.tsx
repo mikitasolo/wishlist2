@@ -30,18 +30,21 @@ export function WishlistCardSkeleton() {
   );
 }
 
-/** Card skeleton matching WishlistItem (square image, title, price, actions). */
+/**
+ * Card skeleton matching WishlistItem (square image, title, price, and its one
+ * row of actions: the primary action, the link button and the menu button).
+ */
 export function ItemCardSkeleton() {
   return (
     <div className="flex flex-col rounded-3xl border border-border bg-surface p-4 shadow-md sm:p-5">
       <Skeleton className="mb-4 aspect-square w-full rounded-2xl" />
       <Skeleton className="mb-2 h-5 w-4/5" />
       <Skeleton className="mb-3 h-6 w-24" />
-      <div className="mb-3 flex gap-2">
-        <Skeleton className="h-9 flex-1 rounded-xl" />
-        <Skeleton className="h-9 flex-1 rounded-xl" />
+      <div className="flex gap-2">
+        <Skeleton className="h-10 flex-1 rounded-xl" />
+        <Skeleton className="h-10 w-10 rounded-xl" />
+        <Skeleton className="h-10 w-10 rounded-xl" />
       </div>
-      <Skeleton className="h-9 w-full rounded-xl" />
     </div>
   );
 }

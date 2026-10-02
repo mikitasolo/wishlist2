@@ -4,9 +4,50 @@ import { memo, useMemo, useCallback, useState, useEffect } from 'react';
 import { ApiItem } from '@/types/api';
 import { useSession } from 'next-auth/react';
 import { formatPriceFromObject, convertPrice } from '@/lib/utils/currency';
-import Icon from '@/components/Icon';
+import Icon, { type IconName } from '@/components/Icon';
 import Cover from '@/components/Cover';
 import ConfirmDialog from '@/components/ConfirmDialog';
+import Menu, { type MenuItem } from '@/components/Menu';
+
+// The card's actions are one row, the same height on every card: one labelled
+// primary action, then the product link as a square icon button (unless the
+// link is the primary), then a "More actions" menu with the rest.
+const ROW_CONTROL = 'h-10 rounded-xl text-sm font-semibold';
+
+const PRIMARY_BASE = `${ROW_CONTROL} inline-flex min-w-0 flex-1 items-center justify-center gap-1.5 px-3 transition-all duration-200 cursor-pointer active:scale-[0.98] disabled:cursor-not-allowed disabled:active:scale-100 aria-disabled:cursor-not-allowed aria-disabled:opacity-60 aria-disabled:active:scale-100`;
+
+const PRIMARY_TONES = {
+  // Booking: the emerald of the "Booked by you" badge.
+  book: 'bg-emerald-600 text-white shadow-sm hover:bg-emerald-500',
+  // Publishing, reviewing, opening the product page.
+  primary: 'bg-primary-600 text-white shadow-sm hover:bg-primary-500',
+  // Editing: always there for an owner, so it doesn't shout.
+  soft: 'bg-primary-500/12 text-accent hover:bg-primary-500/18 dark:text-primary-300',
+  // Undoing your own booking.
+  neutral: 'bg-muted text-foreground hover:bg-surface-2',
+  // Booked by someone else: nothing to do.
+  off: 'bg-muted text-muted-foreground',
+} as const;
+
+const SQUARE = 'inline-flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl';
+
+const ICON_BUTTON = `${SQUARE} border border-border-strong bg-surface text-muted-foreground transition-colors hover:bg-surface-hover hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground aria-disabled:cursor-not-allowed aria-disabled:opacity-60`;
+
+interface PrimaryAction {
+  label: string;
+  /** The accessible name, which starts from (or contains) `label`. */
+  ariaLabel: string;
+  icon: IconName;
+  tone: keyof typeof PRIMARY_TONES;
+  onClick: () => void;
+  /**
+   * Changes the item's status (Book, Unbook, Publish), so it's held while
+   * the card's update runs. Edit and Review aren't, as they never were.
+   */
+  changesStatus?: boolean;
+  /** Nothing the viewer can do (an item someone else booked): really disabled. */
+  unavailable?: boolean;
+}
 
 interface WishlistItemProps {
   item: ApiItem;
@@ -121,6 +162,124 @@ function WishlistItem({
     if (!isOwner || isUpdating) return;
     setShowToDraftConfirm(true);
   }, [isOwner, isUpdating]);
+
+  const isProposed = item.status === 'proposed';
+  const isDraft = item.status === 'draft';
+  // Live (available, or booked as far as a member can tell) or completed.
+  const isPublished = !isProposed && !isDraft;
+  const isCompleted = displayStatus === 'completed';
+
+  // The one labelled action, by role and state. None (null) means the product
+  // link takes its place: for signed-out visitors, signed-in non-members, and
+  // a member on an item they can't book (completed).
+  let primary: PrimaryAction | null = null;
+  if (isAuthenticated && isOwner) {
+    if (isProposed && onReview) {
+      primary = {
+        label: 'Review',
+        ariaLabel: 'Review proposed item',
+        icon: 'check-circle',
+        tone: 'primary',
+        onClick: () => onReview(item),
+      };
+    } else if (isDraft) {
+      primary = {
+        label: 'Publish',
+        ariaLabel: 'Publish item',
+        icon: 'globe',
+        tone: 'primary',
+        onClick: handlePublish,
+        changesStatus: true,
+      };
+    } else if (isPublished && onEdit) {
+      primary = {
+        label: 'Edit',
+        ariaLabel: 'Edit item',
+        icon: 'edit',
+        tone: 'soft',
+        onClick: () => onEdit(item),
+      };
+    }
+  } else if (isAuthenticated && isProposedByCurrentUser && onEdit) {
+    primary = {
+      label: 'Edit',
+      ariaLabel: 'Edit proposed item',
+      icon: 'edit',
+      tone: 'soft',
+      onClick: () => onEdit(item),
+    };
+  } else if (isAuthenticated && isMember && item.status === 'available') {
+    primary = {
+      label: 'Book',
+      ariaLabel: 'Book this item',
+      icon: 'gift',
+      tone: 'book',
+      onClick: handleToggleBooked,
+      changesStatus: true,
+    };
+  } else if (isAuthenticated && isMember && item.status === 'booked') {
+    // Owners never get here: for them a booked item is just available.
+    primary = isBookedByCurrentUser
+      ? {
+          label: 'Unbook',
+          ariaLabel: 'Unbook this item',
+          icon: 'undo',
+          tone: 'neutral',
+          onClick: handleToggleBooked,
+          changesStatus: true,
+        }
+      : {
+          label: 'Booked',
+          ariaLabel: 'This item is already booked',
+          icon: 'lock',
+          tone: 'off',
+          onClick: () => {},
+          unavailable: true,
+        };
+  }
+
+  // Everything else the viewer may do. Moving a completed item to draft isn't
+  // offered (it never was), and drafts and other people's proposals can't be
+  // copied (the page gives no `onSaveToList` for them). The status changes
+  // are held while the card's update runs; Edit and Save to my list aren't.
+  const menuItems: MenuItem[] = [];
+  if (isAuthenticated && isOwner && isPublished) {
+    menuItems.push({
+      label: isCompleted ? 'Mark as available' : 'Mark as completed',
+      icon: isCompleted ? 'undo' : 'check-circle',
+      onSelect: handleToggleCompleted,
+      disabled: isUpdating,
+    });
+    if (!isCompleted) {
+      menuItems.push({
+        label: 'Move to draft',
+        icon: 'note',
+        onSelect: handleMoveToDraft,
+        disabled: isUpdating,
+      });
+    }
+  }
+  if (isAuthenticated && isOwner && isDraft && onEdit) {
+    menuItems.push({ label: 'Edit', icon: 'edit', onSelect: () => onEdit(item) });
+  }
+  if (isAuthenticated && onSaveToList) {
+    menuItems.push({
+      label: 'Save to my list',
+      icon: 'plus',
+      onSelect: () => onSaveToList(item),
+      separated: true,
+    });
+  }
+
+  // The product page opens in a new tab, from the primary action or the link button.
+  const productPage = item.link
+    ? {
+        href: item.link,
+        target: '_blank',
+        rel: 'noopener noreferrer',
+        'aria-label': `View ${item.name} product page`,
+      }
+    : null;
 
   // Determine border styling based on item status (refined, tokenized)
   const getBorderClass = () => {
@@ -246,172 +405,57 @@ function WishlistItem({
           )}
         </div>
 
-        {/* Action buttons - only shown for authenticated users */}
-        {isAuthenticated && (
-          <div className="flex flex-wrap gap-2 mb-3 mt-auto">
-            {/* Proposed item actions */}
-            {item.status === 'proposed' && (
-              <>
-                {/* Review button for owners */}
-                {isOwner && onReview && (
-                  <button
-                    onClick={() => onReview(item)}
-                    className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-primary-600 px-3 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-primary-700"
-                    aria-label="Review proposed item"
-                  >
-                    <Icon name="check-circle" size={16} />
-                    Review
-                  </button>
-                )}
-                {/* Edit button for proposer */}
-                {isProposedByCurrentUser && onEdit && (
-                  <button
-                    onClick={() => onEdit(item)}
-                    className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-muted px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-surface-2"
-                    aria-label="Edit proposed item"
-                  >
-                    <Icon name="edit" size={16} />
-                    Edit
-                  </button>
-                )}
-              </>
-            )}
-
-            {/* Book/Unbook button - only for members, not for proposed items */}
-            {isMember && displayStatus !== 'completed' && item.status !== 'proposed' && (
-              <button
-                onClick={handleToggleBooked}
-                className={`flex-1 rounded-xl px-3 py-2 text-sm font-medium shadow-sm transition-colors ${
-                  isUpdating
-                    ? 'cursor-not-allowed opacity-60'
-                    : item.status === 'booked' && isBookedByCurrentUser
-                      ? 'cursor-pointer bg-muted text-foreground shadow-none hover:bg-surface-2'
-                      : item.status === 'booked'
-                        ? 'cursor-not-allowed bg-muted text-muted-foreground shadow-none'
-                        : 'cursor-pointer bg-emerald-600 text-white hover:bg-emerald-700'
-                }`}
-                disabled={isUpdating || (item.status === 'booked' && !isBookedByCurrentUser)}
-                aria-label={
-                  item.status === 'booked' && isBookedByCurrentUser
-                    ? 'Unbook this item'
-                    : item.status === 'booked'
-                      ? 'This item is already booked'
-                      : 'Book this item'
-                }
-              >
-                {item.status === 'booked' && isBookedByCurrentUser
-                  ? 'Unbook'
-                  : item.status === 'booked'
-                    ? 'Booked'
-                    : 'Book'}
-              </button>
-            )}
-
-            {/* Owner buttons - not for proposed items */}
-            {isOwner && item.status !== 'proposed' && (
-              <>
-                {/* Edit button - only for owners */}
-                {onEdit && (
-                  <button
-                    onClick={() => onEdit(item)}
-                    className="flex items-center justify-center gap-1.5 rounded-xl bg-muted px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-surface-2"
-                    aria-label="Edit item"
-                  >
-                    <Icon name="edit" size={16} />
-                    Edit
-                  </button>
-                )}
-
-                {item.status === 'draft' ? (
-                  /* Draft: publish it (safe — nobody else can see it yet) */
-                  <button
-                    onClick={handlePublish}
-                    className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium shadow-sm transition-colors ${
-                      isUpdating
-                        ? 'cursor-not-allowed opacity-60'
-                        : 'cursor-pointer bg-primary-600 text-white hover:bg-primary-700'
-                    }`}
-                    disabled={isUpdating}
-                    aria-label="Publish item"
-                  >
-                    <Icon name="globe" size={16} />
-                    Publish
-                  </button>
-                ) : (
-                  <>
-                    {/* Complete / Uncomplete */}
-                    <button
-                      onClick={handleToggleCompleted}
-                      className={`flex-1 rounded-xl px-3 py-2 text-sm font-medium shadow-sm transition-colors ${
-                        isUpdating
-                          ? 'cursor-not-allowed opacity-60'
-                          : displayStatus === 'completed'
-                            ? 'cursor-pointer bg-emerald-500 text-white hover:bg-emerald-600'
-                            : 'cursor-pointer bg-muted text-foreground shadow-none hover:bg-surface-2'
-                      }`}
-                      disabled={isUpdating}
-                      aria-label={
-                        displayStatus === 'completed'
-                          ? 'Mark item as available'
-                          : 'Mark item as completed'
-                      }
-                    >
-                      {displayStatus === 'completed' ? 'Uncomplete' : 'Complete'}
-                    </button>
-                    {/* Move to draft — only for live (non-completed) items; danger */}
-                    {displayStatus !== 'completed' && (
-                      <button
-                        onClick={handleMoveToDraft}
-                        className={`flex items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium transition-colors ${
-                          isUpdating
-                            ? 'cursor-not-allowed opacity-60'
-                            : 'cursor-pointer bg-muted text-muted-foreground hover:bg-surface-2 hover:text-foreground'
-                        }`}
-                        disabled={isUpdating}
-                        aria-label="Move item to draft"
-                        title="Move to draft"
-                      >
-                        <Icon name="note" size={16} />
-                        Draft
-                      </button>
-                    )}
-                  </>
-                )}
-              </>
-            )}
-
-            {/* Save a copy to one of the viewer's own lists */}
-            {onSaveToList && (
-              <button
-                onClick={() => onSaveToList(item)}
-                className="flex items-center justify-center gap-1.5 rounded-xl bg-muted px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-surface-2"
-                aria-label="Save to my list"
-                title="Save to my list"
-              >
-                <Icon name="plus" size={16} />
-                Save
-              </button>
-            )}
-          </div>
-        )}
-
-        {/* Link button or placeholder - always at bottom with consistent height */}
-        <div className={isAuthenticated ? '' : 'mt-auto'}>
-          {item.link ? (
-            <a
-              href={item.link}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-primary-600 px-3 py-2 text-center text-sm font-medium text-white shadow-sm transition-colors hover:bg-primary-700"
-              aria-label={`View ${item.name} product page`}
+        {/* Actions: one row, the same height on every card. */}
+        <div className="mt-auto flex items-center gap-2">
+          {primary ? (
+            <button
+              type="button"
+              onClick={() => {
+                if (!(primary.changesStatus && isUpdating)) primary.onClick();
+              }}
+              // Booked by someone else is really disabled. A status change
+              // held while this card's update runs only looks it, so focus on
+              // it stays put.
+              disabled={primary.unavailable}
+              aria-disabled={primary.changesStatus && isUpdating ? true : undefined}
+              aria-label={primary.ariaLabel}
+              className={`${PRIMARY_BASE} ${PRIMARY_TONES[primary.tone]}`}
             >
-              <Icon name="external-link" size={16} />
-              View item
+              <Icon name={primary.icon} size={16} className="flex-shrink-0" />
+              <span className="truncate">{primary.label}</span>
+            </button>
+          ) : productPage ? (
+            <a {...productPage} className={`${PRIMARY_BASE} ${PRIMARY_TONES.primary}`}>
+              <Icon name="external-link" size={16} className="flex-shrink-0" />
+              <span className="truncate">View item</span>
             </a>
           ) : (
-            <p className="py-2 text-center text-sm italic text-muted-foreground">
-              No link provided
+            <p
+              className={`${ROW_CONTROL} flex min-w-0 flex-1 items-center justify-center border border-dashed border-border px-3 font-medium italic text-muted-foreground`}
+            >
+              <span className="truncate">No link provided</span>
             </p>
+          )}
+
+          {/* The product link, when the primary action isn't already it. */}
+          {primary &&
+            (productPage ? (
+              <a {...productPage} className={ICON_BUTTON} title="View product page">
+                <Icon name="external-link" size={18} />
+              </a>
+            ) : (
+              <span
+                role="img"
+                aria-label="No link provided"
+                title="No link provided"
+                className={`${SQUARE} border border-dashed border-border text-muted-foreground/70`}
+              >
+                <Icon name="link-off" size={18} />
+              </span>
+            ))}
+
+          {menuItems.length > 0 && (
+            <Menu label="More actions" items={menuItems} triggerClassName={ICON_BUTTON} />
           )}
         </div>
       </div>
