@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
-import connectDB from '@/lib/mongodb';
-import User from '@/models/User';
+import { readProfileCard } from '@/lib/og/data';
+import { METADATA_BUDGET_MS, withTimeout } from '@/lib/utils/og';
 
 // Per-profile share metadata. Username is always public; the bio is only used
 // when the profile isn't friends-only (crawlers are never friends).
@@ -11,31 +11,34 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   try {
     const { username } = await params;
-    await connectDB();
-    const u = await User.findOne({ username }).select('username bio privacy').lean();
-    if (u) {
-      const title = `@${u.username}`;
-      const bioVisible = u.privacy?.profileVisibility !== 'friends';
+    const card = await withTimeout(readProfileCard(username), METADATA_BUDGET_MS);
+    if (card.kind === 'user') {
+      const title = `@${card.username}`;
       // Prefer the bio when it's public and substantial; otherwise a sensible
       // branded default that still reads well as a share/SERP snippet.
       const description =
-        bioVisible && u.bio && u.bio.trim().length >= 20
-          ? u.bio.trim()
-          : `See @${u.username}’s wishlists on Wishlist and follow along to reserve gifts without spoiling the surprise.`;
+        card.bio && card.bio.length >= 20
+          ? card.bio
+          : `See @${card.username}’s wishlists on Wishlist and follow along to reserve gifts without spoiling the surprise.`;
       return {
         title,
         description,
         openGraph: {
           siteName: 'Wishlist',
-          title: `@${u.username} on Wishlist`,
+          title: `@${card.username} on Wishlist`,
           description,
           type: 'profile',
+          url: `/users/${card.username}`,
         },
-        twitter: { card: 'summary_large_image', title: `@${u.username} on Wishlist`, description },
+        twitter: {
+          card: 'summary_large_image',
+          title: `@${card.username} on Wishlist`,
+          description,
+        },
       };
     }
   } catch {
-    // fall through
+    // A timeout or failed read falls through to the generic default.
   }
   return {};
 }

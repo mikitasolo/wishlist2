@@ -5,6 +5,11 @@ const require = createRequire(import.meta.url);
 const nextConfig = require('../../next.config.js') as {
   agentRules?: boolean;
   logging?: false | { serverFunctions?: boolean };
+  htmlLimitedBots?: RegExp;
+  outputFileTracingIncludes?: Record<string, string[]>;
+};
+const { HTML_LIMITED_BOT_UA_RE } = require('next/dist/shared/lib/router/utils/html-bots') as {
+  HTML_LIMITED_BOT_UA_RE: RegExp;
 };
 
 describe('next.config.js', () => {
@@ -20,5 +25,62 @@ describe('next.config.js', () => {
   // terminal. Only that log is off; the rest of Next's logging stays.
   it('stops `next dev` from logging server function arguments', () => {
     expect(nextConfig.logging).toEqual({ serverFunctions: false });
+  });
+
+  describe('htmlLimitedBots', () => {
+    const bots = nextConfig.htmlLimitedBots!;
+
+    // regression: Next streams a dynamic page's metadata into <body> for any
+    // agent outside its list, so a preview bot that reads only <head> showed the
+    // site's defaults instead of the shared list or profile.
+    it.each([
+      ['Telegram', 'TelegramBot (like TwitterBot)'],
+      ['Telegram, should it drop "like TwitterBot"', 'TelegramBot/2.0'],
+      ['Viber', 'Viber/23.0 (Link preview)'],
+      ['Pinterest', 'Pinterestbot/1.0 (+https://www.pinterest.com/bot.html)'],
+      ['Mastodon', 'http.rb/5.1.1 (Mastodon/4.3.0; +https://mastodon.social/)'],
+      ['Bluesky', 'Mozilla/5.0 (compatible; Bluesky Cardyb/1.1; +mailto:support@bsky.app)'],
+      ['Snapchat', 'Snapchat/12.0 (link preview)'],
+      ['OK.ru', 'Mozilla/5.0 (compatible; OdklBot/1.0 like Linux; klass@odnoklassniki.ru)'],
+      ['Outlook / Teams', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) MicrosoftPreview/2.0'],
+      ['Iframely', 'Iframely/1.3.1 (+https://iframely.com/docs/about)'],
+      ['Facebook / Instagram / iMessage', 'facebookexternalhit/1.1 Facebot Twitterbot/1.0'],
+      ['WhatsApp', 'WhatsApp/2.23.20.0'],
+      ['Slack', 'Slackbot-LinkExpanding 1.0 (+https://api.slack.com/robots)'],
+      ['Discord', 'Mozilla/5.0 (compatible; Discordbot/2.0; +https://discordapp.com)'],
+    ])('gives %s the metadata in <head>', (_, ua) => {
+      expect(bots.test(ua)).toBe(true);
+    });
+
+    // Setting the option replaces Next's own list, so dropping it would take
+    // Google, Bing and the rest off it.
+    it("keeps every bot on Next's own list", () => {
+      expect(bots.source.startsWith(HTML_LIMITED_BOT_UA_RE.source)).toBe(true);
+      expect(bots.flags).toContain('i');
+    });
+
+    it('leaves browsers on streamed metadata', () => {
+      for (const ua of [
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15',
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+        'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1',
+        'Mozilla/5.0 (X11; Linux x86_64; rv:131.0) Gecko/20100101 Firefox/131.0',
+      ]) {
+        expect(bots.test(ua)).toBe(false);
+      }
+    });
+  });
+
+  // The share cards read their fonts from disk, and ship sharp's native binding
+  // (next/og rasterizes with it, a list's or profile's card converts its photo
+  // with it), which needs libvips shipped alongside it (WIS-156).
+  it.each([
+    '/opengraph-image',
+    '/wishlists/[id]/opengraph-image',
+    '/users/[username]/opengraph-image',
+  ])('ships the fonts and libvips with %s', (route) => {
+    const files = nextConfig.outputFileTracingIncludes?.[route] ?? [];
+    expect(files).toContain('./lib/og/fonts/*.ttf');
+    expect(files).toContain('./node_modules/@img/sharp-libvips-*/lib/**/*');
   });
 });

@@ -12,6 +12,7 @@ import {
   isSameImage,
   isUploadedBy,
 } from '@/lib/utils/blob';
+import { purgeShareCards } from '@/lib/og/purge';
 
 // GET /api/users/me - current user's profile + privacy settings
 export async function GET() {
@@ -130,6 +131,19 @@ export async function PATCH(request: NextRequest) {
     if (!written) {
       return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
     }
+
+    // Their profile's share card shows the username, avatar and (unless the
+    // profile is friends-only) the bio, and their lists' cards the username, so
+    // a change to any of them drops those cards now that it has landed. Compared
+    // with the read above, since the settings form sends the bio and every
+    // privacy setting with each save.
+    const cardChanged =
+      changes.username !== undefined ||
+      changes.image !== undefined ||
+      (changes.bio !== undefined && changes.bio !== (user.bio ?? null)) ||
+      (changes.privacy !== undefined &&
+        changes.privacy.profileVisibility !== (user.privacy?.profileVisibility ?? 'everyone'));
+    if (cardChanged) await purgeShareCards({ userIds: [session.user.id] });
 
     let saved = written;
     if (replacesAvatar) {

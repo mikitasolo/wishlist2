@@ -27,6 +27,8 @@ import { isWishlistOwner } from '@/lib/utils/wishlistOwners';
 import { isHiddenByArchive } from '@/lib/utils/wishlistAccess';
 import { isObjectIdParam } from '@/lib/utils/objectId';
 import { undoBookingUnlessMember, type LostBookingReason } from '@/lib/utils/lateBooking';
+import { isCountedOnShareCard } from '@/lib/og/data';
+import { purgeShareCards } from '@/lib/og/purge';
 
 /**
  * The answer to a booking undone because the caller stopped being a plain member
@@ -422,6 +424,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       item = now;
     }
 
+    // An owner's status change or review can move the item in or out of the count
+    // on the list's share card (a member's booking never does).
+    if (isOwner && updateData.status !== undefined) {
+      await purgeShareCards({ wishlistIds: [wishlist._id.toString()] });
+    }
+
     // Keep the gifter's durable Reservation in sync with their booking, now that
     // the item write above has matched. Only the gifter's own book/unbook writes
     // it; owner status changes don't, so the reservation (and the ability to log
@@ -575,6 +583,10 @@ export async function DELETE(
     // Free the item's uploaded image, if it was one of ours: the one it had when
     // it was deleted, since an edit since the read may have replaced it.
     await deleteOwnBlob(deleted.imageUrl);
+    // A visible item going changes the count on the list's share card.
+    if (isCountedOnShareCard(deleted.status)) {
+      await purgeShareCards({ wishlistIds: [wishlist._id.toString()] });
+    }
 
     return NextResponse.json({ success: true, data: {} }, { status: 200 });
   } catch (error) {

@@ -71,6 +71,44 @@ const securityHeaders = [
 // binding, and the sign-in page, ship libvips.
 const SHARP_NATIVE_LIBS = ['./node_modules/@img/sharp-libvips-*/lib/**/*'];
 
+// The share cards (lib/og/) read their fonts from disk, and every one of them
+// ships sharp's binding: next/og rasterizes a card with sharp when it can load
+// it (falling back to its own wasm renderer when it can't), and a list's or
+// profile's card converts its banner or avatar with it. So they ship libvips
+// too, which `npm run check:trace` asserts after a build.
+const SHARE_CARD_FILES = [...SHARP_NATIVE_LIBS, './lib/og/fonts/*.ttf'];
+
+// User agents that get a page's metadata in <head>, before any of the page.
+// Next streams a dynamic page's metadata into <body> for everyone else, which a
+// link-preview bot that reads only the head (and runs no JavaScript) never
+// sees, so a shared list or profile showed the site's defaults. Setting this
+// replaces Next's own list, so it's that list plus the preview bots it lacks:
+// Telegram (matched today only because its UA says "like TwitterBot"), Viber,
+// Pinterest, Mastodon, Bluesky (Cardyb), Snapchat, OK.ru, Outlook/Teams, and the
+// Iframely/Embedly unfurlers. Matching costs those agents nothing but waiting
+// for the metadata, which takes at most METADATA_BUDGET_MS (lib/utils/og.ts):
+// that includes a person in Viber's or Snapchat's in-app browser, if its user
+// agent names the app. Next's list is read from Next's own module, so an
+// upgrade that adds a bot keeps it. It isn't public API: should an upgrade move
+// it, loading this config fails at once, rather than quietly dropping Google
+// and the rest.
+const NEXT_HTML_LIMITED_BOTS = require('next/dist/shared/lib/router/utils/html-bots')
+  .HTML_LIMITED_BOT_UA_RE.source;
+const LINK_PREVIEW_BOTS = [
+  'TelegramBot',
+  'Viber',
+  'Pinterest',
+  'Mastodon',
+  'Bluesky',
+  'Cardyb',
+  'Snapchat',
+  'OdklBot',
+  'MicrosoftPreview',
+  'Iframely',
+  'Embedly',
+];
+const htmlLimitedBots = new RegExp(`${NEXT_HTML_LIMITED_BOTS}|${LINK_PREVIEW_BOTS.join('|')}`, 'i');
+
 const nextConfig = {
   // `next dev` otherwise appends a managed "nextjs-agent-rules" block to
   // AGENTS.md whenever it detects an AI coding agent, leaving every workspace
@@ -82,9 +120,13 @@ const nextConfig = {
   // action, requestMagicLink), and whatever a later action takes (WIS-178).
   // Production never logs these. Other logging keeps Next's defaults.
   logging: { serverFunctions: false },
+  htmlLimitedBots,
   outputFileTracingIncludes: {
     '/api/**/*': SHARP_NATIVE_LIBS,
     '/auth/signin': SHARP_NATIVE_LIBS,
+    '/opengraph-image': SHARE_CARD_FILES,
+    '/wishlists/[id]/opengraph-image': SHARE_CARD_FILES,
+    '/users/[username]/opengraph-image': SHARE_CARD_FILES,
   },
   images: {
     remotePatterns: [
