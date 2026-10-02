@@ -23,6 +23,7 @@ vi.mock('@/components/AuthButton', () => ({ default: () => null }));
 vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }));
 
 import BookedPage from '@/app/booked/page';
+import type { Occasion } from '@/lib/utils/occasion';
 import { ITEM_REQUEST_TIMEOUT_MS } from '@/lib/utils/requestTimeout';
 
 const reservation = {
@@ -81,7 +82,7 @@ const scarfGift = {
   giftedAt: '2026-10-01T10:05:00.000Z',
 };
 
-type Reservation = (typeof reservations)[number];
+type Reservation = (typeof reservations)[number] & { wishlistOccasion?: Occasion | null };
 type Gift = typeof legoGift;
 
 /** A JSON answer, a non-JSON one (`html`), or a network failure. */
@@ -131,8 +132,11 @@ function toResponse(reply: Reply) {
  * any it gives (an older `snapshot()`, say, for a read the server answered
  * before a change was saved).
  */
-function mockHeldFetch({ holdReads = false } = {}) {
-  const lists = { reservations: [...reservations], gifts: [...gifts] };
+function mockHeldFetch({
+  holdReads = false,
+  initial = reservations,
+}: { holdReads?: boolean; initial?: Reservation[] } = {}) {
+  const lists = { reservations: [...initial], gifts: [...gifts] };
   const server = {
     /** Both lists as the server holds them right now. */
     snapshot: (): Lists => ({
@@ -155,6 +159,12 @@ function mockHeldFetch({ holdReads = false } = {}) {
     /** A gift is reserved elsewhere. */
     reserve(entry: Reservation) {
       lists.reservations = [entry, ...lists.reservations];
+    },
+    /** An owner changes or clears a list's occasion. */
+    setOccasion(wishlistId: string, wishlistOccasion: Occasion | null) {
+      lists.reservations = lists.reservations.map((r) =>
+        r.wishlistId === wishlistId ? { ...r, wishlistOccasion } : r
+      );
     },
   };
 
@@ -1114,5 +1124,163 @@ describe('BookedPage — keyboard focus in a confirmation', () => {
 
     await answer(markGiftedKey('res-lego'), failed('Failed to log gift'));
     await waitFor(() => expect(lego.gift).toHaveFocus());
+  });
+});
+
+describe('BookedPage — "To give" grouped by the list’s upcoming occasion', () => {
+  // From Oct 2, 2026 (the viewer's local today): a yearly birthday on Oct 14,
+  // stored on the placeholder year; a wedding on Oct 5; a party that's passed.
+  const BIRTHDAY: Occasion = { kind: 'birthday', date: '2000-10-14', recurrence: 'yearly' };
+  const WEDDING: Occasion = { kind: 'wedding', date: '2026-10-05', recurrence: null };
+  const PASSED: Occasion = { kind: 'other', date: '2026-01-01', recurrence: null };
+
+  const toGive = (
+    _id: string,
+    itemName: string,
+    wishlistId: string,
+    wishlistName: string,
+    wishlistOccasion: Occasion | null
+  ): Reservation => ({
+    ...reservation,
+    _id,
+    itemName,
+    wishlistId,
+    wishlistName,
+    wishlistSlug: wishlistId,
+    wishlistOccasion,
+    itemStatus: 'booked',
+    stillReserved: true,
+  });
+
+  const grouped = [
+    toGive('res-train', 'Toy train', 'w-anna', 'Anna’s birthday', BIRTHDAY),
+    toGive('res-mug', 'Plain mug', 'w-misc', 'Odds and ends', null),
+    toGive('res-vase', 'Vase', 'w-wed', 'Wedding registry', WEDDING),
+    toGive('res-kite', 'Kite', 'w-anna', 'Anna’s birthday', BIRTHDAY),
+    toGive('res-hat', 'Party hat', 'w-party', 'Last party', PASSED),
+    // Detached from its item: under "Needs your confirmation", which isn't grouped.
+    {
+      ...toGive('res-scarf', 'Wool scarf', 'w-wed', 'Wedding registry', WEDDING),
+      itemStatus: 'deleted',
+      stillReserved: false,
+    },
+  ];
+
+  const WEDDING_GROUP = 'Wedding · in 3 days Wedding registry';
+  const BIRTHDAY_GROUP = 'Birthday · in 12 days Anna’s birthday';
+
+  /** The group headings in "To give", top to bottom. */
+  const headings = () => screen.queryAllByRole('heading', { level: 3 }).map((h) => h.textContent);
+
+  /** The heading of the group the card for `itemName` is in, or null if it's in none. */
+  const groupOf = (itemName: string) =>
+    cardName(itemName)?.closest('section')?.querySelector('h3')?.textContent ?? null;
+
+  /** The item names of the cards in the group under `heading`, top to bottom. */
+  function cardsUnder(heading: string) {
+    const group = screen
+      .getAllByRole('heading', { level: 3 })
+      .find((h) => h.textContent === heading)
+      ?.closest('section');
+    if (!group) throw new Error(`no group headed ${heading}`);
+    return grouped
+      .map((r) => cardName(r.itemName))
+      .filter((el): el is HTMLElement => !!el && group.contains(el))
+      .sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1))
+      .map((el) => el.textContent);
+  }
+
+  async function renderGrouped() {
+    const held = mockHeldFetch({ initial: grouped });
+    render(<BookedPage />);
+    await screen.findByText('Toy train');
+    return held;
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    // Local noon, so the local date is Oct 2 in any time zone.
+    vi.setSystemTime(new Date(2026, 9, 2, 12));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('groups the gifts to give by their list, nearest occasion first, "No date" last', async () => {
+    await renderGrouped();
+
+    expect(headings()).toEqual([WEDDING_GROUP, BIRTHDAY_GROUP, 'No date']);
+    expect(cardsUnder(WEDDING_GROUP)).toEqual(['Vase']);
+    // One group per list, its cards in the page's order.
+    expect(cardsUnder(BIRTHDAY_GROUP)).toEqual(['Toy train', 'Kite']);
+    // No occasion, or one that has passed.
+    expect(cardsUnder('No date')).toEqual(['Plain mug', 'Party hat']);
+    // "Needs your confirmation" isn't grouped, and "To give" still counts all five.
+    expect(groupOf('Wool scarf')).toBeNull();
+    expect(screen.getByRole('heading', { level: 2, name: /To give/ })).toHaveTextContent(
+      'To give5'
+    );
+    // A yearly occasion's placeholder year never shows.
+    expect(document.body.innerHTML).not.toContain('2000');
+  });
+
+  it('shows no group headings while no list has an occasion coming up', async () => {
+    mockHeldFetch({
+      initial: [
+        toGive('res-mug', 'Plain mug', 'w-misc', 'Odds and ends', null),
+        toGive('res-hat', 'Party hat', 'w-party', 'Last party', PASSED),
+      ],
+    });
+    render(<BookedPage />);
+    await screen.findByText('Plain mug');
+    expect(screen.getByText('Party hat')).toBeInTheDocument();
+    expect(headings()).toEqual([]);
+  });
+
+  it('a card action inside a group still removes the card, and a group left empty goes', async () => {
+    const { answer } = await renderGrouped();
+
+    markGifted('Kite');
+    dismiss('Vase');
+    expectReservationDisabled('Kite');
+    expectReservationDisabled('Vase');
+    expectReservationEnabled('Toy train');
+
+    await answer(markGiftedKey('res-kite'), gifted({ ...legoGift, _id: 'gift-kite' }));
+    await waitFor(() => expect(cardName('Kite')).toBeNull());
+    expect(cardsUnder(BIRTHDAY_GROUP)).toEqual(['Toy train']);
+    expectReservationDisabled('Vase');
+
+    await answer(dismissKey('res-vase'), ok);
+    await waitFor(() => expect(cardName('Vase')).toBeNull());
+    expect(headings()).toEqual([BIRTHDAY_GROUP, 'No date']);
+    expect(showToast).toHaveBeenCalledWith('Removed from your reservations', 'success');
+  });
+
+  it('regroups the cards on the next read once an owner changes a date, and leaves a card in flight alone', async () => {
+    const { server, answer } = await renderGrouped();
+
+    dismiss('Vase');
+    // Elsewhere: the odds-and-ends list gets a holiday tomorrow, Anna's birthday
+    // is cleared, and the wedding moves to next week.
+    server.setOccasion('w-misc', { kind: 'holiday', date: '2026-10-03', recurrence: null });
+    server.setOccasion('w-anna', null);
+    server.setOccasion('w-wed', { ...WEDDING, date: '2026-10-09' });
+    act(() => {
+      window.dispatchEvent(new Event('focus'));
+    });
+
+    const HOLIDAY_GROUP = 'Holiday · tomorrow Odds and ends';
+    await waitFor(() => expect(headings()).toEqual([HOLIDAY_GROUP, WEDDING_GROUP, 'No date']));
+    expect(cardsUnder(HOLIDAY_GROUP)).toEqual(['Plain mug']);
+    expect(cardsUnder('No date')).toEqual(['Toy train', 'Kite', 'Party hat']);
+    // The card in flight keeps the page's copy (the read leaves it alone), so it
+    // stays where it was, under the date it had, disabled, until its own answer.
+    expect(cardsUnder(WEDDING_GROUP)).toEqual(['Vase']);
+    expectReservationDisabled('Vase');
+
+    await answer(dismissKey('res-vase'), ok);
+    await waitFor(() => expect(cardName('Vase')).toBeNull());
+    expect(headings()).toEqual([HOLIDAY_GROUP, 'No date']);
   });
 });
