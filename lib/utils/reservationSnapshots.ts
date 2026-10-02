@@ -97,7 +97,11 @@ export async function snapshotReservationImage(
 export async function deleteReservations(filter: FilterQuery<IReservation>): Promise<number> {
   const ended: Array<Pick<IReservation, 'gifter' | 'itemImage'>> = [];
   for (;;) {
-    const r = await Reservation.findOneAndDelete(filter).select('gifter itemImage').lean();
+    // Options rather than a chained `.select().lean()`, so a race test can hold it.
+    const r = await Reservation.findOneAndDelete(filter, {
+      projection: { gifter: 1, itemImage: 1 },
+      lean: true,
+    });
     if (!r) break;
     ended.push(r);
   }

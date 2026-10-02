@@ -32,6 +32,7 @@ import Wishlist from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
 import Item from '@/models/Item';
 import Reservation from '@/models/Reservation';
+import { addWishlistOwner } from '@/lib/utils/wishlistOwnership';
 
 const session = vi.mocked(auth);
 
@@ -283,5 +284,167 @@ describe('PATCH /api/items/[id] — a book or unbook already refused on the firs
     expect((await res.json()).error).toBe('Invalid status transition');
     expect((await Item.findById(itemId))?.status).toBe('completed');
     expect(await Reservation.countDocuments({ gifter: alice })).toBe(1);
+  });
+});
+
+// A book or unbook writes the item, then the Reservation, in two steps. The
+// same person booking and unbooking one item from two tabs can land the other
+// request in between, so each side re-checks the item once its Reservation
+// write is done. Afterwards they hold a Reservation exactly when the item is
+// booked by them, except where an owner's change deliberately keeps one.
+describe('PATCH /api/items/[id] — a Reservation write landing after the item has moved on', () => {
+  /** Hold the booking's Reservation write while `meanwhile` runs to completion. */
+  const whileReservationWriteHeld = <T>(meanwhile: () => Promise<T>) =>
+    holdFirstCall(Reservation, 'findOneAndUpdate', meanwhile);
+  /** Hold the unbook's Reservation delete while `meanwhile` runs to completion. */
+  const whileReservationDeleteHeld = <T>(meanwhile: () => Promise<T>) =>
+    holdFirstCall(Reservation, 'findOneAndDelete', meanwhile);
+
+  /** The snapshot URLs every copy so far made. */
+  const copies = () => copy.mock.calls.map(([, to]) => `${HOST}/${to}`);
+
+  // regression: the book's Reservation write landed after the same person's
+  // unbook had freed the item and deleted (nothing), so they held a Reservation
+  // for an available item, and someone else booking it left two people holding
+  // one item.
+  it('regression: a booking whose Reservation write lands after its own unbook leaves no Reservation behind', async () => {
+    const race = whileReservationWriteHeld(() => patchAs(alice, { status: 'available' }));
+    const booking = await patchAs(alice, { status: 'booked' });
+
+    expect(race.held()).toBe(true);
+    // Both writes on the item landed, the booking first.
+    expect(booking.status).toBe(200);
+    expect(race.outcome()?.status).toBe(200);
+
+    const item = await Item.findById(itemId);
+    expect(item?.status).toBe('available');
+    expect(item?.bookedBy).toBeNull();
+    expect(await Reservation.countDocuments()).toBe(0);
+    // Taken back before its image was copied, and the item's own upload, which
+    // the Reservation pointed at meanwhile, is left alone.
+    expect(copy).not.toHaveBeenCalled();
+    expect(del).not.toHaveBeenCalled();
+  });
+
+  // regression: the unbook's Reservation delete landed after the same person had
+  // booked the item again, and took that booking's Reservation, so the item was
+  // booked by them but missing from their Booked page.
+  it('regression: an unbook whose Reservation delete lands after its own rebooking writes the Reservation again', async () => {
+    expect((await patchAs(alice, { status: 'booked' })).status).toBe(200);
+
+    const race = whileReservationDeleteHeld(() => patchAs(alice, { status: 'booked' }));
+    const unbook = await patchAs(alice, { status: 'available' });
+
+    expect(race.held()).toBe(true);
+    // Both writes on the item landed, the unbook first.
+    expect(unbook.status).toBe(200);
+    expect(race.outcome()?.status).toBe(200);
+
+    const item = await Item.findById(itemId);
+    expect(item?.status).toBe('booked');
+    expect(item?.bookedBy?.toString()).toBe(alice);
+    const reservations = await Reservation.find().lean();
+    expect(reservations.map((r) => r.gifter.toString())).toEqual([alice]);
+    // With its own snapshot, and every other copy freed exactly once: none leaked
+    // and none the Reservation shows was freed.
+    const image = reservations[0].itemImage;
+    expect(isSnapshot(image)).toBe(true);
+    expect(del.mock.calls.flat().sort()).toEqual(
+      copies()
+        .filter((url) => url !== image)
+        .sort()
+    );
+  });
+
+  it('a booking whose Reservation write lands after its own unbook and then someone else booking it leaves only theirs', async () => {
+    const race = whileReservationWriteHeld(async () => [
+      (await patchAs(alice, { status: 'available' })).status,
+      (await patchAs(bob, { status: 'booked' })).status,
+    ]);
+    const booking = await patchAs(alice, { status: 'booked' });
+
+    expect(race.held()).toBe(true);
+    expect(booking.status).toBe(200);
+    expect(race.outcome()).toEqual([200, 200]);
+
+    expect((await Item.findById(itemId))?.bookedBy?.toString()).toBe(bob);
+    const reservations = await Reservation.find().lean();
+    expect(reservations.map((r) => r.gifter.toString())).toEqual([bob]);
+    expect(isSnapshot(reservations[0].itemImage)).toBe(true);
+    expect(del).not.toHaveBeenCalled();
+  });
+
+  it("an unbook whose Reservation delete lands after someone else booked the item doesn't write one back", async () => {
+    expect((await patchAs(alice, { status: 'booked' })).status).toBe(200);
+    const alicesSnapshot = (await Reservation.findOne({ gifter: alice }).lean())?.itemImage;
+
+    const race = whileReservationDeleteHeld(() => patchAs(bob, { status: 'booked' }));
+    const unbook = await patchAs(alice, { status: 'available' });
+
+    expect(race.held()).toBe(true);
+    expect(unbook.status).toBe(200);
+    expect(race.outcome()?.status).toBe(200);
+
+    expect((await Item.findById(itemId))?.bookedBy?.toString()).toBe(bob);
+    const reservations = await Reservation.find().lean();
+    expect(reservations.map((r) => r.gifter.toString())).toEqual([bob]);
+    expect(del.mock.calls).toEqual([[alicesSnapshot]]);
+  });
+
+  // WIS-81: an owner's status change unassigns the item but keeps the gifter's
+  // Reservation, so they can still log the gift. One landing between the
+  // booking's two writes has to end the same way.
+  it.each(['completed', 'draft'] as const)(
+    "an owner moving the item to %s before the booking's Reservation write lands keeps the Reservation",
+    async (status) => {
+      const race = whileReservationWriteHeld(() => patchAs(owner, { status }));
+      const booking = await patchAs(alice, { status: 'booked' });
+
+      expect(race.held()).toBe(true);
+      expect(booking.status).toBe(200);
+      expect(race.outcome()?.status).toBe(200);
+
+      const item = await Item.findById(itemId);
+      expect(item?.status).toBe(status);
+      expect(item?.bookedBy).toBeNull();
+      const reservations = await Reservation.find().lean();
+      expect(reservations.map((r) => r.gifter.toString())).toEqual([alice]);
+      expect(isSnapshot(reservations[0].itemImage)).toBe(true);
+      expect(del).not.toHaveBeenCalled();
+    }
+  );
+
+  it("the item being deleted before the booking's Reservation write lands keeps the Reservation", async () => {
+    const race = whileReservationWriteHeld(async () => {
+      await Item.deleteOne({ _id: itemId });
+    });
+    const booking = await patchAs(alice, { status: 'booked' });
+
+    expect(race.held()).toBe(true);
+    expect(booking.status).toBe(200);
+    // A Reservation outlives its item, so the gifter can still log the gift.
+    const reservations = await Reservation.find().lean();
+    expect(reservations.map((r) => r.gifter.toString())).toEqual([alice]);
+    expect(isSnapshot(reservations[0].itemImage)).toBe(true);
+  });
+
+  // Becoming an owner frees the item and cancels the Reservation: an owner can't
+  // be their own gifter. One written after that cancel would survive it.
+  it("becoming an owner before the booking's Reservation write lands leaves no Reservation behind", async () => {
+    const race = whileReservationWriteHeld(async () =>
+      addWishlistOwner((await Wishlist.findOne().lean())!, alice)
+    );
+    const booking = await patchAs(alice, { status: 'booked' });
+
+    expect(race.held()).toBe(true);
+    expect(booking.status).toBe(200);
+    expect(race.outcome()).toEqual({ unbookedItems: 1, cancelledReservations: 0 });
+
+    const item = await Item.findById(itemId);
+    expect(item?.status).toBe('available');
+    expect(item?.bookedBy).toBeNull();
+    expect(await Reservation.countDocuments()).toBe(0);
+    expect(copy).not.toHaveBeenCalled();
+    expect(del).not.toHaveBeenCalled();
   });
 });
