@@ -368,10 +368,11 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       return NextResponse.json({ success: false, error: FOREIGN_IMAGE_ERROR }, { status: 400 });
     }
 
-    // The edit and review forms send the image back with every save, changed or
-    // not. An unchanged one isn't written: written back, it would undo a
-    // replacement (a co-owner's, or the proposer's) landing after the read
-    // above, and restore the image that replacement had already freed.
+    // The review form sends the image back with every save, changed or not (the
+    // edit form only sends one the owner changed). An unchanged one isn't
+    // written: written back, it would undo a replacement (a co-owner's, or the
+    // proposer's) landing after the read above, and restore the image that
+    // replacement had already freed.
     if (
       updateData.imageUrl !== undefined &&
       isSameImage(updateData.imageUrl, currentItem.imageUrl)

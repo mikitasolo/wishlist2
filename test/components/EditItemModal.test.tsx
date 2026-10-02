@@ -3,9 +3,14 @@ import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vites
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import type { ApiItem } from '@/types/api';
 
-// ImageUpload pulls in react-easy-crop; stub it out.
+// ImageUpload pulls in react-easy-crop; stub it out with a button that uploads
+// a replacement.
 vi.mock('@/components/ImageUpload', () => ({
-  default: () => <div data-testid="image-upload" />,
+  default: ({ onChange }: { onChange: (url: string | null) => void }) => (
+    <button type="button" onClick={() => onChange('https://images.example.com/new.jpg')}>
+      Replace image
+    </button>
+  ),
 }));
 
 import EditItemModal from '@/components/EditItemModal';
@@ -145,5 +150,101 @@ describe('EditItemModal — most wanted', () => {
       />
     );
     expect(mostWantedSwitch()).toBeNull();
+  });
+});
+
+describe('EditItemModal — sends only what changed', () => {
+  const ALICES_IMAGE = 'https://store.public.blob.vercel-storage.com/uploads/alice/mug.webp';
+  const BOBS_IMAGE = 'https://store.public.blob.vercel-storage.com/uploads/bob/red-mug.webp';
+  const opened = () =>
+    item({
+      name: 'Blue Mug',
+      imageUrl: ALICES_IMAGE,
+      price: { value: 1250, currency: 'usd' },
+      link: 'https://shop.example.com/mug',
+      notes: 'Any colour',
+      mostWanted: false,
+    });
+  const saveButton = () => screen.getByRole('button', { name: /^save changes$/i });
+  const notesInput = () => screen.getByLabelText(/^notes$/i);
+
+  function open(onSave = vi.fn().mockResolvedValue(undefined), onClose = vi.fn()) {
+    const view = render(
+      <EditItemModal isOpen onClose={onClose} onSave={onSave} item={opened()} {...currencies} />
+    );
+    return { ...view, onSave, onClose };
+  }
+
+  // regression: the modal sent every content field as the form was filled when
+  // it opened. With a co-owner's save in between (a new image and name), a
+  // notes-only edit wrote the old image and name back over theirs: it put back
+  // an image their replacement had already freed and freed theirs, or was
+  // refused as someone else's upload. test/api/itemEditSave.test.ts sends the
+  // same request to the route.
+  it('regression: a notes-only save sends just the notes, not the image or name it loaded', async () => {
+    const { onSave, onClose, rerender } = open();
+
+    // A co-owner replaces the image and renames the item while the modal is
+    // open. Even handed the item as it is now, the form keeps what it loaded.
+    rerender(
+      <EditItemModal
+        isOpen
+        onClose={onClose}
+        onSave={onSave}
+        item={{ ...opened(), name: 'Red Mug', imageUrl: BOBS_IMAGE }}
+        {...currencies}
+      />
+    );
+    expect(screen.getByLabelText(/item name/i)).toHaveValue('Blue Mug');
+
+    fireEvent.change(notesInput(), { target: { value: 'Size M' } });
+    fireEvent.click(saveButton());
+
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(onSave).toHaveBeenCalledWith({ notes: 'Size M' });
+  });
+
+  it('sends a replaced image, and nothing else', async () => {
+    const { onSave } = open();
+    fireEvent.click(screen.getByRole('button', { name: /replace image/i }));
+    fireEvent.click(saveButton());
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    expect(onSave).toHaveBeenCalledWith({ imageUrl: 'https://images.example.com/new.jpg' });
+  });
+
+  it('sends the price as one field when only its currency changed', async () => {
+    const { onSave } = open();
+    fireEvent.click(screen.getByRole('button', { name: 'USD' }));
+    fireEvent.click(screen.getByRole('button', { name: /EUR\s*Euro/ }));
+    fireEvent.click(saveButton());
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    expect(onSave).toHaveBeenCalledWith({ price: { value: 1250, currency: 'eur' } });
+  });
+
+  it('closes without a request when nothing changed', async () => {
+    const { onSave, onClose } = open();
+    fireEvent.click(saveButton());
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it('closes without a request, or a prompt, when only blanks were added', async () => {
+    const { onSave, onClose } = open();
+    fireEvent.change(screen.getByLabelText(/item name/i), { target: { value: 'Blue Mug  ' } });
+    fireEvent.change(notesInput(), { target: { value: ' Any colour' } });
+    fireEvent.click(saveButton());
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(onSave).not.toHaveBeenCalled();
+    expect(screen.queryByText(/discard changes\?/i)).toBeNull();
+  });
+
+  it("keeps the item's name when it was emptied to blanks", async () => {
+    const { onSave } = open();
+    fireEvent.change(screen.getByLabelText(/item name/i), { target: { value: '   ' } });
+    fireEvent.change(notesInput(), { target: { value: 'Size M' } });
+    fireEvent.click(saveButton());
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    expect(onSave).toHaveBeenCalledWith({ notes: 'Size M' });
   });
 });

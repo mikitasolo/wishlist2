@@ -6,12 +6,14 @@ import BaseModal from './BaseModal';
 import ItemForm, { itemToFormData } from './ItemForm';
 import ConfirmDialog from './ConfirmDialog';
 import { defaultItemCurrency } from '@/lib/utils/currencies';
+import type { ItemContentChanges } from '@/lib/utils/itemForm';
 
 interface EditItemModalProps {
   isOpen: boolean;
   onClose: () => void;
-  // Must reject when the request fails: the modal only closes on success, so
-  // the user's changes survive a failure.
+  // Given only the fields the user changed, and never called when there are
+  // none. Must reject when the request fails: the modal only closes on success,
+  // so the user's changes survive a failure.
   onSave: (updates: Partial<ApiItem>) => Promise<void>;
   onDelete?: () => Promise<void>;
   item: ApiItem;
@@ -52,33 +54,30 @@ export default function EditItemModal({
   // This ensures form state is reset when switching between items
   const itemFormKey = isOpen ? `edit-item-${item._id}` : undefined;
 
-  const handleSubmit = async (data: {
-    name: string;
-    imageUrl?: string | null;
-    price?: { value: number; currency: string } | null;
-    link?: string | null;
-    notes?: string | null;
-    mostWanted?: boolean;
-    status: 'draft' | 'available' | 'proposed';
-  }) => {
+  // Sends only what the owner changed from the item the form was filled from
+  // (see itemChanges): a co-owner may have saved the item since the modal
+  // opened, and a field sent as it was loaded would write that back over their
+  // change. Above all an unchanged image, which would put back one their
+  // replacement has already freed, and free theirs.
+  const handleSubmit = async (_data: unknown, changes: ItemContentChanges) => {
+    // A name emptied to blanks isn't sent, so the item keeps its name.
+    const { name, ...rest } = changes;
+    // Editing content never changes status — that would silently clobber a
+    // booking (owners can't see bookings). Publishing / moving to draft is a
+    // separate, explicit action on the item card, and itemChanges leaves it out.
+    const updates: Partial<ApiItem> = name ? changes : rest;
+    if (Object.keys(updates).length === 0) {
+      // Nothing to save (the API would refuse an empty update): just close.
+      setHasUnsavedChanges(false);
+      onClose();
+      return;
+    }
+
     setIsSubmitting(true);
     // No catch: a failed save must reject through to ItemForm, which then keeps
     // comparing the user's changes against the saved item. Only a success
     // closes the modal.
     try {
-      const updates: Partial<ApiItem> = {
-        name: data.name || undefined,
-        // Include fields even if null to clear them
-        imageUrl: data.imageUrl !== undefined ? data.imageUrl : undefined,
-        price: data.price !== undefined ? data.price : undefined,
-        link: data.link !== undefined ? data.link : undefined,
-        notes: data.notes !== undefined ? data.notes : undefined,
-        // Absent when a proposer edits their own proposal.
-        mostWanted: data.mostWanted,
-      };
-      // Editing content never changes status — that would silently clobber a
-      // booking (owners can't see bookings). Publishing / moving to draft is a
-      // separate, explicit action on the item card.
       await onSave(updates);
       setHasUnsavedChanges(false);
       onClose();
