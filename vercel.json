@@ -3,7 +3,7 @@
   "regions": ["arn1"],
   "git": {
     "deploymentEnabled": {
-      "*": false,
+      "**": false,
       "staging": true,
       "main": true
     }
