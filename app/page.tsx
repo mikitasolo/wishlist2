@@ -9,6 +9,7 @@ import GlobalSearch from '@/components/GlobalSearch';
 import CreateWishlistModal from '@/components/CreateWishlistModal';
 import WishlistCard from '@/components/WishlistCard';
 import Cover from '@/components/Cover';
+import OccasionLabel, { OCCASION_ON_COVER } from '@/components/OccasionLabel';
 import Select from '@/components/Select';
 import FollowListModal, { type FollowTab } from '@/components/FollowListModal';
 import Button from '@/components/Button';
@@ -113,14 +114,22 @@ export default function Home() {
   }, [status]);
 
   const activeOwned = useMemo(() => owned.filter((w) => !w.archived), [owned]);
-  const archivedOwned = useMemo(() => owned.filter((w) => w.archived), [owned]);
-  // "Your wishlists" puts the lists with an occasion coming up first, nearest
-  // first; the rest keep the API's order (newest first). Only that grid: the
-  // Featured pick, shared lists and archived ones keep their own order.
+  // The grids of your own lists (Your wishlists, Archived) put the ones with an
+  // occasion coming up first, nearest first; the rest keep the API's order
+  // (newest first). The Featured pick and its menu, and the shared lists, keep
+  // theirs.
   const today = useLocalToday();
   const ownedByOccasion = useMemo(
     () => sortByUpcomingOccasion(activeOwned, today),
     [activeOwned, today]
+  );
+  const archivedOwned = useMemo(
+    () =>
+      sortByUpcomingOccasion(
+        owned.filter((w) => w.archived),
+        today
+      ),
+    [owned, today]
   );
   const totalItems = useMemo(
     () => activeOwned.reduce((n, w) => n + (w.itemCount ?? 0), 0),
@@ -366,6 +375,12 @@ export default function Home() {
                       className="relative flex aspect-[16/9] flex-col justify-end bg-surface-2 p-6"
                     >
                       <div className="absolute inset-0 bg-gradient-to-t from-black/35 to-transparent" />
+                      {featured.occasion ? (
+                        <OccasionLabel
+                          occasion={featured.occasion}
+                          className={`absolute left-6 top-6 ${OCCASION_ON_COVER}`}
+                        />
+                      ) : null}
                       <span className="relative text-xs font-bold uppercase tracking-widest text-white/85">
                         Featured
                       </span>

@@ -42,9 +42,9 @@ export default function MyWishlistsPage() {
       .finally(() => setLoading(false));
   }, [status, showToast]);
 
+  // In each section, the lists with an occasion coming up go first, nearest
+  // first; the rest keep the API's order (newest first).
   const today = useLocalToday();
-  // Your lists with an occasion coming up go first, nearest first; the rest
-  // keep the API's order (newest first). Archived lists keep theirs.
   const active = useMemo(
     () =>
       sortByUpcomingOccasion(
@@ -53,7 +53,14 @@ export default function MyWishlistsPage() {
       ),
     [owned, today]
   );
-  const archived = useMemo(() => owned.filter((w) => w.archived), [owned]);
+  const archived = useMemo(
+    () =>
+      sortByUpcomingOccasion(
+        owned.filter((w) => w.archived),
+        today
+      ),
+    [owned, today]
+  );
 
   return (
     <div className="min-h-screen">

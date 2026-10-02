@@ -5,7 +5,7 @@ import { IWishlist } from '@/models/Wishlist';
 import Avatar from '@/components/Avatar';
 import Icon from '@/components/Icon';
 import Cover from '@/components/Cover';
-import OccasionLabel from '@/components/OccasionLabel';
+import OccasionLabel, { OCCASION_ON_COVER } from '@/components/OccasionLabel';
 import { getVisibility, visibilityMeta } from '@/lib/utils/visibility';
 
 interface WishlistCardProps {
@@ -61,11 +61,14 @@ export default function WishlistCard({ wishlist, showOwner = false }: WishlistCa
           </span>
         ) : null}
         {/* The list's occasion and its countdown, in the viewer's local date.
-            Over the cover, so a card with one is the same size as one without. */}
-        <OccasionLabel
-          occasion={wishlist.occasion}
-          className="absolute bottom-3 left-3 rounded-full border border-white/25 bg-white/20 px-2.5 py-1 text-[11.5px] font-semibold text-white backdrop-blur-md"
-        />
+            Over the cover, so a card with one is the same size as one without.
+            Only mounted for a list with one, as each label watches the clock. */}
+        {wishlist.occasion ? (
+          <OccasionLabel
+            occasion={wishlist.occasion}
+            className={`absolute bottom-3 left-3 ${OCCASION_ON_COVER}`}
+          />
+        ) : null}
       </Cover>
 
       {/* Body */}
