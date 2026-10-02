@@ -29,23 +29,43 @@ export default function ImageCropModal({
   const [zoom, setZoom] = useState(1);
   const [areaPixels, setAreaPixels] = useState<PixelCrop | null>(null);
   const [working, setWorking] = useState(false);
+  // The crop in flight. Its result is handed on only if it's still this one:
+  // cancelling drops it (so cancel is instant, instead of waiting for the
+  // crop), and so does the dialog closing, or being handed another file (a
+  // paste while it's open). The image the user moved on from would otherwise
+  // be uploaded, and put in the form, all the same.
+  const cropRun = useRef<object | null>(null);
+  const endCrop = useCallback(() => {
+    cropRun.current = null;
+    setWorking(false);
+  }, []);
 
   useBodyScrollLock(true);
 
   // Focus starts on the close button and stays inside while it's open, even
   // over the item modal whose form holds it, then goes back to what opened it.
-  // While the crop runs (Cancel and Crop & upload disabled), it's held on the
-  // panel if the focused one of them was.
+  // While the crop runs (Crop & upload disabled), it's held on the panel if
+  // Crop & upload had it.
   const dialogRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
   useFocusTrap(true, dialogRef, undefined, { busy: working });
 
-  // Load the selected file into an object URL for the cropper.
+  // Load the selected file into an object URL for the cropper. A crop of the
+  // file this replaces, or of the last one when the dialog closes, is dropped.
   useEffect(() => {
     const url = URL.createObjectURL(file);
     setSrc(url);
-    return () => URL.revokeObjectURL(url);
-  }, [file]);
+    return () => {
+      URL.revokeObjectURL(url);
+      endCrop();
+    };
+  }, [file, endCrop]);
+
+  // Every way out (the close button, Cancel, Escape) drops the crop in flight.
+  const cancel = useCallback(() => {
+    endCrop();
+    onCancel();
+  }, [endCrop, onCancel]);
 
   // Capture phase + stopImmediatePropagation, as in ConfirmDialog: Escape
   // cancels only the crop, not the item or create-wishlist modal it opened in.
@@ -53,11 +73,11 @@ export default function ImageCropModal({
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       e.stopImmediatePropagation();
-      onCancel();
+      cancel();
     };
     document.addEventListener('keydown', onKey, { capture: true });
     return () => document.removeEventListener('keydown', onKey, { capture: true });
-  }, [onCancel]);
+  }, [cancel]);
 
   const onCropComplete = useCallback((_area: unknown, areaPx: PixelCrop) => {
     setAreaPixels(areaPx);
@@ -65,12 +85,16 @@ export default function ImageCropModal({
 
   const confirm = async () => {
     if (!src || !areaPixels) return;
+    const run = {};
+    cropRun.current = run;
     setWorking(true);
     try {
       const blob = await getCroppedBlob(src, areaPixels);
+      if (cropRun.current !== run) return; // dropped meanwhile
       onCropped(blob);
     } catch {
-      setWorking(false);
+      // A dropped crop has nothing left to end, and may have a newer one after it.
+      if (cropRun.current === run) endCrop();
     }
   };
 
@@ -97,7 +121,7 @@ export default function ImageCropModal({
           {/* A plain button: the dialog sits inside the item or wishlist form. */}
           <button
             type="button"
-            onClick={onCancel}
+            onClick={cancel}
             aria-label="Cancel"
             className="flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
@@ -141,9 +165,8 @@ export default function ImageCropModal({
         <div className="flex justify-end gap-2 p-5">
           <button
             type="button"
-            onClick={onCancel}
-            disabled={working}
-            className="h-10 rounded-xl bg-muted px-4 text-sm font-medium text-foreground transition-colors hover:bg-surface-2 disabled:opacity-50"
+            onClick={cancel}
+            className="h-10 rounded-xl bg-muted px-4 text-sm font-medium text-foreground transition-colors hover:bg-surface-2"
           >
             Cancel
           </button>
