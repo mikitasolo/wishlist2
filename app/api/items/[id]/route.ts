@@ -494,23 +494,34 @@ export async function DELETE(
     const isProposer =
       item.status === 'proposed' && item.proposedBy?.toString() === session.user.id;
 
-    // Only an owner, or the proposer of a still-pending proposal, may delete.
-    if (!isOwner && !isProposer) {
-      return NextResponse.json(
+    const notOwnerOrProposer = () =>
+      NextResponse.json(
         { success: false, error: 'Unauthorized - Owner or proposer access required' },
         { status: 403 }
       );
-    }
+
+    // Only an owner, or the proposer of a still-pending proposal, may delete.
+    if (!isOwner && !isProposer) return notOwnerOrProposer();
 
     // The owner check above is already the last read before this delete, so
     // re-reading the list here wouldn't narrow the gap a co-owner's removal could
     // land in. An item can't carry its list's owners, so closing that gap would
     // take a transaction.
     //
+    // A proposer's withdrawal, though, rests on the item itself, as read above:
+    // still a proposal, and theirs. So it's deleted only while it still is. An
+    // owner approving it in between makes it a live item, which only owners may
+    // delete.
+    //
     // A concurrent request (another owner's delete) may have taken the item
     // since it was read: then this deleted nothing, and frees nothing either.
-    const deleted = await Item.findOneAndDelete({ _id: id });
+    const deleted = await Item.findOneAndDelete(
+      isOwner ? { _id: id } : { _id: id, status: 'proposed', proposedBy: session.user.id }
+    );
     if (!deleted) {
+      // A withdrawal that lost to an approval: refused as if the approval had
+      // landed before the read. The item and its image are left as they are.
+      if (!isOwner && (await Item.exists({ _id: id }))) return notOwnerOrProposer();
       return NextResponse.json({ success: false, error: 'Item not found' }, { status: 404 });
     }
 
