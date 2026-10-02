@@ -168,8 +168,9 @@ export default function WishlistDetail() {
   } | null>(null);
   const [isDeletingWishlist, setIsDeletingWishlist] = useState(false);
   // The sole owner's Leave (on their own row in Manage) explains why they can't
-  // and offers the way out instead: invite a co-owner, then leave. Nothing in it
-  // leaves or deletes anything.
+  // and offers the way out instead: make someone else an owner (a member, with
+  // Make owner, or an invited co-owner), then leave. Nothing in it leaves or
+  // deletes anything.
   const [soleOwnerNotice, setSoleOwnerNotice] = useState(false);
   const inviteFormRef = useRef<InviteMemberFormHandle>(null);
   // Set by the notice's "Invite a co-owner", so the invite form is set up once
@@ -965,7 +966,8 @@ export default function WishlistDetail() {
 
   const ownerCount = owners.ids.length;
   // A co-owner may step down. The sole owner can't: their Leave in Manage
-  // explains that they'd have to invite a co-owner first, or delete the list.
+  // explains that they'd have to make someone else an owner first, or delete
+  // the list.
   const canLeave = isOwner ? ownerCount > 1 : isMember;
 
   // The members endpoint returns one list; the UI shows the two relationships
@@ -2074,7 +2076,13 @@ export default function WishlistDetail() {
         <ConfirmDialog
           isOpen={soleOwnerNotice}
           title="You're the only owner"
-          message="A wishlist needs at least one owner. To leave, invite a co-owner first; once they accept, you can leave. Or delete the wishlist instead."
+          // A member is the likeliest successor, and inviting one is refused
+          // ("promote them from the members list"), so the way to them comes first.
+          message={
+            memberRows.length > 0
+              ? 'A wishlist needs at least one owner. To leave, make someone else an owner first: use Make owner next to one of your members, or invite a co-owner. Once they accept, you can leave. Or delete the wishlist instead.'
+              : 'A wishlist needs at least one owner. To leave, invite a co-owner first; once they accept, you can leave. Or delete the wishlist instead.'
+          }
           onConfirm={inviteCoOwnerInstead}
           onCancel={() => setSoleOwnerNotice(false)}
           confirmText="Invite a co-owner"

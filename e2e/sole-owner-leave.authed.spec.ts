@@ -23,7 +23,7 @@ test("the sole owner's Leave explains, and takes them to an owner invite", async
   await leave.click();
 
   const dialog = page.getByRole('alertdialog', { name: "You're the only owner" });
-  await expect(dialog).toContainText('invite a co-owner first');
+  await expect(dialog).toContainText(/invite a co-owner/);
   await expect(field).not.toBeInViewport();
   await dialog.getByRole('button', { name: 'Invite a co-owner' }).click();
 

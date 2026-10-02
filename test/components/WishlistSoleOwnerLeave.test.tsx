@@ -31,6 +31,7 @@ import WishlistDetail from '@/app/wishlists/[id]/page';
 
 // User ids double as usernames here. Alice is signed in.
 let owners: string[];
+let memberIds: string[];
 let userRole: 'owner' | 'member';
 
 const reply = (body: unknown, status = 200) => ({
@@ -63,6 +64,7 @@ beforeEach(() => {
   scrollTo.mockReset();
   Element.prototype.scrollIntoView = scrollIntoView;
   owners = ['alice'];
+  memberIds = ['carol'];
   userRole = 'owner';
   fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
     const method = init?.method ?? 'GET';
@@ -92,7 +94,7 @@ beforeEach(() => {
         success: true,
         data: [
           ...owners.map((id) => ({ _id: id, user: person(id), role: 'owner' })),
-          { _id: 'm-carol', user: person('carol'), role: 'member' },
+          ...memberIds.map((id) => ({ _id: `m-${id}`, user: person(id), role: 'member' })),
         ],
       });
     }
@@ -147,8 +149,9 @@ describe('Leave for the sole owner of a list', () => {
     await user.click(leave);
 
     const dialog = await screen.findByRole('alertdialog', { name: "You're the only owner" });
+    // Carol is a member, so the way to her comes first.
     expect(dialog).toHaveAccessibleDescription(
-      'A wishlist needs at least one owner. To leave, invite a co-owner first; once they accept, you can leave. Or delete the wishlist instead.'
+      'A wishlist needs at least one owner. To leave, make someone else an owner first: use Make owner next to one of your members, or invite a co-owner. Once they accept, you can leave. Or delete the wishlist instead.'
     );
     // Nothing in it leaves or deletes: only the way to a co-owner, or back.
     expect(
@@ -164,6 +167,18 @@ describe('Leave for the sole owner of a list', () => {
     await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
     await waitFor(() => expect(leave).toHaveFocus());
     expect(leaveRequests()).toHaveLength(0);
+  });
+
+  it('only mentions inviting a co-owner when the list has no members to make owner', async () => {
+    memberIds = [];
+    const user = userEvent.setup();
+    render(<WishlistDetail />);
+    await user.click(await openManage(user));
+
+    const dialog = await screen.findByRole('alertdialog', { name: "You're the only owner" });
+    expect(dialog).toHaveAccessibleDescription(
+      'A wishlist needs at least one owner. To leave, invite a co-owner first; once they accept, you can leave. Or delete the wishlist instead.'
+    );
   });
 
   it('takes them to the invite form, set to invite an owner, from "Invite a co-owner"', async () => {
