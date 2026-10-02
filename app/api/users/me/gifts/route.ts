@@ -16,8 +16,8 @@ export async function GET() {
 
     const gifts = await GiftLog.find({ gifter: session.user.id }).sort({ giftedAt: -1 }).lean();
 
-    // Resolve current wishlist slugs for still-valid soft pointers (for links).
-    const slugs = await giftWishlistSlugs(gifts);
+    // The current slugs of the lists the gifter may still open (for links).
+    const slugs = await giftWishlistSlugs(session.user.id, gifts);
     const data = gifts.map((g) => serializeGiftLog(g, slugs));
 
     return NextResponse.json({ success: true, data }, { status: 200 });

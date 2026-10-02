@@ -63,7 +63,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // The gift is logged, so nothing from here on may answer 500 for it. The
     // slug only links the entry to its list, so if it can't be read the entry
     // goes out without one, and the list has it on its next load.
-    const slugs = await giftWishlistSlugs([entry]).catch((error) => {
+    const slugs = await giftWishlistSlugs(session.user.id, [entry]).catch((error) => {
       console.error('Could not read the wishlist slug of a logged gift:', error);
       return new Map<string, string | null>();
     });

@@ -262,6 +262,15 @@ function reservationButtons(itemName: string) {
 const cardName = (itemName: string) =>
   screen.queryAllByText(itemName).find((el) => !el.closest('li')) ?? null;
 
+/** The link to its list on the reservation card for `itemName`. */
+function listLink(itemName: string) {
+  // The card is the nearest ancestor of its name that holds a link.
+  let card: HTMLElement | null = cardName(itemName);
+  while (card && !within(card).queryByRole('link')) card = card.parentElement;
+  if (!card) throw new Error(`no reservation card for ${itemName}`);
+  return within(card).getByRole('link');
+}
+
 /** The item names in the gift history (the page's only list), top to bottom. */
 const historyNames = () =>
   within(screen.getByRole('list'))
@@ -749,6 +758,20 @@ describe('BookedPage — reading both lists again while the page is open', () =>
     expect(cardName('Lego set')).toBeNull();
     expect(historyNames()).toEqual(['Cookbook', 'Mug']);
     expect(showToast).not.toHaveBeenCalled();
+  });
+
+  // The reservations route returns a list's slug only while the gifter may
+  // still open the list: once they've left it, say, a read has none for it.
+  it("links a card's list by its slug, and by its id once a read has no slug for it", async () => {
+    const { answerRead } = await renderLoaded();
+    expect(listLink('Lego set')).toHaveAttribute('href', '/wishlists/birthday');
+
+    comeBack('focus');
+    await answerRead(1, {
+      reservations: listed(reservations.map((r) => ({ ...r, wishlistSlug: null }))),
+    });
+    expect(listLink('Lego set')).toHaveAttribute('href', '/wishlists/w1');
+    expect(listLink('Scarf')).toHaveAttribute('href', '/wishlists/w1');
   });
 
   it('the first load failing says so, and a later read fills the lists in', async () => {
