@@ -1,13 +1,15 @@
 import type { Types } from 'mongoose';
 import Item, { IItem } from '@/models/Item';
 import Reservation, { type IReservation } from '@/models/Reservation';
-import type { IWishlist } from '@/models/Wishlist';
-import { primaryOwnerId } from '@/lib/utils/wishlistOwners';
+import Wishlist, { type IWishlist } from '@/models/Wishlist';
+import WishlistMember from '@/models/WishlistMember';
+import { isWishlistOwner, primaryOwnerId } from '@/lib/utils/wishlistOwners';
 import {
   deleteReservations,
   releaseSnapshots,
   snapshotReservationImage,
 } from '@/lib/utils/reservationSnapshots';
+import { errorKind } from '@/lib/utils/errorKind';
 
 /**
  * Keeping a member's durable `Reservation` in step with their own book or
@@ -26,37 +28,77 @@ import {
  *    from their Booked page.
  *
  * So each side re-reads the item after its own Reservation write and puts the
- * Reservation back in step if the item has moved on. Of the two requests, the
- * one whose Reservation write lands last re-reads after both item writes, so it
- * sees how the item ended up.
+ * Reservation back the way the later of the two item writes would have left it.
+ * Of the two requests, the one whose Reservation write lands last re-reads after
+ * both item writes, so it sees how the item ended up.
+ *
+ * The re-checks are repairs for a rare race, so they're best-effort: one that
+ * fails is logged and leaves things as the write left them, rather than turning
+ * a book or unbook that landed into an error.
  */
 
 type BookingWishlist = Pick<IWishlist, '_id' | 'name' | 'owners'>;
 type BookedItem = Pick<IItem, '_id' | 'name' | 'imageUrl' | 'price'>;
 
+const isBookedBy = (item: Pick<IItem, 'status' | 'bookedBy'>, gifter: string) =>
+  item.status === 'booked' && item.bookedBy?.toString() === gifter;
+
 /**
- * Whether the gifter's booking of `itemId` has been released since it was
- * written, so the Reservation it created no longer belongs.
- *
- *  - `available`: unbooked. Their own unbook, or their leaving, being removed or
- *    becoming an owner, which free the item the same way. Delete it.
- *  - `booked` by someone else: it went through `available` first. Delete it.
- *  - `draft` / `completed`: an owner's status change, which unassigns the item
- *    but deliberately keeps the Reservation so the gift can still be logged.
- *    Keep it.
- *  - gone: a Reservation outlives its item. Keep it.
+ * A booking's Reservation, as it's written. Not `gifter` or `item`: an upsert
+ * takes those from its filter, and leaving them out of the update lets the
+ * server retry an upsert that collides with a concurrent one on that unique key.
  */
-async function bookingReleased(gifter: string, itemId: Types.ObjectId): Promise<boolean> {
+function reservationFields(wishlist: BookingWishlist, item: BookedItem) {
+  return {
+    wishlist: wishlist._id,
+    // Snapshot of the recipient. A co-owned list has several owners, so this
+    // pins the primary one — a `GiftLog` records one recipient, and the
+    // snapshot deliberately doesn't follow later ownership changes.
+    owner: primaryOwnerId(wishlist),
+    itemName: item.name,
+    itemImage: item.imageUrl ?? null,
+    itemPrice: item.price ?? null,
+    wishlistName: wishlist.name,
+  };
+}
+
+/**
+ * Whether the gifter's booking of `itemId` was released after its item write,
+ * so the Reservation the booking then wrote no longer belongs. Read from the
+ * item, and, when it's free, from who the gifter now is on the list:
+ *
+ *  - still booked by them, or gone (a Reservation outlives its item): no.
+ *  - `draft` / `completed`: an owner's status change, which unassigns the item
+ *    but keeps the Reservation so the gift can still be logged: no.
+ *  - `available`, or booked by someone else since, while they're:
+ *      - still a member: their own unbook from another tab: yes. (An owner
+ *        reopening the item in that instant looks the same, and counts as one.)
+ *      - now an owner: becoming one cancels their reservations: yes.
+ *      - off the list (left or removed, which keep the Reservation), or the
+ *        list is being deleted (which keeps it too): no.
+ */
+export async function bookingWasReleased(
+  gifter: string,
+  wishlistId: Types.ObjectId,
+  itemId: Types.ObjectId
+): Promise<boolean> {
   const item = await Item.findById(itemId).select('status bookedBy').lean();
-  if (!item) return false;
-  if (item.status === 'booked') return item.bookedBy?.toString() !== gifter;
-  return item.status === 'available';
+  if (!item || isBookedBy(item, gifter)) return false;
+  if (item.status !== 'available' && item.status !== 'booked') return false;
+
+  const [membership, wishlist] = await Promise.all([
+    WishlistMember.exists({ wishlist: wishlistId, user: gifter }),
+    Wishlist.findById(wishlistId).select('owners').lean(),
+  ]);
+  if (!wishlist) return false;
+  return !!membership || isWishlistOwner(wishlist, gifter);
 }
 
 /**
  * A member's book has landed on `item`: write their Reservation for it. A
  * rebooking replaces the one they had, and the document as it was is returned
- * (or null), for `settleBookingReservation` to free the snapshot it held.
+ * (or null), for `settleBookingReservation` to free the snapshot it held. The
+ * two are separate steps so that a check on the booking can run between them.
  */
 export async function writeBookingReservation(
   gifter: string,
@@ -66,21 +108,7 @@ export async function writeBookingReservation(
   // Awaited as is (`lean` as an option, not chained), so a race test can hold it.
   return Reservation.findOneAndUpdate(
     { gifter, item: item._id },
-    {
-      $set: {
-        gifter,
-        wishlist: wishlist._id,
-        item: item._id,
-        // Snapshot of the recipient. A co-owned list has several owners, so
-        // this pins the primary one — a `GiftLog` records one recipient, and
-        // the snapshot deliberately doesn't follow later ownership changes.
-        owner: primaryOwnerId(wishlist),
-        itemName: item.name,
-        itemImage: item.imageUrl ?? null,
-        itemPrice: item.price ?? null,
-        wishlistName: wishlist.name,
-      },
-    },
+    { $set: reservationFields(wishlist, item) },
     // The document as it was, so a rebooking can free the snapshot it replaces.
     { upsert: true, new: false, lean: true }
   );
@@ -90,11 +118,12 @@ export async function writeBookingReservation(
  * The rest of a booking, once `writeBookingReservation` has written its
  * Reservation: free the snapshot the write replaced (`previous`), then give the
  * Reservation its own copy of the item's image. If the booking has been released
- * meanwhile (see `bookingReleased`), the Reservation is deleted instead. This
+ * meanwhile (see `bookingWasReleased`), the Reservation is deleted instead. This
  * only ever ends the Reservation, never writes one back.
  */
 export async function settleBookingReservation(
   gifter: string,
+  wishlist: Pick<IWishlist, '_id'>,
   item: Pick<IItem, '_id' | 'imageUrl'>,
   previous: Pick<IReservation, 'itemImage'> | null
 ): Promise<void> {
@@ -102,10 +131,14 @@ export async function settleBookingReservation(
 
   // Checked before the image copy, which can take seconds: a release landing
   // after this read finds the Reservation and deletes it itself.
-  if (await bookingReleased(gifter, item._id)) {
-    await deleteReservations({ gifter, item: item._id });
-    return;
+  let released = false;
+  try {
+    released = await bookingWasReleased(gifter, wishlist._id, item._id);
+    if (released) await deleteReservations({ gifter, item: item._id });
+  } catch (err) {
+    console.error('Re-checking a booking against its item failed:', errorKind(err));
   }
+  if (released) return;
 
   // Swap in our own copy of the image, since the owner frees the item's blob
   // when they delete the item or replace its image.
@@ -115,8 +148,7 @@ export async function settleBookingReservation(
 /**
  * A member's unbook has landed on the item: delete their Reservation for it. If
  * they've booked it again meanwhile (from another tab), the delete may have
- * taken that booking's Reservation, so it's written again, as that booking
- * would have written it.
+ * taken that booking's Reservation, so it's written again.
  */
 export async function cancelUnbookedReservation(
   gifter: string,
@@ -125,9 +157,18 @@ export async function cancelUnbookedReservation(
 ): Promise<void> {
   await deleteReservations({ gifter, item: itemId });
 
-  const item = await Item.findById(itemId).select('name imageUrl price status bookedBy').lean();
-  if (item?.status === 'booked' && item.bookedBy?.toString() === gifter) {
-    const previous = await writeBookingReservation(gifter, wishlist, item);
-    await settleBookingReservation(gifter, item, previous);
+  try {
+    const item = await Item.findById(itemId).select('name imageUrl price status bookedBy').lean();
+    if (!item || !isBookedBy(item, gifter)) return;
+    // Only if it's missing: a rebooking whose own write landed after the delete
+    // above already holds the right one, snapshot included.
+    const existing = await Reservation.findOneAndUpdate(
+      { gifter, item: itemId },
+      { $setOnInsert: reservationFields(wishlist, item) },
+      { upsert: true, new: false, lean: true }
+    );
+    if (!existing) await settleBookingReservation(gifter, wishlist, item, null);
+  } catch (err) {
+    console.error('Re-checking an unbook against its item failed:', errorKind(err));
   }
 }

@@ -32,7 +32,10 @@ import Wishlist from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
 import Item from '@/models/Item';
 import Reservation from '@/models/Reservation';
+import GiftLog from '@/models/GiftLog';
 import { addWishlistOwner } from '@/lib/utils/wishlistOwnership';
+import { bookingWasReleased } from '@/lib/utils/bookingReservations';
+import { Types } from 'mongoose';
 
 const session = vi.mocked(auth);
 
@@ -290,8 +293,9 @@ describe('PATCH /api/items/[id] — a book or unbook already refused on the firs
 // A book or unbook writes the item, then the Reservation, in two steps. The
 // same person booking and unbooking one item from two tabs can land the other
 // request in between, so each side re-checks the item once its Reservation
-// write is done. Afterwards they hold a Reservation exactly when the item is
-// booked by them, except where an owner's change deliberately keeps one.
+// write is done, and leaves the Reservation the way the later item write would
+// have. What keeps one on purpose (an owner's status change, the item's
+// deletion) still keeps it.
 describe('PATCH /api/items/[id] — a Reservation write landing after the item has moved on', () => {
   /** Hold the booking's Reservation write while `meanwhile` runs to completion. */
   const whileReservationWriteHeld = <T>(meanwhile: () => Promise<T>) =>
@@ -437,7 +441,8 @@ describe('PATCH /api/items/[id] — a Reservation write landing after the item h
     const booking = await patchAs(alice, { status: 'booked' });
 
     expect(race.held()).toBe(true);
-    expect(booking.status).toBe(200);
+    // Which answer it gets is a role re-check's to decide; either way it didn't fail.
+    expect(booking.status).toBeLessThan(500);
     expect(race.outcome()).toEqual({ unbookedItems: 1, cancelledReservations: 0 });
 
     const item = await Item.findById(itemId);
@@ -446,5 +451,131 @@ describe('PATCH /api/items/[id] — a Reservation write landing after the item h
     expect(await Reservation.countDocuments()).toBe(0);
     expect(copy).not.toHaveBeenCalled();
     expect(del).not.toHaveBeenCalled();
+  });
+
+  it("an unbook whose rebooking's Reservation is written after the unbook's delete leaves that one as it is", async () => {
+    expect((await patchAs(alice, { status: 'booked' })).status).toBe(200);
+    const first = (await Reservation.findOne({ gifter: alice }).lean())?.itemImage;
+
+    // Freeing the deleted Reservation's snapshot checks the gift log, after the
+    // delete and before the unbook re-reads the item: hold it there while the
+    // rebooking lands in full.
+    const race = holdFirstCall(GiftLog, 'exists', () => patchAs(alice, { status: 'booked' }));
+    const unbook = await patchAs(alice, { status: 'available' });
+
+    expect(race.held()).toBe(true);
+    expect(unbook.status).toBe(200);
+    expect(race.outcome()?.status).toBe(200);
+
+    expect((await Item.findById(itemId))?.bookedBy?.toString()).toBe(alice);
+    const reservations = await Reservation.find().lean();
+    expect(reservations.map((r) => r.gifter.toString())).toEqual([alice]);
+    // The rebooking's own snapshot, not replaced by a second copy: the unbook
+    // only freed the one its delete took.
+    const second = reservations[0].itemImage;
+    expect(isSnapshot(second)).toBe(true);
+    expect(copies()).toEqual([first, second]);
+    expect(del.mock.calls).toEqual([[first]]);
+  });
+
+  describe('a re-check that fails', () => {
+    /** Make the request's second `Item.findById` (its re-check's) throw. */
+    function failTheReCheck() {
+      const real = Item.findById.bind(Item);
+      let calls = 0;
+      vi.spyOn(Item, 'findById').mockImplementation(((...args: Parameters<typeof real>) => {
+        calls += 1;
+        if (calls === 2) throw new Error('connection reset');
+        return real(...args);
+      }) as typeof Item.findById);
+      return vi.spyOn(console, 'error').mockImplementation(() => {});
+    }
+
+    it('is logged, without personal data, and the booking stands with its Reservation', async () => {
+      const errorLog = failTheReCheck();
+      const booking = await patchAs(alice, { status: 'booked' });
+
+      expect(booking.status).toBe(200);
+      expect(errorLog.mock.calls).toEqual([
+        ['Re-checking a booking against its item failed:', { name: 'Error', code: undefined }],
+      ]);
+      vi.mocked(Item.findById).mockRestore();
+      expect((await Item.findById(itemId))?.bookedBy?.toString()).toBe(alice);
+      const reservation = await Reservation.findOne({ gifter: alice }).lean();
+      expect(isSnapshot(reservation?.itemImage)).toBe(true);
+    });
+
+    it('is logged, and the unbook stands without a Reservation', async () => {
+      expect((await patchAs(alice, { status: 'booked' })).status).toBe(200);
+      const errorLog = failTheReCheck();
+      const unbook = await patchAs(alice, { status: 'available' });
+
+      expect(unbook.status).toBe(200);
+      expect(errorLog.mock.calls).toEqual([
+        ['Re-checking an unbook against its item failed:', { name: 'Error', code: undefined }],
+      ]);
+      vi.mocked(Item.findById).mockRestore();
+      expect((await Item.findById(itemId))?.status).toBe('available');
+      expect(await Reservation.countDocuments()).toBe(0);
+    });
+  });
+});
+
+// Who the gifter now is decides whether a booking that's no longer theirs was
+// released by them (its fresh Reservation goes) or by something that keeps the
+// Reservation on purpose. Checked on the states themselves, whatever race led
+// there.
+describe('bookingWasReleased', () => {
+  type ItemState = 'deleted' | { status: string; bookedBy?: 'alice' | 'bob' };
+  type Role = 'member' | 'owner' | 'off the list';
+
+  /** Put Alice's booked item and her place on the list in a state, then ask. */
+  async function releasedFrom(item: ItemState, role: Role, { listDeleted = false } = {}) {
+    const wishlist = (await Wishlist.findOne().lean())!;
+    if (role !== 'member') await WishlistMember.deleteOne({ user: alice });
+    if (role === 'owner') await Wishlist.updateOne({}, { $addToSet: { owners: alice } });
+    if (item === 'deleted') {
+      await Item.deleteOne({ _id: itemId });
+    } else {
+      const bookedBy = item.bookedBy && { alice, bob }[item.bookedBy];
+      await Item.updateOne({ _id: itemId }, { $set: { status: item.status, bookedBy } });
+    }
+    if (listDeleted) await Wishlist.deleteOne({});
+    return bookingWasReleased(alice, wishlist._id, new Types.ObjectId(itemId));
+  }
+
+  it.each<[string, ItemState, Role, boolean]>([
+    ['still booked by them: kept', { status: 'booked', bookedBy: 'alice' }, 'member', false],
+    ['available, by their own unbook: released', { status: 'available' }, 'member', true],
+    [
+      'booked by someone else since: released',
+      { status: 'booked', bookedBy: 'bob' },
+      'member',
+      true,
+    ],
+    ['available, as they became an owner: released', { status: 'available' }, 'owner', true],
+    [
+      'available, as they left or were removed: kept',
+      { status: 'available' },
+      'off the list',
+      false,
+    ],
+    [
+      'booked by someone else after they left: kept',
+      { status: 'booked', bookedBy: 'bob' },
+      'off the list',
+      false,
+    ],
+    ['completed by an owner: kept', { status: 'completed' }, 'member', false],
+    ['moved to draft by an owner: kept', { status: 'draft' }, 'member', false],
+    ['deleted: kept', 'deleted', 'member', false],
+  ])('the item %s', async (_case, item, role, released) => {
+    expect(await releasedFrom(item, role)).toBe(released);
+  });
+
+  it('the list being deleted: kept, as its delete keeps it', async () => {
+    expect(await releasedFrom({ status: 'available' }, 'member', { listDeleted: true })).toBe(
+      false
+    );
   });
 });

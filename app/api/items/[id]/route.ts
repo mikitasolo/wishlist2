@@ -358,11 +358,11 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     }
 
     // Keep the gifter's durable Reservation in sync with their booking, now that
-    // the item write above has matched. Only the gifter's own book/unbook touches
-    // it; owner status changes never do, so the reservation (and the ability to
-    // log the gift) survives them. The helpers re-check the item once the
-    // Reservation is written or deleted, in case the gifter's own book and unbook
-    // from two tabs crossed.
+    // the item write above has matched. Only the gifter's own book/unbook writes
+    // it; owner status changes don't, so the reservation (and the ability to log
+    // the gift) survives them. The helpers re-check the item once the Reservation
+    // is written or deleted, in case the gifter's own book and unbook from two
+    // tabs crossed (see `lib/utils/bookingReservations.ts`).
     if (reservationAction === 'create') {
       const previous = await writeBookingReservation(session.user.id, wishlist, item);
       // The caller was read as a member at the top of the request. If they've
@@ -375,7 +375,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         previous,
       });
       if (lost) return lostBookingResponse(lost);
-      await settleBookingReservation(session.user.id, item, previous);
+      await settleBookingReservation(session.user.id, wishlist, item, previous);
     } else if (reservationAction === 'delete') {
       await cancelUnbookedReservation(session.user.id, wishlist, item._id);
     }
