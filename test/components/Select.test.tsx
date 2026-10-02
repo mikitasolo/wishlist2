@@ -1,11 +1,17 @@
 // @vitest-environment jsdom
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
-import Select from '@/components/Select';
+import Select, { type SelectOption } from '@/components/Select';
 
-beforeEach(() => cleanup());
+const onPick = vi.fn();
+
+beforeEach(() => {
+  cleanup();
+  onPick.mockReset();
+});
+afterEach(() => vi.useRealTimers());
 
 const options = [
   { value: 'newest', label: 'Newest' },
@@ -13,89 +19,460 @@ const options = [
   { value: 'price', label: 'Price' },
 ];
 
-/** A Select on a page, outside any dialog, with a button after it. */
-function SortPage() {
-  const [value, setValue] = useState('newest');
+/** A Select on a page, outside any dialog, between two buttons. */
+function SortPage({
+  initial = 'oldest',
+  choices = options,
+  disabled = false,
+}: {
+  initial?: string;
+  choices?: SelectOption[];
+  disabled?: boolean;
+}) {
+  const [value, setValue] = useState(initial);
   return (
     <>
-      <Select value={value} onChange={setValue} options={options} ariaLabel="Sort by" />
+      <button>Before</button>
+      <Select
+        value={value}
+        onChange={(v) => {
+          onPick(v);
+          setValue(v);
+        }}
+        options={choices}
+        ariaLabel="Sort by"
+        disabled={disabled}
+      />
       <button>After</button>
     </>
   );
 }
 
-const trigger = () => screen.getByRole('button', { name: 'Sort by' });
+const trigger = () => screen.getByRole('combobox', { name: 'Sort by' });
+const button = (name: string) => screen.getByRole('button', { name });
 const option = (name: string) => screen.getByRole('option', { name });
 const menu = () => screen.queryByRole('listbox');
+/** The option the keyboard is on, as the trigger announces it. */
+const activeOption = () => {
+  const id = trigger().getAttribute('aria-activedescendant');
+  return id ? document.getElementById(id) : null;
+};
 
-async function openMenu() {
-  const user = userEvent.setup();
-  render(<SortPage />);
-  await user.click(trigger());
-  expect(menu()).toBeInTheDocument();
+type User = ReturnType<typeof userEvent.setup>;
+
+/** Renders the page and tabs to the trigger. */
+async function tabToTrigger(page = <SortPage />, user: User = userEvent.setup()) {
+  render(page);
+  await user.tab();
+  await user.tab();
+  expect(trigger()).toHaveFocus();
   return user;
 }
 
-describe('Select — keyboard focus', () => {
-  // regression: choosing removed the focused option along with the menu, and
-  // focus dropped to <body>.
-  it('regression: hands focus back to the trigger when an option is chosen from the keyboard', async () => {
-    const user = await openMenu();
-    option('Oldest').focus();
+describe('Select — from the keyboard, on a page', () => {
+  // regression: the menu is portalled to <body>, and its options were buttons,
+  // so on a page they came after everything else in the Tab order: the
+  // keyboard could open the menu but not reach an option.
+  it.each([
+    { name: 'Enter', key: '{Enter}' },
+    { name: 'Space', key: ' ' },
+    { name: 'ArrowDown', key: '{ArrowDown}' },
+    { name: 'ArrowUp', key: '{ArrowUp}' },
+  ])(
+    'regression: $name opens the menu on the selected option, with focus left on the trigger',
+    async ({ key }) => {
+      const user = await tabToTrigger();
 
-    await user.keyboard('{Enter}');
-    expect(menu()).toBeNull();
+      await user.keyboard(key);
+      expect(menu()).toBeInTheDocument();
+      expect(trigger()).toHaveAttribute('aria-expanded', 'true');
+      expect(activeOption()).toBe(option('Oldest'));
+      expect(trigger()).toHaveFocus();
+      expect(onPick).not.toHaveBeenCalled();
+    }
+  );
+
+  it('moves between the options with the arrow keys, Home and End, stopping at the ends', async () => {
+    const user = await tabToTrigger();
+    await user.keyboard('{ArrowDown}');
+
+    await user.keyboard('{ArrowDown}');
+    expect(activeOption()).toBe(option('Price'));
+    await user.keyboard('{ArrowDown}');
+    expect(activeOption()).toBe(option('Price'));
+    await user.keyboard('{Home}');
+    expect(activeOption()).toBe(option('Newest'));
+    await user.keyboard('{ArrowUp}');
+    expect(activeOption()).toBe(option('Newest'));
+    await user.keyboard('{End}');
+    expect(activeOption()).toBe(option('Price'));
+    await user.keyboard('{ArrowUp}');
+    expect(activeOption()).toBe(option('Oldest'));
+
+    // Only the keyboard's option is highlighted, and the value hasn't moved.
+    expect(option('Oldest')).toHaveClass('bg-muted');
+    expect(option('Price')).not.toHaveClass('bg-muted');
     expect(trigger()).toHaveTextContent('Oldest');
     expect(trigger()).toHaveFocus();
   });
 
-  it('hands focus back to the trigger when Escape closes the menu from an option', async () => {
-    const user = await openMenu();
-    option('Price').focus();
+  it.each([
+    { key: '{Home}', lands: 'Newest' },
+    { key: '{End}', lands: 'Price' },
+  ])('$key opens the menu at that end', async ({ key, lands }) => {
+    const user = await tabToTrigger();
+
+    await user.keyboard(key);
+    expect(activeOption()).toBe(option(lands));
+  });
+
+  // regression: choosing removed the focused option along with the menu, and
+  // focus dropped to <body>.
+  it.each([
+    { name: 'Enter', key: '{Enter}' },
+    { name: 'Space', key: ' ' },
+  ])(
+    'regression: $name picks the active option and closes the menu, with focus on the trigger',
+    async ({ key }) => {
+      const user = await tabToTrigger();
+      await user.keyboard('{ArrowDown}{ArrowDown}');
+
+      await user.keyboard(key);
+      expect(menu()).toBeNull();
+      expect(onPick).toHaveBeenCalledTimes(1);
+      expect(onPick).toHaveBeenCalledWith('price');
+      expect(trigger()).toHaveTextContent('Price');
+      expect(trigger()).toHaveAttribute('aria-expanded', 'false');
+      expect(trigger()).not.toHaveAttribute('aria-activedescendant');
+      expect(trigger()).toHaveFocus();
+
+      // And it opens again on the new value.
+      await user.keyboard('{ArrowDown}');
+      expect(activeOption()).toBe(option('Price'));
+    }
+  );
+
+  it('closes with Escape without changing the value, with focus on the trigger', async () => {
+    const user = await tabToTrigger();
+    await user.keyboard('{ArrowDown}{ArrowDown}');
 
     await user.keyboard('{Escape}');
     expect(menu()).toBeNull();
-    expect(trigger()).toHaveTextContent('Newest');
+    expect(onPick).not.toHaveBeenCalled();
+    expect(trigger()).toHaveTextContent('Oldest');
     expect(trigger()).toHaveFocus();
   });
 
-  it('closes the menu when focus moves on from an option, but not back to the trigger', async () => {
-    const user = await openMenu();
+  it('is one Tab stop: Tab and Shift+Tab close the menu without picking and move on', async () => {
+    const user = await tabToTrigger();
 
-    act(() => option('Oldest').focus());
-    act(() => trigger().focus());
-    expect(menu()).toBeInTheDocument();
-
-    act(() => option('Oldest').focus());
-    act(() => screen.getByRole('button', { name: 'After' }).focus());
+    await user.keyboard('{ArrowDown}{ArrowDown}');
+    await user.tab();
+    expect(button('After')).toHaveFocus();
     expect(menu()).toBeNull();
-    expect(trigger()).toHaveTextContent('Newest');
-    expect(screen.getByRole('button', { name: 'After' })).toHaveFocus();
+    expect(onPick).not.toHaveBeenCalled();
 
-    // Focus leaving the trigger, rather than the menu, leaves it open.
+    await user.tab({ shift: true });
+    expect(trigger()).toHaveFocus();
+    await user.keyboard('{Enter}');
+    await user.tab({ shift: true });
+    expect(button('Before')).toHaveFocus();
+    expect(menu()).toBeNull();
+    expect(trigger()).toHaveTextContent('Oldest');
+  });
+
+  it('closes the menu when focus leaves the trigger any other way', async () => {
+    await tabToTrigger().then((user) => user.keyboard('{Enter}'));
+
+    act(() => button('After').focus());
+    expect(menu()).toBeNull();
+    expect(button('After')).toHaveFocus();
+  });
+
+  it('starts on the first option when nothing is selected yet', async () => {
+    const user = await tabToTrigger(<SortPage initial="" />);
+
+    await user.keyboard('{ArrowDown}');
+    expect(activeOption()).toBe(option('Newest'));
+  });
+
+  it('exposes the select-only combobox pattern to assistive tech', async () => {
+    const user = await tabToTrigger();
+    expect(trigger()).toHaveAttribute('aria-haspopup', 'listbox');
+    expect(trigger()).toHaveAttribute('aria-expanded', 'false');
+    expect(trigger()).not.toHaveAttribute('aria-controls');
+
+    await user.keyboard('{Enter}');
+    const listbox = screen.getByRole('listbox', { name: 'Sort by' });
+    expect(trigger()).toHaveAttribute('aria-controls', listbox.id);
+    // aria-selected marks the value; the keyboard's option is the active one.
+    await user.keyboard('{ArrowDown}');
+    expect(option('Oldest')).toHaveAttribute('aria-selected', 'true');
+    expect(option('Price')).toHaveAttribute('aria-selected', 'false');
+    expect(activeOption()).toBe(option('Price'));
+    // No option is a Tab stop of its own.
+    for (const o of screen.getAllByRole('option')) expect(o).not.toHaveAttribute('tabindex');
+  });
+});
+
+describe('Select — type-ahead', () => {
+  const fruit = ['Apple', 'Apricot', 'Banana', 'Black tea', 'Blueberry'].map((label) => ({
+    value: label.toLowerCase(),
+    label,
+  }));
+  const page = <SortPage initial="apple" choices={fruit} />;
+
+  it('opens on the first option starting with a typed letter, and cycles on that letter', async () => {
+    const user = await tabToTrigger(page);
+
+    await user.keyboard('b');
+    expect(menu()).toBeInTheDocument();
+    expect(activeOption()).toBe(option('Banana'));
+    await user.keyboard('b');
+    expect(activeOption()).toBe(option('Black tea'));
+    await user.keyboard('b');
+    expect(activeOption()).toBe(option('Blueberry'));
+    await user.keyboard('b');
+    expect(activeOption()).toBe(option('Banana'));
+    expect(onPick).not.toHaveBeenCalled();
+  });
+
+  it('matches the letters typed in a row, a space among them, until a pause', async () => {
+    // Still advancing with real time, for Testing Library's own waits.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'], shouldAdvanceTime: true });
+    const user = await tabToTrigger(page);
+
+    await user.keyboard('apr');
+    expect(activeOption()).toBe(option('Apricot'));
+
+    // A pause starts a new search.
+    act(() => vi.advanceTimersByTime(500));
+    await user.keyboard('black t');
+    // The space was part of the search, not a pick.
+    expect(menu()).toBeInTheDocument();
+    expect(activeOption()).toBe(option('Black tea'));
+
+    // Space picks again once another key has ended the search.
+    await user.keyboard('{ArrowDown}{ArrowUp} ');
+    expect(menu()).toBeNull();
+    expect(onPick).toHaveBeenCalledWith('black tea');
+  });
+
+  it('leaves the active option where it is when nothing matches', async () => {
+    const user = await tabToTrigger(page);
+    await user.keyboard('{ArrowDown}{ArrowDown}');
+
+    await user.keyboard('z');
+    expect(activeOption()).toBe(option('Apricot'));
+  });
+});
+
+describe('Select — type-ahead on a day picker', () => {
+  const days = Array.from({ length: 31 }, (_, i) => ({
+    value: String(i + 1),
+    label: String(i + 1),
+  }));
+
+  it.each([
+    { typed: '11', lands: '11' },
+    { typed: '22', lands: '22' },
+    { typed: '3', lands: '3' },
+    { typed: '31', lands: '31' },
+  ])('goes to day $lands when $typed is typed', async ({ typed, lands }) => {
+    const user = await tabToTrigger(<SortPage initial="" choices={days} />);
+
+    await user.keyboard(typed);
+    expect(activeOption()).toBe(option(lands));
+  });
+
+  it('cycles on a repeated digit once the whole run matches nothing', async () => {
+    const user = await tabToTrigger(<SortPage initial="" choices={days} />);
+
+    // "1", "11", then "111" matches no day: on to the next one starting with 1.
+    await user.keyboard('111');
+    expect(activeOption()).toBe(option('12'));
+  });
+});
+
+describe('Select — with the mouse', () => {
+  it('opens on a click with nothing highlighted, and picks on a click, focusing the trigger', async () => {
+    const user = userEvent.setup();
+    render(<SortPage />);
+
     await user.click(trigger());
-    act(() => screen.getByRole('button', { name: 'After' }).focus());
     expect(menu()).toBeInTheDocument();
-  });
+    for (const o of screen.getAllByRole('option')) expect(o).not.toHaveClass('bg-muted');
 
-  it('leaves focus alone when the menu closes without it', async () => {
-    const user = await openMenu();
-
-    await user.click(screen.getByRole('button', { name: 'After' }));
+    await user.click(option('Price'));
     expect(menu()).toBeNull();
-    expect(screen.getByRole('button', { name: 'After' })).toHaveFocus();
+    expect(onPick).toHaveBeenCalledWith('price');
+    expect(trigger()).toHaveTextContent('Price');
+    expect(trigger()).toHaveFocus();
   });
 
-  // The menu only joins a dialog's Tab order; on a page the browser's own
-  // order is left as it was.
-  it('leaves Tab to the browser outside a dialog', async () => {
-    const user = await openMenu();
-    expect(trigger()).toHaveFocus();
+  it('closes on a second click on the trigger', async () => {
+    const user = userEvent.setup();
+    render(<SortPage />);
+
+    await user.click(trigger());
+    await user.click(trigger());
+    expect(menu()).toBeNull();
+    expect(onPick).not.toHaveBeenCalled();
+  });
+
+  it('leaves focus alone when a click elsewhere closes the menu', async () => {
+    const user = userEvent.setup();
+    render(<SortPage />);
+    await user.click(trigger());
+
+    await user.click(button('After'));
+    expect(menu()).toBeNull();
+    expect(button('After')).toHaveFocus();
+  });
+
+  it('arrows on from the option under the pointer, which it highlights', async () => {
+    const user = userEvent.setup();
+    render(<SortPage />);
+    await user.click(trigger());
+
+    await user.hover(option('Newest'));
+    expect(activeOption()).toBe(option('Newest'));
+    expect(option('Newest')).toHaveClass('bg-muted');
+    await user.keyboard('{ArrowDown}');
+    expect(activeOption()).toBe(option('Oldest'));
+    expect(option('Oldest')).toHaveClass('bg-muted');
+    expect(option('Newest')).not.toHaveClass('bg-muted');
+  });
+
+  it('picks the option under the pointer with Enter, as highlighted', async () => {
+    const user = userEvent.setup();
+    render(<SortPage />);
+    await user.click(trigger());
+    await user.hover(option('Price'));
+
+    await user.keyboard('{Enter}');
+    expect(menu()).toBeNull();
+    expect(onPick).toHaveBeenCalledWith('price');
+  });
+
+  // Nothing is highlighted in a menu opened with a click, so a key there
+  // mustn't pick an option the user can't see is the active one.
+  it.each([
+    { name: 'Enter', key: '{Enter}' },
+    { name: 'Space', key: ' ' },
+  ])(
+    '$name after a click shows the keyboard on the selected option, and only the next one picks',
+    async ({ key }) => {
+      const user = userEvent.setup();
+      render(<SortPage />);
+      await user.click(trigger());
+      expect(trigger()).not.toHaveAttribute('aria-activedescendant');
+
+      await user.keyboard(key);
+      expect(menu()).toBeInTheDocument();
+      expect(onPick).not.toHaveBeenCalled();
+      expect(activeOption()).toBe(option('Oldest'));
+      expect(option('Oldest')).toHaveClass('bg-muted');
+
+      await user.keyboard(key);
+      expect(menu()).toBeNull();
+      expect(onPick).toHaveBeenCalledWith('oldest');
+    }
+  );
+
+  it('picks nothing with Enter in a placeholder menu opened with a click, and starts on the first option', async () => {
+    const user = userEvent.setup();
+    render(<SortPage initial="" />);
+    await user.click(trigger());
+
+    await user.keyboard('{Enter}');
+    expect(onPick).not.toHaveBeenCalled();
+    expect(activeOption()).toBe(option('Newest'));
+  });
+
+  it('starts the arrow keys on the selected option after a click, and Home and End at the ends', async () => {
+    const user = userEvent.setup();
+    render(<SortPage />);
+
+    await user.click(trigger());
+    await user.keyboard('{ArrowUp}');
+    expect(activeOption()).toBe(option('Oldest'));
+    await user.keyboard('{ArrowUp}');
+    expect(activeOption()).toBe(option('Newest'));
+
+    await user.click(trigger());
+    await user.click(trigger());
+    await user.keyboard('{End}');
+    expect(activeOption()).toBe(option('Price'));
+  });
+});
+
+describe('Select — modified keys', () => {
+  it('leaves a key with Ctrl, Alt or Cmd to the button, so Ctrl+Space clicks it open', async () => {
+    const user = await tabToTrigger();
+
+    await user.keyboard('{Control>}{ArrowDown}{/Control}');
+    expect(menu()).toBeNull();
+    await user.keyboard('{Control>} {/Control}');
+    expect(menu()).toBeInTheDocument();
+    expect(trigger()).not.toHaveAttribute('aria-activedescendant');
+  });
+});
+
+describe('Select — disabled', () => {
+  it('is no Tab stop and opens on nothing', async () => {
+    const user = userEvent.setup();
+    render(<SortPage disabled />);
 
     await user.tab();
-    expect(screen.getByRole('button', { name: 'After' })).toHaveFocus();
     await user.tab();
-    expect(option('Newest')).toHaveFocus();
+    expect(button('After')).toHaveFocus();
+    await user.click(trigger());
+    expect(menu()).toBeNull();
+  });
+
+  it('closes an open menu when it becomes disabled', async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(<SortPage />);
+    await user.click(trigger());
+    expect(menu()).toBeInTheDocument();
+
+    rerender(<SortPage disabled />);
+    expect(menu()).toBeNull();
+    expect(trigger()).toHaveAttribute('aria-expanded', 'false');
+  });
+});
+
+describe('Select — keys around it', () => {
+  // A dialog closes itself on Escape with a keydown listener on `document`.
+  // Outside a portal, React handles the trigger's keys on `document` too
+  // (Next's root), ahead of it. Here the root is `container`, so a listener on
+  // it added after the render stands in for that dialog's.
+  it("keeps the menu's keys from the listeners around it, and hands them on once it's closed", async () => {
+    const user = userEvent.setup();
+    const { container } = render(<SortPage />);
+    act(() => trigger().focus());
+    const seen = { root: [] as string[], document: [] as string[] };
+    const onRoot = (e: KeyboardEvent) => seen.root.push(e.key);
+    const onDocument = (e: KeyboardEvent) => seen.document.push(e.key);
+    container.addEventListener('keydown', onRoot);
+    document.addEventListener('keydown', onDocument);
+    try {
+      await user.keyboard('{Enter}');
+      expect(menu()).toBeInTheDocument();
+
+      await user.keyboard('{ArrowDown}{Escape}');
+      expect(menu()).toBeNull();
+      // With the menu closed, Escape is the page's again.
+      await user.keyboard('{Escape}');
+
+      // Opening it is the page's to see too; only the open menu's keys aren't.
+      expect(seen.root).toEqual(['Enter', 'Escape']);
+      expect(seen.document).toEqual(['Enter', 'Escape']);
+    } finally {
+      container.removeEventListener('keydown', onRoot);
+      document.removeEventListener('keydown', onDocument);
+    }
   });
 });
 

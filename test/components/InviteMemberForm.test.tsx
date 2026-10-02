@@ -14,7 +14,7 @@ beforeEach(() => {
 });
 
 function openRoleMenu() {
-  fireEvent.click(screen.getByRole('button', { name: /role/i }));
+  fireEvent.click(screen.getByRole('combobox', { name: /role/i }));
 }
 
 describe('InviteMemberForm — roles', () => {

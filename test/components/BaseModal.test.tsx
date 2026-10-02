@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
-import { render, screen, act, cleanup, within } from '@testing-library/react';
+import { render, screen, act, cleanup, within, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { StrictMode, useState, type FormEvent, type ReactNode } from 'react';
 import BaseModal from '@/components/BaseModal';
@@ -367,9 +367,12 @@ function SelectPage() {
   );
 }
 
-describe('BaseModal — a Select menu portalled out of it', () => {
-  const trigger = () => button('Sort by');
+describe('BaseModal — a Select in it, its menu portalled out of it', () => {
+  const trigger = () => screen.getByRole('combobox', { name: 'Sort by' });
   const option = (name: string) => screen.getByRole('option', { name });
+  const menu = () => screen.queryByRole('listbox');
+  const activeOption = () =>
+    document.getElementById(trigger().getAttribute('aria-activedescendant') ?? '');
 
   async function openMenu() {
     const user = userEvent.setup();
@@ -379,52 +382,48 @@ describe('BaseModal — a Select menu portalled out of it', () => {
     await user.tab();
     expect(trigger()).toHaveFocus();
     await user.keyboard('{Enter}');
-    expect(screen.getByRole('listbox')).toBeInTheDocument();
+    expect(menu()).toBeInTheDocument();
     return user;
   }
 
-  // regression: the menu is rendered on <body>, outside the modal, so its
-  // options weren't among the trap's Tab stops: Tab skipped them, and focus
-  // on one counted as outside the modal.
-  it('regression: puts the options in its Tab order right after their trigger', async () => {
+  // The menu is rendered on <body>, outside the modal, but focus never goes
+  // there: the trap only ever sees the trigger.
+  it('picks an option from the keyboard with focus kept on the trigger, inside the modal', async () => {
     const user = await openMenu();
+    expect(activeOption()).toBe(option('Newest'));
 
-    await user.tab();
-    expect(option('Newest')).toHaveFocus();
-    await user.tab();
-    expect(option('Oldest')).toHaveFocus();
-    await user.tab({ shift: true });
-    expect(option('Newest')).toHaveFocus();
-    await user.tab({ shift: true });
+    await user.keyboard('{ArrowDown}');
+    expect(activeOption()).toBe(option('Oldest'));
     expect(trigger()).toHaveFocus();
-    expect(screen.getByRole('listbox')).toBeInTheDocument();
-
-    // On past the last option to the next field, which closes the menu.
-    await user.tab();
-    await user.tab();
-    await user.tab();
-    expect(button('Delete Item')).toHaveFocus();
-    expect(screen.queryByRole('listbox')).toBeNull();
-
-    // Once it's closed, Tab goes straight from the trigger to the next field.
-    await user.tab({ shift: true });
+    await user.keyboard('{Enter}');
+    expect(menu()).toBeNull();
+    expect(trigger()).toHaveTextContent('Oldest');
     expect(trigger()).toHaveFocus();
+    expect(modal()).toBeInTheDocument();
+
+    // Tab carries on from there, inside the modal.
     await user.tab();
     expect(button('Delete Item')).toHaveFocus();
   });
 
-  // With the menu open and focus elsewhere in the modal (moved there from the
-  // trigger), Shift+Tab from the next field goes back into the menu.
-  it('puts the options before the field after their trigger for Shift+Tab', async () => {
+  it('is one Tab stop: Tab and Shift+Tab with the menu open close it and move to the next or previous field', async () => {
     const user = await openMenu();
 
-    act(() => button('Delete Item').focus());
-    expect(screen.getByRole('listbox')).toBeInTheDocument();
+    await user.keyboard('{ArrowDown}');
+    await user.tab();
+    expect(button('Delete Item')).toHaveFocus();
+    expect(menu()).toBeNull();
+    expect(trigger()).toHaveTextContent('Newest');
+
     await user.tab({ shift: true });
-    expect(option('Oldest')).toHaveFocus();
+    expect(trigger()).toHaveFocus();
+    await user.keyboard('{Enter}');
+    await user.tab({ shift: true });
+    expect(screen.getByLabelText('Item Name')).toHaveFocus();
+    expect(menu()).toBeNull();
   });
 
-  it('wraps from its last Tab stop to its first when the menu is the last thing in it', async () => {
+  it('wraps from its last Tab stop to its first when the Select is the last thing in it', async () => {
     const user = userEvent.setup();
     const Last = () => {
       const [sort, setSort] = useState('newest');
@@ -444,37 +443,55 @@ describe('BaseModal — a Select menu portalled out of it', () => {
     render(<Last />);
     await user.click(button('Open'));
     await user.tab();
-    await user.keyboard('{Enter}');
-
-    await user.tab();
-    expect(option('Newest')).toHaveFocus();
-    await user.tab();
-    expect(button('Close modal')).toHaveFocus();
-
-    // And back the other way, with the menu open again.
-    await user.tab({ shift: true });
     expect(trigger()).toHaveFocus();
     await user.keyboard('{Enter}');
-    act(() => button('Close modal').focus());
+
+    await user.tab();
+    expect(button('Close modal')).toHaveFocus();
+    expect(menu()).toBeNull();
+
+    // And back the other way.
     await user.tab({ shift: true });
-    expect(option('Newest')).toHaveFocus();
+    expect(trigger()).toHaveFocus();
   });
 
-  it("leaves the menu out of a confirmation's trap when one opens over the modal", async () => {
+  // regression: the menu and the modal both closed on Escape through keydown
+  // listeners on `document`, and neither stopped the other.
+  it('regression: closes only the menu on Escape, and the next Escape closes the modal', async () => {
+    const user = await openMenu();
+    await user.keyboard('{ArrowDown}');
+
+    await user.keyboard('{Escape}');
+    expect(menu()).toBeNull();
+    expect(modal()).toBeInTheDocument();
+    expect(trigger()).toHaveTextContent('Newest');
+    expect(trigger()).toHaveFocus();
+
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(button('Open')).toHaveFocus();
+  });
+
+  it('closes the menu when a confirmation opening over the modal takes focus, and leaves its keys to it', async () => {
     const user = await openMenu();
 
-    // Opened from the keyboard, so the menu stays open behind it.
-    act(() => button('Delete Item').focus());
-    await user.keyboard('{Enter}');
-    expect(screen.getByRole('listbox')).toBeInTheDocument();
+    // Opened without moving focus first, so the menu is still open.
+    fireEvent.click(button('Delete Item'));
     const confirmation = within(screen.getByRole('alertdialog'));
+    expect(confirmation.getByRole('button', { name: 'Cancel' })).toHaveFocus();
+    expect(menu()).toBeNull();
 
-    expect(confirmation.getByRole('button', { name: 'Cancel' })).toHaveFocus();
     await user.tab();
     expect(confirmation.getByRole('button', { name: 'Delete' })).toHaveFocus();
     await user.tab();
     expect(confirmation.getByRole('button', { name: 'Cancel' })).toHaveFocus();
-    await user.tab({ shift: true });
-    expect(confirmation.getByRole('button', { name: 'Delete' })).toHaveFocus();
+
+    // Its Escape closes only the confirmation, and focus goes back to the
+    // trigger, with the menu still closed.
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(modal()).toBeInTheDocument();
+    expect(trigger()).toHaveFocus();
+    expect(menu()).toBeNull();
   });
 });

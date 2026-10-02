@@ -180,7 +180,7 @@ describe('dashboard — order', () => {
     expect(highlight()).toHaveTextContent('Housewarming');
     expect(highlight().querySelector('time')).toBeNull();
 
-    await user.click(screen.getByRole('button', { name: 'Featured wishlist' }));
+    await user.click(screen.getByRole('combobox', { name: 'Featured wishlist' }));
     await user.click(screen.getByRole('option', { name: 'Christmas' }));
 
     await waitFor(() => expect(highlight()).toHaveTextContent('Christmas'));
