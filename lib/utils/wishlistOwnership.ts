@@ -237,9 +237,9 @@ export type OwnerRemoval = 'removed' | 'actor-not-owner' | 'last-owner';
  * that write may have landed (only its acknowledgement lost), and then the row is
  * all they have. If it didn't land, they're still an owner with a spare row.
  * Routes check ownership before membership, so the row gives them nothing they
- * don't already have as an owner, though the members list shows them twice. A
- * retry of the demotion reuses it. A refused demotion takes back the row it
- * created (see `writeDemotedMembership`).
+ * don't already have as an owner, and the members list skips it. A retry of the
+ * demotion reuses it. A refused demotion takes back the row it created (see
+ * `writeDemotedMembership`).
  */
 export async function removeWishlistOwner(
   wishlist: WishlistShape,

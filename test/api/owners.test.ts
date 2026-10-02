@@ -162,6 +162,37 @@ describe('co-ownership — reading the list', () => {
     ]);
   });
 
+  // regression: owners have no membership row, but a demotion whose ownership
+  // write throws after its membership write, or a promotion whose membership
+  // delete fails, leaves one on an owner. The listing read every row without
+  // excluding owners, so that owner was listed twice: as an owner, and again as a
+  // member whose "Make owner" and "Remove" both refuse.
+  it('regression: lists an owner with a spare membership row once, as an owner', async () => {
+    await WishlistMember.create({ wishlist: wid, user: bob });
+
+    as(alice);
+    const res = await getMembers(req(`/api/wishlists/${wid}/members`), {
+      params: Promise.resolve({ id: wid }),
+    });
+    expect(res.status).toBe(200);
+    const rows: { _id: string; role: string; user: { username: string } }[] = (await res.json())
+      .data;
+
+    const bobRows = rows.filter((m) => m.user.username === 'bob');
+    expect(bobRows).toHaveLength(1);
+    expect(bobRows[0]).toMatchObject({ _id: bob, role: 'owner' });
+    // Everyone who is only a member is still listed, and nobody else.
+    expect(
+      rows
+        .filter((m) => m.role === 'member')
+        .map((m) => m.user.username)
+        .sort()
+    ).toEqual(['carol', 'dave']);
+    // A read leaves the row alone: if the ownership pull had landed, it would be
+    // all bob has, and a retried demotion reuses it.
+    expect(await WishlistMember.exists({ wishlist: wid, user: bob })).not.toBeNull();
+  });
+
   it('shows a co-owned list on every owner’s profile', async () => {
     for (const uid of [alice, bob]) {
       as(null);
@@ -192,6 +223,18 @@ describe('co-ownership — reading the list', () => {
     expect(row).toBeDefined();
     // And it's labelled as theirs, which is what explains the visibility.
     expect(row.userRole).toBe('owner');
+  });
+
+  // The profile listing reads the viewer's membership rows too, so a spare one on
+  // an owner (see the members-view test above) mustn't list the shared list a
+  // second time or badge it as a member's. It checks ownership first and dedupes.
+  it('lists a shared list once, as owned, to a co-owner with a spare membership row', async () => {
+    await WishlistMember.create({ wishlist: wid, user: alice });
+
+    const body = await profileOf(bob, alice);
+    const rows = body.data.filter((w: { _id: string }) => w._id === wid);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].userRole).toBe('owner');
   });
 
   // The friends tier is gated on friendship with the profile's owner, which a
