@@ -314,9 +314,10 @@ export default function ItemForm({
       {/* Image */}
       <div>
         <label className="block text-sm font-medium text-foreground mb-1">Image</label>
+        {/* An upload lands after the render that started it: update the form as it is by then. */}
         <ImageUpload
           value={formData.imageUrl || null}
-          onChange={(url) => setFormData({ ...formData, imageUrl: url ?? '' })}
+          onChange={(url) => setFormData((f) => ({ ...f, imageUrl: url ?? '' }))}
           disabled={submitting}
           aspect={1}
         />

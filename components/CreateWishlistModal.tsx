@@ -243,9 +243,10 @@ export default function CreateWishlistModal({ isOpen, onClose }: CreateWishlistM
             <label className="block text-sm font-medium text-foreground mb-1">
               Banner image <span className="text-muted-foreground">(optional)</span>
             </label>
+            {/* An upload lands after the render that started it: update the form as it is by then. */}
             <ImageUpload
               value={formData.bannerUrl || null}
-              onChange={(url) => setFormData({ ...formData, bannerUrl: url ?? '' })}
+              onChange={(url) => setFormData((f) => ({ ...f, bannerUrl: url ?? '' }))}
               disabled={isSubmitting}
             />
             <p className="mt-1 text-xs text-muted-foreground">
