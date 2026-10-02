@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures';
 
 // What the component tests can't show: the built app's own event handling
 // (React's on `document` and on the portalled modal's <body>, beside the

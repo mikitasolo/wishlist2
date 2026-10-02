@@ -11,7 +11,7 @@ vi.mock('next/link', () => ({
   ),
 }));
 
-import WishlistCard from '@/components/WishlistCard';
+import WishlistCard, { WISHLIST_CARD_COVER_SIZES } from '@/components/WishlistCard';
 import { coverGradient } from '@/lib/utils/cover';
 import { formatCalendarDate, type Occasion } from '@/lib/utils/occasion';
 
@@ -66,6 +66,20 @@ describe('WishlistCard — cover', () => {
     expect(coverOf(container).style.background).toBe(placeholderOf('w1'));
     // The badges on the band are still there.
     expect(screen.getByText('Public')).toBeInTheDocument();
+  });
+
+  // regression: the cover passed no `sizes`, so BannerImage's `100vw` default
+  // told the browser the banner spans the whole viewport, and every card in a
+  // grid downloaded a viewport-wide banner for a ~300px card. `next dev` warned:
+  // 'has "fill" prop and "sizes" prop of "100vw", but image is not rendered at
+  // full viewport width'.
+  it('regression: asks for a banner the width of a card in the grid, not of the viewport', () => {
+    const { container } = render(<WishlistCard wishlist={wishlist({ bannerUrl: BANNER })} />);
+    const sizes = coverOf(container).querySelector('img')!.getAttribute('sizes');
+    expect(sizes).toBe(WISHLIST_CARD_COVER_SIZES);
+    // Past the last breakpoint (four columns in a max-w-7xl page) it's a card's
+    // width, however wide the screen.
+    expect(sizes?.split(', ').at(-1)).toBe('320px');
   });
 });
 

@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures';
 
 // Share cards: each opengraph-image route draws its card through next/og's
 // ImageResponse; a list's and a profile's are then served as JPEGs (a PNG of a

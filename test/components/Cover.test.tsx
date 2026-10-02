@@ -18,14 +18,22 @@ const frame = (img: HTMLElement) => img.parentElement as HTMLElement;
 
 describe('Cover', () => {
   it('shows the image, without the placeholder behind it', () => {
-    render(<Cover src={IMAGE} seed="w1" alt="Birthday" className="relative aspect-square" />);
+    render(
+      <Cover
+        sizes="100vw"
+        src={IMAGE}
+        seed="w1"
+        alt="Birthday"
+        className="relative aspect-square"
+      />
+    );
     const img = screen.getByAltText('Birthday');
     expect(frame(img).style.background).toBe('');
     expect(frame(img)).toHaveClass('relative', 'aspect-square');
   });
 
   it.each([null, undefined, ''])('shows the placeholder when the image is %j', (src) => {
-    const { container } = render(<Cover src={src} seed="w1" alt="Birthday" />);
+    const { container } = render(<Cover sizes="100vw" src={src} seed="w1" alt="Birthday" />);
     expect(screen.queryByAltText('Birthday')).toBeNull();
     expect((container.firstChild as HTMLElement).style.background).toBe(placeholderOf('w1'));
   });
@@ -34,7 +42,7 @@ describe('Cover', () => {
   // BannerImage renders nothing on error, so a deleted blob or a dead external
   // URL left a blank tile instead of the placeholder.
   it('regression: falls back to the placeholder when the image fails to load', () => {
-    const { container } = render(<Cover src={IMAGE} seed="w1" alt="Birthday" />);
+    const { container } = render(<Cover sizes="100vw" src={IMAGE} seed="w1" alt="Birthday" />);
 
     fireEvent.error(screen.getByAltText('Birthday'));
 
@@ -47,11 +55,11 @@ describe('Cover', () => {
   // Chromium that restarts an animated cover, so the wishlist page's 5 s poll
   // sent every animated list and item image back to its first frame.
   it('regression: re-renders without re-assigning the image src', () => {
-    const { rerender } = render(<Cover src={IMAGE} seed="w1" alt="Birthday" />);
+    const { rerender } = render(<Cover sizes="100vw" src={IMAGE} seed="w1" alt="Birthday" />);
     const assignSrc = vi.spyOn(HTMLImageElement.prototype, 'src', 'set');
     try {
-      rerender(<Cover src={IMAGE} seed="w1" alt="Birthday" />);
-      rerender(<Cover src={IMAGE} seed="w1" alt="Birthday" />);
+      rerender(<Cover sizes="100vw" src={IMAGE} seed="w1" alt="Birthday" />);
+      rerender(<Cover sizes="100vw" src={IMAGE} seed="w1" alt="Birthday" />);
 
       expect(assignSrc).not.toHaveBeenCalled();
     } finally {
@@ -60,10 +68,12 @@ describe('Cover', () => {
   });
 
   it('shows the new image when a broken one is replaced', () => {
-    const { rerender, container } = render(<Cover src={IMAGE} seed="w1" alt="Birthday" />);
+    const { rerender, container } = render(
+      <Cover sizes="100vw" src={IMAGE} seed="w1" alt="Birthday" />
+    );
     fireEvent.error(screen.getByAltText('Birthday'));
 
-    rerender(<Cover src={`${IMAGE}?v=2`} seed="w1" alt="Birthday" />);
+    rerender(<Cover sizes="100vw" src={`${IMAGE}?v=2`} seed="w1" alt="Birthday" />);
 
     expect(screen.getByAltText('Birthday')).toBeInTheDocument();
     expect((container.firstChild as HTMLElement).style.background).toBe('');
@@ -71,7 +81,7 @@ describe('Cover', () => {
 
   it('keeps its overlays over the image and over the placeholder', () => {
     render(
-      <Cover src={IMAGE} seed="w1" alt="Birthday">
+      <Cover sizes="100vw" src={IMAGE} seed="w1" alt="Birthday">
         <span>Public</span>
       </Cover>
     );
@@ -85,6 +95,7 @@ describe('Cover', () => {
   it('renders as an external link when given one', () => {
     render(
       <Cover
+        sizes="100vw"
         src={IMAGE}
         seed="i1"
         alt="Blue Mug"
@@ -101,16 +112,16 @@ describe('Cover', () => {
   it('remembers a broken image when the link comes and goes', () => {
     const link = { href: 'https://shop.example/mug', label: 'View Blue Mug product page' };
     const { rerender, container } = render(
-      <Cover src={IMAGE} seed="i1" alt="Blue Mug" link={link} />
+      <Cover sizes="100vw" src={IMAGE} seed="i1" alt="Blue Mug" link={link} />
     );
     fireEvent.error(screen.getByAltText('Blue Mug'));
 
-    rerender(<Cover src={IMAGE} seed="i1" alt="Blue Mug" />);
+    rerender(<Cover sizes="100vw" src={IMAGE} seed="i1" alt="Blue Mug" />);
     expect(screen.queryByRole('link')).toBeNull();
     expect(screen.queryByAltText('Blue Mug')).toBeNull();
     expect((container.firstChild as HTMLElement).style.background).toBe(placeholderOf('i1'));
 
-    rerender(<Cover src={IMAGE} seed="i1" alt="Blue Mug" link={link} />);
+    rerender(<Cover sizes="100vw" src={IMAGE} seed="i1" alt="Blue Mug" link={link} />);
     expect(screen.getByRole('link').style.background).toBe(placeholderOf('i1'));
   });
 });

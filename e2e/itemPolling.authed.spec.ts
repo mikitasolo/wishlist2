@@ -1,4 +1,5 @@
-import { test, expect, type Page, type Request, type Route } from '@playwright/test';
+import type { Page, Request, Route } from '@playwright/test';
+import { test, expect, failedRequest } from './fixtures';
 import { randomBytes } from 'crypto';
 import { ITEM_REQUEST_TIMEOUT_MS, REQUEST_TIMEOUT_MESSAGE } from '../lib/utils/requestTimeout';
 
@@ -576,7 +577,13 @@ test("regression: a poll that joins a read sent before an edit settled doesn't u
 // booked.
 test("regression: a failed booking's reconcile read dropped behind a proposal is read again once it's saved", async ({
   page,
+  consoleErrors,
 }) => {
+  // The failed booking, and the app's log line for it.
+  consoleErrors.allow(
+    failedRequest(new RegExp(`/api/items/${polledBookable._id}`)),
+    /^Error updating item: /
+  );
   const bookable = cardOf(page, polledBookable.name);
   const bookedByMe = bookable.getByText('Booked by you');
   const bookButton = bookable.getByRole('button', { name: 'Book this item', exact: true });
@@ -644,7 +651,15 @@ test("regression: a failed booking's reconcile read dropped behind a proposal is
 // through.
 test('regression: a booking that fails while offline is put back at once, though the reconcile read fails too', async ({
   page,
+  consoleErrors,
 }) => {
+  // The booking and the reads that fail offline, and the app's log lines for them.
+  consoleErrors.allow(
+    failedRequest(new RegExp(`/api/items/${polledBookable._id}`)),
+    failedRequest(/\/api\/wishlists\/e2e-friend\/items/),
+    /^Error updating item: /,
+    /^Error fetching items: /
+  );
   const bookable = cardOf(page, polledBookable.name);
   const bookedByMe = bookable.getByText('Booked by you');
   const bookButton = bookable.getByRole('button', { name: 'Book this item', exact: true });
@@ -703,7 +718,10 @@ const coOwnersItem = {
 // up on it. The page's clock is faked, so the spec jumps past the timeout.
 test('regression: a stalled edit is given up on, the item goes back to its server state, and polls land again', async ({
   page,
+  consoleErrors,
 }) => {
+  // The app's log lines for the edit it gives up on (aborting it logs nothing).
+  consoleErrors.allow(/^Error updating item: RequestTimeoutError: /, /^Error submitting form: /);
   const renamed = cardOf(page, 'E2E Renamed Gift');
   const original = cardOf(page, 'E2E Gift');
   const coOwners = cardOf(page, coOwnersItem.name);
@@ -773,7 +791,10 @@ test('regression: a stalled edit is given up on, the item goes back to its serve
 // the page reads the list straight after giving up on it.
 test('a stalled proposal is given up on, keeping the modal open, and the read straight after shows it if it was saved', async ({
   page,
+  consoleErrors,
 }) => {
+  // The app's log lines for the proposal it gives up on (aborting it logs nothing).
+  consoleErrors.allow(/^Error proposing item: RequestTimeoutError: /, /^Error submitting form: /);
   const name = 'E2E Stalled Proposal';
   const card = cardOf(page, name);
   const userId = await signedInUserId(page);

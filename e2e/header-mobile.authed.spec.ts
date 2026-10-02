@@ -1,4 +1,5 @@
-import { test, expect, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { test, expect } from './fixtures';
 
 const accountButton = (page: Page) => page.getByRole('button', { name: /^Account menu/ });
 const homeLink = (page: Page) => page.getByRole('link', { name: 'Wishlist home' });

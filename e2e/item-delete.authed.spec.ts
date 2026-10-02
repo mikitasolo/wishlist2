@@ -1,4 +1,5 @@
-import { test, expect, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { test, expect, failedRequest } from './fixtures';
 
 // Every DELETE here is answered in the browser, so nothing reaches the seeded
 // database and the other specs keep their items.
@@ -66,7 +67,10 @@ for (const flow of [
 ]) {
   test(`regression: a failed delete from the ${flow.from} modal keeps the item and the modal`, async ({
     page,
+    consoleErrors,
   }) => {
+    // The failed DELETE, and the app's log lines for it.
+    consoleErrors.allow(failedRequest(/\/api\/items\/\w+/), /^Error deleting item: /);
     await addProposal(page);
     await answerItemDelete(page);
     await page.goto('/wishlists/e2e-birthday');

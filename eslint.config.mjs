@@ -23,6 +23,28 @@ const eslintConfig = [
     files: ['test/**'],
     rules: { '@next/next/no-img-element': 'off' },
   },
+  {
+    // E2E specs take `test` and `expect` from e2e/fixtures.ts, whose `test`
+    // fails a spec on an uncaught page error or an unexpected console.error.
+    // Types can still come from @playwright/test.
+    files: ['e2e/**/*.ts'],
+    ignores: ['e2e/fixtures.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: '@playwright/test',
+              importNames: ['test', 'expect'],
+              message:
+                "Import test and expect from './fixtures', which fails a spec on console errors.",
+            },
+          ],
+        },
+      ],
+    },
+  },
 ];
 
 export default eslintConfig;

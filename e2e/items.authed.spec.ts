@@ -1,4 +1,5 @@
-import { test, expect, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { test, expect, failedRequest } from './fixtures';
 
 // The add/propose modals only close once the create request succeeds. The POST
 // is failed in the browser, so nothing reaches the seeded database.
@@ -30,7 +31,14 @@ for (const flow of [
 ]) {
   test(`regression: the ${flow.as}'s "${flow.title}" modal keeps the input when the request fails`, async ({
     page,
+    consoleErrors,
   }) => {
+    // The failed create, and the app's log lines for it.
+    consoleErrors.allow(
+      failedRequest(/\/api\/wishlists\/[^/]+\/items/),
+      /^Error creating item: /,
+      /^Error submitting form: /
+    );
     await failItemCreate(page);
     await page.goto(`/wishlists/${flow.list}`);
     await page.getByRole('button', { name: flow.open }).click();

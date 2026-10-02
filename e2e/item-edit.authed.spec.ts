@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, failedRequest } from './fixtures';
 
 // regression: the page closed the edit modal whatever the outcome, because
 // handleUpdateItem toasts a failure and resolves, so a failed save threw away
@@ -6,7 +6,14 @@ import { test, expect } from '@playwright/test';
 // seeded database.
 test('regression: the owner\'s "Edit Item" modal keeps the changes when saving fails', async ({
   page,
+  consoleErrors,
 }) => {
+  // The failed PATCH, and the app's log lines for it.
+  consoleErrors.allow(
+    failedRequest(/\/api\/items\/\w+/),
+    /^Error updating item: /,
+    /^Error submitting form: /
+  );
   await page.route('**/api/items/*', (route) =>
     route.request().method() === 'PATCH'
       ? route.fulfill({ status: 500, json: { success: false, error: 'Something went wrong' } })

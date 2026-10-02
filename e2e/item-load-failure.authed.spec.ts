@@ -1,8 +1,18 @@
-import { test, expect, type Page, type Request, type Response, type Route } from '@playwright/test';
+import type { Page, Request, Response, Route } from '@playwright/test';
+import { test, expect, failedRequest } from './fixtures';
 
 // Every failing items read here is answered in the browser, so nothing reaches
 // the seeded database.
 const ITEMS = '**/api/wishlists/*/items';
+
+// Every test here fails item reads on purpose: the browser logs each one, and
+// the page logs its own line for it.
+test.beforeEach(({ consoleErrors }) => {
+  consoleErrors.allow(
+    failedRequest(/\/api\/wishlists\/e2e-birthday\/items/),
+    /^Error fetching items: /
+  );
+});
 
 // Fire a background poll now rather than waiting out the 5 s tick: the page
 // also re-reads its items whenever it becomes visible, which it already is.

@@ -1,4 +1,5 @@
-import { test, expect, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { test, expect } from './fixtures';
 
 // The seeded owner list has no members, so one is added to the members GET in
 // the browser. Every confirmed request is answered there too: nothing reaches
