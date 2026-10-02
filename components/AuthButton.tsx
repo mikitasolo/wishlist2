@@ -9,29 +9,53 @@ import { useTheme } from '@/components/ThemeProvider';
 
 export default function AuthButton() {
   const { data: session, status } = useSession();
+  const userId = session?.user?.id;
   const { theme, setTheme } = useTheme();
   const [open, setOpen] = useState(false);
-  const [hasInvites, setHasInvites] = useState(false);
+  // The account whose latest check found pending invitations (null: none did).
+  // Another account signing in from another tab leaves `status` 'authenticated',
+  // so the dot is tied to the account it was checked for: the previous account's
+  // dot is gone in the same render that shows the new account, and a check still
+  // on its way for the previous account can't bring it back.
+  const [invitesFoundFor, setInvitesFoundFor] = useState<string | null>(null);
+  const hasInvites = invitesFoundFor === userId;
+  // Checks are numbered as they're sent. One that lands at or below
+  // `checksOutdatedUpTo` is dropped: a later check has already landed, or it was
+  // sent before signing out.
+  const checksSent = useRef(0);
+  const checksOutdatedUpTo = useRef(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   // Whether there are pending invitations, for the header dot indicator.
   const checkInvites = useCallback(async () => {
+    if (!userId) return;
+    const check = ++checksSent.current;
     try {
       const res = await fetch('/api/users/me/invites', { cache: 'no-store' });
       const json = await res.json();
-      if (json.success) setHasInvites((json.data?.length ?? 0) > 0);
+      if (!json.success || check <= checksOutdatedUpTo.current) return;
+      checksOutdatedUpTo.current = check;
+      setInvitesFoundFor((json.data?.length ?? 0) > 0 ? userId : null);
     } catch {
       /* ignore — the dot is best-effort */
     }
-  }, []);
+  }, [userId]);
 
-  // Refresh on mount and whenever the tab regains focus (no polling).
+  // Check on sign-in, whenever another account signs in, and whenever the tab
+  // regains focus (no polling).
   useEffect(() => {
-    if (status !== 'authenticated') {
-      setHasInvites(false);
+    if (status === 'unauthenticated') {
+      // Signed out: hide the dot, and drop every check still on its way, so
+      // signing back in shows only what a check sent after it finds.
+      checksOutdatedUpTo.current = checksSent.current;
+      setInvitesFoundFor(null);
       return;
     }
+    // 'loading' is the first session read, or an `update()` (settings, welcome),
+    // which keeps the account: the dot keeps what it found, and is checked again
+    // once the session is back.
+    if (status !== 'authenticated') return;
     checkInvites();
     const refresh = () => checkInvites();
     window.addEventListener('focus', refresh);
