@@ -40,9 +40,17 @@ const session = vi.mocked(auth);
 const TOKEN = ['vercel', 'blob', 'rw', 'TestStore42', 'notasecret'].join('_');
 const HOST = 'https://teststore42.public.blob.vercel-storage.com';
 
+// A withdrawal refused on the item as read: the caller isn't an owner, and it
+// isn't (or is no longer) their proposal.
 const NOT_OWNER_OR_PROPOSER = {
   success: false,
   error: 'Unauthorized - Owner or proposer access required',
+};
+// A withdrawal that passed that check and then lost the race to an approval,
+// answered like the proposer's edit that loses one in PATCH.
+const NO_LONGER_A_PROPOSAL = {
+  success: false,
+  error: 'This item is no longer a proposal you can withdraw',
 };
 
 let owner: string;
@@ -119,15 +127,15 @@ describe("DELETE /api/items/[id] — a proposer's withdrawal racing the owner's 
   // between made it a live item on the list, and the proposer's withdrawal
   // deleted it anyway, which only owners may do, and freed its image.
   it.each(['available', 'draft'] as const)(
-    'regression: an owner approving it to %s first keeps the approved item and its image, and the withdrawal gets a 403',
+    'regression: an owner approving it to %s first keeps the approved item and its image, and the withdrawal gets a 409',
     async (status) => {
       const race = whileItemDeleteHeld(() => patchAs(owner, { status }));
       const withdrawal = await deleteAs(alice);
 
       expect(race.held()).toBe(true);
       expect(race.outcome()?.status).toBe(200);
-      expect(withdrawal.status).toBe(403);
-      expect(await withdrawal.json()).toEqual(NOT_OWNER_OR_PROPOSER);
+      expect(withdrawal.status).toBe(409);
+      expect(await withdrawal.json()).toEqual(NO_LONGER_A_PROPOSAL);
 
       const item = await Item.findById(itemId).lean();
       expect(item).toMatchObject({ name: 'Blue Mug', status, imageUrl: proposedImage });
@@ -148,7 +156,8 @@ describe("DELETE /api/items/[id] — a proposer's withdrawal racing the owner's 
 
     expect(race.held()).toBe(true);
     expect(race.outcome()?.status).toBe(200);
-    expect(withdrawal.status).toBe(403);
+    expect(withdrawal.status).toBe(409);
+    expect(await withdrawal.json()).toEqual(NO_LONGER_A_PROPOSAL);
     expect((await Item.findById(itemId))?.imageUrl).toBe(ownersImage);
     // Freed by the approval that replaced it, and by nothing else.
     expect(del.mock.calls).toEqual([[proposedImage]]);
@@ -208,6 +217,8 @@ describe("DELETE /api/items/[id] — a proposer's withdrawal with no race", () =
     expect(del.mock.calls).toEqual([[proposedImage]]);
   });
 
+  // Only a request that passed the first-read check and then lost the race gets
+  // the 409. One that reads the item already approved is refused as before.
   it('is refused with a 403, as before, once the item was approved before it was read', async () => {
     expect((await patchAs(owner, { status: 'available' })).status).toBe(200);
 
