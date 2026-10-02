@@ -15,13 +15,18 @@ import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 export default function BannerImage({
   src,
   alt = '',
-  sizes = '100vw',
+  sizes,
   priority = false,
   onError,
 }: {
   src: string;
   alt?: string;
-  sizes?: string;
+  /**
+   * How wide the image is drawn (an `<img sizes>` value), so the browser fetches
+   * a fitting size. Required: next/image's fallback is the full viewport width,
+   * which downloads a banner many times too large for a card or a thumbnail.
+   */
+  sizes: string;
   /** Set for above-the-fold hero images (LCP) so they load eagerly. */
   priority?: boolean;
   /** Called when the image fails to load, for a parent that paints its own fallback. */

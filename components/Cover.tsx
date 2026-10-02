@@ -29,7 +29,8 @@ export default function Cover({
   /** Picks the placeholder gradient (e.g. the list's or item's id), so it never changes. */
   seed: string;
   alt?: string;
-  sizes?: string;
+  /** How wide the frame is drawn, for the browser to pick the image's size (see `BannerImage`). */
+  sizes: string;
   priority?: boolean;
   /**
    * Makes the frame a link to an external page, opened in a new tab (an item's

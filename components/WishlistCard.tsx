@@ -23,6 +23,16 @@ interface WishlistCardProps {
   showOwner?: boolean;
 }
 
+/**
+ * How wide a card's cover is drawn, for the browser to pick the banner's size.
+ * Every grid of cards is one column on a phone, two from `sm`, three from `lg`
+ * and four from `xl`, inside a `max-w-7xl` page, so a card is never wider than
+ * about 300px there. Without it next/image assumes the full viewport width,
+ * and each card downloaded a banner several times the size it's shown at.
+ */
+export const WISHLIST_CARD_COVER_SIZES =
+  '(max-width: 639px) 100vw, (max-width: 1023px) 50vw, (max-width: 1279px) 33vw, 320px';
+
 export default function WishlistCard({ wishlist, showOwner = false }: WishlistCardProps) {
   const ownerName = wishlist.ownerUsername || 'unknown';
   const coOwnerCount = Math.max(0, (wishlist.ownerUsernames?.length ?? 1) - 1);
@@ -40,6 +50,7 @@ export default function WishlistCard({ wishlist, showOwner = false }: WishlistCa
       <Cover
         src={wishlist.bannerUrl}
         seed={wishlist._id.toString()}
+        sizes={WISHLIST_CARD_COVER_SIZES}
         className={`relative aspect-[16/9] bg-surface-2 ${wishlist.archived ? 'grayscale' : ''}`}
       >
         <span className="absolute right-3 top-3 inline-flex items-center gap-1.5 rounded-full border border-white/25 bg-white/20 px-2.5 py-1 text-[11.5px] font-semibold text-white backdrop-blur-md">

@@ -13,7 +13,7 @@ const shows = (url: string) =>
 describe('BannerImage', () => {
   it('renders nothing once its image fails to load, and says so', () => {
     const onError = vi.fn();
-    render(<BannerImage src={BROKEN} alt="Cover" onError={onError} />);
+    render(<BannerImage src={BROKEN} alt="Cover" sizes="100vw" onError={onError} />);
 
     fireEvent.error(screen.getByAltText('Cover'));
 
@@ -22,7 +22,7 @@ describe('BannerImage', () => {
   });
 
   it('stays hidden when it rerenders with the same broken URL', () => {
-    const { rerender } = render(<BannerImage src={BROKEN} alt="Cover" />);
+    const { rerender } = render(<BannerImage src={BROKEN} alt="Cover" sizes="100vw" />);
     fireEvent.error(screen.getByAltText('Cover'));
 
     rerender(<BannerImage src={BROKEN} alt="Cover" sizes="96px" />);
@@ -36,11 +36,13 @@ describe('BannerImage', () => {
   // animated GIF/WebP, so a wishlist page re-rendering on its 5 s poll sent
   // every animated cover back to its first frame.
   it('regression: re-renders without re-assigning the image src', () => {
-    const { rerender } = render(<BannerImage src={WORKING} alt="Cover" onError={() => {}} />);
+    const { rerender } = render(
+      <BannerImage src={WORKING} alt="Cover" sizes="100vw" onError={() => {}} />
+    );
     const assignSrc = vi.spyOn(HTMLImageElement.prototype, 'src', 'set');
     try {
-      rerender(<BannerImage src={WORKING} alt="Cover" onError={() => {}} />);
-      rerender(<BannerImage src={WORKING} alt="Cover" onError={() => {}} />);
+      rerender(<BannerImage src={WORKING} alt="Cover" sizes="100vw" onError={() => {}} />);
+      rerender(<BannerImage src={WORKING} alt="Cover" sizes="100vw" onError={() => {}} />);
 
       expect(assignSrc).not.toHaveBeenCalled();
     } finally {
@@ -51,8 +53,10 @@ describe('BannerImage', () => {
   it("calls the latest render's onError", () => {
     const first = vi.fn();
     const latest = vi.fn();
-    const { rerender } = render(<BannerImage src={BROKEN} alt="Cover" onError={first} />);
-    rerender(<BannerImage src={BROKEN} alt="Cover" onError={latest} />);
+    const { rerender } = render(
+      <BannerImage src={BROKEN} alt="Cover" sizes="100vw" onError={first} />
+    );
+    rerender(<BannerImage src={BROKEN} alt="Cover" sizes="100vw" onError={latest} />);
 
     fireEvent.error(screen.getByAltText('Cover'));
 
@@ -64,10 +68,10 @@ describe('BannerImage', () => {
   // that kept this instance mounted and swapped in a new URL (the upload
   // preview, after Replace) went on rendering nothing for the working image.
   it('regression: tries a new URL after the previous one failed', () => {
-    const { rerender } = render(<BannerImage src={BROKEN} alt="Cover" />);
+    const { rerender } = render(<BannerImage src={BROKEN} alt="Cover" sizes="100vw" />);
     fireEvent.error(screen.getByAltText('Cover'));
 
-    rerender(<BannerImage src={WORKING} alt="Cover" />);
+    rerender(<BannerImage src={WORKING} alt="Cover" sizes="100vw" />);
 
     shows(WORKING);
   });
