@@ -27,12 +27,8 @@ export async function DELETE(
 ) {
   try {
     const session = await auth();
-    const { id: idParam, memberId } = await params;
-    const id = await resolveWishlistId(idParam);
-    if (!id) {
-      return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
-    }
-
+    // Before the list is looked up, so a signed-out caller is told the same
+    // whether or not it exists (an archived list's existence is its owners').
     if (!session?.user) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized - Please sign in' },
@@ -40,8 +36,16 @@ export async function DELETE(
       );
     }
 
+    const { id: idParam, memberId } = await params;
+    const id = await resolveWishlistId(idParam);
+    if (!id) {
+      return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
+    }
+
     await connectDB();
 
+    // An archived list comes back as no list at all to anyone but its owners
+    // (see `getOwnerAccess`), here and in the re-read below.
     const { isOwner, wishlist } = await getOwnerAccess(id, session.user.id);
     if (!wishlist) {
       return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });

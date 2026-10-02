@@ -49,6 +49,8 @@ async function requireOwnerCaller(
     };
   }
 
+  // An archived list comes back as no list at all to anyone but its owners
+  // (see `getOwnerAccess`), here and in the promotion's re-read.
   const { isOwner, wishlist } = await getOwnerAccess(id, callerId);
   if (!wishlist) {
     return {
@@ -90,10 +92,22 @@ function checkExistingOwner(wishlist: IWishlist, userId: string): NextResponse |
 
 /**
  * The answer to a demote/remove whose write changed nothing. A caller whom a
- * concurrent request just took off the owners gets what any non-owner gets.
+ * concurrent request just took off the owners gets what any non-owner gets,
+ * which on a list that's archived (or gone by now) is the 404 of a list that
+ * doesn't exist (see `getOwnerAccess`). Nothing was changed, so that read only
+ * picks the answer.
  */
-const removalRefused = (result: Exclude<OwnerRemoval, 'removed'>) =>
-  result === 'actor-not-owner' ? notOwnerError() : lastOwnerError();
+async function removalRefused(
+  wishlistId: string,
+  callerId: string,
+  result: Exclude<OwnerRemoval, 'removed'>
+): Promise<NextResponse> {
+  if (result === 'last-owner') return lastOwnerError();
+  if (!(await getOwnerAccess(wishlistId, callerId)).wishlist) {
+    return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
+  }
+  return notOwnerError();
+}
 
 // POST /api/wishlists/[id]/owners/[userId] - invite a member to become a co-owner.
 export async function POST(
@@ -249,7 +263,7 @@ export async function PATCH(
       actorId: session.user.id,
       keepAsMember: true,
     });
-    if (removal !== 'removed') return removalRefused(removal);
+    if (removal !== 'removed') return removalRefused(authorized.id, session.user.id, removal);
 
     // Nothing left for them to accept: a pending invite would undo the demotion.
     await cancelPendingInvites(authorized.id, userId);
@@ -310,7 +324,7 @@ export async function DELETE(
       actorId: session.user.id,
       keepAsMember: false,
     });
-    if (removal !== 'removed') return removalRefused(removal);
+    if (removal !== 'removed') return removalRefused(authorized.id, session.user.id, removal);
     // Defensive: an owner shouldn't hold a booking on their own list, but if a
     // stale one exists don't leave the item stuck as claimed.
     await releaseUserBookings(authorized.id, userId);

@@ -124,6 +124,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
     }
 
+    // An archived list comes back as no list at all to anyone but its owners, so
+    // they get the 404 of a list that doesn't exist (see `getOwnerAccess`).
     const { isOwner, wishlist } = await getOwnerAccess(id, session.user.id);
 
     if (!wishlist) {
@@ -216,8 +218,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     );
     if (!updatedWishlist) {
       // Nothing was written, so this read only picks the answer: the list is
-      // gone, or the caller doesn't own it (any more).
-      if (!(await Wishlist.exists({ _id: id }))) {
+      // gone (or archived, which looks the same to anyone but its owners), or the
+      // caller doesn't own it (any more).
+      if (!(await getOwnerAccess(id, session.user.id)).wishlist) {
         return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
       }
       return NextResponse.json(
@@ -308,8 +311,9 @@ export async function DELETE(
     });
     if (!wishlist) {
       // Nothing was deleted, so this read only picks the answer: another owner
-      // deleted the list first, or the caller doesn't own it (any more).
-      if (!(await Wishlist.exists({ _id: id }))) {
+      // deleted the list first (or it's archived, which looks the same to anyone
+      // but its owners), or the caller doesn't own it (any more).
+      if (!(await getOwnerAccess(id, session.user.id)).wishlist) {
         return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
       }
       return NextResponse.json(
