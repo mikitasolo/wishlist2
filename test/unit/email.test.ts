@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { SMTP_ENV_VARS } from '@/lib/env';
+import { EMAIL_LOGO_PNG_BASE64 } from '@/lib/emailLogo';
 
 // Stand-in for nodemailer: proves whether a transporter is ever created or
 // used, without dialing anything.
@@ -224,44 +225,52 @@ describe('EMAIL_TRANSPORT=smtp', () => {
   });
 });
 
-describe('the inline logo and sharp (WIS-156)', () => {
+describe('the inline logo', () => {
   type Sent = { attachments: { cid: string; filename: string; content: Buffer }[] };
 
   afterEach(() => {
     vi.doUnmock('sharp');
   });
 
-  // regression: lib/email.ts imported sharp at the top of the module. NextAuth
-  // imports it (sendVerificationRequest), so when sharp's native libvips was
-  // missing from the Vercel bundle every /api/auth/* request failed with a 500
-  // before the "send without the logo" fallback could run.
-  it('still loads and sends the sign-in email, without the logo, when sharp cannot load', async () => {
-    vi.doMock('sharp', () => {
+  it('embeds the pre-rendered logo as an inline 96×96 PNG', async () => {
+    const { sendMagicLinkEmail } = await loadEmail('smtp');
+
+    await sendMagicLinkEmail(RECIPIENT, MAGIC_LINK);
+
+    const { attachments } = sentMessage() as unknown as Sent;
+    expect(attachments).toHaveLength(1);
+    const [logo] = attachments;
+    expect(logo).toMatchObject({ cid: 'wishlist-logo', filename: 'logo.png' });
+    expect(logo.content.equals(Buffer.from(EMAIL_LOGO_PNG_BASE64, 'base64'))).toBe(true);
+    // A PNG whose IHDR says 96×96.
+    expect(logo.content.subarray(0, 8)).toEqual(
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+    );
+    expect([logo.content.readUInt32BE(16), logo.content.readUInt32BE(20)]).toEqual([96, 96]);
+    expect(sentMessage().html).toContain('src="cid:wishlist-logo"');
+  });
+
+  // regression: lib/email.ts rendered the logo with sharp. NextAuth and the
+  // sign-in form's action import it, so sign-in shipped and loaded sharp, and
+  // when sharp's native libvips was missing from the Vercel bundle every
+  // /api/auth/* request failed with a 500 (WIS-156). Now the logo is
+  // pre-rendered and sending an email never loads sharp (WIS-208).
+  it('sends the sign-in email, logo included, without ever loading sharp', async () => {
+    const loadSharp = vi.fn(() => {
       throw new Error(
         'Could not load the "sharp" module using the linux-x64 runtime\n' +
           'ERR_DLOPEN_FAILED: libvips-cpp.so.8.18.3: cannot open shared object file'
       );
     });
-    const { sendMagicLinkEmail } = await loadEmail('smtp');
-
-    await sendMagicLinkEmail(RECIPIENT, MAGIC_LINK);
-
-    const message = sentMessage() as unknown as Sent;
-    expect(message.attachments).toEqual([]);
-    expect(String(error.mock.calls[0]?.[0])).toContain('Could not render email logo');
-  });
-
-  it('embeds the logo as an inline PNG when sharp loads', async () => {
+    vi.doMock('sharp', loadSharp);
     const { sendMagicLinkEmail } = await loadEmail('smtp');
 
     await sendMagicLinkEmail(RECIPIENT, MAGIC_LINK);
 
     const [logo] = (sentMessage() as unknown as Sent).attachments;
     expect(logo).toMatchObject({ cid: 'wishlist-logo', filename: 'logo.png' });
-    expect(logo.content.subarray(0, 8)).toEqual(
-      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
-    );
-    expect(sentMessage().html).toContain('src="cid:wishlist-logo"');
+    expect(loadSharp).not.toHaveBeenCalled();
+    expect(error).not.toHaveBeenCalled();
   });
 });
 

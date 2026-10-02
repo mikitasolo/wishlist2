@@ -8,31 +8,21 @@ import {
   decodedAsDeclared,
   hasDeclaredSignature,
   isUploadImageType,
+  restrictToUploadLoaders,
+  sniffsAsSvg,
   type UploadImageType,
 } from '@/lib/utils/uploadImageFormat';
 
 // sharp picks its decoder from the bytes, not from the type the client
-// declared (WIS-157), so block every libvips loader and unblock only those of
-// the formats accepted here (AVIF is read by HEIF's; an Ultra HDR JPEG falls
-// back to the plain JPEG loader). libtiff, libultrahdr and any loader a later
-// libvips adds then never read an upload. The block is process-wide, so SVG
-// stays unblocked: lib/email.ts rasterizes the email logo with it in the same
-// process, and it's the signature check in POST that keeps uploads away from
-// librsvg. Other sharp code that needs another loader has to unblock it here
-// too, or it fails wherever this route has loaded. Where Next's image optimizer
-// runs in-process (`next start` / `next dev`, never on Vercel), its first use
-// applies its own list, which adds TIFF; POST's checks don't rely on the block.
-sharp.block({ operation: ['VipsForeignLoad'] });
-sharp.unblock({
-  operation: [
-    'VipsForeignLoadJpeg',
-    'VipsForeignLoadPng',
-    'VipsForeignLoadWebp',
-    'VipsForeignLoadNsgif',
-    'VipsForeignLoadHeif',
-    'VipsForeignLoadSvg',
-  ],
-});
+// declared (WIS-157), so block every libvips loader but those of the formats
+// accepted here, and SVG's. The block is process-wide, and next/og rasterizes
+// every share card's SVG with sharp, so SVG's loader has to stay; `sniffsAsSvg`
+// in POST is what keeps uploads away from librsvg. Other sharp code that needs
+// another loader has to be added to `UPLOAD_ROUTE_LOADERS`, or it fails
+// wherever this route has loaded. Where Next's image optimizer runs in-process
+// (`next start` / `next dev`, never on Vercel), its first use applies its own
+// list, which adds TIFF; POST's checks don't rely on the block.
+restrictToUploadLoaders(sharp);
 
 // Max upload size. Vercel serverless functions cap the request body at ~4.5MB,
 // so we validate a little under that.
@@ -118,8 +108,9 @@ export async function POST(request: NextRequest) {
 
     const input = Buffer.from(await file.arrayBuffer());
     // The declared type only picks the encoder; the bytes pick the decoder.
-    // Refuse anything that isn't what it says before sharp reads a byte of it.
-    if (!hasDeclaredSignature(input, type)) return unsupportedType();
+    // Refuse anything that isn't what it says, or that libvips would hand to
+    // librsvg, before sharp reads a byte of it.
+    if (!hasDeclaredSignature(input, type) || sniffsAsSvg(input)) return unsupportedType();
 
     // Strip metadata before anything touches storage.
     let sanitized;

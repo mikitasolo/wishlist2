@@ -5,9 +5,11 @@
 //
 //   npm run smoke:deploy -- https://wishlist-staging.mikitasolo.co
 //
-// It checks that the routes whose modules load sharp start: every /api/auth/*
-// route (through lib/email.ts) and /api/upload. On a bundle missing sharp's
-// native libvips they all answer 500.
+// It checks that sign-in's routes and /api/upload start, and that a share card
+// draws. /api/upload and the share cards load sharp, so on a bundle missing
+// sharp's native libvips they answer 500 (or, for a card, fall back to a slower
+// renderer). The /api/auth/* routes and the sign-in page used to load it too,
+// for the email logo (WIS-156); since WIS-208 they don't at all.
 const base = process.argv[2]?.replace(/\/$/, '');
 if (!base || !/^https?:\/\//.test(base)) {
   console.error('usage: npm run smoke:deploy -- <https://host>');
@@ -25,6 +27,13 @@ const checks = [
   // Only POST is exported, so a started route answers 405; a crashed one 500.
   { path: '/api/upload', expect: 405 },
   { path: '/auth/signin', expect: 200 },
+  // A profile that doesn't exist gets the generic card, drawn on each request
+  // by next/og, which rasterizes it from an SVG with sharp.
+  {
+    path: '/users/smoke_deploy_no_such_user/opengraph-image',
+    expect: 200,
+    type: /^image\/(jpeg|png)$/,
+  },
 ];
 
 let failed = 0;
@@ -36,6 +45,7 @@ for (const check of checks) {
     const res = await fetch(url, { redirect: 'manual', headers: { 'cache-control': 'no-cache' } });
     status = res.status;
     ok = status === check.expect;
+    if (ok && check.type) ok = check.type.test(res.headers.get('content-type') ?? '');
     if (ok && check.body) ok = check.body(await res.json().catch(() => null));
   } catch (error) {
     status = `ERR ${error.message}`;

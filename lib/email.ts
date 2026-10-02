@@ -1,6 +1,6 @@
 import nodemailer from 'nodemailer';
 import { getEnvVars } from './env';
-import { LOGO_SVG } from './brandLogo';
+import { EMAIL_LOGO_PNG_BASE64 } from './emailLogo';
 
 // Get validated environment variables
 const env = getEnvVars();
@@ -20,39 +20,14 @@ const smtpTransporter =
       })
     : null;
 
-// The brand logo (LOGO_SVG). Email clients render SVG poorly and block remote
-// images by default, so we rasterize it to a PNG and embed it as an inline
-// (CID) attachment — that renders everywhere without a network fetch.
-
+// The brand logo. Email clients render SVG poorly and block remote images by
+// default, so it goes in as an inline (CID) PNG attachment, which renders
+// everywhere without a network fetch. The PNG is pre-rendered from
+// app/icon.svg (scripts/generate-email-logo.mjs), so sending an email needs no
+// sharp at all: NextAuth and the sign-in form's server action import this
+// file, and a sharp that couldn't load there (WIS-156) once took sign-in down.
 const LOGO_CID = 'wishlist-logo';
-
-let logoPngPromise: Promise<Buffer> | null = null;
-function getLogoPng(): Promise<Buffer> {
-  if (!logoPngPromise) {
-    // sharp is loaded here, on first send, not at the top of the module:
-    // NextAuth imports this file, so a sharp that can't load (its native
-    // libvips missing from the bundle, WIS-156) would otherwise fail every
-    // /api/auth/* request before this fallback could send the email without
-    // the logo. 2x (96px) for retina; rendered at 48px in the header.
-    logoPngPromise = import('sharp')
-      .then(({ default: sharp }) => sharp(Buffer.from(LOGO_SVG)).resize(96, 96).png().toBuffer())
-      .catch((err) => {
-        logoPngPromise = null; // don't cache the failure — retry next send
-        throw err;
-      });
-  }
-  return logoPngPromise;
-}
-
-/** Inline logo attachment for an email, or null if it can't be produced. */
-async function logoAttachment() {
-  try {
-    return { filename: 'logo.png', content: await getLogoPng(), cid: LOGO_CID };
-  } catch (err) {
-    console.error('Could not render email logo, sending without it:', err);
-    return null;
-  }
-}
+const LOGO_PNG = Buffer.from(EMAIL_LOGO_PNG_BASE64, 'base64');
 
 interface OutgoingEmail {
   /** What kind of email this is, for log lines. Never the recipient. */
@@ -105,7 +80,6 @@ async function deliver(email: OutgoingEmail): Promise<void> {
     return;
   }
 
-  const logo = await logoAttachment();
   try {
     await smtpTransporter.sendMail({
       from: env.EMAIL_FROM,
@@ -113,7 +87,7 @@ async function deliver(email: OutgoingEmail): Promise<void> {
       subject: email.subject,
       html: email.html,
       text: email.text,
-      attachments: logo ? [logo] : [],
+      attachments: [{ filename: 'logo.png', content: LOGO_PNG, cid: LOGO_CID }],
     });
     console.log(`Sent ${email.kind} email`);
   } catch (error) {

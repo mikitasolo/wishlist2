@@ -61,14 +61,16 @@ const securityHeaders = [
 // Next's output file tracing ships the binding but not the library it links,
 // so on Vercel the first `import('sharp')` in a function fails with
 // ERR_DLOPEN_FAILED (libvips-cpp.so…) and takes the whole route down with it
-// (WIS-156: sign-in and uploads returned 500). Ship libvips with every API
-// route: the upload route runs sharp, and everything that reaches lib/email.ts
-// (auth, the invite routes) can, and nearly every route imports lib/auth, so
-// listing them one by one would miss the next one. The sign-in page too: its
-// server action (app/auth/signin/actions.ts) sends the magic link, so it's the
-// sign-in page's function, not /api/auth's, that renders the email's logo.
-// `npm run check:trace` asserts after a build that every API route shipping the
-// binding, and the sign-in page, ship libvips.
+// (WIS-156: sign-in and uploads returned 500). So libvips ships with what runs
+// sharp: the upload route, and the share cards below. Nothing else needs it any
+// more. Sending an email used to render its logo with sharp, which put sharp in
+// every API route (they import lib/auth) and in the sign-in page's server
+// action, but the logo is pre-rendered now (lib/emailLogo.ts), so sign-in
+// doesn't load sharp at all (WIS-208). Every page's trace still carries the
+// binding, because Next imports the share cards' modules into each page for
+// their metadata, but a page never draws a card, so it never loads sharp.
+// `npm run check:trace` fails a build in which a route ships the binding
+// without libvips, or NextAuth's route ships it at all.
 const SHARP_NATIVE_LIBS = ['./node_modules/@img/sharp-libvips-*/lib/**/*'];
 
 // The share cards (lib/og/) read their fonts from disk, and every one of them
@@ -122,8 +124,7 @@ const nextConfig = {
   logging: { serverFunctions: false },
   htmlLimitedBots,
   outputFileTracingIncludes: {
-    '/api/**/*': SHARP_NATIVE_LIBS,
-    '/auth/signin': SHARP_NATIVE_LIBS,
+    '/api/upload': SHARP_NATIVE_LIBS,
     '/opengraph-image': SHARE_CARD_FILES,
     '/wishlists/[id]/opengraph-image': SHARE_CARD_FILES,
     '/users/[username]/opengraph-image': SHARE_CARD_FILES,

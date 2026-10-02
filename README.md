@@ -95,8 +95,9 @@ The two Turnstile keys are **all or nothing**: both set turns the sign-in bot ch
 ```bash
 npm run dev          # dev server
 npm run build        # production build
-npm run check:trace  # after a build: the sign-in page and every route that ships sharp (API routes, share cards) also ship its native libvips
-npm run smoke:deploy -- <url>  # read-only GET smoke of a deployed host: auth and upload routes start (no emails, no uploads)
+npm run check:trace  # after a build: every route that ships sharp (the upload route, share cards) also ships its native libvips, and sign-in ships no sharp
+npm run smoke:deploy -- <url>  # read-only GET smoke of a deployed host: auth and upload routes start, a share card draws (no emails, no uploads)
+npm run generate:email-logo  # re-render the email header's logo (lib/emailLogo.ts) from app/icon.svg; rerun when the logo changes
 npm start            # run the production build
 npm run lint         # eslint (flat config)
 npm test             # full Vitest suite (unit + component + API)

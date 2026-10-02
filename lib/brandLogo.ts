@@ -1,7 +1,8 @@
 /**
- * The brand logo, mirroring app/icon.svg (the favicon), for the places that
- * can't load that file by URL: the email header (lib/email.ts rasterizes it)
- * and the share cards (lib/og/cards.tsx draws it). A test keeps the two the same.
+ * The brand logo, mirroring app/icon.svg (the favicon), for the share cards
+ * (lib/og/cards.tsx draws it), which can't load that file by URL. A test keeps
+ * the two the same. The email header uses a PNG pre-rendered from app/icon.svg
+ * instead (lib/emailLogo.ts).
  */
 export const LOGO_SVG = `<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
