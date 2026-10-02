@@ -31,7 +31,8 @@ const WishlistSchema = new Schema(
       type: [{ type: Schema.Types.ObjectId, ref: 'User' }],
       default: [],
     },
-    // Legacy flag, kept in sync with `visibility` (everyone ⇒ true).
+    // Legacy flag, kept in sync with `visibility` (everyone ⇒ true). Written,
+    // never read: who may see a list is decided by `visibility` alone.
     isPublic: {
       type: Boolean,
       default: true,

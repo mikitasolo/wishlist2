@@ -50,16 +50,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // Viewing your own profile shows everything, including private lists
     if (isSelf) visibleTiers.push('private');
 
-    // Match by visibility tier, tolerating legacy docs that predate the field
-    // (no `visibility` + isPublic:true ⇒ treated as everyone). A co-owned list
-    // shows on every owner's profile, so "their lists" is an owners-set match.
-    const orClauses: Record<string, unknown>[] = [{ visibility: { $in: visibleTiers } }];
-    if (visibleTiers.includes('everyone')) {
-      orClauses.push({ visibility: { $exists: false }, isPublic: true });
-    }
+    // Match by the stored visibility tier. A co-owned list shows on every
+    // owner's profile, so "their lists" is an owners-set match.
     const visibleWishlists = await Wishlist.find({
-      // ownedByFilter is itself an `$or`, so both must be combined under `$and`.
-      $and: [ownedByFilter(userId), { archived: { $ne: true }, $or: orClauses }],
+      $and: [ownedByFilter(userId), { archived: { $ne: true }, visibility: { $in: visibleTiers } }],
     });
 
     // Plus any wishlist (any tier) where the viewer is an explicit member

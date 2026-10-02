@@ -67,9 +67,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     // Lazily backfill a slug for legacy wishlists created before slugs existed.
     // Only once access is granted, so a refused viewer writes nothing, and only
-    // the slug: a `save()` of the hydrated doc would also store the schema
-    // default `visibility: 'everyone'` on an old list that has only `isPublic`,
-    // making a private one public to every reader that trusts `visibility`.
+    // the slug: a `save()` of the hydrated doc would also store any schema
+    // default that hydration filled in for a field the stored list lacks.
     // Not a content edit, so `updatedAt` stays put. It only fills a slug that's
     // still missing: one set since our read (an owner's rename of the URL,
     // another viewer's backfill) is kept, and that's the one we answer with.

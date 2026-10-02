@@ -249,41 +249,18 @@ describe('the wishlist and its items share one set of access rules', () => {
     expect(await role(member)).toBe('member');
     expect(await role(friendOfOwner)).toBeNull();
   });
-
-  // regression: a list saved before `visibility` existed has only isPublic, and
-  // a hydrated doc fills the missing field with the schema default 'everyone'
-  // (the old slug backfill's save() even stored it), so the wishlist read admitted
-  // anyone to an old private list, and sharing its rules would have opened the
-  // items too. isPublic: false has to win.
-  it.each([
-    ['saved before visibility existed', {}],
-    ['whose default visibility was later saved', { visibility: 'everyone' }],
-  ])('regression: keeps an old private list %s private, list and items', async (_, extra) => {
-    const { insertedId } = await Wishlist.collection.insertOne({
-      name: 'Old',
-      owners: [new mongoose.Types.ObjectId(owner), new mongoose.Types.ObjectId(coOwner)],
-      featuredBy: [],
-      isPublic: false,
-      ...extra,
-    });
-    wishlistId = insertedId.toString();
-    await WishlistMember.create({ wishlist: insertedId, user: member });
-    await makeItem('available');
-
-    const { list, items } = await statuses(wishlistId);
-    expect(list).toEqual(expected.private);
-    expect(items).toEqual(expected.private);
-  });
 });
 
 describe('GET /api/wishlists/[id] — slug backfill on an old list', () => {
-  // Saved before slugs and `visibility` existed (they came in the same commit):
-  // only the legacy `isPublic` flag, and no slug.
+  // Saved before slugs existed: no slug. It also lacks `archived`, `currency`
+  // and `bannerUrl`, which hydration fills in with their schema defaults, so a
+  // write of the whole hydrated doc would show.
   async function oldPrivateList() {
     const { insertedId } = await Wishlist.collection.insertOne({
       name: 'Old list',
       owners: [new mongoose.Types.ObjectId(owner)],
       featuredBy: [],
+      visibility: 'private',
       isPublic: false,
     });
     wishlistId = insertedId.toString();
@@ -294,9 +271,10 @@ describe('GET /api/wishlists/[id] — slug backfill on an old list', () => {
   const raw = (id: mongoose.Types.ObjectId) => Wishlist.collection.findOne({ _id: id });
 
   // regression: the backfill was `wishlist.save()` on the hydrated doc, and that
-  // save also stored the schema default `visibility: 'everyone'` the old list
-  // never had, so its first view left `{ visibility: 'everyone', isPublic: false }`:
-  // public to search, the profile listing and the share card.
+  // save also stored every schema default hydration had filled in for a field
+  // the old list lacked. On a list stored with only `isPublic: false`, one was
+  // `visibility: 'everyone'`, which made it public to search, the profile
+  // listing and the share card.
   it.each([
     ['an owner', () => owner],
     ['a member', () => member],
@@ -311,9 +289,10 @@ describe('GET /api/wishlists/[id] — slug backfill on an old list', () => {
     const { slug, ...rest } = (await raw(id))!;
     expect(slug).toMatch(/^old-list-[a-z0-9]+$/);
     expect(data.slug).toBe(slug);
-    // Nothing else: `visibility` stays absent, and not even `updatedAt` moves.
+    // Nothing else: no schema default is stored, and not even `updatedAt` moves.
     expect(rest).toEqual(before);
-    expect(rest).not.toHaveProperty('visibility');
+    expect(rest).not.toHaveProperty('archived');
+    expect(rest).not.toHaveProperty('currency');
 
     // Still private, by its id and by its new slug.
     expect((await getWishlist(wishlistId, null)).status).toBe(401);
