@@ -7,6 +7,7 @@ import AuthButton from '@/components/AuthButton';
 import AppHeader from '@/components/AppHeader';
 import GlobalSearch from '@/components/GlobalSearch';
 import CreateWishlistModal from '@/components/CreateWishlistModal';
+import CurrencyPrompt from '@/components/CurrencyPrompt';
 import WishlistCard from '@/components/WishlistCard';
 import Cover from '@/components/Cover';
 import OccasionLabel, { OCCASION_ON_COVER } from '@/components/OccasionLabel';
@@ -308,6 +309,8 @@ export default function Home() {
             )}
           </div>
         </header>
+
+        <CurrencyPrompt />
 
         <CreateWishlistModal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} />
 

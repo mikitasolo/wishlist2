@@ -11,7 +11,7 @@ import ImageUpload from '@/components/ImageUpload';
 import Select from '@/components/Select';
 import Toggle from '@/components/Toggle';
 import UsernameField from '@/components/UsernameField';
-import { currencySelectOptions } from '@/lib/utils/currencies';
+import { currencySelectOptions, SETTINGS_CURRENCY_FIELD_ID } from '@/lib/utils/currencies';
 import { useUsernameAvailability } from '@/lib/hooks/useUsernameAvailability';
 import { useToast } from '@/components/ToastProvider';
 import {
@@ -60,6 +60,7 @@ export default function SettingsPage() {
   // the save replaced. So it's dropped, and the save's own answer stands.
   const saves = useRef({ sent: 0, inFlight: false });
   const availability = useUsernameAvailability(form.username, saved?.username ?? null);
+  const currencyField = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (status === 'unauthenticated') router.push('/');
@@ -84,6 +85,13 @@ export default function SettingsPage() {
     }
     if (status === 'authenticated') load();
   }, [status, showToast, refill]);
+
+  // The dashboard's currency prompt sends "Choose another…" here: once the
+  // form is in, focus the currency picker (which scrolls it into view).
+  useEffect(() => {
+    if (loading || window.location.hash !== `#${SETTINGS_CURRENCY_FIELD_ID}`) return;
+    currencyField.current?.querySelector<HTMLElement>('[role="combobox"]')?.focus();
+  }, [loading]);
 
   const changes = saved ? profileChanges(form, saved) : {};
   const dirty = Object.keys(changes).length > 0;
@@ -192,7 +200,7 @@ export default function SettingsPage() {
             <p className="mt-1 text-right text-xs text-muted-foreground">{form.bio.length}/300</p>
           </div>
 
-          <div className="mt-5">
+          <div id={SETTINGS_CURRENCY_FIELD_ID} ref={currencyField} className="mt-5">
             <label className="mb-1.5 block text-sm font-medium text-foreground">
               Default currency
             </label>

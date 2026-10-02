@@ -64,6 +64,7 @@ describe('GET /api/auth/session', () => {
       email: 'alice@example.com',
       username: 'alice',
       defaultCurrency: 'USD',
+      currencyChosen: false,
     });
     expect(SESSION_USER_FIELDS).toEqual(expect.arrayContaining(Object.keys(body.user)));
     expect(new Date(body.expires).getTime()).toBeGreaterThan(Date.now());
@@ -93,6 +94,22 @@ describe('GET /api/auth/session', () => {
     expect(body.user.username).toBe('alice_new');
   });
 
+  // The dashboard's currency prompt reads it from here: the adapter's raw row
+  // carries the timestamp as a Date, and only the yes or no goes out.
+  it('says whether they’ve answered the currency prompt, without the timestamp', async () => {
+    await User.updateOne(
+      { _id: userId },
+      { $set: { currencyChosenAt: new Date('2026-10-02T12:00:00.000Z') } }
+    );
+
+    const res = await getSession(`authjs.session-token=${TOKEN}`);
+    const text = await res.text();
+
+    expect(JSON.parse(text).user.currencyChosen).toBe(true);
+    expect(text).not.toContain('currencyChosenAt');
+    expect(text).not.toContain('2026-10-02');
+  });
+
   it('backfills a legacy account’s username once, and fills in the defaults its raw row lacks', async () => {
     // A row from before usernames, written raw: no username, no schema defaults.
     const legacy = new mongoose.Types.ObjectId();
@@ -115,6 +132,7 @@ describe('GET /api/auth/session', () => {
       email: 'legacy@example.com',
       username: expect.stringMatching(/^user_[a-z0-9]{8}$/),
       defaultCurrency: 'USD',
+      currencyChosen: false,
     });
     expect((await User.findById(legacy).lean())!.username).toBe(first.user.username);
     // One read of the account (the generator's own `exists` checks also run

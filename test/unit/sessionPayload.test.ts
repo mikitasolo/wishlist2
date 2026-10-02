@@ -21,6 +21,7 @@ describe('sessionPayload', () => {
         name: undefined,
         image: undefined,
         defaultCurrency: 'GBP',
+        currencyChosen: false,
       },
       expires: '2026-10-31T12:00:00.000Z',
     });
@@ -40,6 +41,7 @@ describe('sessionPayload', () => {
       name: 'Me',
       image: 'a.webp',
       defaultCurrency: 'USD',
+      currencyChosen: false,
     });
   });
 
@@ -64,6 +66,8 @@ describe('sessionPayload', () => {
         name: ['x'],
         image: 7,
         defaultCurrency: false,
+        currencyChosen: true,
+        currencyChosenAt: '2026-10-02T12:00:00.000Z',
       },
       null,
       'not-a-date-object'
@@ -77,9 +81,38 @@ describe('sessionPayload', () => {
         name: undefined,
         image: undefined,
         defaultCurrency: 'USD',
+        currencyChosen: false,
       },
       expires: 'not-a-date-object',
     });
+  });
+
+  // The dashboard's currency prompt reads it; the timestamp itself stays put.
+  it('says whether they’ve answered the currency prompt, from either source', () => {
+    const at = new Date('2026-10-02T12:00:00.000Z');
+    const fromRow = sessionPayload({ id: 'row-id', currencyChosenAt: at }, null, EXPIRES);
+    expect(fromRow.user.currencyChosen).toBe(true);
+    expect(JSON.stringify(fromRow)).not.toContain('2026-10-02');
+
+    const fromRead = { _id: id, username: 'me', image: null, defaultCurrency: 'USD' };
+    expect(
+      sessionPayload({ id: 'row-id' }, { ...fromRead, currencyChosenAt: at }, EXPIRES).user
+        .currencyChosen
+    ).toBe(true);
+    // The read wins over the row, as for every other field.
+    expect(
+      sessionPayload(
+        { id: 'row-id', currencyChosenAt: at },
+        { ...fromRead, currencyChosenAt: undefined },
+        EXPIRES
+      ).user.currencyChosen
+    ).toBe(false);
+    for (const unanswered of [null, undefined]) {
+      expect(
+        sessionPayload({ id: 'row-id', currencyChosenAt: unanswered }, null, EXPIRES).user
+          .currencyChosen
+      ).toBe(false);
+    }
   });
 
   it('gives an empty expiry when there is none', () => {

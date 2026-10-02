@@ -26,9 +26,10 @@ vi.mock('next/link', () => ({
   ),
 }));
 
-// The header, the dialogs and the share button have their own fetches and
-// tests; this file is about the order of the list cards.
+// The header, the dialogs, the share button and the currency prompt have their
+// own fetches and tests; this file is about the order of the list cards.
 vi.mock('@/components/AppHeader', () => ({ default: () => null }));
+vi.mock('@/components/CurrencyPrompt', () => ({ default: () => null }));
 vi.mock('@/components/AuthButton', () => ({ default: () => null }));
 vi.mock('@/components/GlobalSearch', () => ({ default: () => null }));
 vi.mock('@/components/CreateWishlistModal', () => ({ default: () => null }));

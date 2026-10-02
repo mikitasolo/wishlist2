@@ -334,6 +334,7 @@ describe('lib/auth: the session payload', () => {
         name: undefined,
         image: 'https://blob.example/uploads/me/a.webp',
         defaultCurrency: 'EUR',
+        currencyChosen: false,
       },
       expires: '2026-10-31T12:00:00.000Z',
     });
@@ -375,6 +376,7 @@ describe('lib/auth: the session payload', () => {
       name: undefined,
       image: 'https://blob.example/uploads/me/a.webp',
       defaultCurrency: 'EUR',
+      currencyChosen: false,
     });
   });
 
@@ -443,6 +445,7 @@ describe('lib/auth: the session payload', () => {
           name: undefined,
           image: 'https://blob.example/uploads/me/a.webp',
           defaultCurrency: 'EUR',
+          currencyChosen: false,
         },
         expires: '2026-10-31T12:00:00.000Z',
       });
@@ -479,7 +482,9 @@ describe('lib/auth: the session payload', () => {
     const result = await callback({
       session: sessionArg(),
       user: { ...userRow(), username: 'alice_new' },
-      newSession: { user: { username: 'forged', id: 'someone-else', image: 'evil.webp' } },
+      newSession: {
+        user: { username: 'forged', id: 'someone-else', image: 'evil.webp', currencyChosen: true },
+      },
       trigger: 'update',
     } as never);
 
@@ -493,6 +498,7 @@ describe('lib/auth: the session payload', () => {
         name: undefined,
         image: 'https://blob.example/uploads/me/a.webp',
         defaultCurrency: 'EUR',
+        currencyChosen: false,
       },
       expires: '2026-10-31T12:00:00.000Z',
     });
