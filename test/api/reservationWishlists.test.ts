@@ -27,7 +27,7 @@ import WishlistMember from '@/models/WishlistMember';
  * to its history as is), return its slug. A Reservation and a GiftLog outlive
  * the gifter's access to their list, so each is only returned while the gifter
  * may still open that list (`getWishlistViewAccess`'s rules). Otherwise it's
- * `null`, and the card links the list by its id.
+ * `null`, and a reservation's card links the list by its id.
  */
 
 const session = vi.mocked(auth);

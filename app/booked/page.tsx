@@ -36,6 +36,10 @@ interface Reservation {
   itemPrice: Price | null;
   wishlistName: string;
   wishlistId: string;
+  /**
+   * The live list's slug, `null` for a list that's gone or that the gifter can
+   * no longer see (or a legacy one with none): the card links it by id then.
+   */
   wishlistSlug: string | null;
   /** The live list's occasion, `null` for none or a list the gifter can no longer see. */
   wishlistOccasion: Occasion | null;
@@ -51,6 +55,7 @@ interface Gift {
   recipientUsername: string | null;
   wishlistName: string | null;
   wishlistId: string | null;
+  /** As a reservation's: `null` for a list that's gone or the gifter can no longer see. */
   wishlistSlug: string | null;
   giftedAt: string;
 }
