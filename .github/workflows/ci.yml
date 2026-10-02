@@ -60,8 +60,10 @@ jobs:
           MIGRATION_SECRET: ci-migration-secret
 
       # The build's output file trace must ship sharp's native libvips with
-      # every API route that ships sharp's binding. Without it those routes
-      # crash on Vercel with ERR_DLOPEN_FAILED (WIS-156: sign-in and uploads
-      # returned 500). Runs on Linux, like Vercel, so it checks the linux-x64 libs.
+      # every route that ships sharp's binding (the upload route, the share
+      # cards), and NextAuth's route must ship none at all. Without libvips
+      # those routes crash on Vercel with ERR_DLOPEN_FAILED (WIS-156: sign-in
+      # and uploads returned 500). Runs on Linux, like Vercel, so it checks the
+      # linux-x64 libs.
       - name: Check sharp's native library is traced
         run: npm run check:trace

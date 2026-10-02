@@ -83,4 +83,21 @@ describe('next.config.js', () => {
     expect(files).toContain('./lib/og/fonts/*.ttf');
     expect(files).toContain('./node_modules/@img/sharp-libvips-*/lib/**/*');
   });
+
+  // libvips ships only with what runs sharp: the share cards above and the
+  // upload route. Sign-in used to need it for the email logo, which is now
+  // pre-rendered (WIS-208); `npm run check:trace` checks the build itself.
+  it('ships libvips with the upload route, and with nothing else but the share cards', () => {
+    const includes = nextConfig.outputFileTracingIncludes ?? {};
+    expect(includes['/api/upload']).toEqual(['./node_modules/@img/sharp-libvips-*/lib/**/*']);
+    const withLibvips = Object.keys(includes).filter((route) =>
+      includes[route].some((file) => file.includes('sharp-libvips'))
+    );
+    expect(withLibvips.sort()).toEqual([
+      '/api/upload',
+      '/opengraph-image',
+      '/users/[username]/opengraph-image',
+      '/wishlists/[id]/opengraph-image',
+    ]);
+  });
 });

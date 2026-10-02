@@ -15,8 +15,8 @@ function drawing(svg: string) {
 }
 
 describe('LOGO_SVG', () => {
-  // The email header and the share cards draw the logo from this copy, so it
-  // must stay the favicon's logo.
+  // The share cards draw the logo from this copy, so it must stay the
+  // favicon's logo. (The email's PNG is checked in emailLogo.test.ts.)
   it('draws the same logo as app/icon.svg', () => {
     const favicon = readFileSync(join(process.cwd(), 'app/icon.svg'), 'utf8');
     expect(drawing(LOGO_SVG)).toEqual(drawing(favicon));

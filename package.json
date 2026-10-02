@@ -10,6 +10,7 @@
     "build": "next build",
     "check:trace": "node scripts/check-native-trace.mjs",
     "smoke:deploy": "node scripts/smoke-deploy.mjs",
+    "generate:email-logo": "node scripts/generate-email-logo.mjs",
     "start": "next start",
     "lint": "eslint .",
     "test": "vitest run",

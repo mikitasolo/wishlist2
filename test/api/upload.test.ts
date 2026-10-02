@@ -15,8 +15,10 @@ vi.mock('@/lib/utils/blob', () => ({
 
 import { auth } from '@/lib/auth';
 import { getUserUploadBytes } from '@/lib/utils/blob';
-// Loading the route also runs its process-wide `sharp.block`, which the
-// "decoders" tests below rely on.
+import { UPLOAD_ROUTE_LOADERS, restrictToUploadLoaders } from '@/lib/utils/uploadImageFormat';
+import { renderCardPng } from '@/lib/og/render';
+import { siteCard } from '@/lib/og/cards';
+// Loading the route also runs its process-wide `sharp.block`.
 import { POST } from '@/app/api/upload/route';
 
 const session = vi.mocked(auth) as unknown as ReturnType<typeof vi.fn>;
@@ -41,6 +43,18 @@ const SVG = Buffer.from(
 );
 
 /**
+ * A GIF's or WebP's signature, then text with an SVG in it: it passes the
+ * signature check, and libvips' SVG sniff claims it too (only its GIF or WebP
+ * loader, tried first, keeps librsvg from reading it).
+ */
+const POLYGLOTS = [
+  ['GIF', 'image/gif', 'GIF89a', /gifload/],
+  ['WebP', 'image/webp', 'RIFFAAAAWEBPVP8 ', /webp/],
+] as const;
+const polyglot = (head: string) =>
+  Buffer.concat([Buffer.from(head.padEnd(24, 'A'), 'latin1'), SVG]);
+
+/**
  * Watch every sharp instance from here on (pass-through spies, so nothing is
  * stubbed): whether the route had sharp read the bytes, or decode them.
  */
@@ -60,6 +74,10 @@ async function expectRefused(res: Response, error: string) {
 }
 
 beforeEach(() => {
+  // As loading the route did. libvips' block is process-wide state, so it's set
+  // again in case another test file ran in this process first (Vitest gives each
+  // file its own by default, but not with `--no-isolate`).
+  restrictToUploadLoaders(sharp);
   put.mockReset();
   put.mockImplementation(async (pathname: string) => ({
     url: `https://store.public.blob.vercel-storage.com/${pathname}`,
@@ -187,6 +205,24 @@ describe('POST /api/upload', () => {
     expect(watched.toBuffer).not.toHaveBeenCalled();
   });
 
+  // regression: libvips' SVG sniff claims a GIF's or WebP's signature followed
+  // by text with an `<svg` in it, and the SVG loader stays unblocked for
+  // next/og, so such a file reached librsvg if libvips ever tried its SVG
+  // loader before the GIF or WebP one (WIS-208). It's now refused before sharp
+  // sees it, whatever the loader order.
+  it.each(POLYGLOTS)(
+    'refuses a %s that libvips would also read as an SVG before sharp reads it',
+    async (_kind, type, head) => {
+      const watched = watchSharp();
+
+      const res = await POST(uploadRequest(polyglot(head), type, 'a.img'));
+
+      await expectRefused(res, UNSUPPORTED);
+      expect(watched.metadata).not.toHaveBeenCalled();
+      expect(watched.toBuffer).not.toHaveBeenCalled();
+    }
+  );
+
   // regression: an iPhone's HEIC shares AVIF's container and libheif's loader,
   // so `image/avif` let one through to libheif (WIS-157). Its `ftyp` brands
   // say HEIC, so it's refused before sharp sees it.
@@ -261,9 +297,19 @@ describe('POST /api/upload', () => {
 });
 
 describe("the upload route's libvips loaders", () => {
+  it('restricts libvips to its loaders as soon as it loads', async () => {
+    const block = vi.spyOn(sharp, 'block');
+    const unblock = vi.spyOn(sharp, 'unblock');
+    vi.resetModules();
+
+    await import('@/app/api/upload/route');
+
+    expect(block).toHaveBeenCalledWith({ operation: ['VipsForeignLoad'] });
+    expect(unblock).toHaveBeenCalledWith({ operation: UPLOAD_ROUTE_LOADERS });
+  });
+
   // Defence in depth behind the signature check: even bytes that got past it
-  // can't reach a decoder the route never accepts, because loading the route
-  // blocked every libvips loader but the ones it needs (WIS-157).
+  // can't reach a decoder the route never accepts (WIS-157).
   it('blocks the decoders it never accepts, process-wide', async () => {
     const tiff = await solidImage().tiff().toBuffer();
     expect(tiff.subarray(0, 4)).toEqual(Buffer.from('II*\0', 'latin1'));
@@ -271,29 +317,33 @@ describe("the upload route's libvips loaders", () => {
     await expect(sharp(tiff).metadata()).rejects.toThrow(/unsupported image format/);
   });
 
-  // The block is process-wide, and lib/email.ts rasterizes the email logo from
-  // an SVG in the same process, so the SVG loader has to stay.
-  it('leaves the SVG decoder the email logo is rendered with', async () => {
-    const png = await sharp(SVG).resize(16, 16).png().toBuffer();
+  // regression: blocking the SVG loader too, to keep librsvg off uploads
+  // (WIS-208's first plan), would have broken every share card wherever this
+  // route had loaded: next/og rasterizes a card's SVG with sharp whenever sharp
+  // loads, and falls back to its own renderer only when sharp can't load.
+  it('leaves the SVG decoder next/og draws every share card with', async () => {
+    const png = Buffer.from(await renderCardPng(siteCard()));
+    expect(await sharp(png).metadata()).toMatchObject({ format: 'png', width: 1200, height: 630 });
 
-    expect(await sharp(png).metadata()).toMatchObject({ format: 'png', width: 16, height: 16 });
+    sharp.block({ operation: ['VipsForeignLoadSvg'] });
+    try {
+      await expect(renderCardPng(siteCard())).rejects.toThrow(/unsupported image format/);
+    } finally {
+      sharp.unblock({ operation: ['VipsForeignLoadSvg'] });
+    }
   });
 
-  // With SVG unblocked, the signature check is what keeps uploads from
-  // librsvg. JPEG, PNG and AVIF signatures can't also pass libvips' SVG sniff
-  // (it wants 24 leading ASCII bytes), but a GIF's or WebP's can, so this pins
-  // that libvips reads those with their own loader first. If a libvips upgrade
-  // changed that, POST would still refuse the file, but only after librsvg had
-  // parsed it.
-  it.each([
-    ['GIF', 'GIF89a', /gifload/],
-    ['WebP', 'RIFFAAAAWEBPVP8 ', /webp/],
-  ])('reads a %s that also looks like an SVG with its own decoder', async (_kind, head, loader) => {
-    const polyglot = Buffer.concat([Buffer.from(head.padEnd(24, 'A'), 'latin1'), SVG]);
+  // `sniffsAsSvg` is what keeps these from librsvg now (see POST's tests), but
+  // libvips does read them with their own loader too, since it tries GIF's and
+  // WebP's before SVG's. If an upgrade changes that, this fails and POST still
+  // refuses the file before sharp sees it.
+  it.each(POLYGLOTS)(
+    'reads a %s that also looks like an SVG with its own decoder',
+    async (_kind, _type, head, loader) => {
+      const failure = sharp(polyglot(head)).metadata();
 
-    const failure = sharp(polyglot).metadata();
-
-    await expect(failure).rejects.toThrow(loader);
-    await expect(failure).rejects.not.toThrow(/svg|XML/i);
-  });
+      await expect(failure).rejects.toThrow(loader);
+      await expect(failure).rejects.not.toThrow(/svg|XML/i);
+    }
+  );
 });

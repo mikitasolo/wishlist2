@@ -12,6 +12,10 @@ or these will quietly stay the old logo.
 node docs/brand/generate-avatars.mjs docs/brand
 ```
 
+The email header's logo comes from the same mark, but it's committed:
+`npm run generate:email-logo` renders `app/icon.svg` into `lib/emailLogo.ts`,
+and `test/unit/emailLogo.test.ts` fails until it's rerun after a change.
+
 | Output        | Use               | Design                                                     |
 | ------------- | ----------------- | ---------------------------------------------------------- |
 | `channel.png` | Release channel   | The gift mark on the brand violet gradient                 |
