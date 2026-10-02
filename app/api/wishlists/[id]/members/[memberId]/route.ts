@@ -5,7 +5,7 @@ import WishlistMember from '@/models/WishlistMember';
 import { resolveWishlistId } from '@/lib/utils/wishlistSlug';
 import { getOwnerAccess } from '@/lib/utils/wishlistAccess';
 import { isWishlistOwner } from '@/lib/utils/wishlistOwners';
-import { releaseUserBookings } from '@/lib/utils/wishlistOwnership';
+import { releaseLateBookings, releaseUserBookings } from '@/lib/utils/wishlistOwnership';
 import { cancelPendingInvites } from '@/lib/utils/wishlistInvites';
 import { isObjectIdParam } from '@/lib/utils/objectId';
 import { createNotification } from '@/lib/notifications';
@@ -106,6 +106,9 @@ export async function DELETE(
       // removed nobody, so it doesn't say it did.
       return NextResponse.json({ success: false, error: 'Membership not found' }, { status: 404 });
     }
+
+    // Their bookings again, for one that checked their membership before the delete.
+    await releaseLateBookings(id, membershipUserId);
 
     // And once more: a promotion issued between the cancel above and the delete
     // would otherwise leave them an owner invite on a list they're no longer on.

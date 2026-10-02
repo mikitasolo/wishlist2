@@ -21,6 +21,29 @@ import { createNotification } from '@/lib/notifications';
 import { isWishlistOwner, primaryOwnerId } from '@/lib/utils/wishlistOwners';
 import { isHiddenByArchive } from '@/lib/utils/wishlistAccess';
 import { isObjectIdParam } from '@/lib/utils/objectId';
+import { undoBookingUnlessMember, type LostBookingReason } from '@/lib/utils/lateBooking';
+
+/**
+ * The answer to a booking undone because the caller stopped being a plain member
+ * while it was in flight (see `undoBookingUnlessMember`): the one they'd have got
+ * had that change landed before the request.
+ */
+function lostBookingResponse(reason: LostBookingReason) {
+  if (reason === 'not-member') {
+    return NextResponse.json(
+      { success: false, error: 'Unauthorized - No access to this wishlist' },
+      { status: 403 }
+    );
+  }
+  if (reason === 'owner') {
+    return NextResponse.json(
+      { success: false, error: 'Owners can only set an item to draft, available or completed' },
+      { status: 400 }
+    );
+  }
+  // The list was archived, which hides it from everyone but its owners.
+  return NextResponse.json({ success: false, error: 'Item not found' }, { status: 404 });
+}
 
 // PATCH /api/items/[id] - Update an item
 // Members can book/unbook items (only their own bookings)
@@ -360,6 +383,16 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         // The document as it was, so a rebooking can free the snapshot it replaces.
         { upsert: true, new: false }
       ).lean();
+      // The caller was read as a member at the top of the request. If they've
+      // since left, been removed, become an owner, or the list was archived, the
+      // booking is undone rather than left where nobody can release it.
+      const lost = await undoBookingUnlessMember({
+        wishlistId: wishlist._id,
+        itemId: item._id,
+        gifterId: session.user.id,
+        previous,
+      });
+      if (lost) return lostBookingResponse(lost);
       if (previous) await releaseSnapshots(session.user.id, [previous.itemImage]);
       // Then swap in our own copy of the image, since the owner frees the item's
       // blob when they delete the item or replace its image.
