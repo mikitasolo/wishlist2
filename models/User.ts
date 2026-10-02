@@ -45,6 +45,14 @@ const UserSchema = new Schema(
       trim: true,
       default: 'USD',
     },
+    // When they answered the dashboard's one-time currency prompt, either way
+    // (components/CurrencyPrompt.tsx), or first saved a currency in Settings.
+    // PATCH /api/users/me stamps it with `$min`, and nothing clears it. Absent
+    // until then, never null: `$min` stamps a missing field, but would keep a
+    // null (null sorts before every date), so it has no default.
+    currencyChosenAt: {
+      type: Date,
+    },
     // Privacy preferences (see the settings page).
     privacy: {
       searchable: { type: Boolean, default: true },
@@ -80,6 +88,7 @@ export interface IUser {
   image?: string | null;
   bio?: string | null;
   defaultCurrency?: string;
+  currencyChosenAt?: Date;
   privacy?: IUserPrivacy;
   createdAt: Date;
   updatedAt: Date;

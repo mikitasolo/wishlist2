@@ -9,7 +9,9 @@ import type { IUser } from '@/models/User';
  * - `username`: their public handle (header, invites, follows, profile links);
  * - `name`: the `publicDisplayName` fallback, set only by an identity provider;
  * - `image`: their avatar in the header;
- * - `defaultCurrency`: the default for new lists and for showing prices.
+ * - `defaultCurrency`: the default for new lists and for showing prices;
+ * - `currencyChosen`: whether they've answered the dashboard's currency prompt,
+ *   which reads it (a yes or no: `User.currencyChosenAt` itself isn't sent).
  * Add a field only together with what reads it.
  */
 export const SESSION_USER_FIELDS = [
@@ -19,6 +21,7 @@ export const SESSION_USER_FIELDS = [
   'name',
   'image',
   'defaultCurrency',
+  'currencyChosen',
 ] as const;
 
 /** A non-empty string from a raw row, or undefined. */
@@ -27,7 +30,10 @@ function text(value: unknown): string | undefined {
 }
 
 /** The fields of the Mongoose read the session takes, when that read worked. */
-export type SessionDbUser = Pick<IUser, '_id' | 'username' | 'image' | 'defaultCurrency'>;
+export type SessionDbUser = Pick<
+  IUser,
+  '_id' | 'username' | 'image' | 'defaultCurrency' | 'currencyChosenAt'
+>;
 
 /**
  * The session callback's result (lib/auth.ts): an explicit allowlist, built
@@ -41,7 +47,8 @@ export type SessionDbUser = Pick<IUser, '_id' | 'username' | 'image' | 'defaultC
  * and normally all there is. `dbUser` is the account as the callback just
  * backfilled a username into it (a legacy row without one), or null, in which
  * case the row stands in. A raw row has no schema defaults, hence the
- * fallbacks below (`defaultCurrency` 'USD'; `image` is null by default).
+ * fallbacks below (`defaultCurrency` 'USD'; `image` is null by default; an
+ * account without `currencyChosenAt` hasn't answered the prompt).
  */
 export function sessionPayload(
   row: Record<string, unknown> | null | undefined,
@@ -61,6 +68,7 @@ export function sessionPayload(
     name: text(row?.name),
     image: (dbUser ? dbUser.image : text(row?.image)) || undefined,
     defaultCurrency: (dbUser ? dbUser.defaultCurrency : text(row?.defaultCurrency)) || 'USD',
+    currencyChosen: (dbUser ? dbUser.currencyChosenAt : row?.currencyChosenAt) instanceof Date,
   } satisfies Record<(typeof SESSION_USER_FIELDS)[number], unknown>;
   return {
     user,

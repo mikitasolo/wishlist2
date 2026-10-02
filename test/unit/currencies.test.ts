@@ -4,6 +4,7 @@ import {
   POPULAR_CURRENCIES,
   currencySelectOptions,
   defaultItemCurrency,
+  isOfferedCurrency,
 } from '@/lib/utils/currencies';
 
 describe('currency option lists', () => {
@@ -17,6 +18,13 @@ describe('currency option lists', () => {
   it('popular currencies are all valid options', () => {
     const codes = new Set(CURRENCY_OPTIONS.map((c) => c.code));
     for (const p of POPULAR_CURRENCIES) expect(codes.has(p)).toBe(true);
+  });
+
+  it('says which codes the pickers offer, by their uppercase code', () => {
+    for (const { code } of CURRENCY_OPTIONS) expect(isOfferedCurrency(code)).toBe(true);
+    expect(isOfferedCurrency('UAH')).toBe(false);
+    expect(isOfferedCurrency('pln')).toBe(false);
+    expect(isOfferedCurrency('')).toBe(false);
   });
 
   it('select options are shaped { value, label } aligned with the option list', () => {

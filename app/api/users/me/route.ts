@@ -79,7 +79,7 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
     }
 
-    const { username, image, bio, defaultCurrency, privacy } = validation.data;
+    const { username, image, bio, defaultCurrency, currencyChosen, privacy } = validation.data;
 
     if (!canAttachImage(image, session.user.id, user.image)) {
       return NextResponse.json({ success: false, error: FOREIGN_IMAGE_ERROR }, { status: 400 });
@@ -119,6 +119,13 @@ export async function PATCH(request: NextRequest) {
       changes.defaultCurrency = defaultCurrency;
     }
 
+    // An answer to the dashboard's currency prompt, stamped with our own clock.
+    // A currency saved from Settings is one too: someone who picks USD there has
+    // chosen it. `$min` stamps an account that has no answer yet and keeps the
+    // earliest one, so a later answer (or two at once) can't move it, and no
+    // request can clear it.
+    const answered = currencyChosen === true || defaultCurrency !== undefined;
+
     // Each privacy setting it's sent, on its own: never the whole `privacy`
     // object rebuilt from the read above, which would write back a setting it
     // wasn't sent as that read saw it, undoing another tab's change landing in
@@ -139,7 +146,7 @@ export async function PATCH(request: NextRequest) {
     // read leaves the other tab's upload behind, never freed.
     const before = await User.findOneAndUpdate(
       { _id: user._id },
-      { $set: changes },
+      { $set: changes, ...(answered && { $min: { currencyChosenAt: new Date() } }) },
       { returnDocument: 'before', runValidators: true }
     );
     if (!before) {

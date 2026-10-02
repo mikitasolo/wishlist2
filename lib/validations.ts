@@ -132,6 +132,10 @@ export const updateProfileSchema = z
       .toUpperCase()
       .regex(/^[A-Z]{3}$/, 'Invalid currency code')
       .optional(),
+    // They've answered the dashboard's currency prompt (so has any request that
+    // sets `defaultCurrency`). Only ever `true`: the server stamps
+    // `User.currencyChosenAt` itself, and nothing unsets it.
+    currencyChosen: z.literal(true).optional(),
     privacy: z
       .object({
         searchable: z.boolean().optional(),

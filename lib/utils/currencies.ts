@@ -35,6 +35,18 @@ export const currencySelectOptions = CURRENCY_OPTIONS.map((c) => ({
 
 const OFFERED_CODES = new Set(CURRENCY_OPTIONS.map((c) => c.code));
 
+/** Whether the currency pickers offer `code` (an uppercase code, e.g. "PLN"). */
+export function isOfferedCurrency(code: string): boolean {
+  return OFFERED_CODES.has(code);
+}
+
+/**
+ * Settings' currency field, which focuses itself when Settings is opened at
+ * it: where the dashboard's currency prompt sends "Choose another…".
+ */
+export const SETTINGS_CURRENCY_FIELD_ID = 'currency';
+export const SETTINGS_CURRENCY_PATH = `/settings#${SETTINGS_CURRENCY_FIELD_ID}`;
+
 /**
  * The currency a new or proposed item starts on: the wishlist's own currency,
  * else the viewer's default, else USD.
@@ -51,7 +63,7 @@ export function defaultItemCurrency(
 ): string {
   for (const candidate of [wishlistCurrency, userCurrency]) {
     const code = candidate?.trim().toUpperCase();
-    if (code && OFFERED_CODES.has(code)) return code;
+    if (code && isOfferedCurrency(code)) return code;
   }
   return 'USD';
 }

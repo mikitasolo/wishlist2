@@ -12,6 +12,8 @@ declare module 'next-auth' {
       name?: string | null;
       image?: string;
       defaultCurrency?: string;
+      /** Whether they've answered the dashboard's currency prompt (`User.currencyChosenAt`). */
+      currencyChosen?: boolean;
     };
   }
 }
