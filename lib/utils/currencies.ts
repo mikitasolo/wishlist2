@@ -42,7 +42,7 @@ export function isOfferedCurrency(code: string): boolean {
 
 /**
  * Settings' currency field, which focuses itself when Settings is opened at
- * it: where the dashboard's currency prompt sends "Choose another…".
+ * it: where the dashboard's currency prompt sends "Choose another currency".
  */
 export const SETTINGS_CURRENCY_FIELD_ID = 'currency';
 export const SETTINGS_CURRENCY_PATH = `/settings#${SETTINGS_CURRENCY_FIELD_ID}`;

@@ -18,16 +18,16 @@ const getServerSnapshot = () => null;
 
 /**
  * The dashboard's one-time offer of a currency for someone still on the USD
- * every account starts on: "Show prices in PLN? [Use PLN] [Choose another…]".
+ * every account starts on: "Show prices in PLN? [Use PLN] [Choose another currency]".
  * The suggestion is worked out in the browser, from its time zone and language
  * (`suggestCurrency`), and is null in a server render and in the render that
  * hydrates it, so the server, which can't know it, never renders the prompt.
  *
  * Either answer records that they've answered (`currencyChosen`, which the
  * server stamps as `User.currencyChosenAt`), so it never shows again: "Use X"
- * saves X as their currency too, and "Choose another…" takes them to the
+ * saves X as their currency too, and "Choose another currency" takes them to the
  * currency picker in Settings. The prompt goes once the answer is sent ("Use
- * X") or saved ("Choose another…", which then leaves the page), and comes back,
+ * X") or saved ("Choose another currency", which then leaves the page), and comes back,
  * with an error, if saving it fails. Who sees it is `currencyToOffer`.
  */
 export default function CurrencyPrompt() {
@@ -95,7 +95,7 @@ export default function CurrencyPrompt() {
   return (
     <section
       aria-labelledby={headingId}
-      className="mb-8 flex flex-col gap-4 rounded-2xl border border-border bg-surface p-5 shadow-md sm:flex-row sm:items-center sm:justify-between"
+      className="mb-8 flex flex-col gap-4 rounded-2xl border border-border bg-surface p-5 shadow-md md:flex-row md:items-center md:justify-between"
     >
       <div className="flex min-w-0 items-start gap-3">
         <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-500/12 text-accent dark:text-primary-300">
@@ -111,12 +111,24 @@ export default function CurrencyPrompt() {
           </p>
         </div>
       </div>
-      <div className="flex shrink-0 flex-wrap gap-2">
-        <Button size="sm" onClick={() => acceptSuggestion(code)} disabled={busy}>
+      {/* Stacked and full width on a phone, side by side under the text from
+          `sm`, and next to it from `md`. A label never wraps: the buttons have
+          a fixed height, so a second line would spill out of them. */}
+      <div className="flex flex-col gap-2 sm:flex-row md:shrink-0">
+        <Button
+          onClick={() => acceptSuggestion(code)}
+          disabled={busy}
+          className="whitespace-nowrap"
+        >
           Use {code}
         </Button>
-        <Button size="sm" variant="secondary" onClick={chooseAnother} disabled={busy}>
-          Choose another…
+        <Button
+          variant="secondary"
+          onClick={chooseAnother}
+          disabled={busy}
+          className="whitespace-nowrap"
+        >
+          Choose another currency
         </Button>
       </div>
     </section>

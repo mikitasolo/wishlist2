@@ -12,15 +12,44 @@ const prompt = (page: Page) => page.getByRole('region', { name: 'Show prices in 
 const sidewaysScroll = (page: Page) =>
   page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 
-test('the dashboard offers a USD user their time zone’s currency once, and “Choose another…” opens the picker', async ({
+/**
+ * The prompt's buttons whose label doesn't sit on one line inside them. The
+ * buttons have a fixed height, so a label that wraps spills out of them.
+ */
+const crampedButtons = (page: Page) =>
+  prompt(page).evaluate((region) =>
+    Array.from(region.querySelectorAll('button'))
+      .filter((button) => {
+        const label = document.createRange();
+        label.selectNodeContents(button);
+        const text = label.getBoundingClientRect();
+        const box = button.getBoundingClientRect();
+        const oneLine = text.height < 1.5 * parseFloat(getComputedStyle(button).lineHeight);
+        return !oneLine || text.left < box.left || text.right > box.right;
+      })
+      .map((button) => button.textContent)
+  );
+
+test('the dashboard offers a USD user their time zone’s currency once, and “Choose another currency” opens the picker', async ({
   page,
 }) => {
-  await page.setViewportSize({ width: 320, height: 800 });
+  // regression: the second button read "Choose another…", whose ellipsis looked
+  // like a label cut off for lack of room; and the buttons were `sm` (a fixed
+  // h-9) with nothing to stop a label wrapping out of them.
+  await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto('/');
   await expect(prompt(page)).toBeVisible();
-  expect(await sidewaysScroll(page)).toBe(0);
+  expect(await crampedButtons(page)).toEqual([]);
+  // No label ends in an ellipsis, which reads as text truncated by the layout.
+  const labels = await prompt(page).getByRole('button').allTextContents();
+  expect(labels.filter((label) => /(…|\.\.\.)\s*$/.test(label))).toEqual([]);
 
-  await prompt(page).getByRole('button', { name: 'Choose another…' }).click();
+  await page.setViewportSize({ width: 320, height: 800 });
+  await expect(prompt(page)).toBeVisible();
+  expect(await sidewaysScroll(page)).toBe(0);
+  expect(await crampedButtons(page)).toEqual([]);
+
+  await prompt(page).getByRole('button', { name: 'Choose another currency' }).click();
   await expect(page).toHaveURL(/\/settings#currency$/);
   await expect(page.getByRole('combobox', { name: 'Default currency' })).toBeFocused();
 

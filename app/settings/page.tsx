@@ -86,7 +86,7 @@ export default function SettingsPage() {
     if (status === 'authenticated') load();
   }, [status, showToast, refill]);
 
-  // The dashboard's currency prompt sends "Choose another…" here: once the
+  // The dashboard's currency prompt sends "Choose another currency" here: once the
   // form is in, focus the currency picker (which scrolls it into view).
   useEffect(() => {
     if (loading || window.location.hash !== `#${SETTINGS_CURRENCY_FIELD_ID}`) return;
