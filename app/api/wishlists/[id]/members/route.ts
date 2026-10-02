@@ -57,8 +57,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const ownerUsers = await User.find({ _id: { $in: ownerUserIds } }).select('username image');
     const ownerById = new Map(ownerUsers.map((u) => [u._id.toString(), u]));
 
-    // Everyone else on the list — membership carries no role.
-    const allMembers = await WishlistMember.find({ wishlist: id }).sort({ createdAt: -1 }).lean();
+    // Everyone else on the list — membership carries no role. An owner can still
+    // hold a spare membership row that a failed demotion or promotion left behind
+    // (see `removeWishlistOwner`). It's skipped, so they're listed once, as an
+    // owner, and not again as a member whose "Make owner" and "Remove" both refuse.
+    // A read doesn't delete it: if that ownership pull did land, the row is all
+    // they have. A retried demotion reuses it; removal or leaving deletes it.
+    const allMembers = await WishlistMember.find({ wishlist: id, user: { $nin: ownerUserIds } })
+      .sort({ createdAt: -1 })
+      .lean();
 
     // Fetch user details for all members
     const memberUserIds = allMembers.map((m) => m.user);
