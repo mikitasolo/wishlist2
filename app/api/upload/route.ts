@@ -12,25 +12,25 @@ import {
 } from '@/lib/utils/uploadImageFormat';
 
 // sharp picks its decoder from the bytes, not from the type the client
-// declared (WIS-157), so block every libvips loader and unblock only the buffer
-// loaders of the formats accepted here (AVIF is read by HEIF's; an Ultra HDR
-// JPEG falls back to the plain JPEG loader). libtiff, libultrahdr and any
-// loader a later libvips adds then never read an upload. The block is
-// process-wide, so SVG stays unblocked: lib/email.ts rasterizes the email logo
-// with it in the same process, and it's the signature check in POST that keeps
-// uploads away from librsvg. Another sharp user that needs another loader has
-// to be unblocked here too, or it fails wherever this route has loaded. Next's
-// image optimizer sets its own list on first use when it runs in-process
-// (`next start` / `next dev`, never on Vercel); POST's checks rely on neither.
+// declared (WIS-157), so block every libvips loader and unblock only those of
+// the formats accepted here (AVIF is read by HEIF's; an Ultra HDR JPEG falls
+// back to the plain JPEG loader). libtiff, libultrahdr and any loader a later
+// libvips adds then never read an upload. The block is process-wide, so SVG
+// stays unblocked: lib/email.ts rasterizes the email logo with it in the same
+// process, and it's the signature check in POST that keeps uploads away from
+// librsvg. Other sharp code that needs another loader has to unblock it here
+// too, or it fails wherever this route has loaded. Where Next's image optimizer
+// runs in-process (`next start` / `next dev`, never on Vercel), its first use
+// applies its own list, which adds TIFF; POST's checks don't rely on the block.
 sharp.block({ operation: ['VipsForeignLoad'] });
 sharp.unblock({
   operation: [
-    'VipsForeignLoadJpegBuffer',
-    'VipsForeignLoadPngBuffer',
-    'VipsForeignLoadWebpBuffer',
-    'VipsForeignLoadNsgifBuffer',
-    'VipsForeignLoadHeifBuffer',
-    'VipsForeignLoadSvgBuffer',
+    'VipsForeignLoadJpeg',
+    'VipsForeignLoadPng',
+    'VipsForeignLoadWebp',
+    'VipsForeignLoadNsgif',
+    'VipsForeignLoadHeif',
+    'VipsForeignLoadSvg',
   ],
 });
 

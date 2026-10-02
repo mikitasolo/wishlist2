@@ -6,9 +6,9 @@
  * the client declares, so an allowlist of `file.type` alone only chooses the
  * encoder: an SVG, TIFF or HEIC sent as `image/png` would still be decoded by
  * librsvg, libtiff or libheif. The route checks both sides of the decode:
- * `hasDeclaredSignature` on the leading bytes before sharp sees them, so no
- * other format's parser runs at all, and `decodedAsDeclared` on what sharp's
- * own sniff reports, before any pixels are decoded.
+ * `hasDeclaredSignature` on the leading bytes before sharp sees them, so only
+ * the declared type's loader ever gets the file, and `decodedAsDeclared` on
+ * what sharp's own sniff reports, before any pixels are decoded.
  */
 
 export const UPLOAD_IMAGE_TYPES = [
@@ -25,9 +25,24 @@ export function isUploadImageType(type: string): type is UploadImageType {
   return (UPLOAD_IMAGE_TYPES as readonly string[]).includes(type);
 }
 
-/** Do the bytes at `offset` spell `text`, one byte per character? */
-function hasAt(bytes: Buffer, text: string, offset = 0): boolean {
-  return bytes.toString('latin1', offset, offset + text.length) === text;
+const bytesOf = (text: string) => Buffer.from(text, 'latin1');
+const JPEG = bytesOf('\xff\xd8\xff');
+const PNG = bytesOf('\x89PNG\r\n\x1a\n');
+const GIF87A = bytesOf('GIF87a');
+const GIF89A = bytesOf('GIF89a');
+const RIFF = bytesOf('RIFF');
+const WEBP = bytesOf('WEBP');
+const FTYP = bytesOf('ftyp');
+const AVIF_BRANDS = [bytesOf('avif'), bytesOf('avis')];
+
+// libvips' own HEIF sniff refuses a bigger `ftyp` box (and libheif can't read
+// one); a real one is a few dozen bytes.
+const MAX_FTYP_BYTES = 2048;
+
+/** Do the bytes at `offset` match `signature`? */
+function hasAt(bytes: Buffer, signature: Buffer, offset = 0): boolean {
+  const end = offset + signature.length;
+  return end <= bytes.length && bytes.compare(signature, 0, signature.length, offset, end) === 0;
 }
 
 /**
@@ -36,28 +51,31 @@ function hasAt(bytes: Buffer, text: string, offset = 0): boolean {
  * shares the container but lists `heic`/`mif1` instead, so it's refused here.
  */
 function isAvifContainer(bytes: Buffer): boolean {
-  if (bytes.length < 16 || !hasAt(bytes, 'ftyp', 4)) return false;
+  if (bytes.length < 16 || !hasAt(bytes, FTYP, 4)) return false;
   // size, 'ftyp', major brand, minor version, then 4-byte compatible brands.
   const boxSize = bytes.readUInt32BE(0);
-  if (boxSize < 16 || boxSize > bytes.length || boxSize % 4 !== 0) return false;
+  if (boxSize < 16 || boxSize > Math.min(bytes.length, MAX_FTYP_BYTES) || boxSize % 4 !== 0) {
+    return false;
+  }
   const brandOffsets = [8];
   for (let at = 16; at < boxSize; at += 4) brandOffsets.push(at);
-  return brandOffsets.some((at) => hasAt(bytes, 'avif', at) || hasAt(bytes, 'avis', at));
+  return brandOffsets.some((at) => AVIF_BRANDS.some((brand) => hasAt(bytes, brand, at)));
 }
 
 const SIGNATURES: Record<UploadImageType, (bytes: Buffer) => boolean> = {
-  'image/jpeg': (bytes) => hasAt(bytes, '\xff\xd8\xff'),
-  'image/png': (bytes) => hasAt(bytes, '\x89PNG\r\n\x1a\n'),
-  'image/gif': (bytes) => hasAt(bytes, 'GIF87a') || hasAt(bytes, 'GIF89a'),
-  'image/webp': (bytes) => hasAt(bytes, 'RIFF') && hasAt(bytes, 'WEBP', 8),
+  'image/jpeg': (bytes) => hasAt(bytes, JPEG),
+  'image/png': (bytes) => hasAt(bytes, PNG),
+  'image/gif': (bytes) => hasAt(bytes, GIF87A) || hasAt(bytes, GIF89A),
+  'image/webp': (bytes) => hasAt(bytes, RIFF) && hasAt(bytes, WEBP, 8),
   'image/avif': isAvifContainer,
 };
 
 /**
  * Do the file's leading bytes carry the declared type's signature? Checked
  * before sharp sees the bytes, so content of another format (SVG, TIFF, HEIC,
- * PDF, …) never reaches a parser that isn't the declared type's, not even the
- * header read that `metadata()` does.
+ * PDF, …) never reaches another format's loader, not even for the header read
+ * that `metadata()` does. (HEVC content in a container branded as AVIF still
+ * reaches libheif, which is AVIF's own loader; `decodedAsDeclared` refuses it.)
  */
 export function hasDeclaredSignature(bytes: Buffer, type: UploadImageType): boolean {
   return SIGNATURES[type](bytes);

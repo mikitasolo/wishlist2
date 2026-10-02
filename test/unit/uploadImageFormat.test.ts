@@ -97,6 +97,16 @@ describe('hasDeclaredSignature', () => {
     expect(hasDeclaredSignature(ftyp('avif', ['mif1'], 12), 'image/avif')).toBe(false);
     expect(hasDeclaredSignature(ftyp('avif', ['mif1'], 22), 'image/avif')).toBe(false);
   });
+
+  // A file can be 4MB, so a box as big as the file would mean scanning a
+  // million "brands" per request. libvips won't sniff a bigger one as HEIF.
+  it('refuses an ftyp box over 2KB, however many AVIF brands it lists', () => {
+    const brands = (count: number) => Array<string>(count).fill('avif');
+    expect(hasDeclaredSignature(ftyp('avif', brands((2048 - 16) / 4)), 'image/avif')).toBe(true);
+    expect(hasDeclaredSignature(ftyp('avif', brands((2048 - 16) / 4 + 1)), 'image/avif')).toBe(
+      false
+    );
+  });
 });
 
 describe('decodedAsDeclared', () => {
