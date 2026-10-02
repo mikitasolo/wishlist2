@@ -57,7 +57,8 @@ describe('ItemForm — create submission', () => {
     fireEvent.click(screen.getByRole('button', { name: /^submit$/i }));
     await waitFor(() =>
       expect(onSubmit).toHaveBeenCalledWith(
-        expect.objectContaining({ name: 'Gift', status: 'available' })
+        expect.objectContaining({ name: 'Gift', status: 'available' }),
+        expect.anything()
       )
     );
 
@@ -67,8 +68,60 @@ describe('ItemForm — create submission', () => {
     fireEvent.click(screen.getByRole('button', { name: /^draft$/i }));
     fireEvent.click(screen.getByRole('button', { name: /^submit$/i }));
     await waitFor(() =>
-      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ status: 'draft' }))
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'draft' }),
+        expect.anything()
+      )
     );
+  });
+});
+
+describe('ItemForm — what an edit changed', () => {
+  const saveEdit = () => fireEvent.click(screen.getByRole('button', { name: /^submit$/i }));
+  const changesSent = (onSubmit: ReturnType<typeof vi.fn>, call: number) =>
+    onSubmit.mock.calls[call][1];
+
+  it('hands over the changes from the item the form was filled from', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(<ItemForm onSubmit={onSubmit} onCancel={vi.fn()} mode="edit" initialData={filled} />);
+
+    fireEvent.change(screen.getByLabelText(/^notes$/i), { target: { value: 'Size M' } });
+    saveEdit();
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    expect(changesSent(onSubmit, 0)).toEqual({ notes: 'Size M' });
+  });
+
+  it('still counts the changes of a failed save on the next one', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const onSubmit = vi.fn().mockRejectedValueOnce(new Error('Network error'));
+    onSubmit.mockResolvedValue(undefined);
+    render(<ItemForm onSubmit={onSubmit} onCancel={vi.fn()} mode="edit" initialData={filled} />);
+
+    fireEvent.change(screen.getByLabelText(/^notes$/i), { target: { value: 'Size M' } });
+    saveEdit();
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByLabelText(/^notes$/i)).toBeEnabled());
+
+    fireEvent.change(screen.getByLabelText(/item name/i), { target: { value: 'Renamed' } });
+    saveEdit();
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(2));
+    expect(changesSent(onSubmit, 1)).toEqual({ name: 'Renamed', notes: 'Size M' });
+    consoleError.mockRestore();
+  });
+
+  it('counts the next changes from what a successful save stored', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(<ItemForm onSubmit={onSubmit} onCancel={vi.fn()} mode="edit" initialData={filled} />);
+
+    fireEvent.change(screen.getByLabelText(/^notes$/i), { target: { value: 'Size M' } });
+    saveEdit();
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByLabelText(/^notes$/i)).toBeEnabled());
+
+    fireEvent.change(screen.getByLabelText(/item name/i), { target: { value: 'Renamed' } });
+    saveEdit();
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(2));
+    expect(changesSent(onSubmit, 1)).toEqual({ name: 'Renamed' });
   });
 });
 
@@ -96,7 +149,8 @@ describe('ItemForm — default currency', () => {
     // Shown uppercase, stored lowercase to match Item.price.currency.
     await waitFor(() =>
       expect(onSubmit).toHaveBeenCalledWith(
-        expect.objectContaining({ price: { value: 1250, currency: 'pln' } })
+        expect.objectContaining({ price: { value: 1250, currency: 'pln' } }),
+        expect.anything()
       )
     );
   });
@@ -175,7 +229,10 @@ describe('ItemForm — most wanted', () => {
     fireEvent.change(screen.getByLabelText(/item name/i), { target: { value: 'Plain' } });
     fireEvent.click(screen.getByRole('button', { name: /^submit$/i }));
     await waitFor(() =>
-      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ mostWanted: false }))
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({ mostWanted: false }),
+        expect.anything()
+      )
     );
 
     onSubmit.mockClear();
@@ -185,7 +242,8 @@ describe('ItemForm — most wanted', () => {
     fireEvent.click(screen.getByRole('button', { name: /^submit$/i }));
     await waitFor(() =>
       expect(onSubmit).toHaveBeenCalledWith(
-        expect.objectContaining({ name: 'Bike', mostWanted: true })
+        expect.objectContaining({ name: 'Bike', mostWanted: true }),
+        expect.anything()
       )
     );
   });

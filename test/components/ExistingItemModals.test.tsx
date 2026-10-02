@@ -32,12 +32,14 @@ function item(overrides: Partial<ApiItem>): ApiItem {
 type Submit = (updates: Partial<ApiItem>) => Promise<void>;
 
 // Every form that opens on an existing item maps its price the same way and gets
-// the same currency default; run every case on each.
+// the same currency default; run every case on each. An edit sends only the
+// fields that changed (see itemChanges), the review every one (WIS-199).
 const modals = [
   {
     name: 'EditItemModal',
     status: 'available' as const,
     submitLabel: /^save changes$/i,
+    sendsOnlyChanges: true,
     renderModal: (it: ApiItem, onSubmit: Submit, onClose: () => void, c: Currencies) =>
       render(<EditItemModal isOpen onClose={onClose} onSave={onSubmit} item={it} {...c} />),
   },
@@ -45,6 +47,7 @@ const modals = [
     name: 'EditItemModal (a proposer editing their proposal)',
     status: 'proposed' as const,
     submitLabel: /^save changes$/i,
+    sendsOnlyChanges: true,
     renderModal: (it: ApiItem, onSubmit: Submit, onClose: () => void, c: Currencies) =>
       render(<EditItemModal isOpen onClose={onClose} onSave={onSubmit} item={it} {...c} />),
   },
@@ -52,6 +55,7 @@ const modals = [
     name: 'ReviewItemModal',
     status: 'proposed' as const,
     submitLabel: /^approve item$/i,
+    sendsOnlyChanges: false,
     renderModal: (it: ApiItem, onSubmit: Submit, onClose: () => void, c: Currencies) =>
       render(<ReviewItemModal isOpen onClose={onClose} onApprove={onSubmit} item={it} {...c} />),
   },
@@ -68,7 +72,8 @@ beforeAll(() => {
 afterAll(() => vi.restoreAllMocks());
 beforeEach(() => cleanup());
 
-describe.each(modals)('$name — price and currency', ({ status, submitLabel, renderModal }) => {
+describe.each(modals)('$name — price and currency', (modal) => {
+  const { status, submitLabel, sendsOnlyChanges, renderModal } = modal;
   const plnList = { wishlistCurrency: 'PLN', userCurrency: 'EUR' };
   const open = (
     overrides: Partial<ApiItem>,
@@ -101,9 +106,10 @@ describe.each(modals)('$name — price and currency', ({ status, submitLabel, re
     expect(screen.queryByRole('button', { name: 'PLN' })).toBeNull();
     expect(priceInput()).toHaveValue(10);
 
+    fireEvent.change(priceInput(), { target: { value: '12' } });
     fireEvent.click(screen.getByRole('button', { name: submitLabel }));
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
-    expect(onSubmit.mock.calls[0][0].price).toEqual({ value: 1000, currency: 'eur' });
+    expect(onSubmit.mock.calls[0][0].price).toEqual({ value: 1200, currency: 'eur' });
   });
 
   it("falls back to the viewer's default, then USD, when the wishlist has no currency", () => {
@@ -116,9 +122,11 @@ describe.each(modals)('$name — price and currency', ({ status, submitLabel, re
 
   it('keeps a priceless item priceless when saved without a price', async () => {
     const { onSubmit } = open({ price: null });
+    fireEvent.change(screen.getByLabelText(/^notes$/i), { target: { value: 'Any colour' } });
     fireEvent.click(screen.getByRole('button', { name: submitLabel }));
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
-    expect(onSubmit.mock.calls[0][0].price).toBeNull();
+    if (sendsOnlyChanges) expect(onSubmit.mock.calls[0][0]).not.toHaveProperty('price');
+    else expect(onSubmit.mock.calls[0][0].price).toBeNull();
   });
 
   it('does not count the prefilled currency as an unsaved change', () => {
@@ -149,10 +157,11 @@ describe.each(modals)('$name — price and currency', ({ status, submitLabel, re
     });
     fireEvent.click(screen.getByRole('button', { name: submitLabel }));
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
-    expect(onSubmit.mock.calls[0][0]).toMatchObject({
-      notes: 'Free, just take it',
-      price: { value: 0, currency: 'eur' },
-    });
+    const sent = onSubmit.mock.calls[0][0];
+    expect(sent).toMatchObject({ notes: 'Free, just take it' });
+    // An edit leaves the unchanged price out; the review sends it as it is.
+    if (sendsOnlyChanges) expect(sent).not.toHaveProperty('price');
+    else expect(sent.price).toEqual({ value: 0, currency: 'eur' });
   });
 
   it('does not count a 0.00 price as an unsaved change', () => {

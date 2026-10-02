@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { ApiItem } from '@/types/api';
 import ImageUpload from './ImageUpload';
 import Toggle from './Toggle';
 import {
@@ -9,17 +8,14 @@ import {
   POPULAR_CURRENCIES,
   defaultItemCurrency,
 } from '@/lib/utils/currencies';
+import {
+  itemChanges,
+  itemFormContent,
+  type ItemContentChanges,
+  type ItemFormData,
+} from '@/lib/utils/itemForm';
 
-export interface ItemFormData {
-  name: string;
-  imageUrl: string;
-  price: string;
-  currency: string;
-  link: string;
-  notes: string;
-  mostWanted: boolean;
-  isDraft: boolean;
-}
+export { itemToFormData, type ItemFormData } from '@/lib/utils/itemForm';
 
 // Every field of a new item's form except the currency, which depends on the
 // wishlist (see the `defaultCurrency` prop).
@@ -35,15 +31,21 @@ const BLANK_ITEM_FIELDS: Omit<ItemFormData, 'currency'> = {
 
 interface ItemFormProps {
   initialData?: ItemFormData;
-  onSubmit: (data: {
-    name: string;
-    imageUrl?: string | null;
-    price?: { value: number; currency: string } | null;
-    link?: string | null;
-    notes?: string | null;
-    mostWanted?: boolean; // omitted in propose mode — only owners set it
-    status: 'draft' | 'available' | 'proposed';
-  }) => Promise<void>;
+  // `changes` is the content changed from the form as it was last filled (the
+  // item it opened on, or what a save of it stored): see itemChanges. An edit
+  // sends only that, so it can't undo a co-owner's change made meanwhile.
+  onSubmit: (
+    data: {
+      name: string;
+      imageUrl?: string | null;
+      price?: { value: number; currency: string } | null;
+      link?: string | null;
+      notes?: string | null;
+      mostWanted?: boolean; // omitted in propose mode — only owners set it
+      status: 'draft' | 'available' | 'proposed';
+    },
+    changes: ItemContentChanges
+  ) => Promise<void>;
   onCancel: () => void;
   submitLabel?: string;
   submittingLabel?: string;
@@ -158,18 +160,8 @@ export default function ItemForm({
     }
 
     try {
-      let price: { value: number; currency: string } | null = null;
-      if (formData.price) {
-        const priceValue = parseFloat(formData.price);
-        if (!isNaN(priceValue) && priceValue >= 0) {
-          // Convert dollars to cents (integer)
-          const priceInCents = Math.round(priceValue * 100);
-          price = {
-            value: priceInCents,
-            currency: (formData.currency || 'USD').toLowerCase(), // Store in lowercase to match rates
-          };
-        }
-      }
+      // Trimmed, the price in cents and its currency lowercase (to match rates).
+      const content = itemFormContent(formData);
 
       // Status is only chosen in the form when creating or reviewing. When
       // editing an existing item, status is managed separately (publish / move
@@ -184,19 +176,19 @@ export default function ItemForm({
       // When editing (initialData exists), send null for empty fields to clear them
       // When creating, use undefined to omit them
       const isEditing = !!initialData;
-      const trimmedImageUrl = formData.imageUrl.trim();
-      const trimmedLink = formData.link.trim();
-      const trimmedNotes = formData.notes.trim();
 
-      await onSubmit({
-        name: formData.name.trim(),
-        imageUrl: isEditing ? trimmedImageUrl || null : trimmedImageUrl || undefined,
-        price,
-        link: isEditing ? trimmedLink || null : trimmedLink || undefined,
-        notes: isEditing ? trimmedNotes || null : trimmedNotes || undefined,
-        mostWanted: mode === 'propose' ? undefined : formData.mostWanted,
-        status,
-      });
+      await onSubmit(
+        {
+          name: content.name,
+          imageUrl: isEditing ? content.imageUrl : content.imageUrl || undefined,
+          price: content.price,
+          link: isEditing ? content.link : content.link || undefined,
+          notes: isEditing ? content.notes : content.notes || undefined,
+          mostWanted: mode === 'propose' ? undefined : content.mostWanted,
+          status,
+        },
+        itemChanges(formData, initialDataRef.current)
+      );
 
       // Reset form only if not using external state
       if (!initialData) {
@@ -487,29 +479,4 @@ export default function ItemForm({
       )}
     </form>
   );
-}
-
-// Helper function to convert ApiItem to ItemFormData. An item with a price keeps
-// its own currency; a priceless one starts on `defaultCurrency` (see
-// defaultItemCurrency), so a price added while editing or reviewing it lands in
-// the wishlist's currency rather than USD. Being part of the form's initial data,
-// that prefill never reads as an unsaved change.
-export function itemToFormData(
-  item: Pick<ApiItem, 'name' | 'imageUrl' | 'price' | 'link' | 'notes' | 'mostWanted' | 'status'>,
-  defaultCurrency: string
-): ItemFormData {
-  // Convert cents to dollars for display. A price of 0 is a real price ("0.00"),
-  // not a missing one: an empty field would submit `price: null` and clear it.
-  const priceInDollars = item.price?.value != null ? (item.price.value / 100).toFixed(2) : '';
-  return {
-    name: item.name,
-    imageUrl: item.imageUrl || '',
-    price: priceInDollars,
-    // Display uppercase in UI
-    currency: item.price?.currency?.toUpperCase() || defaultItemCurrency(defaultCurrency),
-    link: item.link || '',
-    notes: item.notes || '',
-    mostWanted: item.mostWanted === true,
-    isDraft: item.status === 'draft',
-  };
 }

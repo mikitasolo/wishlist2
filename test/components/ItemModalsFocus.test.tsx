@@ -31,7 +31,8 @@ type Submit = () => Promise<void>;
 const currencies = { wishlistCurrency: 'USD', userCurrency: 'USD' };
 
 // Every item modal saves its form through BaseModal's `isSubmitting`; run every
-// case on each. The new-item ones start blank, so they need a name to submit.
+// case on each. The new-item ones start blank, so they need a name to submit,
+// and the edit one sends only a change, so it's given a new name too.
 const modals = [
   {
     name: 'AddItemModal',
@@ -45,10 +46,16 @@ const modals = [
     name: 'EditItemModal',
     submitLabel: 'Save Changes',
     submittingLabel: 'Saving...',
-    needsName: false,
+    needsName: true,
     renderModal: (onSubmit: Submit) =>
       render(
-        <EditItemModal isOpen onClose={vi.fn()} onSave={onSubmit} item={item({})} {...currencies} />
+        <EditItemModal
+          isOpen
+          onClose={vi.fn()}
+          onSave={onSubmit}
+          item={item({ name: 'Old bike' })}
+          {...currencies}
+        />
       ),
   },
   {
