@@ -63,7 +63,7 @@ const realResolvedOptions = Intl.DateTimeFormat.prototype.resolvedOptions;
 
 const prompt = () => screen.queryByRole('region', { name: /Show prices in/ });
 const useButton = (code: string) => screen.getByRole('button', { name: `Use ${code}` });
-const chooseAnother = () => screen.getByRole('button', { name: 'Choose another…' });
+const chooseAnother = () => screen.getByRole('button', { name: 'Choose another currency' });
 
 beforeEach(() => {
   cleanup();
@@ -123,7 +123,7 @@ describe('CurrencyPrompt', () => {
     expect(prompt()).not.toBeInTheDocument();
   });
 
-  it('“Choose another…” records the answer, then takes them to Settings’ currency field', async () => {
+  it('“Choose another currency” records the answer, then takes them to Settings’ currency field', async () => {
     render(<CurrencyPrompt />);
 
     fireEvent.click(chooseAnother());
@@ -197,7 +197,7 @@ describe('CurrencyPrompt', () => {
     expect(useButton('PLN')).toBeEnabled();
   });
 
-  it('stays, with an error, when “Choose another…” can’t be saved', async () => {
+  it('stays, with an error, when “Choose another currency” can’t be saved', async () => {
     patchReply = new Error('offline');
     render(<CurrencyPrompt />);
 

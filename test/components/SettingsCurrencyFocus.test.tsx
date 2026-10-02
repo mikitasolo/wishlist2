@@ -55,7 +55,7 @@ beforeEach(() => {
 });
 afterEach(() => window.history.replaceState(null, '', '/'));
 
-// The dashboard's currency prompt sends "Choose another…" to the picker.
+// The dashboard's currency prompt sends "Choose another currency" to the picker.
 describe('Settings, opened at the currency field', () => {
   it('focuses the currency picker once the form is in', async () => {
     window.history.replaceState(null, '', SETTINGS_CURRENCY_PATH);

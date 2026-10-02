@@ -18,16 +18,16 @@ const getServerSnapshot = () => null;
 
 /**
  * The dashboard's one-time offer of a currency for someone still on the USD
- * every account starts on: "Show prices in PLN? [Use PLN] [Choose another…]".
+ * every account starts on: "Show prices in PLN? [Use PLN] [Choose another currency]".
  * The suggestion is worked out in the browser, from its time zone and language
  * (`suggestCurrency`), and is null in a server render and in the render that
  * hydrates it, so the server, which can't know it, never renders the prompt.
  *
  * Either answer records that they've answered (`currencyChosen`, which the
  * server stamps as `User.currencyChosenAt`), so it never shows again: "Use X"
- * saves X as their currency too, and "Choose another…" takes them to the
+ * saves X as their currency too, and "Choose another currency" takes them to the
  * currency picker in Settings. The prompt goes once the answer is sent ("Use
- * X") or saved ("Choose another…", which then leaves the page), and comes back,
+ * X") or saved ("Choose another currency", which then leaves the page), and comes back,
  * with an error, if saving it fails. Who sees it is `currencyToOffer`.
  */
 export default function CurrencyPrompt() {
@@ -128,7 +128,7 @@ export default function CurrencyPrompt() {
           disabled={busy}
           className="whitespace-nowrap"
         >
-          Choose another…
+          Choose another currency
         </Button>
       </div>
     </section>

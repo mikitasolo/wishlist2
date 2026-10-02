@@ -67,7 +67,7 @@ describe('PATCH /api/users/me — the currency prompt’s answer', () => {
     expect(user.currencyChosenAt!.getTime()).toBeLessThanOrEqual(Date.now());
   });
 
-  it('“Choose another…”: stamps the answer and leaves the currency alone', async () => {
+  it('“Choose another currency”: stamps the answer and leaves the currency alone', async () => {
     const res = await patch({ currencyChosen: true });
 
     expect(res.status).toBe(200);
