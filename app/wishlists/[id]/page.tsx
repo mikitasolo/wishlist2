@@ -20,10 +20,18 @@ import Cover from '@/components/Cover';
 import ShareButton from '@/components/ShareButton';
 import ImageUpload from '@/components/ImageUpload';
 import Select from '@/components/Select';
+import OccasionField from '@/components/OccasionField';
+import OccasionLabel from '@/components/OccasionLabel';
 import { SkeletonGrid, MemberRowSkeleton } from '@/components/Skeleton';
 import Avatar from '@/components/Avatar';
 import { getVisibility, visibilityMeta, type Visibility } from '@/lib/utils/visibility';
 import { currencySelectOptions } from '@/lib/utils/currencies';
+import {
+  draftToOccasion,
+  occasionToDraft,
+  sameOccasion,
+  type OccasionDraft,
+} from '@/lib/utils/occasion';
 import {
   createMutationTracker,
   prependCreatedItem,
@@ -107,6 +115,7 @@ export default function WishlistDetail() {
     visibility: Visibility;
     bannerUrl: string;
     currency: string;
+    occasion: OccasionDraft;
   }>({
     name: '',
     slug: '',
@@ -114,6 +123,7 @@ export default function WishlistDetail() {
     visibility: 'everyone',
     bannerUrl: '',
     currency: 'USD',
+    occasion: occasionToDraft(null),
   });
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<{
@@ -273,6 +283,7 @@ export default function WishlistDetail() {
                 visibility: getVisibility(wishlistData),
                 bannerUrl: wishlistData.bannerUrl || '',
                 currency: wishlistData.currency || 'USD',
+                occasion: occasionToDraft(wishlistData.occasion),
               });
             }
 
@@ -1035,7 +1046,13 @@ export default function WishlistDetail() {
             The title used to sit on the banner; it moved here so the banner can shrink
             into a side panel next to the stat cards below. */}
         <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
-          <div className="flex min-w-0 flex-1 items-baseline gap-3">
+          {/* With an occasion the row wraps, so on a phone its label can go under
+              the name rather than squeeze it down to nothing. */}
+          <div
+            className={`flex min-w-0 flex-1 items-baseline ${
+              wishlist.occasion ? 'flex-wrap gap-x-3 gap-y-1' : 'gap-3'
+            }`}
+          >
             <h1 className="min-w-0 truncate text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
               {wishlist.name}
             </h1>
@@ -1061,6 +1078,7 @@ export default function WishlistDetail() {
                 {ownerUsernames.length > 2 && ` +${ownerUsernames.length - 2}`}
               </span>
             )}
+            <OccasionLabel occasion={wishlist.occasion} />
           </div>
           <div className="flex flex-shrink-0 items-center gap-2">
             <ShareButton />
@@ -1544,6 +1562,7 @@ export default function WishlistDetail() {
                 onSubmit={async (e) => {
                   e.preventDefault();
                   setIsSavingSettings(true);
+                  const occasion = draftToOccasion(settingsForm.occasion);
 
                   try {
                     const response = await fetch(`/api/wishlists/${wishlistId}`, {
@@ -1551,7 +1570,13 @@ export default function WishlistDetail() {
                       headers: {
                         'Content-Type': 'application/json',
                       },
-                      body: JSON.stringify(settingsForm),
+                      // The occasion only goes when it was changed here, so
+                      // saving the other settings can't undo one a co-owner
+                      // set since this form was filled in.
+                      body: JSON.stringify({
+                        ...settingsForm,
+                        occasion: sameOccasion(occasion, wishlist.occasion) ? undefined : occasion,
+                      }),
                     });
 
                     const result = await response.json();
@@ -1653,6 +1678,15 @@ export default function WishlistDetail() {
                     autoComplete="off"
                   />
                 </div>
+
+                <OccasionField
+                  value={settingsForm.occasion}
+                  onChange={(occasion) => {
+                    setSettingsForm({ ...settingsForm, occasion });
+                    settingsFormDirtyRef.current = true;
+                  }}
+                  disabled={isSavingSettings}
+                />
 
                 <div>
                   <label className="mb-1 block text-sm font-medium text-foreground">Currency</label>

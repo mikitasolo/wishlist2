@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isCalendarDate, OCCASION_KINDS } from '@/lib/utils/occasion';
 
 /**
  * Validation schemas for API endpoints
@@ -28,6 +29,16 @@ const wishlistNameSchema = z
   .refine((name) => !LINE_BREAK_OR_CONTROL_CHAR.test(name), {
     message: "Name can't contain line breaks or control characters",
   });
+
+// A list's occasion. `date` is a plain calendar date (`YYYY-MM-DD`) that must
+// exist: `2028-02-29` passes, `2027-02-29` and `2026-02-30` don't. `kind` and
+// `recurrence` are both required (`recurrence: null` for a one-off); clearing
+// the occasion is `occasion: null`, not an occasion with fields left out.
+export const occasionSchema = z.object({
+  kind: z.enum(OCCASION_KINDS, 'Pick an occasion'),
+  date: z.string().refine(isCalendarDate, 'Pick a real date'),
+  recurrence: z.literal('yearly').nullable(),
+});
 
 export const createWishlistSchema = z.object({
   name: wishlistNameSchema,
@@ -72,6 +83,7 @@ export const updateWishlistSchema = z
         'Use lowercase letters, numbers, and single hyphens (no leading/trailing hyphen)'
       )
       .optional(),
+    occasion: occasionSchema.nullable().optional(),
   })
   .refine((data) => Object.keys(data).length > 0, {
     message: 'At least one field must be provided for update',

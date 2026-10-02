@@ -1,5 +1,6 @@
 import mongoose, { FilterQuery } from 'mongoose';
 import type { IWishlist } from '@/models/Wishlist';
+import type { Occasion } from '@/lib/utils/occasion';
 
 /**
  * Reading the owner set of a wishlist.
@@ -53,10 +54,14 @@ export function isFeaturedBy(wishlist: Featurable, userId?: string | null): bool
   return Array.isArray(by) && by.map(toIdString).includes(userId);
 }
 
-/** A wishlist as clients see it: owner ids as strings, `featured` per-viewer. */
-export type ApiWishlist = Omit<IWishlist, 'owners' | 'featuredBy'> & {
+/**
+ * A wishlist as clients see it: owner ids as strings, `featured` per-viewer,
+ * and `occasion` always present (`null` for none).
+ */
+export type ApiWishlist = Omit<IWishlist, 'owners' | 'featuredBy' | 'occasion'> & {
   owners: string[];
   featured: boolean;
+  occasion: Occasion | null;
 };
 
 /**
@@ -64,7 +69,9 @@ export type ApiWishlist = Omit<IWishlist, 'owners' | 'featuredBy'> & {
  * strings, folds the per-owner `featuredBy` set down to the boolean `featured`
  * *this viewer* cares about (so a co-owner's dashboard pin never reads as
  * yours), and drops the deprecated single-owner fields so clients can't start
- * depending on them again.
+ * depending on them again. The occasion goes to every viewer: whoever may see
+ * the list may see its date, so this adds no rule of its own, and a list saved
+ * before occasions existed reads as `occasion: null`.
  */
 export function serializeWishlist(
   wishlist: IWishlist & { toObject?: () => unknown },
@@ -78,5 +85,6 @@ export function serializeWishlist(
     ...rest,
     owners: ownerIds(wishlist),
     featured: isFeaturedBy(wishlist, viewerId),
+    occasion: rest.occasion ?? null,
   };
 }

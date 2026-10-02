@@ -1,4 +1,18 @@
 import mongoose, { Schema, Model } from 'mongoose';
+import { OCCASION_KINDS, type Occasion } from '@/lib/utils/occasion';
+
+// A list's one occasion (see `lib/utils/occasion.ts`). `date` is a plain
+// calendar date, `YYYY-MM-DD`, never a timestamp: no time zone is stored or
+// applied here. `lib/validations.ts` checks it's a real date; the pattern here
+// is a backstop for a write that skips it.
+const OccasionSchema = new Schema(
+  {
+    kind: { type: String, enum: OCCASION_KINDS, required: true },
+    date: { type: String, required: true, match: /^\d{4}-\d{2}-\d{2}$/ },
+    recurrence: { type: String, enum: ['yearly', null], default: null },
+  },
+  { _id: false }
+);
 
 const WishlistSchema = new Schema(
   {
@@ -75,6 +89,13 @@ const WishlistSchema = new Schema(
       type: [{ type: Schema.Types.ObjectId, ref: 'User' }],
       default: [],
     },
+    // The list's occasion (birthday, holiday, …) and its date, set by an owner
+    // in settings. Absent or null means none. It's shown to everyone who can
+    // see the list and never changes who that is.
+    occasion: {
+      type: OccasionSchema,
+      default: null,
+    },
   },
   {
     timestamps: true,
@@ -111,6 +132,8 @@ export interface IWishlist {
    */
   featured?: boolean;
   bannerUrl?: string | null;
+  /** Absent on lists saved before occasions existed: treat as none. */
+  occasion?: Occasion | null;
   createdAt: Date;
   updatedAt: Date;
 }

@@ -7,6 +7,7 @@ import {
   createItemSchema,
   updateItemSchema,
   magicLinkRequestSchema,
+  occasionSchema,
 } from '@/lib/validations';
 
 describe('createWishlistSchema', () => {
@@ -161,6 +162,72 @@ describe('updateWishlistSchema', () => {
     expect(updateWishlistSchema.safeParse({ slug: 'ab' }).success).toBe(false); // < 3
     expect(updateWishlistSchema.safeParse({ slug: '-bad' }).success).toBe(false);
     expect(updateWishlistSchema.safeParse({ slug: 'Bad Slug' }).success).toBe(false);
+  });
+});
+
+describe('occasion on updateWishlistSchema', () => {
+  const occasion = { kind: 'birthday', date: '2026-10-14', recurrence: 'yearly' } as const;
+  const issues = (value: unknown) => {
+    const res = updateWishlistSchema.safeParse({ occasion: value });
+    return res.success ? [] : res.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`);
+  };
+
+  it('accepts an occasion, a one-off (recurrence null) and null, which clears it', () => {
+    expect(updateWishlistSchema.safeParse({ occasion }).data).toEqual({ occasion });
+    const once = { kind: 'wedding', date: '2027-06-12', recurrence: null };
+    expect(updateWishlistSchema.safeParse({ occasion: once }).data).toEqual({ occasion: once });
+    expect(updateWishlistSchema.safeParse({ occasion: null }).data).toEqual({ occasion: null });
+  });
+
+  it('accepts every kind', () => {
+    for (const kind of ['birthday', 'holiday', 'wedding', 'other']) {
+      expect(occasionSchema.safeParse({ ...occasion, kind }).success).toBe(true);
+    }
+  });
+
+  it('accepts Feb 29 in a leap year only', () => {
+    expect(issues({ ...occasion, date: '2028-02-29' })).toEqual([]);
+    expect(issues({ ...occasion, date: '2027-02-29' })).toEqual([
+      'occasion.date: Pick a real date',
+    ]);
+  });
+
+  it('refuses a date that does not exist or is not a plain YYYY-MM-DD date', () => {
+    for (const date of [
+      '2026-02-30',
+      '2026-13-01',
+      '2026-1-5',
+      '2026-10-14T00:00:00.000Z',
+      '14/10/2026',
+      '',
+    ]) {
+      expect(issues({ ...occasion, date })).toEqual(['occasion.date: Pick a real date']);
+    }
+    expect(issues({ ...occasion, date: 1791936000000 })).toHaveLength(1);
+  });
+
+  it('refuses an occasion without a kind, or with one it does not know', () => {
+    expect(issues({ date: occasion.date, recurrence: null })).toEqual([
+      'occasion.kind: Pick an occasion',
+    ]);
+    expect(issues({ ...occasion, kind: 'anniversary' })).toEqual([
+      'occasion.kind: Pick an occasion',
+    ]);
+  });
+
+  it('refuses an occasion without a date or a recurrence', () => {
+    expect(issues({ kind: 'birthday', recurrence: null })).toHaveLength(1);
+    expect(issues({ kind: 'birthday', date: occasion.date })).toEqual([
+      expect.stringMatching(/^occasion\.recurrence: /),
+    ]);
+    expect(issues({ ...occasion, recurrence: 'monthly' })).toEqual([
+      expect.stringMatching(/^occasion\.recurrence: /),
+    ]);
+  });
+
+  it('drops fields an occasion does not have', () => {
+    const res = occasionSchema.safeParse({ ...occasion, remindDaysBefore: 3 });
+    expect(res.data).toEqual(occasion);
   });
 });
 

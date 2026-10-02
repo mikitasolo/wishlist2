@@ -14,6 +14,7 @@ A modern wishlist app: create wishlists, share them, follow friends, and quietly
 - **Invitations** to a wishlist as an owner or a member, registered-users-only, with accept/decline.
 - **Most wanted** — owners can mark the items they want most. Everyone sees a star on them, and a list sorts them first unless you pick another sort.
 - **Item proposals** — members can propose items for the owners to approve.
+- **Occasions** — an owner can give a list one occasion (a birthday, holiday, wedding or other) and its date, once or every year, in the list's settings. Everyone who can see the list sees it next to the list's name with a countdown ("Birthday · in 12 days"), counted from their own local date. It only labels the list: it never changes who can see it.
 - **Save to my list** — see something you want too on a list you can view? Save a copy of it to one of your own wishlists (or copy between your own lists), editable before it's saved. The copy is independent and gets its own copy of the image; the list it came from isn't told, and its notes and bookings never come across.
 - **Multi-currency** prices with live conversion to any currency you pick.
 - **Profiles** with avatar, bio, follower/following counts, and privacy controls.
