@@ -12,7 +12,8 @@ const SECOND_ANSWER = 'Already done';
 
 /**
  * Show the co-owner on the page. Once `isDemoted()` they come back from the
- * members GET as a plain member, the way the server answers after a demotion.
+ * members GET as a plain member, and the wishlist GET no longer lists them as an
+ * owner, the way the server answers after a demotion.
  */
 async function addCoOwner(page: Page, isDemoted: () => boolean) {
   await page.route('**/api/wishlists/e2e-birthday', async (route) => {
@@ -20,7 +21,7 @@ async function addCoOwner(page: Page, isDemoted: () => boolean) {
     const response = await route.fetch();
     const body = await response.json();
     if (!body.success) return route.fulfill({ response, json: body });
-    const owners = [...body.data.owners, coOwnerId];
+    const owners = isDemoted() ? body.data.owners : [...body.data.owners, coOwnerId];
     await route.fulfill({ response, json: { ...body, data: { ...body.data, owners } } });
   });
   await page.route('**/api/wishlists/*/members', async (route) => {
@@ -81,6 +82,9 @@ for (const variant of [
     });
 
     await openOwners(page);
+    // In the header and on the signed-in user's own row, while there are two owners.
+    const leave = page.getByRole('button', { name: 'Leave', exact: true });
+    await expect(leave).toHaveCount(2);
     const makeMember = page.getByRole('button', { name: 'Make member' });
     await variant.click(makeMember);
 
@@ -98,6 +102,8 @@ for (const variant of [
     // The refresh moved them to Members, where the row offers "Make owner".
     await expect(makeMember).toBeHidden();
     await expect(page.getByRole('button', { name: 'Make owner' })).toBeVisible();
+    // The signed-in user is the only owner left, so they can't leave.
+    await expect(leave).toHaveCount(0);
   });
 }
 

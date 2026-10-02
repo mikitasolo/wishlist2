@@ -42,6 +42,13 @@ import {
 } from '@/lib/utils/itemListMerge';
 import { RequestTimeoutError, withRequestTimeout } from '@/lib/utils/requestTimeout';
 import { canCopyItem } from '@/lib/utils/itemCopy';
+import {
+  createOwnerRemovalLog,
+  shownOwnersOf,
+  withoutOwner,
+  type RemovedOwner,
+  type ShownOwners,
+} from '@/lib/utils/shownOwners';
 import { useToast } from '@/components/ToastProvider';
 import { ApiItem, ApiResponse } from '@/types/api';
 import { IWishlist } from '@/models/Wishlist';
@@ -88,7 +95,15 @@ export default function WishlistDetail() {
   const wishlistId = typeof params?.id === 'string' ? params.id : null;
 
   const [wishlist, setWishlist] = useState<IWishlist | null>(null);
-  const [ownerUsernames, setOwnerUsernames] = useState<string[]>([]);
+  // The list's owners, counted and credited from here rather than from
+  // `wishlist.owners`: a settings save answers with the list as its own write
+  // left it, which can predate a demotion landing meanwhile, and without their
+  // names. Only a read of the list sets them, less any owner the page has taken
+  // off since that read was sent (`ownerRemovals`), and a demotion or removal
+  // takes its owner off at once.
+  const [owners, setOwners] = useState<ShownOwners>({ ids: [], usernames: [] });
+  const [ownerRemovals] = useState(createOwnerRemovalLog);
+  const ownerUsernames = owners.usernames;
   const [items, setItems] = useState<ApiItem[]>([]);
   const [members, setMembers] = useState<WishlistMember[]>([]);
   const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
@@ -142,7 +157,7 @@ export default function WishlistDetail() {
   const [deleteConfirm, setDeleteConfirm] = useState<{
     type: 'member' | 'owner' | 'leave' | 'wishlist';
     memberId?: string;
-    memberEmail?: string;
+    memberUsername?: string | null;
   } | null>(null);
   // Promoting someone to co-owner is destructive for them (it cancels the
   // reservations they hold here) and irreversible without their consent, so it
@@ -257,6 +272,7 @@ export default function WishlistDetail() {
       if (!wishlistId) return;
 
       try {
+        const sentAt = ownerRemovals.stamp();
         const response = await fetch(`/api/wishlists/${wishlistId}`, { cache: 'no-store' });
         const result = await response.json();
 
@@ -268,19 +284,16 @@ export default function WishlistDetail() {
             const wishlistData = w as IWishlist;
             setWishlist(wishlistData);
 
+            // Without an owner this page took off since the read was sent.
+            const readOwners = ownerRemovals.land(sentAt, shownOwnersOf(w));
+            if (readOwners) setOwners(readOwners);
+
             // Check for extended properties
             const hasExtendedProps = 'userRole' in w || 'ownerUsernames' in w;
             if (hasExtendedProps) {
               const extendedWishlist = w as IWishlist & {
                 userRole?: 'owner' | 'member' | null;
-                ownerUsername?: string | null;
-                ownerUsernames?: string[] | null;
               };
-              setOwnerUsernames(
-                extendedWishlist.ownerUsernames ??
-                  (extendedWishlist.ownerUsername ? [extendedWishlist.ownerUsername] : [])
-              );
-
               // Check user role from API response
               const userRole = 'userRole' in extendedWishlist ? extendedWishlist.userRole : null;
               setIsOwner(userRole === 'owner');
@@ -314,7 +327,7 @@ export default function WishlistDetail() {
     if (status !== 'loading') {
       fetchWishlist();
     }
-  }, [wishlistId, status, router, showToast, refillSettings]);
+  }, [wishlistId, status, router, showToast, refillSettings, ownerRemovals]);
 
   // Refresh the pending-invites list (owners only).
   const refreshInvites = useCallback(async () => {
@@ -693,16 +706,45 @@ export default function WishlistDetail() {
   }, [wishlistId]);
 
   const handleKickMember = useCallback(
-    (memberId: string, memberEmail: string, isOwnerRow: boolean) => {
+    (memberId: string, username: string | undefined, isOwnerRow: boolean) => {
       setDeleteConfirm({
         // Owners aren't memberships — they're removed through the owners endpoint.
         type: isOwnerRow ? 'owner' : 'member',
         memberId,
-        memberEmail,
+        memberUsername: username || null,
       });
     },
     []
   );
+
+  // An owner the page has just demoted or removed: off the count and the byline
+  // at once, so the sole remaining owner isn't offered Leave. Recorded too, so a
+  // read of the list the server answered before this landed can't put them back.
+  const dropOwner = useCallback(
+    (owner: RemovedOwner) => {
+      ownerRemovals.removed(owner);
+      setOwners((prev) => withoutOwner(prev, owner));
+    },
+    [ownerRemovals]
+  );
+
+  // Read the list's owners again after the page has changed them, so the count
+  // and the byline are the server's (a co-owner's change since the page loaded,
+  // a renamed owner). Only the owners: the rest of the list, and the settings
+  // form, stay as they are.
+  const refreshOwners = useCallback(async () => {
+    if (!wishlistId) return;
+    const sentAt = ownerRemovals.stamp();
+    try {
+      const res = await fetch(`/api/wishlists/${wishlistId}`, { cache: 'no-store' });
+      const result = await res.json();
+      if (!result.success || !result.data) return;
+      const read = ownerRemovals.land(sentAt, shownOwnersOf(result.data));
+      if (read) setOwners(read);
+    } catch {
+      /* the page keeps the owners it has */
+    }
+  }, [wishlistId, ownerRemovals]);
 
   const confirmKickMember = useCallback(async () => {
     if (
@@ -728,7 +770,12 @@ export default function WishlistDetail() {
           'success'
         );
         // Removing someone also cancels any invite they still had pending here.
-        await Promise.all([refreshMembers(), refreshInvites()]);
+        if (deleteConfirm.type === 'owner') {
+          dropOwner({ id: deleteConfirm.memberId, username: deleteConfirm.memberUsername ?? null });
+          await Promise.all([refreshMembers(), refreshInvites(), refreshOwners()]);
+        } else {
+          await Promise.all([refreshMembers(), refreshInvites()]);
+        }
       } else {
         showToast(result.error || 'Failed to remove member', 'error');
       }
@@ -738,7 +785,15 @@ export default function WishlistDetail() {
     } finally {
       setDeleteConfirm(null);
     }
-  }, [wishlistId, deleteConfirm, showToast, refreshMembers, refreshInvites]);
+  }, [
+    wishlistId,
+    deleteConfirm,
+    showToast,
+    refreshMembers,
+    refreshInvites,
+    dropOwner,
+    refreshOwners,
+  ]);
 
   /**
    * Send a member an invitation to become a co-owner. It's an invite, not a role
@@ -776,7 +831,7 @@ export default function WishlistDetail() {
 
   /** Step an owner down to a plain member. */
   const demoteOwner = useCallback(
-    async (userId: string) => {
+    async (userId: string, username: string | null) => {
       if (!wishlistId || demotingRef.current.has(userId)) return;
       demotingRef.current.add(userId);
       setDemotingIds(new Set(demotingRef.current));
@@ -787,8 +842,9 @@ export default function WishlistDetail() {
         const result = await res.json();
         if (result.success) {
           showToast('Owner is now a member', 'success');
+          dropOwner({ id: userId, username });
           // Demoting also cancels any invite they still had pending here.
-          await Promise.all([refreshMembers(), refreshInvites()]);
+          await Promise.all([refreshMembers(), refreshInvites(), refreshOwners()]);
         } else {
           showToast(result.error || 'Failed to update owner', 'error');
         }
@@ -803,7 +859,7 @@ export default function WishlistDetail() {
         setDemotingIds(new Set(demotingRef.current));
       }
     },
-    [wishlistId, showToast, refreshMembers, refreshInvites]
+    [wishlistId, showToast, refreshMembers, refreshInvites, dropOwner, refreshOwners]
   );
 
   const confirmPromoteToOwner = useCallback(async () => {
@@ -879,7 +935,7 @@ export default function WishlistDetail() {
     }
   }, [wishlistId, deleteConfirm, router, showToast]);
 
-  const ownerCount = wishlist?.owners?.length ?? 0;
+  const ownerCount = owners.ids.length;
   // A co-owner may step down; the sole owner has to delete the list instead.
   const canLeave = isOwner ? ownerCount > 1 : isMember;
 
@@ -1397,7 +1453,9 @@ export default function WishlistDetail() {
                           {canEditRow && (
                             <>
                               <button
-                                onClick={() => demoteOwner(memberUserId)}
+                                onClick={() =>
+                                  demoteOwner(memberUserId, member.user.username || null)
+                                }
                                 disabled={demotingIds.has(memberUserId)}
                                 className="cursor-pointer whitespace-nowrap rounded-xl px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 sm:px-4"
                               >
@@ -1405,11 +1463,7 @@ export default function WishlistDetail() {
                               </button>
                               <button
                                 onClick={() =>
-                                  handleKickMember(
-                                    memberUserId,
-                                    member.user.username || 'user',
-                                    true
-                                  )
+                                  handleKickMember(memberUserId, member.user.username, true)
                                 }
                                 disabled={demotingIds.has(memberUserId)}
                                 className="cursor-pointer whitespace-nowrap rounded-xl px-3 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-red-400 dark:hover:bg-red-500/10 sm:px-4"
@@ -1498,11 +1552,7 @@ export default function WishlistDetail() {
                               </button>
                               <button
                                 onClick={() =>
-                                  handleKickMember(
-                                    member._id,
-                                    member.user.username || 'user',
-                                    false
-                                  )
+                                  handleKickMember(member._id, member.user.username, false)
                                 }
                                 className="cursor-pointer whitespace-nowrap rounded-xl px-3 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10 sm:px-4"
                               >
@@ -1945,14 +1995,14 @@ export default function WishlistDetail() {
       {/* Confirmation Dialogs */}
       {deleteConfirm &&
         (deleteConfirm.type === 'member' || deleteConfirm.type === 'owner') &&
-        deleteConfirm.memberEmail && (
+        deleteConfirm.memberId && (
           <ConfirmDialog
             isOpen={!!deleteConfirm}
             title={deleteConfirm.type === 'owner' ? 'Remove Owner' : 'Remove Member'}
             message={
               deleteConfirm.type === 'owner'
-                ? `Remove @${deleteConfirm.memberEmail} as an owner? They lose all access to this wishlist, and it disappears from their profile and dashboard highlight.`
-                : `Are you sure you want to remove ${deleteConfirm.memberEmail} from this wishlist?`
+                ? `Remove @${deleteConfirm.memberUsername || 'user'} as an owner? They lose all access to this wishlist, and it disappears from their profile and dashboard highlight.`
+                : `Are you sure you want to remove ${deleteConfirm.memberUsername || 'user'} from this wishlist?`
             }
             onConfirm={confirmKickMember}
             onCancel={() => setDeleteConfirm(null)}
