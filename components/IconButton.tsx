@@ -20,6 +20,9 @@ interface IconButtonProps extends Omit<
    * screen reader would announce just "button".
    */
   label: string;
+  /** Named by `label`, never by these. */
+  'aria-label'?: never;
+  'aria-labelledby'?: never;
   /** `xs` (32px) for a close or clear button inline with text; otherwise square at the row's height. */
   size?: IconButtonSize;
   variant?: IconButtonVariant;

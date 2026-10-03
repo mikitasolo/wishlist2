@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { ApiItem } from '@/types/api';
 import BaseModal from './BaseModal';
+import Button from './Button';
 import ItemForm, { itemToFormData } from './ItemForm';
 import ConfirmDialog from './ConfirmDialog';
 import { defaultItemCurrency } from '@/lib/utils/currencies';
@@ -151,32 +152,30 @@ export default function EditItemModal({
           renderButtons={({ submitting, onCancel, submitLabel, submittingLabel }) => (
             <div className="flex flex-col gap-3 pt-4">
               <div className="flex gap-3">
-                <button
+                <Button
                   type="button"
+                  variant="secondary"
                   onClick={onCancel}
-                  className="flex-1 px-4 py-2 border border-border-strong text-foreground rounded-lg hover:bg-surface-hover transition-colors font-medium cursor-pointer"
                   disabled={submitting}
+                  className="flex-1"
                 >
                   Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 px-4 py-2 border border-transparent bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors font-medium disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
-                  disabled={submitting}
-                >
+                </Button>
+                <Button type="submit" disabled={submitting} className="flex-1">
                   {/* A delete disables the form too, but only a save reads "Saving...". */}
                   {isSubmitting ? submittingLabel : submitLabel}
-                </button>
+                </Button>
               </div>
               {onDelete && (
-                <button
+                <Button
                   type="button"
+                  variant="destructive"
                   onClick={() => setShowDeleteConfirm(true)}
-                  className="w-full px-4 py-2 border border-transparent bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
                   disabled={submitting}
+                  fullWidth
                 >
                   Delete Item
-                </button>
+                </Button>
               )}
             </div>
           )}

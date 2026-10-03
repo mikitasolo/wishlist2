@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import Cropper from 'react-easy-crop';
 import Icon from './Icon';
+import Button from './Button';
+import IconButton from './IconButton';
 import { getCroppedBlob, type PixelCrop } from '@/lib/utils/cropImage';
 import { useBodyScrollLock } from '@/lib/hooks/useBodyScrollLock';
 import { useFocusTrap } from '@/lib/hooks/useFocusTrap';
@@ -119,14 +121,7 @@ export default function ImageCropModal({
             Crop image
           </h2>
           {/* A plain button: the dialog sits inside the item or wishlist form. */}
-          <button
-            type="button"
-            onClick={cancel}
-            aria-label="Cancel"
-            className="flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          >
-            <Icon name="close" size={18} />
-          </button>
+          <IconButton type="button" icon="close" label="Cancel" onClick={cancel} shape="pill" />
         </div>
 
         {/* Cropper stage */}
@@ -163,21 +158,12 @@ export default function ImageCropModal({
 
         {/* Actions */}
         <div className="flex justify-end gap-2 p-5">
-          <button
-            type="button"
-            onClick={cancel}
-            className="h-10 rounded-xl bg-muted px-4 text-sm font-medium text-foreground transition-colors hover:bg-surface-2"
-          >
+          <Button type="button" variant="cancel" size="md" onClick={cancel}>
             Cancel
-          </button>
-          <button
-            type="button"
-            onClick={confirm}
-            disabled={working || !areaPixels}
-            className="inline-flex h-10 items-center gap-2 rounded-xl bg-primary-600 px-5 text-sm font-semibold text-white shadow-[0_8px_22px_-10px_rgba(94,92,230,0.9)] transition-all hover:bg-primary-500 active:scale-[0.98] disabled:opacity-50"
-          >
+          </Button>
+          <Button type="button" size="md" onClick={confirm} disabled={working || !areaPixels}>
             {working ? 'Uploading…' : 'Crop & upload'}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

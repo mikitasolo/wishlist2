@@ -3,6 +3,12 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import ImageUpload from './ImageUpload';
 import Toggle from './Toggle';
+import Button from './Button';
+import Field from './Field';
+import Icon from './Icon';
+import Input from './Input';
+import Textarea from './Textarea';
+import { FIELD_LABEL, inputClassName } from './fieldStyles';
 import {
   CURRENCY_OPTIONS as COMMON_CURRENCIES,
   POPULAR_CURRENCIES,
@@ -260,7 +266,7 @@ export default function ItemForm({
           Editing never shows it; status is changed via publish / move-to-draft. */}
       {(mode === 'create' || mode === 'review') && (
         <div>
-          <label className="block text-sm font-medium text-foreground mb-1">Status</label>
+          <label className={FIELD_LABEL}>Status</label>
           {mode === 'review' ? (
             <p className="text-xs text-muted-foreground mb-2">
               Select the status for this item after review
@@ -330,28 +336,22 @@ export default function ItemForm({
       )}
 
       {/* Item Name */}
-      <div>
-        <label htmlFor="name" className="block text-sm font-medium text-foreground mb-1">
-          Item Name *
-        </label>
-        <input
-          type="text"
-          id="name"
+      <Field label="Item Name *" id="name">
+        <Input
           required
           ref={firstInputRef}
           value={formData.name}
           onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-          className="w-full px-4 py-2 border border-border-strong rounded-lg outline-hidden field-focus"
           placeholder="Enter item name"
           disabled={submitting}
           aria-required="true"
           autoComplete="off"
         />
-      </div>
+      </Field>
 
       {/* Image */}
       <div>
-        <label className="block text-sm font-medium text-foreground mb-1">Image</label>
+        <label className={FIELD_LABEL}>Image</label>
         {/* An upload lands after the render that started it: update the form as it is by then. */}
         <ImageUpload
           value={formData.imageUrl || null}
@@ -362,59 +362,44 @@ export default function ItemForm({
       </div>
 
       {/* Price */}
-      <div>
-        <label htmlFor="price" className="block text-sm font-medium text-foreground mb-1">
-          Price
-        </label>
+      <Field
+        label="Price"
+        id="price"
+        error={showPriceError && priceError ? priceError : undefined}
+      >
         <div className="flex gap-2">
           {/* Text, not a number field: that one shows the browser's decimal
               format whatever the cards use, and refuses the other separator. */}
-          <div className="flex flex-1 min-w-0 items-center gap-1.5 px-4 border border-border-strong rounded-lg bg-surface field-focus">
-            <span className="flex-shrink-0 text-muted-foreground" aria-hidden="true">
-              {priceHints.symbol}
-            </span>
-            <input
-              ref={priceInputRef}
-              type="text"
-              inputMode="decimal"
-              id="price"
-              value={formData.price}
-              onChange={(e) => {
-                const price = e.target.value;
-                setFormData((f) => ({ ...f, price }));
-              }}
-              onBlur={handlePriceBlur}
-              className="min-w-0 flex-1 border-0 bg-transparent py-2 outline-hidden"
-              placeholder={priceHints.placeholder}
-              disabled={submitting}
-              autoComplete="off"
-              aria-invalid={showPriceError && priceError ? true : undefined}
-              aria-describedby={showPriceError && priceError ? 'price-error' : undefined}
-            />
-          </div>
+          <Input
+            ref={priceInputRef}
+            inputMode="decimal"
+            leading={<span aria-hidden="true">{priceHints.symbol}</span>}
+            value={formData.price}
+            onChange={(e) => {
+              const price = e.target.value;
+              setFormData((f) => ({ ...f, price }));
+            }}
+            onBlur={handlePriceBlur}
+            className="min-w-0 flex-1"
+            placeholder={priceHints.placeholder}
+            disabled={submitting}
+            autoComplete="off"
+          />
           <div ref={currencyRef} className="relative flex-1">
             <button
               type="button"
               onClick={() => !submitting && setIsCurrencyOpen(!isCurrencyOpen)}
               disabled={submitting}
-              className="px-4 py-2 border border-border-strong rounded-lg outline-hidden field-focus bg-surface text-left w-full flex items-center justify-between"
+              className={`${inputClassName()} flex items-center justify-between text-left`}
             >
               <span>{formData.currency}</span>
-              <svg
-                className={`w-4 h-4 text-muted-foreground transition-transform ${
+              <Icon
+                name="chevron-down"
+                size={16}
+                className={`text-muted-foreground transition-transform ${
                   isCurrencyOpen ? 'rotate-180' : ''
                 }`}
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M19 9l-7 7-7-7"
-                />
-              </svg>
+              />
             </button>
             {isCurrencyOpen && (
               <div className="absolute z-50 mt-1 w-full bg-surface border border-border-strong rounded-lg shadow-lg max-h-60 overflow-hidden flex flex-col">
@@ -424,7 +409,7 @@ export default function ItemForm({
                     placeholder="Search currency..."
                     value={currencySearch}
                     onChange={(e) => setCurrencySearch(e.target.value)}
-                    className="w-full px-3 py-2 border border-border-strong rounded-md outline-hidden field-focus text-sm"
+                    className={inputClassName('sm')}
                     autoFocus
                     autoComplete="off"
                   />
@@ -458,48 +443,33 @@ export default function ItemForm({
             )}
           </div>
         </div>
-        {showPriceError && priceError && (
-          <p id="price-error" className="mt-1 text-xs text-red-600 dark:text-red-400">
-            {priceError}
-          </p>
-        )}
-      </div>
+      </Field>
 
       {/* Product Link */}
-      <div>
-        <label htmlFor="link" className="block text-sm font-medium text-foreground mb-1">
-          Product Link
-        </label>
-        <input
+      <Field label="Product Link" id="link">
+        <Input
           type="url"
-          id="link"
           value={formData.link}
           onChange={(e) => setFormData({ ...formData, link: e.target.value })}
-          className="w-full px-4 py-2 border border-border-strong rounded-lg outline-hidden field-focus"
           placeholder="https://example.com/product"
           disabled={submitting}
           autoComplete="off"
         />
-      </div>
+      </Field>
 
       {/* Notes */}
-      <div>
-        <label htmlFor="notes" className="block text-sm font-medium text-foreground mb-1">
-          Notes
-        </label>
-        <textarea
-          id="notes"
+      <Field label="Notes" id="notes" helper={`${formData.notes.length}/100 characters`}>
+        <Textarea
           value={formData.notes}
           onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-          className="w-full px-4 py-2 border border-border-strong rounded-lg outline-hidden field-focus resize-none"
+          className="resize-none"
           placeholder="Add any additional notes about this item like size, color, etc..."
           rows={3}
           maxLength={100}
           disabled={submitting}
           autoComplete="off"
         />
-        <p className="text-xs text-muted-foreground mt-1">{formData.notes.length}/100 characters</p>
-      </div>
+      </Field>
 
       {/* Most wanted — the owners' call, so a proposal never offers it */}
       {mode !== 'propose' && (
@@ -522,21 +492,18 @@ export default function ItemForm({
         })
       ) : (
         <div className="flex gap-3 pt-4">
-          <button
+          <Button
             type="button"
+            variant="secondary"
             onClick={onCancel}
-            className="flex-1 px-4 py-2 border border-border-strong text-foreground rounded-lg hover:bg-surface-hover transition-colors font-medium cursor-pointer"
             disabled={submitting}
+            className="flex-1"
           >
             Cancel
-          </button>
-          <button
-            type="submit"
-            className="flex-1 px-4 py-2 border border-transparent bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors font-medium disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
-            disabled={submitting}
-          >
+          </Button>
+          <Button type="submit" disabled={submitting} className="flex-1">
             {submitting ? submittingLabel : submitLabel}
-          </button>
+          </Button>
         </div>
       )}
     </form>
