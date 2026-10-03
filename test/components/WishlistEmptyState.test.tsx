@@ -40,6 +40,7 @@ import WishlistDetail from '@/app/wishlists/[id]/page';
 let userRole: 'owner' | 'member' | null;
 let listItems: ApiItem[];
 let itemsFail: boolean;
+let archived: boolean;
 
 const reply = (body: unknown, status = 200) => ({
   ok: status < 400,
@@ -76,6 +77,7 @@ beforeEach(() => {
   userRole = 'owner';
   listItems = [];
   itemsFail = false;
+  archived = false;
   showToast.mockReset();
   fetchMock.mockReset();
   fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
@@ -103,7 +105,7 @@ beforeEach(() => {
           userRole,
           visibility: 'everyone',
           isPublic: true,
-          archived: false,
+          archived,
           featured: false,
           currency: 'EUR',
           bannerUrl: null,
@@ -193,6 +195,17 @@ describe('a list with no items at all', () => {
 
     await user.click(within(box).getByRole('button', { name: 'Add your first item' }));
     expect(await screen.findByRole('dialog', { name: 'Add New Item' })).toBeInTheDocument();
+  });
+
+  // regression: the empty state's Share showed on an archived list, whose link
+  // opens for its owners only, though the header leaves its Share out there.
+  it('regression: offers no Share on an archived list, only Add your first item', async () => {
+    archived = true;
+    await open();
+
+    const box = emptyState('Your list is empty');
+    expect(within(box).getByRole('button', { name: 'Add your first item' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Copy link to share' })).toBeNull();
   });
 
   it('regression: tells a member there is nothing here yet and offers Propose an item, with no cards or toolbar', async () => {

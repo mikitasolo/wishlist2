@@ -107,7 +107,8 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-const shareButton = () => screen.queryByRole('button', { name: 'Copy link to share' });
+/** Every Share on the page: the header's, and the empty list's own (this list has no items). */
+const shareButtons = () => screen.queryAllByRole('button', { name: 'Copy link to share' });
 const banner = () => screen.queryByText(BANNER_TEXT)?.parentElement ?? null;
 /** The pill on the list's cover. */
 const coverPill = (label: string) => screen.queryByText(label, { selector: 'span' });
@@ -176,7 +177,7 @@ describe('Archiving a list', () => {
     expect(await screen.findByText(BANNER_TEXT)).toBeInTheDocument();
     expect(coverPill('Archived')).toBeInTheDocument();
     expect(coverPill('Public')).toBeNull();
-    expect(shareButton()).toBeNull();
+    expect(shareButtons()).toEqual([]);
   });
 
   it('leaves the list as it was when the server refuses the archive', async () => {
@@ -192,7 +193,9 @@ describe('Archiving a list', () => {
     expect(screen.getByRole('heading', { name: 'Archive wishlist' })).toBeInTheDocument();
 
     await user.click(screen.getAllByRole('button', { name: 'Back to items' })[0]);
-    expect(await screen.findByRole('button', { name: 'Copy link to share' })).toBeInTheDocument();
+    expect(await screen.findAllByRole('button', { name: 'Copy link to share' })).not.toHaveLength(
+      0
+    );
     expect(banner()).toBeNull();
     expect(coverPill('Public')).toBeInTheDocument();
   });
@@ -213,7 +216,7 @@ describe('An archived list, for its owner', () => {
     expect(within(banner()!).getByRole('button', { name: 'Unarchive' })).toBeEnabled();
     expect(coverPill('Archived')).toBeInTheDocument();
     expect(coverPill('Public')).toBeNull();
-    expect(shareButton()).toBeNull();
+    expect(shareButtons()).toEqual([]);
   });
 
   // regression: the only way back was the Unarchive buried in Manage.
@@ -230,7 +233,7 @@ describe('An archived list, for its owner', () => {
     expect(showToast).toHaveBeenCalledWith('Wishlist unarchived', 'success');
     expect(coverPill('Public')).toBeInTheDocument();
     expect(coverPill('Archived')).toBeNull();
-    expect(shareButton()).toBeInTheDocument();
+    expect(shareButtons()).not.toHaveLength(0);
   });
 
   it('keeps the banner when the server refuses the unarchive', async () => {

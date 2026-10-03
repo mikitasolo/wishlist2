@@ -1604,7 +1604,8 @@ export default function WishlistDetail() {
                       <Button onClick={() => setShowAddItemModal(true)} size="md">
                         Add your first item
                       </Button>
-                      <ShareButton variant="button" />
+                      {/* Not on an archived list, as the header's Share isn't. */}
+                      {!wishlist.archived && <ShareButton variant="button" />}
                     </div>
                   </>
                 )}
