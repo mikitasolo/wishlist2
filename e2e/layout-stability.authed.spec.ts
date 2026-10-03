@@ -114,10 +114,14 @@ test('the clear and close buttons are at least 32px square', async ({ page }) =>
   await expectHitArea(page.getByRole('button', { name: 'Close search' }));
   await page.getByRole('button', { name: 'Close search' }).click();
 
-  // A toast: saving the list's settings unchanged says so, and writes nothing.
-  await page.getByRole('button', { name: 'Manage wishlist' }).click();
-  await page.getByRole('button', { name: 'Save changes' }).click();
-  const toast = page.getByRole('status').filter({ hasText: 'No changes to save' });
+  // A toast: copying the list's link says so, and writes nothing.
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page
+    .getByRole('group', { name: 'List actions' })
+    .getByRole('button', { name: 'Share' })
+    .click();
+  await page.getByRole('menuitem', { name: 'Copy link' }).click();
+  const toast = page.getByRole('status').filter({ hasText: 'Link copied to clipboard' });
   await expect(toast).toBeVisible();
   await expectHitArea(toast.getByRole('button', { name: 'Dismiss notification' }));
 });
