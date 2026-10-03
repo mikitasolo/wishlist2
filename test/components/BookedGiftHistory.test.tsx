@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, within, cleanup } from '@testing-library/react';
+import { render, screen, within, cleanup, waitFor } from '@testing-library/react';
 
 const { router } = vi.hoisted(() => ({ router: { push: vi.fn(), replace: vi.fn() } }));
 
@@ -14,7 +14,6 @@ vi.mock('@/components/AuthButton', () => ({ default: () => null }));
 vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast: vi.fn() }) }));
 
 import BookedPage from '@/app/booked/page';
-import { formatPriceFromObject } from '@/lib/utils/currency';
 
 const gift = {
   itemImage: null,
@@ -44,7 +43,8 @@ async function metaLine(itemName: string) {
   return within(row).getByText(itemName).nextElementSibling?.textContent;
 }
 
-const price = formatPriceFromObject(gift.itemPrice); // "GBP 49.99"
+// jsdom's navigator.language is en-US, so the price reads the way en-US writes it.
+const price = '£49.99';
 const date = new Date(gift.giftedAt).toLocaleDateString(undefined, {
   year: 'numeric',
   month: 'short',
@@ -64,7 +64,7 @@ describe('BookedPage — a gift-history entry', () => {
 
   // regression: an entry whose recipient is unknown (an account with no
   // username, or one that's gone) printed the word "gift" in their place:
-  // "GBP 49.99 · gift · Ben's 30th · Aug 24, 2026".
+  // "£49.99 · gift · Ben's 30th · Aug 24, 2026".
   it('regression: leaves the recipient out when it is unknown, with no placeholder', async () => {
     serve([{ ...gift, _id: 'g1', itemName: 'Record player', recipientUsername: null }]);
     render(<BookedPage />);
@@ -72,6 +72,25 @@ describe('BookedPage — a gift-history entry', () => {
     const meta = await metaLine('Record player');
     expect(meta).toBe(`${price} · Ben’s 30th · ${date}`);
     expect(meta).not.toMatch(/\bgift\b/i);
+  });
+
+  // regression: the history printed `${CODE} ${toFixed(2)}` ("GBP 49.99"), with
+  // no locale, unlike the cards (WIS-232).
+  it('regression: writes the price the way the viewer’s locale does', async () => {
+    const language = vi.spyOn(navigator, 'language', 'get').mockReturnValue('de-DE');
+    try {
+      serve([{ ...gift, _id: 'g1', itemName: 'Record player' }]);
+      render(<BookedPage />);
+
+      // de-DE puts a no-break space between the amount and the symbol.
+      await waitFor(async () =>
+        expect(await metaLine('Record player')).toBe(
+          `49,99\u00a0£ · to @ben · Ben’s 30th · ${date}`
+        )
+      );
+    } finally {
+      language.mockRestore();
+    }
   });
 
   it('leaves out whatever else it lacks too, with no stray separator', async () => {
