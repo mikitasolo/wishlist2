@@ -31,6 +31,10 @@ import { undoBookingUnlessMember, type LostBookingReason } from '@/lib/utils/lat
 import { isCountedOnShareCard } from '@/lib/og/data';
 import { purgeShareCards } from '@/lib/og/purge';
 
+/** An owner's status change that isn't publish, draft or received (an owner can't reserve). */
+const OWNER_STATUS_ERROR =
+  'Owners can only publish an item, move it to draft or mark it as received';
+
 /**
  * The answer to a booking undone because the caller stopped being a plain member
  * while it was in flight (see `undoBookingUnlessMember`): the one they'd have got
@@ -44,10 +48,7 @@ function lostBookingResponse(reason: LostBookingReason) {
     );
   }
   if (reason === 'owner') {
-    return NextResponse.json(
-      { success: false, error: 'Owners can only set an item to draft, available or completed' },
-      { status: 400 }
-    );
+    return NextResponse.json({ success: false, error: OWNER_STATUS_ERROR }, { status: 400 });
   }
   // The list was archived, which hides it from everyone but its owners.
   return NextResponse.json({ success: false, error: 'Item not found' }, { status: 404 });
@@ -300,7 +301,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
           return NextResponse.json(
             {
               success: false,
-              error: 'Owners can only set an item to draft, available or completed',
+              error: OWNER_STATUS_ERROR,
             },
             { status: 400 }
           );

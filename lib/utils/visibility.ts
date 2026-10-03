@@ -18,11 +18,11 @@ export function getVisibility(w: { visibility?: Visibility | null }): Visibility
  */
 export const visibilityMeta: Record<Visibility, { label: string; icon: IconName; helper: string }> =
   {
-    everyone: { label: 'Public', icon: 'globe', helper: 'Anyone can find and view this wishlist.' },
+    everyone: { label: 'Public', icon: 'globe', helper: 'Anyone can open it.' },
     friends: {
       label: 'Friends',
       icon: 'users',
-      helper: 'Only your friends (mutual follows) and members can view it.',
+      helper: 'Owners, their friends (mutual follows) and people you invite can open it.',
     },
     private: {
       label: 'Invite only',

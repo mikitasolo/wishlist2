@@ -1,15 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { readdirSync, readFileSync, statSync } from 'fs';
+import { readFileSync } from 'fs';
 import path from 'path';
-
-/** Every .ts/.tsx file under `dir`, recursively. */
-function sources(dir: string): string[] {
-  return readdirSync(dir).flatMap((name) => {
-    const full = path.join(dir, name);
-    if (statSync(full).isDirectory()) return sources(full);
-    return /\.tsx?$/.test(name) ? [full] : [];
-  });
-}
+import { sourceFiles } from '../sourceFiles';
 
 describe('type scale', () => {
   it('defines the type tokens in @theme', () => {
@@ -30,7 +22,7 @@ describe('type scale', () => {
   // up beside the scale, so one kind of text came in several sizes (DS-8).
   it('leaves no arbitrary text-[Npx] size in the app', () => {
     const offenders = ['app', 'components', 'lib'].flatMap((dir) =>
-      sources(path.join(process.cwd(), dir)).flatMap((file) =>
+      sourceFiles(path.join(process.cwd(), dir)).flatMap((file) =>
         /text-\[\d+(\.\d+)?(px|rem)\]/.test(readFileSync(file, 'utf8'))
           ? [path.relative(process.cwd(), file)]
           : []

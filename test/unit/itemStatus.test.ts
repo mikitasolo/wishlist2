@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { readdirSync, readFileSync, statSync } from 'fs';
+import { readFileSync } from 'fs';
 import path from 'path';
 import {
   displayStatus,
@@ -12,15 +12,7 @@ import {
 } from '@/lib/utils/itemStatus';
 import { TONE_CLASSES, type StatusTone } from '@/lib/utils/statusTones';
 import { statusFilterOptions } from '@/lib/utils/itemFilters';
-
-/** Every .ts/.tsx file under `dir`, recursively. */
-function sources(dir: string): string[] {
-  return readdirSync(dir).flatMap((name) => {
-    const full = path.join(dir, name);
-    if (statSync(full).isDirectory()) return sources(full);
-    return /\.tsx?$/.test(name) ? [full] : [];
-  });
-}
+import { sourceFiles } from '../sourceFiles';
 
 const STATUSES: ItemStatus[] = ['draft', 'proposed', 'available', 'booked', 'completed'];
 const ROLES: ViewerRole[] = ['owner', 'member', 'visitor'];
@@ -150,7 +142,7 @@ describe('raw status palette classes', () => {
     const offenders: string[] = [];
     let scanned = 0;
     for (const root of ['app', 'components', 'lib']) {
-      for (const file of sources(path.join(process.cwd(), root))) {
+      for (const file of sourceFiles(path.join(process.cwd(), root))) {
         const rel = path.relative(process.cwd(), file);
         if (EXEMPT_FILES.has(rel)) continue;
         scanned++;

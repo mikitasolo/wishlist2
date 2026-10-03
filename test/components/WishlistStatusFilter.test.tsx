@@ -222,9 +222,9 @@ describe('the status filter is not carried from one list to another', () => {
     await open('christmas');
 
     expect(shown()).toEqual(OWNER_DEFAULTS);
-    expect(screen.queryByRole('button', { name: /^Booked/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^(Booked|Reserved)/i })).toBeNull();
     await user.click(statusDropdown());
-    expect(screen.queryByRole('checkbox', { name: /Booked/ })).toBeNull();
+    expect(screen.queryByRole('checkbox', { name: /Booked|Reserv/i })).toBeNull();
   });
 
   // regression: a value an earlier version saved must not come back.

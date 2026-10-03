@@ -1,17 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { readdirSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { sourceFiles } from '../sourceFiles';
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
-
-function sourceFiles(dir: string): string[] {
-  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-    const path = join(dir, entry.name);
-    if (entry.isDirectory()) return sourceFiles(path);
-    return /\.tsx?$/.test(entry.name) ? [path] : [];
-  });
-}
 
 /**
  * The argument text of every `console.*(…)` call in `source`, up to its matching

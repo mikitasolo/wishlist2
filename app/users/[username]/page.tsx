@@ -199,7 +199,7 @@ export default function UserProfile() {
             <div className="flex items-center gap-4">
               <div className="skeleton h-16 w-16 rounded-full" />
               <div className="space-y-2">
-                <div className="skeleton h-7 w-48 rounded-md" />
+                <div className="skeleton h-9 w-48 rounded-md sm:h-10" />
                 <div className="skeleton h-4 w-40 rounded-md" />
               </div>
             </div>

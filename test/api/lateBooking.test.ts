@@ -375,7 +375,7 @@ describe('PATCH /api/items/[id] — a booking whose member becomes an owner mean
     // Answered as an owner's attempt to book is.
     expect(booking.status).toBe(400);
     expect((await booking.json()).error).toBe(
-      'Owners can only set an item to draft, available or completed'
+      'Owners can only publish an item, move it to draft or mark it as received'
     );
     await expectItemFree();
     expect(await Reservation.countDocuments({ gifter: alice })).toBe(0);
