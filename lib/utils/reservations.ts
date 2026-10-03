@@ -30,14 +30,14 @@ export interface ReservationStatusInfo {
  * else took it, or the gifter left or was removed from the wishlist — or when
  * it still is, but on a list the gifter can no longer open. The list's own
  * unbook (Release) refuses anyone the list is hidden from, so that booking can
- * only be released by an owner. So does a reservation on an archived list,
- * which says nothing of its item. In every such case the durable Reservation
+ * only be released by an owner. That includes one on an archived list, which
+ * isn't open to them and says nothing of its item. In every such case the durable Reservation
  * lingers (by design), so we prompt the gifter to resolve it: log the gift or
  * dismiss it, keeping their history accurate without ever mutating the owner's
  * item.
  */
 export function needsConfirmation(r: ReservationStatusInfo): boolean {
-  return r.listArchived || !r.stillReserved || !r.listOpen;
+  return !r.stillReserved || !r.listOpen;
 }
 
 /**

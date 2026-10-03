@@ -431,19 +431,36 @@ describe('GET /api/users/me/reservations — a reservation on an archived list i
     expect(liveItem((await read())[0])).toEqual({ itemStatus: 'completed', stillReserved: false });
   });
 
-  it('is marked archived for a gifter the list was hidden from already, and hidden again once unarchived', async () => {
-    const id = await list({ visibility: 'private' });
-    await book(id);
-    await removeGifter(id);
-    expect(await shown()).toEqual(HIDDEN);
+  // A gifter the list was hidden from already (kicked from a private list, say)
+  // isn't told it was archived, or unarchived: that would let them follow what
+  // its owners do with a list they can't open, and tell an archived list from a
+  // deleted one. Their read is the same either way. (Whether it should keep the
+  // live item status at all is WIS-295.)
+  it.each([
+    ['removed from a private list', { visibility: 'private' }, removeGifter],
+    [
+      'whose friendship with its owner ended',
+      { visibility: 'friends', member: false },
+      () => Follow.deleteOne({ follower: owner, following: gifter }),
+    ],
+  ])(
+    'never marks it archived for a gifter %s, which hid it from them already',
+    async (_label, fields, loseAccess) => {
+      // Friends with the owner, which lets nobody into a private list.
+      await befriend(gifter, owner);
+      const id = await list(fields);
+      await book(id);
+      await loseAccess(id);
+      const before = await read();
+      expect(of(before[0])).toEqual(HIDDEN);
 
-    await ownerEdits(id, { archived: true });
-    expect(await shown()).toEqual(ARCHIVED);
-    expect(liveItem((await read())[0])).toEqual({ itemStatus: null, stillReserved: null });
+      await ownerEdits(id, { archived: true });
+      expect(await read()).toEqual(before);
 
-    await ownerEdits(id, { archived: false });
-    expect(await shown()).toEqual(HIDDEN);
-  });
+      await ownerEdits(id, { archived: false });
+      expect(await read()).toEqual(before);
+    }
+  );
 
   // Owners never hold reservations on their own lists (becoming one cancels
   // them: `releaseHoldingsForRole`), and an archived list hides nothing from

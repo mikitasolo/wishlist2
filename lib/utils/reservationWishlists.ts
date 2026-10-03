@@ -3,7 +3,7 @@ import Wishlist from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
 import { getFriendIds } from '@/lib/utils/friends';
 import type { Occasion } from '@/lib/utils/occasion';
-import { isHiddenByArchive, viewableWishlistsFilter } from '@/lib/utils/wishlistAccess';
+import { isHiddenByArchive, viewableUnlessArchivedFilter } from '@/lib/utils/wishlistAccess';
 
 type Id = string | mongoose.Types.ObjectId;
 
@@ -47,20 +47,22 @@ interface StoredWishlist {
  *
  * A Reservation outlives the gifter's access to its list (leave, kick, the
  * list archived or made private: see `models/Reservation.ts`), so a list is
- * only returned in full while the gifter may still open it. That's decided by
+ * only returned in full while the gifter may still open it, by the rules of
  * `viewableWishlistsFilter`, the query form of `getWishlistViewAccess`, applied
- * inside that one query. A list they may no longer open for any other reason
- * has no entry, as a deleted one has none, so nothing it says now reaches them:
- * not its occasion, and not its slug, which an owner can change, and which is
- * made from its name. Without one the card names the list as the
- * reservation's snapshot has it, unlinked, as no longer available to them.
+ * inside that one query. A list they may not open has no entry, as a deleted
+ * one has none, so nothing it says now reaches them: not its occasion, and not
+ * its slug, which an owner can change, and which is made from its name.
+ * Without one the card names the list as the reservation's snapshot has it,
+ * unlinked, as no longer available to them.
  *
- * An archived list (owner-only: `isHiddenByArchive`) is the one exception
- * (WIS-124): its entry says only that it's archived, and the reservation is
- * shown frozen, as its snapshot alone, marked as on an archived list, with
- * nothing live of the list or of its item. The same query finds it, and once
- * the list is unarchived it's back to whatever the rules above give it. An
- * owner is never hidden from their own list, archived or not.
+ * Except a list that only its archiving hides from them (owner-only:
+ * `isHiddenByArchive`), which they could open otherwise (WIS-124): its entry
+ * says only that it's archived, and the reservation is shown frozen, as its
+ * snapshot alone, marked as on an archived list, with nothing live of the list
+ * or of its item. Once it's unarchived it's back in full. One the gifter
+ * couldn't open anyway (they were kicked from it, say) has no entry, archived
+ * or not, so they can't tell its archiving, or its unarchiving, from anything
+ * else. An owner is never hidden from their own list, archived or not.
  */
 export async function readReservationWishlists(
   gifterId: string,
@@ -76,17 +78,13 @@ export async function readReservationWishlists(
     WishlistMember.distinct('wishlist', { user: gifter, wishlist: { $in: ids } }),
     getFriendIds(gifter),
   ]);
+  // The lists they may open, or could but for their archiving: that is,
+  // `viewableWishlistsFilter` without its archived clause, which is applied
+  // below instead (`isHiddenByArchive`).
   const lists = await Wishlist.find({
     $and: [
       { _id: { $in: ids } },
-      {
-        $or: [
-          viewableWishlistsFilter({ id: gifterId, memberOf, friendIds }),
-          // Archived, whatever the gifter's access to it would be otherwise:
-          // only marked so (below), unless they own it.
-          { archived: true },
-        ],
-      },
+      viewableUnlessArchivedFilter({ id: gifterId, memberOf, friendIds }),
     ],
   })
     .select('slug occasion archived owners')
@@ -95,8 +93,6 @@ export async function readReservationWishlists(
   return new Map(
     lists.map((w): [string, ReservationWishlist] => [
       w._id.toString(),
-      // A list that isn't archived only matched as one they may open, and so
-      // did an archived one they own.
       isHiddenByArchive(w, gifterId)
         ? { archived: true }
         : { archived: false, slug: w.slug ?? null, occasion: toOccasion(w.occasion) },

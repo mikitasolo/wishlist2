@@ -13,9 +13,9 @@ import { readReservationWishlists } from '@/lib/utils/reservationWishlists';
 // (for the card's link, which falls back to the id) and occasion (which the
 // page groups the gifts still to give by).
 //
-// A reservation on a list archived out of the gifter's reach (`listArchived`)
-// is frozen instead (WIS-124): an archived list is its owners' alone, so it
-// comes back as its snapshot only, with no live item status, no
+// A reservation on a list that only its archiving hides from the gifter
+// (`listArchived`) is frozen instead (WIS-124): an archived list is its owners'
+// alone, so it comes back as its snapshot only, with no live item status, no
 // `stillReserved` (both `null`), and no slug or occasion, until the list is
 // unarchived.
 export async function GET() {
@@ -56,14 +56,15 @@ export async function GET() {
         ? null
         : !!it && it.status === 'booked' && it.bookedBy?.toString() === session.user.id;
       // Whether the gifter may still open the list: `readReservationWishlists`
-      // has it (`viewableWishlistsFilter`). Only their own access, never why
-      // they've lost it, except that an archived list says so (`listArchived`).
-      // A card is active (Release) only while it's still reserved on a list
-      // they can open, since the list's own unbook refuses anyone the list is
-      // hidden from. A booking on a list they can't open (archived, say: leaving
-      // or being removed frees it) can be released by an owner alone, so the
-      // card needs their confirmation instead, and offers Dismiss, which leaves
-      // the item as it is anyway, out of their reach.
+      // has it (`viewableWishlistsFilter`'s rules). Only their own access, never
+      // why they've lost it, except a list only its archiving hides from them,
+      // which says so (`listArchived`). A card is active (Release) only while
+      // it's still reserved on a list they can open, since the list's own unbook
+      // refuses anyone the list is hidden from. A booking on a list they can't
+      // open (one made private since they left, say, or archived: leaving or
+      // being removed frees it) can be released by an owner alone, so the card
+      // needs their confirmation instead, and offers Dismiss, which leaves the
+      // item as it is anyway, out of their reach.
       const listOpen = !!wishlist;
       return {
         _id: r._id.toString(),
