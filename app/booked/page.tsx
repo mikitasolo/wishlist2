@@ -53,7 +53,8 @@ interface Reservation {
   /**
    * The gifter can still open the list (never why not). Still reserved on a
    * list they can open, the card is under "To give" and offers Release;
-   * otherwise it needs their confirmation, and offers Dismiss.
+   * otherwise it needs their confirmation, and offers Dismiss. A card whose
+   * list isn't open names it without a link.
    */
   listOpen: boolean;
 }
@@ -659,13 +660,21 @@ function ReservationCard({
               {formatPriceFromObject(r.itemPrice)}
             </p>
           )}
-          <Link
-            href={`/wishlists/${r.wishlistSlug ?? r.wishlistId}`}
-            className="mt-0.5 inline-flex items-center gap-1 text-xs font-medium text-primary-600 hover:underline dark:text-primary-300"
-          >
-            <Icon name="gift" size={12} />
-            {r.wishlistName}
-          </Link>
+          {r.listOpen ? (
+            <Link
+              href={`/wishlists/${r.wishlistSlug ?? r.wishlistId}`}
+              className="mt-0.5 inline-flex items-center gap-1 text-xs font-medium text-primary-600 hover:underline dark:text-primary-300"
+            >
+              <Icon name="gift" size={12} />
+              {r.wishlistName}
+            </Link>
+          ) : (
+            // A link would only lead to "not available": say so here instead.
+            <p className="mt-0.5 inline-flex items-center gap-1 text-xs font-medium text-muted-foreground">
+              <Icon name="gift" size={12} />
+              {r.wishlistName} · no longer available to you
+            </p>
+          )}
           {note && (
             <p className="mt-1 inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-400">
               <Icon name="info" size={11} />

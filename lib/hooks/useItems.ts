@@ -12,6 +12,7 @@ import { useCallback } from 'react';
 import { ApiItem, ApiResponse } from '@/types/api';
 import { deduplicateRequest, createRequestKey } from '@/lib/utils/requestDeduplication';
 import { withRequestTimeout } from '@/lib/utils/requestTimeout';
+import { isRefusal, ReadRefusedError } from '@/lib/utils/resourceRead';
 
 /**
  * Hook for updating an item
@@ -166,7 +167,10 @@ export interface ItemsRead {
 /**
  * Hook for fetching items. Rejects when the read fails (network error, a non-2xx
  * or unparseable response, `success: false`), so the caller keeps the list it
- * already has: a resolved `[]` only ever means the list really is empty.
+ * already has: a resolved `[]` only ever means the list really is empty. The
+ * route's own 401/403/404 (the list is missing, or hidden from the viewer)
+ * rejects with a `ReadRefusedError`, so a poll knows to stop: asking again
+ * would get the same answer.
  *
  * Concurrent reads of a list share one request, so a caller that asks while
  * one is in flight gets that request's items, which may predate a change made
@@ -183,6 +187,11 @@ export function useFetchItems() {
       const response = await fetch(`/api/wishlists/${wishlistId}/items`, { cache: 'no-store' });
       const result: ApiResponse<ApiItem[]> = await response.json();
 
+      // The list is missing, or hidden from the viewer now: a later read would
+      // be refused the same way.
+      if (isRefusal(response.status, result)) {
+        throw new ReadRefusedError(result.error || 'Failed to fetch items');
+      }
       if (!response.ok || !result.success || !Array.isArray(result.data)) {
         throw new Error(result.error || 'Failed to fetch items');
       }

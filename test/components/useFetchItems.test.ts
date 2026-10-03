@@ -4,6 +4,7 @@ import { renderHook, cleanup } from '@testing-library/react';
 import { useFetchItems } from '@/lib/hooks/useItems';
 import { clearPendingRequests } from '@/lib/utils/requestDeduplication';
 import { createMutationTracker } from '@/lib/utils/itemListMerge';
+import { ReadRefusedError } from '@/lib/utils/resourceRead';
 import type { ApiItem } from '@/types/api';
 
 const ITEMS = [
@@ -92,6 +93,29 @@ describe('useFetchItems', () => {
       fetchMock.mockResolvedValue(reply(502, '<html>Bad Gateway</html>'));
 
       await expect(fetchItems()('w1')).rejects.toThrow();
+    });
+
+    // The page stops polling on these, and shows the list as not available.
+    it.each([
+      [401, 'Unauthorized - This wishlist is private'],
+      [403, 'Unauthorized - No access to this wishlist'],
+      [404, 'Wishlist not found'],
+    ])("with a ReadRefusedError on the route's own %i", async (status, error) => {
+      fetchMock.mockResolvedValue(reply(status, { success: false, error }));
+
+      await expect(fetchItems()('w1')).rejects.toBeInstanceOf(ReadRefusedError);
+    });
+
+    it.each([
+      ['a 500', () => reply(500, { success: false, error: 'Internal server error' })],
+      ["a 404 that isn't the route's own answer", () => reply(404, '<html>Not Found</html>')],
+      ['a network error', () => Promise.reject(new TypeError('Failed to fetch'))],
+    ])('with a plain error on %s, which a later poll may get past', async (_label, answer) => {
+      fetchMock.mockImplementation(answer);
+
+      const read = fetchItems()('w1');
+      await expect(read).rejects.toThrow();
+      await expect(read).rejects.not.toBeInstanceOf(ReadRefusedError);
     });
 
     it('on a 200 that reports a failure', async () => {

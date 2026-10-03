@@ -46,8 +46,10 @@ interface StoredWishlist {
  * inside that one query. A list they may no longer open has no entry, as a
  * deleted one has none, so nothing it says now reaches them: not its occasion,
  * and not its slug, which an owner can change, and which is made from its name.
- * A reservation's card links the list by id instead, which answers them as it
- * would any other outsider.
+ * Whether a list has an entry is all a reservation's `listOpen` says: whether
+ * the gifter may open it, which is theirs to know. Without one the card names
+ * the list as the reservation's snapshot has it, unlinked, as no longer
+ * available to them.
  */
 export async function readReservationWishlists(
   gifterId: string,

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { useParams, usePathname, useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import AuthButton from '@/components/AuthButton';
@@ -13,9 +13,14 @@ import ShareButton from '@/components/ShareButton';
 import FollowListModal, { type FollowTab } from '@/components/FollowListModal';
 import CreateWishlistModal from '@/components/CreateWishlistModal';
 import Button from '@/components/Button';
+import GlobalSearch from '@/components/GlobalSearch';
+import LoadError from '@/components/LoadError';
+import StatePanel from '@/components/StatePanel';
+import { buttonClassName } from '@/components/buttonStyles';
 import { SkeletonGrid } from '@/components/Skeleton';
 import { useToast } from '@/components/ToastProvider';
 import { pluralNoun } from '@/lib/utils/plural';
+import { readResource } from '@/lib/utils/resourceRead';
 import { IWishlist } from '@/models/Wishlist';
 import { FOLLOWERS_PARAM } from '@/lib/utils/profileLinks';
 
@@ -41,13 +46,17 @@ interface Profile {
 export default function UserProfile() {
   const { data: session, status } = useSession();
   const params = useParams();
-  const router = useRouter();
   const { showToast } = useToast();
   const username = typeof params?.username === 'string' ? params.username : null;
 
   const [profile, setProfile] = useState<Profile | null>(null);
   const [wishlists, setWishlists] = useState<WishlistWithMembership[]>([]);
   const [loading, setLoading] = useState(true);
+  // The profile couldn't be shown: no one goes by this username (`missing`), or
+  // reading it failed in a way Try again may fix (`failed`, `attempt`). Either
+  // is said in place, at this URL, with no toast.
+  const [profileLoad, setProfileLoad] = useState<'shown' | 'missing' | 'failed'>('shown');
+  const [attempt, setAttempt] = useState(0);
   const [restricted, setRestricted] = useState(false);
   const [followBusy, setFollowBusy] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
@@ -79,8 +88,9 @@ export default function UserProfile() {
   // another account taking over the session.
   useEffect(() => {
     if (status === 'loading') return;
-    // A load a newer one has replaced (the viewer changed meanwhile) is dropped,
-    // so it can't put back what the previous viewer could see.
+    // A load a newer one has replaced (the viewer changed meanwhile, Try again)
+    // is dropped, so it can't put back what the previous viewer could see, or
+    // let a late failure replace a profile a newer load has shown.
     let current = true;
 
     async function load() {
@@ -89,25 +99,22 @@ export default function UserProfile() {
       try {
         setLoading(true);
         setRestricted(false);
+        setProfileLoad('shown');
 
-        const userResponse = await fetch(`/api/users/by-username/${encodeURIComponent(username)}`, {
-          cache: 'no-store',
-        });
+        const read = await readResource<Profile>(
+          `/api/users/by-username/${encodeURIComponent(username)}`
+        );
         if (!current) return;
-        if (!userResponse.ok) {
-          if (userResponse.status === 404) {
-            showToast('User not found', 'error');
-            router.push('/');
-            return;
-          }
-          throw new Error('Failed to fetch user');
+        if (read.outcome !== 'loaded') {
+          if (read.outcome === 'failed') console.error('Error fetching profile:', read.error);
+          setProfile(null);
+          setProfileLoad(read.outcome === 'refused' ? 'missing' : 'failed');
+          return;
         }
-        const userResult = await userResponse.json();
-        if (!current) return;
-        if (!userResult.success) throw new Error('Failed to fetch user');
-        setProfile(userResult.data);
+        const user = read.data;
+        setProfile(user);
 
-        const wishlistsResponse = await fetch(`/api/users/${userResult.data._id}/wishlists`, {
+        const wishlistsResponse = await fetch(`/api/users/${user._id}/wishlists`, {
           cache: 'no-store',
         });
         if (!current) return;
@@ -133,7 +140,7 @@ export default function UserProfile() {
     return () => {
       current = false;
     };
-  }, [username, status, viewerId, router, showToast]);
+  }, [username, status, viewerId, showToast, attempt]);
 
   async function toggleFollow() {
     if (!profile || followBusy) return;
@@ -197,6 +204,37 @@ export default function UserProfile() {
             </div>
           </div>
           <SkeletonGrid count={8} variant="wishlist" />
+        </main>
+      </div>
+    );
+  }
+
+  if (profileLoad !== 'shown') {
+    return (
+      <div className="min-h-screen">
+        <AppHeader actions={<AuthButton />} />
+        <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          {profileLoad === 'missing' ? (
+            <StatePanel
+              icon="user"
+              level={1}
+              title={`No one goes by @${username}`}
+              body="Check the spelling, or search for them."
+              actions={
+                <Link href="/" className={buttonClassName({ variant: 'secondary' })}>
+                  {session?.user ? 'Back to your wishlists' : 'Go home'}
+                </Link>
+              }
+            >
+              <GlobalSearch variant="inline" />
+            </StatePanel>
+          ) : (
+            <LoadError
+              level={1}
+              title="Couldn’t load this profile"
+              onRetry={() => setAttempt((n) => n + 1)}
+            />
+          )}
         </main>
       </div>
     );
