@@ -28,6 +28,8 @@ vi.mock('@/components/ConfirmDialog', () => ({
     confirmText,
     onConfirm,
     onCancel,
+    type,
+    icon,
   }: {
     isOpen: boolean;
     title: string;
@@ -35,9 +37,11 @@ vi.mock('@/components/ConfirmDialog', () => ({
     confirmText: string;
     onConfirm: () => void;
     onCancel: () => void;
+    type?: string;
+    icon?: string;
   }) =>
     isOpen ? (
-      <div role="dialog">
+      <div role="dialog" data-type={type} data-icon={icon}>
         <h2>{title}</h2>
         <p>{message}</p>
         <button onClick={onConfirm}>{confirmText}</button>
@@ -143,11 +147,35 @@ describe('WishlistItem — owner status actions', () => {
     pick('Move to draft');
     // …and shows a warning dialog rather than applying immediately.
     expect(onUpdate).not.toHaveBeenCalled();
-    expect(screen.getByRole('dialog')).toHaveTextContent(/cancel their reservation/i);
+    expect(screen.getByRole('dialog')).toHaveTextContent('Move to draft?');
     // Confirming applies status: draft.
     fireEvent.click(screen.getByRole('button', { name: /move to draft/i }));
     expect(onUpdate).toHaveBeenCalledWith('item-1', { status: 'draft' });
     await act(async () => {}); // flush async state after onUpdate resolves
+  });
+
+  // regression: the warning said moving to draft "will cancel their
+  // reservation". An owner's status change frees the item and keeps the
+  // gifter's reservation, which stays on their Reserved page.
+  it('regression: move-to-draft says a reservation is released here but kept by the gifter', () => {
+    render(
+      <WishlistItem
+        item={item({ status: 'available' })}
+        onUpdate={vi.fn()}
+        isAuthenticated
+        isOwner
+      />
+    );
+    pick('Move to draft');
+
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveTextContent(
+      "Hide it from everyone else? If someone reserved it, it's released here, but they keep it on their Reserved page."
+    );
+    expect(dialog).not.toHaveTextContent(/cancel their reservation/i);
+    // A warning, with the warning's own icon: nothing is deleted.
+    expect(dialog).toHaveAttribute('data-type', 'warning');
+    expect(dialog).not.toHaveAttribute('data-icon');
   });
 
   it('marking a live item completed asks first', async () => {

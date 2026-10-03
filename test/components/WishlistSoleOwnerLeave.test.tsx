@@ -160,7 +160,7 @@ describe('Leave for the sole owner of a list', () => {
         .map((b) => b.textContent)
     ).toEqual(['Cancel', 'Invite a co-owner']);
     expect(dialog).not.toHaveTextContent(/book|reserv/i);
-    expect(screen.queryByRole('alertdialog', { name: 'Leave Wishlist' })).toBeNull();
+    expect(screen.queryByRole('alertdialog', { name: 'Leave “Birthday”?' })).toBeNull();
 
     // Cancel closes it, back on the Leave that opened it.
     await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
@@ -239,8 +239,8 @@ describe('Leave once the co-owner the sole owner invited has accepted', () => {
 
     await user.click(leave);
 
-    expect(await screen.findByRole('alertdialog', { name: 'Leave Wishlist' })).toHaveTextContent(
-      'Step down as an owner of this wishlist?'
+    expect(await screen.findByRole('alertdialog', { name: 'Leave “Birthday”?' })).toHaveTextContent(
+      "You'll stop being an owner and lose access."
     );
     expect(screen.queryByRole('alertdialog', { name: "You're the only owner" })).toBeNull();
     // Bob's row can be stepped down too, now that the page counts two owners.
@@ -258,8 +258,8 @@ describe('Leave for everyone who can leave', () => {
 
     await user.click(leave);
 
-    const dialog = await screen.findByRole('alertdialog', { name: 'Leave Wishlist' });
-    expect(dialog).toHaveTextContent('Step down as an owner of this wishlist?');
+    const dialog = await screen.findByRole('alertdialog', { name: 'Leave “Birthday”?' });
+    expect(dialog).toHaveTextContent("You'll stop being an owner and lose access.");
     expect(screen.queryByRole('alertdialog', { name: "You're the only owner" })).toBeNull();
     await user.click(within(dialog).getByRole('button', { name: 'Leave' }));
     await waitFor(() => expect(leaveRequests()).toHaveLength(1));
@@ -279,8 +279,8 @@ describe('Leave for everyone who can leave', () => {
 
     await user.click(leave);
 
-    const dialog = await screen.findByRole('alertdialog', { name: 'Leave Wishlist' });
-    expect(dialog).toHaveTextContent('Are you sure you want to leave this wishlist?');
+    const dialog = await screen.findByRole('alertdialog', { name: 'Leave “Birthday”?' });
+    expect(dialog).toHaveTextContent("You'll lose access.");
     await user.click(within(dialog).getByRole('button', { name: 'Leave' }));
     await waitFor(() => expect(leaveRequests()).toHaveLength(1));
   });

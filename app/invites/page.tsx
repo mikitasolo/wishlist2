@@ -11,6 +11,7 @@ import Icon from '@/components/Icon';
 import { useToast } from '@/components/ToastProvider';
 import { useBusyIds } from '@/lib/hooks/useBusyIds';
 import { createMutationTracker } from '@/lib/utils/itemListMerge';
+import { acceptedInviteToast } from '@/lib/utils/confirmationCopy';
 
 interface Invite {
   _id: string;
@@ -149,7 +150,12 @@ export default function InvitesPage() {
         if (result.success) {
           dropInvite(invite._id);
           if (action === 'accept') {
-            showToast(`Joined “${invite.wishlistName}”`, 'success');
+            // An owner invite releases what they'd reserved on the list. They're
+            // the gifter, so the count is theirs to see.
+            showToast(
+              acceptedInviteToast(invite.role, invite.wishlistName, result.data?.releasedBookings),
+              'success'
+            );
             router.push(`/wishlists/${result.data.wishlistSlug ?? result.data.wishlistId}`);
           } else {
             showToast('Invitation declined', 'info');

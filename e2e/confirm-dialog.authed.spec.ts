@@ -28,14 +28,15 @@ async function openManage(page: Page) {
 const toast = (page: Page, text: string) => page.getByRole('status').filter({ hasText: text });
 const SECOND_ANSWER = 'Already done';
 
-// regression: ConfirmDialog had no pending state, and Remove Member / Owner,
+// regression: ConfirmDialog had no pending state, and Remove member / owner,
 // Leave and Delete wishlist only close it once their request settles, so a
 // double click sent the request twice. The second one failed, and its error
 // toast followed the success. ("Make owner" closed before sending, so it showed
 // nothing while the invite went out; it now waits in its dialog like the rest.)
 for (const flow of [
   {
-    name: 'Remove Member',
+    name: 'Remove member',
+    title: 'Remove @e2emember?',
     path: '/wishlists/e2e-birthday',
     open: async (page: Page) => {
       await addMember(page);
@@ -50,6 +51,7 @@ for (const flow of [
   },
   {
     name: 'Make owner',
+    title: 'Make owner?',
     path: '/wishlists/e2e-birthday',
     open: async (page: Page) => {
       await addMember(page);
@@ -64,6 +66,7 @@ for (const flow of [
   },
   {
     name: 'Leave',
+    title: 'Leave “E2E Friend List”?',
     path: '/wishlists/e2e-friend',
     open: async (page: Page) => {
       await page.getByRole('button', { name: 'Leave', exact: true }).click();
@@ -72,14 +75,15 @@ for (const flow of [
     pending: 'Leaving...',
     method: 'DELETE',
     url: '**/api/wishlists/*/members/me',
-    success: 'Left wishlist successfully',
+    success: 'You left “E2E Friend List”',
   },
   {
-    name: 'Delete Wishlist',
+    name: 'Delete wishlist',
+    title: 'Delete “E2E Birthday List”?',
     path: '/wishlists/e2e-birthday',
     open: async (page: Page) => {
       await openManage(page);
-      await page.getByRole('button', { name: 'Delete Wishlist' }).click();
+      await page.getByRole('button', { name: 'Delete wishlist' }).click();
     },
     confirm: 'Delete',
     pending: 'Deleting...',
@@ -110,7 +114,7 @@ for (const flow of [
 
     await page.goto(flow.path);
     await flow.open(page);
-    const dialog = page.getByRole('alertdialog');
+    const dialog = page.getByRole('alertdialog', { name: flow.title });
     await dialog.getByRole('button', { name: flow.confirm, exact: true }).dblclick();
 
     // While the request runs, the dialog says so and takes no more clicks. Soft,

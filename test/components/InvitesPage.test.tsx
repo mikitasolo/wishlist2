@@ -275,6 +275,70 @@ describe('InvitesPage — answering an invite', () => {
     await waitFor(() => expect(push).toHaveBeenCalledWith('/wishlists/birthday'));
     expect(screen.queryByText('Birthday')).toBeNull();
     expect(invitesChanged).toHaveBeenCalledTimes(1);
+    expect(showToast).toHaveBeenCalledWith('Joined “Birthday”', 'success');
+  });
+});
+
+describe('InvitesPage — accepting a co-owner invite', () => {
+  const ownerInvite: Invite = {
+    _id: 'inv-garden',
+    role: 'owner',
+    wishlistId: 'w4',
+    wishlistName: "Chloe's garden",
+    wishlistSlug: 'garden',
+    invitedByUsername: 'chloe',
+    invitedByImage: null,
+  };
+  const accepted = (releasedBookings: number): Reply => ({
+    status: 200,
+    body: {
+      success: true,
+      data: {
+        status: 'accepted',
+        role: 'owner',
+        wishlistSlug: 'garden',
+        wishlistId: 'w4',
+        releasedBookings,
+        cancelledReservations: releasedBookings,
+      },
+    },
+  });
+
+  async function accept(reply: Reply) {
+    stubFetch(
+      async () => reply,
+      async () => listed([ownerInvite])
+    );
+    render(<InvitesPage />);
+    await screen.findByText("Chloe's garden");
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Accept' }));
+    });
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/wishlists/garden'));
+  }
+
+  // regression: accepting became "Joined “…”", and the count of gifts the
+  // accept released (`releasedBookings`) was dropped. It's the invitee's own,
+  // so it goes back to them.
+  it('regression: says they are now a co-owner, and how many gifts they had reserved were released', async () => {
+    await accept(accepted(2));
+    expect(showToast).toHaveBeenCalledWith(
+      "You're now a co-owner of “Chloe's garden” · 2 gifts you'd reserved were released",
+      'success'
+    );
+  });
+
+  it('says one gift in the singular', async () => {
+    await accept(accepted(1));
+    expect(showToast).toHaveBeenCalledWith(
+      "You're now a co-owner of “Chloe's garden” · 1 gift you'd reserved was released",
+      'success'
+    );
+  });
+
+  it('says only that they are a co-owner when nothing was released', async () => {
+    await accept(accepted(0));
+    expect(showToast).toHaveBeenCalledWith("You're now a co-owner of “Chloe's garden”", 'success');
   });
 });
 

@@ -43,6 +43,14 @@ import {
 import { RequestTimeoutError, withRequestTimeout } from '@/lib/utils/requestTimeout';
 import { canCopyItem } from '@/lib/utils/itemCopy';
 import {
+  DELETE_LIST_WARNING,
+  deleteListCopy,
+  leftListToast,
+  memberLeaveCopy,
+  ownerLeaveCopy,
+  removeFromListCopy,
+} from '@/lib/utils/confirmationCopy';
+import {
   createOwnerRemovalLog,
   shownOwnersOf,
   withoutOwner,
@@ -919,7 +927,8 @@ export default function WishlistDetail() {
       const result = await response.json();
 
       if (result.success) {
-        showToast('Left wishlist successfully', 'success');
+        // The count goes back to the gifter who left, and only to them.
+        showToast(leftListToast(wishlist?.name, result.data?.unbookedItemsCount), 'success');
         router.push('/');
       } else {
         showToast(result.error || 'Failed to leave wishlist', 'error');
@@ -930,7 +939,7 @@ export default function WishlistDetail() {
     } finally {
       setDeleteConfirm(null);
     }
-  }, [wishlistId, deleteConfirm, router, showToast]);
+  }, [wishlistId, deleteConfirm, wishlist?.name, router, showToast]);
 
   const handleDeleteWishlist = useCallback(() => {
     setDeleteConfirm({
@@ -1953,15 +1962,14 @@ export default function WishlistDetail() {
                 </div>
               )}
 
-              {/* Delete Wishlist Section - Only for original owner */}
+              {/* Danger zone: deleting the list, for any owner */}
               {isOwner && (
                 <div className="mt-6 sm:mt-8 pt-6 sm:pt-8 border-t border-border">
                   <h3 className="text-base sm:text-lg font-semibold text-foreground mb-2">
-                    Danger Zone
+                    Danger zone
                   </h3>
                   <p className="text-xs sm:text-sm text-muted-foreground mb-4">
-                    Once you delete a wishlist, there is no going back. All items and memberships
-                    will be permanently deleted.
+                    {DELETE_LIST_WARNING}
                   </p>
                   <Button
                     variant="danger"
@@ -1970,7 +1978,7 @@ export default function WishlistDetail() {
                     fullWidth
                     className="sm:w-auto"
                   >
-                    {isDeletingWishlist ? 'Deleting...' : 'Delete Wishlist'}
+                    {isDeletingWishlist ? 'Deleting...' : 'Delete wishlist'}
                   </Button>
                 </div>
               )}
@@ -2033,42 +2041,39 @@ export default function WishlistDetail() {
         />
       )}
 
-      {/* Confirmation Dialogs */}
+      {/* Confirmation Dialogs. Each says what its action keeps as well as what it
+          takes (lib/utils/confirmationCopy.ts). Only the leaving member's own
+          dialog carries a count of reserved gifts: an owner's never does. */}
       {deleteConfirm &&
         (deleteConfirm.type === 'member' || deleteConfirm.type === 'owner') &&
         deleteConfirm.memberId && (
           <ConfirmDialog
             isOpen={!!deleteConfirm}
-            title={deleteConfirm.type === 'owner' ? 'Remove Owner' : 'Remove Member'}
-            message={
-              deleteConfirm.type === 'owner'
-                ? `Remove @${deleteConfirm.memberUsername || 'user'} as an owner? They lose all access to this wishlist, and it disappears from their profile and dashboard highlight.`
-                : `Are you sure you want to remove ${deleteConfirm.memberUsername || 'user'} from this wishlist?`
-            }
+            {...removeFromListCopy(deleteConfirm.memberUsername, deleteConfirm.type)}
             onConfirm={confirmKickMember}
             onCancel={() => setDeleteConfirm(null)}
             confirmText="Remove"
             pendingText="Removing..."
             cancelText="Cancel"
             type="danger"
+            icon="user-minus"
           />
         )}
 
       {deleteConfirm && deleteConfirm.type === 'leave' && (
         <ConfirmDialog
           isOpen={!!deleteConfirm}
-          title="Leave Wishlist"
-          message={
-            isOwner
-              ? 'Step down as an owner of this wishlist? You lose access to it, and it disappears from your profile and dashboard highlight. The other owners keep it.'
-              : 'Are you sure you want to leave this wishlist? All your bookings will be removed.'
-          }
+          {...(isOwner
+            ? ownerLeaveCopy(wishlist.name)
+            : // Their own reservations, from the items already on the page.
+              memberLeaveCopy(wishlist.name, itemsLoaded ? stats.bookedByYou : null))}
           onConfirm={confirmLeaveWishlist}
           onCancel={() => setDeleteConfirm(null)}
           confirmText="Leave"
           pendingText="Leaving..."
           cancelText="Cancel"
           type="danger"
+          icon="logout"
         />
       )}
 
@@ -2108,8 +2113,9 @@ export default function WishlistDetail() {
       {deleteConfirm && deleteConfirm.type === 'wishlist' && (
         <ConfirmDialog
           isOpen={!!deleteConfirm}
-          title="Delete Wishlist"
-          message="Are you sure you want to delete this wishlist? This action cannot be undone. All items, memberships, and bookings will be permanently deleted."
+          // Every item goes, drafts and proposals too. Reservations stay (they're
+          // the gifters'), and an owner is told nothing about them.
+          {...deleteListCopy(wishlist.name, itemsLoaded ? stats.total : null)}
           onConfirm={confirmDeleteWishlist}
           onCancel={() => setDeleteConfirm(null)}
           confirmText="Delete"

@@ -16,7 +16,7 @@ function renderDialog(onConfirm: () => void | Promise<unknown>, onCancel = vi.fn
   render(
     <ConfirmDialog
       isOpen
-      title="Remove Member"
+      title="Remove member"
       message="Are you sure?"
       onConfirm={onConfirm}
       onCancel={onCancel}
@@ -50,7 +50,7 @@ describe('ConfirmDialog — accessible name and description', () => {
   it('regression: is named by its title and described by its message', () => {
     renderDialog(vi.fn());
 
-    const dialog = screen.getByRole('alertdialog', { name: 'Remove Member' });
+    const dialog = screen.getByRole('alertdialog', { name: 'Remove member' });
 
     expect(dialog).toHaveAccessibleDescription('Are you sure?');
   });
@@ -69,7 +69,7 @@ describe('ConfirmDialog — accessible name and description', () => {
         />
         <ConfirmDialog
           isOpen
-          title="Delete Wishlist"
+          title="Delete wishlist"
           message="This action cannot be undone."
           onConfirm={vi.fn()}
           onCancel={vi.fn()}
@@ -81,9 +81,67 @@ describe('ConfirmDialog — accessible name and description', () => {
       screen.getByRole('alertdialog', { name: 'Discard changes' })
     ).toHaveAccessibleDescription('Your edits will be lost.');
     expect(
-      screen.getByRole('alertdialog', { name: 'Delete Wishlist' })
+      screen.getByRole('alertdialog', { name: 'Delete wishlist' })
     ).toHaveAccessibleDescription('This action cannot be undone.');
   });
+});
+
+describe('ConfirmDialog — icon', () => {
+  const iconOf = () =>
+    screen.getByRole('alertdialog').querySelector('[data-icon]')?.getAttribute('data-icon');
+  const svgOf = () => screen.getByRole('alertdialog').querySelector('[data-icon] svg');
+
+  it.each([
+    ['danger', 'trash'],
+    ['warning', 'alert'],
+    ['info', 'info'],
+  ] as const)("a %s dialog shows its type's icon (%s) by default", (type, icon) => {
+    render(
+      <ConfirmDialog
+        isOpen
+        title="Sure?"
+        message=""
+        onConfirm={vi.fn()}
+        onCancel={vi.fn()}
+        type={type}
+      />
+    );
+    expect(iconOf()).toBe(icon);
+  });
+
+  // regression: every danger dialog showed a trash can, Leave and Remove
+  // included, though neither deletes anything.
+  it.each(['logout', 'user-minus'] as const)(
+    'regression: a danger dialog can show %s instead of the trash can, and keeps its colours',
+    (icon) => {
+      const dialog = (props: { icon?: typeof icon }) => (
+        <ConfirmDialog
+          isOpen
+          title="Sure?"
+          message=""
+          onConfirm={vi.fn()}
+          onCancel={vi.fn()}
+          confirmText="Go"
+          type="danger"
+          {...props}
+        />
+      );
+      render(dialog({}));
+      const trash = svgOf()!.innerHTML;
+      cleanup();
+
+      render(dialog({ icon }));
+
+      expect(iconOf()).toBe(icon);
+      // Drawn as that icon, not the trash can.
+      expect(svgOf()!.innerHTML).not.toBe(trash);
+      // Still a danger dialog: the red chip and the red confirm button.
+      expect(screen.getByRole('alertdialog').querySelector('[data-icon]')).toHaveClass(
+        'bg-red-500/15'
+      );
+      expect(screen.getByRole('button', { name: 'Go' })).toHaveClass('bg-red-600');
+    }
+  );
 });
 
 describe('ConfirmDialog — an action that returns nothing', () => {
@@ -125,7 +183,7 @@ describe('ConfirmDialog — an action that returns a promise', () => {
   });
 
   // regression: the dialog had no pending state and kept calling onConfirm, so
-  // a double click on Remove Member sent two DELETEs and the second one's 404
+  // a double click on Remove member sent two DELETEs and the second one's 404
   // toasted "Failed to remove member" right after the success.
   it('regression: does not call onConfirm again on a second click while it runs', async () => {
     const { onConfirm, finish } = deferredConfirm();
@@ -197,7 +255,7 @@ function DialogPage() {
       <button>Behind</button>
       <ConfirmDialog
         isOpen={open}
-        title="Remove Member"
+        title="Remove member"
         message="Are you sure?"
         onConfirm={() => setOpen(false)}
         onCancel={() => setOpen(false)}
@@ -271,7 +329,7 @@ describe('ConfirmDialog — keyboard focus', () => {
           {!open && <button onClick={() => setOpen(true)}>Open</button>}
           <ConfirmDialog
             isOpen={open}
-            title="Remove Member"
+            title="Remove member"
             message="Are you sure?"
             onConfirm={vi.fn()}
             onCancel={() => setOpen(false)}

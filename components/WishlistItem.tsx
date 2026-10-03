@@ -156,8 +156,9 @@ function WishlistItem({
     applyStatus('available');
   }, [isOwner, isUpdating, applyStatus]);
 
-  // Moving a live item back to draft is dangerous: it may already be reserved
-  // (owners can't see that), and drafting it hides it and cancels the booking.
+  // Moving a live item back to draft asks first: it may already be reserved
+  // (owners can't see that), and drafting it hides it and frees it on the list,
+  // though the gifter keeps their reservation.
   const handleMoveToDraft = useCallback(() => {
     if (!isOwner || isUpdating) return;
     setShowToDraftConfirm(true);
@@ -480,7 +481,9 @@ function WishlistItem({
         <ConfirmDialog
           isOpen
           title="Move to draft?"
-          message="Draft items are hidden from everyone else. If someone has already reserved this item, moving it to draft will cancel their reservation. You can publish it again later."
+          // An owner's status change frees the item but keeps the gifter's
+          // reservation. Read by an owner, so it can't say whether anyone has.
+          message="Hide it from everyone else? If someone reserved it, it's released here, but they keep it on their Reserved page."
           confirmText="Move to draft"
           cancelText="Cancel"
           type="warning"
