@@ -1493,12 +1493,12 @@ export default function WishlistDetail() {
                     ))}
                   </div>
                   <div className="mb-6 flex flex-col gap-3 sm:mb-8 sm:gap-4">
-                    <div className="skeleton h-10 rounded-xl" />
+                    <div className="skeleton h-9 rounded-xl" />
                     <div className="flex flex-col gap-3 sm:flex-row sm:gap-4">
                       {Array.from({ length: session?.user ? 3 : 2 }).map((_, i) => (
                         <div key={i} className="flex flex-col gap-1.5 sm:flex-1">
                           <div className="skeleton h-3 w-16 rounded" />
-                          <div className="skeleton h-10 rounded-xl" />
+                          <div className="skeleton h-9 rounded-xl" />
                         </div>
                       ))}
                     </div>
