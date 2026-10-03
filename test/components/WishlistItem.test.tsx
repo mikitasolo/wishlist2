@@ -53,6 +53,7 @@ vi.mock('@/components/ConfirmDialog', () => ({
 import WishlistItem from '@/components/WishlistItem';
 import { coverGradient } from '@/lib/utils/cover';
 import { STATUS_META, type DisplayStatus } from '@/lib/utils/itemStatus';
+import { SM_UP_QUERY } from '@/lib/hooks/useMediaQuery';
 
 function item(overrides: Partial<ApiItem>): ApiItem {
   return {
@@ -67,6 +68,31 @@ function item(overrides: Partial<ApiItem>): ApiItem {
 }
 
 beforeEach(() => cleanup());
+afterEach(() => vi.unstubAllGlobals());
+
+/**
+ * Puts the card at a viewport width: jsdom has no `matchMedia`, so this gives
+ * it one that answers the `sm` query (40rem = 640px) for that width. Without
+ * it, the width is unknown, as in a server render. `resize` moves it.
+ */
+function atWidth(width: number) {
+  let current = width;
+  const listeners = new Set<() => void>();
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    get matches() {
+      return query === SM_UP_QUERY && current >= 640;
+    },
+    media: query,
+    addEventListener: (_: string, fn: () => void) => listeners.add(fn),
+    removeEventListener: (_: string, fn: () => void) => listeners.delete(fn),
+  }));
+  return {
+    resize(next: number) {
+      current = next;
+      listeners.forEach((fn) => fn());
+    },
+  };
+}
 
 describe('WishlistItem — booking visibility', () => {
   // Regression: owners must never see booking status ("booked" folds to available).
@@ -352,6 +378,9 @@ interface Offer {
 const LINK = 'https://shop.example/gift';
 const PRODUCT_PAGE = 'View Cool Gift product page';
 
+/** The cover frame: square, or 4:3 on a phone for an item with no image. */
+const isCover = (el: Element) => el.matches('[class*="aspect-"]');
+
 describe('WishlistItem — the action row, by role and state', () => {
   const cases: Array<{
     name: string;
@@ -518,13 +547,15 @@ describe('WishlistItem — the action row, by role and state', () => {
     },
   ];
 
-  it.each(cases)('$name', ({ item: overrides, props, offer }) => {
+  // From `sm` up, the row is as it was before the phone grid (WIS-245).
+  it.each(cases)('$name, from sm up', ({ item: overrides, props, offer }) => {
+    atWidth(1280);
     render(<WishlistItem item={item(overrides)} onUpdate={vi.fn()} isAuthenticated {...props} />);
     const card = screen.getByRole('article');
     // The cover links to the product page too, so the row's links are the others.
     const rowLinks = within(card)
       .queryAllByRole('link', { name: PRODUCT_PAGE })
-      .filter((a) => !a.classList.contains('aspect-square'));
+      .filter((a) => !isCover(a));
 
     if ('button' in offer.primary) {
       const button = within(card).getByRole('button', { name: offer.primary.button });
@@ -567,6 +598,116 @@ describe('WishlistItem — the action row, by role and state', () => {
     // Owners never see booking status, whatever the item's.
     if (props.isOwner) expect(within(card).queryByText(/book|reserv/i)).toBeNull();
   });
+
+  // Below `sm` (WIS-245): [primary] [⋯]. The link square folds into the menu
+  // as its first item, the "no link" marker goes, and the rest is unchanged.
+  it.each(cases)('$name, below sm', ({ item: overrides, props, offer }) => {
+    atWidth(390);
+    render(<WishlistItem item={item(overrides)} onUpdate={vi.fn()} isAuthenticated {...props} />);
+    const card = screen.getByRole('article');
+    const rowLinks = within(card)
+      .queryAllByRole('link', { name: PRODUCT_PAGE })
+      .filter((a) => !isCover(a));
+
+    if ('button' in offer.primary) {
+      const button = within(card).getByRole('button', { name: offer.primary.button });
+      expect(button).toHaveTextContent(offer.primary.text);
+      if (offer.primary.disabled) expect(button).toBeDisabled();
+      else expect(button).toBeEnabled();
+      // No square beside it: not hidden, not rendered.
+      expect(rowLinks).toHaveLength(0);
+    } else if ('link' in offer.primary) {
+      expect(rowLinks).toHaveLength(1);
+      expect(rowLinks[0]).toHaveTextContent('View item');
+    } else {
+      expect(within(card).getByText(offer.primary.note)).toBeInTheDocument();
+    }
+    expect(within(card).queryByRole('img', { name: 'No link provided' })).toBeNull();
+    expect(
+      card.querySelector('[title="View product page"], [title="No link provided"]')
+    ).toBeNull();
+
+    const menu =
+      offer.linkButton === 'link' ? ['Open product page', ...(offer.menu ?? [])] : offer.menu;
+    const trigger = within(card).queryByRole('button', { name: 'More actions' });
+    if (menu === null) {
+      expect(trigger).toBeNull();
+    } else {
+      fireEvent.click(trigger!);
+      const items = within(screen.getByRole('menu')).getAllByRole('menuitem');
+      expect(items.map((el) => el.textContent)).toEqual(menu);
+    }
+    if (offer.linkButton === 'link') {
+      const open = within(screen.getByRole('menu')).getByRole('menuitem', {
+        name: 'Open product page',
+      });
+      expect(open).toHaveAttribute('href', LINK);
+      expect(open).toHaveAttribute('target', '_blank');
+      expect(open).toHaveAttribute('rel', 'noopener noreferrer');
+    }
+
+    if (props.isOwner) expect(within(card).queryByText(/book|reserv/i)).toBeNull();
+  });
+
+  it('still links the cover to the product page below sm', () => {
+    atWidth(390);
+    render(
+      <WishlistItem item={item({ link: LINK })} onUpdate={vi.fn()} isAuthenticated isMember />
+    );
+    const cover = within(screen.getByRole('article'))
+      .getAllByRole('link', { name: PRODUCT_PAGE })
+      .find(isCover);
+    expect(cover).toHaveAttribute('href', LINK);
+    expect(cover).toHaveAttribute('target', '_blank');
+  });
+
+  // Before the width is known (the server render, and the render hydrating
+  // it), both layouts are in the HTML, and CSS shows the right one: so the
+  // first paint is right at any width, and hydration can't disagree with it.
+  it('renders both layouts for CSS to choose between until the width is known', () => {
+    render(
+      <WishlistItem
+        item={item({ link: LINK, status: 'proposed' })}
+        onUpdate={vi.fn()}
+        isAuthenticated
+        isOwner
+        onReview={vi.fn()}
+      />
+    );
+    const card = screen.getByRole('article');
+    const square = within(card)
+      .getAllByRole('link', { name: PRODUCT_PAGE })
+      .find((a) => !isCover(a));
+    expect(square).toHaveClass('max-sm:hidden');
+    // A menu that will hold only the folded link is there below sm only.
+    const trigger = within(card).getByRole('button', { name: 'More actions' });
+    expect(trigger.parentElement).toHaveClass('sm:hidden');
+    // And it's never an empty one that does nothing.
+    expect(trigger).not.toHaveAttribute('aria-disabled');
+    fireEvent.click(trigger);
+    expect(screen.getByRole('menuitem', { name: 'Open product page' })).toHaveAttribute(
+      'href',
+      LINK
+    );
+  });
+
+  it('follows the width when it crosses sm', () => {
+    const mq = atWidth(390);
+    render(
+      <WishlistItem item={item({ link: LINK })} onUpdate={vi.fn()} isAuthenticated isMember />
+    );
+    const card = screen.getByRole('article');
+    const squares = () =>
+      within(card)
+        .queryAllByRole('link', { name: PRODUCT_PAGE })
+        .filter((a) => !isCover(a));
+    expect(squares()).toHaveLength(0);
+
+    act(() => mq.resize(1280));
+    expect(squares()).toHaveLength(1);
+    // The menu is back to the desktop's: no product page in it.
+    expect(within(card).queryByRole('button', { name: 'More actions' })).toBeNull();
+  });
 });
 
 describe('WishlistItem — a gift the member has marked as given', () => {
@@ -580,6 +721,14 @@ describe('WishlistItem — a gift the member has marked as given', () => {
 
     expect(screen.getByRole('button', { name: 'Given by you' })).toBeDisabled();
     expect(screen.queryByRole('button', { name: 'Release this item' })).toBeNull();
+  });
+
+  // The narrow card (WIS-245) has no room for "Given by you" beside ⋯.
+  it('says just "Given" below sm, named "Given by you" all the same', () => {
+    render(<WishlistItem item={given} onUpdate={vi.fn()} isAuthenticated isMember />);
+    const button = screen.getByRole('button', { name: 'Given by you' });
+    expect(within(button).getByText('Given')).toHaveClass('sm:hidden');
+    expect(within(button).getByText('Given by you')).toHaveClass('max-sm:hidden');
   });
 
   it('warns before Release… in the menu unbooks it', async () => {
@@ -792,8 +941,58 @@ describe('WishlistItem — cover image', () => {
   it('shows the placeholder when the item has no image', () => {
     render(<WishlistItem item={item({})} onUpdate={vi.fn()} isAuthenticated isMember />);
     expect(screen.queryByTestId('banner-image')).toBeNull();
-    const cover = screen.getByRole('article').querySelector('.aspect-square') as HTMLElement;
+    const cover = screen.getByRole('article').querySelector('[class*="aspect-"]') as HTMLElement;
     expect(cover.style.background).toBe(placeholderOf('item-1'));
+  });
+
+  // The phone grid (WIS-245): a gradient alone said nothing, at full height.
+  it('gives an item with no image a short 4:3 placeholder with its initial below sm', () => {
+    render(
+      <WishlistItem
+        item={item({ name: 'wingspan board game' })}
+        onUpdate={vi.fn()}
+        isAuthenticated
+        isMember
+      />
+    );
+    const cover = screen.getByRole('article').querySelector('[class*="aspect-"]') as HTMLElement;
+    // 4:3 below sm, square from sm up, as before.
+    expect(cover).toHaveClass('aspect-[4/3]', 'sm:aspect-square');
+    expect(cover).not.toHaveClass('aspect-square');
+    // The initial is decoration: the card's name already says it.
+    const initial = within(cover).getByText('W');
+    expect(initial.closest('[aria-hidden]')).not.toBeNull();
+    expect(initial).toHaveClass('sm:hidden');
+  });
+
+  it('takes the initial away while the notes are shown over the placeholder', () => {
+    render(
+      <WishlistItem item={item({ notes: 'Size L' })} onUpdate={vi.fn()} isAuthenticated isMember />
+    );
+    const cover = screen.getByRole('article').querySelector('[class*="aspect-"]') as HTMLElement;
+    expect(within(cover).getByText('C')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /show notes/i }));
+    expect(within(cover).getByText('Size L')).toBeInTheDocument();
+    expect(within(cover).queryByText('C')).toBeNull();
+  });
+
+  it('keeps an item with an image square, with no initial', () => {
+    render(
+      <WishlistItem item={item({ imageUrl: IMAGE })} onUpdate={vi.fn()} isAuthenticated isMember />
+    );
+    const cover = screen.getByTestId('banner-image').parentElement as HTMLElement;
+    expect(cover).toHaveClass('aspect-square');
+    expect(within(cover).queryByText('C')).toBeNull();
+  });
+
+  it('shows the initial once an image fails to load, keeping the frame square', () => {
+    render(
+      <WishlistItem item={item({ imageUrl: IMAGE })} onUpdate={vi.fn()} isAuthenticated isMember />
+    );
+    const cover = screen.getByTestId('banner-image').parentElement as HTMLElement;
+    fireEvent.error(screen.getByTestId('banner-image'));
+    expect(cover).toHaveClass('aspect-square');
+    expect(within(cover).getByText('C')).toBeInTheDocument();
   });
 
   // regression: the card painted the gradient only when there was no image URL,
@@ -975,6 +1174,23 @@ describe('WishlistItem — most wanted badge', () => {
       expect(screen.getByText('Most wanted')).toBeInTheDocument();
       unmount();
     }
+  });
+
+  // The narrow card (WIS-245): the star alone, still named for a screen reader,
+  // under the status badge, so the two fit inside the cover's corner.
+  it('is just its star below sm, named all the same, under the status', () => {
+    render(
+      <WishlistItem
+        item={item({ mostWanted: true, status: 'booked', bookedBy: ME })}
+        onUpdate={vi.fn()}
+        isAuthenticated
+        isMember
+      />
+    );
+    expect(screen.getByText('Most wanted')).toHaveClass('max-sm:sr-only');
+    const status = screen.getByRole('article').querySelector('[data-tone]');
+    expect(status).toHaveTextContent('Reserved by you');
+    expect(status).toHaveClass('max-sm:order-first');
   });
 
   it('shows no badge on an item that is not most wanted, or has no flag', () => {

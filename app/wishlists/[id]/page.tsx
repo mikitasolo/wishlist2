@@ -36,6 +36,7 @@ import {
   Skeleton,
   SkeletonGrid,
   MemberRowSkeleton,
+  ITEM_GRID_CLASSES,
 } from '@/components/Skeleton';
 import EmptyState from '@/components/EmptyState';
 import Panel, { PanelRow, PanelSection } from '@/components/Panel';
@@ -1575,7 +1576,7 @@ export default function WishlistDetail() {
                     }
                   />
                 ) : (
-                  <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  <div className={ITEM_GRID_CLASSES}>
                     {sortedItems.map((item) => (
                       <WishlistItem
                         key={item._id}

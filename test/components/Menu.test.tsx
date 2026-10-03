@@ -605,3 +605,57 @@ describe('Menu — a custom trigger, a header, links and a radio group (the acco
     expect(accountTrigger()).toHaveFocus();
   });
 });
+
+describe('Menu — a link to another site (an item card’s product page)', () => {
+  const withProductPage: MenuItem[] = [
+    {
+      label: 'Open product page',
+      icon: 'external-link',
+      href: 'https://shop.example/gift',
+      external: true,
+      onSelect: () => picked('open'),
+    },
+    ...actions,
+  ];
+
+  it('opens it in a new tab, as a menu item in the arrow keys and type-ahead', async () => {
+    const user = userEvent.setup();
+    render(<Page items={withProductPage} />);
+    trigger().focus();
+    await user.keyboard('{Enter}');
+
+    const open = item('Open product page');
+    expect(open.tagName).toBe('A');
+    expect(open).toHaveAttribute('href', 'https://shop.example/gift');
+    expect(open).toHaveAttribute('target', '_blank');
+    expect(open).toHaveAttribute('rel', 'noopener noreferrer');
+    expect(open).toHaveAttribute('tabindex', '-1');
+    expect(labels()).toEqual(['Open product page', ...actions.map((a) => a.label)]);
+    expect(open).toHaveFocus();
+
+    await user.keyboard('{ArrowDown}');
+    expect(item('Mark as received')).toHaveFocus();
+    await user.keyboard('{ArrowUp}');
+    expect(open).toHaveFocus();
+    await user.keyboard('m');
+    expect(item('Mark as received')).toHaveFocus();
+    await user.keyboard('o');
+    expect(open).toHaveFocus();
+  });
+
+  it('follows it with Enter or Space, closing the menu to the trigger first', async () => {
+    const user = userEvent.setup();
+    render(<Page items={withProductPage} />);
+    for (const key of ['{Enter}', ' ']) {
+      trigger().focus();
+      await user.keyboard('{Enter}');
+      const followed = vi.fn((e: Event) => e.preventDefault());
+      item('Open product page').addEventListener('click', followed);
+      await user.keyboard(key);
+      expect(followed).toHaveBeenCalledTimes(1);
+      expect(menu()).toBeNull();
+      expect(trigger()).toHaveFocus();
+    }
+    expect(picked).toHaveBeenCalledTimes(2);
+  });
+});
