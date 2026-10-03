@@ -59,7 +59,8 @@ for (const width of [390, 1280]) {
       await page.goto(url);
       // Signed in, and the lists still on their way.
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-      await expect(page.locator('main .skeleton').first()).toBeVisible();
+      // (The first visible one: a phone's skeleton rows are in the page at 1280, hidden.)
+      await expect(page.locator('main .skeleton:visible').first()).toBeVisible();
 
       const grid = listSections(page, width).first();
       const before = {
