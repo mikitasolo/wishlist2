@@ -150,10 +150,15 @@ export default function InvitesPage() {
         if (result.success) {
           dropInvite(invite._id);
           if (action === 'accept') {
-            // An owner invite releases what they'd reserved on the list. They're
-            // the gifter, so the count is theirs to see.
+            // An owner invite ends the reservations they held on the list, which
+            // go from their Reserved page. They're the gifter, so the count is
+            // theirs to see.
             showToast(
-              acceptedInviteToast(invite.role, invite.wishlistName, result.data?.releasedBookings),
+              acceptedInviteToast(
+                invite.role,
+                invite.wishlistName,
+                result.data?.cancelledReservations
+              ),
               'success'
             );
             router.push(`/wishlists/${result.data.wishlistSlug ?? result.data.wishlistId}`);

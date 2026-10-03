@@ -289,7 +289,8 @@ describe('InvitesPage — accepting a co-owner invite', () => {
     invitedByUsername: 'chloe',
     invitedByImage: null,
   };
-  const accepted = (releasedBookings: number): Reply => ({
+  /** The accept's answer: the items it freed, and the reservations it ended. */
+  const accepted = (releasedBookings: number, cancelledReservations: number): Reply => ({
     status: 200,
     body: {
       success: true,
@@ -299,7 +300,7 @@ describe('InvitesPage — accepting a co-owner invite', () => {
         wishlistSlug: 'garden',
         wishlistId: 'w4',
         releasedBookings,
-        cancelledReservations: releasedBookings,
+        cancelledReservations,
       },
     },
   });
@@ -317,27 +318,38 @@ describe('InvitesPage — accepting a co-owner invite', () => {
     await waitFor(() => expect(push).toHaveBeenCalledWith('/wishlists/garden'));
   }
 
-  // regression: accepting became "Joined “…”", and the count of gifts the
-  // accept released (`releasedBookings`) was dropped. It's the invitee's own,
-  // so it goes back to them.
+  // regression: accepting became "Joined “…”", and the counts the accept
+  // answers with were dropped. It's the invitee's own, so it goes back to them.
   it('regression: says they are now a co-owner, and how many gifts they had reserved were released', async () => {
-    await accept(accepted(2));
+    await accept(accepted(2, 2));
     expect(showToast).toHaveBeenCalledWith(
-      "You're now a co-owner of “Chloe's garden” · 2 gifts you'd reserved were released",
+      "You're now a co-owner of “Chloe's garden” · 2 gifts you'd reserved here were released",
       'success'
     );
   });
 
-  it('says one gift in the singular', async () => {
-    await accept(accepted(1));
+  // The reservations the accept ended are what go from their Reserved page.
+  // There can be more of them than items it freed: one whose item an owner
+  // drafted, or that they kept on leaving the list earlier, has no booking left
+  // to free.
+  it('counts the reservations it ended, not the items it freed', async () => {
+    await accept(accepted(1, 3));
     expect(showToast).toHaveBeenCalledWith(
-      "You're now a co-owner of “Chloe's garden” · 1 gift you'd reserved was released",
+      "You're now a co-owner of “Chloe's garden” · 3 gifts you'd reserved here were released",
       'success'
     );
   });
 
-  it('says only that they are a co-owner when nothing was released', async () => {
-    await accept(accepted(0));
+  it('counts them even when it freed no item', async () => {
+    await accept(accepted(0, 1));
+    expect(showToast).toHaveBeenCalledWith(
+      "You're now a co-owner of “Chloe's garden” · 1 gift you'd reserved here was released",
+      'success'
+    );
+  });
+
+  it('says only that they are a co-owner when it ended no reservation', async () => {
+    await accept(accepted(0, 0));
     expect(showToast).toHaveBeenCalledWith("You're now a co-owner of “Chloe's garden”", 'success');
   });
 });

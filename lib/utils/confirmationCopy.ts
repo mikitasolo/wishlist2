@@ -97,31 +97,35 @@ export const DELETE_LIST_WARNING =
   "Deleting this wishlist takes its items and everyone's access with it. This can't be undone.";
 
 /**
- * " · 2 gifts you'd reserved were released", or nothing for none. Only for the
- * gifter's own toast: never append it to anything an owner sees.
+ * " · 2 gifts you'd reserved here were released", or nothing for none. Only for
+ * the gifter's own toast: never append it to anything an owner sees.
  */
 export function releasedGiftsNote(count: unknown): string {
   const n = positiveCount(count);
   if (n === 0) return '';
   return n === 1
-    ? " · 1 gift you'd reserved was released"
-    : ` · ${n} gifts you'd reserved were released`;
+    ? " · 1 gift you'd reserved here was released"
+    : ` · ${n} gifts you'd reserved here were released`;
 }
 
 /**
- * The invitee's toast once they've accepted. An owner invite releases what
- * they'd reserved on the list (`releasedBookings` in the accept's answer).
+ * The invitee's toast once they've accepted. Accepting an owner invite ends
+ * every reservation they held on the list, so it counts those
+ * (`cancelledReservations` in the accept's answer): that's what goes from their
+ * Reserved page. It can be more than the items it freed (`releasedBookings`),
+ * since a reservation outlives its item being drafted or completed, or its
+ * holder leaving the list.
  */
 export function acceptedInviteToast(
   role: 'owner' | 'member',
   listName: string,
-  releasedBookings: unknown
+  cancelledReservations: unknown
 ): string {
   const joined =
     role === 'owner'
       ? `You're now a co-owner of ${quoted(listName)}`
       : `Joined ${quoted(listName)}`;
-  return joined + releasedGiftsNote(releasedBookings);
+  return joined + releasedGiftsNote(cancelledReservations);
 }
 
 /** The leaver's toast (`unbookedItemsCount` in the leave's answer). */

@@ -207,7 +207,7 @@ describe("a member's Leave", () => {
 
     await waitFor(() =>
       expect(showToast).toHaveBeenCalledWith(
-        "You left “Birthday” · 2 gifts you'd reserved were released",
+        "You left “Birthday” · 2 gifts you'd reserved here were released",
         'success'
       )
     );

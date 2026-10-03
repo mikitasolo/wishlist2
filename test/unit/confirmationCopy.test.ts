@@ -114,8 +114,8 @@ describe('deleteListCopy', () => {
 
 describe('releasedGiftsNote', () => {
   it('counts the released gifts, in the singular for one', () => {
-    expect(releasedGiftsNote(2)).toBe(" · 2 gifts you'd reserved were released");
-    expect(releasedGiftsNote(1)).toBe(" · 1 gift you'd reserved was released");
+    expect(releasedGiftsNote(2)).toBe(" · 2 gifts you'd reserved here were released");
+    expect(releasedGiftsNote(1)).toBe(" · 1 gift you'd reserved here was released");
   });
 
   it('says nothing for none, or for a count that is missing or malformed', () => {
@@ -126,9 +126,9 @@ describe('releasedGiftsNote', () => {
 });
 
 describe('the toasts back to the gifter', () => {
-  it('an accepted co-owner invite says they are a co-owner, with what it released', () => {
+  it('an accepted co-owner invite says they are a co-owner, with the reservations it ended', () => {
     expect(acceptedInviteToast('owner', 'Garden', 2)).toBe(
-      "You're now a co-owner of “Garden” · 2 gifts you'd reserved were released"
+      "You're now a co-owner of “Garden” · 2 gifts you'd reserved here were released"
     );
     expect(acceptedInviteToast('owner', 'Garden', 0)).toBe("You're now a co-owner of “Garden”");
     expect(acceptedInviteToast('owner', 'Garden', undefined)).toBe(
@@ -142,7 +142,7 @@ describe('the toasts back to the gifter', () => {
 
   it('leaving says they left, with what it released', () => {
     expect(leftListToast('Camping trip', 3)).toBe(
-      "You left “Camping trip” · 3 gifts you'd reserved were released"
+      "You left “Camping trip” · 3 gifts you'd reserved here were released"
     );
     expect(leftListToast('Camping trip', 0)).toBe('You left “Camping trip”');
     expect(leftListToast(undefined, undefined)).toBe('You left the wishlist');
