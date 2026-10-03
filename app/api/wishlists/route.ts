@@ -5,12 +5,11 @@ import connectDB from '@/lib/mongodb';
 import Wishlist from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
 import User from '@/models/User';
-import Item from '@/models/Item';
 import { generateUniqueWishlistSlug } from '@/lib/utils/wishlistSlug';
-import mongoose from 'mongoose';
 import { createWishlistSchema, validateRequestBody } from '@/lib/validations';
 import { ownedByFilter, ownerIds, serializeWishlist } from '@/lib/utils/wishlistOwners';
 import { canAttachImage, FOREIGN_IMAGE_ERROR } from '@/lib/utils/blob';
+import { countWishlistItems, countsFor } from '@/lib/utils/wishlistItemCounts';
 
 // GET /api/wishlists - Get all wishlists user has access to
 export async function GET(request: NextRequest) {
@@ -72,45 +71,35 @@ export async function GET(request: NextRequest) {
       };
     };
 
-    // Compute a privacy-safe item count per wishlist.
-    // We deliberately never expose booking state here (owners must not learn
-    // which of their items have been booked). `total` counts every item;
-    // `nonDraft` excludes owner-only draft items so members don't learn that
-    // hidden drafts exist. Owned lists use `total`; member lists use `nonDraft`.
-    const allWishlistIds = [
+    // Each list's item count, by the rule every screen counts with
+    // (`lib/utils/itemCounts.ts`): `itemCount` is its published items, booked
+    // folded in, so no owner learns what has been reserved. Your own lists add
+    // their drafts and proposals to review; a list you're a member of carries
+    // neither, so a member never learns of hidden drafts or of anyone's proposal.
+    const counts = await countWishlistItems([
       ...ownedWishlists.map((w) => w._id),
       ...memberOnlyWishlists.map((w) => w._id),
-    ];
-    const countAgg = await Item.aggregate<{
-      _id: mongoose.Types.ObjectId;
-      total: number;
-      nonDraft: number;
-    }>([
-      { $match: { wishlist: { $in: allWishlistIds } } },
-      {
-        $group: {
-          _id: '$wishlist',
-          total: { $sum: 1 },
-          nonDraft: { $sum: { $cond: [{ $ne: ['$status', 'draft'] }, 1, 0] } },
-        },
-      },
     ]);
-    const countMap = new Map(countAgg.map((c) => [c._id.toString(), c]));
 
     // Add owner identities + safe item count to wishlists. `featured` is folded
     // to this viewer's own pin by serializeWishlist — a co-owner's pin never
     // shows up as yours.
     const viewerId = user._id.toString();
-    const ownedWithOwnerEmail = ownedWishlists.map((w) => ({
-      ...serializeWishlist(w, viewerId),
-      ...ownerFields(w),
-      itemCount: countMap.get(w._id.toString())?.total ?? 0,
-    }));
+    const ownedWithOwnerEmail = ownedWishlists.map((w) => {
+      const { items, drafts, proposals } = countsFor(counts, w._id);
+      return {
+        ...serializeWishlist(w, viewerId),
+        ...ownerFields(w),
+        itemCount: items,
+        draftCount: drafts,
+        proposalCount: proposals,
+      };
+    });
 
     const memberWithOwnerEmail = memberOnlyWishlists.map((w) => ({
       ...serializeWishlist(w, viewerId),
       ...ownerFields(w),
-      itemCount: countMap.get(w._id.toString())?.nonDraft ?? 0,
+      itemCount: countsFor(counts, w._id).items,
       isMember: true,
       userRole: 'member' as const,
     }));

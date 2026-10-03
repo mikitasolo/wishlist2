@@ -1,6 +1,7 @@
 import type { ReactElement, ReactNode } from 'react';
 import { LOGO_SVG } from '@/lib/brandLogo';
 import { clampText, OG_CARD_SIZE, ogCoverBackground, titleFontSize } from '@/lib/utils/og';
+import { formatItemCount } from '@/lib/utils/itemCounts';
 
 // The share cards' layouts, as next/og (Satori) elements: flexbox only, inline
 // styles, and every <div> with more than one child needs `display: flex`.
@@ -141,8 +142,7 @@ function Caption({ title, subtitle, size }: { title: string; subtitle: string; s
 }
 
 function itemCount(count: number): string {
-  if (count === 0) return 'No items yet';
-  return `${count} item${count === 1 ? '' : 's'}`;
+  return count === 0 ? 'No items yet' : formatItemCount(count);
 }
 
 /** A list a signed-out visitor could open: its name, owner, item count, and banner or cover. */

@@ -5,6 +5,7 @@ import Item from '@/models/Item';
 import { resolveWishlistId } from '@/lib/utils/wishlistSlug';
 import { primaryOwnerId } from '@/lib/utils/wishlistOwners';
 import { getWishlistViewAccess } from '@/lib/utils/wishlistAccess';
+import { isPublishedItem, PUBLISHED_ITEM_STATUSES } from '@/lib/utils/itemCounts';
 
 /**
  * What a shared link's preview may show. A crawler fetches it signed out, and
@@ -74,22 +75,22 @@ export async function readWishlistCard(idOrSlug: string): Promise<WishlistCardDa
   };
 }
 
-/** Item statuses a visitor never sees: drafts, and proposals awaiting review. */
-const UNSEEN_ITEM_STATUSES = ['draft', 'proposed'];
-
 /**
  * Whether an item in this status counts towards the item count on its list's
- * card. A write that moves an item in or out of the count (adding, deleting,
- * publishing, drafting, approving) purges the card (lib/og/purge.ts).
+ * card: a published one, as on every other screen (`lib/utils/itemCounts.ts`),
+ * never a draft or a proposal awaiting review. A write that moves an item in or
+ * out of the count (adding, deleting, publishing, drafting, approving) purges
+ * the card (lib/og/purge.ts).
  */
-export function isCountedOnShareCard(status: string): boolean {
-  return !UNSEEN_ITEM_STATUSES.includes(status);
-}
+export const isCountedOnShareCard: (status: string) => boolean = isPublishedItem;
 
 /** How many items a visitor sees on a list (`isCountedOnShareCard`). */
 export async function countVisibleItems(wishlistId: string): Promise<number> {
   await connectDB();
-  return Item.countDocuments({ wishlist: wishlistId, status: { $nin: UNSEEN_ITEM_STATUSES } });
+  return Item.countDocuments({
+    wishlist: wishlistId,
+    status: { $in: [...PUBLISHED_ITEM_STATUSES] },
+  });
 }
 
 /**

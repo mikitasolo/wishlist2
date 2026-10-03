@@ -1045,7 +1045,9 @@ export default function WishlistDetail() {
   }, [selectedFilters, getFilterOptions]);
 
   const cardMeta: Record<FilterOption, { label: string; value: number; valueClass: string }> = {
-    all: { label: 'Total Items', value: stats.total, valueClass: 'text-foreground' },
+    // "All", not "Total Items": an owner's includes drafts and proposals, and
+    // "N items" means published items only (lib/utils/itemCounts.ts).
+    all: { label: 'All', value: stats.total, valueClass: 'text-foreground' },
     draft: { label: 'Draft', value: stats.draft, valueClass: 'text-muted-foreground' },
     proposed: { label: 'Proposed', value: stats.proposed, valueClass: 'text-blue-500' },
     available: { label: 'Available', value: stats.available, valueClass: 'text-foreground' },

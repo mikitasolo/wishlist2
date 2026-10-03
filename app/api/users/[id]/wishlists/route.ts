@@ -4,8 +4,6 @@ import connectDB from '@/lib/mongodb';
 import Wishlist from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
 import User from '@/models/User';
-import Item from '@/models/Item';
-import mongoose from 'mongoose';
 import { areFriends } from '@/lib/utils/friends';
 import {
   isWishlistOwner,
@@ -14,6 +12,7 @@ import {
   serializeWishlist,
 } from '@/lib/utils/wishlistOwners';
 import { isObjectIdParam } from '@/lib/utils/objectId';
+import { countWishlistItems, countsFor } from '@/lib/utils/wishlistItemCounts';
 
 // GET /api/users/[id]/wishlists - Get wishlists for a specific user
 // Returns: public wishlists + wishlists the current user has access to
@@ -98,21 +97,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const owners = await User.find({ _id: { $in: allOwnerIds } }).select('username image');
     const ownerMap = new Map(owners.map((o) => [o._id.toString(), o]));
 
-    // Privacy-safe item count: only "real" list items are counted
-    // (available / booked / completed). Draft and proposed items stay hidden,
-    // and booking state is never revealed (booked is folded into the total) —
-    // this keeps the count identical whether you view your own profile or
-    // someone else's, never spoiling which gifts have been reserved.
-    const visibleCounts = await Item.aggregate<{ _id: mongoose.Types.ObjectId; count: number }>([
-      {
-        $match: {
-          wishlist: { $in: uniqueWishlists.map((w) => w._id) },
-          status: { $in: ['available', 'booked', 'completed'] },
-        },
-      },
-      { $group: { _id: '$wishlist', count: { $sum: 1 } } },
-    ]);
-    const countMap = new Map(visibleCounts.map((c) => [c._id.toString(), c.count]));
+    // Each list's item count is its published items (`lib/utils/itemCounts.ts`),
+    // the same number every other screen shows for it. Drafts and proposals are
+    // never counted here, not even on your own profile, and booking state is
+    // never revealed (booked folds into the count), so the count is identical
+    // whoever is looking.
+    const counts = await countWishlistItems(uniqueWishlists.map((w) => w._id));
 
     // Add membership status, owner identities and item count to each wishlist.
     // The profile being viewed is shown as the owner, even on a co-owned list —
@@ -137,7 +127,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         ownerUsername: profileOwner?.username || null,
         ownerImage: profileOwner?.image ?? null,
         ownerUsernames: people.map((o) => o.username).filter((u): u is string => !!u),
-        itemCount: countMap.get(wishlist._id.toString()) ?? 0,
+        itemCount: countsFor(counts, wishlist._id).items,
       };
     });
 
