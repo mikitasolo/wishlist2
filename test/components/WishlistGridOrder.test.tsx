@@ -17,6 +17,8 @@ vi.mock('next-auth/react', () => ({
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push }),
   useParams: () => ({ username: 'friend' }),
+  usePathname: () => '/users/friend',
+  useSearchParams: () => new URLSearchParams(),
 }));
 vi.mock('next/link', () => ({
   default: ({ href, children, ...rest }: { href: string; children: ReactNode }) => (

@@ -30,6 +30,7 @@ export async function GET() {
       wishlistSlug: n.wishlistSlug ?? null,
       wishlistId: n.wishlist ? n.wishlist.toString() : null,
       itemName: n.itemName ?? null,
+      inviteAnswer: n.inviteAnswer ?? null,
       read: n.read,
       createdAt: n.createdAt,
     }));

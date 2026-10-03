@@ -5,7 +5,7 @@ import connectDB from '@/lib/mongodb';
 import Wishlist from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
 import WishlistInvite from '@/models/WishlistInvite';
-import { createNotification } from '@/lib/notifications';
+import { createNotification, recordInviteAnswer } from '@/lib/notifications';
 import { isWishlistOwner } from '@/lib/utils/wishlistOwners';
 import {
   addWishlistOwner,
@@ -108,8 +108,13 @@ export async function PATCH(
       return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
     }
 
+    // Before the claim, so a re-invite (which only the claim makes possible) is
+    // newer: see `recordInviteAnswer`.
+    const answeredAt = new Date();
+
     if (action === 'decline') {
       if (!(await claimInvite(invite._id, 'declined'))) return inviteNotFound();
+      await recordInviteAnswer({ invite, answer: 'declined', answeredAt });
       return NextResponse.json({ success: true, data: { status: 'declined' } }, { status: 200 });
     }
 
@@ -174,15 +179,20 @@ export async function PATCH(
       return (await Wishlist.exists({ _id: invite.wishlist })) ? inviteNotFound() : wishlistGone();
     }
 
-    // Let the inviter know their invitation was accepted.
-    await createNotification({
-      user: invite.invitedBy,
-      type: 'invite_accepted',
-      actorUsername: session.user.username ?? null,
-      wishlist: invite.wishlist,
-      wishlistName: wishlist.name,
-      wishlistSlug: wishlist.slug ?? null,
-    });
+    // Let the inviter know their invitation was accepted, and turn the invitee's
+    // own invite notification into "You joined …". Only now that the role is
+    // granted: a failed grant reopens the invite, which is pending again.
+    await Promise.all([
+      createNotification({
+        user: invite.invitedBy,
+        type: 'invite_accepted',
+        actorUsername: session.user.username ?? null,
+        wishlist: invite.wishlist,
+        wishlistName: wishlist.name,
+        wishlistSlug: wishlist.slug ?? null,
+      }),
+      recordInviteAnswer({ invite, answer: 'accepted', answeredAt }),
+    ]);
 
     return NextResponse.json(
       {

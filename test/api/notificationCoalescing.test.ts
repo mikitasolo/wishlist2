@@ -312,7 +312,7 @@ describe('proposal notifications coalesce per (owner, wishlist)', () => {
       expect(feed[0].actorUsername).toBeNull();
       expect(feed[0].actorUsernames).toEqual([]);
       const text = notificationText(feed[0]);
-      expect(text).toBe('3 new proposals on “Kitchen”');
+      expect(text).toBe('3 new proposals on Kitchen');
       for (const name of ['mia', 'max']) expect(JSON.stringify(feed[0])).not.toContain(name);
     }
     // Members get nothing.

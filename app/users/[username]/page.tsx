@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import AuthButton from '@/components/AuthButton';
@@ -14,6 +14,7 @@ import FollowListModal, { type FollowTab } from '@/components/FollowListModal';
 import { SkeletonGrid } from '@/components/Skeleton';
 import { useToast } from '@/components/ToastProvider';
 import { IWishlist } from '@/models/Wishlist';
+import { FOLLOWERS_PARAM } from '@/lib/utils/profileLinks';
 
 interface WishlistWithMembership extends IWishlist {
   isMember?: boolean;
@@ -46,7 +47,25 @@ export default function UserProfile() {
   const [loading, setLoading] = useState(true);
   const [restricted, setRestricted] = useState(false);
   const [followBusy, setFollowBusy] = useState(false);
-  const [followModal, setFollowModal] = useState<FollowTab | null>(null);
+  // `?followers=1` (`followersHref`, which a follow notification links to)
+  // opens the followers list as soon as the profile has loaded.
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [followModal, setFollowModal] = useState<FollowTab | null>(() =>
+    searchParams.has(FOLLOWERS_PARAM) ? 'followers' : null
+  );
+
+  // Closing it takes the parameter off the URL, so a reload or a shared link
+  // doesn't open it again. A history replace, not a navigation, which would
+  // race with a click on someone in the list.
+  function closeFollowModal() {
+    setFollowModal(null);
+    if (!searchParams.has(FOLLOWERS_PARAM)) return;
+    const rest = new URLSearchParams(searchParams.toString());
+    rest.delete(FOLLOWERS_PARAM);
+    const query = rest.toString();
+    window.history.replaceState(null, '', query ? `${pathname}?${query}` : pathname);
+  }
 
   useEffect(() => {
     async function load() {
@@ -288,7 +307,7 @@ export default function UserProfile() {
           initialTab={followModal}
           followerCount={profile.followerCount}
           followingCount={profile.followingCount}
-          onClose={() => setFollowModal(null)}
+          onClose={closeFollowModal}
         />
       )}
     </div>

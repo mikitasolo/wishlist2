@@ -253,6 +253,13 @@ describe('InvitesPage — failures worth retrying keep the card', () => {
 });
 
 describe('InvitesPage — answering an invite', () => {
+  const notificationsChanged = vi.fn();
+  beforeEach(() => {
+    notificationsChanged.mockReset();
+    window.addEventListener('notifications-changed', notificationsChanged);
+  });
+  afterEach(() => window.removeEventListener('notifications-changed', notificationsChanged));
+
   it('declining drops the card and refreshes the dot', async () => {
     mockFetch({ status: 200, body: { success: true, data: { status: 'declined' } } });
     await clickOnFirstCard('Decline');
@@ -260,6 +267,27 @@ describe('InvitesPage — answering an invite', () => {
     await waitFor(() => expect(screen.queryByText('Birthday')).toBeNull());
     expect(invitesChanged).toHaveBeenCalledTimes(1);
     expect(showToast).toHaveBeenCalledWith('Invitation declined', 'info');
+  });
+
+  // regression: answering marks the invite's notification read on the server,
+  // but the bell only re-counted on focus, so after a decline (which stays on
+  // this page) it kept counting the notification.
+  it.each([
+    ['Decline', { status: 'declined' }],
+    ['Accept', { status: 'accepted', wishlistSlug: 'birthday', wishlistId: 'w1' }],
+  ] as const)('regression: %s has the bell re-count its unread', async (name, data) => {
+    mockFetch({ status: 200, body: { success: true, data } });
+    await clickOnFirstCard(name);
+
+    await waitFor(() => expect(notificationsChanged).toHaveBeenCalledTimes(1));
+  });
+
+  it('leaves the bell alone when the answer failed', async () => {
+    mockFetch({ status: 500, body: { success: false, error: 'Failed to update invite' } });
+    await clickOnFirstCard('Decline');
+
+    await waitFor(() => expect(showToast).toHaveBeenCalledWith('Failed to update invite', 'error'));
+    expect(notificationsChanged).not.toHaveBeenCalled();
   });
 
   it('accepting drops the card and opens the list', async () => {
