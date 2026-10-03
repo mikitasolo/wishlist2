@@ -3,8 +3,8 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
 
 /**
- * Keyboard focus for a modal dialog (`ConfirmDialog`, `BaseModal`,
- * `CreateWishlistModal`, `FollowListModal`, `ImageCropModal`), while `active`:
+ * Keyboard focus for a modal dialog (`ConfirmDialog`, and `BaseModal`, which
+ * every other dialog is built on), while `active`:
  *
  * - On open, focus moves into `containerRef`: to `initialFocusRef` if it can
  *   take focus, else the first tabbable element, else the container itself
@@ -13,9 +13,9 @@ import { useEffect, useRef, useState, type RefObject } from 'react';
  * - Tab / Shift+Tab wrap around inside the **topmost** open dialog, so they
  *   never reach the page, or a dialog underneath, behind its backdrop. Dialogs
  *   stack in the order they open: a confirmation opened over a modal traps
- *   focus until it closes, then the modal does again. A dialog rendered inside
- *   another one's container (the crop dialog in an item modal's form) stacks
- *   the same way.
+ *   focus until it closes, then the modal does again. A dialog opened from
+ *   inside another one (the crop dialog, from an item modal's form) stacks the
+ *   same way, portalled or rendered inside its container.
  * - Only Tab stops inside the container count. A popup that a control in it
  *   renders elsewhere (the `Select` menu, portalled to <body>) has to keep
  *   focus on that control while it's open, and have no Tab stops of its own,

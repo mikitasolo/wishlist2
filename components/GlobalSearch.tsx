@@ -5,6 +5,12 @@ import { useRouter } from 'next/navigation';
 import Icon from '@/components/Icon';
 import IconButton from '@/components/IconButton';
 import Avatar from '@/components/Avatar';
+import {
+  POPOVER_GROUP_LABEL,
+  POPOVER_NOTE,
+  POPOVER_OPTION_ROW,
+  POPOVER_SURFACE,
+} from '@/components/popoverStyles';
 import { usernameQuery } from '@/lib/utils/searchQuery';
 
 interface UserResult {
@@ -148,8 +154,8 @@ export default function GlobalSearch({ variant = 'header' }: GlobalSearchProps) 
   const term = q.trim();
   const hasResults = users.length > 0 || wishlists.length > 0;
   const dropdownClass = inline
-    ? 'animate-fade-in absolute inset-x-0 top-full z-20 mt-2 overflow-hidden rounded-2xl border border-border bg-surface py-1.5 text-left shadow-lg'
-    : 'animate-fade-in absolute left-4 right-4 top-[3.5rem] overflow-hidden rounded-2xl border border-border bg-surface py-1.5 shadow-lg sm:left-auto sm:right-0 sm:top-full sm:mt-2 sm:w-80';
+    ? `animate-fade-in absolute inset-x-0 top-full z-20 mt-2 overflow-hidden text-left ${POPOVER_SURFACE}`
+    : `animate-fade-in absolute left-4 right-4 top-[3.5rem] overflow-hidden ${POPOVER_SURFACE} sm:left-auto sm:right-0 sm:top-full sm:mt-2 sm:w-80`;
 
   return (
     <div
@@ -202,29 +208,23 @@ export default function GlobalSearch({ variant = 'header' }: GlobalSearchProps) 
 
       {open && term.length > 0 && term.length < 3 && (
         <div className={dropdownClass}>
-          <p className="px-4 py-3 text-sm text-muted-foreground">Type at least 3 characters…</p>
+          <p className={POPOVER_NOTE}>Type at least 3 characters…</p>
         </div>
       )}
 
       {open && term.length >= 3 && (
         <div className={dropdownClass}>
-          {loading && !hasResults && (
-            <p className="px-4 py-3 text-sm text-muted-foreground">Searching…</p>
-          )}
-          {!loading && !hasResults && (
-            <p className="px-4 py-3 text-sm text-muted-foreground">No matches for “{term}”.</p>
-          )}
+          {loading && !hasResults && <p className={POPOVER_NOTE}>Searching…</p>}
+          {!loading && !hasResults && <p className={POPOVER_NOTE}>No matches for “{term}”.</p>}
 
           {users.length > 0 && (
             <div>
-              <p className="px-4 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                People
-              </p>
+              <p className={POPOVER_GROUP_LABEL}>People</p>
               {users.map((u) => (
                 <button
                   key={u.username}
                   onClick={() => go(`/users/${u.username}`)}
-                  className="flex w-full items-center gap-3 px-4 py-2 text-left transition-colors hover:bg-muted"
+                  className={`${POPOVER_OPTION_ROW} transition-colors hover:bg-muted`}
                 >
                   <Avatar name={u.username} src={u.image} size="sm" />
                   <span className="truncate text-sm font-medium text-foreground">
@@ -237,14 +237,12 @@ export default function GlobalSearch({ variant = 'header' }: GlobalSearchProps) 
 
           {wishlists.length > 0 && (
             <div>
-              <p className="px-4 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Wishlists
-              </p>
+              <p className={POPOVER_GROUP_LABEL}>Wishlists</p>
               {wishlists.map((w) => (
                 <button
                   key={w._id}
                   onClick={() => go(`/wishlists/${w.slug ?? w._id}`)}
-                  className="flex w-full items-center gap-3 px-4 py-2 text-left transition-colors hover:bg-muted"
+                  className={`${POPOVER_OPTION_ROW} transition-colors hover:bg-muted`}
                 >
                   <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-primary-500/12 text-accent dark:text-primary-300">
                     <Icon name="gift" size={16} />

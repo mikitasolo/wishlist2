@@ -152,6 +152,32 @@ describe('CreateWishlistModal — keyboard focus', () => {
   });
 });
 
+describe('CreateWishlistModal — on BaseModal', () => {
+  it('is a md-wide dialog with Cancel and Create Wishlist in its pinned footer', async () => {
+    await openModal();
+    expect(modal()).toHaveClass('max-w-md');
+    expect(modal().tagName).toBe('FORM');
+    const cancel = button('Cancel');
+    const bar = cancel.parentElement!;
+    expect(bar).toContainElement(button('Create Wishlist'));
+    expect(bar).not.toContainElement(nameField());
+    expect(button('Create Wishlist')).toHaveAttribute('type', 'submit');
+  });
+
+  // regression: the discard confirmation, no longer inside the modal's portal,
+  // rendered where the modal sits: in the header, whose frosted bar contains a
+  // fixed overlay, it was drawn inside the bar, under the modal's backdrop.
+  it('regression: puts the discard confirmation on <body>, like the modal itself', async () => {
+    const user = await openModal();
+    await user.type(nameField(), 'Birthday');
+    await user.tab();
+    await user.keyboard('{Escape}');
+    const confirmation = screen.getByRole('alertdialog', { name: 'Discard Changes?' });
+    expect(confirmation.parentElement!.parentElement).toBe(document.body);
+    expect(modal().parentElement!.parentElement).toBe(document.body);
+  });
+});
+
 describe('CreateWishlistModal — the currency Select by keyboard', () => {
   /** The option the keyboard is on, as the trigger announces it. */
   const activeOption = () =>

@@ -1,11 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import Link from 'next/link';
 import { signIn, signOut, useSession } from 'next-auth/react';
 import Avatar from '@/components/Avatar';
 import Icon from '@/components/Icon';
 import Button from '@/components/Button';
+import Menu, { type MenuEntry } from '@/components/Menu';
 import { useTheme } from '@/components/ThemeProvider';
 import { isAuthOnlyPath } from '@/lib/utils/callbackUrl';
 
@@ -26,8 +26,6 @@ export default function AuthButton() {
   // sent before signing out.
   const checksSent = useRef(0);
   const checksOutdatedUpTo = useRef(0);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
 
   // Whether there are pending invitations, for the header dot indicator.
   const checkInvites = useCallback(async () => {
@@ -74,31 +72,6 @@ export default function AuthButton() {
     if (open && status === 'authenticated') checkInvites();
   }, [open, status, checkInvites]);
 
-  // Close on outside click + Escape; move focus into menu when opened.
-  useEffect(() => {
-    if (!open) return;
-
-    const handlePointer = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
-    };
-    document.addEventListener('mousedown', handlePointer);
-    document.addEventListener('keydown', handleKey);
-
-    // Focus first actionable item for keyboard users.
-    const firstButton = menuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]');
-    firstButton?.focus();
-
-    return () => {
-      document.removeEventListener('mousedown', handlePointer);
-      document.removeEventListener('keydown', handleKey);
-    };
-  }, [open]);
-
   if (status === 'loading') {
     return <div className="skeleton h-10 w-10 rounded-full" />;
   }
@@ -108,142 +81,88 @@ export default function AuthButton() {
     const username = (session.user as { username?: string }).username;
     const image = session.user.image || null;
     const displayName = username || email.split('@')[0];
+
+    const items: MenuEntry[] = [
+      ...(username
+        ? [{ label: 'Your profile', icon: 'user' as const, href: `/users/${username}` }]
+        : []),
+      { label: 'Reserved by you', icon: 'check-circle', href: '/booked' },
+      {
+        label: 'Invitations',
+        icon: 'inbox',
+        href: '/invites',
+        trailing: hasInvites && (
+          <span className="ml-auto h-2 w-2 rounded-full bg-red-500" aria-hidden />
+        ),
+      },
+      { label: 'Settings', icon: 'settings', href: '/settings' },
+      {
+        type: 'radio-group',
+        label: 'Theme',
+        value: theme,
+        options: [
+          { value: 'light', label: 'Light', icon: 'sun' },
+          { value: 'dark', label: 'Dark', icon: 'moon' },
+        ],
+        onChange: (t) => setTheme(t === 'dark' ? 'dark' : 'light'),
+      },
+      {
+        label: 'Sign out',
+        icon: 'logout',
+        separated: true,
+        onSelect: () =>
+          // A page that needs an account would only send them on to the
+          // sign-in form once it reloads signed out, so sign out to home
+          // from there. Anywhere else, stay on the page, now signed out.
+          signOut(isAuthOnlyPath(window.location.pathname) ? { redirectTo: '/' } : undefined),
+      },
+    ];
+
+    // Below `sm` the trigger is just the avatar, a 40px circle the size of the
+    // header's other buttons, so the header fits a 320px phone. From `sm` up
+    // it can shrink, truncating the name (see AppHeader). The label names it
+    // either way. The header is the account's own: only its owner sees the
+    // email in it.
     return (
-      <div className="relative min-w-0" ref={containerRef}>
-        {/* Below `sm` it's just the avatar, a 40px circle the size of the
-            header's other buttons, so the header fits a 320px phone. From `sm`
-            up it can shrink, truncating the name (see AppHeader). The
-            aria-label names it either way. */}
-        <button
-          onClick={() => setOpen((v) => !v)}
-          className="flex max-w-full items-center gap-1.5 rounded-full p-1 text-sm font-semibold text-foreground transition-colors hover:bg-muted sm:pr-2"
-          aria-label={`Account menu${hasInvites ? ' — new invitations' : ''}`}
-          aria-haspopup="menu"
-          aria-expanded={open}
-        >
-          <span className="relative inline-flex">
-            <Avatar name={displayName} src={image} size="sm" />
-            {hasInvites && (
-              <span
-                className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-surface"
-                aria-hidden
-              />
-            )}
-          </span>
-          <span className="hidden max-w-[10rem] truncate sm:block">{displayName}</span>
-          <Icon
-            name="chevron-down"
-            size={15}
-            className={`hidden text-muted-foreground transition-transform sm:block ${open ? 'rotate-180' : ''}`}
-          />
-        </button>
-
-        {open && (
-          <div
-            ref={menuRef}
-            role="menu"
-            aria-label="Account"
-            className="animate-fade-in absolute right-0 mt-2 w-64 overflow-hidden rounded-xl border border-border bg-surface py-1.5 shadow-lg"
-          >
-            <div className="flex items-center gap-3 border-b border-border px-4 py-3">
-              <Avatar name={displayName} src={image} size="md" />
-              <div className="min-w-0">
-                <p className="truncate text-sm font-medium text-foreground">
-                  {username ? `@${username}` : displayName}
-                </p>
-                <p className="truncate text-xs text-muted-foreground">{email}</p>
-              </div>
-            </div>
-            {username && (
-              <Link
-                role="menuitem"
-                href={`/users/${username}`}
-                onClick={() => setOpen(false)}
-                className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm font-medium text-foreground transition-colors hover:bg-muted"
-              >
-                <Icon name="user" size={18} className="text-muted-foreground" />
-                Your profile
-              </Link>
-            )}
-            <Link
-              role="menuitem"
-              href="/booked"
-              onClick={() => setOpen(false)}
-              className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm font-medium text-foreground transition-colors hover:bg-muted"
-            >
-              <Icon name="check-circle" size={18} className="text-muted-foreground" />
-              Reserved by you
-            </Link>
-            <Link
-              role="menuitem"
-              href="/invites"
-              onClick={() => setOpen(false)}
-              className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm font-medium text-foreground transition-colors hover:bg-muted"
-            >
-              <Icon name="inbox" size={18} className="text-muted-foreground" />
-              Invitations
+      <Menu
+        label={`Account menu${hasInvites ? ' — new invitations' : ''}`}
+        menuLabel="Account"
+        className="relative min-w-0"
+        triggerClassName="flex max-w-full items-center gap-1.5 rounded-full p-1 text-sm font-semibold text-foreground transition-colors hover:bg-muted sm:pr-2"
+        menuWidthClassName="w-64"
+        onOpenChange={setOpen}
+        trigger={(menuOpen) => (
+          <>
+            <span className="relative inline-flex">
+              <Avatar name={displayName} src={image} size="sm" />
               {hasInvites && (
-                <span className="ml-auto h-2 w-2 rounded-full bg-red-500" aria-hidden />
-              )}
-            </Link>
-            <Link
-              role="menuitem"
-              href="/settings"
-              onClick={() => setOpen(false)}
-              className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm font-medium text-foreground transition-colors hover:bg-muted"
-            >
-              <Icon name="settings" size={18} className="text-muted-foreground" />
-              Settings
-            </Link>
-
-            {/* Theme slider */}
-            <div className="px-4 py-2.5">
-              <div className="relative flex rounded-xl border border-border bg-surface-2 p-1">
                 <span
+                  className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-surface"
                   aria-hidden
-                  className="absolute bottom-1 top-1 rounded-lg bg-surface shadow-sm transition-[left] duration-300 ease-[cubic-bezier(0.2,0.7,0.2,1)]"
-                  style={{
-                    width: 'calc((100% - 0.5rem) / 2)',
-                    left: `calc(${theme === 'light' ? 0 : 1} * ((100% - 0.5rem) / 2) + 0.25rem)`,
-                  }}
                 />
-                {(['light', 'dark'] as const).map((t) => (
-                  <button
-                    key={t}
-                    type="button"
-                    role="menuitemradio"
-                    aria-checked={theme === t}
-                    onClick={() => setTheme(t)}
-                    className={`relative z-10 flex flex-1 items-center justify-center gap-1.5 rounded-lg py-1.5 text-sm font-semibold transition-colors ${
-                      theme === t
-                        ? 'text-foreground'
-                        : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    <Icon name={t === 'light' ? 'sun' : 'moon'} size={15} />
-                    {t === 'light' ? 'Light' : 'Dark'}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="my-1 border-t border-border" />
-            <button
-              role="menuitem"
-              onClick={() =>
-                // A page that needs an account would only send them on to the
-                // sign-in form once it reloads signed out, so sign out to home
-                // from there. Anywhere else, stay on the page, now signed out.
-                signOut(isAuthOnlyPath(window.location.pathname) ? { redirectTo: '/' } : undefined)
-              }
-              className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm font-medium text-foreground transition-colors hover:bg-muted"
-            >
-              <Icon name="logout" size={18} className="text-muted-foreground" />
-              Sign out
-            </button>
-          </div>
+              )}
+            </span>
+            <span className="hidden max-w-[10rem] truncate sm:block">{displayName}</span>
+            <Icon
+              name="chevron-down"
+              size={15}
+              className={`hidden text-muted-foreground transition-transform sm:block ${menuOpen ? 'rotate-180' : ''}`}
+            />
+          </>
         )}
-      </div>
+        header={
+          <div className="flex items-center gap-3">
+            <Avatar name={displayName} src={image} size="md" />
+            <div className="min-w-0">
+              <p className="truncate text-sm font-medium text-foreground">
+                {username ? `@${username}` : displayName}
+              </p>
+              <p className="truncate text-xs text-muted-foreground">{email}</p>
+            </div>
+          </div>
+        }
+        items={items}
+      />
     );
   }
 

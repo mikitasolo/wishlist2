@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, act, cleanup, fireEvent } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 
 type User = { id: string; email: string; username: string };
 
@@ -20,8 +21,9 @@ vi.mock('next-auth/react', () => ({
   signOut: vi.fn(),
 }));
 
+const { setTheme } = vi.hoisted(() => ({ setTheme: vi.fn() }));
 vi.mock('@/components/ThemeProvider', () => ({
-  useTheme: () => ({ theme: 'light', setTheme: vi.fn() }),
+  useTheme: () => ({ theme: 'light', setTheme }),
 }));
 
 vi.mock('next/link', () => ({
@@ -78,6 +80,7 @@ beforeEach(() => {
   cleanup();
   signedIn.user = me;
   signedIn.loading = false;
+  setTheme.mockReset();
 });
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -288,4 +291,117 @@ describe('AuthButton — signing out', () => {
       expect(signOut).toHaveBeenCalledWith(undefined);
     }
   );
+});
+
+// WIS-220: the account menu is the shared Menu, so it works from the keyboard.
+describe('AuthButton — the account menu from the keyboard', () => {
+  const accountButton = () => screen.getByRole('button', { name: /^account menu/i });
+  const menu = () => screen.queryByRole('menu', { name: 'Account' });
+  const item = (name: string) => screen.getByRole('menuitem', { name });
+  const radio = (name: string) => screen.getByRole('menuitemradio', { name });
+
+  async function openFromKeyboard() {
+    mockInvites(0);
+    const user = userEvent.setup();
+    render(<AuthButton />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    act(() => accountButton().focus());
+    await user.keyboard('{Enter}');
+    return user;
+  }
+
+  it('opens on its first item, with the header (the account and its email) above the items', async () => {
+    await openFromKeyboard();
+    expect(menu()).toBeInTheDocument();
+    expect(item('Your profile')).toHaveFocus();
+    expect(screen.getByText('me@example.com')).toBeVisible();
+    expect(menu()).not.toContainElement(screen.getByText('me@example.com'));
+    expect(screen.getAllByRole('menuitem').map((el) => el.textContent)).toEqual([
+      'Your profile',
+      'Reserved by you',
+      'Invitations',
+      'Settings',
+      'Sign out',
+    ]);
+  });
+
+  it('moves with the arrow keys, Home and End, through the theme choice too', async () => {
+    const user = await openFromKeyboard();
+    await user.keyboard('{ArrowDown}');
+    expect(item('Reserved by you')).toHaveFocus();
+    await user.keyboard('{ArrowDown}{ArrowDown}{ArrowDown}');
+    expect(radio('Light')).toHaveFocus();
+    await user.keyboard('{ArrowDown}');
+    expect(radio('Dark')).toHaveFocus();
+    await user.keyboard('{End}');
+    expect(item('Sign out')).toHaveFocus();
+    await user.keyboard('{ArrowDown}');
+    expect(item('Your profile')).toHaveFocus();
+    await user.keyboard('{Home}{ArrowUp}');
+    expect(item('Sign out')).toHaveFocus();
+  });
+
+  // regression: every item was a Tab stop, so Tab walked through the menu and
+  // on into the page behind it with the menu still open.
+  it('regression: makes no item a Tab stop', async () => {
+    await openFromKeyboard();
+    for (const el of [
+      ...screen.getAllByRole('menuitem'),
+      ...screen.getAllByRole('menuitemradio'),
+    ]) {
+      expect(el).toHaveAttribute('tabindex', '-1');
+    }
+  });
+
+  // regression: Escape closed it with focus dropped to <body>.
+  it('regression: closes with Escape, with focus back on the Account menu button', async () => {
+    const user = await openFromKeyboard();
+    await user.keyboard('{ArrowDown}{ArrowDown}');
+    await user.keyboard('{Escape}');
+    expect(menu()).toBeNull();
+    expect(accountButton()).toHaveFocus();
+    expect(accountButton()).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('closes with Tab, with focus back on the Account menu button to move on from', async () => {
+    await openFromKeyboard();
+    fireEvent.keyDown(item('Your profile'), { key: 'Tab' });
+    expect(menu()).toBeNull();
+    expect(accountButton()).toHaveFocus();
+  });
+
+  it('says which theme is on, and changes it from the keyboard, staying open', async () => {
+    const user = await openFromKeyboard();
+    expect(screen.getByRole('group', { name: 'Theme' })).toContainElement(radio('Light'));
+    expect(radio('Light')).toHaveAttribute('aria-checked', 'true');
+    expect(radio('Dark')).toHaveAttribute('aria-checked', 'false');
+
+    await user.keyboard('d');
+    expect(radio('Dark')).toHaveFocus();
+    await user.keyboard('{Enter}');
+    expect(setTheme).toHaveBeenCalledExactlyOnceWith('dark');
+    expect(menu()).toBeInTheDocument();
+  });
+
+  it('links each page item to its page', async () => {
+    await openFromKeyboard();
+    expect(item('Your profile')).toHaveAttribute('href', '/users/mikita');
+    expect(item('Reserved by you')).toHaveAttribute('href', '/booked');
+    expect(item('Invitations')).toHaveAttribute('href', '/invites');
+    expect(item('Settings')).toHaveAttribute('href', '/settings');
+  });
+
+  it('signs out from the keyboard', async () => {
+    const user = await openFromKeyboard();
+    await user.keyboard('{End}{Enter}');
+    expect(signOut).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-checks the invitations when it opens', async () => {
+    await openFromKeyboard();
+    // Once on sign-in, once on opening.
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
 });

@@ -9,14 +9,31 @@ import {
   useState,
   type KeyboardEvent,
   type MouseEvent,
+  type ReactNode,
 } from 'react';
+import Link from 'next/link';
 import Icon, { type IconName } from './Icon';
+import {
+  POPOVER_ACTION_ROW,
+  POPOVER_ICON_SIZE,
+  POPOVER_SEPARATOR,
+  POPOVER_SURFACE,
+} from './popoverStyles';
 
 export interface MenuItem {
+  type?: 'item';
   /** The item's visible text, which is also its accessible name. */
   label: string;
   icon?: IconName;
-  onSelect: () => void;
+  /**
+   * Runs when it's picked, with focus already back on the trigger. On a link
+   * item it runs in the link's click, before the navigation starts.
+   */
+  onSelect?: () => void;
+  /** Makes it a link to this path, followed when it's picked. */
+  href?: string;
+  /** Drawn at the end of the row: a decoration, such as a dot (mark it `aria-hidden`). */
+  trailing?: ReactNode;
   /**
    * Shown dimmed and does nothing when picked, e.g. while the action's
    * request runs. It stays in the menu's arrow-key order (`aria-disabled`).
@@ -26,15 +43,56 @@ export interface MenuItem {
   separated?: boolean;
 }
 
-interface MenuProps {
-  /** The trigger's accessible name, also shown as its tooltip. */
+/**
+ * A choice of one of a few options (the theme), shown side by side as a
+ * segmented control. Each option is a `menuitemradio` in the menu's arrow-key
+ * order, and picking one leaves the menu open, so the change can be seen.
+ */
+export interface MenuRadioGroup {
+  type: 'radio-group';
+  /** The group's accessible name. */
   label: string;
-  items: MenuItem[];
+  value: string;
+  options: { value: string; label: string; icon?: IconName }[];
+  onChange: (value: string) => void;
+  separated?: boolean;
+}
+
+export type MenuEntry = MenuItem | MenuRadioGroup;
+
+interface MenuProps {
+  /** The trigger's accessible name. Shown as its tooltip when it's an icon. */
+  label: string;
+  items: MenuEntry[];
   /** Classes for the trigger: its size and look. */
   triggerClassName?: string;
-  /** The trigger's icon (it has no visible text). */
+  /** The trigger's icon, when it has no `trigger` content. */
   icon?: IconName;
+  /**
+   * What the trigger shows instead of the icon (an avatar and a name), given
+   * whether the menu is open. It's still named by `label`, with no tooltip.
+   */
+  trigger?: (open: boolean) => ReactNode;
+  /** The menu's accessible name, if not the trigger's. */
+  menuLabel?: string;
+  /**
+   * Shown at the top of the menu, above its items and not one of them (who's
+   * signed in). It's outside the `role="menu"` element, so the arrow keys and
+   * type-ahead skip it.
+   */
+  header?: ReactNode;
+  /** Classes for the wrapper around the trigger and the menu. */
+  className?: string;
+  /** The menu's width. By default it fits its widest item, at least 12rem. */
+  menuWidthClassName?: string;
+  /** Told whenever the menu opens or closes. */
+  onOpenChange?: (open: boolean) => void;
 }
+
+const isRadioGroup = (entry: MenuEntry): entry is MenuRadioGroup => entry.type === 'radio-group';
+
+/** The menu's items, the arrow keys' stops, in order. */
+const ITEM_SELECTOR = '[role="menuitem"], [role="menuitemradio"]';
 
 /** px between the trigger and the menu. */
 const GAP = 8;
@@ -45,30 +103,45 @@ const MARGIN = 8;
 const focusIsLost = () => !document.activeElement || document.activeElement === document.body;
 
 /**
- * A menu button (WAI-ARIA menu button pattern): an icon trigger that opens a
- * list of actions. The menu is rendered in place, positioned against the
- * trigger, so it scrolls with the page and focus can move into it (a popup
- * portalled out of a dialog has to keep focus on its control instead: see
- * `Select`). It opens below the trigger, or above when there's more room
- * there, and right-aligned with it unless that would run off the left edge.
- * It sits over the sticky header rather than under it.
+ * A menu button (WAI-ARIA menu button pattern): a trigger that opens a list of
+ * actions. The trigger is an icon, or whatever `trigger` draws (the account
+ * menu's avatar and name). The menu may have a `header` above its items, and
+ * a radio group (`MenuRadioGroup`) among them. It's rendered in place,
+ * positioned against the trigger, so it scrolls with the page and focus can
+ * move into it (a popup portalled out of a dialog has to keep focus on its
+ * control instead: see `Select`). It opens below the trigger, or above when
+ * there's more room there, and right-aligned with it unless that would run off
+ * the left edge. It sits over the sticky header rather than under it.
  *
  * From the keyboard: Enter, Space or ArrowDown on the trigger opens it on the
  * first item, ArrowUp on the last. In the menu the arrow keys (wrapping), Home
- * and End move between items, a letter moves to the next item starting with
- * it, and Enter or Space picks one. Escape closes it, as does Tab, with focus
- * back on the trigger (and Tab then moving on from there). A click outside, or
- * focus leaving it, closes it too. Opened with a pointer, the menu itself takes
- * focus, so nothing looks picked until the pointer or a key moves onto an item.
+ * and End move between items (a radio group's options included), a letter
+ * moves to the next item starting with it, and Enter or Space picks one.
+ * Escape closes it, as does Tab, with focus back on the trigger (and Tab then
+ * moving on from there). A click outside, or focus leaving it, closes it too.
+ * Opened with a pointer, the menu itself takes focus, so nothing looks picked
+ * until the pointer or a key moves onto an item.
  *
  * Picking an item closes the menu and puts focus back on the trigger before the
  * item's action runs, so a dialog the action opens records the trigger as its
- * opener and gives focus back to it when it closes. If the items change under
- * the focused one (a poll re-rendering the card), focus moves to the menu, and
- * if the menu closes with focus dropped to <body>, to the trigger. The menu's
- * keys stop at the menu, so its Escape doesn't also close a dialog around it.
+ * opener and gives focus back to it when it closes. Picking a radio option
+ * leaves it open, on that option. If the items change under the focused one
+ * (a poll re-rendering the card), focus moves to the menu, and if the menu
+ * closes with focus dropped to <body>, to the trigger. The menu's keys stop at
+ * the menu, so its Escape doesn't also close a dialog around it.
  */
-export default function Menu({ label, items, triggerClassName = '', icon = 'more' }: MenuProps) {
+export default function Menu({
+  label,
+  items,
+  triggerClassName = '',
+  icon = 'more',
+  trigger,
+  menuLabel,
+  header,
+  className = 'relative flex',
+  menuWidthClassName = 'w-max min-w-[12rem]',
+  onOpenChange,
+}: MenuProps) {
   const [open, setOpen] = useState(false);
   const [placement, setPlacement] = useState({ above: false, alignLeft: false });
   // What takes focus once the menu is shown: set by whatever opened it.
@@ -78,6 +151,7 @@ export default function Menu({ label, items, triggerClassName = '', icon = 'more
   const wasOpen = useRef(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const id = useId();
@@ -88,8 +162,18 @@ export default function Menu({ label, items, triggerClassName = '', icon = 'more
   const empty = items.length === 0;
   if (empty && open) setOpen(false);
 
+  // Told after the commit, so a parent's state set in it doesn't update
+  // another component while this one renders. Once per change: a new
+  // `onOpenChange` on every render doesn't repeat it.
+  const toldOpen = useRef(false);
+  useEffect(() => {
+    if (toldOpen.current === open) return;
+    toldOpen.current = open;
+    onOpenChange?.(open);
+  }, [open, onOpenChange]);
+
   const menuItems = () =>
-    Array.from(menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? []);
+    Array.from(menuRef.current?.querySelectorAll<HTMLElement>(ITEM_SELECTOR) ?? []);
 
   const openMenu = (focus: 'first' | 'last' | 'menu') => {
     if (empty) return;
@@ -105,20 +189,21 @@ export default function Menu({ label, items, triggerClassName = '', icon = 'more
   const choose = (item: MenuItem) => {
     if (item.disabled) return;
     closeToTrigger();
-    item.onSelect();
+    item.onSelect?.();
   };
 
   // Pick a side and move focus in before the menu paints.
   useLayoutEffect(() => {
-    const trigger = triggerRef.current;
+    const triggerEl = triggerRef.current;
+    const popover = popoverRef.current;
     const menu = menuRef.current;
-    if (!open || !trigger || !menu) return;
-    const t = trigger.getBoundingClientRect();
+    if (!open || !triggerEl || !popover || !menu) return;
+    const t = triggerEl.getBoundingClientRect();
     const roomBelow = window.innerHeight - t.bottom - GAP - MARGIN;
     const roomAbove = t.top - GAP - MARGIN;
     setPlacement({
-      above: menu.offsetHeight > roomBelow && roomAbove > roomBelow,
-      alignLeft: t.right - menu.offsetWidth < MARGIN,
+      above: popover.offsetHeight > roomBelow && roomAbove > roomBelow,
+      alignLeft: t.right - popover.offsetWidth < MARGIN,
     });
     const all = menuItems();
     const target =
@@ -192,7 +277,10 @@ export default function Menu({ label, items, triggerClassName = '', icon = 'more
     else if (e.key === 'Home') focus(0);
     else if (e.key === 'End') focus(all.length - 1);
     else if (e.key === 'Escape') closeToTrigger();
-    else if (e.key.length === 1 && e.key !== ' ') {
+    else if (e.key === ' ' && document.activeElement instanceof HTMLAnchorElement) {
+      // Space picks an item, a link one too (a link only follows Enter).
+      document.activeElement.click();
+    } else if (e.key.length === 1 && e.key !== ' ') {
       const key = e.key.toLowerCase();
       for (let k = 1; k <= all.length; k++) {
         const i = (at + k + all.length) % all.length;
@@ -211,10 +299,106 @@ export default function Menu({ label, items, triggerClassName = '', icon = 'more
     e.nativeEvent.stopImmediatePropagation();
   };
 
+  // The pointer moves the highlight, which is focus, so the keyboard carries
+  // on from wherever it is.
+  const followPointer = (e: MouseEvent<HTMLElement>) => {
+    if (document.activeElement !== e.currentTarget) {
+      e.currentTarget.focus({ preventScroll: true });
+    }
+  };
+
+  const itemContent = (item: MenuItem) => (
+    <>
+      {item.icon && (
+        <Icon
+          name={item.icon}
+          size={POPOVER_ICON_SIZE}
+          className="flex-shrink-0 text-muted-foreground"
+        />
+      )}
+      {item.label}
+      {item.trailing}
+    </>
+  );
+
+  const itemClassName = `${POPOVER_ACTION_ROW} cursor-pointer whitespace-nowrap text-foreground outline-hidden transition-colors focus:bg-muted aria-disabled:cursor-not-allowed aria-disabled:opacity-50`;
+
+  const renderItem = (item: MenuItem) =>
+    item.href ? (
+      <Link
+        href={item.href}
+        role="menuitem"
+        tabIndex={-1}
+        aria-disabled={item.disabled || undefined}
+        onClick={(e) => {
+          if (item.disabled) e.preventDefault();
+          else choose(item);
+        }}
+        onMouseMove={followPointer}
+        className={itemClassName}
+      >
+        {itemContent(item)}
+      </Link>
+    ) : (
+      <button
+        type="button"
+        role="menuitem"
+        tabIndex={-1}
+        aria-disabled={item.disabled || undefined}
+        onClick={() => choose(item)}
+        onMouseMove={followPointer}
+        className={itemClassName}
+      >
+        {itemContent(item)}
+      </button>
+    );
+
+  const renderRadioGroup = (group: MenuRadioGroup) => {
+    const selected = Math.max(
+      group.options.findIndex((o) => o.value === group.value),
+      0
+    );
+    const n = group.options.length;
+    return (
+      <div role="group" aria-label={group.label} className="px-1.5 py-1">
+        <div className="relative flex rounded-xl border border-border bg-surface-2 p-1">
+          <span
+            aria-hidden
+            className="absolute bottom-1 top-1 rounded-lg bg-surface shadow-sm transition-[left] duration-300 ease-[cubic-bezier(0.2,0.7,0.2,1)]"
+            style={{
+              width: `calc((100% - 0.5rem) / ${n})`,
+              left: `calc(${selected} * ((100% - 0.5rem) / ${n}) + 0.25rem)`,
+            }}
+          />
+          {group.options.map((option) => {
+            const checked = option.value === group.value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                role="menuitemradio"
+                aria-checked={checked}
+                tabIndex={-1}
+                onClick={() => group.onChange(option.value)}
+                onMouseMove={followPointer}
+                className={`relative z-10 flex flex-1 items-center justify-center gap-1.5 rounded-lg py-1.5 text-sm font-semibold transition-colors ${
+                  checked ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {option.icon && <Icon name={option.icon} size={15} />}
+                {option.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div
       ref={wrapperRef}
-      className="relative flex"
+      className={className}
       onBlur={(e) => {
         if (open && !wrapperRef.current?.contains(e.relatedTarget as Node | null)) setOpen(false);
       }}
@@ -224,7 +408,7 @@ export default function Menu({ label, items, triggerClassName = '', icon = 'more
         id={triggerId}
         type="button"
         aria-label={label}
-        title={label}
+        title={trigger ? undefined : label}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
@@ -246,17 +430,12 @@ export default function Menu({ label, items, triggerClassName = '', icon = 'more
         onKeyUp={onTriggerKeyUp}
         className={triggerClassName}
       >
-        <Icon name={icon} size={18} />
+        {trigger ? trigger(open) : <Icon name={icon} size={18} />}
       </button>
 
       {open && (
         <div
-          ref={menuRef}
-          id={menuId}
-          role="menu"
-          aria-labelledby={triggerId}
-          tabIndex={-1}
-          onKeyDown={onMenuKeyDown}
+          ref={popoverRef}
           // Keep focus where it is: a click would otherwise move it to <body>
           // in Safari, and the blur would close the menu before the click lands.
           onMouseDown={(e) => e.preventDefault()}
@@ -265,41 +444,30 @@ export default function Menu({ label, items, triggerClassName = '', icon = 'more
               menuRef.current.focus({ preventScroll: true });
             }
           }}
-          className={`animate-fade-in absolute z-50 w-max min-w-[12rem] max-w-[calc(100vw-1rem)] rounded-xl border border-border bg-surface p-1.5 shadow-lg outline-none ${
+          className={`animate-fade-in absolute z-50 max-w-[calc(100vw-1rem)] ${menuWidthClassName} ${POPOVER_SURFACE} ${
             placement.above ? 'bottom-full mb-2' : 'top-full mt-2'
           } ${placement.alignLeft ? 'left-0' : 'right-0'}`}
         >
-          {items.map((item, i) => (
-            <Fragment key={item.label}>
-              {item.separated && i > 0 && (
-                <div role="separator" className="-mx-1.5 my-1.5 border-t border-border" />
-              )}
-              <button
-                type="button"
-                role="menuitem"
-                tabIndex={-1}
-                aria-disabled={item.disabled || undefined}
-                onClick={() => choose(item)}
-                // The pointer moves the highlight, which is focus, so the
-                // keyboard carries on from wherever it is.
-                onMouseMove={(e) => {
-                  if (document.activeElement !== e.currentTarget) {
-                    e.currentTarget.focus({ preventScroll: true });
-                  }
-                }}
-                className="flex w-full cursor-pointer items-center gap-2.5 whitespace-nowrap rounded-lg px-3 py-2.5 text-left text-sm font-medium text-foreground outline-hidden transition-colors focus:bg-muted aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
-              >
-                {item.icon && (
-                  <Icon
-                    name={item.icon}
-                    size={17}
-                    className="flex-shrink-0 text-muted-foreground"
-                  />
-                )}
-                {item.label}
-              </button>
-            </Fragment>
-          ))}
+          {header && (
+            <div className="-mx-1.5 -mt-1.5 mb-1.5 border-b border-border px-4 py-3">{header}</div>
+          )}
+          <div
+            ref={menuRef}
+            id={menuId}
+            role="menu"
+            aria-label={menuLabel}
+            aria-labelledby={menuLabel ? undefined : triggerId}
+            tabIndex={-1}
+            onKeyDown={onMenuKeyDown}
+            className="outline-hidden"
+          >
+            {items.map((entry, i) => (
+              <Fragment key={entry.label}>
+                {entry.separated && i > 0 && <div role="separator" className={POPOVER_SEPARATOR} />}
+                {isRadioGroup(entry) ? renderRadioGroup(entry) : renderItem(entry)}
+              </Fragment>
+            ))}
+          </div>
         </div>
       )}
     </div>

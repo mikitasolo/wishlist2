@@ -7,6 +7,7 @@ import Select from './Select';
 import { TONE_CLASSES } from '@/lib/utils/statusTones';
 import Button from './Button';
 import SearchField from './SearchField';
+import { POPOVER_NOTE, POPOVER_OPTION_ROW, POPOVER_SURFACE } from './popoverStyles';
 
 type Role = 'owner' | 'member';
 
@@ -154,12 +155,14 @@ export default function InviteMemberForm({ onInvite, isInviting, ref }: InviteMe
           />
 
           {showSuggestions && term.length >= 3 && (
-            <div className="animate-fade-in absolute left-0 right-0 z-20 mt-2 overflow-hidden rounded-2xl border border-border bg-surface py-1.5 shadow-lg">
+            <div
+              className={`animate-fade-in absolute left-0 right-0 z-20 mt-2 overflow-hidden ${POPOVER_SURFACE}`}
+            >
               {loadingSuggest && suggestions.length === 0 && (
-                <p className="px-4 py-3 text-sm text-muted-foreground">Searching…</p>
+                <p className={POPOVER_NOTE}>Searching…</p>
               )}
               {!loadingSuggest && suggestions.length === 0 && (
-                <p className="px-4 py-3 text-sm text-muted-foreground">No people match “{term}”.</p>
+                <p className={POPOVER_NOTE}>No people match “{term}”.</p>
               )}
               {suggestions.map((u) => (
                 <button
@@ -169,7 +172,7 @@ export default function InviteMemberForm({ onInvite, isInviting, ref }: InviteMe
                     setValue(u.username);
                     setShowSuggestions(false);
                   }}
-                  className="flex w-full items-center gap-3 px-4 py-2 text-left transition-colors hover:bg-muted"
+                  className={`${POPOVER_OPTION_ROW} transition-colors hover:bg-muted`}
                 >
                   <Avatar name={u.username} src={u.image} size="sm" />
                   <span className="truncate text-sm font-medium text-foreground">

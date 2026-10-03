@@ -2,21 +2,36 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Icon from './Icon';
+import { POPOVER_OPTION_ROW, POPOVER_SURFACE } from './popoverStyles';
+import {
+  multiSelectSummary,
+  plainMultiSelectRule,
+  type MultiSelectOption,
+  type MultiSelectRule,
+} from '@/lib/utils/multiSelect';
 
-export interface MultiSelectOption {
-  value: string;
-  label: string;
-}
+export type { MultiSelectOption };
 
-interface MultiSelectDropdownProps {
-  /** Selectable options (do NOT include a synthetic "all" — it's rendered here). */
-  options: MultiSelectOption[];
+interface MultiSelectDropdownProps<V extends string> {
+  /** The options, each a checkbox row under the All row (which is drawn here, not one of them). */
+  options: MultiSelectOption<V>[];
   /** Currently selected values. */
-  selected: string[];
-  onChange: (values: string[]) => void;
-  label: string;
-  /** Label for the select-all row / trigger when everything is selected. */
+  selected: V[];
+  onChange: (values: V[]) => void;
+  /** The All row's label, and the trigger's while everything is selected. */
   allLabel?: string;
+  /**
+   * What a click on a row does, and what counts as everything. By default a
+   * row ticks or unticks its own value; the status filter brings its own
+   * (`statusFilterPicker`), which never leaves the selection empty.
+   */
+  rule?: MultiSelectRule<V>;
+  /** A visible label above the trigger ("List:"). */
+  label?: string;
+  /** The trigger's accessible name, when there's no visible `label`. */
+  ariaLabel?: string;
+  /** Width and layout classes for the root; the trigger always fills it. */
+  className?: string;
   /**
    * A switch under the options that changes which options there are (e.g.
    * "Include archived" on the list filter), rather than being one of them.
@@ -24,19 +39,24 @@ interface MultiSelectDropdownProps {
   extraToggle?: { label: string; checked: boolean; onChange: (checked: boolean) => void };
 }
 
+const CHECKBOX = 'h-4 w-4 flex-shrink-0 cursor-pointer accent-primary-600';
+
 /**
- * Generic checkbox multi-select with an "All" toggle, styled to match
- * FilterDropdown. Used where the options aren't the fixed status set
- * (e.g. filtering items by which wishlist they belong to).
+ * A filter that picks any number of options: a trigger saying what's picked,
+ * opening a checkbox list with an All row on top. The status filter on a list
+ * and on Items, and the list filter on Items.
  */
-export default function MultiSelectDropdown({
+export default function MultiSelectDropdown<V extends string>({
   options,
   selected,
   onChange,
-  label,
   allLabel = 'All',
+  rule = plainMultiSelectRule<V>(),
+  label,
+  ariaLabel,
+  className = '',
   extraToggle,
-}: MultiSelectDropdownProps) {
+}: MultiSelectDropdownProps<V>) {
   const [isOpen, setIsOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -48,34 +68,26 @@ export default function MultiSelectDropdown({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const allValues = options.map((o) => o.value);
-  const isAll = allValues.length > 0 && allValues.every((v) => selected.includes(v));
+  const values = options.map((o) => o.value);
+  const isAll = rule.isAll(selected, values);
+  const toggle = (value: V | null) => onChange(rule.toggle(selected, value, values));
 
-  const toggle = (v: string) => {
-    onChange(selected.includes(v) ? selected.filter((x) => x !== v) : [...selected, v]);
-  };
-  const toggleAll = () => onChange(isAll ? [] : [...allValues]);
-
-  const displayText =
-    selected.length === 0
-      ? 'None selected'
-      : isAll
-        ? allLabel
-        : selected.length === 1
-          ? (options.find((o) => o.value === selected[0])?.label ?? '1 selected')
-          : `${selected.length} selected`;
+  const row = `${POPOVER_OPTION_ROW} cursor-pointer transition-colors hover:bg-muted`;
 
   return (
-    <div className="relative" ref={ref}>
-      <label className="mb-2 block whitespace-nowrap text-xs font-medium text-foreground sm:text-sm">
-        {label}:
-      </label>
+    <div className={`relative ${className}`} ref={ref}>
+      {label && (
+        <label className="mb-2 block whitespace-nowrap text-xs font-medium text-foreground sm:text-sm">
+          {label}:
+        </label>
+      )}
       <button
         type="button"
+        aria-label={ariaLabel}
         onClick={() => setIsOpen((v) => !v)}
-        className="flex h-9 w-full min-w-[200px] items-center justify-between gap-2 rounded-xl border border-border-strong bg-surface px-3.5 text-sm font-medium text-foreground outline-hidden field-focus transition-colors hover:bg-surface-hover sm:w-auto"
+        className="flex h-9 w-full items-center justify-between gap-2 rounded-xl border border-border-strong bg-surface px-3.5 text-sm font-medium text-foreground outline-hidden field-focus transition-colors hover:bg-surface-hover"
       >
-        <span className="truncate">{displayText}</span>
+        <span className="truncate">{multiSelectSummary(selected, options, isAll, allLabel)}</span>
         <Icon
           name="chevron-down"
           size={16}
@@ -84,41 +96,44 @@ export default function MultiSelectDropdown({
       </button>
 
       {isOpen && (
-        <div className="absolute z-50 mt-2 max-h-60 w-full min-w-[200px] overflow-auto rounded-xl border border-border bg-surface py-1.5 shadow-lg sm:w-auto">
-          <label className="flex cursor-pointer items-center px-4 py-2 hover:bg-muted">
-            <input
-              type="checkbox"
-              checked={isAll}
-              onChange={toggleAll}
-              className="h-4 w-4 cursor-pointer rounded border-border-strong text-accent"
-            />
-            <span className="ml-3 text-sm font-medium text-foreground">{allLabel}</span>
-          </label>
-          {options.map((o) => (
-            <label
-              key={o.value}
-              className="flex cursor-pointer items-center px-4 py-2 hover:bg-muted"
-            >
+        <div
+          className={`absolute left-0 top-full z-50 mt-2 flex max-h-72 w-max min-w-full max-w-[calc(100vw-2rem)] flex-col sm:max-w-xs ${POPOVER_SURFACE}`}
+        >
+          <div className="min-h-0 overflow-auto">
+            <label className={`${row} text-foreground`}>
               <input
                 type="checkbox"
-                checked={selected.includes(o.value)}
-                onChange={() => toggle(o.value)}
-                className="h-4 w-4 cursor-pointer rounded border-border-strong text-accent"
+                checked={isAll}
+                onChange={() => toggle(null)}
+                className={CHECKBOX}
               />
-              <span className="ml-3 truncate text-sm text-foreground">{o.label}</span>
+              <span className="truncate">{allLabel}</span>
             </label>
-          ))}
-          {/* Kept in view at the foot of a long, scrolling menu. */}
+            {options.map((o) => (
+              <label key={o.value} className={`${row} text-foreground`}>
+                <input
+                  type="checkbox"
+                  checked={selected.includes(o.value)}
+                  onChange={() => toggle(o.value)}
+                  className={CHECKBOX}
+                />
+                <span className="truncate">{o.label}</span>
+              </label>
+            ))}
+          </div>
+          {/* Kept in view at the foot of a long, scrolling list. */}
           {extraToggle && (
-            <label className="sticky bottom-0 mt-1.5 flex cursor-pointer items-center border-t border-border bg-surface px-4 py-2.5 hover:bg-muted">
-              <input
-                type="checkbox"
-                checked={extraToggle.checked}
-                onChange={(e) => extraToggle.onChange(e.target.checked)}
-                className="h-4 w-4 cursor-pointer rounded border-border-strong text-accent"
-              />
-              <span className="ml-3 text-sm text-muted-foreground">{extraToggle.label}</span>
-            </label>
+            <div className="-mx-1.5 mt-1.5 border-t border-border px-1.5 pt-1.5">
+              <label className={`${row} text-muted-foreground`}>
+                <input
+                  type="checkbox"
+                  checked={extraToggle.checked}
+                  onChange={(e) => extraToggle.onChange(e.target.checked)}
+                  className={CHECKBOX}
+                />
+                <span className="truncate">{extraToggle.label}</span>
+              </label>
+            </div>
           )}
         </div>
       )}

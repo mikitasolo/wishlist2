@@ -77,6 +77,7 @@ import {
   savedWishlistSort,
   statusFilterOptions,
   defaultStatusFilters,
+  statusFilterPicker,
   forgetSavedStatusFilters,
   isEveryStatusSelected,
   DEFAULT_WISHLIST_SORT,
@@ -86,7 +87,7 @@ import {
   type FilterRole,
   type SortType,
 } from '@/lib/utils/itemFilters';
-import FilterDropdown from '@/components/FilterDropdown';
+import MultiSelectDropdown from '@/components/MultiSelectDropdown';
 import { FILTER_META } from '@/lib/utils/itemStatus';
 import { TONE_CLASSES } from '@/lib/utils/statusTones';
 import { useFetchItems, useUpdateItem, useCreateItem, useDeleteItem } from '@/lib/hooks/useItems';
@@ -252,6 +253,10 @@ export default function WishlistDetail() {
   const filterRole: FilterRole = isOwner ? 'owner' : isMember ? 'member' : 'visitor';
   const filterOptions = useMemo(() => statusFilterOptions(filterRole), [filterRole]);
   const defaultFilters = useMemo(() => defaultStatusFilters(filterRole), [filterRole]);
+  const statusPicker = useMemo(
+    () => statusFilterPicker(filterOptions, defaultFilters),
+    [filterOptions, defaultFilters]
+  );
 
   // The status filter picked on this list in this visit, with the list (by id,
   // whether the URL has its id or its slug) and the role it was picked for.
@@ -1566,11 +1571,10 @@ export default function WishlistDetail() {
                           <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                             Status
                           </span>
-                          <FilterDropdown
-                            options={filterOptions}
-                            selectedFilters={selectedFilters}
+                          <MultiSelectDropdown
+                            {...statusPicker}
+                            selected={selectedFilters}
                             onChange={chooseStatusFilters}
-                            defaultFilters={defaultFilters}
                             ariaLabel="Filter by status"
                             className="w-full"
                           />
