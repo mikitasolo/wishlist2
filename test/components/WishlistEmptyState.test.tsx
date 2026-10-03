@@ -188,13 +188,28 @@ describe('a list with no items at all', () => {
     expect(screen.queryByRole('heading', { name: 'No items found' })).toBeNull();
     expectNoCardsOrToolbar();
 
-    // Share copies the list's link.
-    await user.click(within(box).getByRole('button', { name: 'Copy link to share' }));
-    expect(await navigator.clipboard.readText()).toBe(window.location.href);
+    // Share tells the owner who the link opens for, and Copy link copies the list's link.
+    await user.click(within(box).getByRole('button', { name: 'Share' }));
+    expect(screen.getByRole('menu')).toHaveAccessibleDescription('Anyone with the link can view.');
+    await user.click(screen.getByRole('menuitem', { name: 'Copy link' }));
+    expect(await navigator.clipboard.readText()).toBe(
+      `${window.location.origin}/wishlists/birthday`
+    );
     expect(showToast).toHaveBeenCalledWith('Link copied to clipboard', 'success');
 
     await user.click(within(box).getByRole('button', { name: 'Add your first item' }));
     expect(await screen.findByRole('dialog', { name: 'Add new item' })).toBeInTheDocument();
+  });
+
+  // Until the People tab (WIS-243) lands, inviting from Share opens Manage.
+  it("takes the owner from Share's invite to Manage's invite form", async () => {
+    const user = userEvent.setup();
+    await open();
+
+    await user.click(screen.getAllByRole('button', { name: 'Share' })[0]);
+    await user.click(screen.getByRole('menuitem', { name: 'Invite people to reserve gifts' }));
+    expect(await screen.findByRole('textbox', { name: 'Search by username' })).toBeVisible();
+    expect(screen.getAllByRole('button', { name: 'Back to items' })).not.toHaveLength(0);
   });
 
   // regression: the empty state's Share showed on an archived list, whose link
@@ -205,7 +220,7 @@ describe('a list with no items at all', () => {
 
     const box = emptyState('Your list is empty');
     expect(within(box).getByRole('button', { name: 'Add your first item' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Copy link to share' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Share' })).toBeNull();
   });
 
   it('regression: tells a member there is nothing here yet and offers Propose an item, with no cards or toolbar', async () => {
@@ -216,7 +231,7 @@ describe('a list with no items at all', () => {
     const box = emptyState('Nothing here yet');
     expect(screen.queryByText(/match the selected filters/)).toBeNull();
     expect(within(box).queryByRole('button', { name: 'Add your first item' })).toBeNull();
-    expect(within(box).queryByRole('button', { name: 'Copy link to share' })).toBeNull();
+    expect(within(box).queryByRole('button', { name: 'Share' })).toBeNull();
     expectNoCardsOrToolbar();
 
     await user.click(within(box).getByRole('button', { name: 'Propose an item' }));

@@ -293,7 +293,10 @@ export default function UserProfile() {
             </div>
           </div>
           <div className="flex flex-shrink-0 items-center gap-3">
-            <ShareButton />
+            <ShareButton
+              url={profile ? `/users/${encodeURIComponent(profile.username)}` : undefined}
+              title={profile ? `@${profile.username}` : undefined}
+            />
             {profile?.isSelf && (
               <Link
                 href="/settings"

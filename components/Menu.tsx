@@ -81,6 +81,12 @@ interface MenuProps {
    * type-ahead skip it.
    */
   header?: ReactNode;
+  /**
+   * The `header` describes the menu (`aria-describedby`), so a screen reader
+   * reads it when focus moves in: set it when the header says something about
+   * the items (who a link opens for), not just who's signed in.
+   */
+  headerDescribesMenu?: boolean;
   /** Classes for the wrapper around the trigger and the menu. */
   className?: string;
   /** The menu's width. By default it fits its widest item, at least 12rem. */
@@ -111,7 +117,9 @@ const focusIsLost = () => !document.activeElement || document.activeElement === 
  * move into it (a popup portalled out of a dialog has to keep focus on its
  * control instead: see `Select`). It opens below the trigger, or above when
  * there's more room there, and right-aligned with it unless that would run off
- * the left edge. It sits over the sticky header rather than under it.
+ * the left edge, then left-aligned, or, if that runs off the right edge too,
+ * kept to the viewport's left margin. It sits over the sticky header rather
+ * than under it.
  *
  * From the keyboard: Enter, Space or ArrowDown on the trigger opens it on the
  * first item, ArrowUp on the last. In the menu the arrow keys (wrapping), Home
@@ -138,12 +146,20 @@ export default function Menu({
   trigger,
   menuLabel,
   header,
+  headerDescribesMenu = false,
   className = 'relative flex',
   menuWidthClassName = 'w-max min-w-[12rem]',
   onOpenChange,
 }: MenuProps) {
   const [open, setOpen] = useState(false);
-  const [placement, setPlacement] = useState({ above: false, alignLeft: false });
+  // Which side of the trigger the menu opens on, and how it lines up with it:
+  // right-aligned, left-aligned, or, when neither fits, `shiftLeft` px from
+  // the wrapper's left edge, pinned to the viewport's margin.
+  const [placement, setPlacement] = useState<{
+    above: boolean;
+    alignLeft: boolean;
+    shiftLeft?: number;
+  }>({ above: false, alignLeft: false });
   // What takes focus once the menu is shown: set by whatever opened it.
   const focusOnOpen = useRef<'first' | 'last' | 'menu'>('first');
   // Whether a Space keydown landed on the trigger, which opens on its keyup.
@@ -157,6 +173,7 @@ export default function Menu({
   const id = useId();
   const triggerId = `${id}-trigger`;
   const menuId = `${id}-menu`;
+  const headerId = `${id}-header`;
 
   // An empty menu has nothing to offer.
   const empty = items.length === 0;
@@ -201,9 +218,19 @@ export default function Menu({
     const t = triggerEl.getBoundingClientRect();
     const roomBelow = window.innerHeight - t.bottom - GAP - MARGIN;
     const roomAbove = t.top - GAP - MARGIN;
+    const width = popover.offsetWidth;
+    const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
+    const fitsRightAligned = t.right - width >= MARGIN;
+    const fitsLeftAligned = t.left + width <= viewportWidth - MARGIN;
     setPlacement({
       above: popover.offsetHeight > roomBelow && roomAbove > roomBelow,
-      alignLeft: t.right - popover.offsetWidth < MARGIN,
+      alignLeft: !fitsRightAligned,
+      // A trigger mid-row on a phone (a page header's Share): neither edge of
+      // it leaves room, so the menu keeps to the viewport's left margin.
+      shiftLeft:
+        fitsRightAligned || fitsLeftAligned
+          ? undefined
+          : MARGIN - (wrapperRef.current?.getBoundingClientRect().left ?? t.left),
     });
     const all = menuItems();
     const target =
@@ -446,10 +473,13 @@ export default function Menu({
           }}
           className={`animate-fade-in absolute z-50 max-w-[calc(100vw-1rem)] ${menuWidthClassName} ${POPOVER_SURFACE} ${
             placement.above ? 'bottom-full mb-2' : 'top-full mt-2'
-          } ${placement.alignLeft ? 'left-0' : 'right-0'}`}
+          } ${placement.shiftLeft !== undefined ? '' : placement.alignLeft ? 'left-0' : 'right-0'}`}
+          style={placement.shiftLeft !== undefined ? { left: placement.shiftLeft } : undefined}
         >
           {header && (
-            <div className="-mx-1.5 -mt-1.5 mb-1.5 border-b border-border px-4 py-3">{header}</div>
+            <div id={headerId} className="-mx-1.5 -mt-1.5 mb-1.5 border-b border-border px-4 py-3">
+              {header}
+            </div>
           )}
           <div
             ref={menuRef}
@@ -457,6 +487,7 @@ export default function Menu({
             role="menu"
             aria-label={menuLabel}
             aria-labelledby={menuLabel ? undefined : triggerId}
+            aria-describedby={header && headerDescribesMenu ? headerId : undefined}
             tabIndex={-1}
             onKeyDown={onMenuKeyDown}
             className="outline-hidden"

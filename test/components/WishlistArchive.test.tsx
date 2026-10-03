@@ -108,7 +108,7 @@ afterEach(() => {
 });
 
 /** Every Share on the page: the header's, and the empty list's own (this list has no items). */
-const shareButtons = () => screen.queryAllByRole('button', { name: 'Copy link to share' });
+const shareButtons = () => screen.queryAllByRole('button', { name: 'Share' });
 const banner = () => screen.queryByText(BANNER_TEXT)?.parentElement ?? null;
 /** The pill on the list's cover. */
 const coverPill = (label: string) => screen.queryByText(label, { selector: 'span' });
@@ -193,9 +193,7 @@ describe('Archiving a list', () => {
     expect(screen.getByRole('heading', { name: 'Archive wishlist' })).toBeInTheDocument();
 
     await user.click(screen.getAllByRole('button', { name: 'Back to items' })[0]);
-    expect(await screen.findAllByRole('button', { name: 'Copy link to share' })).not.toHaveLength(
-      0
-    );
+    expect(await screen.findAllByRole('button', { name: 'Share' })).not.toHaveLength(0);
     expect(banner()).toBeNull();
     expect(coverPill('Public')).toBeInTheDocument();
   });

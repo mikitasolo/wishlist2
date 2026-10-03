@@ -19,6 +19,7 @@ export type IconName =
   | 'user'
   | 'users'
   | 'user-minus'
+  | 'user-plus'
   | 'search'
   | 'plus'
   | 'close'
@@ -53,7 +54,8 @@ export type IconName =
   | 'calendar'
   | 'more'
   | 'undo'
-  | 'link-off';
+  | 'link-off'
+  | 'share';
 
 const paths: Record<IconName, React.ReactNode> = {
   gift: (
@@ -82,6 +84,14 @@ const paths: Record<IconName, React.ReactNode> = {
       <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
       <circle cx="9" cy="7" r="4" />
       <path d="M22 11h-6" />
+    </>
+  ),
+  // A person with a plus beside them: inviting someone onto a list.
+  'user-plus': (
+    <>
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M19 8v6M22 11h-6" />
     </>
   ),
   search: (
@@ -243,6 +253,13 @@ const paths: Record<IconName, React.ReactNode> = {
     </>
   ),
   'link-off': <path d="M9 17H7A5 5 0 0 1 7 7M15 7h2a5 5 0 0 1 4 8M8 12h4M2 2l20 20" />,
+  // A box with an arrow out of it: the phone's share sheet.
+  share: (
+    <>
+      <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
+      <path d="m16 6-4-4-4 4M12 2v13" />
+    </>
+  ),
 };
 
 interface IconProps extends Omit<SVGProps<SVGSVGElement>, 'name'> {

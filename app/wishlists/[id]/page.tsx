@@ -1392,7 +1392,23 @@ export default function WishlistDetail() {
           <div className="flex flex-shrink-0 items-center gap-3">
             {/* An archived list's link opens for its owners only: anyone they'd
                 share it with gets the answer a missing list gets. */}
-            {!wishlist.archived && <ShareButton />}
+            {!wishlist.archived && (
+              <ShareButton
+                url={`/wishlists/${wishlist.slug || wishlist._id}`}
+                title={wishlist.name}
+                // Inviting happens in Manage until the People tab (WIS-243)
+                // lands; then this links to `?tab=people`.
+                owner={
+                  isOwner
+                    ? {
+                        visibility: wishlist.visibility,
+                        archived: wishlist.archived,
+                        onInvite: () => setManageOpen(true),
+                      }
+                    : undefined
+                }
+              />
+            )}
             {canLeave && (
               <Button
                 variant="secondary"
@@ -1660,7 +1676,18 @@ export default function WishlistDetail() {
                             Add your first item
                           </Button>
                           {/* Not on an archived list, as the header's Share isn't. */}
-                          {!wishlist.archived && <ShareButton variant="button" />}
+                          {!wishlist.archived && (
+                            <ShareButton
+                              variant="button"
+                              url={`/wishlists/${wishlist.slug || wishlist._id}`}
+                              title={wishlist.name}
+                              owner={{
+                                visibility: wishlist.visibility,
+                                archived: wishlist.archived,
+                                onInvite: () => setManageOpen(true),
+                              }}
+                            />
+                          )}
                         </>
                       ) : isMember ? (
                         <Button onClick={() => setShowProposeItemModal(true)}>
