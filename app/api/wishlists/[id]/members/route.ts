@@ -22,7 +22,7 @@ const notOwnerError = () =>
 // Only ever sent to an owner: anyone else gets an archived list's 404 first.
 const pausedInviteError = () =>
   NextResponse.json(
-    { success: false, error: 'Unarchive this wishlist to invite members' },
+    { success: false, error: 'Unarchive this list to invite members' },
     { status: 409 }
   );
 
@@ -169,11 +169,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const { username, role = 'member' } = validation.data;
 
-    // A member invite to an archived list would only wait, paused, until the list
-    // is unarchived (see `isInvitePaused`), so none is issued. An owner invite
-    // still is: owners see an archived list.
-    if (isInvitePaused({ role }, wishlist)) return pausedInviteError();
-
     // Invites always target an existing account, resolved by username.
     const invitedUser = await User.findOne({ username }).select('email privacy');
     if (!invitedUser) {
@@ -235,6 +230,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
     }
     if (!current.isOwner) return notOwnerError();
+    // A member invite to an archived list would only wait, paused, until the list
+    // is unarchived (see `isInvitePaused`), so none is issued. An owner invite
+    // still is: owners see an archived list. Checked last, against the fresh read,
+    // so an invite that couldn't be issued anyway gets that answer instead.
     if (isInvitePaused({ role }, current.wishlist)) return pausedInviteError();
 
     // Create a pending invite (membership/ownership is granted only on accept),

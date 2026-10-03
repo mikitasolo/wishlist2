@@ -14,6 +14,7 @@ import { auth } from '@/lib/auth';
 import { GET as listMyInvites } from '@/app/api/users/me/invites/route';
 import { PATCH as answerInvite } from '@/app/api/invites/[inviteId]/route';
 import { POST as issueInvite } from '@/app/api/wishlists/[id]/members/route';
+import { DELETE as kick } from '@/app/api/wishlists/[id]/members/[memberId]/route';
 import { GET as getNotifications, PATCH as markAllRead } from '@/app/api/notifications/route';
 import User from '@/models/User';
 import Wishlist from '@/models/Wishlist';
@@ -249,6 +250,36 @@ describe('PATCH /api/invites/[inviteId] racing an archive', () => {
     expect(await isMember(mia)).toBe(true);
   });
 
+  // Kicking cancels the person's pending invites, but this one was claimed then,
+  // so the kick's cleanup missed it. Reopening it would let the kicked member
+  // back in once the list is unarchived.
+  it('withdraws the invite instead of reopening it when the new member is kicked under the archive', async () => {
+    const race = holdFirstCall(
+      WishlistMember,
+      'findOneAndUpdate',
+      async () => {
+        await setArchived(true);
+        const row = await WishlistMember.findOne({ wishlist: wishlistId, user: mia });
+        session.mockResolvedValueOnce({ user: { id: alice } } as never);
+        const memberId = row!._id.toString();
+        return kick(
+          new NextRequest(`http://localhost/api/wishlists/${wishlistId}/members/${memberId}`, {
+            method: 'DELETE',
+          }),
+          { params: Promise.resolve({ id: wishlistId, memberId }) }
+        );
+      },
+      { after: true }
+    );
+
+    expect(await answer(memberInvite, 'accept', mia)).toEqual(NOT_FOUND);
+
+    expect(race.outcome()?.status).toBe(200);
+    expect(await isMember(mia)).toBe(false);
+    expect(await WishlistInvite.exists({ _id: memberInvite })).toBeNull();
+    expect(await inviteNotification(mia)).toBeNull();
+  });
+
   it("keeps a membership the invitee already held: it isn't the accept's to take", async () => {
     await WishlistMember.create({ wishlist: wishlistId, user: mia });
     holdFirstCall(WishlistMember, 'findOneAndUpdate', () => setArchived(true));
@@ -266,7 +297,7 @@ describe('POST /api/wishlists/[id]/members on an archived list', () => {
 
     expect(await invite('nina', 'member')).toEqual({
       status: 409,
-      body: { success: false, error: 'Unarchive this wishlist to invite members' },
+      body: { success: false, error: 'Unarchive this list to invite members' },
     });
     expect(await WishlistInvite.countDocuments()).toBe(2);
     expect(await Notification.countDocuments()).toBe(2);
@@ -278,6 +309,17 @@ describe('POST /api/wishlists/[id]/members on an archived list', () => {
 
     expect((await invite('nina', 'member')).status).toBe(409);
     expect(await WishlistInvite.countDocuments()).toBe(2);
+  });
+
+  it('gives the answer of an invite that could never be issued first', async () => {
+    await WishlistMember.create({ wishlist: wishlistId, user: mia });
+    await setArchived(true);
+
+    expect(await invite('mia', 'member')).toMatchObject({
+      status: 400,
+      body: { error: 'This person is already a member' },
+    });
+    expect((await invite('nobody', 'member')).status).toBe(404);
   });
 
   it('still issues an owner invite', async () => {

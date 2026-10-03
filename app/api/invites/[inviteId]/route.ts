@@ -61,7 +61,10 @@ async function releaseClaim(inviteId: mongoose.Types.ObjectId): Promise<void> {
  * Make the invitee a member, unless the list has been deleted or archived since
  * accept read it. Then nothing is left behind for it: `'gone'` with no membership
  * row, or `'paused'` with no row this call wrote, since a member can't open an
- * archived list (see `isInvitePaused`).
+ * archived list (see `isInvitePaused`). `'removed'` when the list was archived
+ * and the row this call wrote was already gone when it came to take it back: an
+ * owner kicked the brief member, and that kick's invite cleanup found this
+ * invite claimed, so it mustn't be reopened.
  *
  * The upsert can't be made conditional on the list, which lives in another
  * collection, so the list is checked after it. Deleting a list removes the list
@@ -75,7 +78,7 @@ async function releaseClaim(inviteId: mongoose.Types.ObjectId): Promise<void> {
 async function joinAsMember(
   wishlistId: mongoose.Types.ObjectId,
   userId: string
-): Promise<'joined' | 'gone' | 'paused'> {
+): Promise<'joined' | 'gone' | 'paused' | 'removed'> {
   // Membership carries no role, so joining twice is a no-op. The row as it was
   // before: null when this upsert created it.
   const existing = await WishlistMember.findOneAndUpdate(
@@ -91,8 +94,9 @@ async function joinAsMember(
   if (!list.archived) return 'joined';
   // Only a row this accept created: one that was already there is a membership
   // they held before, which isn't this accept's to take.
-  if (!existing) await WishlistMember.deleteMany({ wishlist: wishlistId, user: userId });
-  return 'paused';
+  if (existing) return 'paused';
+  const { deletedCount } = await WishlistMember.deleteMany({ wishlist: wishlistId, user: userId });
+  return deletedCount ? 'paused' : 'removed';
 }
 
 // PATCH /api/invites/[inviteId] - accept or decline a pending invite (invitee).
@@ -176,7 +180,7 @@ export async function PATCH(
         }
       } else if (invite.role !== 'owner') {
         const joined = await joinAsMember(invite.wishlist, userId);
-        if (joined === 'gone') released = null;
+        if (joined === 'gone' || joined === 'removed') released = null;
         if (joined === 'paused') {
           // The list was archived since the read above. The invite is paused, not
           // over, so the claim is put back, as a failed grant's is, and the answer
@@ -196,8 +200,8 @@ export async function PATCH(
 
     if (!released) {
       // Nothing was granted, because something beat the grant to it since the read
-      // above: the list was deleted, or a promotion's member was taken off the list.
-      // Either one's invite cleanup found this invite already claimed (or, for a
+      // above: the list was deleted, or a promotion's member was taken off the list
+      // (or a new member, on a list archived under the accept). Either one's invite cleanup found this invite already claimed (or, for a
       // promotion, it was issued after that cleanup), so finish its job: the invite
       // goes, as it would have had the delete or the removal come first. It isn't
       // reopened, as a failed grant's is, because accepting again can't succeed.
