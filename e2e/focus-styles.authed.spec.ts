@@ -8,19 +8,23 @@ import { test, expect } from './fixtures';
 // the radius it has at rest.
 
 interface Stop {
+  /** Focus left the page (its end) or came back round (a dialog's trap). */
+  done: boolean;
   label: string;
   shows: boolean;
   radiusKept: boolean;
 }
 
-/** Records every focusable element's resting radius, before anything has focus. */
+type TabState = { __radii: Map<Element, string>; __seen: Set<Element> };
+
+/** Records every element's resting radius, before anything has focus. */
 async function recordRadii(page: Page) {
   await page.evaluate(() => {
     const radii = new Map<Element, string>();
     for (const el of document.querySelectorAll('*')) {
       radii.set(el, getComputedStyle(el).borderRadius);
     }
-    (window as unknown as { __radii: Map<Element, string> }).__radii = radii;
+    Object.assign(window, { __radii: radii, __seen: new Set<Element>() });
   });
 }
 
@@ -29,6 +33,9 @@ async function tab(page: Page): Promise<Stop> {
   await page.keyboard.press('Tab');
   return page.evaluate(() => {
     const el = document.activeElement!;
+    const state = window as unknown as TabState;
+    const done = el === document.body || state.__seen.has(el);
+    state.__seen.add(el);
     const css = getComputedStyle(el);
     const outlined = css.outlineStyle !== 'none' && parseFloat(css.outlineWidth) > 0;
     // A text field shows focus with `field-focus`: a 2px ring on itself, or on
@@ -37,8 +44,9 @@ async function tab(page: Page): Promise<Stop> {
     for (let node: Element | null = el, i = 0; node && i < 3; node = node.parentElement, i++) {
       if (/0px 0px 0px 2px/.test(getComputedStyle(node).boxShadow)) ringed = true;
     }
-    const before = (window as unknown as { __radii: Map<Element, string> }).__radii.get(el);
+    const before = state.__radii.get(el);
     return {
+      done,
       label: `${el.tagName.toLowerCase()} "${
         el.getAttribute('aria-label') || (el as HTMLElement).innerText?.trim().slice(0, 40) || ''
       }"`,
@@ -49,14 +57,18 @@ async function tab(page: Page): Promise<Stop> {
   });
 }
 
-async function tabThrough(page: Page, stops: number) {
+/** Tabs through every stop once, and fails on any that shows no focus or changes shape. */
+async function tabThrough(page: Page, atLeast: number) {
   const problems: string[] = [];
-  for (let i = 0; i < stops; i++) {
+  let stops = 0;
+  for (; stops < 80; stops++) {
     const stop = await tab(page);
+    if (stop.done) break;
     if (!stop.shows) problems.push(`${stop.label} shows no focus`);
     if (!stop.radiusKept) problems.push(`${stop.label} changes shape on focus`);
   }
   expect(problems).toEqual([]);
+  expect(stops).toBeGreaterThanOrEqual(atLeast);
 }
 
 test('regression: the header and a list page show focus on every stop, in shape', async ({
@@ -66,16 +78,38 @@ test('regression: the header and a list page show focus on every stop, in shape'
   await page.goto('/wishlists/e2e-birthday');
   await expect(page.getByRole('article', { name: 'Item: E2E Gift' })).toBeVisible();
   await recordRadii(page);
-  // The header, the list's actions, its filters and its item cards.
-  await tabThrough(page, 20);
+  // The header, the list's actions, its filters and its item card.
+  await tabThrough(page, 15);
+});
+
+// regression: a Menu's active item showed the focus outline as well as its
+// background, where a Select's active option shows the background alone.
+test("regression: a menu marks its active item with the background alone, as Select's does", async ({
+  page,
+}) => {
+  await page.goto('/wishlists/e2e-birthday');
+  const card = page.getByRole('article', { name: 'Item: E2E Gift' });
+  await card.getByRole('button', { name: 'More actions' }).focus();
+  await page.keyboard.press('Enter');
+  const item = card.getByRole('menuitem').first();
+  await expect(item).toBeFocused();
+  const resting = await card
+    .getByRole('menuitem')
+    .nth(1)
+    .evaluate((el) => getComputedStyle(el).backgroundColor);
+  expect(await item.evaluate((el) => getComputedStyle(el).outlineStyle)).toBe('none');
+  // Polled: the background fades in (`transition-colors`).
+  await expect
+    .poll(() => item.evaluate((el) => getComputedStyle(el).backgroundColor))
+    .not.toBe(resting);
 });
 
 test('regression: a dialog shows focus on every field and control, in shape', async ({ page }) => {
   await page.goto('/wishlists/e2e-birthday');
   await page.getByRole('button', { name: '+ Add Item' }).click();
-  const dialog = page.getByRole('dialog');
-  await expect(dialog).toBeVisible();
+  await expect(page.getByRole('dialog')).toBeVisible();
   await recordRadii(page);
-  // Focus is trapped in the dialog, so this goes round its stops.
-  await tabThrough(page, 12);
+  // Its fields, the photo's controls, Cancel and Add, and its close button,
+  // until the trap brings focus back round.
+  await tabThrough(page, 6);
 });
