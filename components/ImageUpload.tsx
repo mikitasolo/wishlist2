@@ -6,12 +6,16 @@ import BannerImage from './BannerImage';
 import ImageCropModal from './ImageCropModal';
 import Button from './Button';
 import Spinner from './Spinner';
+import { BANNER_ASPECT } from '@/lib/utils/cover';
 
 interface ImageUploadProps {
   value: string | null;
   onChange: (url: string | null) => void;
   disabled?: boolean;
-  /** Crop aspect ratio (width / height) matching where the image renders. */
+  /**
+   * Crop aspect ratio (width / height) matching where the image renders. A
+   * list banner's (`BANNER_ASPECT`) unless given.
+   */
   aspect?: number;
   /** Render as a compact circular control (avatars). Forces a 1:1 round crop. */
   circle?: boolean;
@@ -26,7 +30,7 @@ export default function ImageUpload({
   value,
   onChange,
   disabled = false,
-  aspect = 16 / 9,
+  aspect = BANNER_ASPECT,
   circle = false,
 }: ImageUploadProps) {
   // Avatars crop square and display round.
