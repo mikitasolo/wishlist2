@@ -5,7 +5,7 @@ import Reservation from '@/models/Reservation';
 import GiftLog from '@/models/GiftLog';
 import User from '@/models/User';
 import { isObjectIdParam } from '@/lib/utils/objectId';
-import { giftWishlistSlugs, serializeGiftLog } from '@/lib/utils/giftHistory';
+import { serializeGiftLog } from '@/lib/utils/giftHistory';
 
 // POST /api/reservations/[id]/gift - mark a reservation as gifted. Writes a
 // permanent GiftLog entry from the reservation's snapshot and removes the
@@ -62,16 +62,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       throw error;
     }
 
-    // The gift is logged, so nothing from here on may answer 500 for it. The
-    // slug only links the entry to its list, so if it can't be read the entry
-    // goes out without one, and the list has it on its next load.
-    const slugs = await giftWishlistSlugs(session.user.id, [entry]).catch((error) => {
-      console.error('Could not read the wishlist slug of a logged gift:', error);
-      return new Map<string, string | null>();
-    });
-
     return NextResponse.json(
-      { success: true, data: serializeGiftLog(entry.toObject(), slugs) },
+      { success: true, data: serializeGiftLog(entry.toObject()) },
       { status: 201 }
     );
   } catch (error) {
