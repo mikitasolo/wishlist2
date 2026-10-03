@@ -149,6 +149,8 @@ export default function InvitesPage() {
         }
         if (result.success) {
           dropInvite(invite._id);
+          // Answering marked the invite's notification read: the bell re-counts.
+          window.dispatchEvent(new Event('notifications-changed'));
           if (action === 'accept') {
             showToast(`Joined “${invite.wishlistName}”`, 'success');
             router.push(`/wishlists/${result.data.wishlistSlug ?? result.data.wishlistId}`);

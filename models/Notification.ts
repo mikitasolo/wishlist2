@@ -1,5 +1,10 @@
 import mongoose, { Schema, Document } from 'mongoose';
-import { NOTIFICATION_TYPES, type NotificationType } from '@/lib/utils/notifications';
+import {
+  INVITE_ANSWERS,
+  NOTIFICATION_TYPES,
+  type InviteAnswer,
+  type NotificationType,
+} from '@/lib/utils/notifications';
 
 export type { NotificationType };
 
@@ -26,6 +31,10 @@ export interface INotification extends Document {
   wishlistName?: string | null;
   wishlistSlug?: string | null;
   itemName?: string | null;
+  // `wishlist_invite` only: how the recipient answered the invite, written with
+  // `read: true` in the one write that records it (`recordInviteAnswer`), so
+  // the row stops reading as a pending invite. Absent while it's pending.
+  inviteAnswer?: InviteAnswer | null;
   read: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -47,6 +56,8 @@ const NotificationSchema = new Schema<INotification>(
     wishlistName: { type: String, default: null },
     wishlistSlug: { type: String, default: null },
     itemName: { type: String, default: null },
+    // No default: only an answered invite has one.
+    inviteAnswer: { type: String, enum: INVITE_ANSWERS, default: undefined },
     read: { type: Boolean, default: false },
     // Immutable, as the timestamps plugin would declare it, except for a query
     // that opts in with `overwriteImmutable: true`: a coalesced row bumps it to

@@ -1,6 +1,8 @@
 import mongoose from 'mongoose';
 import Notification, { NotificationType } from '@/models/Notification';
 import Wishlist from '@/models/Wishlist';
+import type { IWishlistInvite } from '@/models/WishlistInvite';
+import type { InviteAnswer } from '@/lib/utils/notifications';
 import { errorKind } from '@/lib/utils/errorKind';
 
 type Id = string | mongoose.Types.ObjectId;
@@ -130,6 +132,53 @@ async function dropIfWishlistGone(wishlist: Id, ids: mongoose.Types.ObjectId[]):
     await Notification.deleteMany({ _id: { $in: ids }, wishlist });
   } catch (err) {
     console.error('Failed to re-check the wishlist of a new notification:', errorKind(err));
+  }
+}
+
+interface RecordInviteAnswerArgs {
+  /** The invite just answered, as the answer read it. */
+  invite: Pick<IWishlistInvite, 'wishlist' | 'invitedUser' | 'createdAt'>;
+  answer: InviteAnswer;
+  /** Taken before the write that claimed the invite for this answer. */
+  answeredAt: Date;
+}
+
+/**
+ * Record an invitee's answer on their own notification for that invite, and mark
+ * it read, in one write. It then reads "You joined …" or "You declined the invite
+ * to …" instead of an invite that's still waiting (and pointing at an Invitations
+ * page that no longer has it), and the bell stops counting it. Call it only once
+ * the answer has landed: for an accept, once the role is granted.
+ *
+ * Notifications carry no invite id, so the row is told apart by its time: the
+ * invitee's `wishlist_invite` rows for that list written between the invite and
+ * the answer. Issuing an invite writes its notification right after the invite,
+ * so that row is no older than the invite. An earlier invite to the list had
+ * been answered or cancelled before this one could be issued (one pending invite
+ * per person per list), so its row is older. A re-invite can only be issued once
+ * this answer has claimed the invite, so its row is newer than `answeredAt`.
+ * Nobody else's notification can match: the filter is on the invitee.
+ *
+ * Best-effort, like every notification write: a failure is logged by its kind
+ * only and swallowed, so it never fails the answer, and leaves the row as it was.
+ */
+export async function recordInviteAnswer({
+  invite,
+  answer,
+  answeredAt,
+}: RecordInviteAnswerArgs): Promise<void> {
+  try {
+    await Notification.updateMany(
+      {
+        user: invite.invitedUser,
+        type: 'wishlist_invite',
+        wishlist: invite.wishlist,
+        createdAt: { $gte: invite.createdAt, $lte: answeredAt },
+      },
+      { $set: { read: true, inviteAnswer: answer } }
+    );
+  } catch (err) {
+    console.error('Failed to record an invite answer on its notification:', errorKind(err));
   }
 }
 

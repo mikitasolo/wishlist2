@@ -11,10 +11,27 @@ import { useToast } from '@/components/ToastProvider';
 import { signInPath } from '@/lib/utils/callbackUrl';
 import {
   type NotificationView,
-  notificationText,
+  notificationParts,
   notificationLink,
   notificationIcon,
 } from '@/lib/utils/notifications';
+
+/** A notification's line, with any list's name in semibold. */
+function NotificationLine({ n }: { n: NotificationView }) {
+  return (
+    <>
+      {notificationParts(n).map((part, i) =>
+        typeof part === 'string' ? (
+          part
+        ) : (
+          <span key={i} className="font-semibold">
+            {part.listName}
+          </span>
+        )
+      )}
+    </>
+  );
+}
 
 /** Compact relative time, e.g. "just now", "3h ago", "2d ago". */
 function relativeTime(iso: string): string {
@@ -31,7 +48,8 @@ function relativeTime(iso: string): string {
 }
 
 export default function NotificationsPage() {
-  const { status } = useSession();
+  const { data: session, status } = useSession();
+  const viewerUsername = session?.user?.username ?? null;
   const router = useRouter();
   const { showToast } = useToast();
   const [items, setItems] = useState<NotificationView[]>([]);
@@ -104,7 +122,7 @@ export default function NotificationsPage() {
         ) : (
           <ul className="mt-8 space-y-2">
             {items.map((n) => {
-              const href = notificationLink(n);
+              const href = notificationLink(n, viewerUsername);
               const className = `flex items-center gap-3 rounded-2xl border p-4 ${
                 n.read ? 'border-border bg-surface' : 'border-primary-500/40 bg-primary-500/5'
               }`;
@@ -114,7 +132,9 @@ export default function NotificationsPage() {
                     <Icon name={notificationIcon(n)} size={18} />
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block text-[15px] text-foreground">{notificationText(n)}</span>
+                    <span className="block text-[15px] text-foreground">
+                      <NotificationLine n={n} />
+                    </span>
                     <span className="mt-0.5 block text-xs text-muted-foreground">
                       {relativeTime(n.createdAt)}
                     </span>
@@ -129,7 +149,7 @@ export default function NotificationsPage() {
               );
               return (
                 <li key={n._id}>
-                  {/* No link: e.g. a removal, whose list they may no longer see. */}
+                  {/* No link: a removal or a declined invite, whose list they may not see. */}
                   {href ? (
                     <Link href={href} className={`${className} transition-colors hover:bg-muted`}>
                       {content}

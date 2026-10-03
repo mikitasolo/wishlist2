@@ -1,10 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import {
+  NOTIFICATION_TYPES,
+  notificationParts,
   notificationText,
   notificationLink,
   notificationIcon,
   type NotificationView,
 } from '@/lib/utils/notifications';
+import { FOLLOWERS_PARAM, followersHref } from '@/lib/utils/profileLinks';
 
 function make(overrides: Partial<NotificationView>): NotificationView {
   return {
@@ -71,14 +74,14 @@ describe('notificationText', () => {
 describe('notificationText — role changes', () => {
   it('tells a demoted owner they are now a member', () => {
     expect(notificationText(make({ type: 'role_changed', wishlistName: 'Family list' }))).toBe(
-      'You’re now a member of “Family list”'
+      'You’re now a member of Family list'
     );
   });
 
   it('tells a removed owner or kicked member they were removed', () => {
     expect(
       notificationText(make({ type: 'removed_from_wishlist', wishlistName: 'Family list' }))
-    ).toBe('You were removed from “Family list”');
+    ).toBe('You were removed from Family list');
   });
 
   it('falls back when the list name is missing, without quoting the fallback', () => {
@@ -159,10 +162,10 @@ describe('notificationText — coalesced rows', () => {
       'Someone proposed an item for Kitchen'
     );
     expect(notificationText(make({ type: 'proposal', count: 2, wishlistName: 'Kitchen' }))).toBe(
-      '2 new proposals on “Kitchen”'
+      '2 new proposals on Kitchen'
     );
     expect(notificationText(make({ type: 'proposal', count: 5, wishlistName: 'Kitchen' }))).toBe(
-      '5 new proposals on “Kitchen”'
+      '5 new proposals on Kitchen'
     );
     expect(notificationText(make({ type: 'proposal', count: 5 }))).toBe(
       '5 new proposals on a wishlist'
@@ -201,17 +204,21 @@ describe('notificationLink', () => {
     );
   });
 
-  it('links a single follow to the follower, several to your followers on the dashboard', () => {
+  // regression: a follow row for several people linked to the dashboard (`/`),
+  // which neither lists your followers nor says who followed you.
+  it('regression: links a single follow to the follower, several to your own followers', () => {
     expect(
       notificationLink(
-        make({ type: 'follow', count: 1, actorUsername: 'alice', actorUsernames: ['alice'] })
+        make({ type: 'follow', count: 1, actorUsername: 'alice', actorUsernames: ['alice'] }),
+        'me'
       )
     ).toBe('/users/alice');
     expect(
       notificationLink(
-        make({ type: 'follow', count: 2, actorUsername: 'bob', actorUsernames: ['alice', 'bob'] })
+        make({ type: 'follow', count: 2, actorUsername: 'bob', actorUsernames: ['alice', 'bob'] }),
+        'me'
       )
-    ).toBe('/');
+    ).toBe('/users/me?followers=1');
     expect(
       notificationLink(
         make({
@@ -219,9 +226,22 @@ describe('notificationLink', () => {
           count: 5,
           actorUsername: 'eve',
           actorUsernames: ['cat', 'dan', 'eve'],
-        })
+        }),
+        'me'
       )
-    ).toBe('/');
+    ).toBe('/users/me?followers=1');
+  });
+
+  it('builds the followers link the profile page opens its followers list from', () => {
+    const href = notificationLink(make({ type: 'follow', count: 3 }), 'me');
+    expect(href).toBe(followersHref('me'));
+    expect(new URL(href!, 'http://x').searchParams.has(FOLLOWERS_PARAM)).toBe(true);
+  });
+
+  it('links a follow by someone with no username to your followers', () => {
+    expect(notificationLink(make({ type: 'follow', actorUsername: null }), 'me')).toBe(
+      '/users/me?followers=1'
+    );
   });
 
   it('links proposals to the list whatever the count', () => {
@@ -252,8 +272,123 @@ describe('notificationLink', () => {
   });
 
   it('degrades to the notifications page when a link target is missing', () => {
+    // A follow it can't name, and no username of the viewer's own to link to.
     expect(notificationLink(make({ type: 'follow', actorUsername: null }))).toBe('/notifications');
+    expect(notificationLink(make({ type: 'follow', count: 2, actorUsername: 'bob' }), null)).toBe(
+      '/notifications'
+    );
     expect(notificationLink(make({ type: 'proposal' }))).toBe('/notifications');
+  });
+});
+
+describe('an answered invite', () => {
+  const invite = (inviteAnswer: NotificationView['inviteAnswer']) =>
+    make({
+      type: 'wishlist_invite',
+      actorUsername: 'ben',
+      wishlistName: 'Ben’s housewarming',
+      wishlistId: 'w1',
+      inviteAnswer,
+    });
+
+  it('reads as an invite, linking to Invitations, while it is pending', () => {
+    for (const pending of [null, undefined]) {
+      expect(notificationText(invite(pending))).toBe('@ben invited you to Ben’s housewarming');
+      expect(notificationLink(invite(pending))).toBe('/invites');
+    }
+  });
+
+  // regression: an answered invite still read "@ben invited you to …" and linked
+  // to /invites, which no longer had it.
+  it('regression: reads "You joined …" once accepted, and links to the list', () => {
+    expect(notificationText(invite('accepted'))).toBe('You joined Ben’s housewarming');
+    expect(notificationLink(invite('accepted'))).toBe('/wishlists/w1');
+    expect(notificationLink({ ...invite('accepted'), wishlistSlug: 'bens-housewarming' })).toBe(
+      '/wishlists/bens-housewarming'
+    );
+  });
+
+  it('regression: reads "You declined the invite to …" once declined, and links nowhere', () => {
+    expect(notificationText(invite('declined'))).toBe(
+      'You declined the invite to Ben’s housewarming'
+    );
+    expect(notificationLink(invite('declined'))).toBeNull();
+  });
+
+  it('no longer names the inviter once answered', () => {
+    for (const answer of ['accepted', 'declined'] as const) {
+      expect(notificationText(invite(answer))).not.toContain('@ben');
+    }
+  });
+
+  it('falls back to "a wishlist" without a name', () => {
+    expect(notificationText({ ...invite('accepted'), wishlistName: null })).toBe(
+      'You joined a wishlist'
+    );
+  });
+});
+
+describe('notificationParts — list names', () => {
+  const name = 'Anna’s 30th Birthday';
+  const everyType = (overrides: Partial<NotificationView>) =>
+    NOTIFICATION_TYPES.filter((type) => type !== 'follow').flatMap((type) =>
+      [1, 2].map((count) => make({ type, count, actorUsername: 'ann', ...overrides }))
+    );
+
+  // regression: some types quoted the list's name («on “Anna’s 30th Birthday”»)
+  // and others didn't («invited you to Ben’s housewarming»).
+  it('regression: sets every list name apart the same way, never quoted', () => {
+    const rows = [
+      ...everyType({ wishlistName: name }),
+      ...(['accepted', 'declined'] as const).map((inviteAnswer) =>
+        make({ type: 'wishlist_invite', wishlistName: name, inviteAnswer })
+      ),
+    ];
+    for (const n of rows) {
+      const parts = notificationParts(n);
+      // Exactly one piece is the list's name, as it is.
+      expect(parts.filter((p) => typeof p !== 'string')).toEqual([{ listName: name }]);
+      // And no quote mark wraps it in the plain-text line.
+      const text = notificationText(n);
+      expect(text).toContain(name);
+      expect(text).not.toMatch(/[“”"«]Anna’s 30th Birthday|Anna’s 30th Birthday[“”"»]/);
+    }
+  });
+
+  it('sets nothing apart when the row has no list name', () => {
+    for (const n of everyType({ wishlistName: null })) {
+      expect(notificationParts(n).every((p) => typeof p === 'string')).toBe(true);
+    }
+    expect(notificationParts(make({ type: 'follow', actorUsername: 'ann' }))).toEqual([
+      '@ann followed you',
+    ]);
+  });
+
+  // An item's name isn't a list's: it keeps its quotes.
+  it('still quotes an approved proposal’s item name', () => {
+    expect(
+      notificationParts(
+        make({ type: 'proposal_approved', itemName: 'Kettle', wishlistName: 'Kitchen' })
+      )
+    ).toEqual(['Your proposed item “Kettle” was accepted in ', { listName: 'Kitchen' }]);
+  });
+
+  // Anonymity holds in the pieces too, not only in the joined text.
+  it('never names a proposer, a demoting or a removing owner in any piece', () => {
+    for (const type of ['proposal', 'role_changed', 'removed_from_wishlist'] as const) {
+      for (const count of [1, 3]) {
+        const parts = notificationParts(
+          make({
+            type,
+            count,
+            actorUsername: 'should-not-appear',
+            actorUsernames: ['should-not-appear'],
+            wishlistName: 'Kitchen',
+          })
+        );
+        expect(JSON.stringify(parts)).not.toContain('should-not-appear');
+      }
+    }
   });
 });
 

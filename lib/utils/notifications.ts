@@ -1,4 +1,5 @@
 import type { IconName } from '@/components/Icon';
+import { followersHref, profileHref } from '@/lib/utils/profileLinks';
 
 // The one list of notification types: the model's enum is built from it too.
 export const NOTIFICATION_TYPES = [
@@ -12,6 +13,11 @@ export const NOTIFICATION_TYPES = [
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
+
+/** How the recipient answered a `wishlist_invite`. The model's enum is built from it too. */
+export const INVITE_ANSWERS = ['accepted', 'declined'] as const;
+
+export type InviteAnswer = (typeof INVITE_ANSWERS)[number];
 
 // The client-facing shape (ids stringified) returned by /api/notifications.
 export interface NotificationView {
@@ -29,13 +35,24 @@ export interface NotificationView {
   wishlistSlug: string | null;
   wishlistId: string | null;
   itemName: string | null;
+  // A `wishlist_invite` its recipient has answered: how. Null while it's still
+  // pending, and on every other type. Optional, like `count`: a response from a
+  // server older than it has none.
+  inviteAnswer?: InviteAnswer | null;
   read: boolean;
   createdAt: string;
 }
 
+/**
+ * One piece of a notification's line: plain text, or a list's name, which the
+ * feed sets in semibold. A list's name is never quoted, whatever the type.
+ */
+export type NotificationPart = string | { listName: string };
+
 const actor = (n: NotificationView) => (n.actorUsername ? `@${n.actorUsername}` : 'Someone');
-const list = (n: NotificationView) => n.wishlistName ?? 'a wishlist';
-const quotedList = (n: NotificationView) => (n.wishlistName ? `“${n.wishlistName}”` : 'a wishlist');
+// A row that recorded no name reads "a wishlist", as plain text.
+const list = (n: NotificationView): NotificationPart =>
+  n.wishlistName ? { listName: n.wishlistName } : 'a wishlist';
 const countOf = (n: NotificationView) => Math.max(1, n.count ?? 1);
 
 /** "@alice followed you" / "@bob and @alice followed you" / "@bob and 3 others followed you". */
@@ -53,57 +70,92 @@ function followText(n: NotificationView): string {
   return `${latest} and ${others} ${others === 1 ? 'other' : 'others'} followed you`;
 }
 
-/** Human-readable line for a notification. Never assumes a non-null actor. */
-export function notificationText(n: NotificationView): string {
+/**
+ * An invite reads as one until its recipient answers it, and from then on as
+ * their answer, which is recorded on the row when they give it
+ * (`recordInviteAnswer` in lib/notifications.ts).
+ */
+function inviteParts(n: NotificationView): NotificationPart[] {
+  if (n.inviteAnswer === 'accepted') return ['You joined ', list(n)];
+  if (n.inviteAnswer === 'declined') return ['You declined the invite to ', list(n)];
+  return [`${actor(n)} invited you to `, list(n)];
+}
+
+/**
+ * A notification's line in pieces, so the feed can set list names apart. Never
+ * assumes a non-null actor.
+ */
+export function notificationParts(n: NotificationView): NotificationPart[] {
   switch (n.type) {
     case 'follow':
-      return followText(n);
+      return [followText(n)];
     case 'wishlist_invite':
-      return `${actor(n)} invited you to ${list(n)}`;
+      return inviteParts(n);
     case 'invite_accepted':
-      return `${actor(n)} accepted your invitation to ${list(n)}`;
+      return [`${actor(n)} accepted your invitation to `, list(n)];
     case 'proposal':
       // Deliberately anonymous — owners must never learn who proposed an item,
       // so neither form reads an actor field.
-      if (countOf(n) > 1) return `${countOf(n)} new proposals on ${quotedList(n)}`;
-      return `Someone proposed an item for ${list(n)}`;
+      if (countOf(n) > 1) return [`${countOf(n)} new proposals on `, list(n)];
+      return ['Someone proposed an item for ', list(n)];
     case 'proposal_approved':
       return n.itemName
-        ? `Your proposed item “${n.itemName}” was accepted in ${list(n)}`
-        : `Your proposed item was accepted in ${list(n)}`;
+        ? [`Your proposed item “${n.itemName}” was accepted in `, list(n)]
+        : ['Your proposed item was accepted in ', list(n)];
     // Neither names who made the change (neutral, so it can't set co-owners
     // against each other; members can't see the members list anyway), and
     // neither mentions bookings: a released-booking count only ever goes back to
     // the gifter on their own actions.
     case 'role_changed':
-      return `You’re now a member of ${quotedList(n)}`;
+      return ['You’re now a member of ', list(n)];
     case 'removed_from_wishlist':
-      return `You were removed from ${quotedList(n)}`;
+      return ['You were removed from ', list(n)];
     default:
-      return 'You have a new notification';
+      return ['You have a new notification'];
   }
 }
 
+/** Human-readable line for a notification, as plain text. */
+export function notificationText(n: NotificationView): string {
+  return notificationParts(n)
+    .map((part) => (typeof part === 'string' ? part : part.listName))
+    .join('');
+}
+
+const listLink = (n: NotificationView) =>
+  n.wishlistSlug || n.wishlistId
+    ? `/wishlists/${n.wishlistSlug ?? n.wishlistId}`
+    : '/notifications';
+
 /**
  * Where clicking a notification should take the user, or null when it shouldn't
- * link anywhere: after a removal the list may no longer be visible to them.
+ * link anywhere: after a removal, or a declined invite, the list may not be
+ * visible to them.
+ *
+ * `viewerUsername` is the recipient's own: a follow from several people links
+ * to their followers, which live on their profile.
  */
-export function notificationLink(n: NotificationView): string | null {
+export function notificationLink(
+  n: NotificationView,
+  viewerUsername?: string | null
+): string | null {
   switch (n.type) {
     case 'follow':
-      // Several followers: the dashboard, where your follower count opens the
-      // list (the list itself has no URL to link to).
-      if (countOf(n) > 1) return '/';
-      return n.actorUsername ? `/users/${n.actorUsername}` : '/notifications';
+      // One follower: their profile. Several, or one with no name to link to:
+      // your own profile, with its followers list open.
+      if (countOf(n) === 1 && n.actorUsername) return profileHref(n.actorUsername);
+      return viewerUsername ? followersHref(viewerUsername) : '/notifications';
     case 'wishlist_invite':
+      // Pending: the Invitations page, where it's answered. Accepted: the list
+      // they joined.
+      if (n.inviteAnswer === 'accepted') return listLink(n);
+      if (n.inviteAnswer === 'declined') return null;
       return '/invites';
     case 'invite_accepted':
     case 'proposal':
     case 'proposal_approved':
     case 'role_changed':
-      return n.wishlistSlug || n.wishlistId
-        ? `/wishlists/${n.wishlistSlug ?? n.wishlistId}`
-        : '/notifications';
+      return listLink(n);
     case 'removed_from_wishlist':
       return null;
     default:
