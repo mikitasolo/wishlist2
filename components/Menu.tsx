@@ -15,7 +15,7 @@ import Link from 'next/link';
 import Icon, { type IconName } from './Icon';
 import {
   POPOVER_ACTION_ROW,
-  POPOVER_ICON_SIZE,
+  MENU_ICON_SIZE,
   POPOVER_SEPARATOR,
   POPOVER_SURFACE,
 } from './popoverStyles';
@@ -312,7 +312,7 @@ export default function Menu({
       {item.icon && (
         <Icon
           name={item.icon}
-          size={POPOVER_ICON_SIZE}
+          size={MENU_ICON_SIZE}
           className="flex-shrink-0 text-muted-foreground"
         />
       )}
@@ -321,7 +321,7 @@ export default function Menu({
     </>
   );
 
-  const itemClassName = `${POPOVER_ACTION_ROW} cursor-pointer whitespace-nowrap text-foreground outline-hidden transition-colors focus:bg-muted aria-disabled:cursor-not-allowed aria-disabled:opacity-50`;
+  const itemClassName = `${POPOVER_ACTION_ROW} cursor-pointer whitespace-nowrap text-foreground outline-hidden transition-colors focus:bg-row-active aria-disabled:cursor-not-allowed aria-disabled:opacity-50`;
 
   const renderItem = (item: MenuItem) =>
     item.href ? (
@@ -385,7 +385,7 @@ export default function Menu({
                   checked ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
-                {option.icon && <Icon name={option.icon} size={15} />}
+                {option.icon && <Icon name={option.icon} size={16} />}
                 {option.label}
               </button>
             );

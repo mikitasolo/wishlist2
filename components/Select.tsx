@@ -320,12 +320,12 @@ export default function Select({
                   onMouseMove={() => {
                     if (i !== active) setActive(i);
                   }}
-                  className={`${POPOVER_OPTION_ROW} cursor-pointer justify-between whitespace-nowrap transition-colors hover:bg-muted ${
-                    i === active ? 'bg-muted' : ''
+                  className={`${POPOVER_OPTION_ROW} cursor-pointer justify-between whitespace-nowrap transition-colors ${
+                    i === active ? 'bg-row-active' : ''
                   } ${isSel ? 'text-accent' : 'text-foreground'}`}
                 >
                   {o.label}
-                  {isSel && <Icon name="check" size={15} className="flex-shrink-0" />}
+                  {isSel && <Icon name="check" size={16} className="flex-shrink-0" />}
                 </div>
               );
             })}

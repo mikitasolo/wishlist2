@@ -110,8 +110,8 @@ describe('Select — from the keyboard, on a page', () => {
     expect(activeOption()).toBe(option('Oldest'));
 
     // Only the keyboard's option is highlighted, and the value hasn't moved.
-    expect(option('Oldest')).toHaveClass('bg-muted');
-    expect(option('Price')).not.toHaveClass('bg-muted');
+    expect(option('Oldest')).toHaveClass('bg-row-active');
+    expect(option('Price')).not.toHaveClass('bg-row-active');
     expect(trigger()).toHaveTextContent('Oldest');
     expect(trigger()).toHaveFocus();
   });
@@ -301,7 +301,7 @@ describe('Select — with the mouse', () => {
 
     await user.click(trigger());
     expect(menu()).toBeInTheDocument();
-    for (const o of screen.getAllByRole('option')) expect(o).not.toHaveClass('bg-muted');
+    for (const o of screen.getAllByRole('option')) expect(o).not.toHaveClass('bg-row-active');
 
     await user.click(option('Price'));
     expect(menu()).toBeNull();
@@ -337,11 +337,11 @@ describe('Select — with the mouse', () => {
 
     await user.hover(option('Newest'));
     expect(activeOption()).toBe(option('Newest'));
-    expect(option('Newest')).toHaveClass('bg-muted');
+    expect(option('Newest')).toHaveClass('bg-row-active');
     await user.keyboard('{ArrowDown}');
     expect(activeOption()).toBe(option('Oldest'));
-    expect(option('Oldest')).toHaveClass('bg-muted');
-    expect(option('Newest')).not.toHaveClass('bg-muted');
+    expect(option('Oldest')).toHaveClass('bg-row-active');
+    expect(option('Newest')).not.toHaveClass('bg-row-active');
   });
 
   it('picks the option under the pointer with Enter, as highlighted', async () => {
@@ -372,7 +372,7 @@ describe('Select — with the mouse', () => {
       expect(menu()).toBeInTheDocument();
       expect(onPick).not.toHaveBeenCalled();
       expect(activeOption()).toBe(option('Oldest'));
-      expect(option('Oldest')).toHaveClass('bg-muted');
+      expect(option('Oldest')).toHaveClass('bg-row-active');
 
       await user.keyboard(key);
       expect(menu()).toBeNull();

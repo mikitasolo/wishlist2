@@ -73,6 +73,10 @@
   --color-ring: var(--ring);
   --color-accent: var(--accent);
   --color-accent2: var(--accent2);
+  /* The keyboard-active row of a Menu or a Select's list (`bg-row-active`):
+     an indigo tint strong enough to find at a glance, where `bg-muted` (the
+     pointer's hover elsewhere) was about 1.1:1 against the popover. */
+  --color-row-active: var(--row-active);
 
   /* Status tones (WIS-234). Read them through `statusMeta` / `TONE_CLASSES`
      (lib/utils/itemStatus.ts), never as raw emerald/amber/blue classes.
@@ -120,6 +124,9 @@
      strong link/label contrast (brand-600 alone reads washed out on white). */
   --accent: #3a38a6;
   --accent2: #ff375f;
+  /* primary-600 at 16%: 1.24:1 against the surface (bg-muted is 1.12:1), and
+     foreground text on it 13.6:1. */
+  --row-active: rgb(94 92 230 / 0.16);
 
   /* Status tones (see @theme inline). Fills: white text on each is ≥ 4.7:1.
      Values are Tailwind's palette: primary-600/700, emerald-700/800,
@@ -164,6 +171,8 @@
   /* On dark surfaces a lighter accent reads best */
   --accent: #a3a1ff;
   --accent2: #ff5277;
+  /* primary-400 at 28%: 1.55:1 against the surface (bg-muted is 1.22:1). */
+  --row-active: rgb(134 131 255 / 0.28);
 
   /* Status text lightens on dark surfaces (emerald-400, amber-400, red-400;
      info follows --accent). The fills carry white text, so they stay put. */
