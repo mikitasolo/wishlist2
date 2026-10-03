@@ -7,7 +7,10 @@ import { isObjectIdParam } from '@/lib/utils/objectId';
 
 // DELETE /api/reservations/[id] - dismiss a reservation without logging a gift
 // (e.g. the owner completed it themselves and you never gave it). Removes it
-// from your "Reserved by you" list; does not touch the live item.
+// from your "Reserved by you" list; does not touch the live item. So the page
+// offers it only on a reservation detached from its item: one the gifter still
+// holds the item's booking of is released instead, with the list's own unbook
+// (`PATCH /api/items/[id]`), which frees the item and ends this record with it.
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }

@@ -21,6 +21,7 @@ import {
   isOwnBlob,
 } from '@/lib/utils/blob';
 import { isObjectIdParam } from '@/lib/utils/objectId';
+import { itemsGivenBy } from '@/lib/utils/giftHistory';
 import {
   canCopyItem,
   COPY_IMAGE_FAILED_NOTICE,
@@ -96,6 +97,24 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return true;
     });
 
+    // A member's own gifts: of the items they hold the booking of, the ones
+    // they've since marked as given, from their own gift history. The card shows
+    // those as "Given by you" rather than offering an Unbook that would put a
+    // gift already given back up for someone else to buy. Read only for a member
+    // who isn't an owner, and only for their own bookings: nothing of it reaches
+    // an owner (booking-blind; `isMember` never includes one), a visitor, or
+    // anyone else's bookings.
+    const viewerId = session?.user?.id;
+    const givenByViewer =
+      viewerId && isMember
+        ? await itemsGivenBy(
+            viewerId,
+            visibleItems
+              .filter((item) => item.status === 'booked' && item.bookedBy?.toString() === viewerId)
+              .map((item) => item._id)
+          )
+        : new Set<string>();
+
     // Filter items based on user role and enrich with priceInUsdCents
     const filteredItems = visibleItems.map((item) => {
       const itemObj = item.toObject();
@@ -152,6 +171,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           // Keep status as 'booked' so members can see which items are booked
           bookedBy: isBookedByMe ? session.user.id : undefined, // Only show if current user booked it
           proposedBy: isProposedByMe ? session.user.id : undefined, // Only show if current user proposed it
+          // Only ever true on an item they booked themselves (see givenByViewer).
+          givenByMe: isBookedByMe && givenByViewer.has(itemObj._id.toString()),
         };
       }
 

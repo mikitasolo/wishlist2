@@ -26,6 +26,7 @@ import { createNotification } from '@/lib/notifications';
 import { isWishlistOwner } from '@/lib/utils/wishlistOwners';
 import { isHiddenByArchive } from '@/lib/utils/wishlistAccess';
 import { isObjectIdParam } from '@/lib/utils/objectId';
+import { itemsGivenBy } from '@/lib/utils/giftHistory';
 import { undoBookingUnlessMember, type LostBookingReason } from '@/lib/utils/lateBooking';
 import { isCountedOnShareCard } from '@/lib/og/data';
 import { purgeShareCards } from '@/lib/og/purge';
@@ -488,11 +489,15 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         proposedBy: undefined,
       };
     } else if (isMember) {
-      // Members may see booking status, but only their own booking/proposal id.
+      // Members may see booking status, but only their own booking/proposal id,
+      // and, as the list read gives it, whether a gift they hold the booking of
+      // is one they've marked as given (`givenByMe`).
+      const givenByMe = isBookedByMe && (await itemsGivenBy(session.user.id, [item._id])).size > 0;
       responseData = {
         ...itemObj,
         bookedBy: isBookedByMe ? session.user.id : undefined,
         proposedBy: isProposedByMe ? session.user.id : undefined,
+        givenByMe,
       };
     } else {
       // Any other authorized viewer (e.g. a proposer who isn't a member).
