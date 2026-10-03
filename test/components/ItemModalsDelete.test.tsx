@@ -28,7 +28,7 @@ function item(overrides: Partial<ApiItem>): ApiItem {
 const modals = [
   {
     name: 'EditItemModal',
-    submitLabel: 'Save changes',
+    submitLabel: 'Save',
     submittingLabel: 'Saving…',
     renderModal: (onDelete: () => Promise<void>, onClose: () => void) =>
       render(

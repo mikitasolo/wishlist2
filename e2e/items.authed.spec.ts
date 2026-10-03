@@ -19,7 +19,7 @@ for (const flow of [
     list: 'e2e-birthday',
     open: 'Add item',
     title: 'Add new item',
-    submit: 'Add item',
+    submit: 'Add to list',
   },
   {
     as: 'member',
@@ -27,7 +27,7 @@ for (const flow of [
     // e2e-friend has no items, so its empty state offers the proposal.
     open: 'Propose an item',
     title: 'Propose new item',
-    submit: 'Propose item',
+    submit: 'Propose',
   },
 ]) {
   test(`regression: the ${flow.as}'s "${flow.title}" modal keeps the input when the request fails`, async ({

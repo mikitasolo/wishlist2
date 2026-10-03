@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useId } from 'react';
 import BaseModal from './BaseModal';
 import ItemForm, { itemToFormData } from './ItemForm';
+import ItemFormFooter from './ItemFormFooter';
 import ConfirmDialog from './ConfirmDialog';
 import { defaultItemCurrency } from '@/lib/utils/currencies';
 import { useViewerLocale } from '@/lib/hooks/useViewerLocale';
@@ -55,6 +56,7 @@ export default function AddItemModal({
   back,
 }: AddItemModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const formId = useId();
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   // Where to go once the user confirms discarding their changes: closing the
   // modal, or the step back. Null while no confirmation is open.
@@ -163,17 +165,27 @@ export default function AddItemModal({
         shouldInterceptClose={() => hasUnsavedChanges}
         onInterceptClose={() => setConfirmLeave('close')}
         back={back && { label: back.label, onClick: handleBack }}
+        footer={
+          <ItemFormFooter
+            formId={formId}
+            busy={isSubmitting}
+            saving={isSubmitting}
+            onCancel={handleClose}
+            submitLabel="Add to list"
+            submittingLabel="Adding…"
+            saveAsDraft
+            keepAdding={initialItem ? undefined : { checked: keepAdding, onChange: setKeepAdding }}
+          />
+        }
       >
         <ItemForm
           initialData={initialData}
           onSubmit={handleSubmit}
           onCancel={handleClose}
-          submitLabel="Add item"
-          submittingLabel="Adding…"
           isSubmitting={isSubmitting}
           onFormChange={setHasUnsavedChanges}
           defaultCurrency={defaultCurrency}
-          keepAdding={initialItem ? undefined : { checked: keepAdding, onChange: setKeepAdding }}
+          formId={formId}
         />
       </BaseModal>
 

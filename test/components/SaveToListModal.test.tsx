@@ -267,7 +267,7 @@ describe('SaveToListModal — creating a list to save to', () => {
     // regression (WIS-288): flaked in CI when asserted at once; see above.
     await waitFor(() => expect(form).toContainElement(document.activeElement as HTMLElement));
 
-    fireEvent.click(within(form).getByRole('button', { name: /^add item$/i }));
+    fireEvent.click(within(form).getByRole('button', { name: /^add to list$/i }));
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     expect(postedBody(fetchMock).url).toBe('/api/wishlists/w-new/items');
     expect(showToast).toHaveBeenCalledWith('Saved to Gift ideas', 'success');
@@ -337,7 +337,7 @@ describe('SaveToListModal — changing the list', () => {
     );
 
     const home = await pick('Home');
-    fireEvent.click(within(home).getByRole('button', { name: /^add item$/i }));
+    fireEvent.click(within(home).getByRole('button', { name: /^add to list$/i }));
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     expect(postedBody(fetchMock).url).toBe('/api/wishlists/w-home/items');
   });
@@ -370,7 +370,7 @@ describe('SaveToListModal — changing the list', () => {
     open();
     const form = await pick('Birthday');
 
-    fireEvent.click(within(form).getByRole('button', { name: /^add item$/i }));
+    fireEvent.click(within(form).getByRole('button', { name: /^add to list$/i }));
     await waitFor(() =>
       expect(within(form).getByRole('button', { name: 'Change list' })).toBeDisabled()
     );
@@ -390,7 +390,7 @@ describe('SaveToListModal — the prefilled form', () => {
     expect(within(form).getByLabelText(/item name/i)).toHaveValue('Blue Mug');
     expect(within(form).getByLabelText(/^price$/i)).toHaveValue('25.00');
     // The item's own currency, not the target list's (PLN).
-    expect(within(form).getByRole('button', { name: 'EUR' })).toBeInTheDocument();
+    expect(within(form).getByRole('combobox', { name: 'Currency' })).toHaveTextContent('EUR');
     expect(within(form).getByLabelText(/product link/i)).toHaveValue(source.link);
     expect(within(form).getByTestId('image-upload')).toHaveTextContent(IMAGE);
     expect(within(form).getByLabelText(/notes/i)).toHaveValue('');
@@ -408,7 +408,7 @@ describe('SaveToListModal — the prefilled form', () => {
     fireEvent.change(within(form).getByLabelText(/item name/i), {
       target: { value: 'Blue Mug, large' },
     });
-    fireEvent.click(within(form).getByRole('button', { name: /^add item$/i }));
+    fireEvent.click(within(form).getByRole('button', { name: /^add to list$/i }));
 
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     const { url, body } = postedBody(fetchMock);
@@ -445,7 +445,7 @@ describe('SaveToListModal — the prefilled form', () => {
     const form = await pick('Birthday');
 
     vi.useFakeTimers();
-    fireEvent.click(within(form).getByRole('button', { name: /^add item$/i }));
+    fireEvent.click(within(form).getByRole('button', { name: /^add to list$/i }));
     await vi.advanceTimersByTimeAsync(ITEM_REQUEST_TIMEOUT_MS);
     vi.useRealTimers();
 
@@ -453,7 +453,7 @@ describe('SaveToListModal — the prefilled form', () => {
     expect(signal?.aborted).toBe(true);
     expect(tracked).toBe(0); // the tracker has let go, so the page's polls resume
     expect(onClose).not.toHaveBeenCalled();
-    expect(within(form).getByRole('button', { name: /^add item$/i })).toBeEnabled();
+    expect(within(form).getByRole('button', { name: /^add to list$/i })).toBeEnabled();
   });
 
   it('leaves out a field the user cleared, rather than sending null', async () => {
@@ -463,7 +463,7 @@ describe('SaveToListModal — the prefilled form', () => {
 
     fireEvent.click(within(form).getByRole('button', { name: 'Remove image' }));
     fireEvent.change(within(form).getByLabelText(/product link/i), { target: { value: '' } });
-    fireEvent.click(within(form).getByRole('button', { name: /^add item$/i }));
+    fireEvent.click(within(form).getByRole('button', { name: /^add to list$/i }));
 
     await waitFor(() => expect(onClose).toHaveBeenCalled());
     const { body } = postedBody(fetchMock);
@@ -478,7 +478,7 @@ describe('SaveToListModal — the prefilled form', () => {
     const { onClose } = open();
     const form = await pick('Birthday');
 
-    fireEvent.click(within(form).getByRole('button', { name: /^add item$/i }));
+    fireEvent.click(within(form).getByRole('button', { name: /^add to list$/i }));
 
     await waitFor(() => expect(onClose).toHaveBeenCalled());
     expect(showToast).toHaveBeenCalledWith('Saved to Birthday', 'success');
@@ -491,12 +491,12 @@ describe('SaveToListModal — the prefilled form', () => {
     const form = await pick('Birthday');
 
     fireEvent.change(within(form).getByLabelText(/item name/i), { target: { value: 'Edited' } });
-    fireEvent.click(within(form).getByRole('button', { name: /^add item$/i }));
+    fireEvent.click(within(form).getByRole('button', { name: /^add to list$/i }));
 
     await waitFor(() => expect(showToast).toHaveBeenCalledWith('Item not found', 'error'));
     expect(onClose).not.toHaveBeenCalled();
     expect(within(form).getByLabelText(/item name/i)).toHaveValue('Edited');
-    expect(within(form).getByRole('button', { name: /^add item$/i })).toBeEnabled();
+    expect(within(form).getByRole('button', { name: /^add to list$/i })).toBeEnabled();
     expect(showToast).not.toHaveBeenCalledWith(expect.stringMatching(/^Saved/), 'success');
   });
 });

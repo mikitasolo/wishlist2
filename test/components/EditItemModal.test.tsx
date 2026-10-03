@@ -41,7 +41,7 @@ describe('EditItemModal — save outcome', () => {
   const saved = () => item({ price: { value: 5000, currency: 'eur' } });
   const nameInput = () => screen.getByLabelText(/item name/i);
   const priceInput = () => screen.getByLabelText(/^price$/i);
-  const saveButton = () => screen.getByRole('button', { name: /^save changes$/i });
+  const saveButton = () => screen.getByRole('button', { name: /^save$/i });
 
   const editAndSave = () => {
     fireEvent.change(nameInput(), { target: { value: 'Road bike' } });
@@ -75,7 +75,7 @@ describe('EditItemModal — save outcome', () => {
     expect(onClose).not.toHaveBeenCalled();
     expect(nameInput()).toHaveValue('Road bike');
     expect(priceInput()).toHaveValue('120.50');
-    expect(screen.getByRole('button', { name: 'EUR' })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Currency' })).toHaveTextContent('EUR');
   });
 
   // regression: with the rejection swallowed, ItemForm took the failure for a
@@ -133,7 +133,7 @@ describe('EditItemModal — most wanted', () => {
     );
 
     fireEvent.click(mostWantedSwitch()!);
-    fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
     await waitFor(() => expect(onSave).toHaveBeenCalled());
     expect(onSave.mock.calls[0][0]).toMatchObject({ mostWanted: true });
     expect(onSave.mock.calls[0][0]).not.toHaveProperty('status');
@@ -165,7 +165,7 @@ describe('EditItemModal — sends only what changed', () => {
       notes: 'Any colour',
       mostWanted: false,
     });
-  const saveButton = () => screen.getByRole('button', { name: /^save changes$/i });
+  const saveButton = () => screen.getByRole('button', { name: /^save$/i });
   const notesInput = () => screen.getByLabelText(/^notes$/i);
 
   function open(onSave = vi.fn().mockResolvedValue(undefined), onClose = vi.fn()) {
@@ -215,8 +215,8 @@ describe('EditItemModal — sends only what changed', () => {
 
   it('sends the price as one field when only its currency changed', async () => {
     const { onSave } = open();
-    fireEvent.click(screen.getByRole('button', { name: 'USD' }));
-    fireEvent.click(screen.getByRole('button', { name: /EUR\s*Euro/ }));
+    fireEvent.click(screen.getByRole('combobox', { name: 'Currency' }));
+    fireEvent.click(screen.getByRole('option', { name: /EUR · Euro/ }));
     fireEvent.click(saveButton());
     await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
     expect(onSave).toHaveBeenCalledWith({ price: { value: 1250, currency: 'eur' } });
@@ -239,12 +239,13 @@ describe('EditItemModal — sends only what changed', () => {
     expect(screen.queryByText(/discard changes\?/i)).toBeNull();
   });
 
-  it("keeps the item's name when it was emptied to blanks", async () => {
+  it('refuses a name emptied to blanks, with the error under it, and sends nothing', async () => {
     const { onSave } = open();
     fireEvent.change(screen.getByLabelText(/item name/i), { target: { value: '   ' } });
     fireEvent.change(notesInput(), { target: { value: 'Size M' } });
     fireEvent.click(saveButton());
-    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
-    expect(onSave).toHaveBeenCalledWith({ notes: 'Size M' });
+    expect(await screen.findByText('Enter a name for the item')).toBeInTheDocument();
+    expect(screen.getByLabelText(/item name/i)).toHaveFocus();
+    expect(onSave).not.toHaveBeenCalled();
   });
 });

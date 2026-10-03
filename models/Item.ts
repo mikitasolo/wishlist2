@@ -1,4 +1,5 @@
 import mongoose, { Schema, Model } from 'mongoose';
+import { ITEM_NOTES_MAX } from '@/lib/utils/itemFields';
 
 const ItemSchema = new Schema(
   {
@@ -38,7 +39,7 @@ const ItemSchema = new Schema(
     },
     notes: {
       type: String,
-      maxlength: 100,
+      maxlength: ITEM_NOTES_MAX,
     },
     // Set by an owner to tell gifters this is a must-have. Items saved before
     // the flag existed have no value, which means false.

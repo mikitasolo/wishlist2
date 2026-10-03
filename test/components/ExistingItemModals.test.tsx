@@ -38,7 +38,7 @@ const modals = [
   {
     name: 'EditItemModal',
     status: 'available' as const,
-    submitLabel: /^save changes$/i,
+    submitLabel: /^save$/i,
     sendsOnlyChanges: true,
     renderModal: (it: ApiItem, onSubmit: Submit, onClose: () => void, c: Currencies) =>
       render(<EditItemModal isOpen onClose={onClose} onSave={onSubmit} item={it} {...c} />),
@@ -46,7 +46,7 @@ const modals = [
   {
     name: 'EditItemModal (a proposer editing their proposal)',
     status: 'proposed' as const,
-    submitLabel: /^save changes$/i,
+    submitLabel: /^save$/i,
     sendsOnlyChanges: true,
     renderModal: (it: ApiItem, onSubmit: Submit, onClose: () => void, c: Currencies) =>
       render(<EditItemModal isOpen onClose={onClose} onSave={onSubmit} item={it} {...c} />),
@@ -62,7 +62,11 @@ const modals = [
 ];
 
 // The currency picker's trigger is a button labelled with the selected code.
-const currencyButton = (code: string) => screen.getByRole('button', { name: code });
+const currencyButton = (code: string) => {
+  const trigger = screen.getByRole('combobox', { name: 'Currency' });
+  expect(trigger).toHaveTextContent(code);
+  return trigger;
+};
 const priceInput = () => screen.getByLabelText(/^price$/i);
 
 // useBodyScrollLock restores the scroll position on close; jsdom lacks scrollTo.
@@ -91,7 +95,7 @@ describe.each(modals)('$name — price and currency', (modal) => {
   it("regression: a priceless item starts on the wishlist's currency, not USD", async () => {
     const { onSubmit } = open({ price: null });
     expect(currencyButton('PLN')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'USD' })).toBeNull();
+    expect(screen.getByRole('combobox', { name: 'Currency' })).not.toHaveTextContent('USD');
 
     fireEvent.change(priceInput(), { target: { value: '25' } });
     fireEvent.click(screen.getByRole('button', { name: submitLabel }));
@@ -103,7 +107,7 @@ describe.each(modals)('$name — price and currency', (modal) => {
   it('an item priced in EUR still starts on EUR on a PLN list', async () => {
     const { onSubmit } = open({ price: { value: 1000, currency: 'eur' } });
     expect(currencyButton('EUR')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'PLN' })).toBeNull();
+    expect(screen.getByRole('combobox', { name: 'Currency' })).not.toHaveTextContent('PLN');
     expect(priceInput()).toHaveValue('10.00');
 
     fireEvent.change(priceInput(), { target: { value: '12' } });

@@ -32,7 +32,7 @@ test('regression: the owner\'s "Edit item" modal keeps the changes when saving f
   const patched = page.waitForRequest(
     (req) => req.method() === 'PATCH' && /\/api\/items\/\w+$/.test(req.url())
   );
-  await dialog.getByRole('button', { name: 'Save changes' }).click();
+  await dialog.getByRole('button', { name: 'Save' }).click();
   expect((await patched).postDataJSON()).toMatchObject({
     name: 'E2E Bike',
     price: { value: 34900 },
@@ -43,7 +43,7 @@ test('regression: the owner\'s "Edit item" modal keeps the changes when saving f
   await expect(dialog.getByLabel('Item name')).toHaveValue('E2E Bike');
   // Leaving the field put the amount in the cards' format.
   await expect(dialog.getByLabel('Price')).toHaveValue('349.00');
-  await expect(dialog.getByRole('button', { name: 'Save changes' })).toBeEnabled();
+  await expect(dialog.getByRole('button', { name: 'Save' })).toBeEnabled();
 
   // The optimistic edit is rolled back: the list shows the server's item while
   // the modal still holds the draft.

@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useId } from 'react';
 import { ApiItem } from '@/types/api';
 import BaseModal from './BaseModal';
-import Button from './Button';
 import ItemForm, { itemToFormData } from './ItemForm';
+import ItemFormFooter from './ItemFormFooter';
 import ConfirmDialog from './ConfirmDialog';
 import { defaultItemCurrency } from '@/lib/utils/currencies';
 import type { ItemContentChanges } from '@/lib/utils/itemForm';
@@ -36,6 +36,7 @@ export default function EditItemModal({
   userCurrency,
 }: EditItemModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const formId = useId();
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -133,6 +134,18 @@ export default function EditItemModal({
         isSubmitting={isSubmitting || isDeleting}
         shouldInterceptClose={() => hasUnsavedChanges}
         onInterceptClose={() => setShowConfirmClose(true)}
+        footer={
+          <ItemFormFooter
+            formId={formId}
+            busy={isSubmitting || isDeleting}
+            // A delete disables the form too, but only a save reads "Saving…".
+            saving={isSubmitting}
+            onCancel={handleClose}
+            submitLabel="Save"
+            submittingLabel="Saving…"
+            onDelete={onDelete ? () => setShowDeleteConfirm(true) : undefined}
+          />
+        }
       >
         <ItemForm
           key={itemFormKey}
@@ -143,42 +156,10 @@ export default function EditItemModal({
           )}
           onSubmit={handleSubmit}
           onCancel={handleClose}
-          submitLabel="Save changes"
-          submittingLabel="Saving…"
-          isSubmitting={isSubmitting || isDeleting}
           mode={item.status === 'proposed' ? 'propose' : 'edit'}
           itemId={item._id}
           onFormChange={setHasUnsavedChanges}
-          renderButtons={({ submitting, onCancel, submitLabel, submittingLabel }) => (
-            <div className="flex flex-col gap-3 pt-4">
-              <div className="flex gap-3">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={onCancel}
-                  disabled={submitting}
-                  className="flex-1"
-                >
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={submitting} className="flex-1">
-                  {/* A delete disables the form too, but only a save reads "Saving…". */}
-                  {isSubmitting ? submittingLabel : submitLabel}
-                </Button>
-              </div>
-              {onDelete && (
-                <Button
-                  type="button"
-                  variant="danger"
-                  onClick={() => setShowDeleteConfirm(true)}
-                  disabled={submitting}
-                  fullWidth
-                >
-                  Delete item
-                </Button>
-              )}
-            </div>
-          )}
+          formId={formId}
         />
       </BaseModal>
 

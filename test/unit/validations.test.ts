@@ -229,8 +229,8 @@ describe('length limits on trimmed free-text fields', () => {
   const fields = [
     ['wishlist description (create)', createWishlistSchema, { name: 'x' }, 'description', 500],
     ['wishlist description (update)', updateWishlistSchema, {}, 'description', 500],
-    ['item notes (create)', createItemSchema, { name: 'x' }, 'notes', 100],
-    ['item notes (update)', updateItemSchema, {}, 'notes', 100],
+    ['item notes (create)', createItemSchema, { name: 'x' }, 'notes', 300],
+    ['item notes (update)', updateItemSchema, {}, 'notes', 300],
     ['profile bio', updateProfileSchema, {}, 'bio', 300],
   ] as const;
 

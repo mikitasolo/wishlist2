@@ -1,5 +1,6 @@
 import type { ApiItem } from '@/types/api';
 import { defaultItemCurrency } from '@/lib/utils/currencies';
+import { normalizeItemLink } from '@/lib/utils/itemFields';
 import { PRICE_FALLBACK_LOCALE, formatPriceInput, parsePriceInput } from '@/lib/utils/currency';
 
 /**
@@ -110,7 +111,8 @@ export function itemFormContent(
     name: form.name.trim(),
     imageUrl: form.imageUrl.trim() || null,
     price: formPrice(form, locale),
-    link: form.link.trim() || null,
+    // Without a scheme it gets https://, as the schema does.
+    link: normalizeItemLink(form.link) || null,
     notes: form.notes.trim() || null,
     mostWanted: form.mostWanted,
   };

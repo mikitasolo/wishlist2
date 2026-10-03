@@ -278,7 +278,7 @@ describe('Keep adding, from the tile', () => {
 
     for (const name of ['Bike', 'Helmet']) {
       await user.type(within(dialog).getByLabelText(/item name/i), name);
-      await user.click(within(dialog).getByRole('button', { name: 'Add item' }));
+      await user.click(within(dialog).getByRole('button', { name: 'Add to list' }));
       await screen.findByRole('article', { name: `Item: ${name}` });
       await waitFor(() => expect(within(dialog).getByLabelText(/item name/i)).toHaveValue(''));
     }

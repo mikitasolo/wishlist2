@@ -3,19 +3,14 @@
 import { useState, useRef, useEffect, useMemo, useId } from 'react';
 import ImageUpload from './ImageUpload';
 import Toggle from './Toggle';
-import Button from './Button';
-import Callout from './Callout';
 import Field from './Field';
-import Icon from './Icon';
 import Input from './Input';
 import SegmentedControl from './SegmentedControl';
 import Textarea from './Textarea';
-import { FIELD_LABEL, inputClassName } from './fieldStyles';
-import {
-  CURRENCY_OPTIONS as COMMON_CURRENCIES,
-  POPULAR_CURRENCIES,
-  defaultItemCurrency,
-} from '@/lib/utils/currencies';
+import Select from './Select';
+import { FIELD_LABEL } from './fieldStyles';
+import { currencySelectOptions, defaultItemCurrency } from '@/lib/utils/currencies';
+import { ITEM_NOTES_MAX, isHttpUrl, normalizeItemLink } from '@/lib/utils/itemFields';
 import {
   itemChanges,
   itemFormContent,
@@ -38,6 +33,9 @@ const BLANK_ITEM_FIELDS: Omit<ItemFormData, 'currency'> = {
   mostWanted: false,
   isDraft: false,
 };
+
+// The notes' counter appears once the text is this close to the limit.
+const NOTES_COUNTER_FROM = Math.floor(ITEM_NOTES_MAX * 0.8);
 
 interface ItemFormProps {
   initialData?: ItemFormData;
@@ -76,10 +74,23 @@ interface ItemFormProps {
   // Read once on mount so it never overwrites what the user picked; ignored when
   // initialData is given, which carries its own currency (see itemToFormData).
   defaultCurrency?: string;
-  // A new item's form only: the "Keep adding" checkbox beside the submit button.
-  // The modal reads it to stay open after a save; the form clears itself either
-  // way (see handleSubmit). Not drawn with `renderButtons`.
-  keepAdding?: { checked: boolean; onChange: (checked: boolean) => void };
+  // The form's id, for the buttons of a pinned footer outside it (a
+  // `type="submit"` button with `form={formId}`: see ItemFormFooter). One is made
+  // up if omitted. The form clears itself after a new item is saved, whether or
+  // not the modal stays open (Keep adding: see handleSubmit).
+  formId?: string;
+}
+
+/**
+ * Submits the item form `formId` as `status` (a footer's Save as draft). A plain
+ * submit button is the primary action, and the one Enter in a field presses, so
+ * the other can't be a submit button of its own that comes first in the tree.
+ */
+export function submitItemFormAs(formId: string, status: 'draft' | 'available') {
+  const form = document.getElementById(formId);
+  if (!(form instanceof HTMLFormElement)) return;
+  form.dataset.status = status;
+  form.requestSubmit();
 }
 
 export default function ItemForm({
@@ -95,7 +106,7 @@ export default function ItemForm({
   itemId,
   onFormChange,
   defaultCurrency,
-  keepAdding,
+  formId: externalFormId,
 }: ItemFormProps) {
   // The blank form a new item starts from — a stable snapshot, so effects can
   // depend on it. It is also the "unsaved changes" baseline, so a prefilled
@@ -113,9 +124,13 @@ export default function ItemForm({
   const [showPriceError, setShowPriceError] = useState(false);
   const priceInputRef = useRef<HTMLInputElement>(null);
   const locale = useViewerLocale();
-  const [isCurrencyOpen, setIsCurrencyOpen] = useState(false);
-  const [currencySearch, setCurrencySearch] = useState('');
-  const currencyRef = useRef<HTMLDivElement>(null);
+  const madeUpFormId = useId();
+  const formId = externalFormId ?? madeUpFormId;
+  // Errors show under the fields once a save has been tried (the name's and
+  // the link's), or once the field has been left (the link's, the price's).
+  const [attempted, setAttempted] = useState(false);
+  const [linkLeft, setLinkLeft] = useState(false);
+  const linkInputRef = useRef<HTMLInputElement>(null);
   const internalFirstInputRef = useRef<HTMLInputElement>(null);
   const firstInputRef = externalFirstInputRef || internalFirstInputRef;
   const statusLabelId = useId();
@@ -140,23 +155,6 @@ export default function ItemForm({
   // Track initial data for comparison
   const initialDataRef = useRef<ItemFormData>(initialData || blankFormData);
 
-  // Close currency dropdown when clicking outside
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (currencyRef.current && !currencyRef.current.contains(event.target as Node)) {
-        setIsCurrencyOpen(false);
-        setCurrencySearch('');
-      }
-    }
-
-    if (isCurrencyOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => {
-        document.removeEventListener('mousedown', handleClickOutside);
-      };
-    }
-  }, [isCurrencyOpen]);
-
   // Track the last item ID we initialized from
   // Only update form data on initial load or when switching to a different item
   // Never update form data after initial set, even if item changes in DB (preserves user edits)
@@ -180,8 +178,7 @@ export default function ItemForm({
   }, [initialData, itemId, blankFormData]);
 
   // An amount that can't be read is refused, not saved as "no price": the
-  // browser won't submit the form while the field says why, as it does for a
-  // missing name, and handleSubmit checks again.
+  // field says why under it, and handleSubmit won't send it.
   const priceCurrency = formData.currency || 'USD';
   const priceHints = useMemo(
     () => ({
@@ -193,9 +190,19 @@ export default function ItemForm({
   );
   const priceReadable = parsePriceInput(formData.price, locale).ok;
   const priceError = priceReadable ? null : `Enter a price like ${priceHints.example}`;
-  useEffect(() => {
-    priceInputRef.current?.setCustomValidity(priceError ?? '');
-  }, [priceError]);
+
+  // The link is read the way the server reads it: without a scheme it gets
+  // https://, and only an http(s) address is accepted.
+  const linkValue = normalizeItemLink(formData.link);
+  const linkError =
+    linkValue && !isHttpUrl(linkValue) ? 'Enter a web address like https://example.com' : null;
+  const nameError = formData.name.trim() ? null : 'Enter a name for the item';
+
+  // Leaving the link puts it in full ("amazon.de/x" becomes "https://amazon.de/x").
+  const handleLinkBlur = () => {
+    setLinkLeft(true);
+    if (!linkError && linkValue !== formData.link) setFormData((f) => ({ ...f, link: linkValue }));
+  };
 
   // Leaving the field puts the amount in the same format as the cards ("349"
   // becomes "349.00", or "349,00" where that's how prices are written).
@@ -222,7 +229,22 @@ export default function ItemForm({
     e.preventDefault();
     const currentSubmitting =
       externalIsSubmitting !== undefined ? externalIsSubmitting : isSubmitting;
+    // The status a footer's Save as draft asked for (see submitItemFormAs),
+    // read once and cleared, so a refused save can't leave it for the next.
+    const form = e.currentTarget as HTMLFormElement;
+    const asked = form.dataset.status;
+    delete form.dataset.status;
     if (currentSubmitting) return;
+    // The first invalid field says what's wrong and takes focus.
+    setAttempted(true);
+    if (nameError) {
+      firstInputRef.current?.focus();
+      return;
+    }
+    if (linkError) {
+      linkInputRef.current?.focus();
+      return;
+    }
     if (!priceReadable) {
       setShowPriceError(true);
       priceInputRef.current?.focus();
@@ -243,6 +265,8 @@ export default function ItemForm({
       let status: 'draft' | 'available' | 'proposed';
       if (mode === 'propose') {
         status = 'proposed';
+      } else if (mode === 'create') {
+        status = asked === 'draft' ? 'draft' : 'available';
       } else {
         status = formData.isDraft ? 'draft' : 'available';
       }
@@ -265,23 +289,17 @@ export default function ItemForm({
       );
 
       // A new item's form clears for the next one (it only stays open with
-      // Keep adding). The currency and the status stay as they were picked:
-      // the next item is most likely priced in it and meant to be published
-      // (or kept as a draft) like this one, and the cleared form is the new
-      // "unsaved changes" baseline, so neither alone is an edit.
+      // Keep adding). The currency stays as it was picked: the next item is
+      // most likely priced in it, and the cleared form is the new "unsaved
+      // changes" baseline, so it alone is not an edit.
       if (!initialData) {
-        // The status stays too: a batch of drafts stays drafts.
-        const next = {
-          ...blankFormData,
-          currency: formData.currency,
-          isDraft: formData.isDraft,
-        };
+        const next = { ...blankFormData, currency: formData.currency };
         generationRef.current += 1;
         setGeneration(generationRef.current);
         setFormData(next);
         setShowPriceError(false);
-        setIsCurrencyOpen(false);
-        setCurrencySearch('');
+        setAttempted(false);
+        setLinkLeft(false);
         initialDataRef.current = next;
         lastInitializedItemIdRef.current = undefined;
         setFocusNameNext(true);
@@ -299,42 +317,20 @@ export default function ItemForm({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      {/* Status toggle — only when creating a new item or reviewing a proposal.
-          Editing never shows it; status is changed via publish / move-to-draft. */}
-      {(mode === 'create' || mode === 'review') && (
-        <div>
-          <span id={statusLabelId} className={FIELD_LABEL}>
-            Status
-          </span>
-          <p id={statusHelperId} className="mb-1.5 text-xs text-muted-foreground">
-            {mode === 'review'
-              ? 'Select the status for this item after review'
-              : 'Draft items are not visible to others'}
-          </p>
-          <SegmentedControl
-            ariaLabelledBy={statusLabelId}
-            ariaDescribedBy={statusHelperId}
-            value={formData.isDraft ? 'draft' : 'published'}
-            onChange={(v) => setFormData({ ...formData, isDraft: v === 'draft' })}
-            disabled={submitting}
-            options={[
-              { value: 'published', label: 'Published' },
-              { value: 'draft', label: 'Draft' },
-            ]}
-          />
-        </div>
-      )}
-
-      {/* Tip for propose mode */}
+    <form id={formId} onSubmit={handleSubmit} noValidate className="space-y-4">
+      {/* The form's default button, so Enter in a field submits it even though the
+          visible ones are in a footer outside it (a browser finds those through
+          their `form` attribute; this one is in the tree for everything else). */}
+      <button type="submit" hidden tabIndex={-1} aria-hidden="true" />
+      {/* A proposal is the owners' to approve, and never says whose it is. */}
       {mode === 'propose' && (
-        <Callout tone="info">
-          This item will appear in the wishlist after approval from the wishlist owner.
-        </Callout>
+        <p className="text-sm text-muted-foreground">
+          The owners will review it before it&apos;s added
+        </p>
       )}
 
       {/* Item name */}
-      <Field label="Item name *" id="name">
+      <Field label="Item name *" id="name" error={attempted ? nameError : undefined}>
         <Input
           required
           ref={firstInputRef}
@@ -347,22 +343,27 @@ export default function ItemForm({
         />
       </Field>
 
-      {/* Image */}
-      <div>
-        <label className={FIELD_LABEL}>Image</label>
-        {/* An upload lands after the render that started it: update the form as it is by then. */}
-        <ImageUpload
-          value={formData.imageUrl || null}
-          onChange={(url) => {
-            if (generation !== generationRef.current) return;
-            setFormData((f) => ({ ...f, imageUrl: url ?? '' }));
-          }}
+      {/* Product link: typed without a scheme, it gets https:// when it's left. */}
+      <Field
+        label="Product link"
+        id="link"
+        error={(attempted || linkLeft) && linkError ? linkError : undefined}
+      >
+        <Input
+          ref={linkInputRef}
+          inputMode="url"
+          autoCapitalize="none"
+          spellCheck={false}
+          value={formData.link}
+          onChange={(e) => setFormData({ ...formData, link: e.target.value })}
+          onBlur={handleLinkBlur}
+          placeholder="https://example.com/product"
           disabled={submitting}
-          aspect={1}
+          autoComplete="off"
         />
-      </div>
+      </Field>
 
-      {/* Price */}
+      {/* Price: the amount and its currency on one line */}
       <Field label="Price" id="price" error={showPriceError && priceError ? priceError : undefined}>
         <div className="flex gap-2">
           {/* Text, not a number field: that one shows the browser's decimal
@@ -382,91 +383,58 @@ export default function ItemForm({
             disabled={submitting}
             autoComplete="off"
           />
-          <div ref={currencyRef} className="relative flex-1">
-            <button
-              type="button"
-              onClick={() => !submitting && setIsCurrencyOpen(!isCurrencyOpen)}
-              disabled={submitting}
-              className={`${inputClassName()} flex items-center justify-between text-left`}
-            >
-              <span>{formData.currency}</span>
-              <Icon
-                name="chevron-down"
-                size={16}
-                className={`text-muted-foreground transition-transform ${
-                  isCurrencyOpen ? 'rotate-180' : ''
-                }`}
-              />
-            </button>
-            {isCurrencyOpen && (
-              <div className="absolute z-50 mt-1 w-full bg-surface border border-border-strong rounded-lg shadow-lg max-h-60 overflow-hidden flex flex-col">
-                <div className="p-2 border-b border-border">
-                  <input
-                    type="text"
-                    placeholder="Search currency…"
-                    value={currencySearch}
-                    onChange={(e) => setCurrencySearch(e.target.value)}
-                    className={inputClassName('sm')}
-                    autoFocus
-                    autoComplete="off"
-                  />
-                </div>
-                <div className="overflow-y-auto max-h-48">
-                  {COMMON_CURRENCIES.filter(
-                    (curr) =>
-                      curr.code.toLowerCase().includes(currencySearch.toLowerCase()) ||
-                      curr.name.toLowerCase().includes(currencySearch.toLowerCase())
-                  ).map((curr) => (
-                    <button
-                      key={curr.code}
-                      type="button"
-                      onClick={() => {
-                        setFormData({ ...formData, currency: curr.code });
-                        setIsCurrencyOpen(false);
-                        setCurrencySearch('');
-                      }}
-                      className={`w-full text-left px-4 py-2 hover:bg-muted transition-colors ${
-                        formData.currency === curr.code ? 'bg-primary-500/12 text-accent' : ''
-                      } ${POPULAR_CURRENCIES.includes(curr.code) ? 'font-medium' : ''}`}
-                    >
-                      <span className="font-mono">{curr.code}</span>
-                      <span className="ml-2 text-muted-foreground text-sm">{curr.name}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
+          <Select
+            ariaLabel="Currency"
+            size="md"
+            value={formData.currency}
+            onChange={(currency) => setFormData((f) => ({ ...f, currency }))}
+            options={currencySelectOptions}
+            valueLabel={formData.currency}
+            disabled={submitting}
+            triggerClassName="w-28 flex-shrink-0"
+          />
         </div>
       </Field>
 
-      {/* Product link */}
-      <Field label="Product link" id="link">
-        <Input
-          type="url"
-          value={formData.link}
-          onChange={(e) => setFormData({ ...formData, link: e.target.value })}
-          placeholder="https://example.com/product"
-          disabled={submitting}
-          autoComplete="off"
-        />
-      </Field>
-
       {/* Notes */}
-      <Field label="Notes" id="notes" helper={`${formData.notes.length}/100 characters`}>
+      <Field
+        label="Notes"
+        id="notes"
+        helper={
+          formData.notes.length >= NOTES_COUNTER_FROM
+            ? `${formData.notes.length}/${ITEM_NOTES_MAX} characters`
+            : undefined
+        }
+      >
         <Textarea
           value={formData.notes}
           onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
           className="resize-none"
-          placeholder="Add any additional notes about this item like size, color, etc."
+          placeholder="Size, colour, model…"
           rows={3}
-          maxLength={100}
+          maxLength={ITEM_NOTES_MAX}
           disabled={submitting}
           autoComplete="off"
         />
       </Field>
 
-      {/* Most wanted — the owners' call, so a proposal never offers it */}
+      {/* Photo: a small row, not a drop zone. An image dropped or pasted anywhere is taken. */}
+      <div>
+        <span className={FIELD_LABEL}>Photo</span>
+        {/* An upload lands after the render that started it: update the form as it is by then. */}
+        <ImageUpload
+          compact
+          value={formData.imageUrl || null}
+          onChange={(url) => {
+            if (generation !== generationRef.current) return;
+            setFormData((f) => ({ ...f, imageUrl: url ?? '' }));
+          }}
+          disabled={submitting}
+          aspect={1}
+        />
+      </div>
+
+      {/* Most wanted: the owners' call, so a proposal never offers it */}
       {mode !== 'propose' && (
         <Toggle
           label="Most wanted"
@@ -477,44 +445,31 @@ export default function ItemForm({
         />
       )}
 
-      {/* Submit and Cancel Buttons */}
-      {renderButtons ? (
-        renderButtons({
-          submitting,
-          onCancel,
-          submitLabel,
-          submittingLabel,
-        })
-      ) : (
-        <div className={`flex gap-3 pt-4 ${keepAdding ? 'flex-wrap items-center' : ''}`}>
-          {keepAdding && (
-            // Its own line on a phone, where the two buttons need the width;
-            // beside them from sm up.
-            <label className="flex h-11 basis-full cursor-pointer items-center gap-2 text-sm font-medium text-foreground sm:mr-1 sm:basis-auto">
-              <input
-                type="checkbox"
-                checked={keepAdding.checked}
-                onChange={(e) => keepAdding.onChange(e.target.checked)}
-                disabled={submitting}
-                className="h-4 w-4 cursor-pointer rounded border-border-strong accent-primary-600 disabled:cursor-not-allowed"
-              />
-              Keep adding
-            </label>
-          )}
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={onCancel}
+      {/* Reviewing a proposal is the one place the status is chosen in the form:
+          an add has Save as draft, and an edit never changes it. */}
+      {mode === 'review' && (
+        <div>
+          <span id={statusLabelId} className={FIELD_LABEL}>
+            Status
+          </span>
+          <p id={statusHelperId} className="mb-1.5 text-xs text-muted-foreground">
+            Select the status for this item after review
+          </p>
+          <SegmentedControl
+            ariaLabelledBy={statusLabelId}
+            ariaDescribedBy={statusHelperId}
+            value={formData.isDraft ? 'draft' : 'published'}
+            onChange={(v) => setFormData({ ...formData, isDraft: v === 'draft' })}
             disabled={submitting}
-            className="flex-1"
-          >
-            Cancel
-          </Button>
-          <Button type="submit" disabled={submitting} className="flex-1">
-            {submitting ? submittingLabel : submitLabel}
-          </Button>
+            options={[
+              { value: 'published', label: 'Published' },
+              { value: 'draft', label: 'Draft' },
+            ]}
+          />
         </div>
       )}
+
+      {renderButtons?.({ submitting, onCancel, submitLabel, submittingLabel })}
     </form>
   );
 }

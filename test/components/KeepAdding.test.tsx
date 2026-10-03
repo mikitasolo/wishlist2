@@ -50,8 +50,8 @@ function Harness({
 }
 
 const modals = [
-  { kind: 'add' as const, title: 'Add new item', submit: 'Add item' },
-  { kind: 'propose' as const, title: 'Propose new item', submit: 'Propose item' },
+  { kind: 'add' as const, title: 'Add new item', submit: 'Add to list' },
+  { kind: 'propose' as const, title: 'Propose new item', submit: 'Propose' },
 ];
 
 // useBodyScrollLock restores the scroll position on close; jsdom lacks scrollTo.
@@ -100,7 +100,7 @@ describe.each(modals)('$kind dialog — Keep adding', ({ kind, title, submit }) 
       expect.objectContaining({ name: 'Bike', price: { value: 12000, currency: 'pln' } })
     );
     expect(price()).toHaveValue('');
-    expect(screen.getByRole('button', { name: 'PLN' })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Currency' })).toHaveTextContent('PLN');
     expect(keepAdding()).toBeChecked();
     // The next item starts from its name.
     await waitFor(() => expect(name()).toHaveFocus());
@@ -220,19 +220,17 @@ it('is not offered when adding a copy of an item (Save to my list)', () => {
   expect(screen.queryByRole('checkbox', { name: 'Keep adding' })).toBeNull();
 });
 
-it('keeps an owner’s Draft status for the next item, as a batch of drafts', async () => {
+it('saves each next item as the button pressed says: Save as draft, then Add to list', async () => {
   const user = userEvent.setup();
   const onAdd = vi.fn().mockResolvedValue(undefined);
   render(<AddItemModal isOpen onClose={vi.fn()} onAdd={onAdd} {...currencies} />);
   await user.click(screen.getByRole('checkbox', { name: 'Keep adding' }));
-  await user.click(screen.getByRole('radio', { name: 'Draft' }));
   await user.type(screen.getByLabelText(/item name/i), 'Surprise A');
-  await user.click(screen.getByRole('button', { name: 'Add item' }));
+  await user.click(screen.getByRole('button', { name: 'Save as draft' }));
   await waitFor(() => expect(screen.getByLabelText(/item name/i)).toHaveValue(''));
 
-  expect(screen.getByRole('radio', { name: 'Draft' })).toBeChecked();
   await user.type(screen.getByLabelText(/item name/i), 'Surprise B');
-  await user.click(screen.getByRole('button', { name: 'Add item' }));
+  await user.click(screen.getByRole('button', { name: 'Add to list' }));
   await waitFor(() => expect(onAdd).toHaveBeenCalledTimes(2));
-  expect(onAdd.mock.calls.map(([item]) => item.status)).toEqual(['draft', 'draft']);
+  expect(onAdd.mock.calls.map(([item]) => item.status)).toEqual(['draft', 'available']);
 });
