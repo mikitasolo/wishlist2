@@ -6,7 +6,7 @@ vi.mock('@/lib/mongodb', () => ({ default: vi.fn().mockResolvedValue(undefined) 
 vi.mock('@/lib/auth', () => ({ auth: vi.fn() }));
 
 import { auth } from '@/lib/auth';
-import { GET as COUNT } from '@/app/api/users/me/reservations/count/route';
+import { GET as SUMMARY } from '@/app/api/users/me/reservations/summary/route';
 import { GET as LIST } from '@/app/api/users/me/reservations/route';
 import { partitionReservations, type ReservationStatusInfo } from '@/lib/utils/reservations';
 import User from '@/models/User';
@@ -16,12 +16,12 @@ import Wishlist from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
 
 /**
- * `GET /api/users/me/reservations/count` is the dashboard's "Reserved by you"
- * tile. It must say what the Booked page's list (`GET /api/users/me/
- * reservations`) would, both its sections together: the gifts still reserved
- * and the ones that need confirmation, whatever detached them from their item.
- * Only the cost differs: one count, not the list's reads of the live items and
- * lists.
+ * `GET /api/users/me/reservations/summary` is the dashboard's "N reservations
+ * changed" (WIS-252). `changed` must be exactly the Booked page's "Needs your
+ * confirmation" section (`GET /api/users/me/reservations`, split by
+ * `partitionReservations`), whatever detached a reservation from its item or
+ * its list, and only ever the caller's own: a count of reservations goes to
+ * the gifter alone, never to an owner or anyone else.
  */
 
 const session = vi.mocked(auth);
@@ -94,15 +94,17 @@ async function book(wishlistId: string, by = gifter, itemName = 'Blue Mug') {
   return item._id.toString();
 }
 
-/** What the dashboard reads for `userId`. */
-async function count(userId: string = gifter): Promise<number> {
+/** What the dashboard reads for `userId`: the whole answer, which is only the count. */
+async function summary(userId: string = gifter): Promise<{ changed: number }> {
   signIn(userId);
-  const res = await COUNT();
+  const res = await SUMMARY();
   expect(res.status).toBe(200);
   const body = await res.json();
   expect(body.success).toBe(true);
-  return body.data.count;
+  return body.data;
 }
+
+const changed = async (userId: string = gifter) => (await summary(userId)).changed;
 
 /** What the Booked page reads for `userId`. */
 async function listed(userId: string = gifter): Promise<ReservationStatusInfo[]> {
@@ -112,20 +114,31 @@ async function listed(userId: string = gifter): Promise<ReservationStatusInfo[]>
   return (await res.json()).data;
 }
 
-describe('GET /api/users/me/reservations/count', () => {
+const needsConfirm = async (userId: string = gifter) =>
+  partitionReservations(await listed(userId)).needsConfirm.length;
+
+describe('GET /api/users/me/reservations/summary', () => {
   it('refuses a signed-out caller', async () => {
     signIn(null);
-    const res = await COUNT();
+    const res = await SUMMARY();
     expect(res.status).toBe(401);
     expect(await res.json()).toEqual({ success: false, error: 'Unauthorized' });
   });
 
   it('is 0 when the caller holds no reservations, as the list is empty', async () => {
-    expect(await count()).toBe(0);
+    expect(await summary()).toEqual({ changed: 0 });
     expect(await listed()).toEqual([]);
   });
 
-  it('counts every reservation the Booked page lists, the ones that need confirmation too', async () => {
+  it('is 0 while every reservation still stands', async () => {
+    const id = await list();
+    await book(id, gifter, 'One');
+    await book(await list(), gifter, 'Two');
+    expect(await changed()).toBe(0);
+    expect(await needsConfirm()).toBe(0);
+  });
+
+  it('counts exactly the reservations the Booked page says need confirmation', async () => {
     // Still reserved, on two lists.
     const birthday = await list();
     await book(birthday, gifter, 'Still mine');
@@ -150,53 +163,57 @@ describe('GET /api/users/me/reservations/count', () => {
     });
     await WishlistMember.deleteOne({ wishlist: left, user: gifter });
     await book(await list({ archived: true }), gifter, 'On an archived list');
+    // Still theirs, on a list they can no longer open: made invite-only after they left.
+    const closed = await list();
+    await book(closed, gifter, 'On a list closed to them');
+    await WishlistMember.deleteOne({ wishlist: closed, user: gifter });
+    await Wishlist.findByIdAndUpdate(closed, { visibility: 'private', isPublic: false });
     // And the owner deleted this one, items and all.
     const deleted = await list();
     await Item.findByIdAndDelete(await book(deleted, gifter, 'On a deleted list'));
     await Wishlist.findByIdAndDelete(deleted);
 
     const rows = await listed();
-    const { active, needsConfirm } = partitionReservations(rows);
-    // The archived list's booking still stands, but the list is no longer open
-    // to the gifter, and Release can't reach it, so it needs their confirmation
-    // too.
+    expect(rows).toHaveLength(11);
+    const { active, needsConfirm: confirm } = partitionReservations(rows);
     expect(active).toHaveLength(2);
-    expect(needsConfirm).toHaveLength(8);
-    expect(await count()).toBe(rows.length);
-    expect(rows).toHaveLength(10);
+    expect(confirm).toHaveLength(9);
+    expect(await changed()).toBe(confirm.length);
   });
 
-  it("counts only the caller's own reservations", async () => {
+  it("counts only the caller's own reservations, and reaches nobody else", async () => {
     const id = await list();
     await book(id, gifter);
-    // Someone else's, on the same list and on another, one of them detached.
+    // Someone else's, on the same list and on another, one of each detached.
     await book(id, other, 'Theirs');
     await Item.findByIdAndDelete(await book(await list(), other, 'Theirs, removed'));
+    await Item.findByIdAndDelete(await book(id, gifter, 'Mine, removed'));
 
-    expect(await count(gifter)).toBe(1);
-    expect(await count(other)).toBe(2);
-    // The owner holds none: their list's bookings are never theirs to count.
-    expect(await count(owner)).toBe(0);
+    expect(await changed(gifter)).toBe(1);
+    expect(await changed(other)).toBe(1);
+    // The owner holds none: no count of their lists' bookings ever reaches them,
+    // not even the ones whose items they removed.
+    expect(await summary(owner)).toEqual({ changed: 0 });
     for (const who of [gifter, other, owner]) {
-      expect(await count(who)).toBe((await listed(who)).length);
+      expect(await changed(who)).toBe(await needsConfirm(who));
     }
   });
 
-  it('sends one count of the reservations and no other query, however many there are', async () => {
+  it('reads in a fixed number of queries however many reservations there are', async () => {
+    const queriesFor = async () => {
+      const queries: string[] = [];
+      mongoose.set('debug', (collection: string, method: string) => {
+        if (!/index/i.test(method)) queries.push(`${collection}.${method}`);
+      });
+      await changed();
+      mongoose.set('debug', false);
+      return queries.length;
+    };
+
     const id = await list();
-    for (let i = 0; i < 5; i += 1) await book(id, gifter, `Item ${i}`);
-    await book(await list({ archived: true }), gifter, 'On an archived list');
-
-    // Every query the read sends, as `collection.method`. Index builds are left
-    // out: the models' `autoIndex` sends them in the background.
-    const queries: string[] = [];
-    mongoose.set('debug', (collection: string, method: string) => {
-      if (!/index/i.test(method)) queries.push(`${collection}.${method}`);
-    });
-    const n = await count();
-    mongoose.set('debug', false);
-
-    expect(n).toBe(6);
-    expect(queries).toEqual([`${Reservation.collection.collectionName}.countDocuments`]);
+    await book(id, gifter, 'Item 0');
+    const few = await queriesFor();
+    for (let i = 1; i < 6; i += 1) await book(await list(), gifter, `Item ${i}`);
+    expect(await queriesFor()).toBe(few);
   });
 });

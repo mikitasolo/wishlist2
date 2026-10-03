@@ -24,9 +24,8 @@ vi.mock('next/link', () => ({
 vi.mock('@/components/AppHeader', () => ({ default: () => null }));
 vi.mock('@/components/AuthButton', () => ({ default: () => null }));
 vi.mock('@/components/GlobalSearch', () => ({ default: () => null }));
-vi.mock('@/components/CurrencyPrompt', () => ({ default: () => null }));
+vi.mock('@/components/NeedsYou', () => ({ default: () => null }));
 vi.mock('@/components/CreateWishlistModal', () => ({ default: () => null }));
-vi.mock('@/components/FollowListModal', () => ({ default: () => null }));
 vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast: vi.fn() }) }));
 
 import Home from '@/app/page';
@@ -60,12 +59,6 @@ function serve(ownedCount: number, sharedCount: number) {
             member: lists(sharedCount, 'shared', 'friend'),
           },
         });
-      }
-      if (url === '/api/users/me/reservations/count') {
-        return json({ success: true, data: { count: 0 } });
-      }
-      if (url === '/api/users/me') {
-        return json({ success: true, data: { _id: 'me', followerCount: 0, followingCount: 0 } });
       }
       throw new Error(`unexpected fetch ${url}`);
     })

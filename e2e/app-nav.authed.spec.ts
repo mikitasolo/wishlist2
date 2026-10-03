@@ -75,7 +75,10 @@ test("the end of a long page scrolls clear of the tab bar, and Home's sections e
   await expect(seeAll).toHaveAttribute('href', '/wishlists/mine');
   await expect(page.getByRole('link', { name: 'All items' })).toHaveAttribute('href', '/items');
 
-  expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBeGreaterThan(844 * 2);
+  // Well past one screen (the dashboard's top no longer has its stat tiles, WIS-252).
+  expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBeGreaterThan(
+    844 * 1.5
+  );
   await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
 
   // The page's last element (the last list, Shared with you's) ends above the bar.

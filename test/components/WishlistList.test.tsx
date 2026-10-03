@@ -311,3 +311,52 @@ describe('ArchivedLists — the disclosure', () => {
     expect(container).toBeEmptyDOMElement();
   });
 });
+
+describe('WishlistList — Pin to top (WIS-252)', () => {
+  it('ends each row of your own active list with the pin, outside its link', async () => {
+    atWidth(390);
+    const onToggle = vi.fn();
+    const books = list('Books');
+    render(
+      <WishlistList
+        wishlists={[list('Birthday', { featured: true }), books, list('Old', { archived: true })]}
+        pins={{ pinning: null, onToggle }}
+      />
+    );
+    const [birthday, booksRow, old] = within(screen.getByRole('list')).getAllByRole('listitem');
+    expect(within(birthday).getByRole('button', { name: 'Unpin' })).toBeInTheDocument();
+    const pin = within(booksRow).getByRole('button', { name: 'Pin to top' });
+    expect(within(booksRow).getByRole('link')).not.toContainElement(pin);
+    // An archived list isn't pinned to the top of anything.
+    expect(within(old).queryByRole('button')).toBeNull();
+
+    await userEvent.setup().click(pin);
+    expect(onToggle).toHaveBeenCalledWith(books);
+  });
+
+  it('holds every pin while one is on its way', () => {
+    atWidth(1280);
+    const lists = [list('Birthday'), list('Books')];
+    render(
+      <WishlistList
+        wishlists={lists}
+        pins={{ pinning: lists[0]._id.toString(), onToggle: vi.fn() }}
+      />
+    );
+    for (const button of screen.getAllByRole('button', { name: 'Pin to top' })) {
+      expect(button).toBeDisabled();
+    }
+  });
+
+  it('never offers a pin on lists shared with you', () => {
+    atWidth(390);
+    render(
+      <WishlistList
+        wishlists={[list('Friend’s')]}
+        shared
+        pins={{ pinning: null, onToggle: vi.fn() }}
+      />
+    );
+    expect(screen.queryByRole('button')).toBeNull();
+  });
+});

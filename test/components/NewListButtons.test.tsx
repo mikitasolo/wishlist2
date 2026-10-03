@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 // New list (WIS-242): the header's "+" says what it makes, and the dashboard
-// and My wishlists offer it in place, beside their "Your wishlists" heading
-// and in My wishlists' empty state. Each opens the create dialog on the page.
+// and My wishlists offer it in place: the dashboard in its greeting row
+// (WIS-252), My wishlists beside its "Your wishlists" heading and in its empty
+// state. Each opens the create dialog on the page.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, within, cleanup } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -33,8 +34,7 @@ vi.mock('next/link', () => ({
 vi.mock('@/components/GlobalSearch', () => ({ default: () => null }));
 vi.mock('@/components/NotificationBell', () => ({ default: () => null }));
 vi.mock('@/components/AuthButton', () => ({ default: () => null }));
-vi.mock('@/components/CurrencyPrompt', () => ({ default: () => null }));
-vi.mock('@/components/FollowListModal', () => ({ default: () => null }));
+vi.mock('@/components/NeedsYou', () => ({ default: () => null }));
 vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }));
 // The create dialog has its own tests: here, only whether it's open.
 vi.mock('@/components/CreateWishlistModal', () => ({
@@ -74,12 +74,6 @@ beforeEach(() => {
     'fetch',
     vi.fn(async (url: string) => {
       if (url === '/api/wishlists') return json({ success: true, data: { owned, member: [] } });
-      if (url === '/api/users/me/reservations/count') {
-        return json({ success: true, data: { count: 0 } });
-      }
-      if (url === '/api/users/me') {
-        return json({ success: true, data: { _id: 'me', followerCount: 0, followingCount: 0 } });
-      }
       throw new Error(`unexpected fetch ${url}`);
     })
   );
@@ -124,12 +118,13 @@ const headingRow = (heading: HTMLElement) => {
 };
 
 describe('the dashboard’s New list', () => {
-  it('sits beside the Your wishlists heading and opens the create dialog in place', async () => {
+  it('sits beside the greeting, as its primary button, and opens the create dialog in place', async () => {
     const user = userEvent.setup();
     render(<Home />);
 
-    const heading = await screen.findByRole('heading', { level: 2, name: 'Your wishlists' });
-    const button = within(headingRow(heading)).getByRole('button', { name: 'New list' });
+    await screen.findByRole('heading', { level: 2, name: 'Your wishlists' });
+    const greeting = screen.getByRole('heading', { level: 1 });
+    const button = within(headingRow(greeting)).getByRole('button', { name: 'New list' });
 
     await user.click(button);
     expect(createDialog()).toBeInTheDocument();

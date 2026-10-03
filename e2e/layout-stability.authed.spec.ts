@@ -34,9 +34,6 @@ async function holdWishlists(page: Page) {
   return release;
 }
 
-/** The page's grids (the dashboard's bento is its first). */
-const grids = (page: Page) => page.locator('main .grid');
-
 /**
  * The page's sections of lists as shown at this width: compact rows on a phone,
  * card grids from `sm` up (WIS-254), each one in its skeleton too.
@@ -46,12 +43,13 @@ const listSections = (page: Page, width: number) =>
 
 // regression: the loading grid was `gap-4 sm:gap-6` where the cards' is
 // `gap-5`, and the dashboard's skeleton had no Featured row and tiles of its
-// own heights, so the page jumped when the lists landed (DS-13).
+// own heights, so the page jumped when the lists landed (DS-13). The
+// dashboard's skeleton is now its greeting row and a section of lists (WIS-252).
 for (const width of [390, 1280]) {
-  for (const { name, url, bento } of [
-    { name: 'Mine', url: '/wishlists/mine', bento: false },
-    { name: 'Shared', url: '/wishlists/shared', bento: false },
-    { name: 'the dashboard', url: '/', bento: true },
+  for (const { name, url } of [
+    { name: 'Mine', url: '/wishlists/mine' },
+    { name: 'Shared', url: '/wishlists/shared' },
+    { name: 'the dashboard', url: '/' },
   ]) {
     test(`${name} doesn't move when its skeleton is replaced, at ${width}px`, async ({ page }) => {
       await page.setViewportSize({ width, height: 900 });
@@ -66,7 +64,6 @@ for (const width of [390, 1280]) {
       const before = {
         grid: await box(grid),
         card: await box(grid.locator('> *').first()),
-        bento: bento ? await box(grids(page).first()) : null,
       };
 
       release();
@@ -84,15 +81,6 @@ for (const width of [390, 1280]) {
         width < 640 ? ['x', 'y', 'width', 'height'] : ['x', 'y', 'width'],
         'first card'
       );
-      // The dashboard's bento is the same size too, box for box.
-      if (before.bento) {
-        expectSameBox(
-          await box(grids(page).first()),
-          before.bento,
-          ['x', 'y', 'width', 'height'],
-          'bento'
-        );
-      }
     });
   }
 }

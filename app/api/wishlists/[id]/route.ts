@@ -221,9 +221,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     // Set, changed or (null) cleared in the same write as the rest of the edit.
     if (validatedData.occasion !== undefined) updateData.occasion = validatedData.occasion;
 
-    // "Featured" pins a list to the *caller's* dashboard hero, so it's stored
-    // per-owner in `featuredBy`: on a co-owned list one owner can feature it
-    // without touching anyone else's dashboard.
+    // "Featured" (Pin to top) pins a list to the top of the *caller's* own
+    // list screens, so it's stored per-owner in `featuredBy`: on a co-owned list
+    // one owner can pin it without touching anyone else's dashboard.
     const viewer = new mongoose.Types.ObjectId(session.user.id);
     const update: UpdateQuery<IWishlist> = { $set: updateData };
     if (validatedData.featured === true) update.$addToSet = { featuredBy: viewer };

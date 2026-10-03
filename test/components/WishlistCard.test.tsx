@@ -105,7 +105,7 @@ describe('WishlistCard — occasion', () => {
     expect(label.tagName).toBe('TIME');
     expect(label).toHaveAttribute('dateTime', '2026-10-14');
     expect(coverOf(container)).toContainElement(label);
-    expect(screen.getByText('Featured')).toBeInTheDocument();
+    expect(screen.getByText('Pinned')).toBeInTheDocument();
     expect(screen.getByText('Public')).toBeInTheDocument();
     // Not the placeholder year, anywhere on the card.
     expect(container.innerHTML).not.toContain('2000');
@@ -158,7 +158,7 @@ describe('WishlistCard — archived', () => {
     expect(coverOf(container)).toHaveTextContent('Archived');
     expect(screen.getAllByText('Archived')).toHaveLength(1);
     expect(screen.queryByText('Public')).toBeNull();
-    // Nor the role or Featured: the band says only that it's archived, as before.
+    // Nor the role or Pinned: the band says only that it's archived, as before.
     expect(screen.queryByText('owner')).toBeNull();
   });
 
@@ -234,7 +234,7 @@ describe('WishlistCard — shared with you', () => {
     expect(screen.getByText('member')).toBeInTheDocument();
   });
 
-  it('still shows Featured with the role left off', () => {
+  it('still shows Pinned with the role left off', () => {
     render(
       <WishlistCard
         wishlist={wishlist({ userRole: 'member', featured: true })}
@@ -242,6 +242,36 @@ describe('WishlistCard — shared with you', () => {
         showRole={false}
       />
     );
-    expect(screen.getByText('Featured')).toBeInTheDocument();
+    expect(screen.getByText('Pinned')).toBeInTheDocument();
+  });
+});
+
+describe('WishlistCard — Pin to top', () => {
+  const pin = (pinned: boolean, busy = false) => ({ pinned, busy, onToggle: vi.fn() });
+
+  it('offers Pin to top over the cover, outside the card’s link, and toggles it', () => {
+    const control = pin(false);
+    const { container } = render(<WishlistCard wishlist={wishlist()} pin={control} />);
+    const button = screen.getByRole('button', { name: 'Pin to top' });
+    expect(container.querySelector('a')).not.toContainElement(button);
+    fireEvent.click(button);
+    expect(control.onToggle).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText('Pinned')).toBeNull();
+  });
+
+  it('says Unpin, beside Pinned, on the pinned list', () => {
+    render(<WishlistCard wishlist={wishlist({ featured: true })} pin={pin(true)} />);
+    expect(screen.getByRole('button', { name: 'Unpin' })).toBeInTheDocument();
+    expect(screen.getByText('Pinned')).toBeInTheDocument();
+  });
+
+  it('holds the button while a pin is on its way', () => {
+    render(<WishlistCard wishlist={wishlist()} pin={pin(false, true)} />);
+    expect(screen.getByRole('button', { name: 'Pin to top' })).toBeDisabled();
+  });
+
+  it('has no pin button without one', () => {
+    render(<WishlistCard wishlist={wishlist({ featured: true })} />);
+    expect(screen.queryByRole('button')).toBeNull();
   });
 });

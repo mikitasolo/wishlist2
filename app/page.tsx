@@ -7,12 +7,9 @@ import AuthButton from '@/components/AuthButton';
 import AppHeader from '@/components/AppHeader';
 import GlobalSearch from '@/components/GlobalSearch';
 import CreateWishlistModal from '@/components/CreateWishlistModal';
-import CurrencyPrompt from '@/components/CurrencyPrompt';
+import ComingUp from '@/components/ComingUp';
+import NeedsYou from '@/components/NeedsYou';
 import WishlistList, { ArchivedLists } from '@/components/WishlistList';
-import Cover from '@/components/Cover';
-import OccasionLabel, { OCCASION_ON_COVER } from '@/components/OccasionLabel';
-import Select from '@/components/Select';
-import FollowListModal, { type FollowTab } from '@/components/FollowListModal';
 import Button from '@/components/Button';
 import { buttonClassName, CONTROL_ICON_SIZE } from '@/components/buttonStyles';
 import Icon, { IconName } from '@/components/Icon';
@@ -21,10 +18,9 @@ import LoadError from '@/components/LoadError';
 import { Skeleton, WishlistListSkeleton } from '@/components/Skeleton';
 import { useToast } from '@/components/ToastProvider';
 import { useLocalToday } from '@/lib/hooks/useLocalToday';
+import { usePinToTop } from '@/lib/hooks/usePinToTop';
 import { sortByUpcomingOccasion } from '@/lib/utils/occasion';
-import { plural, pluralNoun } from '@/lib/utils/plural';
-import { getVisibility, visibilityMeta } from '@/lib/utils/visibility';
-import { formatItemCount, formatOwnerExtras, sumItemCounts } from '@/lib/utils/itemCounts';
+import { pinnedFirst } from '@/lib/utils/pinnedLists';
 import { IWishlist } from '@/models/Wishlist';
 
 type Wishlist = IWishlist & {
@@ -44,9 +40,6 @@ type Wishlist = IWishlist & {
  * all: two rows of cards at the widest grid, a screen of rows on a phone.
  */
 const HOME_SECTION_LIMIT = 8;
-
-/** A count on the dashboard: read, still being read, or couldn't be read. */
-type Count = number | 'loading' | 'failed';
 
 const features: { icon: IconName; title: string; body: string }[] = [
   {
@@ -83,24 +76,35 @@ export default function Home() {
   const [loadFailed, setLoadFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const listsShown = useRef(false);
+  // The account whose lists these are. Another account signing in (from another
+  // tab) leaves `status` 'authenticated', so the reads key on the user id too:
+  // its first read is a first load, and the previous account's lists go, as
+  // Needs you's reads (also keyed on the id) start over for it.
+  const userId = session?.user?.id ?? null;
+  const listsFor = useRef<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [reservedCount, setReservedCount] = useState<Count>('loading');
-  const [followerCount, setFollowerCount] = useState<Count>('loading');
-  const [followingCount, setFollowingCount] = useState<Count>('loading');
-  const [meId, setMeId] = useState<string | null>(null);
-  const [followModal, setFollowModal] = useState<FollowTab | null>(null);
-  const [featuredBusy, setFeaturedBusy] = useState(false);
+  // Pin to top on your own lists: per-owner, one at a time (`usePinToTop`).
+  const { pinning, toggle: togglePin } = usePinToTop(setOwned);
 
   useEffect(() => {
     if (status === 'loading') return;
     if (status !== 'authenticated') {
       // Signed out: whoever signs in next starts with a first load of their own.
+      listsFor.current = null;
       listsShown.current = false;
       setOwned([]);
       setMember([]);
       setLoadFailed(false);
       setLoading(false);
       return;
+    }
+    if (listsFor.current !== userId) {
+      listsFor.current = userId;
+      listsShown.current = false;
+      setOwned([]);
+      setMember([]);
+      setLoadFailed(false);
+      setLoading(true);
     }
     // A read outdated by another (the session changed, Try again) is dropped.
     let current = true;
@@ -126,7 +130,7 @@ export default function Home() {
     return () => {
       current = false;
     };
-  }, [status, showToast, attempt]);
+  }, [status, userId, showToast, attempt]);
 
   const retryLoad = useCallback(() => {
     setLoadFailed(false);
@@ -134,61 +138,13 @@ export default function Home() {
     setAttempt((n) => n + 1);
   }, []);
 
-  useEffect(() => {
-    if (status === 'unauthenticated') {
-      // Whoever signs in next has counts of their own to read.
-      setReservedCount('loading');
-      setFollowerCount('loading');
-      setFollowingCount('loading');
-      setMeId(null);
-    }
-    if (status !== 'authenticated') return;
-    // An answer outdated by a newer read (Try again) is dropped.
-    let current = true;
-    // A count that can't be read shows a dash, never a 0 that isn't true. One
-    // already shown stays when a later read fails. The lists' Try again
-    // (`attempt`) reads the counts again too: whatever failed them likely
-    // failed both.
-    const unread = (count: Count): Count => (count === 'loading' ? 'failed' : count);
-    // Just the count: the full list (`/api/users/me/reservations`) is the
-    // Booked page's, and costs far more to build.
-    fetch('/api/users/me/reservations/count', { cache: 'no-store' })
-      .then((r) => r.json())
-      .then((res) => {
-        if (!current) return;
-        if (!res.success || typeof res.data?.count !== 'number') throw new Error();
-        setReservedCount(res.data.count);
-      })
-      .catch(() => {
-        if (current) setReservedCount(unread);
-      });
-
-    fetch('/api/users/me', { cache: 'no-store' })
-      .then((r) => r.json())
-      .then((res) => {
-        if (!current) return;
-        if (!res.success) throw new Error();
-        setMeId(res.data._id ?? null);
-        setFollowerCount(res.data.followerCount ?? 0);
-        setFollowingCount(res.data.followingCount ?? 0);
-      })
-      .catch(() => {
-        if (!current) return;
-        setFollowerCount(unread);
-        setFollowingCount(unread);
-      });
-    return () => {
-      current = false;
-    };
-  }, [status, attempt]);
-
   const activeOwned = useMemo(() => owned.filter((w) => !w.archived), [owned]);
-  // The grids of lists (Your wishlists, Shared with you, Archived) put the ones
-  // with an occasion coming up first, nearest first; the rest keep the API's
-  // order (newest first). The Featured pick and its menu keep theirs.
+  // The sections of lists (Your wishlists, Shared with you, Archived) put the
+  // ones with an occasion coming up first, nearest first; the rest keep the
+  // API's order (newest first). Your pinned list goes above them all.
   const today = useLocalToday();
-  const ownedByOccasion = useMemo(
-    () => sortByUpcomingOccasion(activeOwned, today),
+  const ownedInOrder = useMemo(
+    () => pinnedFirst(sortByUpcomingOccasion(activeOwned, today)),
     [activeOwned, today]
   );
   const archivedOwned = useMemo(
@@ -200,63 +156,7 @@ export default function Home() {
     [owned, today]
   );
   const sharedByOccasion = useMemo(() => sortByUpcomingOccasion(member, today), [member, today]);
-  // Your active lists' items, counted as every screen counts them: "N items"
-  // is their published items, with the drafts and proposals to review beside
-  // it. The greeting and the tiles both read these, so they can't disagree.
-  const ownCounts = useMemo(
-    () =>
-      sumItemCounts(
-        activeOwned.map((w) => ({
-          items: w.itemCount,
-          drafts: w.draftCount,
-          proposals: w.proposalCount,
-        }))
-      ),
-    [activeOwned]
-  );
-  const totalItems = ownCounts.items;
-  // Featured = the owner-pinned list, else the one with the most items,
-  // falling back to a shared list when you own none.
-  const featured = useMemo(() => {
-    const pinned = activeOwned.find((w) => w.featured);
-    if (pinned) return pinned;
-    const byItems = [...activeOwned].sort((a, b) => (b.itemCount ?? 0) - (a.itemCount ?? 0))[0];
-    return byItems ?? member[0];
-  }, [activeOwned, member]);
-  // Currently pinned list id ('' ⇒ automatic / most items)
-  const pinnedId = useMemo(
-    () => activeOwned.find((w) => w.featured)?._id?.toString() ?? '',
-    [activeOwned]
-  );
-
-  const changeFeatured = useCallback(
-    async (value: string) => {
-      setFeaturedBusy(true);
-      try {
-        // '' ⇒ reset to automatic: unpin whichever list is currently featured
-        const targetId = value || pinnedId;
-        if (!targetId) return;
-        const res = await fetch(`/api/wishlists/${targetId}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ featured: value !== '' }),
-        });
-        const result = await res.json();
-        if (result.success) {
-          setOwned((prev) =>
-            prev.map((w) => ({ ...w, featured: value !== '' && w._id.toString() === value }))
-          );
-        } else {
-          showToast(result.error || 'Failed to update featured wishlist', 'error');
-        }
-      } catch {
-        showToast('Failed to update featured wishlist', 'error');
-      } finally {
-        setFeaturedBusy(false);
-      }
-    },
-    [pinnedId, showToast]
-  );
+  const pins = useMemo(() => ({ pinning, onToggle: togglePin }), [pinning, togglePin]);
 
   const profileUsername = (session?.user as { username?: string })?.username || null;
   const name = profileUsername || (session?.user?.email || '').split('@')[0] || 'there';
@@ -267,12 +167,7 @@ export default function Home() {
       <div className="min-h-screen">
         <AppHeader actions={<AuthButton />} />
         <main aria-hidden="true" className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
-          {/* The greeting, its summary and the follow counts. */}
-          <div className="mb-8 sm:mb-10">
-            <Skeleton className="h-9 w-72 max-w-full sm:h-10" />
-            <Skeleton className="mt-3 h-5 w-56 max-w-full" />
-            <Skeleton className="mt-4 h-4 w-40" />
-          </div>
+          <GreetingRowSkeleton />
           <DashboardSkeleton />
         </main>
       </div>
@@ -353,186 +248,62 @@ export default function Home() {
 
   // ---- Authenticated dashboard ---------------------------------------
   const hasAny = owned.length > 0 || member.length > 0;
-  // The same numbers as the tiles below: your active lists and their items.
-  // With none (only shared or archived lists) there's nothing to count.
-  const summary = loading
-    ? 'Loading your wishlists…'
-    : activeOwned.length > 0
-      ? `${plural(activeOwned.length, 'list')} · ${formatItemCount(totalItems)} in your lists`
-      : owned.length > 0
-        ? 'Let’s create a new wishlist.'
-        : 'Let’s create your first wishlist.';
 
   return (
     <div className="min-h-screen">
       <AppHeader actions={<AuthButton />} />
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
-        {/* Greeting hero */}
-        <header className="mb-8 flex flex-col gap-5 sm:mb-10 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <h1 className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
-              <span className="text-muted-foreground">{greetingWord()},</span> {name}
-            </h1>
-            {/* Nothing to say about lists that couldn't be read: the panel below says why. */}
-            {!loadFailed && <p className="mt-2 text-lg text-muted-foreground">{summary}</p>}
-            {profileUsername && (
-              <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm">
-                <button
-                  type="button"
-                  onClick={() => meId && setFollowModal('followers')}
-                  className="text-muted-foreground transition-colors hover:text-foreground"
-                >
-                  <CountValue
-                    count={followerCount}
-                    className="font-semibold text-foreground"
-                    placeholderClassName="h-3.5 w-4 rounded align-[-0.125em]"
-                  />{' '}
-                  {countNoun(followerCount, 'follower')}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => meId && setFollowModal('following')}
-                  className="text-muted-foreground transition-colors hover:text-foreground"
-                >
-                  <CountValue
-                    count={followingCount}
-                    className="font-semibold text-foreground"
-                    placeholderClassName="h-3.5 w-4 rounded align-[-0.125em]"
-                  />{' '}
-                  {countNoun(followingCount, 'following')}
-                </button>
-              </div>
-            )}
-          </div>
+        {/* The greeting, with New list: offered while the lists load too, as
+            it claims nothing about them. No counts: the sections below say
+            what there is, and followers are on the profile. */}
+        <header className={GREETING_ROW}>
+          <h1 className="min-w-0 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
+            <span className="text-muted-foreground">{greetingWord()},</span> {name}
+          </h1>
+          <Button
+            size="sm"
+            shape="pill"
+            icon="plus"
+            onClick={() => setShowCreateModal(true)}
+            className="sm:mb-1"
+          >
+            New list
+          </Button>
         </header>
-
-        <CurrencyPrompt />
 
         <CreateWishlistModal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} />
 
-        {loading ? (
-          <DashboardSkeleton />
-        ) : loadFailed ? (
-          <LoadError title="Couldn’t load your wishlists" onRetry={retryLoad} />
-        ) : !hasAny ? (
-          <EmptyState
-            icon="gift"
-            title="No wishlists yet"
-            body="Create your first wishlist to start collecting the things you love and share it with friends and family."
-            actions={
-              <Button icon="plus" onClick={() => setShowCreateModal(true)}>
-                Create wishlist
-              </Button>
-            }
-          />
-        ) : (
-          <div className="space-y-12">
-            {/* Bento overview */}
-            <section aria-label="Overview">
+        <div className="space-y-12">
+          {/* What's waiting on you: hidden when nothing is. Your proposals to
+              review come from your lists, so they wait for them. */}
+          <NeedsYou ownLists={loading || loadFailed ? null : ownedInOrder} />
+
+          {loading ? (
+            <DashboardSkeleton />
+          ) : loadFailed ? (
+            <LoadError title="Couldn’t load your wishlists" onRetry={retryLoad} />
+          ) : !hasAny ? (
+            <EmptyState
+              icon="gift"
+              title="No wishlists yet"
+              body="Create your first wishlist to start collecting the things you love and share it with friends and family."
+              actions={
+                <Button icon="plus" onClick={() => setShowCreateModal(true)}>
+                  Create wishlist
+                </Button>
+              }
+            />
+          ) : (
+            <>
+              <ComingUp own={activeOwned} shared={member} viewerId={session.user.id} />
+
+              {/* Your wishlists */}
               {activeOwned.length > 0 && (
-                <div className="mb-4 flex items-center justify-end gap-2">
-                  <span className="text-meta font-medium text-muted-foreground">Featured</span>
-                  <Select
-                    value={pinnedId}
-                    onChange={changeFeatured}
-                    disabled={featuredBusy}
-                    ariaLabel="Featured wishlist"
-                    menuAlign="right"
-                    triggerClassName="max-w-[15rem]"
-                    options={[
-                      { value: '', label: 'Automatic (most items)' },
-                      ...activeOwned.map((w) => ({ value: w._id.toString(), label: w.name })),
-                    ]}
-                  />
-                </div>
-              )}
-              <div className="grid grid-cols-2 gap-5 lg:grid-cols-4">
-                {featured && (
-                  <Link
-                    href={`/wishlists/${featured.slug ?? featured._id}`}
-                    className="group col-span-2 flex flex-col overflow-hidden rounded-3xl border border-border bg-surface shadow-md transition-all hover:shadow-lg lg:row-span-2"
-                  >
-                    <Cover
-                      src={featured.bannerUrl}
-                      seed={featured._id.toString()}
-                      priority
-                      sizes="(max-width: 1024px) 100vw, 640px"
-                      className="relative flex aspect-[16/9] flex-col justify-end bg-surface-2 p-6"
-                    >
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/35 to-transparent" />
-                      {featured.occasion ? (
-                        <OccasionLabel
-                          occasion={featured.occasion}
-                          className={`absolute left-6 top-6 ${OCCASION_ON_COVER}`}
-                        />
-                      ) : null}
-                      <span className="relative text-xs font-semibold uppercase tracking-widest text-white/85">
-                        Featured
-                      </span>
-                      <h2 className="relative mt-1.5 text-2xl font-semibold text-white sm:text-3xl">
-                        {featured.name}
-                      </h2>
-                    </Cover>
-                    <div className="flex items-center justify-between p-5">
-                      <span className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Icon name={visibilityMeta[getVisibility(featured)].icon} size={16} />
-                        {visibilityMeta[getVisibility(featured)].label} ·{' '}
-                        {formatItemCount(featured.itemCount ?? 0)}
-                      </span>
-                      {/* The card is the link: this only looks like its button. */}
-                      <span
-                        className={`${buttonClassName({ size: 'sm', shape: 'pill' })} group-hover:-translate-y-px`}
-                      >
-                        Open
-                      </span>
-                    </div>
-                  </Link>
-                )}
-
-                <StatTile
-                  icon="list"
-                  label="Your wishlists"
-                  value={activeOwned.length}
-                  href="/wishlists/mine"
-                />
-                <StatTile
-                  icon="package"
-                  label="Items in your lists"
-                  value={totalItems}
-                  detail={formatOwnerExtras(ownCounts)}
-                  href="/items"
-                  iconWrapClassName="bg-primary-500/12 text-accent"
-                />
-                <StatTile
-                  icon="users"
-                  label="Shared with you"
-                  value={member.length}
-                  href="/wishlists/shared"
-                />
-                <StatTile
-                  icon="check-circle"
-                  label="Reserved by you"
-                  value={reservedCount}
-                  href="/booked"
-                  iconWrapClassName=""
-                  iconStyle={{
-                    background: 'color-mix(in srgb, var(--accent2) 15%, transparent)',
-                    color: 'var(--accent2)',
-                  }}
-                />
-              </div>
-            </section>
-
-            {/* Your wishlists */}
-            {activeOwned.length > 0 && (
-              <section>
-                {/* The heading's line keeps its height: the 36px button
-                    reaches into the margin under it. */}
-                <div className="mb-5 flex items-center justify-between gap-3">
+                <section>
                   {/* All items: every item across your lists (`/items`). On
                       the narrowest phones it goes under the heading rather
                       than break it. */}
-                  <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 px-1">
+                  <div className={SECTION_HEADING_ROW}>
                     <h2 className="whitespace-nowrap text-xl font-semibold tracking-tight text-foreground">
                       Your wishlists
                     </h2>
@@ -543,123 +314,74 @@ export default function Home() {
                       All items
                     </Link>
                   </div>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    shape="pill"
-                    icon="plus"
-                    onClick={() => setShowCreateModal(true)}
-                    className="-my-1"
-                  >
-                    New list
-                  </Button>
-                </div>
-                <WishlistList
-                  wishlists={ownedByOccasion.slice(0, HOME_SECTION_LIMIT)}
-                  viewerId={session.user.id}
-                />
-                <SeeAll href="/wishlists/mine" count={ownedByOccasion.length} />
-              </section>
-            )}
+                  <WishlistList
+                    wishlists={ownedInOrder.slice(0, HOME_SECTION_LIMIT)}
+                    viewerId={session.user.id}
+                    pins={pins}
+                  />
+                  <SeeAll href="/wishlists/mine" count={ownedInOrder.length} />
+                </section>
+              )}
 
-            {/* Shared with you */}
-            {member.length > 0 && (
-              <section>
-                <h2 className="mb-5 px-1 text-xl font-semibold tracking-tight text-foreground">
-                  Shared with you
-                </h2>
-                {/* The section says you're a member: no badge to repeat it. */}
-                <WishlistList wishlists={sharedByOccasion.slice(0, HOME_SECTION_LIMIT)} shared />
-                <SeeAll href="/wishlists/shared" count={sharedByOccasion.length} />
-              </section>
-            )}
+              {/* Shared with you */}
+              {member.length > 0 && (
+                <section>
+                  <h2 className="mb-5 px-1 text-xl font-semibold tracking-tight text-foreground">
+                    Shared with you
+                  </h2>
+                  {/* The section says you're a member: no badge to repeat it. */}
+                  <WishlistList wishlists={sharedByOccasion.slice(0, HOME_SECTION_LIMIT)} shared />
+                  <SeeAll href="/wishlists/shared" count={sharedByOccasion.length} />
+                </section>
+              )}
 
-            {/* Archived, folded away at the end: open when there's nothing above it. */}
-            <ArchivedLists
-              wishlists={archivedOwned}
-              viewerId={session.user.id}
-              defaultOpen={activeOwned.length === 0 && member.length === 0}
-            />
-          </div>
-        )}
+              {/* Archived, folded away at the end: open when there's nothing above it. */}
+              <ArchivedLists
+                wishlists={archivedOwned}
+                viewerId={session.user.id}
+                defaultOpen={activeOwned.length === 0 && member.length === 0}
+              />
+            </>
+          )}
+        </div>
       </main>
+    </div>
+  );
+}
 
-      {followModal && meId && (
-        <FollowListModal
-          userId={meId}
-          initialTab={followModal}
-          followerCount={typeof followerCount === 'number' ? followerCount : 0}
-          followingCount={typeof followingCount === 'number' ? followingCount : 0}
-          onClose={() => setFollowModal(null)}
-        />
-      )}
+/** The greeting and New list: one row, the button at its end, from a phone up. */
+const GREETING_ROW = 'mb-8 flex items-end justify-between gap-4 sm:mb-10';
+
+/** A section's heading line, with a link beside it (Your wishlists' All items). */
+const SECTION_HEADING_ROW = 'mb-5 flex min-w-0 flex-wrap items-baseline gap-x-3 px-1';
+
+/** The greeting row while the session loads: the heading's line and New list. */
+function GreetingRowSkeleton() {
+  return (
+    <div className={GREETING_ROW}>
+      <Skeleton className="h-9 w-72 max-w-full sm:h-10" />
+      <Skeleton className="h-9 w-[6.75rem] flex-shrink-0 rounded-full sm:mb-1" />
     </div>
   );
 }
 
 /**
- * The dashboard's content while its lists are read, box for box as it will
- * land, so nothing moves when it does: the Featured picker's row, the bento
- * (the featured card over two rows at `lg`, and four stat tiles, the Items
- * tile a line taller for its drafts line), then a section heading over a row
- * of lists (rows on a phone, cards from `sm`). The picker only shows for
- * someone who owns a list, which is nearly everyone who gets this far with
- * lists to show.
+ * The dashboard's lists while they're read, box for box as they will land, so
+ * nothing moves when they do: a section heading (with All items) over a
+ * section of lists (rows on a phone, cards from `sm`). Needs you sits above it
+ * already, and Coming up only shows for lists with an occasion close by, so
+ * neither has a box here: one that turns out to have nothing would leave a
+ * gap, then close it.
  */
 function DashboardSkeleton() {
   return (
-    <div className="space-y-12">
-      <div>
-        <div className="mb-4 flex items-center justify-end gap-2">
-          <Skeleton className="h-3 w-14" />
-          <Skeleton className="h-9 w-52 rounded-xl" />
-        </div>
-        <div className="grid grid-cols-2 gap-5 lg:grid-cols-4">
-          <div className="col-span-2 flex flex-col overflow-hidden rounded-3xl border border-border bg-surface shadow-md lg:row-span-2">
-            <Skeleton className="aspect-[16/9] w-full rounded-none" />
-            <div className="flex items-center justify-between p-5">
-              <Skeleton className="h-3.5 w-32" />
-              <Skeleton className="h-9 w-16 rounded-full" />
-            </div>
-          </div>
-          <StatTileSkeleton />
-          <StatTileSkeleton detail />
-          <StatTileSkeleton />
-          <StatTileSkeleton />
-        </div>
+    <div>
+      {/* The section heading's line (text-xl) with All items */}
+      <div className="mb-5 flex h-7 items-center gap-3 px-1">
+        <Skeleton className="h-5 w-36" />
+        <Skeleton className="h-3.5 w-14" />
       </div>
-      <div>
-        {/* The section heading's line (text-xl) with All items, and its New list */}
-        <div className="mb-5 flex h-7 items-center justify-between">
-          <div className="flex items-center gap-3 px-1">
-            <Skeleton className="h-5 w-36" />
-            <Skeleton className="h-3.5 w-14" />
-          </div>
-          <Skeleton className="-my-1 h-9 w-[6.5rem] rounded-full" />
-        </div>
-        <WishlistListSkeleton count={4} />
-      </div>
-    </div>
-  );
-}
-
-/** A `StatTile` while it's read: each of its lines in a box of that line's height. */
-function StatTileSkeleton({ detail = false }: { detail?: boolean }) {
-  return (
-    <div className="flex flex-col rounded-3xl border border-border bg-surface p-5 shadow-md">
-      <Skeleton className="mb-3.5 h-9 w-9 rounded-xl" />
-      <div className="flex h-[1.125rem] items-center">
-        <Skeleton className="h-3 w-24 max-w-full" />
-      </div>
-      {detail && (
-        <div className="mt-0.5 flex h-[1.125rem] items-center">
-          <Skeleton className="h-3 w-20 max-w-full" />
-        </div>
-      )}
-      <div className="mt-auto flex items-center justify-between gap-2 pt-3">
-        <Skeleton className="h-8 w-10 rounded-lg" />
-        <Skeleton className="h-9 w-[4.5rem] rounded-full" />
-      </div>
+      <WishlistListSkeleton count={4} />
     </div>
   );
 }
@@ -681,99 +403,5 @@ function SeeAll({ href, count }: { href: string; count: number }) {
         <Icon name="arrow-right" size={CONTROL_ICON_SIZE.sm} />
       </Link>
     </div>
-  );
-}
-
-/** The noun beside a count, plural until the count is known to be 1. */
-function countNoun(count: Count, one: string): string {
-  return pluralNoun(typeof count === 'number' ? count : 2, one);
-}
-
-/**
- * A count, or what stands in for it until it's known: a placeholder while it's
- * read, and a dash if it couldn't be. Never a 0 that may not be true.
- */
-function CountValue({
-  count,
-  className,
-  placeholderClassName,
-}: {
-  count: Count;
-  className: string;
-  /** The placeholder's size, about the count's own. */
-  placeholderClassName: string;
-}) {
-  if (typeof count === 'number') return <span className={className}>{count}</span>;
-  if (count === 'loading') {
-    return (
-      <Skeleton as="span" className={`inline-block ${placeholderClassName}`}>
-        <span className="sr-only">Loading</span>
-      </Skeleton>
-    );
-  }
-  return (
-    <span className={className}>
-      <span aria-hidden="true">–</span>
-      <span className="sr-only">Couldn’t load</span>
-    </span>
-  );
-}
-
-function StatTile({
-  icon,
-  label,
-  value,
-  detail,
-  href,
-  iconWrapClassName = 'bg-surface-2 text-muted-foreground',
-  iconStyle,
-}: {
-  icon: IconName;
-  label: string;
-  value: Count;
-  /**
-   * A muted line under the label, e.g. the drafts and proposals beside an item
-   * count. A tile given one keeps its line when it's null, so the tile is the
-   * same height either way (and the loading skeleton's).
-   */
-  detail?: string | null;
-  href: string;
-  iconWrapClassName?: string;
-  iconStyle?: React.CSSProperties;
-}) {
-  return (
-    <Link
-      href={href}
-      className="group flex flex-col rounded-3xl border border-border bg-surface p-5 shadow-md transition-all hover:shadow-lg"
-    >
-      <span
-        className={`mb-3.5 inline-flex h-9 w-9 items-center justify-center rounded-xl ${iconWrapClassName}`}
-        style={iconStyle}
-      >
-        <Icon name={icon} size={18} />
-      </span>
-      <span className="text-meta font-semibold text-muted-foreground">{label}</span>
-      {detail !== undefined && (
-        <span className="mt-0.5 text-meta text-muted-foreground">{detail ?? '\u00a0'}</span>
-      )}
-      <div className="mt-auto pt-3">
-        <div className="flex items-end justify-between gap-2">
-          <CountValue
-            count={value}
-            className="text-3xl font-semibold tracking-tight text-foreground"
-            placeholderClassName="h-8 w-10 rounded-lg"
-          />
-          {/* The tile is the link: this only looks like its button. */}
-          <span className={buttonClassName({ size: 'sm', shape: 'pill' })}>
-            View
-            <Icon
-              name="arrow-right"
-              size={CONTROL_ICON_SIZE.sm}
-              className="transition-transform group-hover:translate-x-0.5"
-            />
-          </span>
-        </div>
-      </div>
-    </Link>
   );
 }
