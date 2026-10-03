@@ -35,8 +35,14 @@ vi.mock('next-auth/react', () => ({
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push }) }));
 vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }));
 
-import CurrencyPrompt from '@/components/CurrencyPrompt';
+import CurrencyPromptRow, { useCurrencyOffer } from '@/components/CurrencyPrompt';
 import { SETTINGS_CURRENCY_PATH } from '@/lib/utils/currencies';
+
+/** The prompt as the dashboard's Needs you shows it: the row, whenever there's an offer. */
+function CurrencyPrompt() {
+  const offer = useCurrencyOffer();
+  return offer ? <CurrencyPromptRow offer={offer} /> : null;
+}
 
 type Reply = { status: number; body: unknown } | Error;
 let patchReply: Reply;

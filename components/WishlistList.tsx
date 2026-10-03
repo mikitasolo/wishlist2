@@ -7,7 +7,11 @@ import Cover from '@/components/Cover';
 import Icon from '@/components/Icon';
 import OccasionLabel from '@/components/OccasionLabel';
 import ReservedByYouChip from '@/components/ReservedByYouChip';
-import WishlistCard, { type WishlistSummary } from '@/components/WishlistCard';
+import WishlistCard, {
+  PinButton,
+  type PinControl,
+  type WishlistSummary,
+} from '@/components/WishlistCard';
 import { SM_UP_QUERY, useMediaQuery } from '@/lib/hooks/useMediaQuery';
 import { rowMeta } from '@/lib/utils/listRows';
 import { getVisibility, visibilityMeta } from '@/lib/utils/visibility';
@@ -29,6 +33,7 @@ export default function WishlistList({
   wishlists,
   shared = false,
   viewerId,
+  pins,
 }: {
   wishlists: WishlistSummary[];
   /**
@@ -38,7 +43,17 @@ export default function WishlistList({
   shared?: boolean;
   /** The viewer's user id, so a row of a co-owned list of theirs names the others. */
   viewerId?: string | null;
+  /**
+   * Pin to top on each of these lists that isn't archived (`usePinToTop`):
+   * your own lists only, never a shared one. `pinning` is the list whose pin is
+   * on its way, which holds every list's pin button.
+   */
+  pins?: { pinning: string | null; onToggle: (wishlist: WishlistSummary) => void };
 }) {
+  const pinFor = (w: WishlistSummary): PinControl | undefined =>
+    pins && !shared && !w.archived
+      ? { pinned: !!w.featured, busy: pins.pinning !== null, onToggle: () => pins.onToggle(w) }
+      : undefined;
   // true from `sm` up, false below it, null until known (the server render and
   // the one that hydrates it), when both are rendered and CSS picks.
   const smUp = useMediaQuery(SM_UP_QUERY);
@@ -48,7 +63,7 @@ export default function WishlistList({
         <ul data-wishlist-rows className={`${WISHLIST_ROWS_CLASSES} sm:hidden`}>
           {wishlists.map((w) => (
             <li key={w._id.toString()}>
-              <WishlistRow wishlist={w} shared={shared} viewerId={viewerId} />
+              <WishlistRow wishlist={w} shared={shared} viewerId={viewerId} pin={pinFor(w)} />
             </li>
           ))}
         </ul>
@@ -59,6 +74,7 @@ export default function WishlistList({
             <WishlistCard
               key={w._id.toString()}
               wishlist={w}
+              pin={pinFor(w)}
               showOwner={shared}
               showRole={!shared}
             />
@@ -79,25 +95,29 @@ export default function WishlistList({
  * stored year. Your own list's row shows its visibility as an icon beside the
  * name (an archived one is greyed instead, as its card is) and says nothing
  * about reservations; on a list shared with you, "N reserved by you" follows
- * (`ReservedByYouChip`, nothing at 0).
+ * (`ReservedByYouChip`, nothing at 0). With `pin`, Pin to top follows the
+ * row's link, at its end.
  */
 export function WishlistRow({
   wishlist,
   shared = false,
   viewerId,
+  pin,
 }: {
   wishlist: WishlistSummary;
   /** A list shared with you: its owner is named, with your own reservations' count. */
   shared?: boolean;
   /** The viewer's user id, so a co-owned list of theirs names the other owners. */
   viewerId?: string | null;
+  /** Pin to top, on a row of your own active list. */
+  pin?: PinControl;
 }) {
   const meta = rowMeta(wishlist, { shared, viewerId });
   const visibility = shared || wishlist.archived ? null : visibilityMeta[getVisibility(wishlist)];
-  return (
+  const row = (
     <Link
       href={`/wishlists/${wishlist.slug ?? wishlist._id}`}
-      className={`group flex min-h-[4.5rem] items-center gap-3 px-3 py-2 outline-offset-[-2px] transition-colors hover:bg-surface-2 ${
+      className={`group flex min-h-[4.5rem] min-w-0 flex-1 items-center gap-3 px-3 py-2 outline-offset-[-2px] transition-colors hover:bg-surface-2 ${
         wishlist.archived ? 'opacity-70 hover:opacity-100' : ''
       }`}
     >
@@ -134,6 +154,14 @@ export function WishlistRow({
         </span>
       </span>
     </Link>
+  );
+  if (!pin) return row;
+  // A button can't be inside the row's link: it follows it.
+  return (
+    <div className="flex items-center">
+      {row}
+      <PinButton pin={pin} className="mx-2" />
+    </div>
   );
 }
 

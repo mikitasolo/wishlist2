@@ -9,7 +9,7 @@ import { SVGProps } from 'react';
  * - 12: in a badge or pill, or beside a line of `text-xs` / `text-meta`;
  * - 16: in an `sm` or `md` control (`CONTROL_ICON_SIZE`), and beside `text-sm`;
  * - 18: in an `lg` control, an icon button, a menu's rows, and a chip up to
- *   48px (a stat tile's, a toast's, a dialog's);
+ *   48px (a Needs you row's, a toast's, a dialog's);
  * - 28: in a large chip (an empty state's, a sign-in card's, the landing
  *   page's).
  */
@@ -56,7 +56,8 @@ export type IconName =
   | 'more'
   | 'undo'
   | 'link-off'
-  | 'share';
+  | 'share'
+  | 'pin';
 
 const paths: Record<IconName, React.ReactNode> = {
   gift: (
@@ -266,6 +267,13 @@ const paths: Record<IconName, React.ReactNode> = {
     <>
       <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
       <path d="m16 6-4-4-4 4M12 2v13" />
+    </>
+  ),
+  // A push pin: a list pinned to the top of your own (Pin to top).
+  pin: (
+    <>
+      <path d="M12 17v5" />
+      <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z" />
     </>
   ),
 };

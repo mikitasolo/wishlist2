@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { IWishlist } from '@/models/Wishlist';
 import Avatar from '@/components/Avatar';
 import Badge from '@/components/Badge';
+import IconButton from '@/components/IconButton';
 import Cover from '@/components/Cover';
 import ReservedByYouChip from '@/components/ReservedByYouChip';
 import OccasionLabel, { OCCASION_ON_COVER } from '@/components/OccasionLabel';
@@ -34,8 +35,23 @@ export type WishlistSummary = IWishlist & {
   bannerUrl?: string | null;
 };
 
+/**
+ * Pin to top on a list of your own (`lib/utils/pinnedLists.ts`): whether it's
+ * pinned, whether a pin is on its way (the button is held), and the toggle.
+ */
+export interface PinControl {
+  pinned: boolean;
+  busy: boolean;
+  onToggle: () => void;
+}
+
+/** The pin button's label: what pressing it does. */
+export const pinLabel = (pinned: boolean) => (pinned ? 'Unpin' : 'Pin to top');
+
 interface WishlistCardProps {
   wishlist: WishlistSummary;
+  /** Pin to top, on a card of your own active list. Nothing without it. */
+  pin?: PinControl;
   showOwner?: boolean;
   /**
    * Whether the viewer's role ("Member", "Owner") shows over the cover. Off
@@ -57,6 +73,7 @@ export const WISHLIST_CARD_COVER_SIZES =
 
 export default function WishlistCard({
   wishlist,
+  pin,
   showOwner = false,
   showRole = true,
 }: WishlistCardProps) {
@@ -73,12 +90,12 @@ export default function WishlistCard({
   // Archived instead of the visibility on an archived list: it's owner-only.
   const badge = coverBadge(wishlist);
 
-  return (
+  const card = (
     <Link
       href={`/wishlists/${wishlist.slug ?? wishlist._id}`}
       className={`group flex flex-col overflow-hidden rounded-3xl border border-border bg-surface shadow-md transition-all duration-200 hover:shadow-lg ${
-        wishlist.archived ? 'opacity-70 hover:opacity-100' : ''
-      }`}
+        pin ? 'h-full' : ''
+      } ${wishlist.archived ? 'opacity-70 hover:opacity-100' : ''}`}
     >
       {/* Cover band */}
       <Cover
@@ -96,10 +113,15 @@ export default function WishlistCard({
           {badge.label}
         </Badge>
         {wishlist.archived ? null : wishlist.featured ? (
-          <Badge tone="glass" icon="sparkles" className="absolute left-3 top-3">
-            Featured
+          // Beside the pin button when the card has one (`PinButton`).
+          <Badge
+            tone="glass"
+            icon="pin"
+            className={`absolute ${pin ? 'left-[3.25rem] top-4' : 'left-3 top-3'}`}
+          >
+            Pinned
           </Badge>
-        ) : showRole && wishlist.userRole ? (
+        ) : showRole && wishlist.userRole && !pin ? (
           <Badge tone="glass" className="absolute left-3 top-3 capitalize">
             {wishlist.userRole}
           </Badge>
@@ -138,5 +160,38 @@ export default function WishlistCard({
         </div>
       </div>
     </Link>
+  );
+  if (!pin) return card;
+
+  // The pin is a button, so it can't be inside the card's link: it sits over
+  // the cover's top-left corner, where a role badge would be (the section is
+  // your own lists, so it would only say Owner), with Pinned beside it.
+  return (
+    <div className="relative">
+      {card}
+      <PinButton pin={pin} className="absolute left-3 top-3" />
+    </div>
+  );
+}
+
+/**
+ * Pin to top as a round frosted icon button, over a cover (a card's) or at the
+ * end of a row (a phone's). Its name says what pressing it does: Pin to top,
+ * or Unpin, with the pin filled in while it's pinned.
+ */
+export function PinButton({ pin, className = '' }: { pin: PinControl; className?: string }) {
+  const label = pinLabel(pin.pinned);
+  return (
+    <IconButton
+      icon="pin"
+      label={label}
+      title={label}
+      variant="glass"
+      shape="pill"
+      onClick={pin.onToggle}
+      disabled={pin.busy}
+      iconClassName={pin.pinned ? 'fill-current text-accent' : undefined}
+      className={className}
+    />
   );
 }

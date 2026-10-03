@@ -12,8 +12,10 @@ import EmptyState from '@/components/EmptyState';
 import { WishlistListSkeleton } from '@/components/Skeleton';
 import { useToast } from '@/components/ToastProvider';
 import { useLocalToday } from '@/lib/hooks/useLocalToday';
+import { usePinToTop } from '@/lib/hooks/usePinToTop';
 import { signInPath } from '@/lib/utils/callbackUrl';
 import { sortByUpcomingOccasion } from '@/lib/utils/occasion';
+import { pinnedFirst } from '@/lib/utils/pinnedLists';
 import { IWishlist } from '@/models/Wishlist';
 
 type Wishlist = IWishlist & {
@@ -30,6 +32,9 @@ export default function MyWishlistsPage() {
   const [owned, setOwned] = useState<Wishlist[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
+  // Pin to top: per-owner, one at a time (`usePinToTop`).
+  const { pinning, toggle: togglePin } = usePinToTop(setOwned);
+  const pins = useMemo(() => ({ pinning, onToggle: togglePin }), [pinning, togglePin]);
 
   useEffect(() => {
     if (status === 'unauthenticated') router.replace(signInPath('/wishlists/mine'));
@@ -48,13 +53,16 @@ export default function MyWishlistsPage() {
   }, [status, showToast]);
 
   // In each section, the lists with an occasion coming up go first, nearest
-  // first; the rest keep the API's order (newest first).
+  // first; the rest keep the API's order (newest first). Your pinned list goes
+  // above them all, as on Home.
   const today = useLocalToday();
   const active = useMemo(
     () =>
-      sortByUpcomingOccasion(
-        owned.filter((w) => !w.archived),
-        today
+      pinnedFirst(
+        sortByUpcomingOccasion(
+          owned.filter((w) => !w.archived),
+          today
+        )
       ),
     [owned, today]
   );
@@ -104,7 +112,9 @@ export default function MyWishlistsPage() {
           />
         ) : (
           <div className="mt-8 space-y-12">
-            {active.length > 0 && <WishlistList wishlists={active} viewerId={viewerId} />}
+            {active.length > 0 && (
+              <WishlistList wishlists={active} viewerId={viewerId} pins={pins} />
+            )}
             {/* Archived, folded away at the end: open when it's all there is. */}
             <ArchivedLists
               wishlists={archived}

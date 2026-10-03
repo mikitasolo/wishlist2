@@ -2,8 +2,7 @@ import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import connectDB from '@/lib/mongodb';
 import Reservation from '@/models/Reservation';
-import Item from '@/models/Item';
-import { readReservationWishlists } from '@/lib/utils/reservationWishlists';
+import { readReservationLiveState } from '@/lib/utils/reservationLiveState';
 
 // GET /api/users/me/reservations - the current user's active reservations
 // (gifts they're holding), across all wishlists. Each carries a frozen snapshot
@@ -18,6 +17,15 @@ import { readReservationWishlists } from '@/lib/utils/reservationWishlists';
 // alone, so it comes back as its snapshot only, with no live item status, no
 // `stillReserved` (both `null`), and no slug or occasion, until the list is
 // unarchived.
+//
+// A card is active (Release) only while it's still reserved on a list they can
+// open, since the list's own unbook refuses anyone the list is hidden from. A
+// booking on a list they can't open (one made private since they left, say, or
+// archived: leaving or being removed frees it) can be released by an owner
+// alone, so the card needs their confirmation instead (`needsConfirmation`),
+// and offers Dismiss, which leaves the item as it is anyway, out of their
+// reach. The dashboard's "N reservations changed" (`./summary`) counts those
+// cards, from the same live state (`readReservationLiveState`).
 export async function GET() {
   try {
     const session = await auth();
@@ -30,42 +38,12 @@ export async function GET() {
       .sort({ createdAt: -1 })
       .lean();
 
-    // Look up the live items and wishlists (either may be gone), each in a
-    // fixed number of queries however many reservations there are.
-    const itemIds = reservations.map((r) => r.item);
-    const [items, wishlists] = await Promise.all([
-      Item.find({ _id: { $in: itemIds } })
-        .select('status bookedBy')
-        .lean(),
-      readReservationWishlists(
-        session.user.id,
-        reservations.map((r) => r.wishlist)
-      ),
-    ]);
-    const itemMap = new Map(items.map((i) => [i._id.toString(), i]));
+    // The live items and wishlists (either may be gone), each in a fixed number
+    // of queries however many reservations there are.
+    const liveState = await readReservationLiveState(session.user.id, reservations);
 
     const data = reservations.map((r) => {
-      const it = itemMap.get(r.item.toString());
-      const entry = wishlists.get(r.wishlist.toString());
-      const listArchived = !!entry?.archived;
-      const wishlist = entry && !entry.archived ? entry : null;
-      // Frozen on an archived list: nothing of what its owners have done to the
-      // item since reaches the gifter.
-      const itemStatus = listArchived ? null : it ? it.status : 'deleted';
-      const stillReserved = listArchived
-        ? null
-        : !!it && it.status === 'booked' && it.bookedBy?.toString() === session.user.id;
-      // Whether the gifter may still open the list: `readReservationWishlists`
-      // has it (`viewableWishlistsFilter`'s rules). Only their own access, never
-      // why they've lost it, except a list only its archiving hides from them,
-      // which says so (`listArchived`). A card is active (Release) only while
-      // it's still reserved on a list they can open, since the list's own unbook
-      // refuses anyone the list is hidden from. A booking on a list they can't
-      // open (one made private since they left, say, or archived: leaving or
-      // being removed frees it) can be released by an owner alone, so the card
-      // needs their confirmation instead, and offers Dismiss, which leaves the
-      // item as it is anyway, out of their reach.
-      const listOpen = !!wishlist;
+      const { wishlist, itemStatus, stillReserved, listOpen, listArchived } = liveState(r);
       return {
         _id: r._id.toString(),
         // The gifter's own record of which item they reserved: what Release sends

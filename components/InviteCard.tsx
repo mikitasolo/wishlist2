@@ -25,8 +25,14 @@ interface InviteCardProps {
   className?: string;
 }
 
-const CARD =
+/**
+ * An action card: what it's about on the left, its buttons on the right from
+ * `sm` (stacked under it on a phone). An invite, and each of the dashboard's
+ * other "Needs you" rows, so they read as one list.
+ */
+export const ACTION_CARD_CLASSES =
   'flex flex-col gap-3 rounded-2xl border border-border bg-surface p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-5';
+const CARD = ACTION_CARD_CLASSES;
 
 /**
  * One pending invitation with Accept and Decline: who invited you to which list,

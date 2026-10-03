@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Button from './Button';
 import Icon from './Icon';
-import Panel from './Panel';
+import { ACTION_CARD_CLASSES } from './InviteCard';
 import { useToast } from './ToastProvider';
 import { CURRENCY_OPTIONS, SETTINGS_CURRENCY_PATH } from '@/lib/utils/currencies';
 import { browserCurrencySuggestion, currencyToOffer } from '@/lib/utils/currencySuggestion';
@@ -17,25 +17,41 @@ const SAVE_ERROR = 'Failed to save your currency choice';
 const subscribe = () => () => {};
 const getServerSnapshot = () => null;
 
+/** The currency on offer, and the two answers to it (`useCurrencyOffer`). */
+export interface CurrencyOffer {
+  /** The suggested currency's code ("PLN") and name ("Polish Zloty"). */
+  code: string;
+  name: string;
+  /** "Choose another currency" is saving its answer: both buttons are held. */
+  busy: boolean;
+  /** "Use PLN": saves it as their currency, with the answer. */
+  accept: () => void;
+  /** "Choose another currency": records the answer, then opens the currency picker in Settings. */
+  chooseAnother: () => void;
+}
+
 /**
  * The dashboard's one-time offer of a currency for someone still on the USD
- * every account starts on: "Show prices in PLN? [Use PLN] [Choose another currency]".
- * The suggestion is worked out in the browser, from its time zone and language
- * (`suggestCurrency`), and is null in a server render and in the render that
- * hydrates it, so the server, which can't know it, never renders the prompt.
+ * every account starts on: "Show prices in PLN? [Use PLN] [Choose another currency]",
+ * or `null` when there's nothing to offer. The suggestion is worked out in the
+ * browser, from its time zone and language (`suggestCurrency`), and is null in
+ * a server render and in the render that hydrates it, so the server, which
+ * can't know it, never renders the prompt.
  *
  * Either answer records that they've answered (`currencyChosen`, which the
  * server stamps as `User.currencyChosenAt`), so it never shows again: "Use X"
  * saves X as their currency too, and "Choose another currency" takes them to the
- * currency picker in Settings. The prompt goes once the answer is sent ("Use
+ * currency picker in Settings. The offer goes once the answer is sent ("Use
  * X") or saved ("Choose another currency", which then leaves the page), and comes back,
  * with an error, if saving it fails. Who sees it is `currencyToOffer`.
+ *
+ * A hook, so the dashboard's "Needs you" knows whether the prompt is one of its
+ * rows before it renders any; `CurrencyPrompt` draws it.
  */
-export default function CurrencyPrompt() {
+export function useCurrencyOffer(): CurrencyOffer | null {
   const { data: session, status, update } = useSession();
   const router = useRouter();
   const { showToast } = useToast();
-  const headingId = useId();
   const suggestion = useSyncExternalStore(subscribe, browserCurrencySuggestion, getServerSnapshot);
   const [answered, setAnswered] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -93,19 +109,41 @@ export default function CurrencyPrompt() {
     router.push(SETTINGS_CURRENCY_PATH);
   }
 
+  return {
+    code,
+    name,
+    busy,
+    accept: () => void acceptSuggestion(code),
+    chooseAnother: () => void chooseAnother(),
+  };
+}
+
+/**
+ * The currency offer (`useCurrencyOffer`) as one of the dashboard's "Needs you"
+ * rows: a region named by its question, with Use X and Choose another currency.
+ */
+export default function CurrencyPrompt({
+  offer,
+  className = '',
+}: {
+  offer: CurrencyOffer;
+  className?: string;
+}) {
+  const headingId = useId();
+  const { code, name, busy } = offer;
   return (
-    <Panel
+    <section
       aria-labelledby={headingId}
-      className="mb-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between"
+      className={`${ACTION_CARD_CLASSES} sm:flex-col sm:items-stretch md:flex-row md:items-center md:justify-between ${className}`}
     >
       <div className="flex min-w-0 items-start gap-3">
-        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-500/12 text-accent">
+        <span className="inline-flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-primary-500/12 text-accent">
           <Icon name="globe" size={18} />
         </span>
         <div className="min-w-0">
-          <h2 id={headingId} className="font-semibold text-foreground">
+          <h3 id={headingId} className="text-body font-semibold text-foreground">
             Show prices in {code}?
-          </h2>
+          </h3>
           <p className="mt-0.5 text-sm text-muted-foreground">
             {name} would be the default for your new wishlists, and other people&apos;s prices would
             show in it. You can change it any time in Settings.
@@ -115,23 +153,20 @@ export default function CurrencyPrompt() {
       {/* Stacked and full width on a phone, side by side under the text from
           `sm`, and next to it from `md`. A label never wraps: the buttons have
           a fixed height, so a second line would spill out of them. */}
-      <div className="flex flex-col gap-3 sm:flex-row md:shrink-0">
-        <Button
-          onClick={() => acceptSuggestion(code)}
-          disabled={busy}
-          className="whitespace-nowrap"
-        >
+      <div className="flex flex-col gap-3 sm:flex-row sm:justify-end md:flex-shrink-0">
+        <Button size="sm" onClick={offer.accept} disabled={busy} className="whitespace-nowrap">
           Use {code}
         </Button>
         <Button
           variant="secondary"
-          onClick={chooseAnother}
+          size="sm"
+          onClick={offer.chooseAnother}
           disabled={busy}
           className="whitespace-nowrap"
         >
           Choose another currency
         </Button>
       </div>
-    </Panel>
+    </section>
   );
 }

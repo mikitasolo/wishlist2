@@ -28,10 +28,10 @@ vi.mock('next/link', () => ({
   ),
 }));
 
-// The header, the dialogs, the share button and the currency prompt have their
-// own fetches and tests; this file is about the order of the list cards.
+// The header, the dialogs, the share button and Needs you have their own
+// fetches and tests; this file is about the order of the list cards.
 vi.mock('@/components/AppHeader', () => ({ default: () => null }));
-vi.mock('@/components/CurrencyPrompt', () => ({ default: () => null }));
+vi.mock('@/components/NeedsYou', () => ({ default: () => null }));
 vi.mock('@/components/AuthButton', () => ({ default: () => null }));
 vi.mock('@/components/GlobalSearch', () => ({ default: () => null }));
 vi.mock('@/components/CreateWishlistModal', () => ({ default: () => null }));
@@ -114,12 +114,6 @@ beforeEach(() => {
   fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     if (init?.method === 'PATCH') return json({ success: true });
     if (url === '/api/wishlists') return json({ success: true, data: { owned, member: shared } });
-    if (url === '/api/users/me/reservations/count') {
-      return json({ success: true, data: { count: 0 } });
-    }
-    if (url === '/api/users/me') {
-      return json({ success: true, data: { _id: 'me', followerCount: 0, followingCount: 0 } });
-    }
     if (url === '/api/users/by-username/friend') {
       return json({
         success: true,
@@ -195,30 +189,27 @@ describe('dashboard — order', () => {
     expect(cardNames(section('Shared with you'))).toEqual(SHARED_BY_OCCASION);
   });
 
-  it('keeps that order when a list is pinned as Featured, and shows its occasion on the highlight', async () => {
+  it('puts your pinned list above the nearest occasions, and pinning another moves that one up', async () => {
     const user = userEvent.setup();
     render(<Home />);
     await screen.findByText('Birthday · in 12 days');
-    // The automatic pick (most items, then newest) has no occasion.
-    const highlight = () =>
-      screen.getAllByRole('heading', { level: 2 })[0].closest('a') as HTMLElement;
-    expect(highlight()).toHaveTextContent('Housewarming');
-    expect(highlight().querySelector('time')).toBeNull();
 
-    await user.click(screen.getByRole('combobox', { name: 'Featured wishlist' }));
-    await user.click(screen.getByRole('option', { name: 'Christmas' }));
+    const card = (name: string) =>
+      within(section('Your wishlists')).getByRole('heading', { level: 3, name }).closest('a')!
+        .parentElement as HTMLElement;
+    await user.click(within(card('Christmas')).getByRole('button', { name: 'Pin to top' }));
 
-    await waitFor(() => expect(highlight()).toHaveTextContent('Christmas'));
-    expect(within(highlight()).getByText('Holiday · in 84 days')).toBeInTheDocument();
+    await waitFor(() => expect(cardNames(section('Your wishlists'))[0]).toBe('Christmas'));
     expect(fetchMock).toHaveBeenCalledWith(
       `/api/wishlists/${christmas._id}`,
-      expect.objectContaining({ method: 'PATCH' })
+      expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ featured: true }) })
     );
-    const card = within(section('Your wishlists'))
-      .getByRole('heading', { level: 3, name: 'Christmas' })
-      .closest('a') as HTMLElement;
-    expect(within(card).getByText('Featured')).toBeInTheDocument();
-    expect(cardNames(section('Your wishlists'))).toEqual(BY_OCCASION);
+    // The rest keep their order, and Pinned is on its card.
+    expect(cardNames(section('Your wishlists'))).toEqual([
+      'Christmas',
+      ...BY_OCCASION.filter((name) => name !== 'Christmas'),
+    ]);
+    expect(within(card('Christmas')).getByText('Pinned')).toBeInTheDocument();
   });
 });
 
