@@ -166,6 +166,13 @@ export default function WishlistDetail() {
     userId: string;
     username: string;
   } | null>(null);
+  // Making a co-owner a member asks first too: it notifies them, it sits right
+  // next to Remove, and only they can undo it (making them an owner again is an
+  // invite they have to accept).
+  const [demoteConfirm, setDemoteConfirm] = useState<{
+    userId: string;
+    username: string | null;
+  } | null>(null);
   const [isDeletingWishlist, setIsDeletingWishlist] = useState(false);
   // The sole owner's Leave (on their own row in Manage) explains why they can't
   // and offers the way out instead: make someone else an owner (a member, with
@@ -842,12 +849,13 @@ export default function WishlistDetail() {
   );
 
   // Owners whose demotion is still in flight. Tracked per row, so demoting one
-  // owner doesn't lock or unlock another's buttons. The ref is what turns a
-  // second click away: it's set before the disabled state has rendered.
+  // owner doesn't lock or unlock another's buttons. The ref turns a second
+  // demotion of the same owner away, whatever sent it: it's set before the
+  // disabled state has rendered.
   const demotingRef = useRef<Set<string>>(new Set());
   const [demotingIds, setDemotingIds] = useState<ReadonlySet<string>>(() => new Set());
 
-  /** Step an owner down to a plain member. */
+  /** Step an owner down to a plain member, once their row's dialog is confirmed. */
   const demoteOwner = useCallback(
     async (userId: string, username: string | null) => {
       if (!wishlistId || demotingRef.current.has(userId)) return;
@@ -859,7 +867,7 @@ export default function WishlistDetail() {
         });
         const result = await res.json();
         if (result.success) {
-          showToast('Owner is now a member', 'success');
+          showToast(`@${username || 'user'} is now a member`, 'success');
           dropOwner({ id: userId, username });
           // Demoting also cancels any invite they still had pending here.
           await Promise.all([refreshMembers(), refreshInvites(), refreshOwners()]);
@@ -890,6 +898,18 @@ export default function WishlistDetail() {
       setPromoteConfirm(null);
     }
   }, [promoteConfirm, inviteAsOwner]);
+
+  const confirmDemoteOwner = useCallback(async () => {
+    if (!demoteConfirm) return;
+    const { userId, username } = demoteConfirm;
+    // Closed once the demotion and the reads after it settle, as Remove's is, so
+    // the dialog shows it running meanwhile and the row has moved when it closes.
+    try {
+      await demoteOwner(userId, username);
+    } finally {
+      setDemoteConfirm(null);
+    }
+  }, [demoteConfirm, demoteOwner]);
 
   const handleLeaveWishlist = useCallback(() => {
     setDeleteConfirm({
@@ -1491,7 +1511,10 @@ export default function WishlistDetail() {
                             <>
                               <button
                                 onClick={() =>
-                                  demoteOwner(memberUserId, member.user.username || null)
+                                  setDemoteConfirm({
+                                    userId: memberUserId,
+                                    username: member.user.username || null,
+                                  })
                                 }
                                 disabled={demotingIds.has(memberUserId)}
                                 className="cursor-pointer whitespace-nowrap rounded-xl px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 sm:px-4"
@@ -2100,6 +2123,20 @@ export default function WishlistDetail() {
           onCancel={() => setPromoteConfirm(null)}
           confirmText="Send owner invite"
           pendingText="Sending..."
+          cancelText="Cancel"
+          type="warning"
+        />
+      )}
+
+      {demoteConfirm && (
+        <ConfirmDialog
+          isOpen={!!demoteConfirm}
+          title={`Make @${demoteConfirm.username || 'user'} a member?`}
+          message="They keep access and can reserve gifts, but can no longer edit or manage the list. They'll be notified. Making them an owner again needs their acceptance."
+          onConfirm={confirmDemoteOwner}
+          onCancel={() => setDemoteConfirm(null)}
+          confirmText="Make member"
+          pendingText="Making member..."
           cancelText="Cancel"
           type="warning"
         />
