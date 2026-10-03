@@ -5,6 +5,9 @@ import { usePathname } from 'next/navigation';
 import Icon from '@/components/Icon';
 import {
   activeDestination,
+  badgeText,
+  navAccessibleName,
+  navBadgeCount,
   navDestinations,
   type NavDestination,
   type NavDestinationId,
@@ -16,8 +19,13 @@ import {
  * `TabBar` at the bottom of the screen, all four with an icon and a label;
  * from `sm` up the header carries `HeaderNav`, Home · Reserved · Activity as
  * text links, and Me is the avatar (the account menu opens the profile). The
- * page you're on is marked `aria-current="page"`, wherever it shows. Neither
- * carries a count: the bell is the one unread signal.
+ * page you're on is marked `aria-current="page"`, wherever it shows.
+ *
+ * Activity carries the unread count (WIS-302): a badge on the tab's icon and
+ * beside the header's link, hidden at 0, and the link's accessible name says
+ * it ("Activity, 3 unread"). It's the one unread signal; there's no bell. Both
+ * take the count as `unread` from `AppHeader`, which reads it once
+ * (`useUnreadNotifications`).
  */
 
 /** The destination to mark on this page, if any. */
@@ -29,16 +37,35 @@ function useActive(username: string | null | undefined, pending: boolean): NavDe
 }
 
 /**
+ * A destination's count, drawn: a small red pill with up to "9+" in it. It's
+ * hidden from assistive tech, since the link's own name says the count.
+ */
+function Badge({ count, className = '' }: { count: number; className?: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      data-badge=""
+      className={`flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-danger-fill px-1 text-badge font-semibold leading-none text-white ${className}`}
+    >
+      {badgeText(count)}
+    </span>
+  );
+}
+
+/**
  * The header's links, from `sm` up. Their addresses don't depend on who's
  * signed in, so they can be drawn while the session loads (`AppHeader` shows
- * them then only under the session hint).
+ * them then only under the session hint, and with no count).
  */
 export function HeaderNav({
   username,
+  unread = 0,
   pending = false,
   className = '',
 }: {
   username?: string | null;
+  /** Unread notifications, for Activity's badge. */
+  unread?: number;
   /** The session is still loading. */
   pending?: boolean;
   /** Its display, which `AppHeader` decides (hidden on a phone, and beside an open search). */
@@ -51,18 +78,21 @@ export function HeaderNav({
         .filter((d) => d.id !== 'me')
         .map((d) => {
           const current = d.id === active;
+          const count = navBadgeCount(d.id, unread);
           return (
             <Link
               key={d.id}
               href={d.href}
               aria-current={current ? 'page' : undefined}
-              className={`inline-flex h-9 items-center rounded-full px-3 text-sm font-medium transition-colors ${
+              aria-label={navAccessibleName(d, unread)}
+              className={`inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-sm font-medium transition-colors ${
                 current
                   ? 'bg-muted text-foreground'
                   : 'text-muted-foreground hover:bg-muted hover:text-foreground'
               }`}
             >
               {d.label}
+              {count > 0 && <Badge count={count} />}
             </Link>
           );
         })}
@@ -77,10 +107,15 @@ function tabColor(current: boolean) {
   return current ? 'text-accent' : 'text-muted-foreground hover:text-foreground';
 }
 
-function TabContent({ destination }: { destination: NavDestination }) {
+function TabContent({ destination, count = 0 }: { destination: NavDestination; count?: number }) {
   return (
     <>
-      <Icon name={destination.icon} size={18} />
+      <span className="relative flex">
+        <Icon name={destination.icon} size={18} />
+        {count > 0 && (
+          <Badge count={count} className="absolute -top-2 left-2.5 ring-2 ring-surface" />
+        )}
+      </span>
       <span>{destination.label}</span>
     </>
   );
@@ -94,13 +129,18 @@ function TabContent({ destination }: { destination: NavDestination }) {
  * `pending`: the session is still loading. Me's address isn't known yet, so
  * the bar is drawn with no links in it, as a placeholder that's shown (and
  * makes room) only where the session hint expects someone signed in, and is
- * hidden from assistive tech. The real bar replaces it in the same place.
+ * hidden from assistive tech. The real bar replaces it in the same place. Its
+ * Activity has no badge yet: the count is read once the session is known, and
+ * the badge sits over the icon, so it moves nothing when it comes.
  */
 export function TabBar({
   username,
+  unread = 0,
   pending = false,
 }: {
   username?: string | null;
+  /** Unread notifications, for Activity's badge. */
+  unread?: number;
   pending?: boolean;
 }) {
   const active = useActive(username, pending);
@@ -135,9 +175,10 @@ export function TabBar({
             key={d.id}
             href={d.href}
             aria-current={current ? 'page' : undefined}
+            aria-label={navAccessibleName(d, unread)}
             className={`${TAB_CLASSES} ${tabColor(current)}`}
           >
-            <TabContent destination={d} />
+            <TabContent destination={d} count={navBadgeCount(d.id, unread)} />
           </Link>
         );
       })}

@@ -1,5 +1,39 @@
 import { describe, it, expect } from 'vitest';
-import { activeDestination, meHref, navDestinations } from '@/lib/utils/appNav';
+import {
+  activeDestination,
+  badgeText,
+  meHref,
+  navAccessibleName,
+  navBadgeCount,
+  navDestinations,
+} from '@/lib/utils/appNav';
+
+// WIS-302: Activity carries the unread count, and nothing else carries one.
+describe('the unread badge', () => {
+  const [home, reserved, activity, me] = navDestinations('mikita');
+
+  it('counts on Activity only, and not at 0', () => {
+    expect(navBadgeCount('activity', 3)).toBe(3);
+    expect(navBadgeCount('activity', 0)).toBe(0);
+    for (const d of [home, reserved, me]) expect(navBadgeCount(d.id, 3)).toBe(0);
+  });
+
+  it.each([
+    [1, '1'],
+    [9, '9'],
+    [10, '9+'],
+    [250, '9+'],
+  ])('draws %i as %s', (count, text) => {
+    expect(badgeText(count)).toBe(text);
+  });
+
+  it('names Activity with the full count, and leaves every other name to its label', () => {
+    expect(navAccessibleName(activity, 3)).toBe('Activity, 3 unread');
+    expect(navAccessibleName(activity, 12)).toBe('Activity, 12 unread');
+    expect(navAccessibleName(activity, 0)).toBeUndefined();
+    for (const d of [home, reserved, me]) expect(navAccessibleName(d, 3)).toBeUndefined();
+  });
+});
 
 describe('navDestinations', () => {
   it('lists Home, Reserved, Activity and Me, in that order (D3)', () => {

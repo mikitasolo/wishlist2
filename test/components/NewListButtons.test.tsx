@@ -32,8 +32,8 @@ vi.mock('next/link', () => ({
 }));
 // The header's other parts have their own fetches and tests.
 vi.mock('@/components/GlobalSearch', () => ({ default: () => null }));
-vi.mock('@/components/NotificationBell', () => ({ default: () => null }));
 vi.mock('@/components/AuthButton', () => ({ default: () => null }));
+vi.mock('@/lib/hooks/useUnreadNotifications', () => ({ useUnreadNotifications: () => 0 }));
 vi.mock('@/components/NeedsYou', () => ({ default: () => null }));
 vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }));
 // The create dialog has its own tests: here, only whether it's open.
