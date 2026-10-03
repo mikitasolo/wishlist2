@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import connectDB from '@/lib/mongodb';
 import Reservation from '@/models/Reservation';
+import { errorKind } from '@/lib/utils/errorKind';
 import { readReservationLiveState } from '@/lib/utils/reservationLiveState';
 
 // GET /api/users/me/reservations - the current user's active reservations
@@ -65,7 +66,8 @@ export async function GET() {
 
     return NextResponse.json({ success: true, data }, { status: 200 });
   } catch (error) {
-    console.error('Error fetching reservations:', error);
+    // Its kind only: an error may quote the query, which is the user's id.
+    console.error('Error fetching reservations:', errorKind(error));
     return NextResponse.json(
       { success: false, error: 'Failed to fetch reservations' },
       { status: 500 }

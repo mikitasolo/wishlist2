@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Button from './Button';
 import Icon from './Icon';
-import { ACTION_CARD_CLASSES } from './InviteCard';
+import { ACTION_CARD_SURFACE } from './InviteCard';
 import { useToast } from './ToastProvider';
 import { CURRENCY_OPTIONS, SETTINGS_CURRENCY_PATH } from '@/lib/utils/currencies';
 import { browserCurrencySuggestion, currencyToOffer } from '@/lib/utils/currencySuggestion';
@@ -134,7 +134,7 @@ export default function CurrencyPrompt({
   return (
     <section
       aria-labelledby={headingId}
-      className={`${ACTION_CARD_CLASSES} sm:flex-col sm:items-stretch md:flex-row md:items-center md:justify-between ${className}`}
+      className={`flex flex-col gap-4 ${ACTION_CARD_SURFACE} md:flex-row md:items-center md:justify-between ${className}`}
     >
       <div className="flex min-w-0 items-start gap-3">
         <span className="inline-flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-primary-500/12 text-accent">

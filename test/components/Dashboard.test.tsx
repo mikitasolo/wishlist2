@@ -8,13 +8,21 @@ const { showToast, auth } = vi.hoisted(() => {
   // The session's status, which the dashboard reads its lists again on:
   // next-auth's `update()` (the currency prompt's) turns it to `loading` and back.
   let status = 'authenticated';
+  // The signed-in account: another can sign in from another tab, with the
+  // status staying 'authenticated'.
+  let userId = 'me';
   const listeners = new Set<() => void>();
   return {
     showToast: vi.fn(),
     auth: {
       status: () => status,
+      userId: () => userId,
       set(next: string) {
         status = next;
+        listeners.forEach((listener) => listener());
+      },
+      signInAs(next: string) {
+        userId = next;
         listeners.forEach((listener) => listener());
       },
       subscribe(listener: () => void) {
@@ -28,12 +36,15 @@ const { showToast, auth } = vi.hoisted(() => {
 vi.mock('next-auth/react', async () => {
   const { useSyncExternalStore } = await import('react');
   return {
-    useSession: () => ({
-      // Answered the currency prompt already: it's `NeedsYou.test.tsx`'s.
-      data: { user: { id: 'me', username: 'me', currencyChosen: true } },
-      status: useSyncExternalStore(auth.subscribe, auth.status),
-      update: vi.fn(),
-    }),
+    useSession: () => {
+      const id = useSyncExternalStore(auth.subscribe, auth.userId);
+      return {
+        // Answered the currency prompt already: it's `NeedsYou.test.tsx`'s.
+        data: { user: { id, username: id, currencyChosen: true } },
+        status: useSyncExternalStore(auth.subscribe, auth.status),
+        update: vi.fn(),
+      };
+    },
     signIn: vi.fn(),
   };
 });
@@ -90,6 +101,7 @@ type Answer = () => Response | Promise<Response>;
 let answers: { lists: Answer; invites: Answer; summary: Answer; pin: Answer };
 let fetchMock: ReturnType<typeof vi.fn>;
 beforeEach(() => {
+  auth.signInAs('me');
   // Desktop width: the lists are cards (a phone gets rows, `WishlistList.test.tsx`).
   atWidth(1280);
   auth.set('authenticated');
@@ -342,6 +354,28 @@ describe('dashboard — lists that couldn’t be loaded', () => {
     ).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Your wishlists' })).toBeNull();
     expect(showToast).not.toHaveBeenCalled();
+  });
+
+  // Another account signing in (from another tab) keeps the status
+  // 'authenticated': its lists are read as a first load, and the previous
+  // account's never sit beside its Needs you.
+  it('reads the lists afresh, as a first load, when another account signs in', async () => {
+    answers.lists = () =>
+      json({
+        success: true,
+        data: { owned: [list('w1', 'Birthday', { proposalCount: 2 })], member: [] },
+      });
+    render(<Home />);
+    await screen.findByText('2 proposals to review');
+
+    answers.lists = () => serverError('Failed to fetch wishlists');
+    act(() => auth.signInAs('someone-else'));
+
+    expect(
+      await screen.findByRole('heading', { name: 'Couldn’t load your wishlists' })
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Birthday')).toBeNull();
+    expect(screen.queryByText('2 proposals to review')).toBeNull();
   });
 
   it('keeps the lists on screen when a later read of them fails', async () => {

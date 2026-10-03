@@ -14,8 +14,42 @@ import { LIST_CHIP_PARAM } from '@/lib/utils/listChips';
 import { plural } from '@/lib/utils/plural';
 import { TONE_CLASSES } from '@/lib/utils/statusTones';
 
-/** How many rows Needs you shows at most; the rest are a tap away in Activity. */
+/** How many rows Needs you shows at most. */
 export const NEEDS_YOU_LIMIT = 3;
+
+/** A row of Needs you, by what it's about. */
+type RowKind = 'invite' | 'reservations' | 'proposals' | 'currency';
+interface Row {
+  key: string;
+  kind: RowKind;
+  node: ReactNode;
+}
+
+/**
+ * Which kinds get a row first when there are more rows than fit: one of each,
+ * in this order, then the rest in the order they're shown. Proposals come last
+ * because Activity lists them too (as it does invitations): the changed
+ * reservations and the currency prompt are nowhere else on the way in.
+ */
+const FIRST_PICK: readonly RowKind[] = ['invite', 'reservations', 'currency', 'proposals'];
+
+/**
+ * The rows that fit, in the order they're shown: one of each kind first
+ * (`FIRST_PICK`), so three invitations can't hide everything else, then the
+ * others in their order until `limit` is reached.
+ */
+export function pickRows<T extends { kind: RowKind }>(rows: readonly T[], limit: number): T[] {
+  const picked = new Set<T>();
+  for (const kind of FIRST_PICK) {
+    const first = rows.find((r) => r.kind === kind);
+    if (first && picked.size < limit) picked.add(first);
+  }
+  for (const row of rows) {
+    if (picked.size >= limit) break;
+    picked.add(row);
+  }
+  return rows.filter((r) => picked.has(r));
+}
 
 /** The Booked page, where the gifter confirms what became of a changed reservation. */
 const RESERVED_PATH = '/booked';
@@ -24,7 +58,8 @@ const RESERVED_PATH = '/booked';
  * The top of the dashboard (D4): what's waiting on you, in up to
  * `NEEDS_YOU_LIMIT` rows, then See all in Activity. Nothing at all when nothing
  * applies, and never a "nothing to do": a source that's still loading, or
- * failed to load, just adds no row. In this order:
+ * failed to load, just adds no row. When more apply than fit, each kind gets a
+ * row before any gets a second (`pickRows`). Shown in this order:
  *
  * - each pending invitation, with Accept and Decline in place (`InviteCard`,
  *   with its co-owner consent warning, answered through `usePendingInvites`,
@@ -46,10 +81,11 @@ export default function NeedsYou({ ownLists }: { ownLists: WishlistSummary[] | n
   const changed = useChangedReservations();
   const currency = useCurrencyOffer();
 
-  const rows: { key: string; node: ReactNode }[] = [];
+  const rows: Row[] = [];
   for (const invite of invites) {
     rows.push({
       key: `invite-${invite._id}`,
+      kind: 'invite',
       node: (
         <InviteCard
           invite={invite}
@@ -63,6 +99,7 @@ export default function NeedsYou({ ownLists }: { ownLists: WishlistSummary[] | n
   if (changed) {
     rows.push({
       key: 'reservations',
+      kind: 'reservations',
       node: (
         <ActionRow
           icon="alert"
@@ -81,6 +118,7 @@ export default function NeedsYou({ ownLists }: { ownLists: WishlistSummary[] | n
     if (list.archived || proposals <= 0) continue;
     rows.push({
       key: `proposals-${list._id}`,
+      kind: 'proposals',
       node: (
         <ActionRow
           icon="inbox"
@@ -95,7 +133,7 @@ export default function NeedsYou({ ownLists }: { ownLists: WishlistSummary[] | n
     });
   }
   if (currency) {
-    rows.push({ key: 'currency', node: <CurrencyPrompt offer={currency} /> });
+    rows.push({ key: 'currency', kind: 'currency', node: <CurrencyPrompt offer={currency} /> });
   }
 
   if (rows.length === 0) return null;
@@ -113,7 +151,7 @@ export default function NeedsYou({ ownLists }: { ownLists: WishlistSummary[] | n
         </Link>
       </div>
       <ul className="space-y-3">
-        {rows.slice(0, NEEDS_YOU_LIMIT).map((row) => (
+        {pickRows(rows, NEEDS_YOU_LIMIT).map((row) => (
           <li key={row.key}>{row.node}</li>
         ))}
       </ul>

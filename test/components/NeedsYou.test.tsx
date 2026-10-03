@@ -256,9 +256,9 @@ describe('Needs you', () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it('shows at most three rows: invites, then reservations, then proposals, then the currency', async () => {
+  it('shows at most three rows, one of each kind before any second', async () => {
     user.currencyChosen = false;
-    answers.invites = () => json({ success: true, data: [invite('1')] });
+    answers.invites = () => json({ success: true, data: [invite('1'), invite('2'), invite('3')] });
     answers.summary = () => json({ success: true, data: { changed: 2 } });
     render(
       <NeedsYou
@@ -268,13 +268,45 @@ describe('Needs you', () => {
         ]}
       />
     );
+    await waitFor(() => expect(screen.queryByText('2 reservations changed')).not.toBeNull());
     await waitFor(() => expect(rows()).toHaveLength(3));
+    // Three invitations don't hide the rest: the first invitation, the changed
+    // reservations and the currency prompt, which nothing else on the way in
+    // shows. The proposals and the other invitations are in Activity.
     const [first, second, third] = rows();
     expect(first).toHaveTextContent('List 1');
     expect(second).toHaveTextContent('2 reservations changed');
-    expect(third).toHaveTextContent('On Birthday');
-    expect(screen.queryByText('On Garden')).toBeNull();
-    expect(screen.queryByRole('region', { name: /Show prices in/ })).toBeNull();
+    expect(third).toContainElement(screen.getByRole('region', { name: 'Show prices in PLN?' }));
+    expect(screen.queryByText('List 2')).toBeNull();
+    expect(screen.queryByText('On Birthday')).toBeNull();
     expect(screen.getByRole('link', { name: 'See all in Activity' })).toBeInTheDocument();
+  });
+
+  it('fills the rows that are left with more of the same, in order', async () => {
+    answers.invites = () => json({ success: true, data: [invite('1'), invite('2'), invite('3')] });
+    render(<NeedsYou ownLists={[list('w1', 'Birthday', { proposalCount: 1 })]} />);
+    await waitFor(() => expect(screen.queryByText('List 3')).toBeNull());
+    await waitFor(() => expect(rows()).toHaveLength(3));
+    expect(rows().map((r) => r.textContent)).toEqual([
+      expect.stringContaining('List 1'),
+      expect.stringContaining('List 2'),
+      expect.stringContaining('1 proposal to review'),
+    ]);
+  });
+
+  it('reads the changed reservations again when the window comes back into focus', async () => {
+    render(<NeedsYou ownLists={[]} />);
+    await settle();
+    expect(block()).toBeNull();
+
+    answers.summary = () => json({ success: true, data: { changed: 1 } });
+    await act(async () => window.dispatchEvent(new Event('focus')));
+    await waitFor(() => expect(screen.queryByText('1 reservation changed')).not.toBeNull());
+
+    // A later read that fails keeps it.
+    answers.summary = () => json({ success: false, error: 'Nope' }, 500);
+    await act(async () => window.dispatchEvent(new Event('focus')));
+    await settle();
+    expect(screen.getByText('1 reservation changed')).toBeInTheDocument();
   });
 });

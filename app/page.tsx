@@ -76,6 +76,12 @@ export default function Home() {
   const [loadFailed, setLoadFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const listsShown = useRef(false);
+  // The account whose lists these are. Another account signing in (from another
+  // tab) leaves `status` 'authenticated', so the reads key on the user id too:
+  // its first read is a first load, and the previous account's lists go, as
+  // Needs you's reads (also keyed on the id) start over for it.
+  const userId = session?.user?.id ?? null;
+  const listsFor = useRef<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   // Pin to top on your own lists: per-owner, one at a time (`usePinToTop`).
   const { pinning, toggle: togglePin } = usePinToTop(setOwned);
@@ -84,12 +90,21 @@ export default function Home() {
     if (status === 'loading') return;
     if (status !== 'authenticated') {
       // Signed out: whoever signs in next starts with a first load of their own.
+      listsFor.current = null;
       listsShown.current = false;
       setOwned([]);
       setMember([]);
       setLoadFailed(false);
       setLoading(false);
       return;
+    }
+    if (listsFor.current !== userId) {
+      listsFor.current = userId;
+      listsShown.current = false;
+      setOwned([]);
+      setMember([]);
+      setLoadFailed(false);
+      setLoading(true);
     }
     // A read outdated by another (the session changed, Try again) is dropped.
     let current = true;
@@ -115,7 +130,7 @@ export default function Home() {
     return () => {
       current = false;
     };
-  }, [status, showToast, attempt]);
+  }, [status, userId, showToast, attempt]);
 
   const retryLoad = useCallback(() => {
     setLoadFailed(false);

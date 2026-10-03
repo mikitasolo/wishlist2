@@ -6,18 +6,22 @@ import { withRequestTimeout } from '@/lib/utils/requestTimeout';
 
 /**
  * How long the dashboard waits for its count of changed reservations before it
- * gives up and leaves the row out: a few reads on a cold server take a few
- * seconds, and nothing waits on this one.
+ * gives up on that read: a few reads on a cold server take a few seconds, and
+ * nothing waits on this one.
  */
 export const SUMMARY_TIMEOUT_MS = 10_000;
 
 /**
  * How many of the signed-in account's own reservations need their confirmation
  * (`GET /api/users/me/reservations/summary`, the Booked page's "Needs your
- * confirmation" counted), for the dashboard's "Needs you". `null` until it's
- * read, and when the read fails or takes longer than `SUMMARY_TIMEOUT_MS`: the
- * row is then left out, never shown as 0. Read again when another account
- * signs in, and an answer for the previous one is dropped.
+ * confirmation" counted), for the dashboard's "Needs you".
+ *
+ * `null` until it's first read, and while the first read fails or takes longer
+ * than `SUMMARY_TIMEOUT_MS`: the row is then left out, never shown as 0. Read
+ * again whenever the window comes back into focus (an owner may have received
+ * an item meanwhile), and a read that fails then keeps the count already shown.
+ * Read afresh when another account signs in, and an answer for the previous one
+ * is dropped.
  */
 export function useChangedReservations(): number | null {
   const { data: session, status } = useSession();
@@ -27,25 +31,32 @@ export function useChangedReservations(): number | null {
   useEffect(() => {
     if (!userId) return;
     let current = true;
-    withRequestTimeout(async (signal) => {
-      const res = await fetch('/api/users/me/reservations/summary', {
-        cache: 'no-store',
-        signal,
-      });
-      return res.json();
-    }, SUMMARY_TIMEOUT_MS)
-      .then((result) => {
-        if (!current) return;
-        const changed = result?.success ? result.data?.changed : undefined;
-        if (typeof changed !== 'number') throw new Error('Unreadable summary');
-        setRead({ userId, changed });
-      })
-      .catch(() => {
-        // Left out: the row hides itself rather than claim there's nothing.
-        if (current) setRead(null);
-      });
+    // The latest read sent: an earlier one landing after it is dropped.
+    let latest = 0;
+    const load = () => {
+      const sent = ++latest;
+      withRequestTimeout(async (signal) => {
+        const res = await fetch('/api/users/me/reservations/summary', {
+          cache: 'no-store',
+          signal,
+        });
+        return res.json();
+      }, SUMMARY_TIMEOUT_MS)
+        .then((result) => {
+          if (!current || sent !== latest) return;
+          const changed = result?.success ? result.data?.changed : undefined;
+          if (typeof changed !== 'number') return;
+          setRead({ userId, changed });
+        })
+        // Left as it was: the row hides itself until a read succeeds, rather
+        // than claim there's nothing, and one already shown stays.
+        .catch(() => {});
+    };
+    load();
+    window.addEventListener('focus', load);
     return () => {
       current = false;
+      window.removeEventListener('focus', load);
     };
   }, [userId]);
 

@@ -32,7 +32,8 @@ interface InviteCardProps {
  */
 export const ACTION_CARD_CLASSES =
   'flex flex-col gap-3 rounded-2xl border border-border bg-surface p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-5';
-const CARD = ACTION_CARD_CLASSES;
+/** An action card's surface alone, for one that lays out its content differently (the currency prompt). */
+export const ACTION_CARD_SURFACE = 'rounded-2xl border border-border bg-surface p-4 shadow-sm sm:p-5';
 
 /**
  * One pending invitation with Accept and Decline: who invited you to which list,
@@ -48,7 +49,7 @@ export default function InviteCard({
   className = '',
 }: InviteCardProps) {
   return (
-    <div className={`${CARD} ${className}`}>
+    <div className={`${ACTION_CARD_CLASSES} ${className}`}>
       <div className="flex min-w-0 items-center gap-3">
         <Avatar name={invite.invitedByUsername || 'user'} src={invite.invitedByImage} size="md" />
         <div className="min-w-0">
@@ -82,7 +83,7 @@ export default function InviteCard({
 /** An invite card's shape while the invitations load: avatar, two lines, two buttons. */
 export function InviteCardSkeleton() {
   return (
-    <div className={CARD}>
+    <div className={ACTION_CARD_CLASSES}>
       <div className="flex min-w-0 flex-1 items-center gap-3">
         <Skeleton className="h-10 w-10 flex-shrink-0 rounded-full" />
         <div className="flex-1 space-y-2">
