@@ -37,7 +37,7 @@ interface BaseModalProps {
   /**
    * Makes the panel a `<form>` with this submit handler, so the body's fields
    * and a `type="submit"` button in `footer` are one form: Enter in a field
-   * submits it.
+   * submits it. The form has `autoComplete="off"`.
    */
   onSubmit?: FormEventHandler<HTMLFormElement>;
   /** The close button's accessible name. */
@@ -208,6 +208,8 @@ export default function BaseModal({
         <form
           ref={dialogRef as React.RefObject<HTMLFormElement | null>}
           onSubmit={onSubmit}
+          // A dialog's form is a one-off entry: no autofill history over its fields.
+          autoComplete="off"
           {...panelProps}
         >
           {content}

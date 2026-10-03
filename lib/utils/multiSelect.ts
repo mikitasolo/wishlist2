@@ -1,7 +1,7 @@
 /**
  * How `MultiSelectDropdown` (a checkbox list under an "All" row) works out its
  * selection. The plain rule ticks and unticks what's clicked; the status
- * filter brings its own (`statusFilterRule`, `lib/utils/itemFilters.ts`).
+ * filter brings its own (`statusFilterPicker`, `lib/utils/itemFilters.ts`).
  */
 
 export interface MultiSelectOption<V extends string = string> {

@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { useToast } from './ToastProvider';
@@ -117,10 +118,12 @@ export default function CreateWishlistModal({
     }
   };
 
-  // Cancel, like Escape, the backdrop and the close button, asks before
-  // throwing away what's been typed.
+  // Escape, the backdrop and the close button ask before throwing away what's
+  // been typed (BaseModal's intercept), and so does Cancel.
+  const hasChanges = useCallback(() => hasUnsavedChanges, [hasUnsavedChanges]);
+  const confirmClose = useCallback(() => setShowConfirmClose(true), []);
   const handleClose = () => {
-    if (hasUnsavedChanges) setShowConfirmClose(true);
+    if (hasUnsavedChanges) confirmClose();
     else onClose();
   };
 
@@ -144,8 +147,8 @@ export default function CreateWishlistModal({
         size="md"
         onSubmit={handleSubmit}
         isSubmitting={isSubmitting}
-        shouldInterceptClose={() => hasUnsavedChanges}
-        onInterceptClose={() => setShowConfirmClose(true)}
+        shouldInterceptClose={hasChanges}
+        onInterceptClose={confirmClose}
         footer={
           <>
             <Button type="button" variant="secondary" onClick={handleClose} disabled={isSubmitting}>
@@ -248,16 +251,23 @@ export default function CreateWishlistModal({
         </div>
       </BaseModal>
 
-      <ConfirmDialog
-        isOpen={showConfirmClose}
-        title="Discard Changes?"
-        message="You have unsaved changes. Are you sure you want to close? All progress will be lost."
-        onConfirm={handleConfirmClose}
-        onCancel={() => setShowConfirmClose(false)}
-        confirmText="Discard"
-        cancelText="Cancel"
-        type="warning"
-      />
+      {/* On <body>, as BaseModal is: rendered in place, it would be drawn
+          inside whatever contains this modal (the header's frosted bar), under
+          the modal's backdrop. */}
+      {showConfirmClose &&
+        createPortal(
+          <ConfirmDialog
+            isOpen
+            title="Discard Changes?"
+            message="You have unsaved changes. Are you sure you want to close? All progress will be lost."
+            onConfirm={handleConfirmClose}
+            onCancel={() => setShowConfirmClose(false)}
+            confirmText="Discard"
+            cancelText="Cancel"
+            type="warning"
+          />,
+          document.body
+        )}
     </>
   );
 }

@@ -25,7 +25,10 @@ export interface MenuItem {
   /** The item's visible text, which is also its accessible name. */
   label: string;
   icon?: IconName;
-  /** Runs when it's picked (after a link item's navigation has started). */
+  /**
+   * Runs when it's picked, with focus already back on the trigger. On a link
+   * item it runs in the link's click, before the navigation starts.
+   */
   onSelect?: () => void;
   /** Makes it a link to this path, followed when it's picked. */
   href?: string;
@@ -456,7 +459,7 @@ export default function Menu({
             aria-labelledby={menuLabel ? undefined : triggerId}
             tabIndex={-1}
             onKeyDown={onMenuKeyDown}
-            className="outline-none"
+            className="outline-hidden"
           >
             {items.map((entry, i) => (
               <Fragment key={entry.label}>
