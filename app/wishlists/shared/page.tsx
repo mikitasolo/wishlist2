@@ -58,7 +58,7 @@ export default function SharedWishlistsPage() {
               <Icon name="users" size={30} />
             </span>
             <h3 className="text-xl font-semibold text-foreground">Nothing shared yet</h3>
-            <p className="mx-auto mt-2 max-w-sm px-4 text-[15px] text-muted-foreground">
+            <p className="mx-auto mt-2 max-w-sm px-4 text-body text-muted-foreground">
               When someone invites you to their wishlist, it’ll show up here.
             </p>
           </div>

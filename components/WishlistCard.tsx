@@ -65,7 +65,7 @@ export default function WishlistCard({ wishlist, showOwner = false }: WishlistCa
         className={`relative aspect-[16/9] bg-surface-2 ${wishlist.archived ? 'grayscale' : ''}`}
       >
         <span
-          className={`absolute right-3 top-3 inline-flex items-center gap-1.5 rounded-full border border-white/25 px-2.5 py-1 text-[11.5px] font-semibold text-white backdrop-blur-md ${
+          className={`absolute right-3 top-3 inline-flex items-center gap-1.5 rounded-full border border-white/25 px-2.5 py-1 text-badge font-semibold text-white backdrop-blur-md ${
             wishlist.archived ? 'bg-black/30' : 'bg-white/20'
           }`}
         >
@@ -73,12 +73,12 @@ export default function WishlistCard({ wishlist, showOwner = false }: WishlistCa
           {badge.label}
         </span>
         {wishlist.archived ? null : wishlist.featured ? (
-          <span className="absolute left-3 top-3 inline-flex items-center gap-1 rounded-full border border-white/25 bg-white/20 px-2.5 py-1 text-[11.5px] font-semibold text-white backdrop-blur-md">
+          <span className="absolute left-3 top-3 inline-flex items-center gap-1 rounded-full border border-white/25 bg-white/20 px-2.5 py-1 text-badge font-semibold text-white backdrop-blur-md">
             <Icon name="sparkles" size={12} />
             Featured
           </span>
         ) : wishlist.userRole ? (
-          <span className="absolute left-3 top-3 inline-flex items-center rounded-full border border-white/25 bg-white/20 px-2.5 py-1 text-[11.5px] font-semibold capitalize text-white backdrop-blur-md">
+          <span className="absolute left-3 top-3 inline-flex items-center rounded-full border border-white/25 bg-white/20 px-2.5 py-1 text-badge font-semibold capitalize text-white backdrop-blur-md">
             {wishlist.userRole}
           </span>
         ) : null}
@@ -95,7 +95,7 @@ export default function WishlistCard({ wishlist, showOwner = false }: WishlistCa
 
       {/* Body */}
       <div className="flex flex-1 flex-col p-4 sm:p-5">
-        <h3 className="truncate text-[17px] font-semibold text-foreground transition-colors group-hover:text-accent dark:group-hover:text-primary-300">
+        <h3 className="truncate text-title font-semibold text-foreground transition-colors group-hover:text-accent dark:group-hover:text-primary-300">
           {wishlist.name}
         </h3>
         {wishlist.description ? (
@@ -106,7 +106,7 @@ export default function WishlistCard({ wishlist, showOwner = false }: WishlistCa
           {showOwner ? (
             <span className="flex min-w-0 items-center gap-2">
               <Avatar name={ownerName} src={wishlist.ownerImage} size="sm" />
-              <span className="truncate text-[13px] text-muted-foreground">
+              <span className="truncate text-meta text-muted-foreground">
                 @{ownerName}
                 {coOwnerCount > 0 && ` +${coOwnerCount}`}
               </span>
@@ -114,7 +114,7 @@ export default function WishlistCard({ wishlist, showOwner = false }: WishlistCa
           ) : (
             <span />
           )}
-          <span className="flex-shrink-0 text-[13px] text-muted-foreground">{itemSummary}</span>
+          <span className="flex-shrink-0 text-meta text-muted-foreground">{itemSummary}</span>
         </div>
       </div>
     </Link>

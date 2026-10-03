@@ -27,7 +27,7 @@ function AuthErrorContent() {
         <span className="mb-5 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-red-500/12 text-red-600 dark:text-red-400">
           <Icon name="alert" size={28} />
         </span>
-        <h1 className="mb-3 text-2xl font-bold tracking-tight text-foreground">
+        <h1 className="mb-3 text-3xl font-semibold tracking-tight text-foreground">
           Authentication error
         </h1>
         <p className="mb-6 text-muted-foreground">{errorMessage}</p>

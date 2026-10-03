@@ -1467,14 +1467,14 @@ export default function WishlistDetail() {
               >
                 {/* Archived instead of the visibility on an archived list: it's
                     owner-only, whatever the visibility says. */}
-                <span className="absolute right-3 top-3 inline-flex items-center gap-1.5 rounded-full border border-white/25 bg-white/20 px-2.5 py-1 text-[11.5px] font-semibold text-white backdrop-blur-md">
+                <span className="absolute right-3 top-3 inline-flex items-center gap-1.5 rounded-full border border-white/25 bg-white/20 px-2.5 py-1 text-badge font-semibold text-white backdrop-blur-md">
                   <Icon name={coverBadge(wishlist).icon} size={12} />
                   {coverBadge(wishlist).label}
                 </span>
               </Cover>
               {wishlist.description && (
                 <div className="rounded-2xl border border-border bg-surface p-5">
-                  <p className="whitespace-pre-line break-words text-[15px] text-muted-foreground">
+                  <p className="whitespace-pre-line break-words text-body text-muted-foreground">
                     {wishlist.description}
                   </p>
                 </div>
@@ -1568,7 +1568,7 @@ export default function WishlistDetail() {
                       {/* Status · Sort · Currency — equal labelled fields */}
                       <div className="flex flex-col gap-3 sm:flex-row sm:gap-4">
                         <div className="flex flex-col gap-1.5 sm:flex-1">
-                          <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          <span className="text-badge font-semibold uppercase tracking-wide text-muted-foreground">
                             Status
                           </span>
                           <MultiSelectDropdown
@@ -1581,7 +1581,7 @@ export default function WishlistDetail() {
                         </div>
 
                         <div className="flex flex-col gap-1.5 sm:flex-1">
-                          <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          <span className="text-badge font-semibold uppercase tracking-wide text-muted-foreground">
                             Sort
                           </span>
                           <Select
@@ -1595,7 +1595,7 @@ export default function WishlistDetail() {
 
                         {session?.user && (
                           <div className="flex flex-col gap-1.5 sm:flex-1">
-                            <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                            <span className="text-badge font-semibold uppercase tracking-wide text-muted-foreground">
                               Show prices in
                             </span>
                             <Select
@@ -1725,7 +1725,7 @@ export default function WishlistDetail() {
                 actions, rather than one list behind a role dropdown. */}
             <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-sm">
               <div className="border-b border-border px-4 py-4 sm:px-6">
-                <h2 className="text-xl font-bold text-foreground">Owners</h2>
+                <h2 className="text-lg font-semibold text-foreground">Owners</h2>
                 <p className="mt-1 text-sm text-muted-foreground">
                   Full control of this list, and it shows on each of their profiles. Owners never
                   see what&apos;s been booked.
@@ -1823,7 +1823,7 @@ export default function WishlistDetail() {
 
             <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-sm">
               <div className="border-b border-border px-4 py-4 sm:px-6">
-                <h2 className="text-xl font-bold text-foreground">Members</h2>
+                <h2 className="text-lg font-semibold text-foreground">Members</h2>
                 <p className="mt-1 text-sm text-muted-foreground">
                   They can browse the list, propose items, and reserve gifts. Making someone an
                   owner releases whatever they&apos;ve reserved here, since owners can&apos;t see
@@ -1909,7 +1909,7 @@ export default function WishlistDetail() {
             {isOwner && pendingInvites.length > 0 && (
               <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-sm">
                 <div className="border-b border-border px-4 py-4 sm:px-6">
-                  <h2 className="text-xl font-bold text-foreground">Pending invites</h2>
+                  <h2 className="text-lg font-semibold text-foreground">Pending invites</h2>
                 </div>
                 <div className="divide-y divide-border">
                   {pendingInvites.map((inv) => (
@@ -2130,7 +2130,7 @@ export default function WishlistDetail() {
 
               {/* Archive Section */}
               <div className="mt-6 border-t border-border pt-6 sm:mt-8 sm:pt-8">
-                <h3 className="mb-2 text-base font-semibold text-foreground sm:text-lg">
+                <h3 className="mb-2 text-base font-semibold text-foreground">
                   {wishlist.archived ? 'Unarchive wishlist' : 'Archive wishlist'}
                 </h3>
                 <p className="mb-4 text-xs text-muted-foreground sm:text-sm">
@@ -2153,7 +2153,7 @@ export default function WishlistDetail() {
               {/* Featured Section - owner only */}
               {isOwner && (
                 <div className="mt-6 border-t border-border pt-6 sm:mt-8 sm:pt-8">
-                  <h3 className="mb-2 text-base font-semibold text-foreground sm:text-lg">
+                  <h3 className="mb-2 text-base font-semibold text-foreground">
                     {wishlist.featured ? 'Featured on your dashboard' : 'Feature on your dashboard'}
                   </h3>
                   <p className="mb-4 text-xs text-muted-foreground sm:text-sm">
@@ -2202,9 +2202,7 @@ export default function WishlistDetail() {
               {/* Danger zone: deleting the list, for any owner */}
               {isOwner && (
                 <div className="mt-6 sm:mt-8 pt-6 sm:pt-8 border-t border-border">
-                  <h3 className="text-base sm:text-lg font-semibold text-foreground mb-2">
-                    Danger zone
-                  </h3>
+                  <h3 className="mb-2 text-base font-semibold text-foreground">Danger zone</h3>
                   <p className="text-xs sm:text-sm text-muted-foreground mb-4">
                     {DELETE_LIST_WARNING}
                   </p>

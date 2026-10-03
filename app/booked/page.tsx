@@ -682,7 +682,7 @@ function ReservationCard({
       <div className="flex gap-3 p-3">
         <SnapshotThumb src={r.itemImage} alt={r.itemName} seed={r._id} />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[15px] font-semibold text-foreground">{r.itemName}</p>
+          <p className="truncate text-body font-semibold text-foreground">{r.itemName}</p>
           {r.itemPrice && (
             <p className="text-sm font-medium text-muted-foreground">
               {formatPrice(r.itemPrice, locale)}
@@ -707,7 +707,7 @@ function ReservationCard({
           )}
           {note && (
             <p
-              className={`mt-1 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${TONE_CLASSES.warning.tint}`}
+              className={`mt-1 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-badge font-semibold ${TONE_CLASSES.warning.tint}`}
             >
               <Icon name="info" size={11} />
               {note}
@@ -771,9 +771,9 @@ function ReservationGroup({
 
 function SectionHeading({ title, count }: { title: string; count: number }) {
   return (
-    <h2 className="mb-4 flex items-center gap-2 px-1 text-lg font-semibold tracking-tight text-foreground">
+    <h2 className="mb-4 flex items-center gap-2 px-1 text-xl font-semibold tracking-tight text-foreground">
       {title}
-      <span className="rounded-full bg-surface-2 px-2 py-0.5 text-xs font-semibold text-muted-foreground">
+      <span className="rounded-full bg-surface-2 px-2 py-0.5 text-badge font-semibold text-muted-foreground">
         {count}
       </span>
     </h2>
@@ -787,7 +787,7 @@ function EmptyState({ icon, title, body }: { icon: 'gift'; title: string; body: 
         <Icon name={icon} size={30} />
       </span>
       <h3 className="text-xl font-semibold text-foreground">{title}</h3>
-      <p className="mx-auto mt-2 max-w-sm px-4 text-[15px] text-muted-foreground">{body}</p>
+      <p className="mx-auto mt-2 max-w-sm px-4 text-body text-muted-foreground">{body}</p>
     </div>
   );
 }

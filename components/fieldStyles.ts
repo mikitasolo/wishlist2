@@ -17,12 +17,12 @@ const BORDER =
 
 const inputSizeStyles: Record<FieldSize, string> = {
   sm: 'h-9 px-3 text-sm',
-  lg: 'h-11 px-3.5 text-[15px]',
+  lg: 'h-11 px-3.5 text-body',
 };
 
 const textareaSizeStyles: Record<FieldSize, string> = {
   sm: 'px-3 py-2 text-sm',
-  lg: 'px-3.5 py-2.5 text-[15px]',
+  lg: 'px-3.5 py-2.5 text-body',
 };
 
 /** A plain text input. */

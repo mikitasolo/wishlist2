@@ -255,11 +255,11 @@ export default function UserProfile() {
             <Avatar name={profile?.username || 'User'} src={profile?.image} size="lg" />
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <h1 className="truncate text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+                <h1 className="truncate text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
                   @{profile?.username || 'user'}
                 </h1>
                 {profile?.isFriend && (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-primary-500/12 px-2.5 py-1 text-xs font-semibold text-accent dark:text-primary-300">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-primary-500/12 px-2.5 py-1 text-badge font-semibold text-accent dark:text-primary-300">
                     <Icon name="users" size={12} />
                     Friends
                   </span>
@@ -319,7 +319,7 @@ export default function UserProfile() {
 
         {/* Bio */}
         {profile?.bio && (
-          <p className="mb-8 max-w-2xl whitespace-pre-line break-words text-[15px] leading-relaxed text-muted-foreground">
+          <p className="mb-8 max-w-2xl whitespace-pre-line break-words text-body leading-relaxed text-muted-foreground">
             {profile.bio}
           </p>
         )}

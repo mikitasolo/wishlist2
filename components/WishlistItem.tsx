@@ -354,7 +354,7 @@ function WishlistItem({
       {/* Status badges - positioned absolutely at top-right corner of card */}
       <div className="absolute right-2 top-2 z-10 flex flex-col items-end gap-2 sm:right-3 sm:top-3">
         {item.mostWanted && (
-          <span className="flex items-center gap-1 rounded-full border border-border bg-surface/90 px-2.5 py-1 text-xs font-semibold text-foreground shadow-sm backdrop-blur">
+          <span className="flex items-center gap-1 rounded-full border border-border bg-surface/90 px-2.5 py-1 text-badge font-semibold text-foreground shadow-sm backdrop-blur">
             <Icon name="star" size={12} className="fill-amber-400 text-amber-500" />
             Most wanted
           </span>
@@ -363,7 +363,7 @@ function WishlistItem({
         {status.badge && (
           <span
             data-tone={status.tone}
-            className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold shadow-sm ${status.classes.badge}`}
+            className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-badge font-semibold shadow-sm ${status.classes.badge}`}
           >
             {status.icon && <Icon name={status.icon} size={12} className="flex-shrink-0" />}
             {status.label}
@@ -401,7 +401,7 @@ function WishlistItem({
         {/* Item name - can vary in height */}
         <div className="flex-grow">
           <h3
-            className="mb-2 line-clamp-2 text-base font-semibold text-foreground sm:mb-3 sm:text-lg"
+            className="mb-2 line-clamp-2 text-title font-semibold text-foreground sm:mb-3"
             title={item.name}
           >
             {item.name}

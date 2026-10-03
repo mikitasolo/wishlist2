@@ -233,7 +233,9 @@ export default function InvitesPage() {
                     size="md"
                   />
                   <div className="min-w-0">
-                    <p className="truncate font-semibold text-foreground">{invite.wishlistName}</p>
+                    <p className="truncate text-body font-semibold text-foreground">
+                      {invite.wishlistName}
+                    </p>
                     <p className="truncate text-sm text-muted-foreground">
                       {invite.invitedByUsername ? `@${invite.invitedByUsername}` : 'Someone'}{' '}
                       invited you

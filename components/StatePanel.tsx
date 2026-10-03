@@ -64,7 +64,7 @@ export default function StatePanel({
       </Heading>
       {body && (
         <p
-          className={`mx-auto max-w-md text-muted-foreground ${compact ? 'mt-1 text-sm' : 'mt-2 text-[15px]'}`}
+          className={`mx-auto max-w-md text-muted-foreground ${compact ? 'mt-1 text-sm' : 'mt-2 text-body'}`}
         >
           {body}
         </p>

@@ -80,7 +80,7 @@ export default function MyWishlistsPage() {
               <Icon name="list" size={30} />
             </span>
             <h3 className="text-xl font-semibold text-foreground">No wishlists yet</h3>
-            <p className="mx-auto mt-2 max-w-sm px-4 text-[15px] text-muted-foreground">
+            <p className="mx-auto mt-2 max-w-sm px-4 text-body text-muted-foreground">
               Create a wishlist from the header to start collecting things you love.
             </p>
           </div>
