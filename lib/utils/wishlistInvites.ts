@@ -86,6 +86,7 @@ export async function issueWishlistInvite(args: IssueInviteArgs): Promise<IWishl
     user: args.invitedUserId,
     type: 'wishlist_invite',
     actorUsername: args.actorUsername ?? null,
+    actor: args.invitedBy,
     wishlist: args.wishlistId,
     wishlistName: args.wishlistName,
   });

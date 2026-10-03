@@ -69,7 +69,7 @@ function answer(inviteId: string, action: 'accept' | 'decline', userId = anna) {
 
 async function feedOf(userId: string): Promise<{ rows: NotificationView[]; unread: number }> {
   as(userId);
-  const res = await getFeed();
+  const res = await getFeed(new NextRequest('http://localhost/api/notifications'));
   expect(res.status).toBe(200);
   const json = await res.json();
   return { rows: json.data, unread: json.unreadCount };
@@ -305,5 +305,19 @@ describe('answering an invite updates its notification', () => {
       href: null,
       read: false,
     });
+  });
+});
+
+// Activity shows who did it by the account each row recorded, never by the
+// username it reads with, which can change hands.
+describe('who an invite’s notifications are from', () => {
+  it('records the inviter on the invite, and the invitee on its acceptance', async () => {
+    const id = await invite(anna);
+    const [invited] = await Notification.find({ user: anna, type: 'wishlist_invite' }).lean();
+    expect(invited.actor?.toString()).toBe(ben);
+
+    expect((await answer(id, 'accept')).status).toBe(200);
+    const [accepted] = await Notification.find({ user: ben, type: 'invite_accepted' }).lean();
+    expect(accepted.actor?.toString()).toBe(anna);
   });
 });

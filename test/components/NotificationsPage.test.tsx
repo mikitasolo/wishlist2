@@ -1,13 +1,18 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup, within, waitFor } from '@testing-library/react';
+import { render, screen, cleanup, within, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { NotificationView } from '@/lib/utils/notifications';
 
-const { push, showToast } = vi.hoisted(() => ({ push: vi.fn(), showToast: vi.fn() }));
+const { push, showToast, signedIn } = vi.hoisted(() => ({
+  push: vi.fn(),
+  showToast: vi.fn(),
+  // Mutable, so a test can sign another account in while the page is open.
+  signedIn: { id: 'u1', username: 'me' },
+}));
 
 vi.mock('next-auth/react', () => ({
-  useSession: () => ({ data: { user: { id: 'u1', username: 'me' } }, status: 'authenticated' }),
+  useSession: () => ({ data: { user: { ...signedIn } }, status: 'authenticated' }),
 }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push }) }));
 // The header has its own fetches and tests; this file is about the feed rows.
@@ -54,7 +59,7 @@ function serve(
   }
 ) {
   const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
-    if (url === '/api/notifications' && !init?.method) {
+    if (url === '/api/notifications?actors=1' && !init?.method) {
       return json({ success: true, data, unreadCount: 0 });
     }
     if (url === '/api/users/me/invites') return json({ success: true, data: [] });
@@ -67,6 +72,8 @@ function serve(
 beforeEach(() => {
   push.mockReset();
   showToast.mockReset();
+  signedIn.id = 'u1';
+  signedIn.username = 'me';
 });
 afterEach(() => {
   cleanup();
@@ -284,6 +291,26 @@ describe('Activity — follow rows', () => {
     render(<ActivityPage />);
     await line('@gus followed you');
     expect(screen.queryByRole('button', { name: 'Follow back' })).toBeNull();
+  });
+
+  it('a Follow back the previous account started changes nothing once another signs in', async () => {
+    let answer: (v: unknown) => void = () => {};
+    serve(
+      [row({ type: 'follow', actorUsername: 'gus', actorId: 'u-gus', followingActor: false })],
+      () => new Promise((resolve) => (answer = resolve))
+    );
+    const view = render(<ActivityPage />);
+    await userEvent.setup().click(await screen.findByRole('button', { name: 'Follow back' }));
+
+    // Another account, with its own follow from the same person, not yet followed.
+    signedIn.id = 'u2';
+    signedIn.username = 'other';
+    view.rerender(<ActivityPage />);
+    expect(await screen.findByRole('button', { name: 'Follow back' })).toBeInTheDocument();
+
+    await act(async () => answer(json({ success: true })));
+    expect(showToast).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Follow back' })).toBeInTheDocument();
   });
 
   it('offers no Follow back on a follow from several people', async () => {

@@ -270,6 +270,7 @@ export async function PATCH(
         createNotifications(recipients, {
           type: 'invite_accepted',
           actorUsername: session.user.username ?? null,
+          actor: userId,
           wishlist: invite.wishlist,
           wishlistName: wishlist.name,
           wishlistSlug: wishlist.slug ?? null,

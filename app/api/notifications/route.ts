@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, type NextRequest } from 'next/server';
 import { auth } from '@/lib/auth';
 import connectDB from '@/lib/mongodb';
 import type { FilterQuery } from 'mongoose';
@@ -25,54 +25,61 @@ async function visibleNotifications(userId: string): Promise<FilterQuery<INotifi
   };
 }
 
-type FeedRow = Pick<INotification, 'type' | 'actorUsername' | 'count'>;
+type FeedRow = Pick<INotification, 'type' | 'actor' | 'count'>;
 
 interface Actor {
   id: string;
   image: string | null;
 }
 
+/** The account a row shows as its actor, if it may show one and recorded who. */
+const actorOf = (n: FeedRow) => (showsActor(n.type) && n.actor ? n.actor.toString() : null);
+
 /**
- * The people the feed's rows name, as they are now, by username: for their
- * avatar, and for Follow back. Only the types that show an actor are looked up
+ * The people the feed's rows show, as they are now: for their avatar, and for
+ * Follow back. Looked up by the account each row recorded (`actor`), never by
+ * the username it reads with, which can change hands: a row from before rows
+ * recorded one shows no face. Only the types that show an actor are looked up
  * (`showsActor`), so a proposal, a demotion or a removal never comes back with
  * a face, whatever its row holds. Also which of the one-person follows the
  * recipient already follows back.
  */
 async function feedActors(userId: string, rows: FeedRow[]) {
-  const usernames = Array.from(
-    new Set(
-      rows
-        .filter((n) => showsActor(n.type) && n.actorUsername)
-        .map((n) => n.actorUsername as string)
-    )
-  );
+  const ids = Array.from(new Set(rows.map(actorOf).filter((id): id is string => !!id)));
   const actors = new Map<string, Actor>();
   const followed = new Set<string>();
-  if (usernames.length === 0) return { actors, followed };
+  if (ids.length === 0) return { actors, followed };
 
-  const users = await User.find({ username: { $in: usernames } })
-    .select('username image')
-    .lean();
+  const followers = Array.from(
+    new Set(
+      rows
+        .filter((n) => n.type === 'follow' && (n.count ?? 1) === 1)
+        .map(actorOf)
+        .filter((id): id is string => !!id)
+    )
+  );
+  const [users, edges] = await Promise.all([
+    User.find({ _id: { $in: ids } })
+      .select('image')
+      .lean(),
+    followers.length > 0
+      ? Follow.find({ follower: userId, following: { $in: followers } })
+          .select('following')
+          .lean()
+      : [],
+  ]);
   for (const u of users) {
-    if (u.username) actors.set(u.username, { id: u._id.toString(), image: u.image ?? null });
+    actors.set(u._id.toString(), { id: u._id.toString(), image: u.image ?? null });
   }
-
-  const followers = rows
-    .filter((n) => n.type === 'follow' && (n.count ?? 1) === 1 && n.actorUsername)
-    .map((n) => actors.get(n.actorUsername as string)?.id)
-    .filter((id): id is string => !!id);
-  if (followers.length > 0) {
-    const edges = await Follow.find({ follower: userId, following: { $in: followers } })
-      .select('following')
-      .lean();
-    for (const e of edges) followed.add(e.following.toString());
-  }
+  for (const e of edges) followed.add(e.following.toString());
   return { actors, followed };
 }
 
 // GET /api/notifications - the current user's latest notifications + unread count.
-export async function GET() {
+// `?actors=1` (Activity) also says who each row's actor is now (`feedActors`);
+// the header's bell, which reads this on every page and focus for its count,
+// leaves it off and skips those reads.
+export async function GET(request: NextRequest) {
   try {
     const session = await auth();
     if (!session?.user) {
@@ -86,11 +93,14 @@ export async function GET() {
       Notification.countDocuments({ ...visible, read: false }),
     ]);
 
-    const { actors, followed } = await feedActors(session.user.id, rows);
+    const withActors = request.nextUrl.searchParams.get('actors') === '1';
+    const { actors, followed } = withActors
+      ? await feedActors(session.user.id, rows)
+      : { actors: new Map<string, Actor>(), followed: new Set<string>() };
 
     const data = rows.map((n) => {
-      const actor =
-        showsActor(n.type) && n.actorUsername ? (actors.get(n.actorUsername) ?? null) : null;
+      const actorId = actorOf(n);
+      const actor = actorId ? (actors.get(actorId) ?? null) : null;
       const oneFollower = n.type === 'follow' && (n.count ?? 1) === 1;
       return {
         _id: n._id.toString(),

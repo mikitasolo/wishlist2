@@ -8,6 +8,7 @@ import {
   showsActor,
   isGroupFollow,
   followBackTarget,
+  withInviteAnswers,
   type NotificationView,
 } from '@/lib/utils/notifications';
 import { FOLLOWERS_PARAM, followersHref } from '@/lib/utils/profileLinks';
@@ -450,5 +451,43 @@ describe('follow rows', () => {
     expect(
       followBackTarget(make({ type: 'invite_accepted', actorId: 'u-gus', followingActor: false }))
     ).toBeNull();
+  });
+});
+
+describe('withInviteAnswers', () => {
+  const pending = (overrides: Partial<NotificationView> = {}) =>
+    make({
+      type: 'wishlist_invite',
+      actorUsername: 'ben',
+      wishlistId: 'w1',
+      wishlistName: 'Garden',
+      createdAt: '2026-05-02T00:00:00.000Z',
+      ...overrides,
+    });
+
+  it('turns the answered invite’s row into the answer, and marks it read', () => {
+    const [row] = withInviteAnswers([pending()], [{ wishlistId: 'w1', answer: 'accepted' }]);
+    expect(row).toMatchObject({ inviteAnswer: 'accepted', read: true });
+    expect(notificationText(row)).toBe('You joined Garden');
+  });
+
+  it('leaves other lists, other types and rows already answered as they are', () => {
+    const rows = [
+      pending({ _id: 'other', wishlistId: 'w2' }),
+      make({ _id: 'joined', type: 'invite_accepted', wishlistId: 'w1' }),
+      pending({ _id: 'declined', inviteAnswer: 'declined' }),
+    ];
+    expect(withInviteAnswers(rows, [{ wishlistId: 'w1', answer: 'accepted' }])).toEqual(rows);
+  });
+
+  // As recordInviteAnswer does: a row older than the invite was about an
+  // earlier one, which was answered or cancelled before this one was issued.
+  it('leaves a row older than the invite alone', () => {
+    const older = pending({ createdAt: '2026-05-01T00:00:00.000Z' });
+    const answers = [
+      { wishlistId: 'w1', answer: 'declined' as const, since: '2026-05-01T12:00:00.000Z' },
+    ];
+    expect(withInviteAnswers([older], answers)).toEqual([older]);
+    expect(withInviteAnswers([pending()], answers)[0].inviteAnswer).toBe('declined');
   });
 });

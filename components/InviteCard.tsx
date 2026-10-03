@@ -1,5 +1,6 @@
 import Avatar from '@/components/Avatar';
 import Button from '@/components/Button';
+import { Skeleton } from '@/components/Skeleton';
 import { TONE_CLASSES } from '@/lib/utils/statusTones';
 
 /** A pending invitation, as `GET /api/users/me/invites` answers. */
@@ -11,6 +12,8 @@ export interface PendingInvite {
   wishlistSlug: string | null;
   invitedByUsername: string | null;
   invitedByImage: string | null;
+  /** When it was issued: its notification is no older (`withInviteAnswers`). */
+  createdAt?: string;
 }
 
 interface InviteCardProps {
@@ -65,6 +68,25 @@ export default function InviteCard({
         <Button size="sm" onClick={onAccept} disabled={busy}>
           Accept
         </Button>
+      </div>
+    </div>
+  );
+}
+
+/** An invite card's shape while the invitations load: avatar, two lines, two buttons. */
+export function InviteCardSkeleton() {
+  return (
+    <div className={CARD}>
+      <div className="flex min-w-0 flex-1 items-center gap-3">
+        <Skeleton className="h-10 w-10 flex-shrink-0 rounded-full" />
+        <div className="flex-1 space-y-2">
+          <Skeleton className="h-4 w-40 max-w-full" />
+          <Skeleton className="h-3.5 w-32 max-w-full" />
+        </div>
+      </div>
+      <div className="flex flex-shrink-0 items-center gap-3">
+        <Skeleton className="h-9 w-20 rounded-xl" />
+        <Skeleton className="h-9 w-20 rounded-xl" />
       </div>
     </div>
   );

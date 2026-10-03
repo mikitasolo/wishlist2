@@ -62,7 +62,12 @@ const anniversary: Invite = {
  * The page's notifications feed, which every test serves as is (empty unless a
  * test fills it in). These tests are about the invitations pinned above it.
  */
-const feed: { rows: NotificationView[] } = { rows: [] };
+const feed: {
+  rows: NotificationView[];
+  /** Set, every feed read is held here until the test answers it (with the rows as they are then). */
+  held: (() => void)[] | null;
+  reads: number;
+} = { rows: [], held: null, reads: 0 };
 
 /** A JSON answer, a non-JSON one (`html`), or a network failure. */
 type Reply = { status: number; body: unknown } | { status: number; html: true } | Error;
@@ -96,8 +101,16 @@ function stubFetch(patch: (url: string) => Promise<Reply>, list?: () => Promise<
       }
       return toResponse(reply);
     }
-    if (url === '/api/notifications' && !init?.method) {
-      return toResponse({ status: 200, body: { success: true, data: feed.rows, unreadCount: 0 } });
+    if (url === '/api/notifications?actors=1' && !init?.method) {
+      feed.reads += 1;
+      // Read as the rows are when it's sent.
+      const reply = toResponse({
+        status: 200,
+        body: { success: true, data: feed.rows, unreadCount: 0 },
+      });
+      const held = feed.held;
+      if (held) await new Promise<void>((resolve) => held.push(resolve));
+      return reply;
     }
     if (url === '/api/users/me/invites') {
       return toResponse(
@@ -200,6 +213,8 @@ beforeEach(() => {
   invitesChanged.mockReset();
   signedIn.userId = 'me';
   feed.rows = [];
+  feed.held = null;
+  feed.reads = 0;
   window.addEventListener('invites-changed', invitesChanged);
 });
 afterEach(() => {
@@ -999,6 +1014,80 @@ describe('Activity, pinned invites — on the page', () => {
     await list(1, listed([]));
     expect(await screen.findByText(/@zoe invited you to/)).toBeInTheDocument();
     expect(screen.queryByText(/@alice invited you to/)).toBeNull();
+  });
+
+  // A feed read sent before an answer landed still lists the invite as pending:
+  // landing after it, it would bring the row back with no card above it.
+  it('regression: a feed read from before an answer does not undo it', async () => {
+    feed.rows = [inviteRow('w1', 'Birthday', 'alice')];
+    stubFetch(async () => {
+      // The server records the answer on the row as it takes it.
+      feed.rows = [
+        { ...inviteRow('w1', 'Birthday', 'alice'), inviteAnswer: 'declined', read: true },
+      ];
+      return declined;
+    });
+    render(<ActivityPage />);
+    await screen.findByRole('region', { name: 'Invitations' });
+
+    feed.held = [];
+    act(() => {
+      window.dispatchEvent(new Event('focus'));
+    });
+    const card = within(within(pinned()).getByText('Birthday').closest('li')!);
+    await act(async () => {
+      fireEvent.click(card.getByRole('button', { name: 'Decline' }));
+    });
+    await waitFor(() => expect(feedRow(/^You declined/)).toBeInTheDocument());
+    // The focus read, then the one the answer's invites-changed sent.
+    expect(feed.held).toHaveLength(2);
+
+    await act(async () => feed.held![0]());
+    expect(feedRow(/^You declined/)).toBeInTheDocument();
+    expect(screen.queryByText(/@alice invited you to/)).toBeNull();
+    await act(async () => feed.held![1]());
+    expect(feedRow(/^You declined/)).toBeInTheDocument();
+  });
+
+  it('reads the feed again when an invite turns out to be gone, so its row can catch up', async () => {
+    feed.rows = [inviteRow('w1', 'Birthday', 'alice')];
+    mockFetch(gone);
+    render(<ActivityPage />);
+    await screen.findByRole('region', { name: 'Invitations' });
+    const before = feed.reads;
+
+    const card = within(within(pinned()).getByText('Birthday').closest('li')!);
+    await act(async () => {
+      fireEvent.click(card.getByRole('button', { name: 'Accept' }));
+    });
+    await waitFor(() => expect(feed.reads).toBeGreaterThan(before));
+  });
+
+  it('Try again on the invitations alone keeps the feed up', async () => {
+    feed.rows = [inviteRow('w9', 'Graduation', 'zoe')];
+    const lists: ((reply: Reply) => void)[] = [];
+    stubFetch(
+      async () => declined,
+      () => new Promise<Reply>((resolve) => lists.push(resolve))
+    );
+    render(<ActivityPage />);
+    await act(async () =>
+      lists[0]({ status: 500, body: { success: false, error: 'Failed to load invites' } })
+    );
+    expect(
+      await screen.findByRole('heading', { name: 'Couldn’t load your invitations' })
+    ).toBeVisible();
+    expect(screen.getByText(/@zoe invited you to/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    // The feed stays, with an invitation's shape where the cards will go.
+    expect(screen.getByText(/@zoe invited you to/)).toBeInTheDocument();
+    expect(document.querySelector('.skeleton')).not.toBeNull();
+    expect(screen.queryByText('You’re all caught up')).toBeNull();
+
+    await act(async () => lists[1](listed(invites)));
+    expect(within(pinned()).getByText('Birthday')).toBeInTheDocument();
+    expect(screen.getByText(/@zoe invited you to/)).toBeInTheDocument();
   });
 
   it('shows the invites with no empty state when the feed is empty', async () => {

@@ -26,8 +26,8 @@ interface PendingInvitesOptions {
 /**
  * The signed-in account's pending invitations (`GET /api/users/me/invites`, the
  * source of truth: an invite's notification is best-effort), and answering
- * them. Activity pins them above its feed with `InviteCard`; any other surface
- * that offers them (the dashboard's "Needs you") uses this hook the same way.
+ * them. Activity pins them above its feed with `InviteCard`; a new surface that
+ * offers them (the dashboard's "Needs you", WIS-252) uses this hook the same way.
  *
  * Kept fresh without polling: read on sign-in and whenever another account
  * signs in, then again on every focus and `invites-changed` event. A read sent

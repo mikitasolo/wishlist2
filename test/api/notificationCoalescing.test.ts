@@ -71,7 +71,7 @@ async function propose(member: string, wishlistId: string, name: string) {
 
 async function feedOf(userId: string): Promise<NotificationView[]> {
   as(userId);
-  const res = await getFeed();
+  const res = await getFeed(new NextRequest('http://localhost/api/notifications'));
   expect(res.status).toBe(200);
   return (await res.json()).data;
 }

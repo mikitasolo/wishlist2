@@ -12,6 +12,7 @@ import mongoose from 'mongoose';
 import User from '@/models/User';
 import Follow from '@/models/Follow';
 import Notification from '@/models/Notification';
+import { createNotification } from '@/lib/notifications';
 
 const session = vi.mocked(auth);
 // The route only reads session.user.{id,username}; cast to satisfy the mock.
@@ -36,7 +37,7 @@ beforeEach(async () => {
 describe('GET /api/notifications', () => {
   it('401s without a session', async () => {
     session.mockResolvedValue(null as never);
-    const res = await GET();
+    const res = await GET(new NextRequest('http://localhost/api/notifications'));
     expect(res.status).toBe(401);
   });
 
@@ -68,7 +69,7 @@ describe('GET /api/notifications', () => {
     await Notification.create({ user: bob, type: 'follow', actorUsername: 'alice' });
 
     asSession({ id: alice, username: 'alice' });
-    const res = await GET();
+    const res = await GET(new NextRequest('http://localhost/api/notifications'));
     const json = await res.json();
 
     expect(res.status).toBe(200);
@@ -80,23 +81,31 @@ describe('GET /api/notifications', () => {
 });
 
 describe('GET /api/notifications — who did it', () => {
-  const feedOf = async (userId: string) => {
-    asSession({ id: userId });
-    return (await (await GET()).json()).data as Record<string, unknown>[];
+  const feedOf = async (userId: string, query = '?actors=1') => {
+    asSession({ id: userId, username: 'alice' });
+    const res = await GET(new NextRequest(`http://localhost/api/notifications${query}`));
+    return (await res.json()).data as Record<string, unknown>[];
   };
-  const byType = (rows: Record<string, unknown>[], type: string) =>
-    rows.find((r) => r.type === type)!;
+  const followAs = async (follower: { id: string; username: string }, target: string) => {
+    asSession(follower);
+    await followUser(new NextRequest('http://localhost/api/users/x/follow', { method: 'POST' }), {
+      params: Promise.resolve({ id: target }),
+    });
+  };
+  const newUser = async (username: string) =>
+    (await User.create({ email: `${username}-new@x.com`, username }))._id.toString();
 
   it('gives a follow its follower as they are now, and whether you follow them back', async () => {
     await User.updateOne({ _id: bob }, { $set: { image: 'https://blob.example/bob.jpg' } });
-    const cara = (await User.create({ email: 'cara@x.com', username: 'cara' }))._id.toString();
-    await Notification.create({ user: alice, type: 'follow', actorUsername: 'bob' });
-    await Notification.create({ user: alice, type: 'follow', actorUsername: 'cara' });
+    const cara = await newUser('cara');
+    await followAs({ id: bob, username: 'bob' }, alice);
+    // A day apart, so the two aren't folded into one row.
+    await Notification.updateMany({}, { $set: { read: true } });
+    await followAs({ id: cara, username: 'cara' }, alice);
     await Follow.create({ follower: alice, following: cara });
 
     const rows = await feedOf(alice);
-    const fromBob = rows.find((r) => r.actorUsername === 'bob')!;
-    expect(fromBob).toMatchObject({
+    expect(rows.find((r) => r.actorUsername === 'bob')).toMatchObject({
       actorId: bob,
       actorImage: 'https://blob.example/bob.jpg',
       followingActor: false,
@@ -108,29 +117,43 @@ describe('GET /api/notifications — who did it', () => {
     });
   });
 
-  it('says nothing of following on a follow by several people, or on any other type', async () => {
-    await Notification.create({
-      user: alice,
-      type: 'follow',
-      actorUsername: 'bob',
-      actorUsernames: ['cara', 'bob'],
-      count: 2,
-    });
-    await Notification.create({
+  it('shows the latest follower of a coalesced row, with no Follow back', async () => {
+    const cara = await newUser('cara');
+    await followAs({ id: cara, username: 'cara' }, alice);
+    await followAs({ id: bob, username: 'bob' }, alice);
+
+    const [row] = await feedOf(alice);
+    expect(row).toMatchObject({ count: 2, actorUsername: 'bob', actorId: bob });
+    expect(row.followingActor).toBeNull();
+  });
+
+  it('gives an accepted invite its invitee, with nothing about following', async () => {
+    await createNotification({
       user: alice,
       type: 'invite_accepted',
       actorUsername: 'bob',
+      actor: bob,
       wishlistName: 'Kitchen',
     });
-
-    const rows = await feedOf(alice);
-    // The avatar is still the latest follower's.
-    expect(byType(rows, 'follow')).toMatchObject({ actorId: bob, followingActor: null });
-    expect(byType(rows, 'invite_accepted')).toMatchObject({ actorId: bob, followingActor: null });
+    expect((await feedOf(alice))[0]).toMatchObject({ actorId: bob, followingActor: null });
   });
 
-  it('leaves the actor out when no account has that username any more', async () => {
-    await Notification.create({ user: alice, type: 'follow', actorUsername: 'renamed' });
+  // regression: the actor was looked up by the username the row was written
+  // with. Usernames change hands, so a row could show a stranger's face, and its
+  // Follow back followed the stranger.
+  it('regression: keeps to the account that did it once its username changes hands', async () => {
+    await followAs({ id: bob, username: 'bob' }, alice);
+    await User.updateOne({ _id: bob }, { $set: { username: 'bobby' } });
+    const stranger = await newUser('bob');
+    await User.updateOne({ _id: stranger }, { $set: { image: 'https://blob.example/x.jpg' } });
+
+    const [row] = await feedOf(alice);
+    expect(row).toMatchObject({ actorUsername: 'bob', actorId: bob, actorImage: null });
+    expect(row.actorId).not.toBe(stranger);
+  });
+
+  it('shows no one on a row from before rows recorded the account', async () => {
+    await Notification.create({ user: alice, type: 'follow', actorUsername: 'bob' });
     expect((await feedOf(alice))[0]).toMatchObject({
       actorId: null,
       actorImage: null,
@@ -138,25 +161,47 @@ describe('GET /api/notifications — who did it', () => {
     });
   });
 
+  it('leaves the actor out when that account is gone', async () => {
+    await followAs({ id: bob, username: 'bob' }, alice);
+    await User.deleteOne({ _id: bob });
+    expect((await feedOf(alice))[0]).toMatchObject({ actorId: null, followingActor: null });
+  });
+
+  // The bell reads this on every page and focus for its count alone.
+  it('looks no one up unless asked to', async () => {
+    await followAs({ id: bob, username: 'bob' }, alice);
+    const find = vi.spyOn(User, 'find');
+    const [row] = await feedOf(alice, '');
+    expect(row).toMatchObject({ actorId: null, actorImage: null, followingActor: null });
+    expect(find).not.toHaveBeenCalled();
+    find.mockRestore();
+  });
+
   // Proposals are anonymous to the owners, and a demotion or a removal never
   // says which owner made it: whatever a row holds, none comes back with a face.
   it('never looks up anyone on a proposal, a demotion or a removal', async () => {
     await User.updateOne({ _id: bob }, { $set: { image: 'https://blob.example/bob.jpg' } });
     for (const type of ['proposal', 'role_changed', 'removed_from_wishlist'] as const) {
-      // Written straight to the collection, past createNotification's stripping,
-      // as a row from before it would be.
+      // createNotification never records an actor on these: written straight to
+      // the collection, past it, to show the read doesn't trust the row.
       await Notification.collection.insertOne({
         user: new mongoose.Types.ObjectId(alice),
         type,
         actorUsername: 'bob',
+        actor: new mongoose.Types.ObjectId(bob),
         wishlistName: 'Kitchen',
         read: false,
         createdAt: new Date(),
       });
     }
+    // And createNotification drops one handed to it.
+    await createNotification({ user: alice, type: 'role_changed', actor: bob, wishlistName: 'K' });
+    expect(await Notification.countDocuments({ type: 'role_changed' })).toBe(2);
+    expect(
+      await Notification.countDocuments({ type: 'role_changed', actor: { $exists: true } })
+    ).toBe(1);
 
     const rows = await feedOf(alice);
-    expect(rows).toHaveLength(3);
     for (const row of rows) {
       expect(row).toMatchObject({ actorId: null, actorImage: null, followingActor: null });
     }

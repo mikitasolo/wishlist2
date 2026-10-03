@@ -1,6 +1,14 @@
 'use client';
 
-import { useCallback, useEffect, useId, useLayoutEffect, useState, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
@@ -11,7 +19,7 @@ import Button from '@/components/Button';
 import EmptyState from '@/components/EmptyState';
 import FollowListModal from '@/components/FollowListModal';
 import Icon from '@/components/Icon';
-import InviteCard, { type PendingInvite } from '@/components/InviteCard';
+import InviteCard, { InviteCardSkeleton, type PendingInvite } from '@/components/InviteCard';
 import LoadError from '@/components/LoadError';
 import { Skeleton } from '@/components/Skeleton';
 import { useToast } from '@/components/ToastProvider';
@@ -22,12 +30,14 @@ import { RequestTimeoutError, withRequestTimeout } from '@/lib/utils/requestTime
 import {
   type InviteAnswer,
   type NotificationView,
+  type RecordedInviteAnswer,
   followBackTarget,
   isGroupFollow,
   notificationIcon,
   notificationLink,
   notificationParts,
   showsActor,
+  withInviteAnswers,
 } from '@/lib/utils/notifications';
 
 /** A notification's line, with any list's name in semibold. */
@@ -91,24 +101,36 @@ export default function ActivityPage() {
   const invitesHeadingId = useId();
   const [items, setItems] = useState<NotificationView[]>([]);
   const [feedLoading, setFeedLoading] = useState(true);
-  // The feed couldn't be read: said in place, with Try again (`attempt`),
-  // never as "You're all caught up".
+  // The feed couldn't be read: said in place, with Try again, never as
+  // "You're all caught up".
   const [feedFailed, setFeedFailed] = useState(false);
-  const [attempt, setAttempt] = useState(0);
   const [followersOpen, setFollowersOpen] = useState(false);
   // Follow backs in flight, per person.
   const { busy: followBusy, run: runFollow } = useBusyIds();
+  // The account the feed is for: a read or a follow back started for another
+  // (one that signed out from another tab) changes nothing here.
+  const account = useRef(viewerId);
+  // Feed reads are numbered as they're sent. One that lands at or below
+  // `feedLanded` is dropped: a later one has already landed, or it was sent for
+  // the previous account.
+  const feedSent = useRef(0);
+  const feedLanded = useRef(0);
+  // The invites answered on this page, each with the last feed read sent before
+  // it landed. Such a read can still be on its way, and would bring the row back
+  // as a pending invite, so the answer is put on it again when it lands.
+  const answers = useRef<(RecordedInviteAnswer & { readsBefore: number })[]>([]);
 
   // An answered invite's row reads as the answer, as the server now has it
-  // (`recordInviteAnswer`), without reading the feed again.
+  // (`recordInviteAnswer`), without waiting for the feed to be read again.
   const onAnswered = useCallback((invite: PendingInvite, answer: InviteAnswer) => {
-    setItems((prev) =>
-      prev.map((n) =>
-        n.type === 'wishlist_invite' && n.wishlistId === invite.wishlistId && !n.inviteAnswer
-          ? { ...n, inviteAnswer: answer, read: true }
-          : n
-      )
-    );
+    const recorded = {
+      wishlistId: invite.wishlistId,
+      answer,
+      since: invite.createdAt ?? null,
+      readsBefore: feedSent.current,
+    };
+    answers.current = [...answers.current, recorded];
+    setItems((prev) => withInviteAnswers(prev, [recorded]));
   }, []);
   // Pinned above the feed, from the invites read: an invite's notification is
   // best-effort, so the invites themselves are the source of truth.
@@ -120,71 +142,105 @@ export default function ActivityPage() {
     busy: answerBusy,
     respond,
   } = usePendingInvites({ onAnswered });
+  // Try again on the invitations alone: the feed stays up meanwhile.
+  const [retryingInvites, setRetryingInvites] = useState(false);
+  useEffect(() => {
+    if (!invitesLoading) setRetryingInvites(false);
+  }, [invitesLoading]);
 
   useEffect(() => {
     if (status === 'unauthenticated') router.replace(signInPath('/notifications'));
   }, [status, router]);
 
   // Another account signed in (from another tab): the previous account's rows
-  // go before the browser paints, and the feed loads afresh for this one.
+  // go before the browser paints, nothing still on its way for it lands, and
+  // the feed loads afresh for this one.
   useLayoutEffect(() => {
+    account.current = viewerId;
+    feedLanded.current = feedSent.current;
+    answers.current = [];
     setItems((prev) => (prev.length ? [] : prev));
     setFeedLoading(true);
     setFeedFailed(false);
     setFollowersOpen(false);
   }, [viewerId]);
 
-  useEffect(() => {
-    // A read outdated by another (Try again, another account) is dropped.
-    let current = true;
-    async function load() {
-      let feed: { data: NotificationView[]; unreadCount?: number };
-      try {
-        const res = await fetch('/api/notifications', { cache: 'no-store' });
-        const json = await res.json();
-        if (!json.success) throw new Error(json.error || 'Failed to load notifications');
-        feed = json;
-      } catch {
-        if (current) {
-          setFeedFailed(true);
-          setFeedLoading(false);
-        }
-        return;
-      }
-      if (!current) return;
-      setItems(feed.data);
-      setFeedFailed(false);
+  // The first read of an account shows the skeleton, and says so in its place
+  // if it fails. A refetch (`quiet`) updates the rows in place, and a failed one
+  // keeps them.
+  const loadFeed = useCallback(async (quiet: boolean) => {
+    const sent = ++feedSent.current;
+    const forAccount = account.current;
+    let feed: { data: NotificationView[]; unreadCount?: number };
+    try {
+      const res = await fetch('/api/notifications?actors=1', { cache: 'no-store' });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error || 'Failed to load notifications');
+      feed = json;
+    } catch {
+      if (quiet || sent <= feedLanded.current || account.current !== forAccount) return;
+      setFeedFailed(true);
       setFeedLoading(false);
-      // Visiting the page clears the unread badge. If that fails, the badge
-      // stays, and the next visit clears it: the feed itself is on screen.
-      if ((feed.unreadCount ?? 0) > 0) {
-        try {
-          await fetch('/api/notifications', { method: 'PATCH' });
-          window.dispatchEvent(new Event('notifications-changed'));
-        } catch {
-          /* see above */
-        }
+      return;
+    }
+    if (sent <= feedLanded.current || account.current !== forAccount) return;
+    feedLanded.current = sent;
+    setItems(
+      withInviteAnswers(
+        feed.data,
+        answers.current.filter((a) => sent <= a.readsBefore)
+      )
+    );
+    setFeedFailed(false);
+    setFeedLoading(false);
+    // Visiting the page clears the unread badge. If that fails, the badge
+    // stays, and the next visit clears it: the feed itself is on screen.
+    if ((feed.unreadCount ?? 0) > 0) {
+      try {
+        await fetch('/api/notifications', { method: 'PATCH' });
+        window.dispatchEvent(new Event('notifications-changed'));
+      } catch {
+        /* see above */
       }
     }
-    if (status === 'authenticated') load();
+  }, []);
+
+  // Load, then read again whenever the tab regains focus or invites change (an
+  // answer here or in another tab, a card gone), as the invitations above do,
+  // so a row and its card agree.
+  useEffect(() => {
+    if (status !== 'authenticated') return;
+    const refresh = () => loadFeed(true);
+    loadFeed(false);
+    window.addEventListener('focus', refresh);
+    window.addEventListener('invites-changed', refresh);
     return () => {
-      current = false;
+      window.removeEventListener('focus', refresh);
+      window.removeEventListener('invites-changed', refresh);
     };
-  }, [status, viewerId, attempt]);
+  }, [status, viewerId, loadFeed]);
 
   const retryFeed = useCallback(() => {
     setFeedFailed(false);
     setFeedLoading(true);
-    setAttempt((n) => n + 1);
-  }, []);
+    loadFeed(false);
+  }, [loadFeed]);
+
+  const retryInvitesInPlace = useCallback(() => {
+    setRetryingInvites(true);
+    retryInvites();
+  }, [retryInvites]);
 
   function followBack(n: NotificationView, actorId: string) {
+    const forAccount = account.current;
     return runFollow(actorId, async () => {
       try {
         const result = await withRequestTimeout(async (signal) => {
           const res = await fetch(`/api/users/${actorId}/follow`, { method: 'POST', signal });
           return res.json();
         });
+        // Another account signed in meanwhile: this was the previous one's.
+        if (account.current !== forAccount) return;
         if (!result.success) {
           showToast(result.error || 'Something went wrong', 'error');
           return;
@@ -195,6 +251,7 @@ export default function ActivityPage() {
         );
         showToast(`You’re now following @${n.actorUsername}`, 'success');
       } catch (err) {
+        if (account.current !== forAccount) return;
         showToast(
           err instanceof RequestTimeoutError ? err.message : 'Something went wrong',
           'error'
@@ -275,7 +332,9 @@ export default function ActivityPage() {
     );
   }
 
-  const loading = feedLoading || invitesLoading;
+  // The skeleton until both first reads have settled; Try again on the
+  // invitations alone keeps the feed up, with their card's shape in their place.
+  const loading = feedLoading || (invitesLoading && !retryingInvites);
 
   return (
     <div className="min-h-screen">
@@ -303,8 +362,12 @@ export default function ActivityPage() {
           </div>
         ) : (
           <div className="mt-8 space-y-8">
-            {invitesFailed && (
-              <LoadError title="Couldn’t load your invitations" onRetry={retryInvites} />
+            {invitesLoading ? (
+              <InviteCardSkeleton />
+            ) : (
+              invitesFailed && (
+                <LoadError title="Couldn’t load your invitations" onRetry={retryInvitesInPlace} />
+              )
             )}
             {invites.length > 0 && (
               <section aria-labelledby={invitesHeadingId}>
@@ -332,6 +395,7 @@ export default function ActivityPage() {
             ) : (
               // Caught up only once both reads have said so.
               invites.length === 0 &&
+              !invitesLoading &&
               !invitesFailed && (
                 <EmptyState
                   icon="bell"

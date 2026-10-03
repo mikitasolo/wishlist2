@@ -121,7 +121,9 @@ async function invite(username: string, role: 'member' | 'owner') {
 
 async function feed(userId: string) {
   as(userId);
-  const json = await (await getNotifications()).json();
+  const json = await (
+    await getNotifications(new NextRequest('http://localhost/api/notifications'))
+  ).json();
   return {
     types: json.data.map((n: { type: string }) => n.type) as string[],
     unreadCount: json.unreadCount as number,
