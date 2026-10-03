@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, act, cleanup } from '@testing-library/react';
+import { render, screen, act, cleanup, fireEvent } from '@testing-library/react';
 
 type User = { id: string; email: string; username: string };
 
@@ -32,7 +32,9 @@ vi.mock('next/link', () => ({
   ),
 }));
 
+import { signOut } from 'next-auth/react';
 import AuthButton from '@/components/AuthButton';
+import { AUTH_ONLY_PATHS } from '@/lib/utils/callbackUrl';
 
 const me: User = { id: 'me', email: 'me@example.com', username: 'mikita' };
 const someoneElse: User = { id: 'someone-else', email: 'else@example.com', username: 'someone' };
@@ -257,4 +259,33 @@ describe('AuthButton — the account changing', () => {
     await answer(1, 0);
     expect(dot()).toBeNull();
   });
+});
+
+describe('AuthButton — signing out', () => {
+  afterEach(() => window.history.replaceState(null, '', '/'));
+
+  async function signOutFrom(url: string) {
+    window.history.replaceState(null, '', url);
+    mockInvites(0);
+    render(<AuthButton />);
+    fireEvent.click(screen.getByRole('button', { name: /^account menu$/i }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Sign out' }));
+  }
+
+  // A page that needs an account sends a signed-out visitor to sign in, so
+  // reloading it once signed out would land on the sign-in form.
+  it.each([...AUTH_ONLY_PATHS])('goes home from %s, a page that needs an account', async (path) => {
+    await signOutFrom(`${path}?x=1#top`);
+    expect(signOut).toHaveBeenCalledTimes(1);
+    expect(signOut).toHaveBeenCalledWith({ redirectTo: '/' });
+  });
+
+  it.each(['/', '/wishlists/abc123', '/users/alice', '/wishlists/mine-too', '/items/x'])(
+    'stays on %s, a page anyone can open',
+    async (path) => {
+      await signOutFrom(`${path}?tab=items`);
+      expect(signOut).toHaveBeenCalledTimes(1);
+      expect(signOut).toHaveBeenCalledWith(undefined);
+    }
+  );
 });

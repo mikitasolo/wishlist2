@@ -1,7 +1,7 @@
 import { test, expect } from './fixtures';
 
 // Signed-in smoke tests (session cookie from global-setup). If the seeded
-// session weren't accepted, the auth-gated pages would redirect home and these
+// session weren't accepted, the auth-gated pages would redirect to sign-in and these
 // would fail — so they double as a check that the session injection works.
 
 test('notifications page loads for a signed-in user (no redirect)', async ({ page }) => {

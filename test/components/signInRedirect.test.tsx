@@ -17,6 +17,20 @@ import InvitesPage from '@/app/invites/page';
 import BookedPage from '@/app/booked/page';
 import SettingsPage from '@/app/settings/page';
 import ItemsPage from '@/app/items/page';
+import NotificationsPage from '@/app/notifications/page';
+import MyWishlistsPage from '@/app/wishlists/mine/page';
+import SharedWishlistsPage from '@/app/wishlists/shared/page';
+import { AUTH_ONLY_PATHS } from '@/lib/utils/callbackUrl';
+
+const PAGES = [
+  ['/invites', InvitesPage],
+  ['/booked', BookedPage],
+  ['/settings', SettingsPage],
+  ['/items', ItemsPage],
+  ['/notifications', NotificationsPage],
+  ['/wishlists/mine', MyWishlistsPage],
+  ['/wishlists/shared', SharedWishlistsPage],
+] as const;
 
 const fetchMock = vi.fn<typeof fetch>();
 
@@ -35,20 +49,23 @@ afterEach(() => {
 // going was lost: someone following a link to their invitations had to find
 // their way back after signing in.
 describe('a page that needs a session, opened signed out', () => {
-  it.each([
-    ['/invites', InvitesPage],
-    ['/booked', BookedPage],
-    ['/settings', SettingsPage],
-    ['/items', ItemsPage],
-  ])('regression: %s sends the visitor to sign in, continuing back to it', async (path, Page) => {
-    render(<Page />);
-
-    await waitFor(() =>
-      expect(replace).toHaveBeenCalledWith(`/auth/signin?callbackUrl=${encodeURIComponent(path)}`)
-    );
-    expect(replace).toHaveBeenCalledTimes(1);
-    // Replaced, not pushed: Back mustn't land on the page that redirects again.
-    expect(push).not.toHaveBeenCalled();
-    expect(fetchMock).not.toHaveBeenCalled();
+  // Signing out on one of them goes home (AuthButton) only if it's on the list.
+  it('covers exactly the pages on the auth-only list', () => {
+    expect(PAGES.map(([path]) => path).sort()).toEqual([...AUTH_ONLY_PATHS].sort());
   });
+
+  it.each(PAGES)(
+    'regression: %s sends the visitor to sign in, continuing back to it',
+    async (path, Page) => {
+      render(<Page />);
+
+      await waitFor(() =>
+        expect(replace).toHaveBeenCalledWith(`/auth/signin?callbackUrl=${encodeURIComponent(path)}`)
+      );
+      expect(replace).toHaveBeenCalledTimes(1);
+      // Replaced, not pushed: Back mustn't land on the page that redirects again.
+      expect(push).not.toHaveBeenCalled();
+      expect(fetchMock).not.toHaveBeenCalled();
+    }
+  );
 });

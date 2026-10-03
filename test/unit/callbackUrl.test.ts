@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { safeCallbackPath, signInPath, SIGN_IN_PATH } from '@/lib/utils/callbackUrl';
+import {
+  AUTH_ONLY_PATHS,
+  isAuthOnlyPath,
+  safeCallbackPath,
+  signInPath,
+  SIGN_IN_PATH,
+} from '@/lib/utils/callbackUrl';
 
 const ORIGIN = 'https://wishlist.example';
 
@@ -70,17 +76,38 @@ describe('safeCallbackPath', () => {
 describe('signInPath', () => {
   it('sends to the sign-in page with the path as its encoded callbackUrl', () => {
     expect(signInPath('/invites')).toBe('/auth/signin?callbackUrl=%2Finvites');
-    expect(signInPath('/settings#currency')).toBe(
-      '/auth/signin?callbackUrl=%2Fsettings%23currency'
-    );
+    expect(signInPath('/wishlists/mine')).toBe('/auth/signin?callbackUrl=%2Fwishlists%2Fmine');
   });
 
-  it('round-trips: the sign-in page reads back the same path', () => {
-    for (const path of ['/booked', '/items?sort=price-asc&x=a b', '/settings#currency']) {
+  it('round-trips: the sign-in page reads back the same path, and continues to it', () => {
+    for (const path of AUTH_ONLY_PATHS) {
       const url = new URL(signInPath(path), ORIGIN);
       expect(url.pathname).toBe(SIGN_IN_PATH);
       expect([...url.searchParams.keys()]).toEqual(['callbackUrl']);
       expect(url.searchParams.get('callbackUrl')).toBe(path);
+      expect(safeCallbackPath(url.searchParams.get('callbackUrl'), ORIGIN, '/auth')).toBe(path);
+    }
+  });
+});
+
+describe('isAuthOnlyPath', () => {
+  it('matches each page that needs an account', () => {
+    for (const path of AUTH_ONLY_PATHS) expect(isAuthOnlyPath(path), path).toBe(true);
+  });
+
+  it('matches nothing else: not a public page, a longer path, or a prefix', () => {
+    for (const path of [
+      '/',
+      '/wishlists/abc123',
+      '/users/alice',
+      '/items/x',
+      '/wishlists/mine-too',
+      '/wishlists',
+      '/auth/signin',
+      '/welcome',
+      '',
+    ]) {
+      expect(isAuthOnlyPath(path), path).toBe(false);
     }
   });
 });
