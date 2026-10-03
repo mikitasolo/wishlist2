@@ -44,12 +44,27 @@ async function openOwners(page: Page) {
   await expect(page.getByRole('link', { name: `@${coOwner.username}` })).toBeVisible();
 }
 
+/** Make member on the co-owner's row, in Manage. Its dialog's confirm has the same name. */
+const rowMakeMember = (page: Page) =>
+  page.getByRole('main').getByRole('button', { name: 'Make member' });
+/** The dialog Make member asks in before anything is sent. */
+const demoteDialog = (page: Page) =>
+  page.getByRole('alertdialog', { name: `Make @${coOwner.username} a member?` });
+const DEMOTED = `@${coOwner.username} is now a member`;
+
+/** Open the co-owner's Make member dialog and confirm it. */
+async function demote(page: Page) {
+  await rowMakeMember(page).click();
+  await demoteDialog(page).getByRole('button', { name: 'Make member' }).click();
+}
+
 // regression: "Make member" had no confirmation and no in-flight guard, so a
 // double click sent two demotions before the refresh moved the row. The first
 // demoted the co-owner; the second found they were no longer an owner, and its
-// error toast followed the success. The second variant clicks twice in one
-// task, before React has rendered the button disabled, so only the handler's
-// own guard can turn it away.
+// error toast followed the success. It now asks first, so the clicks land on
+// its dialog's confirm. The second variant clicks twice in one task, before
+// React has rendered the button disabled, so only the handlers' own guards can
+// turn it away.
 for (const variant of [
   { name: 'a double click', click: (button: Locator) => button.dblclick() },
   {
@@ -86,20 +101,26 @@ for (const variant of [
     // In the header and on the signed-in user's own row, while there are two owners.
     const leave = page.getByRole('button', { name: 'Leave', exact: true });
     await expect(leave).toHaveCount(2);
-    const makeMember = page.getByRole('button', { name: 'Make member' });
-    await variant.click(makeMember);
+    const makeMember = rowMakeMember(page);
+    await makeMember.click();
+    const dialog = demoteDialog(page);
+    await expect(dialog).toContainText('Making them an owner again needs their acceptance.');
+    await variant.click(dialog.getByRole('button', { name: 'Make member' }));
 
-    // While the demotion runs, the row takes no more clicks. Soft, so the request
-    // count below is checked either way.
+    // While the demotion runs, the dialog says so, and neither it nor the row
+    // takes more clicks. Soft, so the request count below is checked either way.
     await expect.poll(() => requests).toBeGreaterThan(0);
+    await expect.soft(dialog.getByRole('button', { name: 'Making member...' })).toBeDisabled();
+    await expect.soft(dialog.getByRole('button', { name: 'Cancel' })).toBeDisabled();
     await expect.soft(makeMember).toBeDisabled();
     await expect.soft(page.getByRole('button', { name: 'Remove', exact: true })).toBeDisabled();
 
     answer();
-    await expect(toast(page, 'Owner is now a member')).toBeVisible();
+    await expect(toast(page, DEMOTED)).toBeVisible();
     expect(requests).toBe(1);
     // Counted the moment the success shows: toasts dismiss themselves after 4s.
     expect(await toast(page, SECOND_ANSWER).count()).toBe(0);
+    await expect(dialog).toBeHidden();
     // The refresh moved them to Members, where the row offers "Make owner".
     await expect(makeMember).toBeHidden();
     await expect(page.getByRole('button', { name: 'Make owner' })).toBeVisible();
@@ -131,17 +152,17 @@ test('a failed demotion gives the buttons back, so it can be retried', async ({
   });
 
   await openOwners(page);
-  const makeMember = page.getByRole('button', { name: 'Make member' });
-  await makeMember.click();
+  await demote(page);
 
   await expect(toast(page, 'Try again later')).toBeVisible();
-  await expect(makeMember).toBeEnabled();
+  await expect(demoteDialog(page)).toBeHidden();
+  await expect(rowMakeMember(page)).toBeEnabled();
   await expect(page.getByRole('button', { name: 'Remove', exact: true })).toBeEnabled();
 
-  await makeMember.click();
-  await expect(toast(page, 'Owner is now a member')).toBeVisible();
+  await demote(page);
+  await expect(toast(page, DEMOTED)).toBeVisible();
   expect(requests).toBe(2);
-  await expect(makeMember).toBeHidden();
+  await expect(rowMakeMember(page)).toBeHidden();
   // Make member goes as soon as the page counts one owner, before the members
   // refresh lands: wait for that to move them to Members, so the test doesn't
   // end with the refresh still in the route above.
