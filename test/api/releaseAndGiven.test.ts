@@ -105,6 +105,7 @@ interface ReservationRow {
   itemName: string;
   itemStatus: string;
   stillReserved: boolean;
+  listOpen: boolean;
 }
 
 /** The gifter's reservations, as the Reserved page reads them. */
@@ -225,22 +226,50 @@ describe('Release from the Reserved page', () => {
   });
 
   // An archived list is owner-only, so the item route answers its unbook with a
-  // 404. A card offering only a Release that can't work would leave the gifter
-  // stuck with it, so it's no longer active: it needs their confirmation, and
-  // Dismiss clears it.
-  it('a reservation on an archived list is no longer active, so its card offers Dismiss', async () => {
+  // 404. The item is still booked by them (`stillReserved`), but the list isn't
+  // open to them (`listOpen: false`), so the card needs their confirmation,
+  // says the list is no longer available to them, and offers Dismiss: one
+  // offering only a Release that can't work would leave them stuck with it.
+  it('a reservation on an archived list stays reserved, on a list that is not open to them', async () => {
     const lego = await makeItem('Lego set');
     await book(gifter, lego);
-    await Wishlist.updateOne({ _id: wishlistId }, { archived: true });
+    expect(await reservationFor('Lego set')).toMatchObject({
+      stillReserved: true,
+      listOpen: true,
+    });
 
+    await Wishlist.updateOne({ _id: wishlistId }, { archived: true });
     const row = await reservationFor('Lego set');
-    expect(row).toMatchObject({ itemStatus: 'booked', stillReserved: false });
+    expect(row).toMatchObject({ itemStatus: 'booked', stillReserved: true, listOpen: false });
     expect((await release(row)).status).toBe(404);
     expect(await Item.findById(lego).lean()).toMatchObject({ status: 'booked' });
 
-    // Unarchived, it's active again.
+    // Unarchived, it's open (and active) again.
     await Wishlist.updateOne({ _id: wishlistId }, { archived: false });
-    expect(await reservationFor('Lego set')).toMatchObject({ stillReserved: true });
+    expect(await reservationFor('Lego set')).toMatchObject({
+      stillReserved: true,
+      listOpen: true,
+    });
+  });
+
+  // `listOpen` is the gifter's own access (`readReservationWishlists`), never
+  // the archived flag: any reason the list is out of their reach reads the
+  // same, and says nothing of which it was.
+  it("reads `listOpen` from the gifter's own access, whatever took it away", async () => {
+    const lego = await makeItem('Lego set');
+    await book(gifter, lego);
+    // Their membership went while the booking still stands (a kick still
+    // freeing it), and the list is private: not archived, but out of reach.
+    await WishlistMember.deleteOne({ wishlist: wishlistId, user: gifter });
+    await Wishlist.updateOne({ _id: wishlistId }, { visibility: 'private' });
+
+    const row = await reservationFor('Lego set');
+    expect(row).toMatchObject({ stillReserved: true, listOpen: false });
+    expect(row).not.toHaveProperty('archived');
+
+    // A public list they're no longer a member of is open to them.
+    await Wishlist.updateOne({ _id: wishlistId }, { visibility: 'everyone' });
+    expect(await reservationFor('Lego set')).toMatchObject({ listOpen: true });
   });
 });
 

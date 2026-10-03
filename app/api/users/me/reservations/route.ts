@@ -8,10 +8,10 @@ import { readReservationWishlists } from '@/lib/utils/reservationWishlists';
 // GET /api/users/me/reservations - the current user's active reservations
 // (gifts they're holding), across all wishlists. Each carries a frozen snapshot
 // and its item's id, plus the live item's current status so the UI can hint
-// when the owner has since completed / drafted / removed it, and, only while
-// the gifter may still open the list, its live slug (for the card's link, which
-// falls back to the id) and occasion (which the page groups the gifts still to
-// give by).
+// when the owner has since completed / drafted / removed it, whether the gifter
+// may still open the list (`listOpen`), and, only while they may, its live slug
+// (for the card's link, which falls back to the id) and occasion (which the
+// page groups the gifts still to give by).
 export async function GET() {
   try {
     const session = await auth();
@@ -42,18 +42,18 @@ export async function GET() {
       const it = itemMap.get(r.item.toString());
       const itemStatus = it ? it.status : 'deleted';
       const wishlist = wishlists.get(r.wishlist.toString());
-      // Active: the item is still booked by the gifter, on a list they can still
-      // open. The card offers Release then, which unbooks the item through the
-      // list's own route (`PATCH /api/items/[itemId]`), and that route refuses
-      // anyone the list is hidden from. A booking on a list they can no longer
-      // open (one that's been archived: leaving or being removed frees it) can't
-      // be released by anyone but an owner, so it needs their confirmation
-      // instead, as any other reservation detached from its item. Dismiss there
-      // ends the Reservation and leaves the item as it is anyway, hidden from
-      // everyone but the owners. Should the list be unarchived, the item is back
-      // on it as theirs, with Unbook, and a card they kept is active again.
       const stillReserved =
-        !!it && it.status === 'booked' && it.bookedBy?.toString() === session.user.id && !!wishlist;
+        !!it && it.status === 'booked' && it.bookedBy?.toString() === session.user.id;
+      // Whether the gifter may still open the list: `readReservationWishlists`
+      // has it (`viewableWishlistsFilter`). Only their own access, never why
+      // they've lost it, as an archived list must look exactly like a missing
+      // one. A card is active (Release) only while it's still reserved on a list
+      // they can open, since the list's own unbook refuses anyone the list is
+      // hidden from. A booking on a list they can't open (archived, say: leaving
+      // or being removed frees it) can be released by an owner alone, so the
+      // card needs their confirmation instead, and offers Dismiss, which leaves
+      // the item as it is anyway, out of their reach.
+      const listOpen = !!wishlist;
       return {
         _id: r._id.toString(),
         // The gifter's own record of which item they reserved: what Release sends
@@ -68,6 +68,7 @@ export async function GET() {
         wishlistOccasion: wishlist?.occasion ?? null,
         itemStatus,
         stillReserved,
+        listOpen,
       };
     });
 

@@ -157,8 +157,9 @@ describe('GET /api/users/me/reservations/count', () => {
 
     const rows = await listed();
     const { active, needsConfirm } = partitionReservations(rows);
-    // The archived list's booking still stands, but it can't be released from a
-    // list the gifter can no longer open, so it needs their confirmation too.
+    // The archived list's booking still stands, but the list is no longer open
+    // to the gifter, and Release can't reach it, so it needs their confirmation
+    // too.
     expect(active).toHaveLength(2);
     expect(needsConfirm).toHaveLength(8);
     expect(await count()).toBe(rows.length);

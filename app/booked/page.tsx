@@ -19,6 +19,7 @@ import type { Occasion } from '@/lib/utils/occasion';
 import { withRequestTimeout } from '@/lib/utils/requestTimeout';
 import {
   groupByOccasion,
+  needsConfirmation,
   partitionReservations,
   reservationNote,
   type OccasionGroup,
@@ -46,12 +47,14 @@ interface Reservation {
   /** The live list's occasion, `null` for none or a list the gifter can no longer see. */
   wishlistOccasion: Occasion | null;
   itemStatus: string;
-  /**
-   * The item is still booked by the gifter, on a list they can still open: the
-   * card is under "To give" and offers Release. Otherwise it needs their
-   * confirmation, and offers Dismiss.
-   */
+  /** The live item is still booked by the gifter. */
   stillReserved: boolean;
+  /**
+   * The gifter can still open the list (never why not). Still reserved on a
+   * list they can open, the card is under "To give" and offers Release;
+   * otherwise it needs their confirmation, and offers Dismiss.
+   */
+  listOpen: boolean;
 }
 
 interface Gift {
@@ -75,9 +78,12 @@ interface Gift {
  */
 const RELEASE_REFUSED = new Set([400, 403, 404, 409]);
 
-/** What the page says when a Release finds the card out of date. */
-const RELEASE_REFUSED_MESSAGE =
-  'This gift is no longer reserved to you on its list, so it can’t be released.';
+/**
+ * What the page says when a Release finds the card out of date: true of every
+ * refusal (the item isn't theirs any more, or the list isn't available to them),
+ * and never why. The read it sends then shows the card's own note.
+ */
+const RELEASE_REFUSED_MESSAGE = 'This gift can’t be released from its list any more.';
 
 /** The gift history's order, as `GET /api/users/me/gifts` gives it: newest first. */
 const newestFirst = (a: Gift, b: Gift) => Date.parse(b.giftedAt) - Date.parse(a.giftedAt);
@@ -320,7 +326,7 @@ export default function BookedPage() {
     if (!r) return;
     // A read found it no longer active while the confirmation was open: say so,
     // as the route would have.
-    if (!r.stillReserved) {
+    if (needsConfirmation(r)) {
       showToast(RELEASE_REFUSED_MESSAGE, 'info');
       return;
     }

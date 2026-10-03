@@ -32,6 +32,7 @@ const reservation = {
   wishlistName: 'Birthday',
   wishlistId: 'w1',
   wishlistSlug: 'birthday',
+  listOpen: true,
 };
 
 const reservations = [
@@ -84,7 +85,11 @@ const scarfGift = {
   giftedAt: '2026-10-01T10:05:00.000Z',
 };
 
-type Reservation = (typeof reservations)[number] & { wishlistOccasion?: Occasion | null };
+type Reservation = Omit<(typeof reservations)[number], 'wishlistSlug'> & {
+  /** `null` for a list the gifter can no longer open, as the read has it. */
+  wishlistSlug: string | null;
+  wishlistOccasion?: Occasion | null;
+};
 type Gift = typeof legoGift;
 
 /** A JSON answer, a non-JSON one (`html`), or a network failure. */
@@ -162,6 +167,16 @@ function mockHeldFetch({
     detach(id: string, itemStatus: string) {
       lists.reservations = lists.reservations.map((r) =>
         r._id === id ? { ...r, itemStatus, stillReserved: false } : r
+      );
+    },
+    /**
+     * The gifter can no longer open a reservation's list (it was archived,
+     * say), while the item is still booked by them: the read has no slug or
+     * occasion for it, and says only that it isn't open to them.
+     */
+    closeList(id: string) {
+      lists.reservations = lists.reservations.map((r) =>
+        r._id === id ? { ...r, listOpen: false, wishlistSlug: null, wishlistOccasion: null } : r
       );
     },
     /** A gift-history entry is deleted elsewhere. */
@@ -294,6 +309,16 @@ function reservationButtons(itemName: string) {
  */
 const cardName = (itemName: string) =>
   screen.queryAllByText(itemName).find((el) => !el.closest('li')) ?? null;
+
+/** The note on the reservation card for `itemName` (why it needs confirmation), or null. */
+function noteOn(itemName: string) {
+  let card: HTMLElement | null = cardName(itemName);
+  while (card && !within(card).queryByRole('button', { name: 'Mark as gifted' })) {
+    card = card.parentElement;
+  }
+  if (!card) throw new Error(`no reservation card for ${itemName}`);
+  return card.querySelector('p.rounded-full')?.textContent ?? null;
+}
 
 /** The link to its list on the reservation card for `itemName`. */
 function listLink(itemName: string) {
@@ -508,8 +533,7 @@ describe('BookedPage — Release on an active card, Dismiss on a changed one', (
     status,
     body: { success: false, error },
   });
-  const REFUSED_TOAST =
-    'This gift is no longer reserved to you on its list, so it can’t be released.';
+  const REFUSED_TOAST = 'This gift can’t be released from its list any more.';
 
   // regression: every card offered Dismiss, active ones included, and Dismiss
   // only deletes the Reservation: the item stayed reserved under the gifter's
@@ -620,6 +644,56 @@ describe('BookedPage — Release on an active card, Dismiss on a changed one', (
       expect(screen.getByText('Scarf')).toBeInTheDocument();
     }
   );
+
+  // The route's 404 is all a list gone out of reach gives: the item is still
+  // booked by them, so the read keeps the card, and its note says only that
+  // the list isn't available to them, never why.
+  it('a Release refused because the list is out of reach moves the card to confirmation, saying so', async () => {
+    const { server, answer } = await renderHeld();
+
+    release('Lego set');
+    server.closeList('res-lego');
+    await answer(releaseKey('item-lego'), notFound('Item not found'));
+
+    await waitFor(() => expect(showToast).toHaveBeenCalledWith(REFUSED_TOAST, 'info'));
+    await waitFor(() => expect(reservationButtons('Lego set').dismiss).not.toBeNull());
+    expect(reservationButtons('Lego set').release).toBeNull();
+    expect(noteOn('Lego set')).toBe('This list is no longer available to you');
+  });
+
+  // regression: a gift still reserved to them, on a list they could no longer
+  // open, said "No longer reserved to you", which isn't so. It says only that
+  // the list isn't available to them (an archived list must look exactly like
+  // a missing one), and keeps Dismiss: Release can't reach that list.
+  it('regression: a card on a list no longer available to them says so, and offers Dismiss', async () => {
+    mockHeldFetch({
+      initial: [
+        { ...reservations[0], listOpen: false, wishlistSlug: null },
+        // Booked by someone else since: really no longer theirs.
+        {
+          ...reservations[0],
+          _id: 'res-kite',
+          itemId: 'item-kite',
+          itemName: 'Kite',
+          stillReserved: false,
+        },
+      ],
+    });
+    render(<BookedPage />);
+    await screen.findByText('Lego set');
+
+    const lego = reservationButtons('Lego set');
+    expect(lego.dismiss).toBeInTheDocument();
+    expect(lego.release).toBeNull();
+    expect(noteOn('Lego set')).toBe('This list is no longer available to you');
+    expect(noteOn('Kite')).toBe('No longer reserved to you');
+    expect(document.body.textContent).not.toMatch(/archiv/i);
+    // Both need confirmation; nothing is left to give.
+    expect(
+      screen.getByRole('heading', { level: 2, name: /Needs your confirmation/ })
+    ).toHaveTextContent('Needs your confirmation2');
+    expect(screen.getByText('Nothing actively reserved right now.')).toBeInTheDocument();
+  });
 
   it('releases nothing, and says why, for a card a read has found changed while its confirmation was open', async () => {
     const { server, sent } = await renderHeld();
