@@ -107,6 +107,7 @@ const KEY_KINDS: Record<LimiterName, KeyKind> = {
   content: 'user',
   booking: 'user',
   usernameCheck: 'user',
+  wishlistSlug: 'user',
   search: 'ip',
 };
 const LIMITERS = Object.entries(KEY_KINDS) as [LimiterName, KeyKind][];

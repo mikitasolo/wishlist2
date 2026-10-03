@@ -86,6 +86,10 @@ const SPECS = {
   content: { tokens: 60, window: '1 h', policy: 'fail-open', keyKind: 'user' },
   booking: { tokens: 60, window: '1 h', policy: 'fail-open', keyKind: 'user' },
   usernameCheck: { tokens: 30, window: '1 m', policy: 'fail-open', keyKind: 'user' },
+  // A list's URL, chosen by its owner. Slugs are unique across every list, so
+  // "already taken" (409) says some list holds one, even a list the caller can't
+  // open: a budget for a person renaming a URL, not for trying slugs in bulk.
+  wishlistSlug: { tokens: 10, window: '10 m', policy: 'fail-open', keyKind: 'user' },
   // Public read/scraping surfaces — keyed on IP.
   search: { tokens: 60, window: '1 m', policy: 'fail-open', keyKind: 'ip' },
 } satisfies Record<string, LimiterSpec>;
