@@ -37,11 +37,12 @@ export function textareaClassName(size: FieldSize = 'lg'): string {
 
 /** The box that draws a field's border around a borderless input and what sits beside it. */
 export function fieldBoxClassName(size: FieldSize = 'lg'): string {
-  return `${BORDER} flex w-full items-center gap-2 ${inputSizeStyles[size]}`;
+  return `${BORDER} flex w-full items-center gap-2 has-[input:disabled]:cursor-not-allowed ${inputSizeStyles[size]}`;
 }
 
 /** The borderless input inside `fieldBoxClassName`. */
-export const BOXED_INPUT = 'h-full min-w-0 flex-1 border-0 bg-transparent outline-hidden';
+export const BOXED_INPUT =
+  'h-full min-w-0 flex-1 border-0 bg-transparent outline-hidden disabled:cursor-not-allowed';
 
 /** A form field's label, above it. */
 export const FIELD_LABEL = 'mb-1.5 block text-sm font-medium text-foreground';
@@ -50,4 +51,4 @@ export const FIELD_LABEL = 'mb-1.5 block text-sm font-medium text-foreground';
 export const FIELD_HELPER = 'mt-1.5 text-xs text-muted-foreground';
 
 /** A field's error, under it. */
-export const FIELD_ERROR = 'mt-1.5 text-xs text-red-600 dark:text-red-400';
+export const FIELD_ERROR = 'mt-1.5 text-xs text-danger';

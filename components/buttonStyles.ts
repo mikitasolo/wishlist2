@@ -42,16 +42,16 @@ const variantStyles: Record<ButtonVariant, string> = {
   soft: 'bg-primary-500/12 text-accent hover:bg-primary-500/18 active:scale-[0.98] dark:text-primary-300',
   /** Starts something destructive: soft red. */
   danger:
-    'bg-red-500/10 text-red-600 hover:bg-red-500/16 active:scale-[0.98] dark:text-red-400 disabled:hover:bg-red-500/10',
+    'bg-danger/10 text-danger hover:bg-danger/16 active:scale-[0.98] disabled:hover:bg-danger/10',
   /** A destructive action in a row of quiet ones: red text, tinted on hover. */
   'danger-ghost':
-    'text-red-600 hover:bg-red-500/10 active:scale-[0.98] dark:text-red-400 disabled:hover:bg-transparent',
+    'text-danger hover:bg-danger/10 active:scale-[0.98] disabled:hover:bg-transparent',
   /** Confirms something destructive (a confirmation dialog's button): solid red. */
   destructive:
-    'bg-red-600 text-white shadow-sm hover:bg-red-700 active:bg-red-800 active:scale-[0.98] disabled:hover:bg-red-600',
+    'bg-danger-fill text-white shadow-sm hover:bg-danger-fill-hover active:scale-[0.98] disabled:hover:bg-danger-fill',
   /** Confirms something that needs care: solid amber. */
   warning:
-    'bg-amber-600 text-white shadow-sm hover:bg-amber-700 active:bg-amber-800 active:scale-[0.98] disabled:hover:bg-amber-600',
+    'bg-warning-fill text-white shadow-sm hover:bg-warning-fill-hover active:scale-[0.98] disabled:hover:bg-warning-fill',
   cancel: 'bg-muted text-foreground hover:bg-surface-2 active:scale-[0.98] disabled:hover:bg-muted',
   ghost: 'text-foreground hover:bg-muted active:scale-[0.98] disabled:hover:bg-transparent',
 };
@@ -113,7 +113,7 @@ const iconVariantStyles: Record<IconButtonVariant, string> = {
   glass:
     'border border-border bg-surface/90 text-muted-foreground shadow-sm backdrop-blur hover:bg-surface',
   'danger-ghost':
-    'text-muted-foreground hover:bg-red-500/10 hover:text-red-600 dark:hover:text-red-400 disabled:hover:bg-transparent',
+    'text-muted-foreground hover:bg-danger/10 hover:text-danger disabled:hover:bg-transparent',
 };
 
 export function iconButtonClassName({
