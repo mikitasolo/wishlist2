@@ -5,6 +5,7 @@ import { IWishlist } from '@/models/Wishlist';
 import Avatar from '@/components/Avatar';
 import Badge from '@/components/Badge';
 import Cover from '@/components/Cover';
+import ReservedByYouChip from '@/components/ReservedByYouChip';
 import OccasionLabel, { OCCASION_ON_COVER } from '@/components/OccasionLabel';
 import { coverBadge } from '@/lib/utils/visibility';
 import { formatOwnerItemSummary } from '@/lib/utils/itemCounts';
@@ -22,10 +23,21 @@ interface WishlistCardProps {
     /** Drafts and proposals to review: only on a list the viewer owns, from `/api/wishlists`. */
     draftCount?: number;
     proposalCount?: number;
+    /**
+     * Items the viewer has reserved here: only on a list shared with them,
+     * from `/api/wishlists`, never on one they own. "N reserved by you".
+     */
+    reservedByYou?: number;
     archived?: boolean;
     bannerUrl?: string | null;
   };
   showOwner?: boolean;
+  /**
+   * Whether the viewer's role ("Member", "Owner") shows over the cover. Off
+   * where the page or section already says it ("Shared with you"), where it
+   * would be the same on every card.
+   */
+  showRole?: boolean;
 }
 
 /**
@@ -38,7 +50,11 @@ interface WishlistCardProps {
 export const WISHLIST_CARD_COVER_SIZES =
   '(max-width: 639px) 100vw, (max-width: 1023px) 50vw, (max-width: 1279px) 33vw, 320px';
 
-export default function WishlistCard({ wishlist, showOwner = false }: WishlistCardProps) {
+export default function WishlistCard({
+  wishlist,
+  showOwner = false,
+  showRole = true,
+}: WishlistCardProps) {
   const ownerName = wishlist.ownerUsername || 'unknown';
   const coOwnerCount = Math.max(0, (wishlist.ownerUsernames?.length ?? 1) - 1);
   // "N items", plus the drafts and proposals to review on a list you own.
@@ -76,7 +92,7 @@ export default function WishlistCard({ wishlist, showOwner = false }: WishlistCa
           <Badge tone="glass" icon="sparkles" className="absolute left-3 top-3">
             Featured
           </Badge>
-        ) : wishlist.userRole ? (
+        ) : showRole && wishlist.userRole ? (
           <Badge tone="glass" className="absolute left-3 top-3 capitalize">
             {wishlist.userRole}
           </Badge>
@@ -100,6 +116,7 @@ export default function WishlistCard({ wishlist, showOwner = false }: WishlistCa
         {wishlist.description ? (
           <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{wishlist.description}</p>
         ) : null}
+        <ReservedByYouChip count={wishlist.reservedByYou} className="mt-2 self-start" />
 
         <div className="mt-auto flex items-center justify-between gap-2 pt-3">
           {showOwner ? (

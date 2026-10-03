@@ -167,12 +167,18 @@ describe('GET /api/wishlists — the dashboard', () => {
   // regression: a member's count was every item but the drafts, so it took in
   // every member's proposal, which a member is never shown.
   it("regression: gives a member the published count, without anyone's proposals or the drafts", async () => {
-    for (const who of [member, otherMember]) {
+    for (const [who, ownBookings] of [
+      [member, 1],
+      [otherMember, 0],
+    ] as const) {
       const row = find((await dashboard(who)).member, listId)!;
       expect(row.itemCount).toBe(PUBLISHED);
       expect(row).not.toHaveProperty('draftCount');
       expect(row).not.toHaveProperty('proposalCount');
-      expect(bookingKeys(row)).toEqual([]);
+      // The only booking count is their own (WIS-253): the list's one booked
+      // item is `member`'s, so it's 1 for them and 0 for anyone else.
+      expect(bookingKeys(row)).toEqual(['reservedByYou']);
+      expect(row).toHaveProperty('reservedByYou', ownBookings);
     }
   });
 

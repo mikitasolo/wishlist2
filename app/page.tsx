@@ -33,6 +33,8 @@ type Wishlist = IWishlist & {
   // Only on your own lists (`/api/wishlists`): see lib/utils/itemCounts.ts.
   draftCount?: number;
   proposalCount?: number;
+  // Only on a list shared with you: the items you've reserved on it.
+  reservedByYou?: number;
   isMember?: boolean;
 };
 
@@ -174,10 +176,9 @@ export default function Home() {
   }, [status, attempt]);
 
   const activeOwned = useMemo(() => owned.filter((w) => !w.archived), [owned]);
-  // The grids of your own lists (Your wishlists, Archived) put the ones with an
-  // occasion coming up first, nearest first; the rest keep the API's order
-  // (newest first). The Featured pick and its menu, and the shared lists, keep
-  // theirs.
+  // The grids of lists (Your wishlists, Shared with you, Archived) put the ones
+  // with an occasion coming up first, nearest first; the rest keep the API's
+  // order (newest first). The Featured pick and its menu keep theirs.
   const today = useLocalToday();
   const ownedByOccasion = useMemo(
     () => sortByUpcomingOccasion(activeOwned, today),
@@ -191,6 +192,7 @@ export default function Home() {
       ),
     [owned, today]
   );
+  const sharedByOccasion = useMemo(() => sortByUpcomingOccasion(member, today), [member, today]);
   // Your active lists' items, counted as every screen counts them: "N items"
   // is their published items, with the drafts and proposals to review beside
   // it. The greeting and the tiles both read these, so they can't disagree.
@@ -549,8 +551,9 @@ export default function Home() {
                   Shared with you
                 </h2>
                 <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                  {member.map((w) => (
-                    <WishlistCard key={w._id.toString()} wishlist={w} showOwner />
+                  {sharedByOccasion.map((w) => (
+                    // The section says you're a member: no badge to repeat it.
+                    <WishlistCard key={w._id.toString()} wishlist={w} showOwner showRole={false} />
                   ))}
                 </div>
               </section>

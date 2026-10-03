@@ -173,3 +173,45 @@ describe('WishlistCard — archived', () => {
     expect(screen.queryByText('Archived')).toBeNull();
   });
 });
+
+describe('WishlistCard — shared with you', () => {
+  it('shows how many items you have reserved on a list shared with you', () => {
+    render(
+      <WishlistCard wishlist={wishlist({ userRole: 'member', reservedByYou: 2 })} showOwner />
+    );
+    expect(screen.getByText('2 reserved by you')).toBeInTheDocument();
+  });
+
+  it('shows no chip when you have reserved nothing there, or the list has no count', () => {
+    for (const reservedByYou of [0, undefined]) {
+      const { container, unmount } = render(
+        <WishlistCard wishlist={wishlist({ userRole: 'member', reservedByYou })} showOwner />
+      );
+      expect(container).not.toHaveTextContent('reserved by you');
+      unmount();
+    }
+  });
+
+  it('leaves the role off when asked, where the section already says it', () => {
+    const { unmount } = render(
+      <WishlistCard wishlist={wishlist({ userRole: 'member' })} showOwner showRole={false} />
+    );
+    expect(screen.queryByText('member')).toBeNull();
+    unmount();
+
+    // Elsewhere (a profile), the role still shows.
+    render(<WishlistCard wishlist={wishlist({ userRole: 'member' })} showOwner />);
+    expect(screen.getByText('member')).toBeInTheDocument();
+  });
+
+  it('still shows Featured with the role left off', () => {
+    render(
+      <WishlistCard
+        wishlist={wishlist({ userRole: 'member', featured: true })}
+        showOwner
+        showRole={false}
+      />
+    );
+    expect(screen.getByText('Featured')).toBeInTheDocument();
+  });
+});
