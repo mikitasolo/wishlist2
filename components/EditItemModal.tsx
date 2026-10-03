@@ -159,6 +159,7 @@ export default function EditItemModal({
           mode={item.status === 'proposed' ? 'propose' : 'edit'}
           itemId={item._id}
           onFormChange={setHasUnsavedChanges}
+          isSubmitting={isSubmitting || isDeleting}
           formId={formId}
         />
       </BaseModal>

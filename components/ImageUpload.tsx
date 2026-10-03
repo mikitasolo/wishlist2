@@ -122,7 +122,9 @@ export default function ImageUpload({
       e.preventDefault();
       setDragging(true);
     };
-    const onDragEnd = () => setDragging(false);
+    const onDragEnd = (e: DragEvent) => {
+      if (!e.relatedTarget) setDragging(false);
+    };
     const onDrop = (e: DragEvent) => {
       if (!hasFiles(e)) return;
       e.preventDefault();
