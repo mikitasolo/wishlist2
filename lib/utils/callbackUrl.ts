@@ -11,7 +11,6 @@ export const SIGN_IN_PATH = '/auth/signin';
  * won't take its path.
  */
 export const AUTH_ONLY_PATHS = [
-  '/invites',
   '/booked',
   '/settings',
   '/items',

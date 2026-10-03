@@ -2,7 +2,7 @@ import mongoose from 'mongoose';
 import Notification, { NotificationType } from '@/models/Notification';
 import Wishlist from '@/models/Wishlist';
 import type { IWishlistInvite } from '@/models/WishlistInvite';
-import type { InviteAnswer } from '@/lib/utils/notifications';
+import { showsActor, type InviteAnswer } from '@/lib/utils/notifications';
 import { errorKind } from '@/lib/utils/errorKind';
 
 type Id = string | mongoose.Types.ObjectId;
@@ -11,6 +11,8 @@ interface CreateNotificationArgs {
   user: Id; // recipient
   type: NotificationType;
   actorUsername?: string | null;
+  /** The actor's account, kept only on the types that show who did it (`showsActor`). */
+  actor?: Id | null;
   wishlist?: Id | null;
   wishlistName?: string | null;
   wishlistSlug?: string | null;
@@ -99,6 +101,7 @@ async function writeNotification(
       user: args.user,
       type: args.type,
       actorUsername: ANONYMOUS_TYPES.has(args.type) ? null : (args.actorUsername ?? null),
+      ...(showsActor(args.type) && args.actor ? { actor: args.actor } : {}),
       wishlist: args.wishlist ?? null,
       wishlistName: args.wishlistName ?? null,
       wishlistSlug: args.wishlistSlug ?? null,
@@ -146,8 +149,8 @@ interface RecordInviteAnswerArgs {
 /**
  * Record an invitee's answer on their own notification for that invite, and mark
  * it read, in one write. It then reads "You joined …" or "You declined the invite
- * to …" instead of an invite that's still waiting (and pointing at an Invitations
- * page that no longer has it), and the bell stops counting it. Call it only once
+ * to …" instead of an invite that is still waiting (when its card is gone from
+ * Activity), and the bell stops counting it. Call it only once
  * the answer has landed: for an accept, once the role is granted.
  *
  * Notifications carry no invite id, so the row is told apart by its time: the
@@ -218,7 +221,8 @@ async function notifyFollow(args: CreateNotificationArgs): Promise<void> {
   await Notification.findOneAndUpdate(
     { user: args.user, type: 'follow', read: false, createdAt: { $gte: since } },
     {
-      $set: { actorUsername: actor, createdAt: now },
+      // The row's avatar and Follow back are the latest follower's.
+      $set: { actorUsername: actor, actor: args.actor ?? null, createdAt: now },
       $inc: { count: 1 },
       ...(actor
         ? { $push: { actorUsernames: { $each: [actor], $slice: -MAX_ACTOR_USERNAMES } } }

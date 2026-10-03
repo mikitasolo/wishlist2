@@ -15,14 +15,16 @@ vi.mock('next-auth/react', () => ({
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push }) }));
 
-// The header (and the invitation dot inside it) has its own fetches and tests;
-// this file is about the page's cards.
+// The header has its own fetches and tests;
+// this file is about the invitations pinned above the feed.
 vi.mock('@/components/AppHeader', () => ({ default: () => null }));
 vi.mock('@/components/AuthButton', () => ({ default: () => null }));
 
 vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }));
 
-import InvitesPage from '@/app/invites/page';
+import ActivityPage from '@/app/notifications/page';
+import type { NotificationView } from '@/lib/utils/notifications';
+import { ITEM_REQUEST_TIMEOUT_MS, REQUEST_TIMEOUT_MESSAGE } from '@/lib/utils/requestTimeout';
 
 const invites = [
   {
@@ -56,6 +58,17 @@ const anniversary: Invite = {
   invitedByImage: null,
 };
 
+/**
+ * The page's notifications feed, which every test serves as is (empty unless a
+ * test fills it in). These tests are about the invitations pinned above it.
+ */
+const feed: {
+  rows: NotificationView[];
+  /** Set, every feed read is held here until the test answers it (with the rows as they are then). */
+  held: (() => void)[] | null;
+  reads: number;
+} = { rows: [], held: null, reads: 0 };
+
 /** A JSON answer, a non-JSON one (`html`), or a network failure. */
 type Reply = { status: number; body: unknown } | { status: number; html: true } | Error;
 
@@ -81,12 +94,23 @@ const listed = (data: Invite[]): Reply => ({ status: 200, body: { success: true,
 function stubFetch(patch: (url: string) => Promise<Reply>, list?: () => Promise<Reply>) {
   const settled = new Set<string>();
   const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
-    if (init?.method === 'PATCH') {
+    if (init?.method === 'PATCH' && url.startsWith('/api/invites/')) {
       const reply = await patch(url);
       if ('body' in reply && (reply.status < 400 || reply.status === 404)) {
         settled.add(url.slice('/api/invites/'.length));
       }
       return toResponse(reply);
+    }
+    if (url === '/api/notifications?actors=1' && !init?.method) {
+      feed.reads += 1;
+      // Read as the rows are when it's sent.
+      const reply = toResponse({
+        status: 200,
+        body: { success: true, data: feed.rows, unreadCount: 0 },
+      });
+      const held = feed.held;
+      if (held) await new Promise<void>((resolve) => held.push(resolve));
+      return reply;
     }
     if (url === '/api/users/me/invites') {
       return toResponse(
@@ -174,7 +198,7 @@ const joined = (wishlistSlug: string, wishlistId: string): Reply => ({
 const invitesChanged = vi.fn();
 
 async function clickOnFirstCard(name: 'Accept' | 'Decline') {
-  render(<InvitesPage />);
+  render(<ActivityPage />);
   await screen.findByText('Birthday');
   // Let the whole response handler settle inside act, busy-state reset included.
   await act(async () => {
@@ -188,6 +212,9 @@ beforeEach(() => {
   showToast.mockReset();
   invitesChanged.mockReset();
   signedIn.userId = 'me';
+  feed.rows = [];
+  feed.held = null;
+  feed.reads = 0;
   window.addEventListener('invites-changed', invitesChanged);
 });
 afterEach(() => {
@@ -195,13 +222,13 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('InvitesPage — an invite that no longer exists', () => {
+describe('Activity, pinned invites — an invite that no longer exists', () => {
   // regression: a 404 from PATCH /api/invites/[id] (the invite was cancelled,
-  // its list deleted, or the invitee kicked or demoted while /invites was open)
+  // its list deleted, or the invitee kicked or demoted while the page was open)
   // was shown as a generic error toast and the card stayed, so every retry 404'd
   // again and the header's invitation dot stayed lit until a reload.
   it.each(['Accept', 'Decline'] as const)(
-    'regression: drops the card and refreshes the dot when %s gets a 404',
+    'regression: drops the card and tells the rest of the app when %s gets a 404',
     async (name) => {
       mockFetch({ status: 404, body: { success: false, error: 'Invite not found' } });
       await clickOnFirstCard(name);
@@ -216,7 +243,7 @@ describe('InvitesPage — an invite that no longer exists', () => {
   );
 });
 
-describe('InvitesPage — failures worth retrying keep the card', () => {
+describe('Activity, pinned invites — failures worth retrying keep the card', () => {
   it.each([
     { status: 429, error: 'Too many requests' },
     { status: 500, error: 'Failed to update invite' },
@@ -252,7 +279,7 @@ describe('InvitesPage — failures worth retrying keep the card', () => {
   });
 });
 
-describe('InvitesPage — answering an invite', () => {
+describe('Activity, pinned invites — answering an invite', () => {
   const notificationsChanged = vi.fn();
   beforeEach(() => {
     notificationsChanged.mockReset();
@@ -260,7 +287,7 @@ describe('InvitesPage — answering an invite', () => {
   });
   afterEach(() => window.removeEventListener('notifications-changed', notificationsChanged));
 
-  it('declining drops the card and refreshes the dot', async () => {
+  it('declining drops the card and tells the rest of the app', async () => {
     mockFetch({ status: 200, body: { success: true, data: { status: 'declined' } } });
     await clickOnFirstCard('Decline');
 
@@ -307,7 +334,7 @@ describe('InvitesPage — answering an invite', () => {
   });
 });
 
-describe('InvitesPage — accepting a co-owner invite', () => {
+describe('Activity, pinned invites — accepting a co-owner invite', () => {
   const ownerInvite: Invite = {
     _id: 'inv-garden',
     role: 'owner',
@@ -338,7 +365,7 @@ describe('InvitesPage — accepting a co-owner invite', () => {
       async () => reply,
       async () => listed([ownerInvite])
     );
-    render(<InvitesPage />);
+    render(<ActivityPage />);
     await screen.findByText("Chloe's garden");
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Accept' }));
@@ -382,10 +409,10 @@ describe('InvitesPage — accepting a co-owner invite', () => {
   });
 });
 
-describe('InvitesPage — answering several invites at once', () => {
+describe('Activity, pinned invites — answering several invites at once', () => {
   async function renderHeld() {
     const held = mockHeldFetch();
-    render(<InvitesPage />);
+    render(<ActivityPage />);
     await screen.findByText('Birthday');
     return held;
   }
@@ -613,7 +640,7 @@ describe('InvitesPage — answering several invites at once', () => {
   });
 });
 
-describe('InvitesPage — keeping the list fresh while it is open', () => {
+describe('Activity, pinned invites — keeping the list fresh while it is open', () => {
   const graduation: Invite = { ...anniversary, _id: 'inv-graduation', wishlistName: 'Graduation' };
   const loadFailed: Reply = {
     status: 500,
@@ -628,7 +655,7 @@ describe('InvitesPage — keeping the list fresh while it is open', () => {
   /** Renders the page with every list request held, and lets the first load land. */
   async function renderLoaded() {
     const held = mockHeldFetch({ holdLists: true });
-    const view = render(<InvitesPage />);
+    const view = render(<ActivityPage />);
     expect(held.listRequests()).toBe(1);
     await held.list(0, listed(invites));
     expect(screen.getByText('Birthday')).toBeInTheDocument();
@@ -670,7 +697,7 @@ describe('InvitesPage — keeping the list fresh while it is open', () => {
 
   it('a first load overtaken by a refetch still lands, even if the refetch fails', async () => {
     const { list } = mockHeldFetch({ holdLists: true });
-    render(<InvitesPage />);
+    render(<ActivityPage />);
 
     refetchOn('focus');
     await list(0, listed(invites));
@@ -684,12 +711,12 @@ describe('InvitesPage — keeping the list fresh while it is open', () => {
 
   it('a refetch failing while the first load is on its way keeps the skeleton up', async () => {
     const { list } = mockHeldFetch({ holdLists: true });
-    render(<InvitesPage />);
+    render(<ActivityPage />);
 
     refetchOn('focus');
     await list(1, loadFailed);
     expect(skeleton()).not.toBeNull();
-    expect(screen.queryByText('No pending invitations')).toBeNull();
+    expect(screen.queryByText('You’re all caught up')).toBeNull();
 
     await list(0, listed(invites));
     expect(screen.getByText('Birthday')).toBeInTheDocument();
@@ -762,11 +789,11 @@ describe('InvitesPage — keeping the list fresh while it is open', () => {
   // invitations", which claims there are none.
   it('regression: the first load failing says so in place, and a later refetch fills the list in', async () => {
     const { list } = mockHeldFetch({ holdLists: true });
-    render(<InvitesPage />);
+    render(<ActivityPage />);
 
     await list(0, loadFailed);
     expect(screen.getByRole('heading', { name: 'Couldn’t load your invitations' })).toBeVisible();
-    expect(screen.queryByText('No pending invitations')).toBeNull();
+    expect(screen.queryByText('You’re all caught up')).toBeNull();
     expect(showToast).not.toHaveBeenCalled();
 
     // A refetch failing too keeps the panel, and says nothing more.
@@ -783,7 +810,7 @@ describe('InvitesPage — keeping the list fresh while it is open', () => {
 
   it('Try again after a failed first load reads the list afresh', async () => {
     const { list, listRequests } = mockHeldFetch({ holdLists: true });
-    render(<InvitesPage />);
+    render(<ActivityPage />);
 
     await list(0, loadFailed);
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
@@ -805,7 +832,7 @@ describe('InvitesPage — keeping the list fresh while it is open', () => {
     // A refetch for the previous account is still on its way when the account changes.
     refetchOn('focus');
     signedIn.userId = 'someone-else';
-    rerender(<InvitesPage />);
+    rerender(<ActivityPage />);
 
     // Its cards are gone at once, and the skeleton stands in for the new account's list.
     expect(screen.queryByText('Birthday')).toBeNull();
@@ -829,11 +856,11 @@ describe('InvitesPage — keeping the list fresh while it is open', () => {
     const { list, rerender } = await renderLoaded();
 
     signedIn.userId = 'someone-else';
-    rerender(<InvitesPage />);
+    rerender(<ActivityPage />);
     await list(1, loadFailed);
 
     expect(screen.getByRole('heading', { name: 'Couldn’t load your invitations' })).toBeVisible();
-    expect(screen.queryByText('No pending invitations')).toBeNull();
+    expect(screen.queryByText('You’re all caught up')).toBeNull();
     expect(screen.queryByText('Birthday')).toBeNull();
   });
 
@@ -847,7 +874,7 @@ describe('InvitesPage — keeping the list fresh while it is open', () => {
 
       fireEvent.click(cardButtons('Birthday').accept);
       signedIn.userId = 'someone-else';
-      rerender(<InvitesPage />);
+      rerender(<ActivityPage />);
 
       // While that answer is still on its way, the new account's list loads and
       // keeps fresh: the answer isn't one of its own, so it holds nothing up.
@@ -865,4 +892,260 @@ describe('InvitesPage — keeping the list fresh while it is open', () => {
       expect(screen.queryByText('Birthday')).toBeNull();
     }
   );
+});
+
+describe('Activity, pinned invites — on the page', () => {
+  const ownerInvite: Invite = {
+    _id: 'inv-garden',
+    role: 'owner',
+    wishlistId: 'w4',
+    wishlistName: 'Garden',
+    wishlistSlug: 'garden',
+    invitedByUsername: 'chloe',
+    invitedByImage: null,
+  };
+  const inviteRow = (wishlistId: string, wishlistName: string, actorUsername: string) =>
+    ({
+      _id: `n-${wishlistId}`,
+      type: 'wishlist_invite',
+      actorUsername,
+      count: 1,
+      actorUsernames: [],
+      wishlistName,
+      wishlistSlug: null,
+      wishlistId,
+      itemName: null,
+      inviteAnswer: null,
+      actorId: null,
+      actorImage: null,
+      followingActor: null,
+      read: false,
+      createdAt: new Date().toISOString(),
+    }) satisfies NotificationView;
+  const pinned = () => screen.getByRole('region', { name: 'Invitations' });
+  /** The feed's row whose line matches `text` (not the pinned card). */
+  const feedRow = (text: RegExp) =>
+    screen
+      .getAllByText(text)
+      .find((el) => !pinned().contains(el))!
+      .closest('li')!;
+
+  it('pins each pending invite above the feed, with Accept and Decline, and the feed rows without them', async () => {
+    feed.rows = [inviteRow('w1', 'Birthday', 'alice'), inviteRow('w2', 'Housewarming', 'bob')];
+    mockFetch(declined);
+    render(<ActivityPage />);
+
+    expect(await screen.findByRole('heading', { name: 'Activity', level: 1 })).toBeVisible();
+    await screen.findByRole('region', { name: 'Invitations' });
+    expect(within(pinned()).getAllByRole('button', { name: 'Accept' })).toHaveLength(2);
+    expect(within(pinned()).getAllByRole('button', { name: 'Decline' })).toHaveLength(2);
+    // The feed's rows for them answer nothing, and link nowhere: their cards do.
+    const row = feedRow(/@alice invited you to/);
+    expect(within(row).queryByRole('button')).toBeNull();
+    expect(within(row).queryByRole('link')).toBeNull();
+    expect(screen.queryByText('You’re all caught up')).toBeNull();
+  });
+
+  it.each([
+    ['Decline', declined, 'You declined the invite to Birthday'],
+    ['Accept', joined('birthday', 'w1'), 'You joined Birthday'],
+  ] as const)(
+    'once answered (%s), the card goes and its row reads as the answer',
+    async (name, reply, answered) => {
+      feed.rows = [inviteRow('w1', 'Birthday', 'alice'), inviteRow('w2', 'Housewarming', 'bob')];
+      mockFetch(reply);
+      render(<ActivityPage />);
+      await screen.findByRole('region', { name: 'Invitations' });
+
+      const card = within(within(pinned()).getByText('Birthday').closest('li')!);
+      await act(async () => {
+        fireEvent.click(card.getByRole('button', { name }));
+      });
+
+      await waitFor(() => expect(feedRow(/^You (joined|declined)/)).toBeInTheDocument());
+      expect(feedRow(/^You (joined|declined)/).textContent).toContain(answered);
+      expect(within(pinned()).queryByText('Birthday')).toBeNull();
+      // The other invite is untouched, on its card and in its row.
+      expect(within(pinned()).getByText('Housewarming')).toBeInTheDocument();
+      expect(feedRow(/@bob invited you to/)).toBeInTheDocument();
+    }
+  );
+
+  it('shows the co-owner warning on an owner invite only, before it is accepted', async () => {
+    stubFetch(
+      async () => declined,
+      async () => listed([ownerInvite, ...invites])
+    );
+    render(<ActivityPage />);
+    const card = within((await screen.findByText('Garden')).closest('li')!);
+
+    const warning =
+      /Owners never see reservations, so anything you’ve reserved here will be released/;
+    expect(card.getByText(warning)).toBeVisible();
+    expect(card.getByText(/as a co-owner/)).toBeVisible();
+    expect(screen.getAllByText(warning)).toHaveLength(1);
+  });
+
+  it('says it is all caught up only when there is neither an invite nor a notification', async () => {
+    stubFetch(
+      async () => declined,
+      async () => listed([])
+    );
+    render(<ActivityPage />);
+    expect(await screen.findByText('You’re all caught up')).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Invitations' })).toBeNull();
+  });
+
+  it("another account signing in never shows the previous account's feed", async () => {
+    feed.rows = [inviteRow('w1', 'Birthday', 'alice')];
+    const { list, rerender } = await (async () => {
+      const held = mockHeldFetch({ holdLists: true });
+      const view = render(<ActivityPage />);
+      await held.list(0, listed(invites));
+      return { ...held, rerender: view.rerender };
+    })();
+    expect(feedRow(/@alice invited you to/)).toBeInTheDocument();
+
+    feed.rows = [inviteRow('w9', 'Graduation', 'zoe')];
+    signedIn.userId = 'someone-else';
+    rerender(<ActivityPage />);
+    expect(screen.queryByText(/@alice invited you to/)).toBeNull();
+
+    await list(1, listed([]));
+    expect(await screen.findByText(/@zoe invited you to/)).toBeInTheDocument();
+    expect(screen.queryByText(/@alice invited you to/)).toBeNull();
+  });
+
+  // A feed read sent before an answer landed still lists the invite as pending:
+  // landing after it, it would bring the row back with no card above it.
+  it('regression: a feed read from before an answer does not undo it', async () => {
+    feed.rows = [inviteRow('w1', 'Birthday', 'alice')];
+    stubFetch(async () => {
+      // The server records the answer on the row as it takes it.
+      feed.rows = [
+        { ...inviteRow('w1', 'Birthday', 'alice'), inviteAnswer: 'declined', read: true },
+      ];
+      return declined;
+    });
+    render(<ActivityPage />);
+    await screen.findByRole('region', { name: 'Invitations' });
+
+    feed.held = [];
+    act(() => {
+      window.dispatchEvent(new Event('focus'));
+    });
+    const card = within(within(pinned()).getByText('Birthday').closest('li')!);
+    await act(async () => {
+      fireEvent.click(card.getByRole('button', { name: 'Decline' }));
+    });
+    await waitFor(() => expect(feedRow(/^You declined/)).toBeInTheDocument());
+    // The focus read, then the one the answer's invites-changed sent.
+    expect(feed.held).toHaveLength(2);
+
+    await act(async () => feed.held![0]());
+    expect(feedRow(/^You declined/)).toBeInTheDocument();
+    expect(screen.queryByText(/@alice invited you to/)).toBeNull();
+    await act(async () => feed.held![1]());
+    expect(feedRow(/^You declined/)).toBeInTheDocument();
+  });
+
+  it('reads the feed again when an invite turns out to be gone, so its row can catch up', async () => {
+    feed.rows = [inviteRow('w1', 'Birthday', 'alice')];
+    mockFetch(gone);
+    render(<ActivityPage />);
+    await screen.findByRole('region', { name: 'Invitations' });
+    const before = feed.reads;
+
+    const card = within(within(pinned()).getByText('Birthday').closest('li')!);
+    await act(async () => {
+      fireEvent.click(card.getByRole('button', { name: 'Accept' }));
+    });
+    await waitFor(() => expect(feed.reads).toBeGreaterThan(before));
+  });
+
+  it('Try again on the invitations alone keeps the feed up', async () => {
+    feed.rows = [inviteRow('w9', 'Graduation', 'zoe')];
+    const lists: ((reply: Reply) => void)[] = [];
+    stubFetch(
+      async () => declined,
+      () => new Promise<Reply>((resolve) => lists.push(resolve))
+    );
+    render(<ActivityPage />);
+    await act(async () =>
+      lists[0]({ status: 500, body: { success: false, error: 'Failed to load invites' } })
+    );
+    expect(
+      await screen.findByRole('heading', { name: 'Couldn’t load your invitations' })
+    ).toBeVisible();
+    expect(screen.getByText(/@zoe invited you to/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    // The feed stays, with an invitation's shape where the cards will go.
+    expect(screen.getByText(/@zoe invited you to/)).toBeInTheDocument();
+    expect(document.querySelector('.skeleton')).not.toBeNull();
+    expect(screen.queryByText('You’re all caught up')).toBeNull();
+
+    await act(async () => lists[1](listed(invites)));
+    expect(within(pinned()).getByText('Birthday')).toBeInTheDocument();
+    expect(screen.getByText(/@zoe invited you to/)).toBeInTheDocument();
+  });
+
+  it('shows the invites with no empty state when the feed is empty', async () => {
+    mockFetch(declined);
+    render(<ActivityPage />);
+    await screen.findByText('Birthday');
+    expect(screen.queryByText('You’re all caught up')).toBeNull();
+  });
+});
+
+// WIS-189: an answer had no timeout, so one that stalled kept its card disabled
+// and, since every read is held off while an answer is in flight, froze the list.
+describe('Activity, pinned invites — an answer that stalls', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('regression: gives up after the timeout, says so, frees the card, and reads the list again', async () => {
+    const { list, listRequests } = mockHeldFetch({ holdLists: true });
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    render(<ActivityPage />);
+    await list(0, listed(invites));
+    expect(screen.getByText('Birthday')).toBeInTheDocument();
+
+    fireEvent.click(cardButtons('Birthday').accept);
+    expectDisabled('Birthday');
+    // A read while it's on its way is dropped, and waits for it.
+    act(() => {
+      window.dispatchEvent(new Event('focus'));
+    });
+    await list(1, listed([housewarming]));
+    expect(screen.getByText('Birthday')).toBeInTheDocument();
+    expect(listRequests()).toBe(2);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(ITEM_REQUEST_TIMEOUT_MS);
+    });
+    expect(showToast).toHaveBeenCalledWith(REQUEST_TIMEOUT_MESSAGE, 'error');
+    expect(push).not.toHaveBeenCalled();
+    expectEnabled('Birthday');
+    // The list is read again, and that read decides: the server had taken it.
+    expect(listRequests()).toBe(3);
+    await list(2, listed([housewarming]));
+    expect(screen.queryByText('Birthday')).toBeNull();
+    expect(screen.getByText('Housewarming')).toBeInTheDocument();
+  });
+
+  it('reads the list again after a timeout even when no read was dropped meanwhile', async () => {
+    const { list, listRequests } = mockHeldFetch({ holdLists: true });
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    render(<ActivityPage />);
+    await list(0, listed(invites));
+
+    fireEvent.click(cardButtons('Birthday').decline);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(ITEM_REQUEST_TIMEOUT_MS);
+    });
+    expect(showToast).toHaveBeenCalledWith(REQUEST_TIMEOUT_MESSAGE, 'error');
+    expect(listRequests()).toBe(2);
+    await list(1, listed(invites));
+    expectEnabled('Birthday');
+  });
 });

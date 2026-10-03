@@ -25,12 +25,16 @@ test('the sign-in form sends a magic link', async ({ page }) => {
 
 // regression: the pages that need an account sent a signed-out visitor home,
 // losing where they were going.
-for (const path of ['/invites', '/notifications']) {
-  test(`regression: ${path} sends a signed-out visitor to sign in, then back to it`, async ({
+// /invites is Activity now (WIS-250), so it continues there once signed in.
+for (const [path, back] of [
+  ['/notifications', '/notifications'],
+  ['/invites', '/notifications'],
+]) {
+  test(`regression: ${path} sends a signed-out visitor to sign in, then back to ${back}`, async ({
     page,
   }) => {
     await page.goto(path);
-    await expect(page).toHaveURL(`/auth/signin?callbackUrl=${encodeURIComponent(path)}`);
+    await expect(page).toHaveURL(`/auth/signin?callbackUrl=${encodeURIComponent(back)}`);
     await expect(page.getByText('Welcome back')).toBeVisible();
   });
 }

@@ -18,6 +18,12 @@ export interface INotification extends Document {
   // (e.g. a proposal — owners must never learn who proposed an item — or a role
   // change, which never says which owner made it).
   actorUsername?: string | null;
+  // Who that is, by account: what the feed reads their avatar and Follow back
+  // by, since a username can change hands. Only on the types that show their
+  // actor (`showsActor`): follow (the latest follower of a coalesced row),
+  // wishlist_invite and invite_accepted. Absent on rows written before it,
+  // which then show no face and offer no Follow back.
+  actor?: mongoose.Types.ObjectId | null;
   // How many events this row stands for. A burst of follows (or of proposals on
   // one list) is coalesced at write time into a single unread row, so it can't
   // push everything else out of the feed. Absent on rows written before
@@ -49,6 +55,8 @@ const NotificationSchema = new Schema<INotification>(
       required: true,
     },
     actorUsername: { type: String, default: null },
+    // No default: a row from before it has no field (see above).
+    actor: { type: Schema.Types.ObjectId, ref: 'User', default: undefined },
     count: { type: Number, default: 1, min: 1 },
     // No default: a row that never had an actor list (a proposal) has no field.
     actorUsernames: { type: [String], default: undefined },

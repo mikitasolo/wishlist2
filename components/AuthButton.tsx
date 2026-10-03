@@ -1,6 +1,5 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
 import { signIn, signOut, useSession } from 'next-auth/react';
 import Avatar from '@/components/Avatar';
 import Icon from '@/components/Icon';
@@ -10,68 +9,14 @@ import { Skeleton } from '@/components/Skeleton';
 import { useTheme } from '@/components/ThemeProvider';
 import { isAuthOnlyPath } from '@/lib/utils/callbackUrl';
 
+/**
+ * The header's account menu. It carries no signal of its own: pending
+ * invitations live in Activity, and the bell's unread count is the one thing
+ * in the header that says something new is waiting (D3).
+ */
 export default function AuthButton() {
   const { data: session, status } = useSession();
-  const userId = session?.user?.id;
   const { theme, setTheme } = useTheme();
-  const [open, setOpen] = useState(false);
-  // The account whose latest check found pending invitations (null: none did).
-  // Another account signing in from another tab leaves `status` 'authenticated',
-  // so the dot is tied to the account it was checked for: the previous account's
-  // dot is gone in the same render that shows the new account, and a check still
-  // on its way for the previous account can't bring it back.
-  const [invitesFoundFor, setInvitesFoundFor] = useState<string | null>(null);
-  const hasInvites = invitesFoundFor === userId;
-  // Checks are numbered as they're sent. One that lands at or below
-  // `checksOutdatedUpTo` is dropped: a later check has already landed, or it was
-  // sent before signing out.
-  const checksSent = useRef(0);
-  const checksOutdatedUpTo = useRef(0);
-
-  // Whether there are pending invitations, for the header dot indicator.
-  const checkInvites = useCallback(async () => {
-    if (!userId) return;
-    const check = ++checksSent.current;
-    try {
-      const res = await fetch('/api/users/me/invites', { cache: 'no-store' });
-      const json = await res.json();
-      if (!json.success || check <= checksOutdatedUpTo.current) return;
-      checksOutdatedUpTo.current = check;
-      setInvitesFoundFor((json.data?.length ?? 0) > 0 ? userId : null);
-    } catch {
-      /* ignore — the dot is best-effort */
-    }
-  }, [userId]);
-
-  // Check on sign-in, whenever another account signs in, and whenever the tab
-  // regains focus (no polling).
-  useEffect(() => {
-    if (status === 'unauthenticated') {
-      // Signed out: hide the dot, and drop every check still on its way, so
-      // signing back in shows only what a check sent after it finds.
-      checksOutdatedUpTo.current = checksSent.current;
-      setInvitesFoundFor(null);
-      return;
-    }
-    // 'loading' is the first session read, or an `update()` (settings, welcome),
-    // which keeps the account: the dot keeps what it found, and is checked again
-    // once the session is back.
-    if (status !== 'authenticated') return;
-    checkInvites();
-    const refresh = () => checkInvites();
-    window.addEventListener('focus', refresh);
-    // Fired by pages that change invites (e.g. accept/decline) for an instant update.
-    window.addEventListener('invites-changed', refresh);
-    return () => {
-      window.removeEventListener('focus', refresh);
-      window.removeEventListener('invites-changed', refresh);
-    };
-  }, [status, checkInvites]);
-
-  // Also re-check right when the menu is opened.
-  useEffect(() => {
-    if (open && status === 'authenticated') checkInvites();
-  }, [open, status, checkInvites]);
 
   if (status === 'loading') {
     return <Skeleton className="h-10 w-10 rounded-full" />;
@@ -88,14 +33,6 @@ export default function AuthButton() {
         ? [{ label: 'Your profile', icon: 'user' as const, href: `/users/${username}` }]
         : []),
       { label: 'Reserved by you', icon: 'check-circle', href: '/booked' },
-      {
-        label: 'Invitations',
-        icon: 'inbox',
-        href: '/invites',
-        trailing: hasInvites && (
-          <span className="ml-auto h-2 w-2 rounded-full bg-danger-fill" aria-hidden />
-        ),
-      },
       { label: 'Settings', icon: 'settings', href: '/settings' },
       {
         type: 'radio-group',
@@ -126,23 +63,14 @@ export default function AuthButton() {
     // email in it.
     return (
       <Menu
-        label={`Account menu${hasInvites ? ' — new invitations' : ''}`}
+        label="Account menu"
         menuLabel="Account"
         className="relative min-w-0"
         triggerClassName="flex max-w-full items-center gap-1.5 rounded-full p-1 text-sm font-semibold text-foreground transition-colors hover:bg-muted sm:pr-2"
         menuWidthClassName="w-64"
-        onOpenChange={setOpen}
         trigger={(menuOpen) => (
           <>
-            <span className="relative inline-flex">
-              <Avatar name={displayName} src={image} size="sm" />
-              {hasInvites && (
-                <span
-                  className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-danger-fill ring-2 ring-surface"
-                  aria-hidden
-                />
-              )}
-            </span>
+            <Avatar name={displayName} src={image} size="sm" />
             <span className="hidden max-w-[10rem] truncate sm:block">{displayName}</span>
             <Icon
               name="chevron-down"

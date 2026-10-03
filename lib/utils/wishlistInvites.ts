@@ -52,7 +52,7 @@ function mailFailure(err: unknown) {
  * "already pending". The `findOne` before it is only a fast path for the common
  * case — and the sole guard on an environment where the index isn't built.
  *
- * Once the invite exists it is real — the invitee sees it on their Invitations
+ * Once the invite exists it is real — the invitee sees it pinned on their Activity
  * page — so nothing after that depends on the email: the notification is created
  * regardless, and a failed send is logged and swallowed. Failing the call there
  * would tell the inviter it didn't work while leaving the invite in place, and
@@ -86,6 +86,7 @@ export async function issueWishlistInvite(args: IssueInviteArgs): Promise<IWishl
     user: args.invitedUserId,
     type: 'wishlist_invite',
     actorUsername: args.actorUsername ?? null,
+    actor: args.invitedBy,
     wishlist: args.wishlistId,
     wishlistName: args.wishlistName,
   });
@@ -265,8 +266,8 @@ export async function withdrawUnlessInviterOwns(
 
 /**
  * Clear the `wishlist_invite` notification of an invite that an owner cancelled
- * (by hand, or by removing or demoting whoever sent it). It links to /invites and
- * looks actionable, but there's nothing left there to accept. Notifications carry
+ * (by hand, or by removing or demoting whoever sent it). It still reads as an
+ * invite, but there is nothing left to accept. Notifications carry
  * no invite id, which bounds what may go:
  *  - only while no other pending invite for this person and list remains: the
  *    unique pending index allows one at most, but only once it's built;

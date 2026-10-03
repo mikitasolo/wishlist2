@@ -49,6 +49,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         user: targetId,
         type: 'follow',
         actorUsername: session.user.username ?? null,
+        actor: session.user.id,
       });
     }
 
