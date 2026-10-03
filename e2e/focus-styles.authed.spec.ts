@@ -86,8 +86,9 @@ test('regression: the header and a list page show focus on every stop, in shape'
   await page.goto('/wishlists/e2e-birthday');
   await expect(page.getByRole('article', { name: 'Item: E2E Gift' })).toBeVisible();
   await recordRadii(page);
-  // The header, the list's actions, its filters and its item card.
-  await tabThrough(page, 15);
+  // The header, the list's actions, its status chips (one stop), its toolbar
+  // and its item card.
+  await tabThrough(page, 12);
 });
 
 // regression: a Menu's active item showed the focus outline as well as its
