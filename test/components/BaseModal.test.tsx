@@ -17,7 +17,7 @@ beforeEach(() => cleanup());
 
 /**
  * A page with a button that opens the modal and another one behind it. The
- * modal's "Delete Item" opens a confirmation rendered beside it, as the item
+ * modal's "Delete item" opens a confirmation rendered beside it, as the item
  * modals do. With `mountOpen`, the modal mounts already open, as the wishlist
  * page's item modals do.
  */
@@ -32,19 +32,19 @@ function ModalPage({ content, mountOpen }: { content?: ReactNode; mountOpen?: bo
         key={mountOpen ? String(modalOpen) : undefined}
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}
-        title="Edit Item"
+        title="Edit item"
         titleId="edit-item-title"
       >
         {content ?? (
           <>
-            <input aria-label="Item Name" />
-            <button onClick={() => setConfirmOpen(true)}>Delete Item</button>
+            <input aria-label="Item name" />
+            <button onClick={() => setConfirmOpen(true)}>Delete item</button>
           </>
         )}
       </BaseModal>
       <ConfirmDialog
         isOpen={confirmOpen}
-        title="Delete Item"
+        title="Delete item"
         message="Are you sure?"
         onConfirm={() => setConfirmOpen(false)}
         onCancel={() => setConfirmOpen(false)}
@@ -56,7 +56,7 @@ function ModalPage({ content, mountOpen }: { content?: ReactNode; mountOpen?: bo
 }
 
 const button = (name: string) => screen.getByRole('button', { name });
-const modal = () => screen.getByRole('dialog', { name: 'Edit Item' });
+const modal = () => screen.getByRole('dialog', { name: 'Edit item' });
 
 async function openModal() {
   const user = userEvent.setup();
@@ -103,13 +103,13 @@ describe('BaseModal — keyboard focus', () => {
     const user = await openModal();
 
     await user.tab();
-    expect(screen.getByLabelText('Item Name')).toHaveFocus();
+    expect(screen.getByLabelText('Item name')).toHaveFocus();
     await user.tab();
-    expect(button('Delete Item')).toHaveFocus();
+    expect(button('Delete item')).toHaveFocus();
     await user.tab();
     expect(button('Close modal')).toHaveFocus();
     await user.tab({ shift: true });
-    expect(button('Delete Item')).toHaveFocus();
+    expect(button('Delete item')).toHaveFocus();
   });
 
   it('brings focus back inside when it has dropped to the page', async () => {
@@ -121,7 +121,7 @@ describe('BaseModal — keyboard focus', () => {
 
     act(() => (document.activeElement as HTMLElement).blur());
     await user.tab({ shift: true });
-    expect(button('Delete Item')).toHaveFocus();
+    expect(button('Delete item')).toHaveFocus();
   });
 
   it('returns focus to the button that opened it when it closes', async () => {
@@ -139,11 +139,11 @@ describe('BaseModal — keyboard focus', () => {
   // regression: neither dialog kept Tab inside itself, so from a confirmation
   // stacked over a modal (or over a page) Tab reached whatever was behind its
   // backdrop. On /booked that opened a second confirmation for the same
-  // reservation from "Mark as gifted?", and confirming both sent two
+  // reservation from "Mark as given?", and confirming both sent two
   // conflicting requests for it.
   it('regression: traps focus in a confirmation stacked over it, then in itself again once it closes', async () => {
     const user = await openModal();
-    await user.click(button('Delete Item'));
+    await user.click(button('Delete item'));
     const confirmation = within(screen.getByRole('alertdialog'));
 
     expect(confirmation.getByRole('button', { name: 'Cancel' })).toHaveFocus();
@@ -159,11 +159,11 @@ describe('BaseModal — keyboard focus', () => {
     await user.keyboard('{Escape}');
     expect(screen.queryByRole('alertdialog')).toBeNull();
     expect(modal()).toBeInTheDocument();
-    expect(button('Delete Item')).toHaveFocus();
+    expect(button('Delete item')).toHaveFocus();
     await user.tab();
     expect(button('Close modal')).toHaveFocus();
     await user.tab({ shift: true });
-    expect(button('Delete Item')).toHaveFocus();
+    expect(button('Delete item')).toHaveFocus();
 
     // Closing the modal hands focus back to the page.
     await user.keyboard('{Escape}');
@@ -209,13 +209,13 @@ function SavingPage({
       <BaseModal
         isOpen={open}
         onClose={() => setOpen(false)}
-        title="Edit Item"
+        title="Edit item"
         titleId="edit-item-title"
         isSubmitting={saving}
       >
         <form onSubmit={save}>
           {extra}
-          <input aria-label="Item Name" disabled={saving} />
+          <input aria-label="Item name" disabled={saving} />
           {failed && dropSubmitOnFailure ? (
             <p>Saving is unavailable right now.</p>
           ) : (
@@ -339,10 +339,10 @@ function SelectPage() {
       <BaseModal
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}
-        title="Edit Item"
+        title="Edit item"
         titleId="edit-item-title"
       >
-        <input aria-label="Item Name" />
+        <input aria-label="Item name" />
         <Select
           value={sort}
           onChange={setSort}
@@ -352,11 +352,11 @@ function SelectPage() {
           ]}
           ariaLabel="Sort by"
         />
-        <button onClick={() => setConfirmOpen(true)}>Delete Item</button>
+        <button onClick={() => setConfirmOpen(true)}>Delete item</button>
       </BaseModal>
       <ConfirmDialog
         isOpen={confirmOpen}
-        title="Delete Item"
+        title="Delete item"
         message="Are you sure?"
         onConfirm={() => setConfirmOpen(false)}
         onCancel={() => setConfirmOpen(false)}
@@ -403,7 +403,7 @@ describe('BaseModal — a Select in it, its menu portalled out of it', () => {
 
     // Tab carries on from there, inside the modal.
     await user.tab();
-    expect(button('Delete Item')).toHaveFocus();
+    expect(button('Delete item')).toHaveFocus();
   });
 
   it('is one Tab stop: Tab and Shift+Tab with the menu open close it and move to the next or previous field', async () => {
@@ -411,7 +411,7 @@ describe('BaseModal — a Select in it, its menu portalled out of it', () => {
 
     await user.keyboard('{ArrowDown}');
     await user.tab();
-    expect(button('Delete Item')).toHaveFocus();
+    expect(button('Delete item')).toHaveFocus();
     expect(menu()).toBeNull();
     expect(trigger()).toHaveTextContent('Newest');
 
@@ -419,7 +419,7 @@ describe('BaseModal — a Select in it, its menu portalled out of it', () => {
     expect(trigger()).toHaveFocus();
     await user.keyboard('{Enter}');
     await user.tab({ shift: true });
-    expect(screen.getByLabelText('Item Name')).toHaveFocus();
+    expect(screen.getByLabelText('Item name')).toHaveFocus();
     expect(menu()).toBeNull();
   });
 
@@ -476,7 +476,7 @@ describe('BaseModal — a Select in it, its menu portalled out of it', () => {
     const user = await openMenu();
 
     // Opened without moving focus first, so the menu is still open.
-    fireEvent.click(button('Delete Item'));
+    fireEvent.click(button('Delete item'));
     const confirmation = within(screen.getByRole('alertdialog'));
     expect(confirmation.getByRole('button', { name: 'Cancel' })).toHaveFocus();
     expect(menu()).toBeNull();

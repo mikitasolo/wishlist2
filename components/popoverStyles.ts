@@ -25,7 +25,7 @@ export const POPOVER_NOTE = 'px-3 py-2.5 text-sm text-muted-foreground';
 
 /** A heading over a group of rows ("People", "Wishlists"). */
 export const POPOVER_GROUP_LABEL =
-  'px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground';
+  'px-3 pb-1 pt-2 text-badge font-semibold uppercase tracking-wider text-muted-foreground';
 
 /** A rule between groups, edge to edge across the surface's padding. */
 export const POPOVER_SEPARATOR = '-mx-1.5 my-1.5 border-t border-border';

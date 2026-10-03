@@ -11,11 +11,25 @@ export function getVisibility(w: { visibility?: Visibility | null }): Visibility
   return w.visibility ?? 'private';
 }
 
-export const visibilityMeta: Record<Visibility, { label: string; icon: IconName }> = {
-  everyone: { label: 'Public', icon: 'globe' },
-  friends: { label: 'Friends', icon: 'users' },
-  private: { label: 'Private', icon: 'lock' },
-};
+/**
+ * Each tier's name, icon and one-line helper, the same in the pickers (create
+ * and settings) and on the pill. A `private` list reads "Invite only": its
+ * members and co-owners can open it too, so it isn't its owner's alone.
+ */
+export const visibilityMeta: Record<Visibility, { label: string; icon: IconName; helper: string }> =
+  {
+    everyone: { label: 'Public', icon: 'globe', helper: 'Anyone can open it.' },
+    friends: {
+      label: 'Friends',
+      icon: 'users',
+      helper: 'Owners, their friends (mutual follows) and people you invite can open it.',
+    },
+    private: {
+      label: 'Invite only',
+      icon: 'lock',
+      helper: 'Only owners and people you invite can open it.',
+    },
+  };
 
 /**
  * The pill on a list's cover: its visibility, unless it's archived. An archived

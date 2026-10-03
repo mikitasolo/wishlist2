@@ -191,7 +191,7 @@ describe('CreateWishlistModal — editing while its banner uploads', () => {
     await user.type(name, 'Birthday');
     await user.type(description, 'Turning 30');
     await user.click(screen.getByRole('button', { name: 'Friends' }));
-    expect(screen.getByText(/only your friends/i)).toBeInTheDocument();
+    expect(screen.getByText(/their friends \(mutual follows\)/i)).toBeInTheDocument();
 
     await answerUpload();
     expect(screen.getByAltText('Uploaded image').getAttribute('src')).toContain(
@@ -199,9 +199,9 @@ describe('CreateWishlistModal — editing while its banner uploads', () => {
     );
     expect(name).toHaveValue('Birthday');
     expect(description).toHaveValue('Turning 30');
-    expect(screen.getByText(/only your friends/i)).toBeInTheDocument();
+    expect(screen.getByText(/their friends \(mutual follows\)/i)).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Create Wishlist' }));
+    await user.click(screen.getByRole('button', { name: 'Create wishlist' }));
     await waitFor(() => expect(push).toHaveBeenCalledWith('/wishlists/birthday'));
     const create = fetchMock.mock.calls.find(([url]) => url === '/api/wishlists')!;
     expect(JSON.parse(create[1]!.body as string)).toMatchObject({

@@ -141,7 +141,7 @@ export default function NotificationsPage() {
               <Icon name="bell" size={30} />
             </span>
             <h3 className="text-xl font-semibold text-foreground">You’re all caught up</h3>
-            <p className="mx-auto mt-2 max-w-sm px-4 text-[15px] text-muted-foreground">
+            <p className="mx-auto mt-2 max-w-sm px-4 text-body text-muted-foreground">
               When someone follows you, invites you to a wishlist, or acts on a proposal, it’ll show
               up here.
             </p>
@@ -159,7 +159,7 @@ export default function NotificationsPage() {
                     <Icon name={notificationIcon(n)} size={18} />
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block text-[15px] text-foreground">
+                    <span className="block text-body text-foreground">
                       <NotificationLine n={n} />
                     </span>
                     <span className="mt-0.5 block text-xs text-muted-foreground">

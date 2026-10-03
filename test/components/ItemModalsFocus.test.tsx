@@ -36,16 +36,16 @@ const currencies = { wishlistCurrency: 'USD', userCurrency: 'USD' };
 const modals = [
   {
     name: 'AddItemModal',
-    submitLabel: 'Add Item',
-    submittingLabel: 'Adding...',
+    submitLabel: 'Add item',
+    submittingLabel: 'Adding…',
     needsName: true,
     renderModal: (onSubmit: Submit) =>
       render(<AddItemModal isOpen onClose={vi.fn()} onAdd={onSubmit} {...currencies} />),
   },
   {
     name: 'EditItemModal',
-    submitLabel: 'Save Changes',
-    submittingLabel: 'Saving...',
+    submitLabel: 'Save changes',
+    submittingLabel: 'Saving…',
     needsName: true,
     renderModal: (onSubmit: Submit) =>
       render(
@@ -60,16 +60,16 @@ const modals = [
   },
   {
     name: 'ProposeItemModal',
-    submitLabel: 'Propose Item',
-    submittingLabel: 'Proposing...',
+    submitLabel: 'Propose item',
+    submittingLabel: 'Proposing…',
     needsName: true,
     renderModal: (onSubmit: Submit) =>
       render(<ProposeItemModal isOpen onClose={vi.fn()} onPropose={onSubmit} {...currencies} />),
   },
   {
     name: 'ReviewItemModal',
-    submitLabel: 'Approve Item',
-    submittingLabel: 'Approving...',
+    submitLabel: 'Approve item',
+    submittingLabel: 'Approving…',
     needsName: false,
     renderModal: (onSubmit: Submit) =>
       render(
@@ -231,7 +231,7 @@ describe.each([
     await user.tab();
     expect(confirmation).toHaveFocus();
 
-    // A failed delete still hands focus back to Delete Item.
+    // A failed delete still hands focus back to Delete item.
     await fail();
     expect(screen.queryByRole('alertdialog')).toBeNull();
     expect(deleteItem).toHaveFocus();

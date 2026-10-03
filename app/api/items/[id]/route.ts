@@ -31,6 +31,10 @@ import { undoBookingUnlessMember, type LostBookingReason } from '@/lib/utils/lat
 import { isCountedOnShareCard } from '@/lib/og/data';
 import { purgeShareCards } from '@/lib/og/purge';
 
+/** An owner's status change that isn't publish, draft or received (an owner can't reserve). */
+const OWNER_STATUS_ERROR =
+  'Owners can only publish an item, move it to draft or mark it as received';
+
 /**
  * The answer to a booking undone because the caller stopped being a plain member
  * while it was in flight (see `undoBookingUnlessMember`): the one they'd have got
@@ -44,10 +48,7 @@ function lostBookingResponse(reason: LostBookingReason) {
     );
   }
   if (reason === 'owner') {
-    return NextResponse.json(
-      { success: false, error: 'Owners can only set an item to draft, available or completed' },
-      { status: 400 }
-    );
+    return NextResponse.json({ success: false, error: OWNER_STATUS_ERROR }, { status: 400 });
   }
   // The list was archived, which hides it from everyone but its owners.
   return NextResponse.json({ success: false, error: 'Item not found' }, { status: 404 });
@@ -300,7 +301,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
           return NextResponse.json(
             {
               success: false,
-              error: 'Owners can only set an item to draft, available or completed',
+              error: OWNER_STATUS_ERROR,
             },
             { status: 400 }
           );
@@ -322,14 +323,14 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
           reservationAction = 'create';
           bookingGuard = {
             filter: { status: 'available' },
-            conflict: 'This item is no longer available to book',
+            conflict: 'This item is no longer available to reserve',
           };
         }
         // Allow unbooking only items booked by the current user
         else if (validatedData.status === 'available' && currentItem.status === 'booked') {
           if (currentItem.bookedBy?.toString() !== session.user.id) {
             return NextResponse.json(
-              { success: false, error: 'You can only unbook items you have booked' },
+              { success: false, error: 'You can only release items you have reserved' },
               { status: 403 }
             );
           }
@@ -338,7 +339,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
           reservationAction = 'delete';
           bookingGuard = {
             filter: { status: 'booked', bookedBy: session.user.id },
-            conflict: 'This item is no longer booked by you',
+            conflict: 'This item is no longer reserved by you',
           };
         }
         // Don't allow other status changes

@@ -20,9 +20,20 @@ describe('getVisibility', () => {
 
 describe('visibilityMeta', () => {
   it('has label + icon for each visibility', () => {
-    expect(visibilityMeta.everyone).toEqual({ label: 'Public', icon: 'globe' });
-    expect(visibilityMeta.friends.icon).toBe('users');
-    expect(visibilityMeta.private.icon).toBe('lock');
+    expect(visibilityMeta.everyone).toMatchObject({ label: 'Public', icon: 'globe' });
+    expect(visibilityMeta.friends).toMatchObject({ label: 'Friends', icon: 'users' });
+    expect(visibilityMeta.private).toMatchObject({ label: 'Invite only', icon: 'lock' });
+  });
+
+  // regression: a private list was "Only me" in the pickers and "Private" on
+  // its pill, though its members and co-owners can open it too (W-28, D1).
+  it('names a private list "Invite only", with a helper that says who can open it', () => {
+    expect(visibilityMeta.private.label).toBe('Invite only');
+    expect(visibilityMeta.private.helper).toBe('Only owners and people you invite can open it.');
+    for (const meta of Object.values(visibilityMeta)) {
+      expect(meta.label).not.toMatch(/only me|private/i);
+      expect(meta.helper).not.toMatch(/only you\b/i);
+    }
   });
 });
 

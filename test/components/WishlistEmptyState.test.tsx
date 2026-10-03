@@ -150,8 +150,8 @@ const emptyState = (heading: string) =>
   screen.getByRole('heading', { name: heading }).parentElement as HTMLElement;
 
 /**
- * None of the stat cards, nothing in the toolbar, and not the + Add Item or
- * + Propose Item above the list (the empty state offers its own), is on the page.
+ * None of the stat cards, nothing in the toolbar, and not the + Add item or
+ * + Propose item above the list (the empty state offers its own), is on the page.
  */
 function expectNoCardsOrToolbar() {
   expect(screen.queryByRole('button', { name: /^(Total Items|All)\s*\d+$/ })).toBeNull();
@@ -160,16 +160,16 @@ function expectNoCardsOrToolbar() {
   expect(screen.queryByRole('button', { name: 'Filter by status' })).toBeNull();
   expect(screen.queryByRole('combobox', { name: 'Sort items by' })).toBeNull();
   expect(screen.queryByRole('combobox', { name: 'Show prices in' })).toBeNull();
-  expect(screen.queryByRole('button', { name: '+ Add Item' })).toBeNull();
-  expect(screen.queryByRole('button', { name: '+ Propose Item' })).toBeNull();
+  expect(screen.queryByRole('button', { name: '+ Add item' })).toBeNull();
+  expect(screen.queryByRole('button', { name: '+ Propose item' })).toBeNull();
 }
 
 /** Owner Carol adds an item through the empty state's Add your first item. */
 async function addFirstItem(user: ReturnType<typeof userEvent.setup>, name: string) {
   await user.click(screen.getByRole('button', { name: 'Add your first item' }));
-  const dialog = await screen.findByRole('dialog', { name: 'Add New Item' });
-  await user.type(within(dialog).getByLabelText(/Item Name/), name);
-  await user.click(within(dialog).getByRole('button', { name: 'Add Item' }));
+  const dialog = await screen.findByRole('dialog', { name: 'Add new item' });
+  await user.type(within(dialog).getByLabelText(/Item name/), name);
+  await user.click(within(dialog).getByRole('button', { name: 'Add item' }));
 }
 
 describe('a list with no items at all', () => {
@@ -194,7 +194,7 @@ describe('a list with no items at all', () => {
     expect(showToast).toHaveBeenCalledWith('Link copied to clipboard', 'success');
 
     await user.click(within(box).getByRole('button', { name: 'Add your first item' }));
-    expect(await screen.findByRole('dialog', { name: 'Add New Item' })).toBeInTheDocument();
+    expect(await screen.findByRole('dialog', { name: 'Add new item' })).toBeInTheDocument();
   });
 
   // regression: the empty state's Share showed on an archived list, whose link
@@ -220,7 +220,7 @@ describe('a list with no items at all', () => {
     expectNoCardsOrToolbar();
 
     await user.click(within(box).getByRole('button', { name: 'Propose an item' }));
-    expect(await screen.findByRole('dialog', { name: 'Propose New Item' })).toBeInTheDocument();
+    expect(await screen.findByRole('dialog', { name: 'Propose new item' })).toBeInTheDocument();
   });
 
   it.each([
@@ -251,7 +251,7 @@ describe('a list with no items at all', () => {
     expect(screen.queryByRole('heading', { name: 'Your list is empty' })).toBeNull();
     expect(screen.getByRole('textbox', { name: 'Search items by name' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Filter by status' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '+ Add Item' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '+ Add item' })).toBeInTheDocument();
   });
 
   // The toolbar goes with the last item, so a filter or search left in force
@@ -260,7 +260,7 @@ describe('a list with no items at all', () => {
     listItems = [item('Vase', { status: 'completed' }, 1)];
     const user = userEvent.setup();
     await open();
-    await user.click(screen.getByRole('button', { name: /^Completed\s*\d+$/ }));
+    await user.click(screen.getByRole('button', { name: /^Received\s*\d+$/ }));
     await user.type(screen.getByRole('textbox', { name: 'Search items by name' }), 'vase');
     expect(shown()).toEqual(['Vase']);
 
@@ -329,7 +329,7 @@ describe('a list whose items are all filtered out', () => {
     await open();
     expect(shown()).toEqual(['Scarf', 'Lamp']);
 
-    await user.click(screen.getByRole('button', { name: /^Booked by Others\s*0$/ }));
+    await user.click(screen.getByRole('button', { name: /^Reserved by others\s*0$/ }));
     expect(shown()).toEqual([]);
     expect(screen.getByText('No items match the selected filters.')).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Nothing here yet' })).toBeNull();

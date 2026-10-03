@@ -155,19 +155,19 @@ export default function CreateWishlistModal({
               Cancel
             </Button>
             <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? 'Creating...' : 'Create Wishlist'}
+              {isSubmitting ? 'Creating…' : 'Create wishlist'}
             </Button>
           </>
         }
       >
         <div className="space-y-4">
-          <Field label="Wishlist Name *" id="name">
+          <Field label="Wishlist name *" id="name">
             <Input
               required
               autoFocus
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              placeholder="My Wishlist"
+              placeholder="My wishlist"
               disabled={isSubmitting}
               aria-required="true"
               autoComplete="off"
@@ -215,11 +215,7 @@ export default function CreateWishlistModal({
           <div>
             <label className={FIELD_LABEL}>Visibility</label>
             <p className="mb-2 text-xs text-muted-foreground">
-              {formData.visibility === 'everyone'
-                ? 'Anyone can find and view this wishlist.'
-                : formData.visibility === 'friends'
-                  ? 'Only your friends (mutual follows) and members can view it.'
-                  : 'Only you and people you invite can view it.'}
+              {visibilityMeta[formData.visibility].helper}
             </p>
             <div className="relative flex rounded-xl border border-border bg-surface-2 p-1">
               <span
@@ -236,14 +232,18 @@ export default function CreateWishlistModal({
                   type="button"
                   onClick={() => setFormData({ ...formData, visibility: v })}
                   disabled={isSubmitting}
-                  className={`relative z-10 flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-semibold transition-colors ${
+                  className={`relative z-10 flex min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-1 py-2 text-sm font-semibold transition-colors ${
                     formData.visibility === v
                       ? 'text-foreground'
                       : 'text-muted-foreground hover:text-foreground'
                   }`}
                 >
-                  <Icon name={visibilityMeta[v].icon} size={14} />
-                  {v === 'private' ? 'Only me' : visibilityMeta[v].label}
+                  <Icon
+                    name={visibilityMeta[v].icon}
+                    size={14}
+                    className="flex-shrink-0 max-[359px]:hidden"
+                  />
+                  {visibilityMeta[v].label}
                 </button>
               ))}
             </div>
@@ -258,7 +258,7 @@ export default function CreateWishlistModal({
         createPortal(
           <ConfirmDialog
             isOpen
-            title="Discard Changes?"
+            title="Discard changes?"
             message="You have unsaved changes. Are you sure you want to close? All progress will be lost."
             onConfirm={handleConfirmClose}
             onCancel={() => setShowConfirmClose(false)}

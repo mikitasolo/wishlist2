@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { readdirSync, readFileSync, statSync } from 'fs';
+import { readFileSync } from 'fs';
 import path from 'path';
 import {
   displayStatus,
@@ -12,15 +12,7 @@ import {
 } from '@/lib/utils/itemStatus';
 import { TONE_CLASSES, type StatusTone } from '@/lib/utils/statusTones';
 import { statusFilterOptions } from '@/lib/utils/itemFilters';
-
-/** Every .ts/.tsx file under `dir`, recursively. */
-function sources(dir: string): string[] {
-  return readdirSync(dir).flatMap((name) => {
-    const full = path.join(dir, name);
-    if (statSync(full).isDirectory()) return sources(full);
-    return /\.tsx?$/.test(name) ? [full] : [];
-  });
-}
+import { sourceFiles } from '../sourceFiles';
 
 const STATUSES: ItemStatus[] = ['draft', 'proposed', 'available', 'booked', 'completed'];
 const ROLES: ViewerRole[] = ['owner', 'member', 'visitor'];
@@ -82,9 +74,9 @@ describe('statusMeta', () => {
       draft: 'Draft',
       proposed: 'Proposed',
       available: 'Available',
-      bookedByMe: 'Booked by you',
-      bookedByOthers: 'Booked',
-      completed: 'Completed',
+      bookedByMe: 'Reserved by you',
+      bookedByOthers: 'Reserved',
+      completed: 'Received',
     });
   });
 
@@ -104,7 +96,7 @@ describe('statusMeta', () => {
     }
   });
 
-  // regression: "Completed" and "Booked by you" were both emerald, so a member
+  // regression: "Received" and "Reserved by you" were both emerald, so a member
   // couldn't tell them apart on one grid. Completed is neutral now.
   it('regression: completed doesn’t share a colour with booked by you', () => {
     const done = STATUS_META.completed.classes;
@@ -150,7 +142,7 @@ describe('raw status palette classes', () => {
     const offenders: string[] = [];
     let scanned = 0;
     for (const root of ['app', 'components', 'lib']) {
-      for (const file of sources(path.join(process.cwd(), root))) {
+      for (const file of sourceFiles(path.join(process.cwd(), root))) {
         const rel = path.relative(process.cwd(), file);
         if (EXEMPT_FILES.has(rel)) continue;
         scanned++;
@@ -177,10 +169,10 @@ describe('raw status palette classes', () => {
 describe('FILTER_META', () => {
   it('labels every stat card and filter option, in the status map’s tone', () => {
     expect(FILTER_META.all).toEqual({ label: 'All', tone: 'neutral' });
-    expect(FILTER_META.bookedByMe).toEqual({ label: 'Booked by You', tone: 'success' });
-    expect(FILTER_META.bookedByOthers).toEqual({ label: 'Booked by Others', tone: 'warning' });
-    expect(FILTER_META.proposedByMe).toEqual({ label: 'Proposed by You', tone: 'info' });
-    expect(FILTER_META.completed).toEqual({ label: 'Completed', tone: 'done' });
+    expect(FILTER_META.bookedByMe).toEqual({ label: 'Reserved by you', tone: 'success' });
+    expect(FILTER_META.bookedByOthers).toEqual({ label: 'Reserved by others', tone: 'warning' });
+    expect(FILTER_META.proposedByMe).toEqual({ label: 'Proposed by you', tone: 'info' });
+    expect(FILTER_META.completed).toEqual({ label: 'Received', tone: 'done' });
   });
 
   // regression: an owner's cards must never count or name booking.

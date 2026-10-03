@@ -14,7 +14,7 @@ export default function BrandLink() {
       aria-label="Wishlist home"
     >
       <Logo className="h-8 w-8 rounded-[9px] shadow-[0_4px_12px_-3px_rgba(94,92,230,0.6)] transition-transform group-hover:scale-105" />
-      <span className="hidden text-[17px] font-semibold tracking-tight text-foreground sm:inline">
+      <span className="hidden text-title font-semibold tracking-tight text-foreground sm:inline">
         Wishlist
       </span>
     </Link>

@@ -54,22 +54,22 @@ test('regression: a failed approve shows the error and leaves the item proposed'
   const proposedCard = page.getByRole('article', { name: `Item: ${proposal.name}` });
   await proposedCard.getByRole('button', { name: 'Review proposed item' }).click();
 
-  const dialog = page.getByRole('dialog', { name: 'Review Proposed Item' });
-  await dialog.getByLabel('Item Name').fill('E2E Desk Lamp');
-  await dialog.getByRole('button', { name: 'Approve Item' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Review proposed item' });
+  await dialog.getByLabel('Item name').fill('E2E Desk Lamp');
+  await dialog.getByRole('button', { name: 'Approve item' }).click();
 
   // The API's error, not a success, and the modal keeps the owner's edits.
   await expect(page.getByRole('status').getByText(RATE_LIMITED)).toBeVisible();
-  await expect(dialog.getByRole('button', { name: 'Approve Item' })).toBeEnabled();
+  await expect(dialog.getByRole('button', { name: 'Approve item' })).toBeEnabled();
   await expect(page.getByText('Item approved successfully')).toHaveCount(0);
-  await expect(dialog.getByLabel('Item Name')).toHaveValue('E2E Desk Lamp');
+  await expect(dialog.getByLabel('Item name')).toHaveValue('E2E Desk Lamp');
 
   // The optimistic approve was rolled back: the card is the proposal again.
   await expect(proposedCard.getByText('Proposed', { exact: true })).toBeVisible();
   await expect(page.getByRole('article', { name: 'Item: E2E Desk Lamp' })).toHaveCount(0);
 
   // A retry that succeeds approves it and closes the modal.
-  await dialog.getByRole('button', { name: 'Approve Item' }).click();
+  await dialog.getByRole('button', { name: 'Approve item' }).click();
   await expect(page.getByRole('status').getByText('Item approved successfully')).toBeVisible();
   await expect(dialog).toBeHidden();
   const approvedCard = page.getByRole('article', { name: 'Item: E2E Desk Lamp' });

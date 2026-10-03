@@ -33,7 +33,7 @@ async function pollOnce(page: Page) {
 // The create request is answered here, never by the server, so nothing reaches
 // the seeded database: the reply is the submitted item, as the server would
 // return it once saved (a proposal carries its proposer, which is what keeps it
-// under the member's "Proposed by You" filter).
+// under the member's "Proposed by you" filter).
 async function signedInUserId(page: Page): Promise<string> {
   const session = await (await page.request.get('/api/auth/session')).json();
   return session.user.id;
@@ -135,22 +135,22 @@ for (const flow of [
   {
     as: 'owner',
     list: 'e2e-birthday',
-    open: '+ Add Item',
+    open: '+ Add item',
     // e2e-birthday has an item, so the button stays once the list has loaded.
-    openOnceLoaded: '+ Add Item',
-    title: 'Add New Item',
-    submit: 'Add Item',
+    openOnceLoaded: '+ Add item',
+    title: 'Add new item',
+    submit: 'Add item',
     done: 'Item added successfully',
   },
   {
     as: 'member',
     list: 'e2e-friend',
-    open: '+ Propose Item',
+    open: '+ Propose item',
     // e2e-friend has no items, so once it has loaded the proposal is offered by
     // its empty state instead.
     openOnceLoaded: 'Propose an item',
-    title: 'Propose New Item',
-    submit: 'Propose Item',
+    title: 'Propose new item',
+    submit: 'Propose item',
     done: 'Item proposed successfully',
   },
 ]) {
@@ -169,7 +169,7 @@ for (const flow of [
   async function fillIn(page: Page, name: string, open = flow.open) {
     await page.getByRole('button', { name: open }).click();
     const dialog = page.getByRole('dialog', { name: flow.title });
-    await dialog.getByLabel('Item Name').fill(name);
+    await dialog.getByLabel('Item name').fill(name);
     return dialog.getByRole('button', { name: flow.submit, exact: true });
   }
 
@@ -310,14 +310,14 @@ for (const flow of [
     from: 'edit',
     item: 'E2E Gift',
     open: 'Edit item',
-    title: 'Edit Item',
+    title: 'Edit item',
     done: 'Item deleted successfully',
   },
   {
     from: 'review',
     item: polledProposal.name,
     open: 'Review proposed item',
-    title: 'Review Proposed Item',
+    title: 'Review proposed item',
     done: 'Proposed item deleted',
   },
 ]) {
@@ -348,7 +348,7 @@ for (const flow of [
     await card.getByRole('button', { name: flow.open }).click();
     await page
       .getByRole('dialog', { name: flow.title })
-      .getByRole('button', { name: 'Delete Item' })
+      .getByRole('button', { name: 'Delete item' })
       .click();
 
     // The poll reads the list while the item still exists, but only hands it
@@ -387,9 +387,9 @@ const polledBookable = {
 
 async function renameGift(page: Page) {
   await cardOf(page, 'E2E Gift').getByRole('button', { name: 'Edit item' }).click();
-  const dialog = page.getByRole('dialog', { name: 'Edit Item' });
-  await dialog.getByLabel('Item Name').fill('E2E Renamed Gift');
-  await dialog.getByRole('button', { name: 'Save Changes' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Edit item' });
+  await dialog.getByLabel('Item name').fill('E2E Renamed Gift');
+  await dialog.getByRole('button', { name: 'Save changes' }).click();
 }
 
 // Answers the item PATCH here as the server would, once `answer` resolves, so
@@ -434,7 +434,7 @@ for (const flow of [
     changed: (page: Page) => cardOf(page, 'E2E Renamed Gift'),
     reverted: (page: Page) => cardOf(page, 'E2E Gift'),
     async settled(page: Page) {
-      await expect(page.getByRole('dialog', { name: 'Edit Item' })).toBeHidden();
+      await expect(page.getByRole('dialog', { name: 'Edit item' })).toBeHidden();
     },
   },
   {
@@ -446,8 +446,8 @@ for (const flow of [
         .getByRole('button', { name: 'Review proposed item' })
         .click();
       await page
-        .getByRole('dialog', { name: 'Review Proposed Item' })
-        .getByRole('button', { name: 'Approve Item' })
+        .getByRole('dialog', { name: 'Review proposed item' })
+        .getByRole('button', { name: 'Approve item' })
         .click();
     },
     // Only a published item has owner buttons; a proposal is reviewed instead.
@@ -457,7 +457,7 @@ for (const flow of [
       cardOf(page, polledProposal.name).getByText('Proposed', { exact: true }),
     async settled(page: Page) {
       await expect(page.getByRole('status').getByText('Item approved successfully')).toBeVisible();
-      await expect(page.getByRole('dialog', { name: 'Review Proposed Item' })).toBeHidden();
+      await expect(page.getByRole('dialog', { name: 'Review proposed item' })).toBeHidden();
     },
   },
   {
@@ -466,18 +466,18 @@ for (const flow of [
     extra: polledBookable,
     async start(page: Page) {
       await cardOf(page, polledBookable.name)
-        .getByRole('button', { name: 'Book this item', exact: true })
+        .getByRole('button', { name: 'Reserve this item', exact: true })
         .click();
     },
-    changed: (page: Page) => cardOf(page, polledBookable.name).getByText('Booked by you'),
+    changed: (page: Page) => cardOf(page, polledBookable.name).getByText('Reserved by you'),
     reverted: (page: Page) =>
       cardOf(page, polledBookable.name).getByRole('button', {
-        name: 'Book this item',
+        name: 'Reserve this item',
         exact: true,
       }),
     async settled(page: Page) {
       await expect(
-        cardOf(page, polledBookable.name).getByRole('button', { name: 'Unbook this item' })
+        cardOf(page, polledBookable.name).getByRole('button', { name: 'Release this item' })
       ).toBeEnabled();
     },
   },
@@ -486,7 +486,7 @@ for (const flow of [
   // than the poll's start. One that started after the update did and resolved
   // before its PATCH settled was applied, so the server's copy from before the
   // write flipped the item back (the edit undone, the proposal "Proposed" again
-  // under "Approving...", the booking un-booked) until the PATCH response landed.
+  // under "Approving…", the booking un-booked) until the PATCH response landed.
   test(`regression: a poll that reads during ${flow.during} doesn't undo it before it settles`, async ({
     page,
   }) => {
@@ -555,7 +555,7 @@ test("regression: a poll that joins a read sent before an edit settled doesn't u
   const slowRead = await reads.next();
 
   await renameGift(page);
-  await expect(page.getByRole('dialog', { name: 'Edit Item' })).toBeHidden();
+  await expect(page.getByRole('dialog', { name: 'Edit item' })).toBeHidden();
   await expect(renamed).toBeVisible();
 
   // The next poll (the tab regaining focus, say) joins the read still in flight.
@@ -590,8 +590,8 @@ test("regression: a failed booking's reconcile read dropped behind a proposal is
     /^Error updating item: /
   );
   const bookable = cardOf(page, polledBookable.name);
-  const bookedByMe = bookable.getByText('Booked by you');
-  const bookButton = bookable.getByRole('button', { name: 'Book this item', exact: true });
+  const bookedByMe = bookable.getByText('Reserved by you');
+  const bookButton = bookable.getByRole('button', { name: 'Reserve this item', exact: true });
   const userId = await signedInUserId(page);
 
   // Reads the server answers once the PATCH has arrived list the item booked.
@@ -630,10 +630,10 @@ test("regression: a failed booking's reconcile read dropped behind a proposal is
   await expect(bookButton).toBeVisible();
   expect(await bookedByMe.count()).toBe(0);
 
-  await page.getByRole('button', { name: '+ Propose Item' }).click();
-  const dialog = page.getByRole('dialog', { name: 'Propose New Item' });
-  await dialog.getByLabel('Item Name').fill('E2E Proposed Meanwhile');
-  await dialog.getByRole('button', { name: 'Propose Item', exact: true }).click();
+  await page.getByRole('button', { name: '+ Propose item' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Propose new item' });
+  await dialog.getByLabel('Item name').fill('E2E Proposed Meanwhile');
+  await dialog.getByRole('button', { name: 'Propose item', exact: true }).click();
   await postArrived.promise;
 
   // The reconcile read lands while the proposal's POST is in flight, so it's
@@ -652,7 +652,7 @@ test("regression: a failed booking's reconcile read dropped behind a proposal is
 // regression: only an approve put the item back when its PATCH failed; any
 // other update was undone by the reconcile read alone, and a failed read keeps
 // the list. So a booking that failed because the network was down stayed on the
-// card as "Booked by you" (on an item nobody booked) until a later poll got
+// card as "Reserved by you" (on an item nobody booked) until a later poll got
 // through.
 test('regression: a booking that fails while offline is put back at once, though the reconcile read fails too', async ({
   page,
@@ -666,8 +666,8 @@ test('regression: a booking that fails while offline is put back at once, though
     /^Error fetching items: /
   );
   const bookable = cardOf(page, polledBookable.name);
-  const bookedByMe = bookable.getByText('Booked by you');
-  const bookButton = bookable.getByRole('button', { name: 'Book this item', exact: true });
+  const bookedByMe = bookable.getByText('Reserved by you');
+  const bookButton = bookable.getByRole('button', { name: 'Reserve this item', exact: true });
 
   // The list loads, then the network goes down: the PATCH, held until the
   // booking shows, and every read after the first fail.
@@ -718,7 +718,7 @@ const coOwnersItem = {
 
 // regression: item requests had no timeout, and the page holds off its polls
 // while one is in flight. So a PATCH that stalled (on a dropped connection the
-// browser takes minutes to notice) kept the modal on "Saving...", the card
+// browser takes minutes to notice) kept the modal on "Saving…", the card
 // showing the unsaved edit, and the whole list frozen, until the browser gave
 // up on it. The page's clock is faked, so the spec jumps past the timeout.
 test('regression: a stalled edit is given up on, the item goes back to its server state, and polls land again', async ({
@@ -749,8 +749,8 @@ test('regression: a stalled edit is given up on, the item goes back to its serve
 
   await renameGift(page);
   await patchArrived.promise;
-  const dialog = page.getByRole('dialog', { name: 'Edit Item' });
-  await expect(dialog.getByRole('button', { name: 'Saving...' })).toBeVisible();
+  const dialog = page.getByRole('dialog', { name: 'Edit item' });
+  await expect(dialog.getByRole('button', { name: 'Saving…' })).toBeVisible();
   await expect(renamed).toBeVisible();
 
   // A poll while the PATCH is stalled is dropped, so the co-owner's item
@@ -769,8 +769,8 @@ test('regression: a stalled edit is given up on, the item goes back to its serve
   await expect(original).toBeVisible();
   expect(await renamed.count()).toBe(0);
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByLabel('Item Name')).toHaveValue('E2E Renamed Gift');
-  await expect(dialog.getByRole('button', { name: 'Save Changes' })).toBeEnabled();
+  await expect(dialog.getByLabel('Item name')).toHaveValue('E2E Renamed Gift');
+  await expect(dialog.getByRole('button', { name: 'Save changes' })).toBeEnabled();
 
   // The reconcile read, which the dropped poll's re-read joins, lands.
   await (await reads.next()).land();
@@ -822,9 +822,9 @@ test('a stalled proposal is given up on, keeping the modal open, and the read st
 
   // The list is empty, so its empty state offers the proposal.
   await page.getByRole('button', { name: 'Propose an item' }).click();
-  const dialog = page.getByRole('dialog', { name: 'Propose New Item' });
-  await dialog.getByLabel('Item Name').fill(name);
-  await dialog.getByRole('button', { name: 'Propose Item', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Propose new item' });
+  await dialog.getByLabel('Item name').fill(name);
+  await dialog.getByRole('button', { name: 'Propose item', exact: true }).click();
   await postArrived.promise;
 
   // A poll that lands while the POST is stalled is dropped.
@@ -836,8 +836,8 @@ test('a stalled proposal is given up on, keeping the modal open, and the read st
   await page.clock.fastForward(ITEM_REQUEST_TIMEOUT_MS);
   await expect(page.getByRole('status').getByText(REQUEST_TIMEOUT_MESSAGE)).toBeVisible();
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByLabel('Item Name')).toHaveValue(name);
-  await expect(dialog.getByRole('button', { name: 'Propose Item', exact: true })).toBeEnabled();
+  await expect(dialog.getByLabel('Item name')).toHaveValue(name);
+  await expect(dialog.getByRole('button', { name: 'Propose item', exact: true })).toBeEnabled();
 
   // The page reads the list again in place of the dropped poll; no tick runs.
   await (await reads.next()).land();

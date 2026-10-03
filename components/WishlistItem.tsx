@@ -22,7 +22,7 @@ const ROW_CONTROL = 'h-10 rounded-xl text-sm font-semibold';
 const PRIMARY_BASE = `${ROW_CONTROL} inline-flex min-w-0 flex-1 items-center justify-center gap-1.5 px-3 transition-all duration-200 cursor-pointer active:scale-[0.98] disabled:cursor-not-allowed disabled:active:scale-100 aria-disabled:cursor-not-allowed aria-disabled:opacity-60 aria-disabled:active:scale-100`;
 
 const PRIMARY_TONES = {
-  // Booking: the success fill of the "Booked by you" badge.
+  // Reserve: the success fill of the "Reserved by you" badge.
   book: 'bg-success-fill text-white shadow-sm hover:bg-success-fill-hover',
   // Publishing, reviewing, opening the product page.
   primary: 'bg-primary-600 text-white shadow-sm hover:bg-primary-500',
@@ -32,7 +32,7 @@ const PRIMARY_TONES = {
   neutral: 'bg-muted text-foreground hover:bg-surface-2',
   // A gift you've given: done, in the success tone of your booking.
   given: TONE_CLASSES.success.tint,
-  // Booked by someone else: nothing to do.
+  // Reserved by someone else: nothing to do.
   off: 'bg-muted text-muted-foreground',
 } as const;
 
@@ -49,7 +49,7 @@ interface PrimaryAction {
   tone: keyof typeof PRIMARY_TONES;
   onClick: () => void;
   /**
-   * Changes the item's status (Book, Unbook, Publish), so it's held while
+   * Changes the item's status (Reserve, Release, Publish), so it's held while
    * the card's update runs. Edit and Review aren't, as they never were.
    */
   changesStatus?: boolean;
@@ -108,7 +108,7 @@ function WishlistItem({
 
   // A gift the member booked and has since marked as given (only a member's own
   // read of the list carries `givenByMe`). It stays booked by them, but isn't
-  // offered back up with Unbook: releasing it is in the menu, behind a warning.
+  // offered back up with Release: releasing it is in the menu, behind a warning.
   const isGivenByCurrentUser =
     !isOwner && item.status === 'booked' && !!isBookedByCurrentUser && item.givenByMe === true;
 
@@ -241,8 +241,8 @@ function WishlistItem({
     };
   } else if (isAuthenticated && isMember && item.status === 'available') {
     primary = {
-      label: 'Book',
-      ariaLabel: 'Book this item',
+      label: 'Reserve',
+      ariaLabel: 'Reserve this item',
       icon: 'gift',
       tone: 'book',
       onClick: handleToggleBooked,
@@ -261,16 +261,16 @@ function WishlistItem({
         }
       : isBookedByCurrentUser
         ? {
-            label: 'Unbook',
-            ariaLabel: 'Unbook this item',
+            label: 'Release',
+            ariaLabel: 'Release this item',
             icon: 'undo',
             tone: 'neutral',
             onClick: handleToggleBooked,
             changesStatus: true,
           }
         : {
-            label: 'Booked',
-            ariaLabel: 'This item is already booked',
+            label: 'Reserved',
+            ariaLabel: 'This item is already reserved',
             icon: 'lock',
             tone: 'off',
             onClick: () => {},
@@ -285,7 +285,7 @@ function WishlistItem({
   const menuItems: MenuItem[] = [];
   if (isAuthenticated && isOwner && isPublished) {
     menuItems.push({
-      label: isCompleted ? 'Mark as available' : 'Mark as completed',
+      label: isCompleted ? 'Mark as not received' : 'Mark as received',
       icon: isCompleted ? 'undo' : 'check-circle',
       onSelect: handleToggleCompleted,
       disabled: isUpdating,
@@ -354,7 +354,7 @@ function WishlistItem({
       {/* Status badges - positioned absolutely at top-right corner of card */}
       <div className="absolute right-2 top-2 z-10 flex flex-col items-end gap-2 sm:right-3 sm:top-3">
         {item.mostWanted && (
-          <span className="flex items-center gap-1 rounded-full border border-border bg-surface/90 px-2.5 py-1 text-xs font-semibold text-foreground shadow-sm backdrop-blur">
+          <span className="flex items-center gap-1 rounded-full border border-border bg-surface/90 px-2.5 py-1 text-badge font-semibold text-foreground shadow-sm backdrop-blur">
             <Icon name="star" size={12} className="fill-amber-400 text-amber-500" />
             Most wanted
           </span>
@@ -363,7 +363,7 @@ function WishlistItem({
         {status.badge && (
           <span
             data-tone={status.tone}
-            className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold shadow-sm ${status.classes.badge}`}
+            className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-badge font-semibold shadow-sm ${status.classes.badge}`}
           >
             {status.icon && <Icon name={status.icon} size={12} className="flex-shrink-0" />}
             {status.label}
@@ -401,7 +401,7 @@ function WishlistItem({
         {/* Item name - can vary in height */}
         <div className="flex-grow">
           <h3
-            className="mb-2 line-clamp-2 text-base font-semibold text-foreground sm:mb-3 sm:text-lg"
+            className="mb-2 line-clamp-2 text-title font-semibold text-foreground sm:mb-3"
             title={item.name}
           >
             {item.name}
@@ -428,7 +428,7 @@ function WishlistItem({
               onClick={() => {
                 if (!(primary.changesStatus && isUpdating)) primary.onClick();
               }}
-              // Booked by someone else is really disabled. A status change
+              // Reserved by someone else is really disabled. A status change
               // held while this card's update runs only looks it, so focus on
               // it stays put.
               disabled={primary.unavailable}
@@ -478,9 +478,9 @@ function WishlistItem({
       {showCompleteConfirm && (
         <ConfirmDialog
           isOpen
-          title="Mark as completed?"
-          message="This marks the item as completed on this wishlist."
-          confirmText="Complete"
+          title="Mark as received?"
+          message="This marks the item as received on this wishlist."
+          confirmText="Mark as received"
           cancelText="Cancel"
           type="info"
           onConfirm={() => {

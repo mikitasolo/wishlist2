@@ -68,10 +68,10 @@ describe('WishlistItem — focus through the actions menu', () => {
   it('goes back to "More actions" when a confirmation opened from the menu is cancelled', async () => {
     render(<OwnerCard initial={item({})} />);
     const user = await openMenuFromKeyboard();
-    expect(screen.getByRole('menuitem', { name: 'Mark as completed' })).toHaveFocus();
+    expect(screen.getByRole('menuitem', { name: 'Mark as received' })).toHaveFocus();
 
     await user.keyboard('{Enter}');
-    const dialog = screen.getByRole('alertdialog', { name: 'Mark as completed?' });
+    const dialog = screen.getByRole('alertdialog', { name: 'Mark as received?' });
     expect(screen.queryByRole('menu')).toBeNull();
     await waitFor(() => expect(dialog).toContainElement(document.activeElement as HTMLElement));
 
@@ -92,7 +92,7 @@ describe('WishlistItem — focus through the actions menu', () => {
 
     // While the update runs, the menu holds its status changes.
     await user.keyboard('{ArrowDown}');
-    expect(screen.getByRole('menuitem', { name: 'Mark as completed' })).toHaveAttribute(
+    expect(screen.getByRole('menuitem', { name: 'Mark as received' })).toHaveAttribute(
       'aria-disabled',
       'true'
     );
@@ -109,7 +109,7 @@ describe('WishlistItem — focus through the actions menu', () => {
   it('keeps focus on "More actions" through an action that opens no dialog', async () => {
     render(<OwnerCard initial={item({ status: 'completed' })} />);
     const user = await openMenuFromKeyboard();
-    expect(screen.getByRole('menuitem', { name: 'Mark as available' })).toHaveFocus();
+    expect(screen.getByRole('menuitem', { name: 'Mark as not received' })).toHaveFocus();
     await user.keyboard('{Enter}');
 
     expect(screen.queryByRole('alertdialog')).toBeNull();
@@ -119,6 +119,6 @@ describe('WishlistItem — focus through the actions menu', () => {
 
     // Live again: the menu offers completing it.
     await user.keyboard('{ArrowDown}');
-    expect(screen.getByRole('menuitem', { name: 'Mark as completed' })).toHaveFocus();
+    expect(screen.getByRole('menuitem', { name: 'Mark as received' })).toHaveFocus();
   });
 });

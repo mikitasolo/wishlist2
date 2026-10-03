@@ -180,7 +180,7 @@ describe("a member's Leave", () => {
   });
 
   it('says the same of anything they reserved when the page shows none of theirs', async () => {
-    // Dave's booking is in the page's read but under Booked by Others, which a
+    // Dave's booking is in the page's read but under Reserved by others, which a
     // member's default filter hides, so `itemsShown` waits for the available
     // item: once it's drawn the read has landed and the count (0) is known.
     items = [item('1', 'available'), item('2', 'booked', 'dave')];

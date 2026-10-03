@@ -289,7 +289,7 @@ export default function MyItemsPage() {
               <Icon name="package" size={30} />
             </span>
             <h3 className="text-xl font-semibold text-foreground">No items yet</h3>
-            <p className="mx-auto mt-2 max-w-sm px-4 text-[15px] text-muted-foreground">
+            <p className="mx-auto mt-2 max-w-sm px-4 text-body text-muted-foreground">
               Items you add to your wishlists will appear here.
             </p>
             {/* Archived lists are left out by default, and the List filter that
@@ -388,7 +388,7 @@ export default function MyItemsPage() {
             </div>
 
             {visibleItems.length === 0 ? (
-              <div className="mt-8 rounded-3xl border border-dashed border-border-strong py-16 text-center text-[15px] text-muted-foreground">
+              <div className="mt-8 rounded-3xl border border-dashed border-border-strong py-16 text-center text-body text-muted-foreground">
                 No items match these filters.
               </div>
             ) : (
@@ -410,7 +410,7 @@ export default function MyItemsPage() {
                       >
                         {badge.badge && (
                           <span
-                            className={`absolute left-2 top-2 flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold shadow-sm ${badge.classes.badge}`}
+                            className={`absolute left-2 top-2 flex items-center gap-1 rounded-full px-2 py-0.5 text-badge font-semibold shadow-sm ${badge.classes.badge}`}
                           >
                             {badge.icon && (
                               <Icon name={badge.icon} size={11} className="flex-shrink-0" />
@@ -430,7 +430,9 @@ export default function MyItemsPage() {
                         )}
                       </Cover>
                       <div className="flex flex-1 flex-col p-3">
-                        <p className="truncate text-sm font-semibold text-foreground">{it.name}</p>
+                        <p className="truncate text-body font-semibold text-foreground">
+                          {it.name}
+                        </p>
                         {it.price && (
                           <p className="text-sm text-muted-foreground">
                             {formatPrice(it.price, locale)}

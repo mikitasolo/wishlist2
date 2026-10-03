@@ -139,7 +139,7 @@ export default function ReviewItemModal({
       <BaseModal
         isOpen={isOpen}
         onClose={handleClose}
-        title="Review Proposed Item"
+        title="Review proposed item"
         titleId="review-item-title"
         isSubmitting={isSubmitting || isDeleting}
         shouldInterceptClose={() => hasUnsavedChanges}
@@ -171,8 +171,8 @@ export default function ReviewItemModal({
           initialData={formData}
           onSubmit={handleSubmit}
           onCancel={handleClose}
-          submitLabel="Approve Item"
-          submittingLabel="Approving..."
+          submitLabel="Approve item"
+          submittingLabel="Approving…"
           isSubmitting={isSubmitting || isDeleting}
           mode="review"
           itemId={item._id}
@@ -190,7 +190,7 @@ export default function ReviewItemModal({
                   Cancel
                 </Button>
                 <Button type="submit" disabled={submitting} className="flex-1">
-                  {/* A delete disables the form too, but only an approve reads "Approving...". */}
+                  {/* A delete disables the form too, but only an approve reads "Approving…". */}
                   {isSubmitting ? submittingLabel : submitLabel}
                 </Button>
               </div>
@@ -202,7 +202,7 @@ export default function ReviewItemModal({
                   disabled={submitting}
                   fullWidth
                 >
-                  Delete Item
+                  Delete item
                 </Button>
               )}
             </div>
@@ -214,12 +214,12 @@ export default function ReviewItemModal({
       {onDelete && (
         <ConfirmDialog
           isOpen={showDeleteConfirm}
-          title="Delete Proposed Item"
+          title="Delete proposed item"
           message="Are you sure you want to delete this proposed item? This action cannot be undone."
           onConfirm={handleDelete}
           onCancel={() => setShowDeleteConfirm(false)}
           confirmText="Delete"
-          pendingText="Deleting..."
+          pendingText="Deleting…"
           cancelText="Cancel"
           type="danger"
         />
@@ -228,7 +228,7 @@ export default function ReviewItemModal({
       {/* Close Confirmation Dialog */}
       <ConfirmDialog
         isOpen={showConfirmClose}
-        title="Discard Changes?"
+        title="Discard changes?"
         message="You have unsaved changes. Are you sure you want to close? All progress will be lost."
         onConfirm={handleConfirmClose}
         onCancel={() => setShowConfirmClose(false)}

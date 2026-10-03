@@ -24,12 +24,12 @@ function item(overrides: Partial<ApiItem>): ApiItem {
   } as ApiItem;
 }
 
-// Both item modals offer "Delete Item" behind a confirmation; run every case on each.
+// Both item modals offer "Delete item" behind a confirmation; run every case on each.
 const modals = [
   {
     name: 'EditItemModal',
-    submitLabel: 'Save Changes',
-    submittingLabel: 'Saving...',
+    submitLabel: 'Save changes',
+    submittingLabel: 'Saving…',
     renderModal: (onDelete: () => Promise<void>, onClose: () => void) =>
       render(
         <EditItemModal
@@ -45,8 +45,8 @@ const modals = [
   },
   {
     name: 'ReviewItemModal',
-    submitLabel: 'Approve Item',
-    submittingLabel: 'Approving...',
+    submitLabel: 'Approve item',
+    submittingLabel: 'Approving…',
     renderModal: (onDelete: () => Promise<void>, onClose: () => void) =>
       render(
         <ReviewItemModal
@@ -116,7 +116,7 @@ describe.each(modals)('$name — delete outcome', ({ renderModal, submitLabel, s
   // regression: the confirmation's buttons are disabled while the delete runs,
   // which dropped focus to <body>; after a failed delete it stayed there, and
   // the next Tab started from the top of the page instead of the modal.
-  it('regression: hands focus back to Delete Item in the modal when the delete fails', async () => {
+  it('regression: hands focus back to Delete item in the modal when the delete fails', async () => {
     const user = userEvent.setup();
     const onDelete = vi.fn().mockRejectedValue(new Error('Something went wrong'));
     renderModal(onDelete, vi.fn());
@@ -160,7 +160,7 @@ describe.each(modals)('$name — delete outcome', ({ renderModal, submitLabel, s
 
     fireEvent.click(deleteItemButton());
     confirmDelete();
-    const pending = within(confirmation()!).getByRole('button', { name: 'Deleting...' });
+    const pending = within(confirmation()!).getByRole('button', { name: 'Deleting…' });
     expect(pending).toBeDisabled();
     fireEvent.click(pending);
     expect(onDelete).toHaveBeenCalledTimes(1);
@@ -170,15 +170,15 @@ describe.each(modals)('$name — delete outcome', ({ renderModal, submitLabel, s
   });
 
   // regression: the form's submit button took its label from the disabled state,
-  // which a delete sets too, so while a delete ran it read "Saving..." /
-  // "Approving...", as if the user's changes were being saved.
+  // which a delete sets too, so while a delete ran it read "Saving…" /
+  // "Approving…", as if the user's changes were being saved.
   it('regression: keeps the form disabled but not labelled as saving while the delete runs', async () => {
     const { onDelete, finish } = pendingDelete();
     renderModal(onDelete, vi.fn());
 
     fireEvent.click(deleteItemButton());
     confirmDelete();
-    expect(within(confirmation()!).getByRole('button', { name: 'Deleting...' })).toBeDisabled();
+    expect(within(confirmation()!).getByRole('button', { name: 'Deleting…' })).toBeDisabled();
     expect(screen.getByRole('button', { name: submitLabel })).toBeDisabled();
     expect(screen.queryByRole('button', { name: submittingLabel })).toBeNull();
     expect(deleteItemButton()).toBeDisabled();

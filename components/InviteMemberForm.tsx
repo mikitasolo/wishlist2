@@ -124,8 +124,8 @@ export default function InviteMemberForm({ onInvite, isInviting, ref }: InviteMe
           <Icon name="alert" size={16} className="mt-0.5 flex-shrink-0" />
           <span>
             An owner gets the same full control you have, including deleting this wishlist, and it
-            appears on their profile as their own. Owners never see booking status, so anything
-            they’ve already booked here is released when they accept.
+            appears on their profile as their own. Owners never see reservations, so anything
+            they’ve already reserved here is released when they accept.
           </span>
         </p>
       )}

@@ -52,7 +52,7 @@ const features: { icon: IconName; title: string; body: string }[] = [
   {
     icon: 'sparkles',
     title: 'Keep it a surprise',
-    body: 'Friends quietly reserve gifts — you never see what’s been claimed on your own list.',
+    body: 'Friends quietly reserve gifts — you never see what’s been reserved on your own list.',
   },
 ];
 
@@ -297,7 +297,7 @@ export default function Home() {
                   <Icon name={f.icon} size={24} />
                 </span>
                 <h3 className="mb-2 text-lg font-semibold text-foreground">{f.title}</h3>
-                <p className="text-[15px] leading-relaxed text-muted-foreground">{f.body}</p>
+                <p className="text-body leading-relaxed text-muted-foreground">{f.body}</p>
               </div>
             ))}
           </div>
@@ -323,7 +323,7 @@ export default function Home() {
             <h3 className="text-center text-xl font-semibold text-foreground">
               Find someone’s wishlist
             </h3>
-            <p className="mx-auto mt-2 max-w-md text-center text-[15px] text-muted-foreground">
+            <p className="mx-auto mt-2 max-w-md text-center text-body text-muted-foreground">
               Search for people and their public wishlists.
             </p>
             <div className="mx-auto mt-6 max-w-md">
@@ -417,7 +417,7 @@ export default function Home() {
               <Icon name="gift" size={30} />
             </span>
             <h3 className="text-xl font-semibold text-foreground">No wishlists yet</h3>
-            <p className="mx-auto mt-2 max-w-sm px-4 text-[15px] text-muted-foreground">
+            <p className="mx-auto mt-2 max-w-sm px-4 text-body text-muted-foreground">
               Create your first wishlist to start collecting the things you love and share it with
               friends and family.
             </p>
@@ -433,7 +433,7 @@ export default function Home() {
             <section aria-label="Overview" className="mb-12">
               {activeOwned.length > 0 && (
                 <div className="mb-4 flex items-center justify-end gap-2">
-                  <span className="text-[13px] font-medium text-muted-foreground">Featured</span>
+                  <span className="text-meta font-medium text-muted-foreground">Featured</span>
                   <Select
                     value={pinnedId}
                     onChange={changeFeatured}
@@ -468,7 +468,7 @@ export default function Home() {
                           className={`absolute left-6 top-6 ${OCCASION_ON_COVER}`}
                         />
                       ) : null}
-                      <span className="relative text-xs font-bold uppercase tracking-widest text-white/85">
+                      <span className="relative text-xs font-semibold uppercase tracking-widest text-white/85">
                         Featured
                       </span>
                       <h2 className="relative mt-1.5 text-2xl font-semibold text-white sm:text-3xl">
@@ -652,9 +652,9 @@ function StatTile({
       >
         <Icon name={icon} size={19} />
       </span>
-      <span className="text-[13px] font-semibold text-muted-foreground">{label}</span>
+      <span className="text-meta font-semibold text-muted-foreground">{label}</span>
       {detail !== undefined && (
-        <span className="mt-0.5 text-[13px] text-muted-foreground">{detail ?? '\u00a0'}</span>
+        <span className="mt-0.5 text-meta text-muted-foreground">{detail ?? '\u00a0'}</span>
       )}
       <div className="mt-auto pt-3">
         <div className="flex items-end justify-between gap-2">

@@ -21,7 +21,7 @@ interface ConfirmDialogProps {
   onConfirm: () => void | Promise<unknown>;
   onCancel: () => void;
   confirmText?: string;
-  /** Confirm button label while `onConfirm`'s promise runs, e.g. "Deleting...". */
+  /** Confirm button label while `onConfirm`'s promise runs, e.g. "Deleting…". */
   pendingText?: string;
   cancelText?: string;
   type?: 'danger' | 'warning' | 'info';
@@ -40,7 +40,7 @@ export default function ConfirmDialog({
   onConfirm,
   onCancel,
   confirmText = 'Confirm',
-  pendingText = 'Please wait...',
+  pendingText = 'Please wait…',
   cancelText = 'Cancel',
   type = 'warning',
   icon: iconOverride,

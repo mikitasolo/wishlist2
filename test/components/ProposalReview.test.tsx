@@ -23,7 +23,7 @@ const proposal: ApiItem = {
 
 const nameInput = () => screen.getByLabelText(/item name/i);
 const notesInput = () => screen.getByLabelText(/notes/i);
-// Reads "Approving..." while the request is in flight, so finding it by its
+// Reads "Approving…" while the request is in flight, so finding it by its
 // idle label also waits for the submit to settle.
 const approveButton = () => screen.getByRole('button', { name: /^approve item$/i });
 

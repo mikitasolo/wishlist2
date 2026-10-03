@@ -233,7 +233,9 @@ export default function InvitesPage() {
                     size="md"
                   />
                   <div className="min-w-0">
-                    <p className="truncate font-semibold text-foreground">{invite.wishlistName}</p>
+                    <p className="truncate text-body font-semibold text-foreground">
+                      {invite.wishlistName}
+                    </p>
                     <p className="truncate text-sm text-muted-foreground">
                       {invite.invitedByUsername ? `@${invite.invitedByUsername}` : 'Someone'}{' '}
                       invited you
@@ -244,7 +246,7 @@ export default function InvitesPage() {
                     {invite.role === 'owner' && (
                       <p className={`mt-1 text-xs ${TONE_CLASSES.warning.text}`}>
                         You’ll get full control and the list will show on your profile. Owners never
-                        see booking status, so anything you’ve booked here will be released.
+                        see reservations, so anything you’ve reserved here will be released.
                       </p>
                     )}
                   </div>

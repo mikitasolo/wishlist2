@@ -45,7 +45,7 @@ test("the owner's card menu works from the keyboard and gives focus back", async
   await page.keyboard.press('Enter');
   await expect(menu).toBeVisible();
   await expect(more).toHaveAttribute('aria-expanded', 'true');
-  await expect(menu.getByRole('menuitem', { name: 'Mark as completed' })).toBeFocused();
+  await expect(menu.getByRole('menuitem', { name: 'Mark as received' })).toBeFocused();
   await page.keyboard.press('ArrowDown');
   await expect(menu.getByRole('menuitem', { name: 'Move to draft' })).toBeFocused();
   await page.keyboard.press('End');
@@ -66,7 +66,7 @@ test("the owner's card menu works from the keyboard and gives focus back", async
   await more.focus();
   await page.keyboard.press('Enter');
   await page.keyboard.press('Enter');
-  const dialog = page.getByRole('alertdialog', { name: 'Mark as completed?' });
+  const dialog = page.getByRole('alertdialog', { name: 'Mark as received?' });
   await expect(dialog).toBeVisible();
   await expect(menu).toBeHidden();
   await expect(dialog.getByRole('button', { name: 'Cancel' })).toBeFocused();
@@ -82,7 +82,7 @@ test("the owner's card menu closes on a click outside it", async ({ page }) => {
   const menu = card.getByRole('menu');
   await expect(menu).toBeVisible();
   await expect(menu.getByRole('menuitem')).toHaveText([
-    'Mark as completed',
+    'Mark as received',
     'Move to draft',
     'Save to my list',
   ]);

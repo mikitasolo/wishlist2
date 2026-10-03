@@ -27,7 +27,7 @@ interface SelectProps {
 
 const sizeStyles = {
   sm: 'h-9 text-sm',
-  md: 'h-11 text-[15px]',
+  md: 'h-11 text-body',
 };
 
 /** How long a pause ends a type-ahead search, as in a native select. */

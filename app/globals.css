@@ -33,6 +33,28 @@
   --font-sans:
     -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Segoe UI', Roboto,
     Helvetica, Arial, sans-serif;
+
+  /* Type scale (WIS-237): the sizes between Tailwind's own steps, so nothing
+     needs an arbitrary `text-[Npx]`. In rem like Tailwind's, so they follow the
+     browser's font size; the comments give the px at the default 16px.
+     - `text-body` (15px): prose, an empty state's or a section's body text, a
+       compact card's title, a large control's label.
+     - `text-meta` (13px): meta lines under a title (a card's item count).
+     - `text-badge` (11px): badges and pills, semibold; small uppercase labels.
+     - `text-title` (17px): a grid card's title, and the wordmark.
+     Everything else is a Tailwind step: page h1 `text-3xl` (`sm:text-4xl` on a
+     list, the dashboard and a profile), section h2 `text-xl`, a dialog's title
+     `text-xl`, a panel's and a ConfirmDialog's `text-lg`, a sub-section's
+     `text-base`, UI text `text-sm`, helper text `text-xs`. Headings are
+     semibold; bold is only for stat numbers. */
+  --text-body: 0.9375rem;
+  --text-body--line-height: calc(1.375 / 0.9375);
+  --text-meta: 0.8125rem;
+  --text-meta--line-height: calc(1.125 / 0.8125);
+  --text-badge: 0.6875rem;
+  --text-badge--line-height: calc(1 / 0.6875);
+  --text-title: 1.0625rem;
+  --text-title--line-height: calc(1.5 / 1.0625);
 }
 
 /* Semantic tokens → Tailwind color/shadow utilities, driven by the
@@ -60,8 +82,8 @@
      - `text-<tone>` is coloured text on a surface, and `bg-<tone>/10` (or /15)
        its tint: text-<tone> on its own tint stays at AA too. It's a step darker
        than the fill in light mode for that reason, and lighter in dark mode.
-     "Done" (Completed) has no colour of its own: it's `bg-foreground
-     text-background`, so it can't be mistaken for success, "Booked by you". */
+     "Done" (Received) has no colour of its own: it's `bg-foreground
+     text-background`, so it can't be mistaken for success, "Reserved by you". */
   --color-info: var(--info);
   --color-info-fill: var(--info-fill);
   --color-info-fill-hover: var(--info-fill-hover);

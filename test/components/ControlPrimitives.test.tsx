@@ -17,7 +17,7 @@ describe('Button', () => {
   it.each([
     ['sm', 'h-9', 'text-sm', 'px-3.5'],
     ['md', 'h-10', 'text-sm', 'px-4'],
-    ['lg', 'h-11', 'text-[15px]', 'px-5'],
+    ['lg', 'h-11', 'text-body', 'px-5'],
     ['xl', 'h-12', 'text-base', 'px-6'],
   ] as const)('is sized %s from the scale', (size, height, text, padding) => {
     render(<Button size={size}>Save</Button>);
@@ -208,7 +208,7 @@ describe('Input', () => {
       'border-border-strong',
       'bg-surface',
       'px-3.5',
-      'text-[15px]',
+      'text-body',
       'field-focus',
       'outline-hidden'
     );

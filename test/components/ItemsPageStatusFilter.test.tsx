@@ -99,7 +99,7 @@ describe('/items status filter', () => {
     const first = await visit();
     expect(shown()).toEqual(ALL);
 
-    await user.click(card('Completed'));
+    await user.click(card('Received'));
     expect(shown()).toEqual(['Vase']);
 
     first.unmount();

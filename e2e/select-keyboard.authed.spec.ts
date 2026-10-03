@@ -19,7 +19,7 @@ test('regression: picks the sort order on the wishlist page from the keyboard', 
   await page.goto('/wishlists/e2e-birthday');
   const sort = page.getByRole('combobox', { name: 'Sort items by' });
   const menu = page.getByRole('listbox', { name: 'Sort items by' });
-  await expect(sort).toHaveText('Most Wanted First');
+  await expect(sort).toHaveText('Most wanted first');
 
   await sort.focus();
   await page.keyboard.press('Space');
@@ -45,9 +45,9 @@ test('regression: picks the sort order on the wishlist page from the keyboard', 
 
   // The mouse works as it did.
   await sort.click();
-  await menu.getByRole('option', { name: 'Price (Low to High)' }).click();
+  await menu.getByRole('option', { name: 'Price (low to high)' }).click();
   await expect(menu).toBeHidden();
-  await expect(sort).toHaveText('Price (Low to High)');
+  await expect(sort).toHaveText('Price (low to high)');
 });
 
 // regression: Escape on the open menu also closed the modal around it.

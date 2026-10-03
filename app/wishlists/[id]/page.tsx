@@ -1183,7 +1183,7 @@ export default function WishlistDetail() {
   const sortedItems = useMemo(() => sortItems(searchedItems, sortBy), [searchedItems, sortBy]);
 
   // The list has no items at all, as far as this viewer can see: no filter is
-  // hiding anything, so the stat cards, the toolbar and + Add Item step aside
+  // hiding anything, so the stat cards, the toolbar and + Add item step aside
   // for an empty state that says so and offers the add itself. Only once a
   // read has landed: before that, no items means it hasn't loaded.
   const listIsEmpty = itemsLoaded && items.length === 0;
@@ -1257,9 +1257,9 @@ export default function WishlistDetail() {
   // while the first read of them is on its way too.
   const addItemButton = (
     <div className="mb-6 sm:mb-8">
-      {isOwner && <Button onClick={() => setShowAddItemModal(true)}>+ Add Item</Button>}
+      {isOwner && <Button onClick={() => setShowAddItemModal(true)}>+ Add item</Button>}
       {isMember && !isOwner && (
-        <Button onClick={() => setShowProposeItemModal(true)}>+ Propose Item</Button>
+        <Button onClick={() => setShowProposeItemModal(true)}>+ Propose item</Button>
       )}
     </div>
   );
@@ -1467,14 +1467,14 @@ export default function WishlistDetail() {
               >
                 {/* Archived instead of the visibility on an archived list: it's
                     owner-only, whatever the visibility says. */}
-                <span className="absolute right-3 top-3 inline-flex items-center gap-1.5 rounded-full border border-white/25 bg-white/20 px-2.5 py-1 text-[11.5px] font-semibold text-white backdrop-blur-md">
+                <span className="absolute right-3 top-3 inline-flex items-center gap-1.5 rounded-full border border-white/25 bg-white/20 px-2.5 py-1 text-badge font-semibold text-white backdrop-blur-md">
                   <Icon name={coverBadge(wishlist).icon} size={12} />
                   {coverBadge(wishlist).label}
                 </span>
               </Cover>
               {wishlist.description && (
                 <div className="rounded-2xl border border-border bg-surface p-5">
-                  <p className="whitespace-pre-line break-words text-[15px] text-muted-foreground">
+                  <p className="whitespace-pre-line break-words text-body text-muted-foreground">
                     {wishlist.description}
                   </p>
                 </div>
@@ -1514,7 +1514,7 @@ export default function WishlistDetail() {
               )
             ) : (
               <>
-                {/* Stat cards, toolbar and Add Item: not on an empty list, where the
+                {/* Stat cards, toolbar and Add item: not on an empty list, where the
                 cards would all be zero, the filters would have nothing to filter,
                 and the empty state below offers the add (or the proposal) itself */}
                 {!listIsEmpty && (
@@ -1568,7 +1568,7 @@ export default function WishlistDetail() {
                       {/* Status · Sort · Currency — equal labelled fields */}
                       <div className="flex flex-col gap-3 sm:flex-row sm:gap-4">
                         <div className="flex flex-col gap-1.5 sm:flex-1">
-                          <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          <span className="text-badge font-semibold uppercase tracking-wide text-muted-foreground">
                             Status
                           </span>
                           <MultiSelectDropdown
@@ -1581,7 +1581,7 @@ export default function WishlistDetail() {
                         </div>
 
                         <div className="flex flex-col gap-1.5 sm:flex-1">
-                          <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          <span className="text-badge font-semibold uppercase tracking-wide text-muted-foreground">
                             Sort
                           </span>
                           <Select
@@ -1595,7 +1595,7 @@ export default function WishlistDetail() {
 
                         {session?.user && (
                           <div className="flex flex-col gap-1.5 sm:flex-1">
-                            <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                            <span className="text-badge font-semibold uppercase tracking-wide text-muted-foreground">
                               Show prices in
                             </span>
                             <Select
@@ -1725,10 +1725,10 @@ export default function WishlistDetail() {
                 actions, rather than one list behind a role dropdown. */}
             <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-sm">
               <div className="border-b border-border px-4 py-4 sm:px-6">
-                <h2 className="text-xl font-bold text-foreground">Owners</h2>
+                <h2 className="text-lg font-semibold text-foreground">Owners</h2>
                 <p className="mt-1 text-sm text-muted-foreground">
                   Full control of this list, and it shows on each of their profiles. Owners never
-                  see what&apos;s been booked.
+                  see what&apos;s been reserved.
                 </p>
               </div>
               {loadingMembers ? (
@@ -1823,11 +1823,11 @@ export default function WishlistDetail() {
 
             <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-sm">
               <div className="border-b border-border px-4 py-4 sm:px-6">
-                <h2 className="text-xl font-bold text-foreground">Members</h2>
+                <h2 className="text-lg font-semibold text-foreground">Members</h2>
                 <p className="mt-1 text-sm text-muted-foreground">
                   They can browse the list, propose items, and reserve gifts. Making someone an
                   owner releases whatever they&apos;ve reserved here, since owners can&apos;t see
-                  bookings.
+                  reservations.
                 </p>
               </div>
               {loadingMembers ? (
@@ -1909,7 +1909,7 @@ export default function WishlistDetail() {
             {isOwner && pendingInvites.length > 0 && (
               <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-sm">
                 <div className="border-b border-border px-4 py-4 sm:px-6">
-                  <h2 className="text-xl font-bold text-foreground">Pending invites</h2>
+                  <h2 className="text-lg font-semibold text-foreground">Pending invites</h2>
                 </div>
                 <div className="divide-y divide-border">
                   {pendingInvites.map((inv) => (
@@ -1948,7 +1948,7 @@ export default function WishlistDetail() {
         {manageOpen && isOwner && (
           <div className="mt-6 space-y-6">
             <div className="rounded-2xl border border-border bg-surface p-6 shadow-sm">
-              <h3 className="text-lg font-semibold text-foreground mb-4">Wishlist Settings</h3>
+              <h3 className="text-lg font-semibold text-foreground mb-4">Wishlist settings</h3>
 
               <form
                 onSubmit={async (e) => {
@@ -2009,7 +2009,7 @@ export default function WishlistDetail() {
                 className="space-y-4"
                 autoComplete="off"
               >
-                <Field label="Wishlist Name *" id="settings-name">
+                <Field label="Wishlist name *" id="settings-name">
                   <Input
                     required
                     value={settingsForm.name}
@@ -2087,11 +2087,7 @@ export default function WishlistDetail() {
                 <div>
                   <label className={FIELD_LABEL}>Visibility</label>
                   <p className="mb-2 text-xs text-muted-foreground">
-                    {settingsForm.visibility === 'everyone'
-                      ? 'Anyone can find and view this wishlist.'
-                      : settingsForm.visibility === 'friends'
-                        ? 'Only your friends (mutual follows) and members can view it.'
-                        : 'Only you and people you invite can view it.'}
+                    {visibilityMeta[settingsForm.visibility].helper}
                   </p>
                   <div className="relative flex rounded-xl border border-border bg-surface-2 p-1">
                     <span
@@ -2108,14 +2104,18 @@ export default function WishlistDetail() {
                         type="button"
                         onClick={() => editSettings({ visibility: v })}
                         disabled={isSavingSettings}
-                        className={`relative z-10 flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-semibold transition-colors ${
+                        className={`relative z-10 flex min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-1 py-2 text-sm font-semibold transition-colors ${
                           settingsForm.visibility === v
                             ? 'text-foreground'
                             : 'text-muted-foreground hover:text-foreground'
                         }`}
                       >
-                        <Icon name={visibilityMeta[v].icon} size={14} />
-                        {v === 'private' ? 'Only me' : visibilityMeta[v].label}
+                        <Icon
+                          name={visibilityMeta[v].icon}
+                          size={14}
+                          className="flex-shrink-0 max-[359px]:hidden"
+                        />
+                        {visibilityMeta[v].label}
                       </button>
                     ))}
                   </div>
@@ -2123,14 +2123,14 @@ export default function WishlistDetail() {
 
                 <div className="flex flex-col sm:flex-row gap-3 pt-4">
                   <Button type="submit" disabled={isSavingSettings} fullWidth className="sm:w-auto">
-                    {isSavingSettings ? 'Saving...' : 'Save Changes'}
+                    {isSavingSettings ? 'Saving…' : 'Save changes'}
                   </Button>
                 </div>
               </form>
 
               {/* Archive Section */}
               <div className="mt-6 border-t border-border pt-6 sm:mt-8 sm:pt-8">
-                <h3 className="mb-2 text-base font-semibold text-foreground sm:text-lg">
+                <h3 className="mb-2 text-base font-semibold text-foreground">
                   {wishlist.archived ? 'Unarchive wishlist' : 'Archive wishlist'}
                 </h3>
                 <p className="mb-4 text-xs text-muted-foreground sm:text-sm">
@@ -2153,7 +2153,7 @@ export default function WishlistDetail() {
               {/* Featured Section - owner only */}
               {isOwner && (
                 <div className="mt-6 border-t border-border pt-6 sm:mt-8 sm:pt-8">
-                  <h3 className="mb-2 text-base font-semibold text-foreground sm:text-lg">
+                  <h3 className="mb-2 text-base font-semibold text-foreground">
                     {wishlist.featured ? 'Featured on your dashboard' : 'Feature on your dashboard'}
                   </h3>
                   <p className="mb-4 text-xs text-muted-foreground sm:text-sm">
@@ -2202,9 +2202,7 @@ export default function WishlistDetail() {
               {/* Danger zone: deleting the list, for any owner */}
               {isOwner && (
                 <div className="mt-6 sm:mt-8 pt-6 sm:pt-8 border-t border-border">
-                  <h3 className="text-base sm:text-lg font-semibold text-foreground mb-2">
-                    Danger zone
-                  </h3>
+                  <h3 className="mb-2 text-base font-semibold text-foreground">Danger zone</h3>
                   <p className="text-xs sm:text-sm text-muted-foreground mb-4">
                     {DELETE_LIST_WARNING}
                   </p>
@@ -2215,7 +2213,7 @@ export default function WishlistDetail() {
                     fullWidth
                     className="sm:w-auto"
                   >
-                    {isDeletingWishlist ? 'Deleting...' : 'Delete wishlist'}
+                    {isDeletingWishlist ? 'Deleting…' : 'Delete wishlist'}
                   </Button>
                 </div>
               )}
@@ -2290,7 +2288,7 @@ export default function WishlistDetail() {
             onConfirm={confirmKickMember}
             onCancel={() => setDeleteConfirm(null)}
             confirmText="Remove"
-            pendingText="Removing..."
+            pendingText="Removing…"
             cancelText="Cancel"
             type="danger"
             icon="user-minus"
@@ -2307,7 +2305,7 @@ export default function WishlistDetail() {
           onConfirm={confirmLeaveWishlist}
           onCancel={() => setDeleteConfirm(null)}
           confirmText="Leave"
-          pendingText="Leaving..."
+          pendingText="Leaving…"
           cancelText="Cancel"
           type="danger"
           icon="logout"
@@ -2337,11 +2335,11 @@ export default function WishlistDetail() {
         <ConfirmDialog
           isOpen={!!promoteConfirm}
           title="Make owner?"
-          message={`@${promoteConfirm.username} will get the same full control you have — including deleting this wishlist — and it will appear on their profile as their own. Because owners can never see booking status, any items they've booked here will be released and their reservations cancelled. They have to accept the invitation first, and only another owner can undo it.`}
+          message={`@${promoteConfirm.username} will get the same full control you have — including deleting this wishlist — and it will appear on their profile as their own. Because owners can never see reservations, anything they've reserved here will be released and their reservations cancelled. They have to accept the invitation first, and only another owner can undo it.`}
           onConfirm={confirmPromoteToOwner}
           onCancel={() => setPromoteConfirm(null)}
           confirmText="Send owner invite"
-          pendingText="Sending..."
+          pendingText="Sending…"
           cancelText="Cancel"
           type="warning"
         />
@@ -2355,7 +2353,7 @@ export default function WishlistDetail() {
           onConfirm={confirmDemoteOwner}
           onCancel={() => setDemoteConfirm(null)}
           confirmText="Make member"
-          pendingText="Making member..."
+          pendingText="Making member…"
           cancelText="Cancel"
           type="warning"
         />
@@ -2369,7 +2367,7 @@ export default function WishlistDetail() {
           onConfirm={confirmArchive}
           onCancel={() => setArchiveConfirm(false)}
           confirmText="Archive"
-          pendingText="Archiving..."
+          pendingText="Archiving…"
           cancelText="Cancel"
           type="warning"
         />
@@ -2384,7 +2382,7 @@ export default function WishlistDetail() {
           onConfirm={confirmDeleteWishlist}
           onCancel={() => setDeleteConfirm(null)}
           confirmText="Delete"
-          pendingText="Deleting..."
+          pendingText="Deleting…"
           cancelText="Cancel"
           type="danger"
         />

@@ -110,7 +110,7 @@ for (const variant of [
     // While the demotion runs, the dialog says so, and neither it nor the row
     // takes more clicks. Soft, so the request count below is checked either way.
     await expect.poll(() => requests).toBeGreaterThan(0);
-    await expect.soft(dialog.getByRole('button', { name: 'Making member...' })).toBeDisabled();
+    await expect.soft(dialog.getByRole('button', { name: 'Making member…' })).toBeDisabled();
     await expect.soft(dialog.getByRole('button', { name: 'Cancel' })).toBeDisabled();
     await expect.soft(makeMember).toBeDisabled();
     await expect.soft(page.getByRole('button', { name: 'Remove', exact: true })).toBeDisabled();

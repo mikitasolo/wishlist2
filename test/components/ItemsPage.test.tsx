@@ -45,7 +45,7 @@ function item(id: string, status: string, wishlistId: string, wishlistArchived =
 // The API folds booked into available for an owner, so there's none here.
 const ACTIVE = [
   item('Bike', 'available', 'birthday'),
-  item('Book', 'completed', 'birthday'),
+  item('Reserve', 'completed', 'birthday'),
   item('Lamp', 'draft', 'birthday'),
   item('Kite', 'proposed', 'birthday'),
 ];

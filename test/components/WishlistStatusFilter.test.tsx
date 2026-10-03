@@ -157,21 +157,21 @@ describe('the status filter is not carried from one list to another', () => {
     [
       'a stat card',
       async (user: ReturnType<typeof userEvent.setup>) => {
-        await user.click(card('Booked by Others'));
+        await user.click(card('Reserved by others'));
       },
     ],
     [
       'the Status dropdown',
       async (user: ReturnType<typeof userEvent.setup>) => {
-        await toggleStatus(user, 'Booked by Others');
+        await toggleStatus(user, 'Reserved by others');
         await toggleStatus(user, 'Available');
-        await toggleStatus(user, 'Booked by You');
-        await toggleStatus(user, 'Proposed by You');
+        await toggleStatus(user, 'Reserved by you');
+        await toggleStatus(user, 'Proposed by you');
       },
     ],
   ])(
     // regression: the filter was saved per role (wishlist-filters-member), so
-    // "Booked by Others" picked on one list opened every other list showing
+    // "Reserved by others" picked on one list opened every other list showing
     // only booked items, as if there were nothing left to buy.
     'regression: a filter picked with %s on one list leaves the next list on the defaults',
     async (_how, pick) => {
@@ -181,14 +181,14 @@ describe('the status filter is not carried from one list to another', () => {
 
       await pick(user);
       expect(shown()).toEqual(['Kettle']);
-      expect(statusDropdown()).toHaveTextContent('Booked by Others');
+      expect(statusDropdown()).toHaveTextContent('Reserved by others');
 
       first.unmount();
       await open('christmas');
 
       expect(shown()).toEqual(MEMBER_DEFAULTS);
       expect(statusDropdown()).toHaveTextContent('3 selected');
-      expect(card('Booked by Others')).toHaveAttribute('aria-pressed', 'false');
+      expect(card('Reserved by others')).toHaveAttribute('aria-pressed', 'false');
       expect(localStorage.length).toBe(0);
     }
   );
@@ -198,7 +198,7 @@ describe('the status filter is not carried from one list to another', () => {
   it('regression: puts the filter back to the defaults even when the page is reused for another list', async () => {
     const user = userEvent.setup();
     const view = await open('birthday');
-    await user.click(card('Booked by Others'));
+    await user.click(card('Reserved by others'));
     expect(shown()).toEqual(['Kettle']);
 
     params.id = 'christmas';
@@ -215,16 +215,16 @@ describe('the status filter is not carried from one list to another', () => {
     const first = await open('birthday');
     expect(shown()).toEqual(OWNER_DEFAULTS);
 
-    await user.click(card('Completed'));
+    await user.click(card('Received'));
     expect(shown()).toEqual(['Vase']);
 
     first.unmount();
     await open('christmas');
 
     expect(shown()).toEqual(OWNER_DEFAULTS);
-    expect(screen.queryByRole('button', { name: /^Booked/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^(Booked|Reserved)/i })).toBeNull();
     await user.click(statusDropdown());
-    expect(screen.queryByRole('checkbox', { name: /Booked/ })).toBeNull();
+    expect(screen.queryByRole('checkbox', { name: /Booked|Reserv/i })).toBeNull();
   });
 
   // regression: a value an earlier version saved must not come back.
@@ -281,14 +281,14 @@ describe('the status filter is never empty', () => {
   it('regression: goes back to the defaults when the last option ticked is unticked', async () => {
     const user = userEvent.setup();
     await open('birthday');
-    await user.click(card('Booked by Others'));
+    await user.click(card('Reserved by others'));
     expect(shown()).toEqual(['Kettle']);
 
-    await toggleStatus(user, 'Booked by Others');
+    await toggleStatus(user, 'Reserved by others');
 
     expect(shown()).toEqual(MEMBER_DEFAULTS);
     expect(statusDropdown()).toHaveTextContent('3 selected');
-    expect(screen.getByRole('checkbox', { name: 'Booked by Others' })).not.toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Reserved by others' })).not.toBeChecked();
     expect(screen.queryByText('None selected')).toBeNull();
   });
 });

@@ -4,7 +4,7 @@ import { test, expect, failedRequest } from './fixtures';
 // handleUpdateItem toasts a failure and resolves, so a failed save threw away
 // the user's changes. The PATCH is failed in the browser, so nothing reaches the
 // seeded database.
-test('regression: the owner\'s "Edit Item" modal keeps the changes when saving fails', async ({
+test('regression: the owner\'s "Edit item" modal keeps the changes when saving fails', async ({
   page,
   consoleErrors,
 }) => {
@@ -25,14 +25,14 @@ test('regression: the owner\'s "Edit Item" modal keeps the changes when saving f
     .getByRole('button', { name: 'Edit item' })
     .click();
 
-  const dialog = page.getByRole('dialog', { name: 'Edit Item' });
-  await dialog.getByLabel('Item Name').fill('E2E Bike');
+  const dialog = page.getByRole('dialog', { name: 'Edit item' });
+  await dialog.getByLabel('Item name').fill('E2E Bike');
   // Either decimal separator, whatever the locale (this browser's is en-US).
   await dialog.getByLabel('Price').fill('349,00');
   const patched = page.waitForRequest(
     (req) => req.method() === 'PATCH' && /\/api\/items\/\w+$/.test(req.url())
   );
-  await dialog.getByRole('button', { name: 'Save Changes' }).click();
+  await dialog.getByRole('button', { name: 'Save changes' }).click();
   expect((await patched).postDataJSON()).toMatchObject({
     name: 'E2E Bike',
     price: { value: 34900 },
@@ -40,10 +40,10 @@ test('regression: the owner\'s "Edit Item" modal keeps the changes when saving f
 
   await expect(page.getByRole('status').getByText('Something went wrong')).toBeVisible();
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByLabel('Item Name')).toHaveValue('E2E Bike');
+  await expect(dialog.getByLabel('Item name')).toHaveValue('E2E Bike');
   // Leaving the field put the amount in the cards' format.
   await expect(dialog.getByLabel('Price')).toHaveValue('349.00');
-  await expect(dialog.getByRole('button', { name: 'Save Changes' })).toBeEnabled();
+  await expect(dialog.getByRole('button', { name: 'Save changes' })).toBeEnabled();
 
   // The optimistic edit is rolled back: the list shows the server's item while
   // the modal still holds the draft.

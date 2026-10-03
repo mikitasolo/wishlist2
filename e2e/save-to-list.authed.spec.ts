@@ -42,14 +42,14 @@ test('a member saves a copy of a friend’s item to their own list', async ({ pa
     .click();
 
   const form = page.getByRole('dialog', { name: 'Save to E2E Birthday List' });
-  await expect(form.getByLabel('Item Name')).toHaveValue(friendsItem.name);
+  await expect(form.getByLabel('Item name')).toHaveValue(friendsItem.name);
   await expect(form.getByLabel('Price')).toHaveValue('45.00');
   await expect(form.getByLabel('Notes')).toHaveValue('');
 
   const posted = page.waitForRequest(
     (req) => req.method() === 'POST' && /\/api\/wishlists\/[^/]+\/items$/.test(req.url())
   );
-  await form.getByRole('button', { name: 'Add Item', exact: true }).click();
+  await form.getByRole('button', { name: 'Add item', exact: true }).click();
 
   const request = await posted;
   expect(request.postDataJSON()).toMatchObject({

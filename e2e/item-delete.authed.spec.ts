@@ -54,14 +54,14 @@ for (const flow of [
     from: 'edit',
     item: 'E2E Gift',
     open: 'Edit item',
-    title: 'Edit Item',
+    title: 'Edit item',
     success: 'Item deleted successfully',
   },
   {
     from: 'review',
     item: 'E2E Proposal',
     open: 'Review proposed item',
-    title: 'Review Proposed Item',
+    title: 'Review proposed item',
     success: 'Proposed item deleted',
   },
 ]) {
@@ -78,7 +78,7 @@ for (const flow of [
     const card = page.getByRole('article', { name: `Item: ${flow.item}` });
     await card.getByRole('button', { name: flow.open }).click();
     const dialog = page.getByRole('dialog', { name: flow.title });
-    await dialog.getByRole('button', { name: 'Delete Item' }).click();
+    await dialog.getByRole('button', { name: 'Delete item' }).click();
     await page
       .getByRole('alertdialog')
       .getByRole('button', { name: 'Delete', exact: true })
@@ -88,7 +88,7 @@ for (const flow of [
     await expectNoToast(page, flow.success);
     await expect(page.getByRole('alertdialog')).toBeHidden();
     await expect(dialog).toBeVisible();
-    await expect(dialog.getByRole('button', { name: 'Delete Item' })).toBeEnabled();
+    await expect(dialog.getByRole('button', { name: 'Delete item' })).toBeEnabled();
     await expect(card).toBeVisible();
   });
 }
@@ -105,8 +105,8 @@ test('regression: deleting a proposal removes it and says so once', async ({ pag
 
   const card = page.getByRole('article', { name: 'Item: E2E Proposal' });
   await card.getByRole('button', { name: 'Review proposed item' }).click();
-  const dialog = page.getByRole('dialog', { name: 'Review Proposed Item' });
-  await dialog.getByRole('button', { name: 'Delete Item' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Review proposed item' });
+  await dialog.getByRole('button', { name: 'Delete item' }).click();
   await page.getByRole('alertdialog').getByRole('button', { name: 'Delete', exact: true }).click();
 
   await expect(toast(page, 'Proposed item deleted')).toBeVisible();

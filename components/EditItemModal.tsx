@@ -128,7 +128,7 @@ export default function EditItemModal({
       <BaseModal
         isOpen={isOpen}
         onClose={handleClose}
-        title={item.status === 'proposed' ? 'Edit Proposed Item' : 'Edit Item'}
+        title={item.status === 'proposed' ? 'Edit proposed item' : 'Edit item'}
         titleId="edit-item-title"
         isSubmitting={isSubmitting || isDeleting}
         shouldInterceptClose={() => hasUnsavedChanges}
@@ -143,8 +143,8 @@ export default function EditItemModal({
           )}
           onSubmit={handleSubmit}
           onCancel={handleClose}
-          submitLabel="Save Changes"
-          submittingLabel="Saving..."
+          submitLabel="Save changes"
+          submittingLabel="Saving…"
           isSubmitting={isSubmitting || isDeleting}
           mode={item.status === 'proposed' ? 'propose' : 'edit'}
           itemId={item._id}
@@ -162,7 +162,7 @@ export default function EditItemModal({
                   Cancel
                 </Button>
                 <Button type="submit" disabled={submitting} className="flex-1">
-                  {/* A delete disables the form too, but only a save reads "Saving...". */}
+                  {/* A delete disables the form too, but only a save reads "Saving…". */}
                   {isSubmitting ? submittingLabel : submitLabel}
                 </Button>
               </div>
@@ -174,7 +174,7 @@ export default function EditItemModal({
                   disabled={submitting}
                   fullWidth
                 >
-                  Delete Item
+                  Delete item
                 </Button>
               )}
             </div>
@@ -186,12 +186,12 @@ export default function EditItemModal({
       {onDelete && (
         <ConfirmDialog
           isOpen={showDeleteConfirm}
-          title="Delete Item"
+          title="Delete item"
           message="Are you sure you want to delete this item? This action cannot be undone."
           onConfirm={handleDelete}
           onCancel={() => setShowDeleteConfirm(false)}
           confirmText="Delete"
-          pendingText="Deleting..."
+          pendingText="Deleting…"
           cancelText="Cancel"
           type="danger"
         />
@@ -200,7 +200,7 @@ export default function EditItemModal({
       {/* Close Confirmation Dialog */}
       <ConfirmDialog
         isOpen={showConfirmClose}
-        title="Discard Changes?"
+        title="Discard changes?"
         message="You have unsaved changes. Are you sure you want to close? All progress will be lost."
         onConfirm={handleConfirmClose}
         onCancel={() => setShowConfirmClose(false)}

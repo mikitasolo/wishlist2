@@ -100,7 +100,7 @@ export default function SignInForm({ turnstileSiteKey }: SignInFormProps) {
           <span className="mb-5 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-500/10 text-accent dark:text-primary-400">
             <Icon name="mail" size={28} />
           </span>
-          <h1 className="mb-3 text-2xl font-bold tracking-tight text-foreground">
+          <h1 className="mb-3 text-3xl font-semibold tracking-tight text-foreground">
             Check your email
           </h1>
           <p className="mb-4 text-muted-foreground">
@@ -125,7 +125,9 @@ export default function SignInForm({ turnstileSiteKey }: SignInFormProps) {
           >
             <Icon name="gift" size={28} />
           </Link>
-          <h1 className="mb-2 text-2xl font-bold tracking-tight text-foreground">Welcome back</h1>
+          <h1 className="mb-2 text-3xl font-semibold tracking-tight text-foreground">
+            Welcome back
+          </h1>
           <p className="text-muted-foreground">Enter your email to receive a magic link</p>
         </div>
 
@@ -164,7 +166,7 @@ export default function SignInForm({ turnstileSiteKey }: SignInFormProps) {
           )}
 
           <Button type="submit" disabled={isLoading} fullWidth>
-            {isLoading ? 'Sending link...' : 'Send magic link'}
+            {isLoading ? 'Sending link…' : 'Send magic link'}
           </Button>
         </form>
 

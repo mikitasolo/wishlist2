@@ -51,7 +51,7 @@ export default function AddItemModal({
   wishlistCurrency,
   userCurrency,
   initialItem,
-  title = 'Add New Item',
+  title = 'Add new item',
   back,
 }: AddItemModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -162,8 +162,8 @@ export default function AddItemModal({
           initialData={initialData}
           onSubmit={handleSubmit}
           onCancel={handleClose}
-          submitLabel="Add Item"
-          submittingLabel="Adding..."
+          submitLabel="Add item"
+          submittingLabel="Adding…"
           isSubmitting={isSubmitting}
           onFormChange={setHasUnsavedChanges}
           defaultCurrency={defaultCurrency}
@@ -172,7 +172,7 @@ export default function AddItemModal({
 
       <ConfirmDialog
         isOpen={confirmLeave !== null}
-        title="Discard Changes?"
+        title="Discard changes?"
         message={
           confirmLeave === 'back'
             ? 'You have unsaved changes. Are you sure you want to go back? All progress will be lost.'

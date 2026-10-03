@@ -348,7 +348,7 @@ export async function sendWishlistInvitationEmail(
     to: email,
     subject: `You've been invited to ${wishlistName} on ${siteTitle}!`,
     html,
-    text: `Wishlist Invitation\n\n${invitedBy} has invited you to join their wishlist: ${wishlistName}.\n\nAccept or decline it on your Invitations page: ${invitesUrl}`,
+    text: `Wishlist invitation\n\n${invitedBy} has invited you to join their wishlist: ${wishlistName}.\n\nAccept or decline it on your Invitations page: ${invitesUrl}`,
     link: invitesUrl,
   });
 }

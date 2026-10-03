@@ -21,7 +21,7 @@ function renderDialog(onConfirm: () => void | Promise<unknown>, onCancel = vi.fn
       onConfirm={onConfirm}
       onCancel={onCancel}
       confirmText="Remove"
-      pendingText="Removing..."
+      pendingText="Removing…"
       type="danger"
     />
   );
@@ -173,7 +173,7 @@ describe('ConfirmDialog — an action that returns a promise', () => {
 
     fireEvent.click(button('Remove'));
 
-    expect(button('Removing...')).toBeDisabled();
+    expect(button('Removing…')).toBeDisabled();
     expect(button('Cancel')).toBeDisabled();
     expect(screen.queryByRole('button', { name: 'Remove' })).toBeNull();
 
@@ -190,7 +190,7 @@ describe('ConfirmDialog — an action that returns a promise', () => {
     renderDialog(onConfirm);
 
     fireEvent.click(button('Remove'));
-    fireEvent.click(button('Removing...'));
+    fireEvent.click(button('Removing…'));
     expect(onConfirm).toHaveBeenCalledTimes(1);
 
     await finish();
@@ -260,7 +260,7 @@ function DialogPage() {
         onConfirm={() => setOpen(false)}
         onCancel={() => setOpen(false)}
         confirmText="Remove"
-        pendingText="Removing..."
+        pendingText="Removing…"
         type="danger"
       />
     </>
@@ -355,7 +355,7 @@ describe('ConfirmDialog — keyboard focus', () => {
 
     await user.click(button('Remove'));
     const dialog = screen.getByRole('alertdialog');
-    expect(button('Removing...')).toBeDisabled();
+    expect(button('Removing…')).toBeDisabled();
     expect(dialog).toHaveFocus();
 
     await user.tab();

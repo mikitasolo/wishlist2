@@ -131,11 +131,11 @@ describe('MultiSelectDropdown — the status filter', () => {
       'Draft',
       'Proposed',
       'Available',
-      'Completed',
+      'Received',
     ]);
     expect(box('All')).not.toBeChecked();
     expect(box('Draft')).toBeChecked();
-    expect(box('Completed')).not.toBeChecked();
+    expect(box('Received')).not.toBeChecked();
   });
 
   it('selects every status with All, and goes back to the defaults rather than to none', async () => {
@@ -146,11 +146,11 @@ describe('MultiSelectDropdown — the status filter', () => {
 
     await user.click(box('All'));
     expect(trigger).toHaveTextContent('All');
-    expect(box('Completed')).toBeChecked();
+    expect(box('Received')).toBeChecked();
 
     await user.click(box('All'));
     expect(trigger).toHaveTextContent('3 selected');
-    expect(box('Completed')).not.toBeChecked();
+    expect(box('Received')).not.toBeChecked();
 
     // Unticking all but one, then that one, goes back to the defaults too.
     await user.click(box('Proposed'));
