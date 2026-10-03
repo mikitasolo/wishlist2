@@ -20,11 +20,15 @@ import { useToast } from '@/components/ToastProvider';
 import { useLocalToday } from '@/lib/hooks/useLocalToday';
 import { sortByUpcomingOccasion } from '@/lib/utils/occasion';
 import { getVisibility, visibilityMeta } from '@/lib/utils/visibility';
+import { formatItemCount, formatOwnerExtras, sumItemCounts } from '@/lib/utils/itemCounts';
 import { IWishlist } from '@/models/Wishlist';
 
 type Wishlist = IWishlist & {
   ownerUsername?: string | null;
   itemCount?: number;
+  // Only on your own lists (`/api/wishlists`): see lib/utils/itemCounts.ts.
+  draftCount?: number;
+  proposalCount?: number;
   isMember?: boolean;
 };
 
@@ -134,10 +138,21 @@ export default function Home() {
       ),
     [owned, today]
   );
-  const totalItems = useMemo(
-    () => activeOwned.reduce((n, w) => n + (w.itemCount ?? 0), 0),
+  // Your active lists' items, counted as every screen counts them: "N items"
+  // is their published items, with the drafts and proposals to review beside
+  // it. The greeting and the tiles both read these, so they can't disagree.
+  const ownCounts = useMemo(
+    () =>
+      sumItemCounts(
+        activeOwned.map((w) => ({
+          items: w.itemCount,
+          drafts: w.draftCount,
+          proposals: w.proposalCount,
+        }))
+      ),
     [activeOwned]
   );
+  const totalItems = ownCounts.items;
   // Featured = the owner-pinned list, else the one with the most items,
   // falling back to a shared list when you own none.
   const featured = useMemo(() => {
@@ -271,6 +286,15 @@ export default function Home() {
 
   // ---- Authenticated dashboard ---------------------------------------
   const hasAny = owned.length > 0 || member.length > 0;
+  // The same numbers as the tiles below: your active lists and their items.
+  // With none (only shared or archived lists) there's nothing to count.
+  const summary = loading
+    ? 'Loading your wishlists…'
+    : activeOwned.length > 0
+      ? `${activeOwned.length} ${activeOwned.length === 1 ? 'list' : 'lists'} · ${formatItemCount(totalItems)} in your lists`
+      : owned.length > 0
+        ? 'Let’s create a new wishlist.'
+        : 'Let’s create your first wishlist.';
 
   return (
     <div className="min-h-screen">
@@ -282,13 +306,7 @@ export default function Home() {
             <h1 className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
               <span className="text-muted-foreground">{greetingWord()},</span> {name}
             </h1>
-            <p className="mt-2 text-lg text-muted-foreground">
-              {loading
-                ? 'Loading your wishlists…'
-                : hasAny
-                  ? `${owned.length + member.length} ${owned.length + member.length === 1 ? 'list' : 'lists'} · ${totalItems} ${totalItems === 1 ? 'item' : 'items'} in your lists`
-                  : 'Let’s create your first wishlist.'}
-            </p>
+            <p className="mt-2 text-lg text-muted-foreground">{summary}</p>
             {profileUsername && (
               <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm">
                 <button
@@ -316,13 +334,14 @@ export default function Home() {
 
         {loading ? (
           <>
-            {/* Bento skeleton: featured card (col-span-2, row-span-2) + 4 stat tiles */}
+            {/* Bento skeleton: featured card (col-span-2, row-span-2) + 4 stat tiles,
+                the first row a line taller for the Items tile's drafts line */}
             <div className="mb-12 grid grid-cols-2 gap-4 lg:grid-cols-4">
               <div className="skeleton col-span-2 min-h-[260px] rounded-3xl lg:row-span-2 lg:min-h-[300px]" />
-              <div className="skeleton h-[142px] rounded-3xl" />
-              <div className="skeleton h-[142px] rounded-3xl" />
-              <div className="skeleton h-[142px] rounded-3xl" />
-              <div className="skeleton h-[142px] rounded-3xl" />
+              <div className="skeleton h-[181px] rounded-3xl" />
+              <div className="skeleton h-[181px] rounded-3xl" />
+              <div className="skeleton h-[160px] rounded-3xl" />
+              <div className="skeleton h-[160px] rounded-3xl" />
             </div>
             {/* Section skeleton */}
             <div className="skeleton mb-5 h-6 w-40 rounded-md" />
@@ -396,8 +415,8 @@ export default function Home() {
                     <div className="flex items-center justify-between p-5">
                       <span className="flex items-center gap-2 text-sm text-muted-foreground">
                         <Icon name={visibilityMeta[getVisibility(featured)].icon} size={15} />
-                        {visibilityMeta[getVisibility(featured)].label} · {featured.itemCount ?? 0}{' '}
-                        items
+                        {visibilityMeta[getVisibility(featured)].label} ·{' '}
+                        {formatItemCount(featured.itemCount ?? 0)}
                       </span>
                       <span className="inline-flex h-9 items-center rounded-full bg-primary-600 px-4 text-[13px] font-semibold text-white transition-transform group-hover:-translate-y-px">
                         Open
@@ -416,6 +435,7 @@ export default function Home() {
                   icon="package"
                   label="Items in your lists"
                   value={totalItems}
+                  detail={formatOwnerExtras(ownCounts)}
                   href="/items"
                   iconWrapClassName="bg-primary-500/12 text-accent dark:text-primary-300"
                 />
@@ -502,6 +522,7 @@ function StatTile({
   icon,
   label,
   value,
+  detail,
   href,
   iconWrapClassName = 'bg-surface-2 text-muted-foreground',
   iconStyle,
@@ -509,6 +530,12 @@ function StatTile({
   icon: IconName;
   label: string;
   value: number;
+  /**
+   * A muted line under the label, e.g. the drafts and proposals beside an item
+   * count. A tile given one keeps its line when it's null, so the tile is the
+   * same height either way (and the loading skeleton's).
+   */
+  detail?: string | null;
   href: string;
   iconWrapClassName?: string;
   iconStyle?: React.CSSProperties;
@@ -525,6 +552,9 @@ function StatTile({
         <Icon name={icon} size={19} />
       </span>
       <span className="text-[13px] font-semibold text-muted-foreground">{label}</span>
+      {detail !== undefined && (
+        <span className="mt-0.5 text-[13px] text-muted-foreground">{detail ?? '\u00a0'}</span>
+      )}
       <div className="mt-auto pt-3">
         <div className="flex items-end justify-between gap-2">
           <span className="text-3xl font-semibold tracking-tight text-foreground">{value}</span>

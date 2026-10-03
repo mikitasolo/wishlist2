@@ -17,6 +17,11 @@ interface MultiSelectDropdownProps {
   label: string;
   /** Label for the select-all row / trigger when everything is selected. */
   allLabel?: string;
+  /**
+   * A switch under the options that changes which options there are (e.g.
+   * "Include archived" on the list filter), rather than being one of them.
+   */
+  extraToggle?: { label: string; checked: boolean; onChange: (checked: boolean) => void };
 }
 
 /**
@@ -30,6 +35,7 @@ export default function MultiSelectDropdown({
   onChange,
   label,
   allLabel = 'All',
+  extraToggle,
 }: MultiSelectDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -102,6 +108,18 @@ export default function MultiSelectDropdown({
               <span className="ml-3 truncate text-sm text-foreground">{o.label}</span>
             </label>
           ))}
+          {/* Kept in view at the foot of a long, scrolling menu. */}
+          {extraToggle && (
+            <label className="sticky bottom-0 mt-1.5 flex cursor-pointer items-center border-t border-border bg-surface px-4 py-2.5 hover:bg-muted">
+              <input
+                type="checkbox"
+                checked={extraToggle.checked}
+                onChange={(e) => extraToggle.onChange(e.target.checked)}
+                className="h-4 w-4 cursor-pointer rounded border-border-strong text-accent"
+              />
+              <span className="ml-3 text-sm text-muted-foreground">{extraToggle.label}</span>
+            </label>
+          )}
         </div>
       )}
     </div>

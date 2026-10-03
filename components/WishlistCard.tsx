@@ -7,6 +7,7 @@ import Icon from '@/components/Icon';
 import Cover from '@/components/Cover';
 import OccasionLabel, { OCCASION_ON_COVER } from '@/components/OccasionLabel';
 import { getVisibility, visibilityMeta } from '@/lib/utils/visibility';
+import { formatOwnerItemSummary } from '@/lib/utils/itemCounts';
 
 interface WishlistCardProps {
   wishlist: IWishlist & {
@@ -16,7 +17,11 @@ interface WishlistCardProps {
     ownerUsernames?: string[] | null;
     /** The viewer's own relationship to this list (null when they have none). */
     userRole?: 'owner' | 'member' | null;
+    /** Published items: the "N items" every screen shows (`lib/utils/itemCounts.ts`). */
     itemCount?: number;
+    /** Drafts and proposals to review: only on a list the viewer owns, from `/api/wishlists`. */
+    draftCount?: number;
+    proposalCount?: number;
     archived?: boolean;
     bannerUrl?: string | null;
   };
@@ -36,7 +41,12 @@ export const WISHLIST_CARD_COVER_SIZES =
 export default function WishlistCard({ wishlist, showOwner = false }: WishlistCardProps) {
   const ownerName = wishlist.ownerUsername || 'unknown';
   const coOwnerCount = Math.max(0, (wishlist.ownerUsernames?.length ?? 1) - 1);
-  const itemCount = wishlist.itemCount ?? 0;
+  // "N items", plus the drafts and proposals to review on a list you own.
+  const itemSummary = formatOwnerItemSummary({
+    items: wishlist.itemCount ?? 0,
+    drafts: wishlist.draftCount ?? 0,
+    proposals: wishlist.proposalCount ?? 0,
+  });
   const vis = visibilityMeta[getVisibility(wishlist)];
 
   return (
@@ -103,9 +113,7 @@ export default function WishlistCard({ wishlist, showOwner = false }: WishlistCa
           ) : (
             <span />
           )}
-          <span className="flex-shrink-0 text-[13px] text-muted-foreground">
-            {itemCount} {itemCount === 1 ? 'item' : 'items'}
-          </span>
+          <span className="flex-shrink-0 text-[13px] text-muted-foreground">{itemSummary}</span>
         </div>
       </div>
     </Link>

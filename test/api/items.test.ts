@@ -545,7 +545,7 @@ describe('Most wanted flag', () => {
     as(ownerId);
     expect((await list()).map((i) => i.mostWanted)).toEqual([false]);
 
-    const mine = await MY_ITEMS();
+    const mine = await MY_ITEMS(new NextRequest('http://localhost/api/users/me/items'));
     expect((await mine.json()).data.map((i: { mostWanted: unknown }) => i.mostWanted)).toEqual([
       false,
     ]);
@@ -565,7 +565,7 @@ describe('GET /api/users/me/items', () => {
     const slug = (await Wishlist.findById(wishlistId).lean())?.slug ?? null;
 
     session.mockResolvedValue({ user: { id: ownerId } } as never);
-    const res = await MY_ITEMS();
+    const res = await MY_ITEMS(new NextRequest('http://localhost/api/users/me/items'));
     expect(res.status).toBe(200);
     expect((await res.json()).data).toStrictEqual([
       {
@@ -580,6 +580,7 @@ describe('GET /api/users/me/items', () => {
         wishlistId,
         wishlistSlug: slug,
         wishlistName: 'List',
+        wishlistArchived: false,
         createdAt: bike.createdAt.toISOString(),
       },
     ]);

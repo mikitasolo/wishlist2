@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
@@ -15,6 +15,7 @@ import { useToast } from '@/components/ToastProvider';
 import { signInPath } from '@/lib/utils/callbackUrl';
 import { formatPriceFromObject } from '@/lib/utils/currency';
 import { isSortType, sortItems, SORT_OPTIONS, type SortType } from '@/lib/utils/itemFilters';
+import { formatOwnerItemSummary, tallyItems } from '@/lib/utils/itemCounts';
 
 interface MyItem {
   _id: string;
@@ -28,6 +29,7 @@ interface MyItem {
   wishlistId: string;
   wishlistSlug: string | null;
   wishlistName: string;
+  wishlistArchived: boolean;
   createdAt: string; // ISO date string
 }
 
@@ -56,7 +58,9 @@ const CARD_META: Record<
   Exclude<FilterOption, 'bookedByMe' | 'bookedByOthers' | 'proposedByMe'>,
   { label: string; valueClass: string }
 > = {
-  all: { label: 'Total', valueClass: 'text-foreground' },
+  // "All", not a total: it counts drafts and proposals too, and "N items" means
+  // published items only (lib/utils/itemCounts.ts).
+  all: { label: 'All', valueClass: 'text-foreground' },
   draft: { label: 'Draft', valueClass: 'text-muted-foreground' },
   proposed: { label: 'Proposed', valueClass: 'text-blue-500' },
   available: { label: 'Available', valueClass: 'text-foreground' },
@@ -72,22 +76,59 @@ export default function MyItemsPage() {
   const [wishlistFilters, setWishlistFilters] = useState<string[]>([]);
   const [statusFilters, setStatusFilters] = useState<FilterOption[]>([...STATUS_FILTER_OPTIONS]);
   const [sort, setSort] = useState<SortType>('date-desc');
+  // Archived lists are left out unless asked for, so the counts here match the
+  // dashboard's. Not saved: every visit starts without them. `includeArchived`
+  // is what the items shown were read with; `archivedWanted` is the box's new
+  // state while the read for it is on its way (null otherwise).
+  const [includeArchived, setIncludeArchived] = useState(false);
+  const [archivedWanted, setArchivedWanted] = useState<boolean | null>(null);
+  const [archivedItems, setArchivedItems] = useState(0);
+  const latestRead = useRef(0);
+  // The lists the last read had items from (null before the first one).
+  const loadedListIds = useRef<Set<string> | null>(null);
 
   useEffect(() => {
     if (status === 'unauthenticated') router.replace(signInPath('/items'));
   }, [status, router]);
 
+  const loadItems = useCallback(
+    async (withArchived: boolean) => {
+      // Only the latest read lands: one a later toggle has replaced is dropped.
+      const read = ++latestRead.current;
+      const isLatest = () => read === latestRead.current;
+      try {
+        const res = await fetch(
+          `/api/users/me/items${withArchived ? '?includeArchived=true' : ''}`,
+          { cache: 'no-store' }
+        );
+        const body = await res.json();
+        if (!isLatest()) return;
+        if (body.success) {
+          setItems(body.data as MyItem[]);
+          setArchivedItems(typeof body.archivedItems === 'number' ? body.archivedItems : 0);
+          setIncludeArchived(withArchived);
+        } else showToast('Failed to load items', 'error');
+      } catch {
+        if (isLatest()) showToast('Failed to load items', 'error');
+      } finally {
+        // A failed read leaves the box as the items shown were read.
+        if (isLatest()) {
+          setLoading(false);
+          setArchivedWanted(null);
+        }
+      }
+    },
+    [showToast]
+  );
+
   useEffect(() => {
-    if (status !== 'authenticated') return;
-    fetch('/api/users/me/items', { cache: 'no-store' })
-      .then((r) => r.json())
-      .then((res) => {
-        if (res.success) setItems(res.data as MyItem[]);
-        else showToast('Failed to load items', 'error');
-      })
-      .catch(() => showToast('Failed to load items', 'error'))
-      .finally(() => setLoading(false));
-  }, [status, showToast]);
+    if (status === 'authenticated') void loadItems(false);
+  }, [status, loadItems]);
+
+  const changeIncludeArchived = (next: boolean) => {
+    setArchivedWanted(next);
+    void loadItems(next);
+  };
 
   // Restore persisted status filter + sort once loaded (independent of items).
   useEffect(() => {
@@ -107,10 +148,24 @@ export default function MyItemsPage() {
   }, [loading]);
 
   // Restore the list filter once items (and therefore valid ids) are known;
-  // fall back to "all lists". Stale ids from deleted lists are dropped.
+  // fall back to "all lists". Stale ids from deleted (or archived) lists are
+  // dropped. After that, each read Include archived makes selects the lists it
+  // adds and drops the ones it takes away, back to all lists if that leaves none.
   useEffect(() => {
     if (loading) return;
     const ids = new Set(items.map((i) => i.wishlistId));
+    const previous = loadedListIds.current;
+    loadedListIds.current = ids;
+    if (previous) {
+      setWishlistFilters((selected) => {
+        const next = [
+          ...selected.filter((id) => ids.has(id)),
+          ...Array.from(ids).filter((id) => !previous.has(id) && !selected.includes(id)),
+        ];
+        return next.length > 0 ? next : Array.from(ids);
+      });
+      return;
+    }
     const stored = localStorage.getItem(LS_LISTS);
     if (stored) {
       try {
@@ -124,8 +179,7 @@ export default function MyItemsPage() {
       }
     }
     setWishlistFilters(Array.from(ids));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading]);
+  }, [loading, items]);
 
   // Persist changes (skip empty selections so a transient state can't clobber).
   useEffect(() => {
@@ -141,9 +195,19 @@ export default function MyItemsPage() {
   // Distinct lists the user owns (from the loaded items — no extra fetch).
   const wishlistOptions = useMemo(() => {
     const seen = new Map<string, string>();
-    for (const it of items) if (!seen.has(it.wishlistId)) seen.set(it.wishlistId, it.wishlistName);
+    for (const it of items) {
+      if (!seen.has(it.wishlistId)) {
+        seen.set(
+          it.wishlistId,
+          it.wishlistArchived ? `${it.wishlistName} (archived)` : it.wishlistName
+        );
+      }
+    }
     return Array.from(seen, ([value, label]) => ({ value, label }));
   }, [items]);
+
+  // "57 items · 3 drafts · 2 to review", counted as the dashboard counts them.
+  const summary = useMemo(() => formatOwnerItemSummary(tallyItems(items)), [items]);
 
   // Per-status counts across all owned items (cards show totals, ignore filters).
   const counts = useMemo(() => {
@@ -181,7 +245,11 @@ export default function MyItemsPage() {
         <h1 className="text-3xl font-semibold tracking-tight text-foreground">
           Items in your lists
         </h1>
-        <p className="mt-1 text-muted-foreground">Everything across the wishlists you own.</p>
+        <p className="mt-1 text-muted-foreground">
+          {loading || items.length === 0
+            ? 'Everything across the wishlists you own.'
+            : `Across the wishlists you own${includeArchived ? ', archived ones too' : ''}: ${summary}`}
+        </p>
 
         {loading ? (
           <>
@@ -220,6 +288,18 @@ export default function MyItemsPage() {
             <p className="mx-auto mt-2 max-w-sm px-4 text-[15px] text-muted-foreground">
               Items you add to your wishlists will appear here.
             </p>
+            {/* Archived lists are left out by default, and the List filter that
+                brings them back isn't shown without items. */}
+            {!includeArchived && archivedItems > 0 && (
+              <button
+                type="button"
+                onClick={() => changeIncludeArchived(true)}
+                disabled={archivedWanted !== null}
+                className="mt-6 text-sm font-semibold text-accent hover:underline disabled:opacity-60"
+              >
+                Include archived lists
+              </button>
+            )}
           </div>
         ) : (
           <>
@@ -275,6 +355,11 @@ export default function MyItemsPage() {
                 selected={wishlistFilters}
                 onChange={setWishlistFilters}
                 allLabel="All lists"
+                extraToggle={{
+                  label: 'Include archived',
+                  checked: archivedWanted ?? includeArchived,
+                  onChange: changeIncludeArchived,
+                }}
               />
               <div className="ml-auto">
                 <label className="mb-2 block whitespace-nowrap text-xs font-medium text-foreground sm:text-sm">

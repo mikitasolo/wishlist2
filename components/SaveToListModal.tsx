@@ -10,6 +10,7 @@ import { useToast } from './ToastProvider';
 import type { ApiItem, ApiResponse } from '@/types/api';
 import type { MutationTracker } from '@/lib/utils/itemListMerge';
 import { RequestTimeoutError, withRequestTimeout } from '@/lib/utils/requestTimeout';
+import { formatItemCount } from '@/lib/utils/itemCounts';
 
 /** The fields of one of the viewer's lists (`GET /api/wishlists` → `owned`) the picker uses. */
 interface OwnList {
@@ -198,7 +199,7 @@ export default function SaveToListModal({
                   <span className="truncate font-medium text-foreground">{list.name}</span>
                   {typeof list.itemCount === 'number' && (
                     <span className="flex-shrink-0 text-xs text-muted-foreground" aria-hidden>
-                      {list.itemCount} {list.itemCount === 1 ? 'item' : 'items'}
+                      {formatItemCount(list.itemCount)}
                     </span>
                   )}
                 </button>

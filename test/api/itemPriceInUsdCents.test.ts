@@ -199,7 +199,7 @@ describe('GET /api/users/me/items — priceInUsdCents', () => {
     as(ownerId);
 
     const mine: { _id: string; priceInUsdCents: number | null }[] = (
-      await (await MY_ITEMS()).json()
+      await (await MY_ITEMS(new NextRequest('http://localhost/api/users/me/items'))).json()
     ).data;
     const valueOf = (id: string) => mine.find((i) => i._id === id)?.priceInUsdCents;
     expect(valueOf(priced)).toBe(2000);
@@ -222,7 +222,7 @@ describe('a free (zero-priced) item — priceInUsdCents', () => {
     expect((await listed(priceless))?.priceInUsdCents).toBeNull();
 
     const mine: { _id: string; priceInUsdCents: number | null }[] = (
-      await (await MY_ITEMS()).json()
+      await (await MY_ITEMS(new NextRequest('http://localhost/api/users/me/items'))).json()
     ).data;
     const valueOf = (id: string) => mine.find((i) => i._id === id)?.priceInUsdCents;
     expect(valueOf(free)).toBe(0);

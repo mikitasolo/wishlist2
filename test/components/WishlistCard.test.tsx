@@ -126,3 +126,22 @@ describe('WishlistCard — occasion', () => {
     }
   });
 });
+
+describe('WishlistCard — item count', () => {
+  it('shows the published items alone on a list with no drafts or proposals to show', () => {
+    render(<WishlistCard wishlist={wishlist({ itemCount: 1 })} />);
+    expect(screen.getByText('1 item')).toBeInTheDocument();
+  });
+
+  it('adds the drafts and proposals to review, on a list you own', () => {
+    render(
+      <WishlistCard wishlist={wishlist({ itemCount: 11, draftCount: 2, proposalCount: 1 })} />
+    );
+    expect(screen.getByText('11 items · 2 drafts · 1 to review')).toBeInTheDocument();
+  });
+
+  it('leaves out what there is none of', () => {
+    render(<WishlistCard wishlist={wishlist({ itemCount: 0, draftCount: 0, proposalCount: 3 })} />);
+    expect(screen.getByText('0 items · 3 to review')).toBeInTheDocument();
+  });
+});
