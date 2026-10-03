@@ -28,9 +28,8 @@ import ShareButton from '@/components/ShareButton';
 import ImageUpload from '@/components/ImageUpload';
 import Select from '@/components/Select';
 import OccasionField from '@/components/OccasionField';
-import OccasionLabel from '@/components/OccasionLabel';
+import WishlistHeader, { WishlistHeaderSkeleton } from '@/components/WishlistHeader';
 import { Skeleton, SkeletonGrid, MemberRowSkeleton } from '@/components/Skeleton';
-import Badge from '@/components/Badge';
 import EmptyState from '@/components/EmptyState';
 import Panel, { PanelRow, PanelSection } from '@/components/Panel';
 import SegmentedControl from '@/components/SegmentedControl';
@@ -38,12 +37,7 @@ import Avatar from '@/components/Avatar';
 import LoadError from '@/components/LoadError';
 import WishlistUnavailable from '@/components/WishlistUnavailable';
 import { readResource, ReadRefusedError } from '@/lib/utils/resourceRead';
-import {
-  coverBadge,
-  visibilityMeta,
-  VISIBILITY_OPTIONS,
-  type Visibility,
-} from '@/lib/utils/visibility';
+import { visibilityMeta, VISIBILITY_OPTIONS, type Visibility } from '@/lib/utils/visibility';
 import { currencySelectOptions } from '@/lib/utils/currencies';
 import { missingFromDraft } from '@/lib/utils/occasion';
 import {
@@ -246,16 +240,21 @@ export default function WishlistDetail() {
   // The ref turns a second click away before the disabled state has rendered.
   const archivingRef = useRef(false);
   const [isArchiving, setIsArchiving] = useState(false);
-  // The sole owner's Leave (on their own row in Manage) explains why they can't
-  // and offers the way out instead: make someone else an owner (a member, with
-  // Make owner, or an invited co-owner), then leave. Nothing in it leaves or
-  // deletes anything.
+  // The sole owner's Leave list… (in the title's ⋯ menu) explains why they
+  // can't and offers the way out instead: make someone else an owner (a member,
+  // with Make owner, or an invited co-owner), then leave. Nothing in it leaves
+  // or deletes anything.
   const [soleOwnerNotice, setSoleOwnerNotice] = useState(false);
   const inviteFormRef = useRef<InviteMemberFormHandle>(null);
-  // Set by the notice's "Invite a co-owner", so the invite form is set up once
-  // the notice has closed: by then its scroll lock is gone (it puts the page
-  // back where it was) and focus can stay on the form.
+  // Set by the notice's "Invite a co-owner", so the invite form (in Manage,
+  // opened for it if need be) is set up once the notice has closed: by then its
+  // scroll lock is gone (it puts the page back where it was) and focus can stay
+  // on the form.
   const inviteOwnerOnClose = useRef(false);
+  // Pin to my dashboard: in flight. The ref turns a second pick away before
+  // the held item has rendered.
+  const pinningRef = useRef(false);
+  const [isPinning, setIsPinning] = useState(false);
 
   const fetchItemsHook = useFetchItems();
 
@@ -875,17 +874,20 @@ export default function WishlistDetail() {
   // and the byline are the server's (a co-owner's change since the page loaded,
   // a renamed owner). Only the owners: the rest of the list, and the settings
   // form, stay as they are.
-  const refreshOwners = useCallback(async () => {
-    if (!wishlistId) return;
+  // Resolves with the owners it read, or `null` when it read none the page took.
+  const refreshOwners = useCallback(async (): Promise<ShownOwners | null> => {
+    if (!wishlistId) return null;
     const sentAt = ownerRemovals.stamp();
     try {
       const res = await fetch(`/api/wishlists/${wishlistId}`, { cache: 'no-store' });
       const result = await res.json();
-      if (!result.success || !result.data) return;
+      if (!result.success || !result.data) return null;
       const read = ownerRemovals.land(sentAt, shownOwnersOf(result.data));
       if (read) setOwners(read);
+      return read;
     } catch {
       /* the page keeps the owners it has */
+      return null;
     }
   }, [wishlistId, ownerRemovals]);
 
@@ -1045,6 +1047,8 @@ export default function WishlistDetail() {
 
   const inviteCoOwnerInstead = useCallback(() => {
     inviteOwnerOnClose.current = true;
+    // The invite form is in Manage, which renders it as the notice closes.
+    setManageOpen(true);
     setSoleOwnerNotice(false);
   }, []);
 
@@ -1162,10 +1166,70 @@ export default function WishlistDetail() {
   }, [setArchived]);
 
   const ownerCount = owners.ids.length;
-  // A co-owner may step down. The sole owner can't: their Leave in Manage
+  // A co-owner may step down. The sole owner can't: their Leave list…
   // explains that they'd have to make someone else an owner first, or delete
   // the list.
   const canLeave = isOwner ? ownerCount > 1 : isMember;
+
+  // Leave list…, from the title's ⋯ menu: confirm, or for the sole owner, why
+  // not. The page counted its owners when it last read them, which can predate
+  // a co-owner accepting the invite the notice pointed the sole owner to, so
+  // their owners are read again first: once that co-owner counts, they're asked
+  // to confirm instead of being told they can't. Its members are read too
+  // (Manage may never have been opened), since the notice points to Make owner
+  // only when there's a member to make one, and Manage opens behind the notice,
+  // so the members' Make owner it points to is there once it closes. A read
+  // that fails leaves them the sole owner, as the page counted. The ref turns
+  // a second pick away while the reads are out.
+  const checkingLeaveRef = useRef(false);
+  const startLeave = useCallback(async () => {
+    if (canLeave) {
+      handleLeaveWishlist();
+      return;
+    }
+    if (!isOwner || checkingLeaveRef.current) return;
+    checkingLeaveRef.current = true;
+    try {
+      const [fresh] = await Promise.all([refreshOwners(), refreshMembers()]);
+      if (fresh && fresh.ids.length > 1) {
+        handleLeaveWishlist();
+      } else {
+        setManageOpen(true);
+        setSoleOwnerNotice(true);
+      }
+    } finally {
+      checkingLeaveRef.current = false;
+    }
+  }, [canLeave, isOwner, handleLeaveWishlist, refreshOwners, refreshMembers]);
+
+  // Pin to my dashboard: the caller's own pin only (`featuredBy`), so a
+  // co-owner's dashboard is untouched. The answer to `featured` is the
+  // caller's, as the list read gives it.
+  const togglePinned = useCallback(async () => {
+    if (!wishlistId || !wishlist || pinningRef.current) return;
+    const pin = !wishlist.featured;
+    pinningRef.current = true;
+    setIsPinning(true);
+    try {
+      const res = await fetch(`/api/wishlists/${wishlistId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ featured: pin }),
+      });
+      const result = await res.json();
+      if (result.success) {
+        setWishlist((prev) => (prev ? { ...prev, featured: pin } : prev));
+        showToast(pin ? 'Pinned to your dashboard' : 'Unpinned from your dashboard', 'success');
+      } else {
+        showToast(result.error || 'Failed to update wishlist', 'error');
+      }
+    } catch {
+      showToast('Failed to update wishlist', 'error');
+    } finally {
+      pinningRef.current = false;
+      setIsPinning(false);
+    }
+  }, [wishlistId, wishlist, showToast]);
 
   // The members endpoint returns one list; the UI shows the two relationships
   // separately, because they aren't rungs on a ladder.
@@ -1206,8 +1270,8 @@ export default function WishlistDetail() {
   const sortedItems = useMemo(() => sortItems(searchedItems, sortBy), [searchedItems, sortBy]);
 
   // The list has no items at all, as far as this viewer can see: no filter is
-  // hiding anything, so the stat cards, the toolbar and Add item step aside
-  // for an empty state that says so and offers the add itself. Only once a
+  // hiding anything, so the stat cards and the toolbar step aside for an
+  // empty state that says so and offers the add itself. Only once a
   // read has landed: before that, no items means it hasn't loaded.
   const listIsEmpty = itemsLoaded && items.length === 0;
 
@@ -1276,23 +1340,6 @@ export default function WishlistDetail() {
     return null;
   }, [selectedFilters, filterOptions]);
 
-  // Adding an item claims nothing about the ones there, so the button is there
-  // while the first read of them is on its way too.
-  const addItemButton = (
-    <div className="mb-6 sm:mb-8">
-      {isOwner && (
-        <Button icon="plus" onClick={() => setShowAddItemModal(true)}>
-          Add item
-        </Button>
-      )}
-      {isMember && !isOwner && (
-        <Button icon="plus" onClick={() => setShowProposeItemModal(true)}>
-          Propose item
-        </Button>
-      )}
-    </div>
-  );
-
   // Each card's count. Its label and colour come from the status map
   // (FILTER_META). "All", not "Total Items": an owner's includes drafts and
   // proposals, and "N items" means published items only (lib/utils/itemCounts.ts).
@@ -1330,17 +1377,8 @@ export default function WishlistDetail() {
       <div className="min-h-screen">
         <AppHeader actions={<AuthButton />} />
         <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
-          {/* Header: title + author on the left, actions on the right */}
-          <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
-            <div className="flex min-w-0 flex-1 items-baseline gap-3">
-              <Skeleton className="h-9 w-56 sm:h-10" />
-              <Skeleton className="h-4 w-20" />
-            </div>
-            <div className="flex flex-shrink-0 items-center gap-3">
-              <Skeleton className="h-9 w-24 rounded-full" />
-              <Skeleton className="h-9 w-24 rounded-full" />
-            </div>
-          </div>
+          {/* Header: the name, the meta line, the actions */}
+          <WishlistHeaderSkeleton />
           {/* Image + description row */}
           <div className="mb-6 grid gap-4 sm:mb-8 sm:grid-cols-[minmax(0,26rem)_minmax(0,1fr)] sm:items-start">
             <Skeleton className="aspect-[16/9] rounded-3xl" />
@@ -1365,48 +1403,28 @@ export default function WishlistDetail() {
     <div className="min-h-screen">
       <AppHeader actions={<AuthButton />} />
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
-        {/* Header: title + meta on the left, wishlist-scoped actions on the right.
-            The title used to sit on the banner; it moved here so the banner can shrink
-            into a side panel next to the stat cards below. */}
-        <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
-          {/* With an occasion the row wraps, so on a phone its label can go under
-              the name rather than squeeze it down to nothing. */}
-          <div
-            className={`flex min-w-0 flex-1 items-baseline ${
-              wishlist.occasion ? 'flex-wrap gap-x-3 gap-y-1' : 'gap-3'
-            }`}
-          >
-            <h1 className="min-w-0 truncate text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
-              {wishlist.name}
-            </h1>
-            {/* Credit every owner: a co-owned list is equally each owner's. */}
-            {ownerUsernames.length > 0 && (
-              <span className="flex-shrink-0 whitespace-nowrap text-sm text-muted-foreground">
-                by{' '}
-                {ownerUsernames.slice(0, 2).map((name, i) => (
-                  <span key={name}>
-                    {i > 0 && ' & '}
-                    {isOwner && name === session?.user?.username ? (
-                      'you'
-                    ) : (
-                      <Link
-                        href={`/users/${name}`}
-                        className="font-semibold text-foreground underline-offset-2 hover:underline"
-                      >
-                        @{name}
-                      </Link>
-                    )}
-                  </span>
-                ))}
-                {ownerUsernames.length > 2 && ` +${ownerUsernames.length - 2}`}
-              </span>
-            )}
-            <OccasionLabel occasion={wishlist.occasion} />
-          </div>
-          <div className="flex flex-shrink-0 items-center gap-3">
-            {/* An archived list's link opens for its owners only: anyone they'd
-                share it with gets the answer a missing list gets. */}
-            {!wishlist.archived && (
+        {/* The name, the meta line (owners, occasion, visibility) and the
+            viewer's actions, with Leave list… and Pin in the ⋯ menu. */}
+        <WishlistHeader
+          name={wishlist.name}
+          ownerUsernames={ownerUsernames}
+          viewerUsername={session?.user?.username}
+          role={filterRole}
+          occasion={wishlist.occasion}
+          visibility={wishlist.visibility}
+          archived={wishlist.archived}
+          pinned={!!wishlist.featured}
+          pinning={isPinning}
+          manageOpen={manageOpen}
+          onAddItem={() => setShowAddItemModal(true)}
+          onPropose={() => setShowProposeItemModal(true)}
+          onToggleManage={() => setManageOpen((v) => !v)}
+          onTogglePin={togglePinned}
+          onLeave={startLeave}
+          // An archived list's link opens for its owners only: anyone they'd
+          // share it with gets the answer a missing list gets.
+          share={
+            !wishlist.archived && (
               <ShareButton
                 url={`/wishlists/${wishlist.slug || wishlist._id}`}
                 title={wishlist.name}
@@ -1422,32 +1440,9 @@ export default function WishlistDetail() {
                     : undefined
                 }
               />
-            )}
-            {canLeave && (
-              <Button
-                variant="secondary"
-                size="sm"
-                shape="pill"
-                icon="logout"
-                onClick={handleLeaveWishlist}
-              >
-                Leave
-              </Button>
-            )}
-            {isOwner && (
-              <Button
-                variant="secondary"
-                size="sm"
-                shape="pill"
-                icon={manageOpen ? 'close' : 'settings'}
-                onClick={() => setManageOpen((v) => !v)}
-                aria-label={manageOpen ? 'Back to items' : 'Manage wishlist'}
-              >
-                {manageOpen ? 'Done' : 'Manage'}
-              </Button>
-            )}
-          </div>
-        </div>
+            )
+          }
+        />
 
         {/* Manage header (owners only) */}
         {manageOpen && isOwner && (
@@ -1509,17 +1504,7 @@ export default function WishlistDetail() {
                 priority
                 sizes="(max-width: 1024px) 100vw, 26rem"
                 className="relative aspect-[16/9] overflow-hidden rounded-3xl border border-border bg-surface-2 shadow-md"
-              >
-                {/* Archived instead of the visibility on an archived list: it's
-                    owner-only, whatever the visibility says. */}
-                <Badge
-                  tone="glass"
-                  icon={coverBadge(wishlist).icon}
-                  className="absolute right-3 top-3"
-                >
-                  {coverBadge(wishlist).label}
-                </Badge>
-              </Cover>
+              />
               {wishlist.description && (
                 <div className="rounded-2xl border border-border bg-surface p-5">
                   <p className="whitespace-pre-line break-words text-body text-muted-foreground">
@@ -1556,15 +1541,14 @@ export default function WishlistDetail() {
                       ))}
                     </div>
                   </div>
-                  {addItemButton}
                   <SkeletonGrid count={8} variant="item" />
                 </>
               )
             ) : (
               <>
-                {/* Stat cards, toolbar and Add item: not on an empty list, where the
-                cards would all be zero, the filters would have nothing to filter,
-                and the empty state below offers the add (or the proposal) itself */}
+                {/* Stat cards and toolbar: not on an empty list, where the cards
+                would all be zero, the filters would have nothing to filter, and
+                the empty state below offers the add (or the proposal) itself */}
                 {!listIsEmpty && (
                   <>
                     {/* Stat cards — full-width row; click to filter the list by that status */}
@@ -1657,8 +1641,6 @@ export default function WishlistDetail() {
                         )}
                       </div>
                     </div>
-
-                    {addItemButton}
                   </>
                 )}
 
@@ -1856,20 +1838,7 @@ export default function WishlistDetail() {
                               </Button>
                             </>
                           )}
-                          {/* The sole owner can't leave (a list keeps an owner), so
-                              theirs explains how to instead of asking to confirm. */}
-                          {isCurrentUser && isOwner && (
-                            <Button
-                              variant="danger-ghost"
-                              size="sm"
-                              onClick={
-                                canLeave ? handleLeaveWishlist : () => setSoleOwnerNotice(true)
-                              }
-                              className="whitespace-nowrap"
-                            >
-                              Leave
-                            </Button>
-                          )}
+                          {/* Their own Leave is the title's Leave list…, not one here too. */}
                         </div>
                       </PanelRow>
                     );
@@ -2025,7 +1994,13 @@ export default function WishlistDetail() {
                     const result = await response.json();
 
                     if (result.success) {
-                      setWishlist(result.data);
+                      // The caller's pin isn't a setting: a save never changes
+                      // it, and its answer can predate a Pin to my dashboard
+                      // picked from the header while it was out.
+                      setWishlist((prev) => ({
+                        ...result.data,
+                        featured: prev ? prev.featured : result.data.featured,
+                      }));
                       // Refill the form from the list as saved: what was sent,
                       // and a co-owner's change to anything that wasn't. The
                       // next save then diffs against that, not the first load.
@@ -2173,57 +2148,8 @@ export default function WishlistDetail() {
                 </Button>
               </PanelSection>
 
-              {/* Featured Section - owner only */}
-              {isOwner && (
-                <PanelSection
-                  title={
-                    wishlist.featured ? 'Featured on your dashboard' : 'Feature on your dashboard'
-                  }
-                  description={
-                    <>
-                      {wishlist.featured
-                        ? 'This list is pinned as the highlight at the top of your dashboard.'
-                        : 'Pin this list as the highlight at the top of your dashboard. Otherwise your list with the most items is featured automatically.'}
-                      {ownerCount > 1 &&
-                        ' Each owner pins their own highlight — this only affects yours.'}
-                    </>
-                  }
-                >
-                  <Button
-                    variant="secondary"
-                    onClick={async () => {
-                      try {
-                        const res = await fetch(`/api/wishlists/${wishlistId}`, {
-                          method: 'PATCH',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ featured: !wishlist.featured }),
-                        });
-                        const result = await res.json();
-                        if (result.success) {
-                          setWishlist((prev) =>
-                            prev ? { ...prev, featured: !wishlist.featured } : prev
-                          );
-                          showToast(
-                            wishlist.featured
-                              ? 'Removed from your dashboard highlight'
-                              : 'Featured on your dashboard',
-                            'success'
-                          );
-                        } else {
-                          showToast(result.error || 'Failed to update wishlist', 'error');
-                        }
-                      } catch {
-                        showToast('Failed to update wishlist', 'error');
-                      }
-                    }}
-                    fullWidth
-                    className="sm:w-auto"
-                  >
-                    <Icon name="sparkles" size={16} />
-                    {wishlist.featured ? 'Unfeature' : 'Feature this list'}
-                  </Button>
-                </PanelSection>
-              )}
+              {/* Pinning the list to the owner's dashboard is per-owner, not a
+                  setting of the list: it's Pin to my dashboard, in the title's ⋯ menu. */}
 
               {/* Danger zone: deleting the list, for any owner */}
               {isOwner && (

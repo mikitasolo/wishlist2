@@ -28,6 +28,7 @@ vi.mock('@/components/AuthButton', () => ({ default: () => null }));
 vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }));
 
 import WishlistDetail from '@/app/wishlists/[id]/page';
+import { pickLeave } from './listMenu';
 
 // User ids double as usernames here. Alice is signed in.
 let owners: string[];
@@ -131,12 +132,6 @@ afterEach(() => {
 const iconOf = (dialog: HTMLElement) =>
   dialog.querySelector('[data-icon]')?.getAttribute('data-icon');
 
-/** The header's Leave, next to the list's name. */
-const headerLeave = () =>
-  within(
-    screen.getByRole('heading', { level: 1, name: 'Birthday' }).parentElement!.parentElement!
-  ).getByRole('button', { name: 'Leave' });
-
 /** Once the page has drawn the items it read. */
 const itemsShown = async () => {
   if (items?.length) await screen.findByText(`Item ${items[0]._id}`);
@@ -168,7 +163,7 @@ describe("a member's Leave", () => {
     render(<WishlistDetail />);
     await itemsShown();
 
-    await user.click(headerLeave());
+    await pickLeave(user);
 
     const dialog = await screen.findByRole('alertdialog', { name: 'Leave “Birthday”?' });
     // Two of their own: Dave's booking isn't theirs to count.
@@ -188,7 +183,7 @@ describe("a member's Leave", () => {
     render(<WishlistDetail />);
     await itemsShown();
 
-    await user.click(headerLeave());
+    await pickLeave(user);
 
     const dialog = await screen.findByRole('alertdialog', { name: 'Leave “Birthday”?' });
     expect(dialog).toHaveAccessibleDescription(
@@ -204,7 +199,7 @@ describe("a member's Leave", () => {
     const user = userEvent.setup();
     render(<WishlistDetail />);
 
-    await user.click(await screen.findByRole('button', { name: 'Leave' }));
+    await pickLeave(user);
     const dialog = await screen.findByRole('alertdialog');
     await user.click(within(dialog).getByRole('button', { name: 'Leave' }));
 
@@ -221,7 +216,7 @@ describe("a member's Leave", () => {
     const user = userEvent.setup();
     render(<WishlistDetail />);
 
-    await user.click(await screen.findByRole('button', { name: 'Leave' }));
+    await pickLeave(user);
     const dialog = await screen.findByRole('alertdialog');
     await user.click(within(dialog).getByRole('button', { name: 'Leave' }));
 
@@ -300,7 +295,7 @@ describe("an owner's confirmations", () => {
     render(<WishlistDetail />);
     await itemsShown();
 
-    await user.click(headerLeave());
+    await pickLeave(user);
 
     const dialog = await screen.findByRole('alertdialog', { name: 'Leave “Birthday”?' });
     expect(dialog).toHaveAccessibleDescription(

@@ -28,6 +28,7 @@ vi.mock('@/components/AuthButton', () => ({ default: () => null }));
 vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }));
 
 import WishlistDetail from '@/app/wishlists/[id]/page';
+import { listMenuItems, listMenuTrigger, pickLeave } from './listMenu';
 
 // User ids double as usernames here. Alice is signed in.
 let owners: string[];
@@ -114,39 +115,35 @@ afterEach(() => {
   delete (Element.prototype as Partial<Element>).scrollIntoView;
 });
 
-/** The title row: the list's name, its byline, and the header's actions (Leave, Manage). */
-const titleRow = () =>
-  screen.getByRole('heading', { level: 1, name: 'Birthday' }).parentElement!.parentElement!;
-const headerLeave = () => within(titleRow()).queryByRole('button', { name: 'Leave' });
+/** Every button that would take Alice off the list, outside a dialog. */
+const leaveButtons = () => screen.queryAllByRole('button', { name: /^Leave/ });
 
-/** Open Manage and wait for the owners' rows. Returns the Leave on Alice's own row. */
+/** Open Manage and wait for the owners' rows. */
 async function openManage(user: ReturnType<typeof userEvent.setup>) {
   await user.click(await screen.findByRole('button', { name: 'Manage wishlist' }));
   await screen.findByRole('link', { name: '@alice' });
-  const leave = screen.getAllByRole('button', { name: 'Leave' }).filter((b) => b !== headerLeave());
-  expect(leave).toHaveLength(1);
-  return leave[0];
 }
 
 describe('Leave for the sole owner of a list', () => {
-  it("keeps the header's Leave hidden, and offers one on their own owner row", async () => {
+  it('offers Leave list… in the title’s ⋯ menu, and no Leave on their own owner row', async () => {
     const user = userEvent.setup();
     render(<WishlistDetail />);
     await screen.findByRole('button', { name: 'Manage wishlist' });
-    expect(headerLeave()).toBeNull();
+    expect(leaveButtons()).toHaveLength(0);
+    expect(await listMenuItems(user)).toEqual(['Pin to my dashboard', 'Leave list…']);
 
-    const leave = await openManage(user);
-    expect(headerLeave()).toBeNull();
-    // On Alice's row, next to "You".
-    expect(leave.parentElement).toHaveTextContent('You');
+    await openManage(user);
+    // regression: a co-owner saw Leave twice, in the header and on their own row.
+    expect(leaveButtons()).toHaveLength(0);
+    expect(screen.getByText('You')).toBeInTheDocument();
   });
 
   it("explains why they can't leave instead of asking to confirm, and leaves nothing", async () => {
     const user = userEvent.setup();
     render(<WishlistDetail />);
-    const leave = await openManage(user);
+    await screen.findByRole('button', { name: 'Manage wishlist' });
 
-    await user.click(leave);
+    await pickLeave(user);
 
     const dialog = await screen.findByRole('alertdialog', { name: "You're the only owner" });
     // Carol is a member, so the way to her comes first.
@@ -162,10 +159,12 @@ describe('Leave for the sole owner of a list', () => {
     expect(dialog).not.toHaveTextContent(/book|reserv/i);
     expect(screen.queryByRole('alertdialog', { name: 'Leave “Birthday”?' })).toBeNull();
 
-    // Cancel closes it, back on the Leave that opened it.
+    // Cancel closes it, back on the ⋯ menu that opened it, with Manage open
+    // behind it: Carol's Make owner, which the notice points to, is right there.
     await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
     await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
-    await waitFor(() => expect(leave).toHaveFocus());
+    await waitFor(() => expect(listMenuTrigger()).toHaveFocus());
+    expect(await screen.findByRole('button', { name: 'Make owner' })).toBeInTheDocument();
     expect(leaveRequests()).toHaveLength(0);
   });
 
@@ -173,7 +172,8 @@ describe('Leave for the sole owner of a list', () => {
     memberIds = [];
     const user = userEvent.setup();
     render(<WishlistDetail />);
-    await user.click(await openManage(user));
+    await screen.findByRole('button', { name: 'Manage wishlist' });
+    await pickLeave(user);
 
     const dialog = await screen.findByRole('alertdialog', { name: "You're the only owner" });
     expect(dialog).toHaveAccessibleDescription(
@@ -181,19 +181,20 @@ describe('Leave for the sole owner of a list', () => {
     );
   });
 
-  it('takes them to the invite form, set to invite an owner, from "Invite a co-owner"', async () => {
+  it('takes them to the invite form in Manage, set to invite an owner, from "Invite a co-owner"', async () => {
     const user = userEvent.setup();
     render(<WishlistDetail />);
-    const leave = await openManage(user);
-    const field = screen.getByPlaceholderText('Search by username');
-    expect(screen.getByRole('radio', { name: 'Member' })).toBeChecked();
+    await screen.findByRole('button', { name: 'Manage wishlist' });
+    // Manage is closed: Leave list… opens it on the way to the form.
+    expect(screen.queryByPlaceholderText('Search by username')).toBeNull();
 
-    await user.click(leave);
+    await pickLeave(user);
     const dialog = await screen.findByRole('alertdialog', { name: "You're the only owner" });
     await user.click(within(dialog).getByRole('button', { name: 'Invite a co-owner' }));
 
     await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
-    expect(field).toHaveFocus();
+    const field = await screen.findByPlaceholderText('Search by username');
+    await waitFor(() => expect(field).toHaveFocus());
     expect(screen.getByRole('radio', { name: 'Co-owner' })).toBeChecked();
     expect(scrollIntoView).toHaveBeenCalledTimes(1);
     expect(scrollIntoView.mock.contexts[0]).toContainElement(field);
@@ -226,25 +227,30 @@ describe('Leave for the sole owner of a list', () => {
 describe('Leave once the co-owner the sole owner invited has accepted', () => {
   // The way out the notice points to has to work without a reload: the page
   // counted its owners when it loaded, before the co-owner accepted.
-  it('asks to confirm instead of explaining again once Manage is opened afresh', async () => {
+  it('asks to confirm instead of explaining again, without a reload', async () => {
     const user = userEvent.setup();
     render(<WishlistDetail />);
-    await openManage(user);
-    await user.click(screen.getAllByRole('button', { name: 'Back to items' })[0]);
+    await screen.findByRole('button', { name: 'Manage wishlist' });
+    await pickLeave(user);
+    await user.click(
+      within(await screen.findByRole('alertdialog', { name: "You're the only owner" })).getByRole(
+        'button',
+        { name: 'Cancel' }
+      )
+    );
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
 
     // Bob accepts the owner invite on his own device.
     owners = ['alice', 'bob'];
-    const leave = await openManage(user);
-    await waitFor(() => expect(headerLeave()).toBeInTheDocument());
-
-    await user.click(leave);
+    await pickLeave(user);
 
     expect(await screen.findByRole('alertdialog', { name: 'Leave “Birthday”?' })).toHaveTextContent(
       "You'll stop being an owner and lose access."
     );
     expect(screen.queryByRole('alertdialog', { name: "You're the only owner" })).toBeNull();
-    // Bob's row can be stepped down too, now that the page counts two owners.
-    expect(screen.getByRole('button', { name: 'Make member' })).toBeInTheDocument();
+    // He's credited in the byline now, beside the list's name.
+    const byline = screen.getByRole('heading', { level: 1, name: 'Birthday' }).parentElement!;
+    expect(within(byline).getByRole('link', { name: '@bob' })).toBeInTheDocument();
   });
 });
 
@@ -253,10 +259,10 @@ describe('Leave for everyone who can leave', () => {
     owners = ['alice', 'bob'];
     const user = userEvent.setup();
     render(<WishlistDetail />);
-    expect(await screen.findByRole('button', { name: 'Leave' })).toBe(headerLeave());
-    const leave = await openManage(user);
+    await screen.findByRole('button', { name: 'Manage wishlist' });
+    expect(leaveButtons()).toHaveLength(0);
 
-    await user.click(leave);
+    await pickLeave(user);
 
     const dialog = await screen.findByRole('alertdialog', { name: 'Leave “Birthday”?' });
     expect(dialog).toHaveTextContent("You'll stop being an owner and lose access.");
@@ -266,18 +272,20 @@ describe('Leave for everyone who can leave', () => {
     await waitFor(() => expect(router.push).toHaveBeenCalledWith('/'));
   });
 
-  it("gives a member the header's Leave and its confirmation, as before", async () => {
+  it('gives a member Leave list… in the ⋯ menu, beside Propose and Share, and its confirmation', async () => {
     owners = ['bob'];
     userRole = 'member';
     const user = userEvent.setup();
     render(<WishlistDetail />);
 
-    const leave = await screen.findByRole('button', { name: 'Leave' });
-    expect(leave).toBe(headerLeave());
-    // A member doesn't manage the list, so they have no owner row to leave from.
+    await screen.findByRole('button', { name: 'Propose' });
+    // Off the action row, where it sat with the weight of Share.
+    expect(leaveButtons()).toHaveLength(0);
+    // A member doesn't manage the list, so the menu holds Leave list… alone.
     expect(screen.queryByRole('button', { name: 'Manage wishlist' })).toBeNull();
+    expect(await listMenuItems(user)).toEqual(['Leave list…']);
 
-    await user.click(leave);
+    await pickLeave(user);
 
     const dialog = await screen.findByRole('alertdialog', { name: 'Leave “Birthday”?' });
     expect(dialog).toHaveTextContent("You'll lose access.");

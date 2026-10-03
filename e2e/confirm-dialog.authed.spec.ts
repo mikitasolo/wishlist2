@@ -69,7 +69,8 @@ for (const flow of [
     title: 'Leave “E2E Friend List”?',
     path: '/wishlists/e2e-friend',
     open: async (page: Page) => {
-      await page.getByRole('button', { name: 'Leave', exact: true }).click();
+      await page.getByRole('button', { name: 'More list actions' }).click();
+      await page.getByRole('menuitem', { name: 'Leave list…' }).click();
     },
     confirm: 'Leave',
     pending: 'Leaving…',

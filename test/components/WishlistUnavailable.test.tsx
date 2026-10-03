@@ -33,6 +33,7 @@ vi.mock('@/components/AuthButton', () => ({ default: () => null }));
 vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }));
 
 import WishlistDetail from '@/app/wishlists/[id]/page';
+import { pickLeave } from './listMenu';
 
 /** How the fake server answers a read: a status and JSON body, or a network failure. */
 type Answer = { status: number; body: unknown } | Error;
@@ -506,12 +507,12 @@ describe('a list that stops being available while it’s open', () => {
     expect(listReads()).toBe(reads);
   });
 
-  /** A member leaves through the header's Leave, its request held until `release`. */
+  /** A member leaves through the header's Leave list…, its request held until `release`. */
   async function leave() {
     let release!: () => void;
     hold.leave = new Promise<void>((resolve) => (release = resolve));
     const user = userEvent.setup();
-    await user.click(screen.getByRole('button', { name: 'Leave' }));
+    await pickLeave(user);
     await user.click(
       within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Leave' })
     );
