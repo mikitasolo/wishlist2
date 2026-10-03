@@ -58,6 +58,11 @@ function item(name: string, value: number, currency: string, day: number): ApiIt
 
 // Units per USD.
 const RATES = { usd: 1, eur: 0.5, pln: 4, gbp: 0.25 };
+// Whether /api/currency-rates answers.
+let ratesFail: boolean;
+const fetchMock = vi.fn();
+const ratesReads = () =>
+  fetchMock.mock.calls.filter(([url]) => url === '/api/currency-rates').length;
 
 beforeEach(() => {
   localStorage.clear();
@@ -65,10 +70,16 @@ beforeEach(() => {
   userRole = 'member';
   // Item currencies are stored lowercase.
   listItems = [item('Tent', 10000, 'eur', 1), item('Stove', 4000, 'pln', 2)];
+  ratesFail = false;
+  fetchMock.mockReset();
   vi.stubGlobal(
     'fetch',
-    vi.fn(async (url: string) => {
-      if (url === '/api/currency-rates') return reply({ success: true, data: { rates: RATES } });
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url === '/api/currency-rates') {
+        return ratesFail
+          ? reply({ success: false, error: 'Failed' }, 500)
+          : reply({ success: true, data: { rates: RATES } });
+      }
       if (url === '/api/wishlists/camping/items') return reply({ success: true, data: listItems });
       if (url === '/api/wishlists/camping') {
         return reply({
@@ -177,7 +188,8 @@ describe("the owner's own list", () => {
 
     await user.click(prices()!);
     await user.click(screen.getByRole('option', { name: /^PLN/ }));
-    expect(localStorage.getItem(pricesChoiceKey('carol', 'own'))).toBe('PLN');
+    // Their own currency, kept as such: it follows a new default.
+    expect(localStorage.getItem(pricesChoiceKey('carol', 'own'))).toBe('mine');
 
     first.unmount();
     await open();
@@ -200,6 +212,23 @@ describe('when Prices is offered', () => {
     await open();
     expect(prices()).toBeNull();
     expect(within(card('Tent')).queryByText(/≈/)).toBeNull();
+  });
+
+  // regression: Prices named the viewer's currency while the cards, with no
+  // rates to convert by, still showed every price in its own.
+  it("regression: isn't offered while the rates can't be read, and every price shows as it is", async () => {
+    ratesFail = true;
+    await open();
+    await waitFor(() => expect(ratesReads()).toBe(1));
+    expect(prices()).toBeNull();
+    expect(within(card('Tent')).getByText('€100.00')).toBeInTheDocument();
+    expect(within(card('Tent')).queryByText(/≈/)).toBeNull();
+  });
+
+  it("doesn't read the rates when every price is in the viewer's currency", async () => {
+    listItems = [item('Tent', 10000, 'pln', 1)];
+    await open();
+    expect(ratesReads()).toBe(0);
   });
 
   it("is offered on a list all in one currency that isn't the viewer's", async () => {

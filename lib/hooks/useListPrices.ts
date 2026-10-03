@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import type { SelectOption } from '@/components/Select';
 import { currencySelectOptions } from '@/lib/utils/currencies';
 import {
@@ -25,7 +25,7 @@ interface ListPricesInput {
 }
 
 export interface ListPrices {
-  /** Whether to offer the Prices control (see `needsPricesControl`). */
+  /** Whether to offer the Prices control (see `needsPricesControl`), once the rates are in. */
   shown: boolean;
   /** The currency to show prices in, or `ORIGINAL_PRICES`. */
   value: string;
@@ -34,15 +34,16 @@ export interface ListPrices {
   valueLabel: string;
   /** The viewer picks a currency: shown at once, and remembered (`rememberPricesChoice`). */
   choose: (value: string) => void;
-  /** Exchange rates (lowercase code → units per USD), once they've loaded. */
+  /** Exchange rates (lowercase code → units per USD), once they've loaded; only read when Prices could show. */
   rates: Record<string, number> | null;
 }
 
 /**
  * The Prices control on a list, by the rules in `lib/utils/listPrices.ts` (D9):
  * where it starts, whether it's offered, and the viewer's remembered pick,
- * which is read from this browser's storage once the page is on screen, and
- * ignored if storage can't be read.
+ * which is read from this browser's storage before the page paints, and
+ * ignored if storage can't be read. The exchange rates are only read once
+ * the control could show (a signed-in viewer, some price in another currency).
  */
 export function useListPrices({
   viewerId,
@@ -57,19 +58,24 @@ export function useListPrices({
   // The pick for `key` (none: null). Kept with its key, so a pick for another
   // context or account is never applied here.
   const [picked, setPicked] = useState<{ key: string; value: string | null } | null>(null);
-  useEffect(() => {
+  // Before paint, so a remembered pick doesn't flash the default first.
+  useLayoutEffect(() => {
     if (!viewerId || !key) return;
     let value: string | null = null;
     try {
-      value = savedPricesChoice(localStorage, viewerId, context);
+      value = savedPricesChoice(localStorage, viewerId, context, viewerCurrency);
     } catch {
       /* storage blocked: the default */
     }
     setPicked({ key, value });
-  }, [viewerId, context, key]);
+  }, [viewerId, context, key, viewerCurrency]);
 
+  const needed = !!viewerId && needsPricesControl(items, viewerCurrency);
   const [rates, setRates] = useState<Record<string, number> | null>(null);
+  // Read once, the first time they're needed.
+  const ratesWanted = needed || rates !== null;
   useEffect(() => {
+    if (!ratesWanted) return;
     let cancelled = false;
     fetch('/api/currency-rates', { cache: 'no-store' })
       .then((r) => r.json())
@@ -80,11 +86,12 @@ export function useListPrices({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [ratesWanted]);
 
-  const shown = !!viewerId && needsPricesControl(items, viewerCurrency);
+  const shown = needed && rates !== null;
   const choice = picked && picked.key === key ? picked.value : null;
-  // Hidden, every price is in the viewer's currency already, so it's shown as is.
+  // Hidden, every price is in the viewer's currency already, or none can be
+  // converted yet, so each is shown as it is.
   const value = shown ? (choice ?? defaultPricesChoice(context, viewerCurrency)) : ORIGINAL_PRICES;
 
   const choose = useCallback(

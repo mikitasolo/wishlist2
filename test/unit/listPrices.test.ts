@@ -62,20 +62,33 @@ describe('remembering a pick', () => {
     const storage = memoryStorage();
     rememberPricesChoice(storage, 'u1', 'others', ORIGINAL_PRICES, 'PLN');
     rememberPricesChoice(storage, 'u1', 'own', 'GBP', 'PLN');
-    expect(savedPricesChoice(storage, 'u1', 'others')).toBe(ORIGINAL_PRICES);
-    expect(savedPricesChoice(storage, 'u1', 'own')).toBe('GBP');
-    expect(savedPricesChoice(storage, 'u2', 'others')).toBeNull();
+    expect(savedPricesChoice(storage, 'u1', 'others', 'PLN')).toBe(ORIGINAL_PRICES);
+    expect(savedPricesChoice(storage, 'u1', 'own', 'PLN')).toBe('GBP');
+    expect(savedPricesChoice(storage, 'u2', 'others', 'PLN')).toBeNull();
     expect(storage.map.get(pricesChoiceKey('u1', 'own'))).toBe('GBP');
   });
 
   it("forgets the pick when it's the context's default, so a new default is followed", () => {
     const storage = memoryStorage({ [pricesChoiceKey('u1', 'others')]: 'GBP' });
     rememberPricesChoice(storage, 'u1', 'others', 'PLN', 'pln');
-    expect(savedPricesChoice(storage, 'u1', 'others')).toBeNull();
+    expect(savedPricesChoice(storage, 'u1', 'others', 'PLN')).toBeNull();
 
     storage.setItem(pricesChoiceKey('u1', 'own'), 'GBP');
     rememberPricesChoice(storage, 'u1', 'own', ORIGINAL_PRICES, 'PLN');
-    expect(savedPricesChoice(storage, 'u1', 'own')).toBeNull();
+    expect(savedPricesChoice(storage, 'u1', 'own', 'PLN')).toBeNull();
+  });
+
+  // A pick of "· your default" is the viewer's currency, whatever it is then,
+  // even one Prices offers only as their default.
+  it("remembers a pick of the viewer's own currency as that, so it follows a new default", () => {
+    const storage = memoryStorage();
+    rememberPricesChoice(storage, 'u1', 'own', 'PLN', 'pln');
+    expect(storage.map.get(pricesChoiceKey('u1', 'own'))).toBe('mine');
+    expect(savedPricesChoice(storage, 'u1', 'own', 'PLN')).toBe('PLN');
+    expect(savedPricesChoice(storage, 'u1', 'own', 'eur')).toBe('EUR');
+
+    rememberPricesChoice(storage, 'u1', 'own', 'XAU', 'XAU');
+    expect(savedPricesChoice(storage, 'u1', 'own', 'XAU')).toBe('XAU');
   });
 
   it('ignores a stored value Prices no longer offers', () => {
@@ -83,7 +96,7 @@ describe('remembering a pick', () => {
       [pricesChoiceKey('u1', 'others')]: 'XYZ',
       [pricesChoiceKey('u1', 'own')]: 'gbp',
     });
-    expect(savedPricesChoice(storage, 'u1', 'others')).toBeNull();
-    expect(savedPricesChoice(storage, 'u1', 'own')).toBeNull();
+    expect(savedPricesChoice(storage, 'u1', 'others', 'PLN')).toBeNull();
+    expect(savedPricesChoice(storage, 'u1', 'own', 'PLN')).toBeNull();
   });
 });

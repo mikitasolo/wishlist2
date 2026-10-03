@@ -84,10 +84,8 @@ function viewOf(item: ChipItem, role: ViewerRole, viewerId: string | null): Disp
   return displayStatus(item.status, role, !!viewerId && item.bookedBy === viewerId);
 }
 
-/** The chip, other than All, an item is under for this viewer, if any. */
-function chipOf(item: ChipItem, role: ViewerRole, viewerId: string | null): ListChip | null {
-  const view = viewOf(item, role, viewerId);
-  if (view === null) return null;
+/** The chip, other than All, an item seen as `view` is under, if any. */
+function chipFor(item: ChipItem, view: DisplayStatus, role: ViewerRole): ListChip | null {
   if (role === 'owner') {
     if (view === 'draft') return 'drafts';
     if (view === 'proposed') return 'proposals';
@@ -102,17 +100,6 @@ function chipOf(item: ChipItem, role: ViewerRole, viewerId: string | null): List
     if (view === 'proposed') return 'your-proposals';
   }
   return null;
-}
-
-/** Whether an item is shown under `chip`. */
-function isUnderChip(
-  item: ChipItem,
-  chip: ListChip,
-  role: ViewerRole,
-  viewerId: string | null
-): boolean {
-  if (viewOf(item, role, viewerId) === null) return false;
-  return chip === 'all' || chipOf(item, role, viewerId) === chip;
 }
 
 /**
@@ -134,9 +121,10 @@ export function countListChips(
     Object.keys(LIST_CHIP_LABELS).map((chip) => [chip, 0])
   ) as Record<ListChip, number>;
   for (const item of items) {
-    if (viewOf(item, role, viewerId) === null) continue;
+    const view = viewOf(item, role, viewerId);
+    if (view === null) continue;
     counts.all++;
-    const chip = chipOf(item, role, viewerId);
+    const chip = chipFor(item, view, role);
     if (chip) counts[chip]++;
   }
   return counts;
@@ -157,12 +145,6 @@ const ALL_ORDER: Record<ViewerRole, readonly DisplayStatus[]> = {
 
 /** Statuses no one can act on any more, shown dimmed under All. */
 const DIMMED: ReadonlySet<DisplayStatus> = new Set<DisplayStatus>(['bookedByOthers', 'completed']);
-
-function groupOf(item: ChipItem, role: ViewerRole, viewerId: string | null): number {
-  const view = viewOf(item, role, viewerId);
-  const at = view === null ? -1 : ALL_ORDER[role].indexOf(view);
-  return at === -1 ? ALL_ORDER[role].length : at;
-}
 
 /**
  * Whether an item is dimmed under All: reserved by someone else (a member's
@@ -185,9 +167,15 @@ export function orderListItems<T extends ChipItem & SortableItem>(
   viewerId: string | null,
   sortBy: SortType
 ): T[] {
-  return items
-    .filter((item) => isUnderChip(item, chip, role, viewerId))
-    .map((item) => ({ item, group: groupOf(item, role, viewerId) }))
+  const order = ALL_ORDER[role];
+  const shown: { item: T; group: number }[] = [];
+  for (const item of items) {
+    const view = viewOf(item, role, viewerId);
+    if (view === null || (chip !== 'all' && chipFor(item, view, role) !== chip)) continue;
+    const at = order.indexOf(view);
+    shown.push({ item, group: at === -1 ? order.length : at });
+  }
+  return shown
     .sort((a, b) => a.group - b.group || compareItems(a.item, b.item, sortBy))
     .map(({ item }) => item);
 }

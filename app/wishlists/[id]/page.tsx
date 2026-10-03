@@ -268,7 +268,7 @@ export default function WishlistDetail() {
   // The status chip the list is shown on: All on every list the page opens
   // (or the URL's ?show=), kept only for this list and role, and never saved.
   const [activeChip, chooseChip] = useListChip(
-    wishlist ? String(wishlist._id) : null,
+    wishlist ? { id: String(wishlist._id), slug: wishlist.slug } : null,
     wishlistId,
     viewerRole
   );
@@ -1323,8 +1323,9 @@ export default function WishlistDetail() {
             <Skeleton className="aspect-[16/9] rounded-3xl" />
             <Skeleton className="hidden h-full min-h-[8rem] rounded-2xl sm:block" />
           </div>
-          {/* The status chips and toolbar (the role isn't known yet) */}
-          <ListControlsSkeleton chips={4} />
+          {/* The status chips and toolbar. The role isn't known yet: signed out,
+              it's a visitor's, with no chips; otherwise a member's four. */}
+          <ListControlsSkeleton chips={status === 'unauthenticated' ? 0 : 4} />
           <SkeletonGrid count={8} variant="item" />
         </main>
       </div>

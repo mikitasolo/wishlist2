@@ -4,7 +4,7 @@
 // keeps it), with the actionable items first under All. The sort, a
 // preference, is still remembered.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup, waitFor } from '@testing-library/react';
+import { render, screen, cleanup, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ApiItem } from '@/types/api';
 import { WISHLIST_SORT_STORAGE_KEY } from '@/lib/utils/itemFilters';
@@ -84,12 +84,15 @@ function itemsOf(list: string): ApiItem[] {
 }
 
 const fetchMock = vi.fn();
+// Holds the read of the christmas list until a test lets it through.
+let christmasGate: Promise<void> | null;
 
 beforeEach(() => {
   localStorage.clear();
   params.id = 'birthday';
   window.history.replaceState(null, '', '/wishlists/birthday');
   userRole = 'member';
+  christmasGate = null;
   fetchMock.mockReset();
   fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
     const method = init?.method ?? 'GET';
@@ -97,11 +100,14 @@ beforeEach(() => {
     if (list && method === 'GET') {
       const [, id, items] = list;
       if (items) return reply({ success: true, data: itemsOf(id) });
+      if (id === 'christmas' && christmasGate) await christmasGate;
+      // `birthday-2`: the birthday list, once an owner has given it that slug.
+      const renamed = id === 'birthday-2';
       return reply({
         success: true,
         data: {
-          _id: `w-${id}`,
-          name: id === 'birthday' ? 'Birthday' : 'Christmas',
+          _id: renamed ? 'w-birthday' : `w-${id}`,
+          name: id.startsWith('birthday') ? 'Birthday' : 'Christmas',
           slug: id,
           description: '',
           owners: userRole === 'owner' ? ['carol'] : ['alice'],
@@ -338,6 +344,49 @@ describe('the URL keeps the chip, for back and refresh', () => {
     await open('birthday');
     await user.click(chip('All'));
     expect(window.location.search).toBe('?x=1');
+  });
+});
+
+describe('the URL keeps the chip when the list moves to a new URL', () => {
+  // regression: a settings save that changes the slug moves the page to the
+  // new URL with no ?show=, so a refresh lost the chip still shown as picked.
+  it("regression: puts the chip back in the URL of the list's new slug", async () => {
+    const user = userEvent.setup();
+    const view = await open('birthday');
+    await user.click(chip('Available'));
+    expect(window.location.search).toBe('?show=available');
+
+    // Next moves the page to the new URL (without ?show=) and re-reads the list.
+    window.history.replaceState(null, '', '/wishlists/birthday-2');
+    params.id = 'birthday-2';
+    view.rerender(<WishlistDetail />);
+
+    await waitFor(() => expect(window.location.search).toBe('?show=available'));
+    expect(window.location.pathname).toBe('/wishlists/birthday-2');
+    expect(chip('Available')).toBeChecked();
+  });
+
+  // While the page moves on to another list, the one on screen is still the
+  // last one: its chip must not land in the next list's URL.
+  it("regression: doesn't write a chip into another list's URL before that list has loaded", async () => {
+    const user = userEvent.setup();
+    const view = await open('birthday');
+    await user.click(chip('Available'));
+
+    let letThrough!: () => void;
+    christmasGate = new Promise<void>((resolve) => (letThrough = resolve));
+    window.history.replaceState(null, '', '/wishlists/christmas');
+    params.id = 'christmas';
+    view.rerender(<WishlistDetail />);
+    // Picked while Birthday is still the list on screen.
+    expect(screen.getByRole('heading', { level: 1, name: 'Birthday' })).toBeInTheDocument();
+    await user.click(chip('Reserved by you'));
+    expect(window.location.search).toBe('');
+
+    await act(async () => letThrough());
+    await screen.findByRole('heading', { level: 1, name: 'Christmas' });
+    await waitFor(() => expect(chip('All')).toBeChecked());
+    expect(window.location.search).toBe('');
   });
 });
 
