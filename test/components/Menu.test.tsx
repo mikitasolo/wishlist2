@@ -392,6 +392,19 @@ describe('Menu — placement', () => {
     await user.click(trigger());
     expect(menu()!.parentElement!.className).toMatch(/\bleft-0\b/);
   });
+
+  // A trigger mid-row on a phone (the list header's Share, beside Manage):
+  // right-aligned the menu ran off the left edge, left-aligned off the right.
+  it('keeps to the left margin of the screen when neither edge of the trigger leaves room', async () => {
+    fakeLayout({ top: 100, bottom: 140, left: 300, right: 400 }, { width: W - 20, height: 150 });
+    const user = userEvent.setup();
+    render(<Page />);
+    await user.click(trigger());
+    const popover = menu()!.parentElement!;
+    expect(popover.className).not.toMatch(/\b(left|right)-0\b/);
+    // 8px from the screen's edge, measured from the wrapper (at the trigger, here).
+    expect(popover.style.left).toBe('-292px');
+  });
 });
 
 describe('Menu — a custom trigger, a header, links and a radio group (the account menu)', () => {
@@ -478,6 +491,25 @@ describe('Menu — a custom trigger, a header, links and a radio group (the acco
     expect(item('Your profile')).toHaveFocus();
     await user.keyboard('{ArrowUp}');
     expect(item('Sign out')).toHaveFocus();
+  });
+
+  it('describes the menu by its header only when headerDescribesMenu is set (the Share popover)', async () => {
+    const user = await openAccount();
+    // Who's signed in isn't about the items: no description.
+    expect(menu()).not.toHaveAttribute('aria-describedby');
+    await user.keyboard('{Escape}');
+    cleanup();
+
+    render(
+      <Menu
+        label="Share"
+        items={actions}
+        header={<p>Only people on the list can open it.</p>}
+        headerDescribesMenu
+      />
+    );
+    await user.click(screen.getByRole('button', { name: 'Share' }));
+    expect(menu()).toHaveAccessibleDescription('Only people on the list can open it.');
   });
 
   it('moves through the radio options in the arrow-key order, Home and End included', async () => {
