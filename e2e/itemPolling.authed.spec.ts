@@ -126,12 +126,18 @@ async function holdItemReads(page: Page, serve: (items: ListedItem[]) => ListedI
 }
 
 const cardOf = (page: Page, name: string) => page.getByRole('article', { name: `Item: ${name}` });
+// What the page says once it has read a list with nothing on it (the member's,
+// e2e-friend, has no items).
+const emptyList = (page: Page) =>
+  page.getByRole('heading', { name: /^(Your list is empty|Nothing here yet)$/ });
 
 for (const flow of [
   {
     as: 'owner',
     list: 'e2e-birthday',
     open: '+ Add Item',
+    // e2e-birthday has an item, so the button stays once the list has loaded.
+    openOnceLoaded: '+ Add Item',
     title: 'Add New Item',
     submit: 'Add Item',
     done: 'Item added successfully',
@@ -140,6 +146,9 @@ for (const flow of [
     as: 'member',
     list: 'e2e-friend',
     open: '+ Propose Item',
+    // e2e-friend has no items, so once it has loaded the proposal is offered by
+    // its empty state instead.
+    openOnceLoaded: 'Propose an item',
     title: 'Propose New Item',
     submit: 'Propose Item',
     done: 'Item proposed successfully',
@@ -157,8 +166,8 @@ for (const flow of [
     return (items: ListedItem[]) => (created.item ? [created.item, ...items] : items);
   }
 
-  async function fillIn(page: Page, name: string) {
-    await page.getByRole('button', { name: flow.open }).click();
+  async function fillIn(page: Page, name: string, open = flow.open) {
+    await page.getByRole('button', { name: open }).click();
     const dialog = page.getByRole('dialog', { name: flow.title });
     await dialog.getByLabel('Item Name').fill(name);
     return dialog.getByRole('button', { name: flow.submit, exact: true });
@@ -176,10 +185,8 @@ for (const flow of [
     await takeOverPolling(page);
     await page.goto(`/wishlists/${flow.list}`);
     // Wait out the initial load, so the poll a spec fires is a request of its own.
-    await expect(
-      page.getByRole('article').or(page.getByText('No items found')).first()
-    ).toBeVisible();
-    const submit = await fillIn(page, name);
+    await expect(page.getByRole('article').or(emptyList(page)).first()).toBeVisible();
+    const submit = await fillIn(page, name, flow.openOnceLoaded);
     const reads = await holdItemReads(page, await answerCreate(page, userId));
 
     // The poll reads the list now, before the item exists, but only hands it
@@ -278,9 +285,7 @@ for (const flow of [
     // The load from before the add still lands, so the list isn't left empty,
     // and the page reads it again straight away: no tick can run here.
     await load.land();
-    await expect(
-      page.getByRole('article').or(page.getByText('No items found')).first()
-    ).toBeVisible();
+    await expect(page.getByRole('article').or(emptyList(page)).first()).toBeVisible();
     const reread = await reads.next();
 
     await reread.land();
@@ -815,7 +820,8 @@ test('a stalled proposal is given up on, keeping the modal open, and the read st
   await page.goto('/wishlists/e2e-friend');
   await (await reads.next()).land();
 
-  await page.getByRole('button', { name: '+ Propose Item' }).click();
+  // The list is empty, so its empty state offers the proposal.
+  await page.getByRole('button', { name: 'Propose an item' }).click();
   const dialog = page.getByRole('dialog', { name: 'Propose New Item' });
   await dialog.getByLabel('Item Name').fill(name);
   await dialog.getByRole('button', { name: 'Propose Item', exact: true }).click();
