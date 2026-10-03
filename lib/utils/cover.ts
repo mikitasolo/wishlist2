@@ -26,3 +26,25 @@ function hash(str: string): number {
 export function coverGradient(seed: string): string {
   return covers[hash(seed || 'wishlist') % covers.length];
 }
+
+// The first character as a reader sees it: an emoji with its modifiers and
+// joined parts, a flag (two regional indicators), or a letter with its
+// combining marks. A regex rather than `Intl.Segmenter`, which a browser may
+// lack or segment differently from the server: the server's render and the
+// browser's have to agree.
+const FIRST_CHARACTER =
+  /^(?:\p{Regional_Indicator}{2}|\p{Extended_Pictographic}[️\u{1F3FB}-\u{1F3FF}]?(?:‍\p{Extended_Pictographic}[️\u{1F3FB}-\u{1F3FF}]?)*|\P{M}\p{M}*)/u;
+
+/**
+ * The letter an item's placeholder cover shows: the first character of its
+ * name, upper-cased, as the reader sees it (an emoji, or a letter with its
+ * accent, stays whole). `''` for a name with nothing to show.
+ */
+export function coverInitial(name: string): string {
+  const first = name.trim().match(FIRST_CHARACTER)?.[0] ?? '';
+  // Not `toLocaleUpperCase()`: the server's locale and the browser's can
+  // differ (a Turkish "i"). And one character, never two: a letter whose
+  // capital is several ("ß" is "SS") stays as it is.
+  const upper = first.toUpperCase();
+  return Array.from(upper).length === Array.from(first).length ? upper : first;
+}

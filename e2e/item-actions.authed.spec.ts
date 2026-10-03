@@ -15,12 +15,15 @@ for (const width of [375, 1280]) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto('/wishlists/e2e-birthday');
     const card = page.getByRole('article', { name: 'Item: E2E Gift' });
+    const noLink = card.getByRole('img', { name: 'No link provided' });
+    // On a phone the link (or its "no link" marker) is left to the menu (WIS-245).
     const row = [
       card.getByRole('button', { name: 'Edit item' }),
-      card.getByRole('img', { name: 'No link provided' }),
+      ...(width < 640 ? [] : [noLink]),
       card.getByRole('button', { name: 'More actions' }),
     ];
     for (const control of row) await expect(control).toBeVisible();
+    if (width < 640) await expect(noLink).toHaveCount(0);
 
     const [primary, ...squares] = await boxes(row);
     for (const box of squares) {

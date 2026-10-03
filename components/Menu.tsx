@@ -32,6 +32,11 @@ export interface MenuItem {
   onSelect?: () => void;
   /** Makes it a link to this path, followed when it's picked. */
   href?: string;
+  /**
+   * With `href`: a page on another site (an item's product page), opened in a
+   * new tab rather than through the app's router.
+   */
+  external?: boolean;
   /** Drawn at the end of the row: a decoration, such as a dot (mark it `aria-hidden`). */
   trailing?: ReactNode;
   /**
@@ -350,23 +355,29 @@ export default function Menu({
 
   const itemClassName = `${POPOVER_ACTION_ROW} cursor-pointer whitespace-nowrap text-foreground outline-hidden transition-colors focus:bg-row-active aria-disabled:cursor-not-allowed aria-disabled:opacity-50`;
 
-  const renderItem = (item: MenuItem) =>
-    item.href ? (
-      <Link
-        href={item.href}
-        role="menuitem"
-        tabIndex={-1}
-        aria-disabled={item.disabled || undefined}
-        onClick={(e) => {
+  const renderItem = (item: MenuItem) => {
+    if (item.href) {
+      const linkProps = {
+        href: item.href,
+        role: 'menuitem',
+        tabIndex: -1,
+        'aria-disabled': item.disabled || undefined,
+        onClick: (e: MouseEvent<HTMLAnchorElement>) => {
           if (item.disabled) e.preventDefault();
           else choose(item);
-        }}
-        onMouseMove={followPointer}
-        className={itemClassName}
-      >
-        {itemContent(item)}
-      </Link>
-    ) : (
+        },
+        onMouseMove: followPointer,
+        className: itemClassName,
+      };
+      return item.external ? (
+        <a {...linkProps} target="_blank" rel="noopener noreferrer">
+          {itemContent(item)}
+        </a>
+      ) : (
+        <Link {...linkProps}>{itemContent(item)}</Link>
+      );
+    }
+    return (
       <button
         type="button"
         role="menuitem"
@@ -379,6 +390,7 @@ export default function Menu({
         {itemContent(item)}
       </button>
     );
+  };
 
   const renderRadioGroup = (group: MenuRadioGroup) => {
     const selected = Math.max(

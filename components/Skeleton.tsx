@@ -64,26 +64,34 @@ export function WishlistCardSkeleton({ showOwner = false }: { showOwner?: boolea
 /**
  * Card skeleton matching WishlistItem (square image, title, price, and its one
  * row of actions: the primary action, the link button and the menu button),
- * each in a box of the real line's height and margins.
+ * each in a box of the real line's height and margins. Below `sm`, like the
+ * card in the two-column grid there, it's tighter, with a `text-body` title
+ * and no link button (the link is in the card's menu). Its cover is square, as
+ * a card with a photo's is: one with none is a shorter 4:3 below `sm`, which a
+ * skeleton can't know before the items load.
  */
 export function ItemCardSkeleton() {
   return (
-    <div className="flex flex-col rounded-3xl border border-border bg-surface p-4 shadow-md sm:p-5">
-      <Skeleton className="mb-4 aspect-square w-full rounded-2xl" />
-      <div className="mb-2 flex h-6 items-center sm:mb-3">
+    <div className="flex min-w-0 flex-col rounded-3xl border border-border bg-surface p-3 shadow-md sm:p-5">
+      <Skeleton className="mb-3 aspect-square w-full rounded-2xl sm:mb-4" />
+      {/* The title's line (text-body, text-title from sm) */}
+      <div className="mb-1.5 flex h-[1.375rem] items-center sm:mb-3 sm:h-6">
         <Skeleton className="h-4 w-4/5" />
       </div>
       <div className="mb-2 flex min-h-[28px] items-center sm:mb-3 sm:min-h-[32px]">
-        <Skeleton className="h-5 w-24" />
+        <Skeleton className="h-5 w-16 sm:w-24" />
       </div>
       <div className="flex gap-2">
         <Skeleton className="h-10 flex-1 rounded-xl" />
-        <Skeleton className="h-10 w-10 rounded-xl" />
+        <Skeleton className="h-10 w-10 rounded-xl max-sm:hidden" />
         <Skeleton className="h-10 w-10 rounded-xl" />
       </div>
     </div>
   );
 }
+
+/** The item grid's columns: two on a phone (`gap-4`), up to four from `xl`. */
+export const ITEM_GRID_CLASSES = 'grid grid-cols-2 gap-4 sm:gap-5 lg:grid-cols-3 xl:grid-cols-4';
 
 /** Row skeleton for a list `Panel`'s rows (owners, members): avatar, name, a meta line. */
 export function MemberRowSkeleton() {
@@ -101,6 +109,7 @@ export function MemberRowSkeleton() {
 /**
  * A grid of card skeletons, laid out as every grid of cards is (`gap-5`, one
  * column on a phone up to four from `xl`), so nothing moves when the cards land.
+ * Item cards are the exception: two columns on a phone (`ITEM_GRID_CLASSES`).
  * `showOwner` for a grid whose cards name their owner (Shared, a profile).
  */
 export function SkeletonGrid({
@@ -113,7 +122,13 @@ export function SkeletonGrid({
   showOwner?: boolean;
 }) {
   return (
-    <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+    <div
+      className={
+        variant === 'item'
+          ? ITEM_GRID_CLASSES
+          : 'grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
+      }
+    >
       {Array.from({ length: count }).map((_, i) =>
         variant === 'item' ? (
           <ItemCardSkeleton key={i} />

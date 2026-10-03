@@ -14,10 +14,21 @@ vi.mock('next-auth/react', () => ({
 import WishlistItem from '@/components/WishlistItem';
 
 // useBodyScrollLock restores the scroll position on close; jsdom lacks scrollTo.
+// And a desktop-width viewport (jsdom has no matchMedia), whose card menu
+// doesn't hold the product link: a phone's starts with it (WIS-245).
 beforeAll(() => {
   vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: true,
+    media: query,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  }));
 });
-afterAll(() => vi.restoreAllMocks());
+afterAll(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 beforeEach(() => cleanup());
 
 function item(overrides: Partial<ApiItem>): ApiItem {

@@ -23,6 +23,7 @@ export default function Cover({
   priority,
   link,
   className,
+  placeholder,
   children,
 }: {
   src: string | null | undefined;
@@ -40,6 +41,12 @@ export default function Cover({
    */
   link?: { href: string; label: string };
   className?: string;
+  /**
+   * Drawn over the gradient whenever it shows (no image, or one that failed to
+   * load), under `children`: an item's initial. Decorative, so it's hidden
+   * from assistive tech; the frame's `alt` or link label names the item.
+   */
+  placeholder?: ReactNode;
   children?: ReactNode;
 }) {
   // Keyed on the URL, so an edit that replaces a broken image shows the new one.
@@ -56,6 +63,11 @@ export default function Cover({
           priority={priority}
           onError={() => setFailedSrc(src)}
         />
+      )}
+      {!showImage && placeholder && (
+        <span aria-hidden className="absolute inset-0 flex items-center justify-center">
+          {placeholder}
+        </span>
       )}
       {children}
     </>
