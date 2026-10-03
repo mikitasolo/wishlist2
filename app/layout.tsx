@@ -1,9 +1,10 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import SessionProvider from '@/components/SessionProvider';
 import { ToastProvider } from '@/components/ToastProvider';
 import { ThemeProvider } from '@/components/ThemeProvider';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { validateEnvVars } from '@/lib/env';
+import { SESSION_HINT_SCRIPT } from '@/lib/utils/sessionHint';
 import './globals.css';
 
 // Validate all environment variables at startup
@@ -44,15 +45,27 @@ export const metadata: Metadata = {
   },
 };
 
+// `cover` lets the page reach under an iPhone's home indicator, so
+// `env(safe-area-inset-*)` reports the insets: the phone tab bar pads itself
+// clear of the indicator, and the body keeps content out of a landscape notch.
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
+};
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        {/* Apply the saved theme before paint to avoid a flash. Light is default. */}
+        {/* Apply the saved theme before paint to avoid a flash. Light is default.
+            Then the session hint, so the header holds the shape it's likely
+            to take while the session loads (lib/utils/sessionHint.ts). */}
         <script
           dangerouslySetInnerHTML={{
             __html:
-              "(function(){try{var t=localStorage.getItem('theme');document.documentElement.setAttribute('data-theme',t==='dark'?'dark':'light');}catch(e){document.documentElement.setAttribute('data-theme','light');}})();",
+              "(function(){try{var t=localStorage.getItem('theme');document.documentElement.setAttribute('data-theme',t==='dark'?'dark':'light');}catch(e){document.documentElement.setAttribute('data-theme','light');}})();" +
+              SESSION_HINT_SCRIPT,
           }}
         />
       </head>

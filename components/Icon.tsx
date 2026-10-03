@@ -16,6 +16,7 @@ import { SVGProps } from 'react';
 
 export type IconName =
   | 'gift'
+  | 'home'
   | 'user'
   | 'users'
   | 'user-minus'
@@ -63,6 +64,13 @@ const paths: Record<IconName, React.ReactNode> = {
       <rect x="3" y="8" width="18" height="4" rx="1" />
       <path d="M12 8v13M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7" />
       <path d="M12 8C12 8 12 3 8.5 3S5 8 12 8ZM12 8c0 0 0-5 3.5-5S19 8 12 8Z" />
+    </>
+  ),
+  // A house: Home, the tab bar's and header's first destination.
+  home: (
+    <>
+      <path d="m3 10 9-7 9 7v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+      <path d="M9 22V12h6v10" />
     </>
   ),
   user: (

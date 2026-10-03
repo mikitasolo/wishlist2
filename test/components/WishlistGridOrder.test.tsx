@@ -228,10 +228,11 @@ describe('dashboard — order on a phone', () => {
     render(<Home />);
     await screen.findByText('Birthday · in 12 days');
 
-    /** The names of a section's rows, top to bottom: each row's first line. */
+    /** The names of a section's rows, top to bottom: each row's first line (not All items). */
     const rowNames = (name: string) =>
       within(section(name))
         .getAllByRole('link')
+        .filter((a) => a.getAttribute('href')?.startsWith('/wishlists/'))
         .map((a) => a.querySelector('.text-body')?.textContent);
     expect(rowNames('Your wishlists')).toEqual(BY_OCCASION);
     expect(rowNames('Shared with you')).toEqual(SHARED_BY_OCCASION);

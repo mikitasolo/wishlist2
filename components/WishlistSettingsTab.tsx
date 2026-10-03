@@ -179,9 +179,10 @@ export default function WishlistSettingsTab({
         </Panel>
 
         {/* Only while there's something to save. Sticks to the bottom of the
-            screen while the form runs past it, and rests under the form. */}
+            screen while the form runs past it (above a phone's tab bar,
+            `--tab-bar-space`), and rests under the form. */}
         {dirty && (
-          <div className="sticky bottom-4 z-20 flex items-center gap-3 rounded-2xl border border-border bg-surface py-3 pl-4 pr-3 shadow-lg sm:pl-5">
+          <div className="sticky bottom-[calc(1rem+var(--tab-bar-space,0px))] z-20 flex items-center gap-3 rounded-2xl border border-border bg-surface py-3 pl-4 pr-3 shadow-lg sm:pl-5">
             <p className="min-w-0 flex-1 text-sm font-medium text-foreground">Unsaved changes</p>
             <Button variant="secondary" onClick={onDiscard} disabled={saving}>
               Discard

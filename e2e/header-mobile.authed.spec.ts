@@ -40,8 +40,10 @@ for (const width of [320, 360]) {
 // regression: from `sm` up the open search field sits in the header row, and
 // the account button couldn't shrink to make room for it, so at 640px it was
 // pushed past the right edge and the page scrolled sideways. At 768px New list
-// gets its label (WIS-242), which has to fit beside the open search too.
-for (const width of [640, 768]) {
+// gets its label (WIS-242), which has to fit beside the open search too. The
+// header's Home · Reserved · Activity links (WIS-251) step aside for it below
+// `lg`, and from there there's room for both.
+for (const width of [640, 768, 1024]) {
   test(`regression: at ${width}px the open search leaves the account button on screen`, async ({
     page,
   }) => {
@@ -56,8 +58,13 @@ for (const width of [640, 768]) {
   });
 }
 
-test('a wide screen still shows the wordmark and the account name', async ({ page }) => {
+// The account button is the avatar alone at every width (WIS-251: Me is the
+// avatar), so it's one width whoever is signed in and its loading placeholder
+// can hold that width.
+test('a wide screen still shows the wordmark, and the account button is its avatar', async ({
+  page,
+}) => {
   await open(page, '/booked');
   await expect(homeLink(page).getByText('Wishlist', { exact: true })).toBeVisible();
-  await expect(accountButton(page).getByText('e2euser', { exact: true })).toBeVisible();
+  await expect(accountButton(page)).not.toContainText('e2euser');
 });
