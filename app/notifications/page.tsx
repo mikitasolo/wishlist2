@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useId, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
@@ -124,6 +124,15 @@ export default function ActivityPage() {
   useEffect(() => {
     if (status === 'unauthenticated') router.replace(signInPath('/notifications'));
   }, [status, router]);
+
+  // Another account signed in (from another tab): the previous account's rows
+  // go before the browser paints, and the feed loads afresh for this one.
+  useLayoutEffect(() => {
+    setItems((prev) => (prev.length ? [] : prev));
+    setFeedLoading(true);
+    setFeedFailed(false);
+    setFollowersOpen(false);
+  }, [viewerId]);
 
   useEffect(() => {
     // A read outdated by another (Try again, another account) is dropped.

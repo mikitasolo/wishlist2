@@ -981,6 +981,26 @@ describe('Activity, pinned invites — on the page', () => {
     expect(screen.queryByRole('region', { name: 'Invitations' })).toBeNull();
   });
 
+  it("another account signing in never shows the previous account's feed", async () => {
+    feed.rows = [inviteRow('w1', 'Birthday', 'alice')];
+    const { list, rerender } = await (async () => {
+      const held = mockHeldFetch({ holdLists: true });
+      const view = render(<ActivityPage />);
+      await held.list(0, listed(invites));
+      return { ...held, rerender: view.rerender };
+    })();
+    expect(feedRow(/@alice invited you to/)).toBeInTheDocument();
+
+    feed.rows = [inviteRow('w9', 'Graduation', 'zoe')];
+    signedIn.userId = 'someone-else';
+    rerender(<ActivityPage />);
+    expect(screen.queryByText(/@alice invited you to/)).toBeNull();
+
+    await list(1, listed([]));
+    expect(await screen.findByText(/@zoe invited you to/)).toBeInTheDocument();
+    expect(screen.queryByText(/@alice invited you to/)).toBeNull();
+  });
+
   it('shows the invites with no empty state when the feed is empty', async () => {
     mockFetch(declined);
     render(<ActivityPage />);
