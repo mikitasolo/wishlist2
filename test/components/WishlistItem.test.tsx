@@ -95,6 +95,33 @@ describe('WishlistItem — booking visibility', () => {
     );
     expect(screen.getByText(/reserved by you/i)).toBeInTheDocument();
   });
+
+  it('links the "Reserved by you" badge to Reserved', () => {
+    render(
+      <WishlistItem
+        item={item({ status: 'booked', bookedBy: ME })}
+        onUpdate={vi.fn()}
+        isAuthenticated
+        isMember
+      />
+    );
+    expect(screen.getByRole('link', { name: 'Reserved by you, open Reserved' })).toHaveAttribute(
+      'href',
+      '/booked'
+    );
+  });
+
+  it('does not link the badge when someone else reserved it', () => {
+    render(
+      <WishlistItem
+        item={item({ status: 'booked', bookedBy: 'someone-else' })}
+        onUpdate={vi.fn()}
+        isAuthenticated
+        isMember
+      />
+    );
+    expect(screen.queryByRole('link', { name: /open reserved/i })).toBeNull();
+  });
 });
 
 describe('WishlistItem — status badges and borders', () => {
@@ -1166,7 +1193,8 @@ describe('WishlistItem — most wanted badge', () => {
     expect(screen.getByText('Most wanted')).toHaveClass('max-sm:sr-only');
     const status = screen.getByRole('article').querySelector('[data-tone]');
     expect(status).toHaveTextContent('Reserved by you');
-    expect(status).toHaveClass('max-sm:order-first');
+    // Your own reservation's badge is a link, and the link is what's ordered.
+    expect(status?.closest('a') ?? status).toHaveClass('max-sm:order-first');
   });
 
   it('shows no badge on an item that is not most wanted, or has no flag', () => {

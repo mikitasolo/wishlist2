@@ -6,6 +6,8 @@ import { useSession } from 'next-auth/react';
 import { convertedPrice, formatApproxPrice, formatPrice } from '@/lib/utils/currency';
 import { useViewerLocale } from '@/lib/hooks/useViewerLocale';
 import Icon, { type IconName } from '@/components/Icon';
+import Link from 'next/link';
+import { RESERVED_PATH } from '@/lib/utils/reserveToast';
 import Badge from '@/components/Badge';
 import Cover from '@/components/Cover';
 import ConfirmDialog from '@/components/ConfirmDialog';
@@ -420,7 +422,19 @@ function WishlistItem({
             </Badge>
           )}
           {/* From the status map, so an owner never gets a booking badge. */}
-          {status.badge && <Badge status={status} className="shadow-sm max-sm:order-first" />}
+          {status.badge &&
+            (isBookedByCurrentUser && !isOwner && item.status === 'booked' ? (
+              // Your own reservation's badge leads to Reserved (WIS-260).
+              <Link
+                href={RESERVED_PATH}
+                aria-label="Reserved by you, open Reserved"
+                className="max-sm:order-first rounded-full"
+              >
+                <Badge status={status} className="shadow-sm" />
+              </Link>
+            ) : (
+              <Badge status={status} className="shadow-sm max-sm:order-first" />
+            ))}
         </div>
 
         {/* Image / notes area — when notes are shown, the image stays visible
