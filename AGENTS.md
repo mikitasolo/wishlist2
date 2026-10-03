@@ -10,7 +10,7 @@ A wishlist app: **Next.js 16 (App Router), React 19, TypeScript, MongoDB/Mongoos
 
 ```bash
 npm ci               # install deps (scripts/workspace-setup.sh runs this for you)
-npm run dev          # local dev server — in a workspace: npm run dev -- --port $DEV_PORT
+npm run dev          # local dev server, on this checkout's own port (scripts/dev-port.mjs: 3000 in the main checkout)
 npm run lint         # eslint — must pass before done
 npm run format:check # prettier --check — must pass before done (npm run format fixes it)
 npx tsc --noEmit     # typecheck — must pass before done
@@ -78,10 +78,10 @@ Labels: one **Type** (Feature / Bug / Improvement / Tech debt — maps to the co
 
 Several agents run at once, each in its own worktree. Don't assume anything is exclusive to you:
 
-- **Ports**: give each workspace its own `DEV_PORT` (a shell variable, not read from `.env`) and run dev on it; E2E derives its port from it too (`DEV_PORT + 1`, else 3100, or `E2E_PORT` to override; `playwright.config.ts`). Never hard-code 3000/3100.
+- **Ports**: each workspace gets its own dev / E2E pair, worked out from its worktree path by `scripts/dev-port.mjs` (3200–3999; the main checkout keeps 3000 / 3100), which `npm run dev`, `playwright.config.ts` and the setup's `NEXTAUTH_URL` all read, so nothing needs setting. Two workspaces can land on the same pair (setup warns): set `DEV_PORT` (and E2E takes the one above it) or `E2E_PORT` in that one. Never hard-code 3000/3100.
 - **`next dev` leaves `AGENTS.md` alone**: Next 16.3 appends a managed "nextjs-agent-rules" block to it whenever it detects an AI coding agent, which left every workspace with an uncommitted change. `agentRules: false` in `next.config.js` turns that off; keep it.
 - **Conflicts**: other PRs touch `README.md` / `AGENTS.md` too. When yours conflicts, rebase onto `origin/staging` and force-push **your own branch** with `--force-with-lease`; don't merge `staging` into it.
-- **Local dev data**: workspaces get the repo root's `.env` / `.env.local` copied in, and nothing else: `.env.prod` / `.env.staging` deliberately aren't. A new workspace then runs `scripts/workspace-setup.sh` (`npm ci` with a shared MongoDB binary cache, Playwright's Chromium, and `NEXTAUTH_URL` pointed at `DEV_PORT` when it's set). The dev MongoDB is shared by every workspace — don't wipe or bulk-edit it. Prefer the test suites (in-memory Mongo, mocked email) over poking the dev server. When you do run it, use `EMAIL_TRANSPORT=console`: every email (the magic link included) is printed to the dev-server log instead of sent, so no SMTP credentials are needed and no real mail goes out. Only that transport ever prints an email's recipient or link; the `smtp` path in `lib/email.ts` must never log them, not even in a send error. A printed magic link is a working sign-in credential, so `lib/env.ts` allows `console` only where `VERCEL_ENV` is unset (local dev, CI, E2E) or `development`, and refuses it on Vercel Preview and Production.
+- **Local dev data**: a new workspace runs `scripts/workspace-setup.sh` as its setup, which copies in the main checkout's `.env` without the real Blob store credentials (WIS-221) and nothing else: `.env.prod` / `.env.staging` deliberately aren't. It also runs `npm ci` with a shared MongoDB binary cache, fetches Playwright's Chromium, and points `NEXTAUTH_URL` (in `.env.local`) at the workspace's dev port. The dev MongoDB is shared by every workspace — don't wipe or bulk-edit it. Prefer the test suites (in-memory Mongo, mocked email) over poking the dev server. When you do run it, use `EMAIL_TRANSPORT=console`: every email (the magic link included) is printed to the dev-server log instead of sent, so no SMTP credentials are needed and no real mail goes out. Only that transport ever prints an email's recipient or link; the `smtp` path in `lib/email.ts` must never log them, not even in a send error. A printed magic link is a working sign-in credential, so `lib/env.ts` allows `console` only where `VERCEL_ENV` is unset (local dev, CI, E2E) or `development`, and refuses it on Vercel Preview and Production.
 
 ## Testing policy (required)
 
