@@ -131,7 +131,8 @@ describe('formatPriceInput', () => {
     expect(formatPriceInput(34900, 'eur', 'de-DE')).toBe('349,00');
     expect(formatPriceInput(123450, 'usd', 'en-US')).toBe('1,234.50');
     expect(plain(formatPriceInput(123450, 'eur', 'fr-FR'))).toBe('1 234,50');
-    expect(formatPriceInput(123450, 'chf', 'de-CH')).toBe('1’234.50');
+    // de-CH groups with an apostrophe: ’ or ', depending on the ICU version.
+    expect(formatPriceInput(123450, 'chf', 'de-CH')).toMatch(/^1['’]234\.50$/);
     expect(formatPriceInput(0, 'eur', 'en-US')).toBe('0.00');
     expect(formatPriceInput(100000, 'jpy', 'en-US')).toBe('1,000');
     expect(formatPriceInput(123400, 'jpy', 'de-DE')).toBe('1.234');
