@@ -34,9 +34,8 @@ function isVisiblyBlank(name: string): boolean {
 }
 
 // A wishlist name is one line of text. It goes raw into the invite email's
-// plain-text part and subject, and into the console transport's log, where an
-// inner line break would start new lines of text under our branding (or a
-// forged `Link:` line). So the name is refused rather than cleaned up. The check
+// plain-text part, where an inner line break would start new lines of text
+// under our branding. So the name is refused rather than cleaned up. The check
 // runs after `.trim()`, so a line break at either end is just trimmed off. For
 // the same reason it can't hold a bidi override or isolate. A name that shows
 // nothing (only zero-width characters, say) is refused like an empty one; the
