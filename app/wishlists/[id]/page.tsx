@@ -1151,6 +1151,29 @@ export default function WishlistDetail() {
 
   const sortedItems = useMemo(() => sortItems(searchedItems, sortBy), [searchedItems, sortBy]);
 
+  // The list has no items at all, as far as this viewer can see: no filter is
+  // hiding anything, so the stat cards, the toolbar and + Add Item step aside
+  // for an empty state that says so and offers the add itself. Only once a
+  // read has landed: before that, no items means it hasn't loaded.
+  const listIsEmpty = itemsLoaded && items.length === 0;
+
+  // With the toolbar gone, a status filter or search still in force couldn't be
+  // seen, and could hide the next item added (a Completed filter, a search for
+  // the item just deleted), so a list that empties goes back to the defaults.
+  useEffect(() => {
+    if (!listIsEmpty) return;
+    setStatusChoice(null);
+    setSearchQuery('');
+  }, [listIsEmpty]);
+
+  // The way out of a search or status filter that hides every item: every
+  // status, and no search. Not the role's defaults, which can hide them all
+  // themselves (an owner's whose items are all completed).
+  const showAllItems = useCallback(() => {
+    chooseStatusFilters([...filterOptions]);
+    setSearchQuery('');
+  }, [chooseStatusFilters, filterOptions]);
+
   // Clear the item search when switching to a different wishlist.
   useEffect(() => setSearchQuery(''), [wishlistId]);
 
@@ -1420,122 +1443,129 @@ export default function WishlistDetail() {
               )}
             </div>
 
-            {/* Stat cards — full-width row; click to filter the list by that status */}
-            <div
-              className="mb-6 grid gap-3 sm:mb-8 sm:gap-4"
-              style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(8rem, 1fr))' }}
-            >
-              {filterOptions.map((key) => {
-                const meta = cardMeta[key];
-                const active = activeCardKey === key;
-                return (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => applyCardFilter(key)}
-                    aria-pressed={active}
-                    title={`Show ${meta.label.toLowerCase()}`}
-                    className={`rounded-xl border bg-surface p-3 text-left shadow-sm transition-all sm:p-4 ${
-                      active
-                        ? 'border-accent ring-1 ring-accent'
-                        : 'border-border hover:border-border-strong hover:bg-surface-hover'
-                    }`}
-                  >
-                    <p className="mb-1 truncate text-xs text-muted-foreground sm:text-sm">
-                      {meta.label}
-                    </p>
-                    <p className={`text-2xl font-bold sm:text-3xl ${meta.valueClass}`}>
-                      {meta.value}
-                    </p>
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Search + controls */}
-            <div className="mb-6 flex flex-col gap-3 sm:mb-8 sm:gap-4">
-              {/* Search — its own full-width row */}
-              <div className="flex h-10 items-center gap-2 rounded-xl border border-border-strong bg-surface px-3.5">
-                <Icon name="search" size={18} className="flex-shrink-0 text-muted-foreground" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search items by name…"
-                  aria-label="Search items by name"
-                  className="h-full min-w-0 flex-1 border-0 bg-transparent text-sm outline-none"
-                />
-                {searchQuery && (
-                  <button
-                    type="button"
-                    onClick={() => setSearchQuery('')}
-                    aria-label="Clear search"
-                    className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                  >
-                    <Icon name="close" size={15} />
-                  </button>
-                )}
-              </div>
-
-              {/* Status · Sort · Currency — equal labelled fields */}
-              <div className="flex flex-col gap-3 sm:flex-row sm:gap-4">
-                <div className="flex flex-col gap-1.5 sm:flex-1">
-                  <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                    Status
-                  </span>
-                  <FilterDropdown
-                    options={filterOptions}
-                    selectedFilters={selectedFilters}
-                    onChange={chooseStatusFilters}
-                    defaultFilters={defaultFilters}
-                    ariaLabel="Filter by status"
-                    className="w-full"
-                  />
+            {/* Stat cards, toolbar and Add Item: not on an empty list, where the
+                cards would all be zero, the filters would have nothing to filter,
+                and the empty state below offers the add (or the proposal) itself */}
+            {!listIsEmpty && (
+              <>
+                {/* Stat cards — full-width row; click to filter the list by that status */}
+                <div
+                  className="mb-6 grid gap-3 sm:mb-8 sm:gap-4"
+                  style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(8rem, 1fr))' }}
+                >
+                  {filterOptions.map((key) => {
+                    const meta = cardMeta[key];
+                    const active = activeCardKey === key;
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => applyCardFilter(key)}
+                        aria-pressed={active}
+                        title={`Show ${meta.label.toLowerCase()}`}
+                        className={`rounded-xl border bg-surface p-3 text-left shadow-sm transition-all sm:p-4 ${
+                          active
+                            ? 'border-accent ring-1 ring-accent'
+                            : 'border-border hover:border-border-strong hover:bg-surface-hover'
+                        }`}
+                      >
+                        <p className="mb-1 truncate text-xs text-muted-foreground sm:text-sm">
+                          {meta.label}
+                        </p>
+                        <p className={`text-2xl font-bold sm:text-3xl ${meta.valueClass}`}>
+                          {meta.value}
+                        </p>
+                      </button>
+                    );
+                  })}
                 </div>
 
-                <div className="flex flex-col gap-1.5 sm:flex-1">
-                  <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                    Sort
-                  </span>
-                  <Select
-                    value={sortBy}
-                    onChange={handleSortChange}
-                    ariaLabel="Sort items by"
-                    triggerClassName="w-full"
-                    options={SORT_OPTIONS}
-                  />
-                </div>
-
-                {session?.user && (
-                  <div className="flex flex-col gap-1.5 sm:flex-1">
-                    <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                      Show prices in
-                    </span>
-                    <Select
-                      value={priceCurrency}
-                      onChange={setPriceCurrency}
-                      options={priceOptions}
-                      ariaLabel="Show prices in"
-                      triggerClassName="w-full"
+                {/* Search + controls */}
+                <div className="mb-6 flex flex-col gap-3 sm:mb-8 sm:gap-4">
+                  {/* Search — its own full-width row */}
+                  <div className="flex h-10 items-center gap-2 rounded-xl border border-border-strong bg-surface px-3.5">
+                    <Icon name="search" size={18} className="flex-shrink-0 text-muted-foreground" />
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="Search items by name…"
+                      aria-label="Search items by name"
+                      className="h-full min-w-0 flex-1 border-0 bg-transparent text-sm outline-none"
                     />
+                    {searchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setSearchQuery('')}
+                        aria-label="Clear search"
+                        className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                      >
+                        <Icon name="close" size={15} />
+                      </button>
+                    )}
                   </div>
-                )}
-              </div>
-            </div>
 
-            {/* Add Item Button */}
-            <div className="mb-6 sm:mb-8">
-              {isOwner && (
-                <Button onClick={() => setShowAddItemModal(true)} size="md">
-                  + Add Item
-                </Button>
-              )}
-              {isMember && !isOwner && (
-                <Button onClick={() => setShowProposeItemModal(true)} size="md">
-                  + Propose Item
-                </Button>
-              )}
-            </div>
+                  {/* Status · Sort · Currency — equal labelled fields */}
+                  <div className="flex flex-col gap-3 sm:flex-row sm:gap-4">
+                    <div className="flex flex-col gap-1.5 sm:flex-1">
+                      <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Status
+                      </span>
+                      <FilterDropdown
+                        options={filterOptions}
+                        selectedFilters={selectedFilters}
+                        onChange={chooseStatusFilters}
+                        defaultFilters={defaultFilters}
+                        ariaLabel="Filter by status"
+                        className="w-full"
+                      />
+                    </div>
+
+                    <div className="flex flex-col gap-1.5 sm:flex-1">
+                      <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Sort
+                      </span>
+                      <Select
+                        value={sortBy}
+                        onChange={handleSortChange}
+                        ariaLabel="Sort items by"
+                        triggerClassName="w-full"
+                        options={SORT_OPTIONS}
+                      />
+                    </div>
+
+                    {session?.user && (
+                      <div className="flex flex-col gap-1.5 sm:flex-1">
+                        <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          Show prices in
+                        </span>
+                        <Select
+                          value={priceCurrency}
+                          onChange={setPriceCurrency}
+                          options={priceOptions}
+                          ariaLabel="Show prices in"
+                          triggerClassName="w-full"
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Add Item Button */}
+                <div className="mb-6 sm:mb-8">
+                  {isOwner && (
+                    <Button onClick={() => setShowAddItemModal(true)} size="md">
+                      + Add Item
+                    </Button>
+                  )}
+                  {isMember && !isOwner && (
+                    <Button onClick={() => setShowProposeItemModal(true)} size="md">
+                      + Propose Item
+                    </Button>
+                  )}
+                </div>
+              </>
+            )}
 
             {/* Items Grid */}
             {loadingItems ? (
@@ -1554,19 +1584,51 @@ export default function WishlistDetail() {
                   Try reloading the page.
                 </p>
               </div>
+            ) : listIsEmpty ? (
+              // Nothing on the list (that this viewer can see), so it says so,
+              // with what each role can do about it, rather than blaming a filter.
+              <div className="flex flex-col items-center rounded-2xl border border-dashed border-border-strong px-4 py-16 text-center sm:py-20">
+                <span className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
+                  <Icon name="gift" size={28} />
+                </span>
+                <h3 className="text-lg font-semibold text-foreground sm:text-xl">
+                  {isOwner ? 'Your list is empty' : isMember ? 'Nothing here yet' : 'No items yet'}
+                </h3>
+                {isOwner && (
+                  <>
+                    <p className="mx-auto mt-1.5 max-w-sm text-sm text-muted-foreground">
+                      Add the things you&apos;d love to get. You can keep them as drafts until
+                      you&apos;re ready to share.
+                    </p>
+                    <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+                      <Button onClick={() => setShowAddItemModal(true)} size="md">
+                        Add your first item
+                      </Button>
+                      <ShareButton variant="button" />
+                    </div>
+                  </>
+                )}
+                {isMember && !isOwner && (
+                  <Button onClick={() => setShowProposeItemModal(true)} size="md" className="mt-6">
+                    Propose an item
+                  </Button>
+                )}
+              </div>
             ) : sortedItems.length === 0 ? (
-              <div className="flex flex-col items-center rounded-2xl border border-dashed border-border-strong py-16 text-center sm:py-20">
+              // There are items, but the search or the status filter hides every one.
+              <div className="flex flex-col items-center rounded-2xl border border-dashed border-border-strong px-4 py-16 text-center sm:py-20">
                 <span className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
                   <Icon name="package" size={28} />
                 </span>
                 <h3 className="text-lg font-semibold text-foreground sm:text-xl">No items found</h3>
-                <p className="mx-auto mt-1.5 max-w-sm px-4 text-sm text-muted-foreground">
+                <p className="mx-auto mt-1.5 max-w-sm text-sm text-muted-foreground">
                   {searchQuery.trim()
                     ? `No items match “${searchQuery.trim()}”.`
-                    : selectedFilters.length === 0 || selectedFilters.includes('all')
-                      ? 'No wishlist items yet.'
-                      : 'No items match the selected filters.'}
+                    : 'No items match the selected filters.'}
                 </p>
+                <Button onClick={showAllItems} variant="secondary" size="md" className="mt-6">
+                  Show all
+                </Button>
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">

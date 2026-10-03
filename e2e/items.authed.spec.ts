@@ -24,7 +24,8 @@ for (const flow of [
   {
     as: 'member',
     list: 'e2e-friend',
-    open: '+ Propose Item',
+    // e2e-friend has no items, so its empty state offers the proposal.
+    open: 'Propose an item',
     title: 'Propose New Item',
     submit: 'Propose Item',
   },

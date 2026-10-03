@@ -20,6 +20,11 @@ async function pollOnce(page: Page) {
   await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
 }
 
+// Any of the page's answers for a list with no items to show: that the list is
+// empty, or that the filters hide every item.
+const emptyList = (page: Page) =>
+  page.getByRole('heading', { name: /^(Your list is empty|No items found)$/ });
+
 const isItemsRead = (request: Request) =>
   request.method() === 'GET' && request.url().endsWith('/items');
 
@@ -64,7 +69,7 @@ for (const failure of failures) {
     // Every read fails from here on, so no later poll can put the list back:
     // these counts are the settled state.
     expect(await card.count()).toBe(1);
-    expect(await page.getByRole('heading', { name: 'No items found' }).count()).toBe(0);
+    expect(await emptyList(page).count()).toBe(0);
   });
 }
 
@@ -83,7 +88,7 @@ test('regression: a failed first load says so, not that the list is empty', asyn
   const loadError = page.getByRole('heading', { name: 'Failed to load items' });
   await expect(loadError).toBeVisible();
   // Exclusive with the error panel, so checking it while that shows is enough.
-  await expect(page.getByRole('heading', { name: 'No items found' })).toHaveCount(0);
+  await expect(emptyList(page)).toHaveCount(0);
 
   // The poll keeps retrying, and the first read that lands fills the list in.
   failing = false;
