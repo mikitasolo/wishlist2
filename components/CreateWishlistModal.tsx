@@ -211,7 +211,7 @@ export default function CreateWishlistModal({
               onChange={(url) => setFormData((f) => ({ ...f, bannerUrl: url ?? '' }))}
               disabled={isSubmitting}
             />
-            <p className={FIELD_HELPER}>Used as the cover instead of the gradient.</p>
+            <p className={FIELD_HELPER}>Shown across the top of the list, and on its card.</p>
           </div>
 
           <div>

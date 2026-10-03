@@ -1961,9 +1961,7 @@ export default function WishlistDetail() {
                     onChange={(url) => editSettings({ bannerUrl: url ?? '' })}
                     disabled={isSavingSettings}
                   />
-                  <p className={FIELD_HELPER}>
-                    Used as the cover instead of the gradient. Remove it to use the gradient.
-                  </p>
+                  <p className={FIELD_HELPER}>Shown across the top of the list, and on its card.</p>
                 </div>
 
                 <div>

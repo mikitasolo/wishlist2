@@ -75,7 +75,8 @@ const LONG = [
   'If you would rather chip in on something bigger, talk to Ben.',
 ].join('\n\n');
 
-const text = () => screen.getByText((_, el) => el?.tagName === 'P' && !!el.textContent);
+/** The clamped box (the toggle's `aria-controls`), which holds the paragraphs. */
+const text = () => document.querySelector<HTMLElement>('.text-body')!;
 const toggle = (name: string) => screen.getByRole('button', { name });
 
 describe('WishlistDescription', () => {
@@ -110,16 +111,19 @@ describe('WishlistDescription', () => {
     expect(toggle('Show more')).toHaveAttribute('aria-expanded', 'false');
   });
 
-  // A paragraph break as the clamp's third line would show as a lone "…"
-  // under two lines of text.
-  it('closes up blank lines while clamped, and puts them back when expanded', async () => {
+  // Paragraphs are blocks, not blank lines: a blank line as the clamp's third
+  // line would show as a lone "…" under two lines of text.
+  it('keeps its paragraphs as blocks, clamped or not, and its line breaks', async () => {
     const user = userEvent.setup();
-    render(<WishlistDescription text={LONG} />);
-    expect(text().textContent).not.toMatch(/\n\s*\n/);
-    expect(text().textContent).toContain('lake house.\nShe loves');
+    render(<WishlistDescription text={'Thanks everyone!\n\n\nSizes:\nM top, 39 shoes'} />);
+    const paragraphs = () => Array.from(text().children).map((p) => p.textContent);
+    expect(paragraphs()).toEqual(['Thanks everyone!', 'Sizes:\nM top, 39 shoes']);
+    expect(text().children[0].tagName).toBe('P');
+    cleanup();
 
+    render(<WishlistDescription text={LONG} />);
     await user.click(toggle('Show more'));
-    expect(text().textContent).toBe(LONG);
+    expect(paragraphs()).toEqual(LONG.split('\n\n'));
   });
 
   // Whether it overflows is only known once it's laid out, so the server
