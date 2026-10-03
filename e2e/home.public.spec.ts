@@ -23,6 +23,16 @@ test('the sign-in form sends a magic link', async ({ page }) => {
   await expect(page.getByText('e2e-signin@example.com')).toBeVisible();
 });
 
+// regression: /invites, /booked, /settings and /items sent a signed-out visitor
+// home, losing where they were going.
+test('regression: the invitations page sends a signed-out visitor to sign in, then back to it', async ({
+  page,
+}) => {
+  await page.goto('/invites');
+  await expect(page).toHaveURL('/auth/signin?callbackUrl=%2Finvites');
+  await expect(page.getByText('Welcome back')).toBeVisible();
+});
+
 test('a protected page redirects a signed-out visitor home', async ({ page }) => {
   await page.goto('/notifications');
   await expect(page).toHaveURL('/');

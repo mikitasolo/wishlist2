@@ -1,6 +1,18 @@
 /** Where a step like the welcome page goes when its callback URL isn't usable. */
 export const DEFAULT_CALLBACK_PATH = '/';
 
+/** The sign-in page (`pages.signIn` in lib/auth.ts). */
+export const SIGN_IN_PATH = '/auth/signin';
+
+/**
+ * The sign-in page, continuing to `callbackPath` (a path on this site) once
+ * signed in: where a page that needs a session sends a signed-out visitor, so
+ * where they were going isn't lost.
+ */
+export function signInPath(callbackPath: string): string {
+  return `${SIGN_IN_PATH}?callbackUrl=${encodeURIComponent(callbackPath)}`;
+}
+
 /**
  * The same-origin path (with its query and hash) to continue to after a step
  * like the welcome page, from a `callbackUrl` query value: a relative path, or
@@ -8,7 +20,8 @@ export const DEFAULT_CALLBACK_PATH = '/';
  * `origin` (another host, a protocol-relative `//host`, a `javascript:` URL, a
  * path that starts with `//` once parsed) gives `/` instead, so the parameter
  * can't be used as an open redirect. So does a URL back to `avoidPath` (the
- * page doing the redirecting), which would loop.
+ * page doing the redirecting, or the section it's in) or anywhere under it,
+ * which would loop.
  */
 export function safeCallbackPath(
   raw: string | null | undefined,
