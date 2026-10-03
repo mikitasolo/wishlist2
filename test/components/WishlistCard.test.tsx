@@ -174,6 +174,36 @@ describe('WishlistCard — archived', () => {
   });
 });
 
+describe('WishlistCard — owner', () => {
+  it('names the owner and counts the co-owners, as the list’s phone row does', () => {
+    render(
+      <WishlistCard
+        showOwner
+        wishlist={wishlist({
+          owners: ['dan-id', 'x-id'],
+          ownerUsername: 'dan',
+          // A co-owner without a username isn't in here, but is still counted.
+          ownerUsernames: ['dan'],
+        })}
+      />
+    );
+    expect(screen.getByText('@dan +1')).toBeInTheDocument();
+  });
+
+  // regression: an owner without a username showed as "@unknown"; a user is
+  // named to others by publicDisplayName.
+  it('regression: names an owner without a username "Someone"', () => {
+    render(
+      <WishlistCard
+        showOwner
+        wishlist={wishlist({ owners: ['x-id'], ownerUsername: null, ownerUsernames: [] })}
+      />
+    );
+    expect(screen.getByText('Someone')).toBeInTheDocument();
+    expect(screen.queryByText(/unknown/)).toBeNull();
+  });
+});
+
 describe('WishlistCard — shared with you', () => {
   it('shows how many items you have reserved on a list shared with you', () => {
     render(

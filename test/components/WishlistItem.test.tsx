@@ -53,7 +53,7 @@ vi.mock('@/components/ConfirmDialog', () => ({
 import WishlistItem from '@/components/WishlistItem';
 import { coverGradient } from '@/lib/utils/cover';
 import { STATUS_META, type DisplayStatus } from '@/lib/utils/itemStatus';
-import { SM_UP_QUERY } from '@/lib/hooks/useMediaQuery';
+import { atWidth } from './viewport';
 
 function item(overrides: Partial<ApiItem>): ApiItem {
   return {
@@ -69,30 +69,6 @@ function item(overrides: Partial<ApiItem>): ApiItem {
 
 beforeEach(() => cleanup());
 afterEach(() => vi.unstubAllGlobals());
-
-/**
- * Puts the card at a viewport width: jsdom has no `matchMedia`, so this gives
- * it one that answers the `sm` query (40rem = 640px) for that width. Without
- * it, the width is unknown, as in a server render. `resize` moves it.
- */
-function atWidth(width: number) {
-  let current = width;
-  const listeners = new Set<() => void>();
-  vi.stubGlobal('matchMedia', (query: string) => ({
-    get matches() {
-      return query === SM_UP_QUERY && current >= 640;
-    },
-    media: query,
-    addEventListener: (_: string, fn: () => void) => listeners.add(fn),
-    removeEventListener: (_: string, fn: () => void) => listeners.delete(fn),
-  }));
-  return {
-    resize(next: number) {
-      current = next;
-      listeners.forEach((fn) => fn());
-    },
-  };
-}
 
 describe('WishlistItem — booking visibility', () => {
   // Regression: owners must never see booking status ("booked" folds to available).

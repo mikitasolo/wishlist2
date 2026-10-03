@@ -5,9 +5,9 @@ import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import AppHeader from '@/components/AppHeader';
 import AuthButton from '@/components/AuthButton';
-import WishlistCard from '@/components/WishlistCard';
+import WishlistList from '@/components/WishlistList';
 import EmptyState from '@/components/EmptyState';
-import { SkeletonGrid } from '@/components/Skeleton';
+import { WishlistListSkeleton } from '@/components/Skeleton';
 import { useToast } from '@/components/ToastProvider';
 import { useLocalToday } from '@/lib/hooks/useLocalToday';
 import { signInPath } from '@/lib/utils/callbackUrl';
@@ -60,7 +60,7 @@ export default function SharedWishlistsPage() {
 
         {loading ? (
           <div className="mt-8">
-            <SkeletonGrid count={8} variant="wishlist" showOwner />
+            <WishlistListSkeleton count={8} showOwner />
           </div>
         ) : member.length === 0 ? (
           <EmptyState
@@ -71,11 +71,9 @@ export default function SharedWishlistsPage() {
             body="When someone invites you to their wishlist, it’ll show up here."
           />
         ) : (
-          <div className="mt-8 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {byOccasion.map((w) => (
-              // Every list here is one you're a member of: the page says so.
-              <WishlistCard key={w._id.toString()} wishlist={w} showOwner showRole={false} />
-            ))}
+          <div className="mt-8">
+            {/* Every list here is one you're a member of: the page says so, so no Member badge. */}
+            <WishlistList wishlists={byOccasion} shared />
           </div>
         )}
       </main>

@@ -106,28 +106,84 @@ export function MemberRowSkeleton() {
   );
 }
 
+/** Every grid of list cards: one column on a phone up to four from `xl`, `gap-5`. */
+export const WISHLIST_GRID_CLASSES =
+  'grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4';
+
+/** The frame of a section's compact list rows on a phone (`WishlistList`): one panel, a line between rows. */
+export const WISHLIST_ROWS_CLASSES =
+  'divide-y divide-border overflow-hidden rounded-2xl border border-border bg-surface shadow-sm';
+
+/**
+ * Row skeleton matching `WishlistRow`: the 56px cover square, then the name's
+ * line (text-body) and the meta line (text-meta), each in a box of its line's
+ * height, in a row of the same 72px.
+ */
+export function WishlistRowSkeleton() {
+  return (
+    <div className="flex min-h-[4.5rem] items-center gap-3 px-3 py-2">
+      <Skeleton className="h-14 w-14 flex-shrink-0 rounded-xl" />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex h-[1.375rem] items-center">
+          <Skeleton className="h-4 w-2/3" />
+        </div>
+        <div className="mt-0.5 flex h-[1.125rem] items-center">
+          <Skeleton className="h-3 w-28" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A section of lists while they load, as `WishlistList` lays them out: compact
+ * rows below `sm`, cards from `sm` up, picked by CSS alone (`showOwner` for
+ * other people's lists, whose cards name their owner).
+ */
+export function WishlistListSkeleton({
+  count = 8,
+  showOwner = false,
+}: {
+  count?: number;
+  showOwner?: boolean;
+}) {
+  return (
+    <div>
+      <div data-wishlist-rows className={`${WISHLIST_ROWS_CLASSES} sm:hidden`}>
+        {Array.from({ length: count }).map((_, i) => (
+          <WishlistRowSkeleton key={i} />
+        ))}
+      </div>
+      <SkeletonGrid count={count} showOwner={showOwner} className="max-sm:hidden" />
+    </div>
+  );
+}
+
 /**
  * A grid of card skeletons, laid out as every grid of cards is (`gap-5`, one
  * column on a phone up to four from `xl`), so nothing moves when the cards land.
  * Item cards are the exception: two columns on a phone (`ITEM_GRID_CLASSES`).
- * `showOwner` for a grid whose cards name their owner (Shared, a profile).
+ * `showOwner` for a grid whose cards name their owner (Shared, a profile). A
+ * section of lists that shows rows on a phone takes `WishlistListSkeleton`.
  */
 export function SkeletonGrid({
   count = 8,
   variant = 'wishlist',
   showOwner = false,
+  className = '',
 }: {
   count?: number;
   variant?: 'wishlist' | 'item';
   showOwner?: boolean;
+  /** Added to the grid's own classes, e.g. to hide it at some widths. */
+  className?: string;
 }) {
   return (
     <div
-      className={
-        variant === 'item'
-          ? ITEM_GRID_CLASSES
-          : 'grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
-      }
+      data-wishlist-cards={variant === 'wishlist' ? '' : undefined}
+      className={[variant === 'item' ? ITEM_GRID_CLASSES : WISHLIST_GRID_CLASSES, className]
+        .filter(Boolean)
+        .join(' ')}
     >
       {Array.from({ length: count }).map((_, i) =>
         variant === 'item' ? (

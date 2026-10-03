@@ -31,6 +31,7 @@ vi.mock('@/components/FollowListModal', () => ({ default: () => null }));
 vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }));
 
 import Home from '@/app/page';
+import { atWidth } from './viewport';
 
 function list(id: string, fields: Record<string, unknown>) {
   return {
@@ -56,6 +57,8 @@ function json(body: unknown) {
 }
 
 beforeEach(() => {
+  // Desktop width: the lists are cards (a phone gets rows, `WishlistList.test.tsx`).
+  atWidth(1280);
   owned = [
     list('birthday', { itemCount: 3, draftCount: 1, proposalCount: 2 }),
     list('flat', { itemCount: 2, draftCount: 2, proposalCount: 0 }),

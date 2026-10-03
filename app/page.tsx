@@ -8,7 +8,7 @@ import AppHeader from '@/components/AppHeader';
 import GlobalSearch from '@/components/GlobalSearch';
 import CreateWishlistModal from '@/components/CreateWishlistModal';
 import CurrencyPrompt from '@/components/CurrencyPrompt';
-import WishlistCard from '@/components/WishlistCard';
+import WishlistList, { ArchivedLists } from '@/components/WishlistList';
 import Cover from '@/components/Cover';
 import OccasionLabel, { OCCASION_ON_COVER } from '@/components/OccasionLabel';
 import Select from '@/components/Select';
@@ -18,7 +18,7 @@ import { buttonClassName, CONTROL_ICON_SIZE } from '@/components/buttonStyles';
 import Icon, { IconName } from '@/components/Icon';
 import EmptyState from '@/components/EmptyState';
 import LoadError from '@/components/LoadError';
-import { Skeleton, SkeletonGrid } from '@/components/Skeleton';
+import { Skeleton, WishlistListSkeleton } from '@/components/Skeleton';
 import { useToast } from '@/components/ToastProvider';
 import { useLocalToday } from '@/lib/hooks/useLocalToday';
 import { sortByUpcomingOccasion } from '@/lib/utils/occasion';
@@ -536,11 +536,7 @@ export default function Home() {
                     New list
                   </Button>
                 </div>
-                <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                  {ownedByOccasion.map((w) => (
-                    <WishlistCard key={w._id.toString()} wishlist={w} />
-                  ))}
-                </div>
+                <WishlistList wishlists={ownedByOccasion} viewerId={session.user.id} />
               </section>
             )}
 
@@ -550,29 +546,17 @@ export default function Home() {
                 <h2 className="mb-5 px-1 text-xl font-semibold tracking-tight text-foreground">
                   Shared with you
                 </h2>
-                <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                  {sharedByOccasion.map((w) => (
-                    // The section says you're a member: no badge to repeat it.
-                    <WishlistCard key={w._id.toString()} wishlist={w} showOwner showRole={false} />
-                  ))}
-                </div>
+                {/* The section says you're a member: no badge to repeat it. */}
+                <WishlistList wishlists={sharedByOccasion} shared />
               </section>
             )}
 
-            {/* Archived */}
-            {archivedOwned.length > 0 && (
-              <section>
-                <h2 className="mb-5 flex items-center gap-2 px-1 text-xl font-semibold tracking-tight text-muted-foreground">
-                  <Icon name="package" size={18} />
-                  Archived
-                </h2>
-                <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                  {archivedOwned.map((w) => (
-                    <WishlistCard key={w._id.toString()} wishlist={w} />
-                  ))}
-                </div>
-              </section>
-            )}
+            {/* Archived, folded away at the end: open when there's nothing above it. */}
+            <ArchivedLists
+              wishlists={archivedOwned}
+              viewerId={session.user.id}
+              defaultOpen={activeOwned.length === 0 && member.length === 0}
+            />
           </div>
         )}
       </main>
@@ -595,8 +579,9 @@ export default function Home() {
  * land, so nothing moves when it does: the Featured picker's row, the bento
  * (the featured card over two rows at `lg`, and four stat tiles, the Items
  * tile a line taller for its drafts line), then a section heading over a row
- * of cards. The picker only shows for someone who owns a list, which is
- * nearly everyone who gets this far with lists to show.
+ * of lists (rows on a phone, cards from `sm`). The picker only shows for
+ * someone who owns a list, which is nearly everyone who gets this far with
+ * lists to show.
  */
 function DashboardSkeleton() {
   return (
@@ -626,7 +611,7 @@ function DashboardSkeleton() {
           <Skeleton className="ml-1 h-5 w-40" />
           <Skeleton className="-my-1 h-9 w-[6.5rem] rounded-full" />
         </div>
-        <SkeletonGrid count={4} variant="wishlist" />
+        <WishlistListSkeleton count={4} />
       </div>
     </div>
   );
