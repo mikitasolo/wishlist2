@@ -29,6 +29,7 @@ import ImageUpload from '@/components/ImageUpload';
 import Select from '@/components/Select';
 import OccasionField from '@/components/OccasionField';
 import WishlistHeader, { WishlistHeaderSkeleton } from '@/components/WishlistHeader';
+import JoinListCallout from '@/components/JoinListCallout';
 import {
   ListControlsSkeleton,
   Skeleton,
@@ -1318,6 +1319,12 @@ export default function WishlistDetail() {
         <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
           {/* Header: the name, the meta line, the actions */}
           <WishlistHeaderSkeleton />
+          {/* Signed out, the viewer is a visitor, who gets the note on getting
+              invited (its text wraps to three lines on a phone, two at sm, one
+              at lg, over Sign in). Signed in, the role isn't known yet. */}
+          {status === 'unauthenticated' && (
+            <Skeleton className="mb-6 h-[8.625rem] rounded-xl sm:mb-8 sm:h-[7.25rem] lg:h-[6.125rem]" />
+          )}
           {/* Image + description row */}
           <div className="mb-6 grid gap-4 sm:mb-8 sm:grid-cols-[minmax(0,26rem)_minmax(0,1fr)] sm:items-start">
             <Skeleton className="aspect-[16/9] rounded-3xl" />
@@ -1376,6 +1383,17 @@ export default function WishlistDetail() {
             )
           }
         />
+
+        {/* How to get invited, for anyone who isn't on the list (signed out,
+            or signed in but neither an owner nor a member). An archived list
+            only ever opens for its owners, but this checks anyway. */}
+        {viewerRole === 'visitor' && !wishlist.archived && (
+          <JoinListCallout
+            ownerUsernames={ownerUsernames}
+            ownerCount={owners.ids.length}
+            viewer={session?.user ? { username: session.user.username } : null}
+          />
+        )}
 
         {/* Manage header (owners only) */}
         {manageOpen && isOwner && (
