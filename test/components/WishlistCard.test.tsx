@@ -145,3 +145,31 @@ describe('WishlistCard — item count', () => {
     expect(screen.getByText('0 items · 3 to review')).toBeInTheDocument();
   });
 });
+
+describe('WishlistCard — archived', () => {
+  // regression: an archived card showed its visibility ("Public") next to the
+  // Archived pill, though only its owners can open it.
+  it('regression: shows Archived in place of the visibility pill', () => {
+    const { container } = render(
+      <WishlistCard
+        wishlist={wishlist({ archived: true, visibility: 'everyone', userRole: 'owner' })}
+      />
+    );
+    expect(coverOf(container)).toHaveTextContent('Archived');
+    expect(screen.getAllByText('Archived')).toHaveLength(1);
+    expect(screen.queryByText('Public')).toBeNull();
+    // Nor the role or Featured: the band says only that it's archived, as before.
+    expect(screen.queryByText('owner')).toBeNull();
+  });
+
+  it('shows its visibility again, and the role, once it is unarchived', () => {
+    render(
+      <WishlistCard
+        wishlist={wishlist({ archived: false, visibility: 'friends', userRole: 'owner' })}
+      />
+    );
+    expect(screen.getByText('Friends')).toBeInTheDocument();
+    expect(screen.getByText('owner')).toBeInTheDocument();
+    expect(screen.queryByText('Archived')).toBeNull();
+  });
+});
