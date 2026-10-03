@@ -106,7 +106,8 @@ async function deliver(email: OutgoingEmail): Promise<void> {
  * CR/LF in a header value to spaces, so a subject can't inject a header). A raw
  * value has to be one line, or it adds lines of its own to a text part and to the
  * console transport's log. The wishlist name's schema (`lib/validations.ts`)
- * refuses line breaks and control characters on create and rename. Rows saved
+ * refuses line breaks and control characters on create and rename, and the bidi
+ * overrides and isolates that would reorder the rest of the line. Rows saved
  * before it did weren't migrated.
  */
 const HTML_ESCAPES: Record<string, string> = {

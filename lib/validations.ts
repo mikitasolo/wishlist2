@@ -16,18 +16,43 @@ import { normalizeOccasionDate, OCCASION_KINDS } from '@/lib/utils/occasion';
 // line and paragraph separators.
 const LINE_BREAK_OR_CONTROL_CHAR = /[\p{Cc}\p{Zl}\p{Zp}]/u;
 
+// The bidi embeddings and overrides (U+202A–U+202E) and isolates
+// (U+2066–U+2069). They reorder the text after them, so a name holding one can
+// make the rest of an email's line read as something else (a domain spelled
+// backwards, say). The bidi marks (LRM, RLM, ALM) only nudge neutral characters
+// and stay allowed, as does right-to-left text itself.
+const BIDI_CONTROL_CHAR = /[\u202A-\u202E\u2066-\u2069]/u;
+
+// Unicode's Default_Ignorable_Code_Point: every character that renders as
+// nothing (zero-width space and joiners, word joiner, BOM, bidi marks,
+// variation selectors, tag characters, Hangul fillers, soft hyphen).
+const INVISIBLE_CHAR = /\p{Default_Ignorable_Code_Point}/gu;
+
+/** Whether a name shows nothing at all: only whitespace and invisible characters. */
+function isVisiblyBlank(name: string): boolean {
+  return name.replace(INVISIBLE_CHAR, '').trim() === '';
+}
+
 // A wishlist name is one line of text. It goes raw into the invite email's
 // plain-text part and subject, and into the console transport's log, where an
 // inner line break would start new lines of text under our branding (or a
 // forged `Link:` line). So the name is refused rather than cleaned up. The check
-// runs after `.trim()`, so a line break at either end is just trimmed off.
+// runs after `.trim()`, so a line break at either end is just trimmed off. For
+// the same reason it can't hold a bidi override or isolate. A name that shows
+// nothing (only zero-width characters, say) is refused like an empty one; the
+// zero-width joiner and non-joiner are fine inside a visible name, since emoji
+// sequences and Persian text need them. A blank name stops there, so it gets
+// only the one error (not also "too long" or "hidden characters").
 const wishlistNameSchema = z
   .string()
   .trim()
-  .min(1, 'Wishlist name is required')
+  .refine((name) => !isVisiblyBlank(name), { message: 'Wishlist name is required', abort: true })
   .max(100, 'Name must be 100 characters or less')
   .refine((name) => !LINE_BREAK_OR_CONTROL_CHAR.test(name), {
     message: "Name can't contain line breaks or control characters",
+  })
+  .refine((name) => !BIDI_CONTROL_CHAR.test(name), {
+    message: "Name can't contain hidden text-direction characters",
   });
 
 // A list's occasion. `date` is a plain calendar date, `YYYY-MM-DD`. A one-off's
