@@ -145,6 +145,7 @@ export default function InviteMemberForm({ onInvite, isInviting, ref }: InviteMe
             }}
             onFocus={() => setShowSuggestions(true)}
             placeholder="Search by username"
+            aria-label="Search by username"
             required
             disabled={isInviting}
             autoComplete="off"

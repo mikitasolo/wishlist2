@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { useState } from 'react';
+import React, { useState } from 'react';
 import Button from '@/components/Button';
 import IconButton from '@/components/IconButton';
 import Field from '@/components/Field';
@@ -53,6 +53,22 @@ describe('Button', () => {
       </Button>
     );
     expect(container.querySelector('svg')).toHaveAttribute('width', '18');
+  });
+
+  it("doesn't submit the form it's in unless it says it's the submit button", async () => {
+    const onSubmit = vi.fn((e: React.FormEvent) => e.preventDefault());
+    render(
+      <form onSubmit={onSubmit}>
+        <Button>Cancel</Button>
+        <IconButton icon="close" label="Clear" />
+        <Button type="submit">Save</Button>
+      </form>
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Clear' }));
+    expect(onSubmit).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(onSubmit).toHaveBeenCalledOnce();
   });
 
   it("is disabled, with the one disabled look, and doesn't fire", async () => {
@@ -230,5 +246,18 @@ describe('SearchField', () => {
     await userEvent.type(input, 'l');
     expect(input).toHaveFocus();
     expect(input.parentElement).toHaveClass('h-9', 'field-focus');
+  });
+
+  // regression: the clear button unmounted with focus on it once the field was
+  // empty, which dropped focus to <body> and sent the next Tab to the page's top.
+  it('puts focus back in the field when its clear button empties it', async () => {
+    render(<Search />);
+    const input = screen.getByRole('textbox', { name: 'Search items' });
+    await userEvent.type(input, 'lamp');
+    await userEvent.tab();
+    expect(screen.getByRole('button', { name: 'Clear search' })).toHaveFocus();
+    await userEvent.keyboard('{Enter}');
+    expect(input).toHaveValue('');
+    expect(input).toHaveFocus();
   });
 });

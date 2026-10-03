@@ -26,7 +26,9 @@ interface ButtonProps extends ComponentPropsWithRef<'button'> {
  * The app's button. Every labelled button is one of these (or, for a link,
  * `buttonClassName` on the `<Link>`), so sizes, the primary hover, the glow
  * and the disabled look are set in one place. An icon-only button is an
- * `IconButton`.
+ * `IconButton`. It's `type="button"` unless it says otherwise, so one dropped
+ * into a form never submits it by accident: a form's submit button says
+ * `type="submit"`.
  */
 export default function Button({
   variant = 'primary',
@@ -35,11 +37,13 @@ export default function Button({
   fullWidth = false,
   icon,
   className = '',
+  type = 'button',
   children,
   ...props
 }: ButtonProps) {
   return (
     <button
+      type={type}
       className={`${buttonClassName({ variant, size, shape, fullWidth })} ${className}`}
       {...props}
     >

@@ -14,7 +14,8 @@ interface SearchFieldProps extends Omit<InputProps, 'leading' | 'trailing'> {
 
 /**
  * A search field: a text field with a search icon and, while it has text and
- * `onClear` is given, a 32px clear button.
+ * `onClear` is given, a 32px clear button, which puts focus back in the field.
+ * It has no visible label, so give it an `aria-label` (or put it in a `Field`).
  */
 export default function SearchField({
   size = 'lg',
@@ -32,10 +33,15 @@ export default function SearchField({
       trailing={
         onClear && hasText ? (
           <IconButton
-            type="button"
             icon="close"
             label={clearLabel}
-            onClick={onClear}
+            onClick={(e) => {
+              // The button goes once the field is empty: focus goes back to the
+              // field rather than dropping to <body>.
+              const input = e.currentTarget.closest('div')?.querySelector('input');
+              onClear();
+              input?.focus();
+            }}
             shape="pill"
             className="-mr-2"
           />

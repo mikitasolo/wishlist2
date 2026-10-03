@@ -34,7 +34,10 @@ interface IconButtonProps extends Omit<
   children?: ReactNode;
 }
 
-/** An icon-only button, with an 18px icon, sized from the same scale as `Button`. */
+/**
+ * An icon-only button, with an 18px icon, sized from the same scale as
+ * `Button`. Like `Button`, it's `type="button"` unless it says otherwise.
+ */
 export default function IconButton({
   icon,
   label,
@@ -43,11 +46,13 @@ export default function IconButton({
   shape = 'rounded',
   iconClassName,
   className = '',
+  type = 'button',
   children,
   ...props
 }: IconButtonProps) {
   return (
     <button
+      type={type}
       {...props}
       aria-label={label}
       className={`${iconButtonClassName({ variant, size, shape })} ${className}`}
