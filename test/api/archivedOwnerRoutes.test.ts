@@ -125,7 +125,9 @@ const ROUTES: OwnerRoute[] = [
   {
     name: 'POST /api/wishlists/[id]/members',
     send: (id) =>
-      invite(req(`/api/wishlists/${id}/members`, 'POST', { username: 'dave' }), {
+      // As an owner: a member invite to an archived list is refused even to an
+      // owner (test/api/archivedInvites.test.ts).
+      invite(req(`/api/wishlists/${id}/members`, 'POST', { username: 'dave', role: 'owner' }), {
         params: Promise.resolve({ id }),
       }),
     ownerStatus: 201,

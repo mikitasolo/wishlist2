@@ -12,7 +12,7 @@ import {
   promoteMemberToOwner,
   releaseHoldingsForRole,
 } from '@/lib/utils/wishlistOwnership';
-import { withdrawInvite } from '@/lib/utils/wishlistInvites';
+import { isInvitePaused, withdrawInvite } from '@/lib/utils/wishlistInvites';
 import { isObjectIdParam } from '@/lib/utils/objectId';
 
 const inviteNotFound = () =>
@@ -58,26 +58,41 @@ async function releaseClaim(inviteId: mongoose.Types.ObjectId): Promise<void> {
 }
 
 /**
- * Make the invitee a member, unless the list has been deleted since accept read
- * it: then `false`, with no membership row left behind for it.
+ * Make the invitee a member, unless the list has been deleted or archived since
+ * accept read it. Then nothing is left behind for it: `'gone'` with no membership
+ * row, or `'paused'` with no row this call wrote, since a member can't open an
+ * archived list (see `isInvitePaused`).
  *
  * The upsert can't be made conditional on the list, which lives in another
  * collection, so the list is checked after it. Deleting a list removes the list
  * before its memberships. So either this check finds the list gone and takes the
  * row back, or the list was still there, and the delete's membership cleanup runs
  * after the row exists and removes it. A check before the upsert would miss a
- * delete that finished in between, and leave the row for good.
+ * delete that finished in between, and leave the row for good. Archiving works
+ * the same way: a list this check finds unarchived was archived, if at all, after
+ * the row existed, so they joined first, as any member of it may have.
  */
-async function joinAsMember(wishlistId: mongoose.Types.ObjectId, userId: string): Promise<boolean> {
-  // Membership carries no role, so joining twice is a no-op.
-  await WishlistMember.findOneAndUpdate(
+async function joinAsMember(
+  wishlistId: mongoose.Types.ObjectId,
+  userId: string
+): Promise<'joined' | 'gone' | 'paused'> {
+  // Membership carries no role, so joining twice is a no-op. The row as it was
+  // before: null when this upsert created it.
+  const existing = await WishlistMember.findOneAndUpdate(
     { wishlist: wishlistId, user: userId },
     { $set: { wishlist: wishlistId, user: userId } },
     { upsert: true }
   );
-  if (await Wishlist.exists({ _id: wishlistId })) return true;
-  await WishlistMember.deleteMany({ wishlist: wishlistId, user: userId });
-  return false;
+  const list = await Wishlist.findById(wishlistId).select('archived').lean();
+  if (!list) {
+    await WishlistMember.deleteMany({ wishlist: wishlistId, user: userId });
+    return 'gone';
+  }
+  if (!list.archived) return 'joined';
+  // Only a row this accept created: one that was already there is a membership
+  // they held before, which isn't this accept's to take.
+  if (!existing) await WishlistMember.deleteMany({ wishlist: wishlistId, user: userId });
+  return 'paused';
 }
 
 // PATCH /api/invites/[inviteId] - accept or decline a pending invite (invitee).
@@ -123,13 +138,17 @@ export async function PATCH(
     // if the membership is here now and the claim below succeeds, no removal has
     // deleted it yet, and `promoteMemberToOwner` settles which of the two lands.
     const [wishlist, membership] = await Promise.all([
-      Wishlist.findById(invite.wishlist).select('owners featuredBy slug name'),
+      Wishlist.findById(invite.wishlist).select('owners featuredBy slug name archived'),
       WishlistMember.exists({ wishlist: invite.wishlist, user: userId }),
     ]);
     if (!wishlist) {
       await claimInvite(invite._id, 'declined');
       return wishlistGone();
     }
+    // A member invite to an archived list is paused: it stays pending, unclaimed,
+    // for when the list is unarchived. Answered like an invite that isn't there,
+    // which is how the invitee's invites read leaves it.
+    if (isInvitePaused(invite, wishlist)) return inviteNotFound();
     // An owner invite promotes a member when it was issued as a promotion, or when
     // they're a member now (a promotion issued before the mark existed). A marked
     // one stays a promotion after they've gone, so it can't make a non-member an
@@ -156,7 +175,15 @@ export async function PATCH(
           released = await releaseHoldingsForRole(wishlist._id.toString(), userId, 'owner');
         }
       } else if (invite.role !== 'owner') {
-        if (!(await joinAsMember(invite.wishlist, userId))) released = null;
+        const joined = await joinAsMember(invite.wishlist, userId);
+        if (joined === 'gone') released = null;
+        if (joined === 'paused') {
+          // The list was archived since the read above. The invite is paused, not
+          // over, so the claim is put back, as a failed grant's is, and the answer
+          // is the one an accept that came after the archive gets.
+          await releaseClaim(invite._id);
+          return inviteNotFound();
+        }
       } else if (promotion) {
         released = await promoteMemberToOwner(wishlist, userId);
       } else {

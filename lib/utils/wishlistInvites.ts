@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import WishlistInvite, { IWishlistInvite } from '@/models/WishlistInvite';
+import Wishlist, { IWishlist } from '@/models/Wishlist';
 import Notification from '@/models/Notification';
 import { sendWishlistInvitationEmail } from '@/lib/email';
 import { createNotification } from '@/lib/notifications';
@@ -97,6 +98,44 @@ export async function issueWishlistInvite(args: IssueInviteArgs): Promise<IWishl
   }
 
   return invite;
+}
+
+/**
+ * Whether an invite is paused: a `member` invite to an archived list. An archived
+ * list is its owners' alone, so joining one as a member would leave the invitee
+ * on a list they can't open. A paused invite stays pending, but the invitee isn't
+ * shown it (`GET /api/users/me/invites`, its `wishlist_invite` notification) and
+ * can't accept it, and no new one can be issued. Unarchiving the list resumes it.
+ * An `owner` invite never pauses: owners see an archived list, so management can
+ * still be handed over.
+ */
+export function isInvitePaused(
+  invite: Pick<IWishlistInvite, 'role'>,
+  wishlist: Pick<IWishlist, 'archived'>
+): boolean {
+  return invite.role !== 'owner' && !!wishlist.archived;
+}
+
+/**
+ * The lists on which `userId` holds a paused invite (see `isInvitePaused`), whose
+ * `wishlist_invite` notifications are kept out of their feed while they stay so.
+ */
+export async function pausedInviteWishlistIds(userId: Id): Promise<mongoose.Types.ObjectId[]> {
+  const invites = await WishlistInvite.find({
+    invitedUser: userId,
+    status: 'pending',
+    role: { $ne: 'owner' },
+  })
+    .select('wishlist')
+    .lean();
+  if (invites.length === 0) return [];
+  const archived = await Wishlist.find({
+    _id: { $in: invites.map((i) => i.wishlist) },
+    archived: true,
+  })
+    .select('_id')
+    .lean();
+  return archived.map((w) => w._id);
 }
 
 /**
