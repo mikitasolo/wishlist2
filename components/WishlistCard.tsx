@@ -6,7 +6,7 @@ import Avatar from '@/components/Avatar';
 import Icon from '@/components/Icon';
 import Cover from '@/components/Cover';
 import OccasionLabel, { OCCASION_ON_COVER } from '@/components/OccasionLabel';
-import { getVisibility, visibilityMeta } from '@/lib/utils/visibility';
+import { coverBadge } from '@/lib/utils/visibility';
 import { formatOwnerItemSummary } from '@/lib/utils/itemCounts';
 
 interface WishlistCardProps {
@@ -47,7 +47,8 @@ export default function WishlistCard({ wishlist, showOwner = false }: WishlistCa
     drafts: wishlist.draftCount ?? 0,
     proposals: wishlist.proposalCount ?? 0,
   });
-  const vis = visibilityMeta[getVisibility(wishlist)];
+  // Archived instead of the visibility on an archived list: it's owner-only.
+  const badge = coverBadge(wishlist);
 
   return (
     <Link
@@ -63,15 +64,15 @@ export default function WishlistCard({ wishlist, showOwner = false }: WishlistCa
         sizes={WISHLIST_CARD_COVER_SIZES}
         className={`relative aspect-[16/9] bg-surface-2 ${wishlist.archived ? 'grayscale' : ''}`}
       >
-        <span className="absolute right-3 top-3 inline-flex items-center gap-1.5 rounded-full border border-white/25 bg-white/20 px-2.5 py-1 text-[11.5px] font-semibold text-white backdrop-blur-md">
-          <Icon name={vis.icon} size={12} />
-          {vis.label}
+        <span
+          className={`absolute right-3 top-3 inline-flex items-center gap-1.5 rounded-full border border-white/25 px-2.5 py-1 text-[11.5px] font-semibold text-white backdrop-blur-md ${
+            wishlist.archived ? 'bg-black/30' : 'bg-white/20'
+          }`}
+        >
+          <Icon name={badge.icon} size={12} />
+          {badge.label}
         </span>
-        {wishlist.archived ? (
-          <span className="absolute left-3 top-3 inline-flex items-center rounded-full border border-white/25 bg-black/30 px-2.5 py-1 text-[11.5px] font-semibold text-white backdrop-blur-md">
-            Archived
-          </span>
-        ) : wishlist.featured ? (
+        {wishlist.archived ? null : wishlist.featured ? (
           <span className="absolute left-3 top-3 inline-flex items-center gap-1 rounded-full border border-white/25 bg-white/20 px-2.5 py-1 text-[11.5px] font-semibold text-white backdrop-blur-md">
             <Icon name="sparkles" size={12} />
             Featured

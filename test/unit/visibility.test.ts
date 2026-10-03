@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getVisibility, visibilityMeta } from '@/lib/utils/visibility';
+import { coverBadge, getVisibility, visibilityMeta } from '@/lib/utils/visibility';
 
 describe('getVisibility', () => {
   it('uses the stored visibility', () => {
@@ -23,5 +23,26 @@ describe('visibilityMeta', () => {
     expect(visibilityMeta.everyone).toEqual({ label: 'Public', icon: 'globe' });
     expect(visibilityMeta.friends.icon).toBe('users');
     expect(visibilityMeta.private.icon).toBe('lock');
+  });
+});
+
+describe('coverBadge', () => {
+  it("shows a list's visibility while it isn't archived", () => {
+    for (const archived of [false, null, undefined]) {
+      expect(coverBadge({ visibility: 'everyone', archived })).toEqual(visibilityMeta.everyone);
+      expect(coverBadge({ visibility: 'friends', archived })).toEqual(visibilityMeta.friends);
+      expect(coverBadge({ visibility: 'private', archived })).toEqual(visibilityMeta.private);
+    }
+  });
+
+  // regression: the cover pill came from `visibility` alone, so an archived
+  // list, which only its owners can open, still read "Public".
+  it('regression: shows an archived list as Archived, whatever its visibility', () => {
+    for (const visibility of ['everyone', 'friends', 'private', undefined] as const) {
+      expect(coverBadge({ visibility, archived: true })).toEqual({
+        label: 'Archived',
+        icon: 'archive',
+      });
+    }
   });
 });

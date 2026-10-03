@@ -24,7 +24,7 @@ import OccasionField from '@/components/OccasionField';
 import OccasionLabel from '@/components/OccasionLabel';
 import { SkeletonGrid, MemberRowSkeleton } from '@/components/Skeleton';
 import Avatar from '@/components/Avatar';
-import { getVisibility, visibilityMeta, type Visibility } from '@/lib/utils/visibility';
+import { coverBadge, visibilityMeta, type Visibility } from '@/lib/utils/visibility';
 import { currencySelectOptions } from '@/lib/utils/currencies';
 import { missingFromDraft } from '@/lib/utils/occasion';
 import {
@@ -94,6 +94,12 @@ interface PendingInvite {
   username: string | null;
   image: string | null;
 }
+
+// What archiving does, where it's offered and again when it's confirmed. An
+// archived list is owner-only: everyone else gets the answer a missing list
+// gets, so a link already shared stops working for them.
+const ARCHIVE_EXPLANATION =
+  "Only owners can open it. Members and anyone with the link will see that it isn't available. Items and reservations are kept, and you can unarchive anytime.";
 
 export default function WishlistDetail() {
   const { data: session, status } = useSession();
@@ -182,6 +188,12 @@ export default function WishlistDetail() {
     username: string | null;
   } | null>(null);
   const [isDeletingWishlist, setIsDeletingWishlist] = useState(false);
+  // Archiving shuts everyone but the owners out of the list, so it's confirmed
+  // first. Unarchiving only gives back the access they had, so it isn't.
+  const [archiveConfirm, setArchiveConfirm] = useState(false);
+  // The ref turns a second click away before the disabled state has rendered.
+  const archivingRef = useRef(false);
+  const [isArchiving, setIsArchiving] = useState(false);
   // The sole owner's Leave (on their own row in Manage) explains why they can't
   // and offers the way out instead: make someone else an owner (a member, with
   // Make owner, or an invited co-owner), then leave. Nothing in it leaves or
@@ -993,6 +1005,45 @@ export default function WishlistDetail() {
     }
   }, [wishlistId, deleteConfirm, router, showToast]);
 
+  // Archive or unarchive the list: from Manage, from the confirmation, or from
+  // the archived banner's Unarchive.
+  const setArchived = useCallback(
+    async (archived: boolean) => {
+      if (!wishlistId || archivingRef.current) return;
+      archivingRef.current = true;
+      setIsArchiving(true);
+      try {
+        const res = await fetch(`/api/wishlists/${wishlistId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ archived }),
+        });
+        const result = await res.json();
+        if (result.success) {
+          setWishlist((prev) => (prev ? { ...prev, archived } : prev));
+          showToast(archived ? 'Wishlist archived' : 'Wishlist unarchived', 'success');
+        } else {
+          showToast(result.error || 'Failed to update wishlist', 'error');
+        }
+      } catch {
+        showToast('Failed to update wishlist', 'error');
+      } finally {
+        archivingRef.current = false;
+        setIsArchiving(false);
+      }
+    },
+    [wishlistId, showToast]
+  );
+
+  // Closed once the request settles, so the dialog shows it running meanwhile.
+  const confirmArchive = useCallback(async () => {
+    try {
+      await setArchived(true);
+    } finally {
+      setArchiveConfirm(false);
+    }
+  }, [setArchived]);
+
   const ownerCount = owners.ids.length;
   // A co-owner may step down. The sole owner can't: their Leave in Manage
   // explains that they'd have to make someone else an owner first, or delete
@@ -1202,7 +1253,9 @@ export default function WishlistDetail() {
             <OccasionLabel occasion={wishlist.occasion} />
           </div>
           <div className="flex flex-shrink-0 items-center gap-2">
-            <ShareButton />
+            {/* An archived list's link opens for its owners only: anyone they'd
+                share it with gets the answer a missing list gets. */}
+            {!wishlist.archived && <ShareButton />}
             {canLeave && (
               <button
                 onClick={handleLeaveWishlist}
@@ -1244,6 +1297,30 @@ export default function WishlistDetail() {
         {/* Items Tab */}
         {!manageOpen && (
           <>
+            {/* Archived: say so before anything else, with the way back. Only an
+                owner ever gets an archived list, but the banner checks anyway. */}
+            {isOwner && wishlist.archived && (
+              <div className="mb-6 flex flex-col gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 sm:mb-8 sm:flex-row sm:items-center sm:justify-between">
+                <p className="flex items-center gap-2.5 text-sm font-medium text-foreground">
+                  <Icon
+                    name="archive"
+                    size={18}
+                    className="flex-shrink-0 text-amber-600 dark:text-amber-400"
+                  />
+                  Archived. Only owners can see this list.
+                </p>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setArchived(false)}
+                  disabled={isArchiving}
+                  className="self-start sm:self-auto"
+                >
+                  Unarchive
+                </Button>
+              </div>
+            )}
+
             {/* Image + description row */}
             <div
               className={`mb-6 grid gap-4 sm:mb-8 ${
@@ -1259,9 +1336,11 @@ export default function WishlistDetail() {
                 sizes="(max-width: 1024px) 100vw, 26rem"
                 className="relative aspect-[16/9] overflow-hidden rounded-3xl border border-border bg-surface-2 shadow-md"
               >
+                {/* Archived instead of the visibility on an archived list: it's
+                    owner-only, whatever the visibility says. */}
                 <span className="absolute right-3 top-3 inline-flex items-center gap-1.5 rounded-full border border-white/25 bg-white/20 px-2.5 py-1 text-[11.5px] font-semibold text-white backdrop-blur-md">
-                  <Icon name={visibilityMeta[getVisibility(wishlist)].icon} size={12} />
-                  {visibilityMeta[getVisibility(wishlist)].label}
+                  <Icon name={coverBadge(wishlist).icon} size={12} />
+                  {coverBadge(wishlist).label}
                 </span>
               </Cover>
               {wishlist.description && (
@@ -1902,38 +1981,17 @@ export default function WishlistDetail() {
                 </h3>
                 <p className="mb-4 text-xs text-muted-foreground sm:text-sm">
                   {wishlist.archived
-                    ? 'This wishlist is archived and tucked away in a separate section. Unarchive it to bring it back.'
-                    : 'Hide this wishlist from the top of your dashboard without deleting anything. You can unarchive it anytime.'}
+                    ? 'This wishlist is archived: only owners can see it. Unarchive it to open it again to members, and to anyone its visibility allows.'
+                    : ARCHIVE_EXPLANATION}
                 </p>
                 <Button
                   variant="secondary"
-                  onClick={async () => {
-                    try {
-                      const res = await fetch(`/api/wishlists/${wishlistId}`, {
-                        method: 'PATCH',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ archived: !wishlist.archived }),
-                      });
-                      const result = await res.json();
-                      if (result.success) {
-                        setWishlist((prev) =>
-                          prev ? { ...prev, archived: !wishlist.archived } : prev
-                        );
-                        showToast(
-                          wishlist.archived ? 'Wishlist unarchived' : 'Wishlist archived',
-                          'success'
-                        );
-                      } else {
-                        showToast(result.error || 'Failed to update wishlist', 'error');
-                      }
-                    } catch {
-                      showToast('Failed to update wishlist', 'error');
-                    }
-                  }}
+                  onClick={() => (wishlist.archived ? setArchived(false) : setArchiveConfirm(true))}
+                  disabled={isArchiving}
                   className="sm:w-auto"
                   fullWidth
                 >
-                  <Icon name="package" size={16} />
+                  <Icon name="archive" size={16} />
                   {wishlist.archived ? 'Unarchive' : 'Archive'}
                 </Button>
               </div>
@@ -2144,6 +2202,20 @@ export default function WishlistDetail() {
           onCancel={() => setDemoteConfirm(null)}
           confirmText="Make member"
           pendingText="Making member..."
+          cancelText="Cancel"
+          type="warning"
+        />
+      )}
+
+      {archiveConfirm && (
+        <ConfirmDialog
+          isOpen={archiveConfirm}
+          title="Archive wishlist?"
+          message={ARCHIVE_EXPLANATION}
+          onConfirm={confirmArchive}
+          onCancel={() => setArchiveConfirm(false)}
+          confirmText="Archive"
+          pendingText="Archiving..."
           cancelText="Cancel"
           type="warning"
         />

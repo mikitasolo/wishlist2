@@ -28,6 +28,7 @@ export type IconName =
   | 'edit'
   | 'mail'
   | 'package'
+  | 'archive'
   | 'list'
   | 'lock'
   | 'globe'
@@ -153,6 +154,12 @@ const paths: Record<IconName, React.ReactNode> = {
     <>
       <path d="M16.5 9.4 7.5 4.21M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
       <path d="m3.3 7 8.7 5 8.7-5M12 22V12" />
+    </>
+  ),
+  archive: (
+    <>
+      <rect x="2" y="3" width="20" height="5" rx="1" />
+      <path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8M10 12h4" />
     </>
   ),
   list: <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />,
