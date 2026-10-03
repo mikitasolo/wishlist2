@@ -1,5 +1,7 @@
 /**
- * Utility functions for filtering items
+ * Filtering, searching and sorting item grids. The status filter here is the
+ * All items page's (`/items`); a list's own page filters with its status chips
+ * (`lib/utils/listChips.ts`).
  */
 
 import { ApiItem } from '@/types/api';
@@ -17,91 +19,11 @@ export type FilterOption =
   | 'proposedByMe';
 
 /**
- * Filters items based on multiple selected filter options
- * @param items - Array of items to filter
- * @param selectedFilters - Array of selected filter options
- * @param currentUserId - Current user ID for user-specific filters
- * @param includeBookedInAvailable - If true, "available" filter includes both "available" and "booked" statuses
- */
-export function filterItemsMulti(
-  items: ApiItem[],
-  selectedFilters: FilterOption[],
-  currentUserId?: string,
-  includeBookedInAvailable: boolean = false
-): ApiItem[] {
-  // If no filters selected or "all" is selected, return all items
-  if (selectedFilters.length === 0 || selectedFilters.includes('all')) {
-    return items;
-  }
-
-  return items.filter((item) => {
-    return selectedFilters.some((filter) => {
-      switch (filter) {
-        case 'draft':
-          return item.status === 'draft';
-        case 'available':
-          if (includeBookedInAvailable) {
-            // For owner/non-member: "available" includes both available and booked
-            return item.status === 'available' || item.status === 'booked';
-          }
-          return item.status === 'available';
-        case 'bookedByMe':
-          return item.status === 'booked' && item.bookedBy === currentUserId;
-        case 'bookedByOthers':
-          return (
-            item.status === 'booked' && item.bookedBy !== currentUserId && item.bookedBy != null
-          );
-        case 'completed':
-          return item.status === 'completed';
-        case 'proposed':
-          return item.status === 'proposed';
-        case 'proposedByMe':
-          return item.status === 'proposed' && item.proposedBy === currentUserId;
-        default:
-          return false;
-      }
-    });
-  });
-}
-
-/** Who is looking at a list, as far as its status filter goes. */
-export type FilterRole = 'owner' | 'member' | 'visitor';
-
-/**
- * The status filter's options for a role, in the order the stat cards above
- * the list render, so the dropdown and the cards line up one-to-one. An
- * owner's never mention booking: they don't see it, so a booked item is
- * "available" to them.
- */
-export function statusFilterOptions(role: FilterRole): FilterOption[] {
-  switch (role) {
-    case 'owner':
-      return ['all', 'draft', 'proposed', 'available', 'completed'];
-    case 'member':
-      return ['all', 'available', 'bookedByMe', 'bookedByOthers', 'proposedByMe', 'completed'];
-    case 'visitor':
-      return ['all', 'available', 'completed'];
-  }
-}
-
-/** What the status filter shows on a list the viewer has just opened. */
-export function defaultStatusFilters(role: FilterRole): FilterOption[] {
-  switch (role) {
-    case 'owner':
-      return ['draft', 'available', 'proposed'];
-    case 'member':
-      return ['available', 'bookedByMe', 'proposedByMe'];
-    case 'visitor':
-      return ['available'];
-  }
-}
-
-/**
  * The status filter's selection once `option` is ticked or unticked.
  * Ticking All, or every other option, selects everything. Unticking All, or
  * the last option ticked, goes back to `defaults` rather than to an empty
- * selection: `filterItemsMulti` shows every item for one, so a filter that
- * said "None selected" would show them all.
+ * selection: a filter that said "None selected" while it showed every item
+ * would say the opposite of what it does.
  */
 export function toggleStatusFilter(
   selected: FilterOption[],
@@ -122,7 +44,7 @@ export function toggleStatusFilter(
 
 /**
  * Whether a selection shows every item: All, every other option, or nothing
- * at all (which `filterItemsMulti` reads as no filter).
+ * at all (which filters nothing).
  */
 export function isEveryStatusSelected(selected: FilterOption[], options: FilterOption[]): boolean {
   return (
@@ -186,55 +108,6 @@ export function searchItemsByName(items: ApiItem[], query: string): ApiItem[] {
   return items.filter((item) => item.name?.toLowerCase().includes(q));
 }
 
-/**
- * Calculates statistics for items in a single pass
- */
-export function calculateStats(
-  items: ApiItem[],
-  currentUserId?: string
-): {
-  total: number;
-  draft: number;
-  available: number;
-  booked: number;
-  bookedByYou: number;
-  completed: number;
-  proposed: number;
-  proposedByYou: number;
-} {
-  let total = 0;
-  let draft = 0;
-  let available = 0;
-  let booked = 0;
-  let bookedByYou = 0;
-  let completed = 0;
-  let proposed = 0;
-  let proposedByYou = 0;
-
-  for (const item of items) {
-    total++;
-    if (item.status === 'draft') {
-      draft++;
-    } else if (item.status === 'available') {
-      available++;
-    } else if (item.status === 'booked') {
-      booked++;
-      if (item.bookedBy === currentUserId) {
-        bookedByYou++;
-      }
-    } else if (item.status === 'completed') {
-      completed++;
-    } else if (item.status === 'proposed') {
-      proposed++;
-      if (item.proposedBy === currentUserId) {
-        proposedByYou++;
-      }
-    }
-  }
-
-  return { total, draft, available, booked, bookedByYou, completed, proposed, proposedByYou };
-}
-
 /** The ways an item grid can be sorted (see `sortItems`). */
 export type SortType =
   'priority' | 'name-asc' | 'name-desc' | 'price-asc' | 'price-desc' | 'date-asc' | 'date-desc';
@@ -249,6 +122,20 @@ export const SORT_OPTIONS: { value: SortType; label: string }[] = [
   { value: 'date-asc', label: 'Date created (oldest first)' },
   { value: 'date-desc', label: 'Date created (newest first)' },
 ];
+
+/**
+ * Each sort's name on a toolbar's trigger, which has to fit beside a search
+ * field on a phone (the wishlist page's). The menu keeps `SORT_OPTIONS`' labels.
+ */
+export const SORT_SHORT_LABELS: Record<SortType, string> = {
+  priority: 'Most wanted',
+  'name-asc': 'Name A–Z',
+  'name-desc': 'Name Z–A',
+  'price-asc': 'Lowest price',
+  'price-desc': 'Highest price',
+  'date-asc': 'Oldest first',
+  'date-desc': 'Newest first',
+};
 
 export function isSortType(value: unknown): value is SortType {
   return SORT_OPTIONS.some((o) => o.value === value);

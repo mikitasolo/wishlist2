@@ -23,6 +23,11 @@ interface SelectProps {
   size?: 'sm' | 'md';
   /** Shown, muted, on the trigger while `value` matches no option (nothing picked yet). */
   placeholder?: string;
+  /**
+   * What the trigger says in place of the selected option's label: a shorter
+   * one for a toolbar that has to fit a phone. The options keep their labels.
+   */
+  valueLabel?: string;
 }
 
 const sizeStyles = {
@@ -87,6 +92,7 @@ export default function Select({
   menuAlign = 'left',
   size = 'sm',
   placeholder,
+  valueLabel,
 }: SelectProps) {
   const [open, setOpen] = useState(false);
   const [rect, setRect] = useState<DOMRect | null>(null);
@@ -276,7 +282,7 @@ export default function Select({
         className={`flex items-center justify-between gap-2 rounded-xl border border-border-strong bg-surface px-3.5 font-medium text-foreground outline-hidden field-focus transition-colors hover:bg-surface-hover disabled:opacity-50 ${sizeStyles[size]} ${triggerClassName}`}
       >
         {selected ? (
-          <span className="truncate">{selected.label}</span>
+          <span className="truncate">{valueLabel ?? selected.label}</span>
         ) : (
           <span className="truncate text-muted-foreground">{placeholder ?? ''}</span>
         )}

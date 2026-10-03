@@ -74,7 +74,7 @@ for (const failure of failures) {
 }
 
 // regression: with the hook resolving [] on failure, a failed first load showed
-// the empty state; then it showed stat cards reading 0 above an error with no
+// the empty state; then it showed stat cards (now chips) reading 0 above an error with no
 // way to retry but a reload, and a toast.
 test('regression: a failed first load says so, not that the list is empty', async ({ page }) => {
   let failing = true;
@@ -89,7 +89,8 @@ test('regression: a failed first load says so, not that the list is empty', asyn
   await expect(loadError).toBeVisible();
   // Exclusive with the error panel, so checking these while it shows is enough.
   await expect(emptyList(page)).toHaveCount(0);
-  await expect(page.getByPlaceholder('Search items by name…')).toHaveCount(0);
+  await expect(page.getByRole('textbox', { name: 'Search items by name' })).toHaveCount(0);
+  await expect(page.getByRole('radiogroup', { name: 'Show items' })).toHaveCount(0);
   await expect(page.getByRole('status').getByText('Failed to load items')).toHaveCount(0);
 
   // Try again reads them afresh.

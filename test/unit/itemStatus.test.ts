@@ -11,7 +11,7 @@ import {
   type ViewerRole,
 } from '@/lib/utils/itemStatus';
 import { TONE_CLASSES, type StatusTone } from '@/lib/utils/statusTones';
-import { statusFilterOptions } from '@/lib/utils/itemFilters';
+import { listChips, LIST_CHIP_LABELS } from '@/lib/utils/listChips';
 import { sourceFiles } from '../sourceFiles';
 
 const STATUSES: ItemStatus[] = ['draft', 'proposed', 'available', 'booked', 'completed'];
@@ -175,11 +175,10 @@ describe('FILTER_META', () => {
     expect(FILTER_META.completed).toEqual({ label: 'Received', tone: 'done' });
   });
 
-  // regression: an owner's cards must never count or name booking.
-  it('regression: gives an owner no booking card', () => {
-    for (const option of statusFilterOptions('owner')) {
-      expect(FILTER_META[option].label).not.toMatch(/book|reserv/i);
-      expect(['success', 'warning']).not.toContain(FILTER_META[option].tone);
+  // regression: an owner's chips must never count or name booking.
+  it('regression: gives an owner no booking chip', () => {
+    for (const chip of listChips('owner')) {
+      expect(LIST_CHIP_LABELS[chip]).not.toMatch(/book|reserv/i);
     }
   });
 });

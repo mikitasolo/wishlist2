@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 // What the wishlist page shows when there's nothing to show: a list with no
-// items at all says so, with each role's way forward and without the stat
-// cards and the toolbar, and a list whose items the search or status filter
-// hides says that, with a way back to all of them.
+// items at all says so, with each role's way forward and without the status
+// chips and the toolbar, and a list whose items the search or a chip hides
+// says that, with a way back to all of them.
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -149,15 +149,18 @@ async function open() {
 const emptyState = (heading: string) =>
   screen.getByRole('heading', { name: heading }).parentElement as HTMLElement;
 
+/** A status chip, by its label (its accessible name is the label and the count). */
+const chip = (label: string) =>
+  screen.getByRole('radio', { name: new RegExp(`^${label}\\s*\\d+$`) });
+
 /**
- * None of the stat cards and nothing in the toolbar is on the page. (Add item
+ * None of the status chips and nothing in the toolbar is on the page. (Add item
  * and Propose stay in the header's actions, beside the list's name.)
  */
 function expectNoCardsOrToolbar() {
-  expect(screen.queryByRole('button', { name: /^(Total Items|All)\s*\d+$/ })).toBeNull();
-  expect(screen.queryByRole('button', { name: /^Available\s*\d+$/ })).toBeNull();
+  expect(screen.queryByRole('radiogroup', { name: 'Show items' })).toBeNull();
+  expect(screen.queryByRole('radio')).toBeNull();
   expect(screen.queryByRole('textbox', { name: 'Search items by name' })).toBeNull();
-  expect(screen.queryByRole('button', { name: 'Filter by status' })).toBeNull();
   expect(screen.queryByRole('combobox', { name: 'Sort items by' })).toBeNull();
   expect(screen.queryByRole('combobox', { name: 'Show prices in' })).toBeNull();
 }
@@ -263,7 +266,7 @@ describe('a list with no items at all', () => {
     }
   );
 
-  it("brings the cards and the toolbar back once the owner's first item is added", async () => {
+  it("brings the chips and the toolbar back once the owner's first item is added", async () => {
     const user = userEvent.setup();
     await open();
 
@@ -272,17 +275,18 @@ describe('a list with no items at all', () => {
     await waitFor(() => expect(shown()).toEqual(['Lamp']));
     expect(screen.queryByRole('heading', { name: 'Your list is empty' })).toBeNull();
     expect(screen.getByRole('textbox', { name: 'Search items by name' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Filter by status' })).toBeInTheDocument();
+    expect(chip('All')).toHaveAccessibleName('All 1');
+    expect(chip('All')).toBeChecked();
     expect(screen.getByRole('button', { name: 'Add item' })).toBeInTheDocument();
   });
 
-  // The toolbar goes with the last item, so a filter or search left in force
+  // The toolbar goes with the last item, so a chip or search left in force
   // couldn't be seen, and would hide the next item added.
-  it('puts the filter and the search back to the defaults when the list empties', async () => {
+  it('puts the chip back on All and clears the search when the list empties', async () => {
     listItems = [item('Vase', { status: 'completed' }, 1)];
     const user = userEvent.setup();
     await open();
-    await user.click(screen.getByRole('button', { name: /^Received\s*\d+$/ }));
+    await user.click(chip('Received'));
     await user.type(screen.getByRole('textbox', { name: 'Search items by name' }), 'vase');
     expect(shown()).toEqual(['Vase']);
 
@@ -297,9 +301,8 @@ describe('a list with no items at all', () => {
 
     await waitFor(() => expect(shown()).toEqual(['Lamp']));
     expect(screen.getByRole('textbox', { name: 'Search items by name' })).toHaveValue('');
-    expect(screen.getByRole('button', { name: 'Filter by status' })).toHaveTextContent(
-      '3 selected'
-    );
+    expect(chip('All')).toBeChecked();
+    expect(chip('Received')).not.toBeChecked();
   });
 
   // The list couldn't be read, which says nothing about whether it's empty.
@@ -318,46 +321,52 @@ describe('a list with no items at all', () => {
 
 describe('a list whose items are all filtered out', () => {
   // regression: the status filter could hide every item with no way back but
-  // the filter itself; an owner whose items are all completed met that on the
-  // defaults, before touching a filter.
-  it("regression: says no items match the selected filters, and Show all shows the owner's every item", async () => {
+  // the filter itself; an owner whose items were all completed met that on the
+  // defaults, before touching a filter. A list now opens on All.
+  it("regression: shows an owner every item at first, even when they're all received", async () => {
     listItems = [
       item('Vase', { status: 'completed' }, 1),
       item('Clock', { status: 'completed' }, 2),
     ];
-    const user = userEvent.setup();
     await open();
 
-    expect(shown()).toEqual([]);
-    expect(screen.getByRole('heading', { name: 'No items found' })).toBeInTheDocument();
-    expect(screen.getByText('No items match the selected filters.')).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'Your list is empty' })).toBeNull();
-    // The cards and the toolbar are there to change it.
-    expect(screen.getByRole('button', { name: 'Filter by status' })).toHaveTextContent(
-      '3 selected'
-    );
-
-    await user.click(screen.getByRole('button', { name: 'Show all' }));
-
     expect(shown()).toEqual(['Clock', 'Vase']);
-    expect(screen.getByRole('button', { name: 'Filter by status' })).toHaveTextContent('All');
+    expect(chip('All')).toBeChecked();
     expect(screen.queryByRole('heading', { name: 'No items found' })).toBeNull();
   });
 
-  it("regression: offers Show all when a member's stat card hides every item", async () => {
+  it('says no items match a chip that hides every item, and Show all goes back to All', async () => {
+    listItems = [item('Vase', { status: 'completed' }, 1)];
+    const user = userEvent.setup();
+    await open();
+
+    await user.click(chip('Drafts'));
+    expect(shown()).toEqual([]);
+    expect(screen.getByRole('heading', { name: 'No items found' })).toBeInTheDocument();
+    expect(screen.getByText('No items match this filter.')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Your list is empty' })).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: 'Show all' }));
+
+    expect(shown()).toEqual(['Vase']);
+    expect(chip('All')).toBeChecked();
+    expect(screen.queryByRole('heading', { name: 'No items found' })).toBeNull();
+  });
+
+  it("offers Show all when a member's chip hides every item", async () => {
     userRole = 'member';
     listItems = [item('Lamp', {}, 1), item('Scarf', { status: 'booked', bookedBy: 'carol' }, 2)];
     const user = userEvent.setup();
     await open();
-    expect(shown()).toEqual(['Scarf', 'Lamp']);
+    expect(shown()).toEqual(['Lamp', 'Scarf']);
 
-    await user.click(screen.getByRole('button', { name: /^Reserved by others\s*0$/ }));
+    await user.click(chip('Your proposals'));
     expect(shown()).toEqual([]);
-    expect(screen.getByText('No items match the selected filters.')).toBeInTheDocument();
+    expect(screen.getByText('No items match this filter.')).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Nothing here yet' })).toBeNull();
 
     await user.click(screen.getByRole('button', { name: 'Show all' }));
-    expect(shown()).toEqual(['Scarf', 'Lamp']);
+    expect(shown()).toEqual(['Lamp', 'Scarf']);
   });
 
   it('says what the search matched nothing for, and Show all clears it', async () => {
@@ -371,6 +380,7 @@ describe('a list whose items are all filtered out', () => {
 
     await user.click(screen.getByRole('button', { name: 'Show all' }));
     expect(screen.getByRole('textbox', { name: 'Search items by name' })).toHaveValue('');
-    expect(shown()).toEqual(['Vase', 'Lamp']);
+    // Under All, live items come before received ones.
+    expect(shown()).toEqual(['Lamp', 'Vase']);
   });
 });

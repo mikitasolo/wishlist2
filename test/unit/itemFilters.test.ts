@@ -1,22 +1,17 @@
 import { describe, it, expect } from 'vitest';
 import {
-  filterItemsMulti,
-  calculateStats,
   sortItems,
   compareItems,
   searchItemsByName,
   compareMostWanted,
   savedWishlistSort,
   isSortType,
-  statusFilterOptions,
-  defaultStatusFilters,
   toggleStatusFilter,
   isEveryStatusSelected,
   forgetSavedStatusFilters,
   SORT_OPTIONS,
   WISHLIST_SORT_STORAGE_KEY,
   type FilterOption,
-  type FilterRole,
   type SortType,
   type SortableItem,
 } from '@/lib/utils/itemFilters';
@@ -37,64 +32,21 @@ function item(overrides: Partial<ApiItem>): ApiItem {
   } as ApiItem;
 }
 
-describe('filterItemsMulti', () => {
-  const items = [
-    item({ name: 'draft', status: 'draft' }),
-    item({ name: 'avail', status: 'available' }),
-    item({ name: 'mine', status: 'booked', bookedBy: ME }),
-    item({ name: 'theirs', status: 'booked', bookedBy: OTHER }),
-    item({ name: 'done', status: 'completed' }),
-    item({ name: 'prop', status: 'proposed', proposedBy: OTHER }),
-    item({ name: 'myprop', status: 'proposed', proposedBy: ME }),
-  ];
-
-  it('returns everything for empty filters or "all"', () => {
-    expect(filterItemsMulti(items, [], ME)).toHaveLength(items.length);
-    expect(filterItemsMulti(items, ['all'], ME)).toHaveLength(items.length);
-  });
-
-  it('splits booked-by-me vs booked-by-others', () => {
-    expect(filterItemsMulti(items, ['bookedByMe'], ME).map((i) => i.name)).toEqual(['mine']);
-    expect(filterItemsMulti(items, ['bookedByOthers'], ME).map((i) => i.name)).toEqual(['theirs']);
-  });
-
-  it('includes booked items under "available" when includeBookedInAvailable is set (owner view)', () => {
-    const owner = filterItemsMulti(items, ['available'], ME, true).map((i) => i.name);
-    expect(owner).toEqual(expect.arrayContaining(['avail', 'mine', 'theirs']));
-    // without the flag, only truly-available
-    expect(filterItemsMulti(items, ['available'], ME, false).map((i) => i.name)).toEqual(['avail']);
-  });
-
-  it('supports multiple filters (union)', () => {
-    const res = filterItemsMulti(items, ['draft', 'completed'], ME).map((i) => i.name);
-    expect(res).toEqual(['draft', 'done']);
-  });
-
-  it('proposedByMe only matches the current user’s proposals', () => {
-    expect(filterItemsMulti(items, ['proposedByMe'], ME).map((i) => i.name)).toEqual(['myprop']);
-  });
-});
-
-const ROLES: FilterRole[] = ['owner', 'member', 'visitor'];
-
-describe('statusFilterOptions / defaultStatusFilters', () => {
-  it('never offers an owner a booking filter, by default or otherwise', () => {
-    for (const filters of [statusFilterOptions('owner'), defaultStatusFilters('owner')]) {
-      expect(filters).not.toContain('bookedByMe');
-      expect(filters).not.toContain('bookedByOthers');
-    }
-  });
-
-  it.each(ROLES)("starts a %s on some of the role's own options, short of All", (role) => {
-    const defaults = defaultStatusFilters(role);
-    expect(defaults.length).toBeGreaterThan(0);
-    expect(defaults).not.toContain('all');
-    for (const f of defaults) expect(statusFilterOptions(role)).toContain(f);
-  });
-});
+// A status filter's options and the selection it starts on, as a caller
+// (the All items page) hands them in.
+const OWNER_OPTIONS: FilterOption[] = ['all', 'draft', 'proposed', 'available', 'completed'];
+const MEMBER_OPTIONS: FilterOption[] = [
+  'all',
+  'available',
+  'bookedByMe',
+  'bookedByOthers',
+  'proposedByMe',
+  'completed',
+];
+const MEMBER_DEFAULTS: FilterOption[] = ['available', 'bookedByMe', 'proposedByMe'];
 
 describe('isEveryStatusSelected', () => {
-  const options = statusFilterOptions('owner');
+  const options = OWNER_OPTIONS;
 
   it('is true for All, for every option ticked, and for no selection (which filters nothing)', () => {
     expect(isEveryStatusSelected(['all'], options)).toBe(true);
@@ -105,14 +57,14 @@ describe('isEveryStatusSelected', () => {
   });
 
   it('is false for anything narrower', () => {
-    expect(isEveryStatusSelected(defaultStatusFilters('owner'), options)).toBe(false);
+    expect(isEveryStatusSelected(['draft', 'available', 'proposed'], options)).toBe(false);
     expect(isEveryStatusSelected(['completed'], options)).toBe(false);
   });
 });
 
 describe('toggleStatusFilter', () => {
-  const options = statusFilterOptions('member');
-  const defaults = defaultStatusFilters('member');
+  const options = MEMBER_OPTIONS;
+  const defaults = MEMBER_DEFAULTS;
   const toggle = (selected: FilterOption[], option: FilterOption) =>
     toggleStatusFilter(selected, option, options, defaults);
 
@@ -162,29 +114,6 @@ describe('forgetSavedStatusFilters', () => {
     ]);
     forgetSavedStatusFilters({ removeItem: (key) => void entries.delete(key) });
     expect([...entries.keys()]).toEqual([WISHLIST_SORT_STORAGE_KEY]);
-  });
-});
-
-describe('calculateStats', () => {
-  it('counts every status in one pass', () => {
-    const items = [
-      item({ status: 'draft' }),
-      item({ status: 'available' }),
-      item({ status: 'booked', bookedBy: ME }),
-      item({ status: 'booked', bookedBy: OTHER }),
-      item({ status: 'completed' }),
-      item({ status: 'proposed', proposedBy: ME }),
-    ];
-    expect(calculateStats(items, ME)).toEqual({
-      total: 6,
-      draft: 1,
-      available: 1,
-      booked: 2,
-      bookedByYou: 1,
-      completed: 1,
-      proposed: 1,
-      proposedByYou: 1,
-    });
   });
 });
 
