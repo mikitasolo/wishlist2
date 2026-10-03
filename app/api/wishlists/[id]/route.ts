@@ -191,10 +191,10 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     // Slug: validate reserved + uniqueness before applying.
     if (validatedData.slug !== undefined && validatedData.slug !== wishlist.slug) {
       // Slugs are unique across every list, so the 409 below confirms that some
-      // list holds a slug, even one the caller can't open. That's accepted (an
-      // owner-chosen slug is a public URL), but trying one costs a token, and
-      // only here: the caller is known to own this list, and an edit that leaves
-      // the URL alone never spends one.
+      // list holds a slug, even an archived one, which every other answer hides.
+      // That's accepted (an owner-chosen slug is a public URL), but trying one
+      // costs a token, and only here: the caller is known to own this list, and
+      // an edit that leaves the URL alone never spends one.
       const limited = await enforce('wishlistSlug', userKey(session.user.id));
       if (limited) return limited;
       const slug = validatedData.slug;
