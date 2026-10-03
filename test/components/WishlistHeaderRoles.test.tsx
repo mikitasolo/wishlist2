@@ -4,7 +4,7 @@
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { listMenuItems, openListTab, pickFromListMenu } from './listMenu';
+import { listMenuItems, listTab, openListTab, pickFromListMenu } from './listMenu';
 
 const { router, showToast, auth } = vi.hoisted(() => ({
   // One object, as Next's own router is: the page's read of the list depends on it.
@@ -263,7 +263,7 @@ describe('the cover strip and the description', () => {
     expect(screen.getByRole('main').querySelector('img')).toBeNull();
   });
 
-  it('puts the banner above the title, and keeps it there in Manage', async () => {
+  it('puts the banner above the title, and keeps it there on every tab', async () => {
     signIn('alice');
     list.bannerUrl = BANNER;
     const h1 = await openList();
@@ -271,9 +271,12 @@ describe('the cover strip and the description', () => {
     expect(banner().getAttribute('src')).toContain(encodeURIComponent(BANNER));
     expect(follows(banner(), h1)).toBe(true);
 
-    await userEvent.setup().click(screen.getByRole('button', { name: 'Manage wishlist' }));
-    expect(screen.getByRole('heading', { name: 'Manage wishlist' })).toBeInTheDocument();
-    expect(follows(banner(), screen.getByRole('heading', { level: 1 }))).toBe(true);
+    const user = userEvent.setup();
+    for (const tab of ['People', 'Settings'] as const) {
+      await openListTab(user, tab);
+      expect(await listTab(tab)).toHaveAttribute('aria-selected', 'true');
+      expect(follows(banner(), screen.getByRole('heading', { level: 1 }))).toBe(true);
+    }
   });
 
   it('shows the description as plain text under the title, for every viewer', async () => {
