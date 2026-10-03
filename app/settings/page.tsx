@@ -11,6 +11,7 @@ import ImageUpload from '@/components/ImageUpload';
 import Select from '@/components/Select';
 import Toggle from '@/components/Toggle';
 import UsernameField from '@/components/UsernameField';
+import { signInPath } from '@/lib/utils/callbackUrl';
 import { currencySelectOptions, SETTINGS_CURRENCY_FIELD_ID } from '@/lib/utils/currencies';
 import { useUsernameAvailability } from '@/lib/hooks/useUsernameAvailability';
 import { useToast } from '@/components/ToastProvider';
@@ -63,7 +64,7 @@ export default function SettingsPage() {
   const currencyField = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (status === 'unauthenticated') router.push('/');
+    if (status === 'unauthenticated') router.replace(signInPath('/settings'));
   }, [status, router]);
 
   useEffect(() => {

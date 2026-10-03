@@ -9,6 +9,7 @@ import WishlistCard from '@/components/WishlistCard';
 import Icon from '@/components/Icon';
 import { SkeletonGrid } from '@/components/Skeleton';
 import { useToast } from '@/components/ToastProvider';
+import { signInPath } from '@/lib/utils/callbackUrl';
 import { IWishlist } from '@/models/Wishlist';
 
 type Wishlist = IWishlist & {
@@ -25,7 +26,7 @@ export default function SharedWishlistsPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (status === 'unauthenticated') router.push('/');
+    if (status === 'unauthenticated') router.replace(signInPath('/wishlists/shared'));
   }, [status, router]);
 
   useEffect(() => {

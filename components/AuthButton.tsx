@@ -6,6 +6,7 @@ import { signIn, signOut, useSession } from 'next-auth/react';
 import Avatar from '@/components/Avatar';
 import Icon from '@/components/Icon';
 import { useTheme } from '@/components/ThemeProvider';
+import { isAuthOnlyPath } from '@/lib/utils/callbackUrl';
 
 export default function AuthButton() {
   const { data: session, status } = useSession();
@@ -228,7 +229,12 @@ export default function AuthButton() {
             <div className="my-1 border-t border-border" />
             <button
               role="menuitem"
-              onClick={() => signOut()}
+              onClick={() =>
+                // A page that needs an account would only send them on to the
+                // sign-in form once it reloads signed out, so sign out to home
+                // from there. Anywhere else, stay on the page, now signed out.
+                signOut(isAuthOnlyPath(window.location.pathname) ? { redirectTo: '/' } : undefined)
+              }
               className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm font-medium text-foreground transition-colors hover:bg-muted"
             >
               <Icon name="logout" size={18} className="text-muted-foreground" />

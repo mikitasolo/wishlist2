@@ -326,15 +326,17 @@ export async function sendWishlistInvitationEmail(
   invitedBy: string
 ) {
   const siteTitle = 'Wishlist';
-  // Land on the invites page (via sign-in) where they can accept or decline.
-  const invitesUrl = `${env.NEXTAUTH_URL}/auth/signin?callbackUrl=${encodeURIComponent('/invites')}`;
+  // Straight to the invites page, where they can accept or decline. An invitee
+  // who's already signed in (the usual case on a phone) lands there at once; a
+  // signed-out one is sent through sign-in and back to it.
+  const invitesUrl = `${env.NEXTAUTH_URL}/invites`;
 
   const html = getEmailTemplate({
     title: 'Wishlist invitation',
     greeting: `You’re invited to “${wishlistName}”`,
     contentHtml: `
       <p><strong>${escapeHtml(invitedBy)}</strong> invited you to their wishlist <strong>${escapeHtml(wishlistName)}</strong>.</p>
-      <p>Sign in to your account to review the invitation — you can accept or decline it.</p>
+      <p>Review the invitation on your Invitations page — you can accept or decline it.</p>
     `,
     buttonText: 'Review invitation',
     buttonUrl: invitesUrl,
@@ -346,7 +348,7 @@ export async function sendWishlistInvitationEmail(
     to: email,
     subject: `You've been invited to ${wishlistName} on ${siteTitle}!`,
     html,
-    text: `Wishlist Invitation\n\n${invitedBy} has invited you to join their wishlist: ${wishlistName}.\n\nSign in to your account to accept or decline it: ${invitesUrl}`,
+    text: `Wishlist Invitation\n\n${invitedBy} has invited you to join their wishlist: ${wishlistName}.\n\nAccept or decline it on your Invitations page: ${invitesUrl}`,
     link: invitesUrl,
   });
 }

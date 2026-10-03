@@ -4,10 +4,14 @@ import { render, screen, cleanup, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 vi.mock('@/app/auth/signin/actions', () => ({ requestMagicLink: vi.fn() }));
+// Signed out: the page shows the form. Redirecting a signed-in visitor is
+// test/api/signInPageRedirect.test.ts.
+vi.mock('@/lib/auth', () => ({ auth: vi.fn(async () => null) }));
 
 const searchParams = vi.hoisted(() => ({ current: new URLSearchParams('') }));
 vi.mock('next/navigation', () => ({
   useSearchParams: () => searchParams.current,
+  redirect: vi.fn(),
 }));
 
 const connection = vi.hoisted(() => vi.fn(async () => {}));
@@ -459,7 +463,7 @@ describe('the sign-in page', () => {
   afterEach(() => vi.unstubAllEnvs());
 
   async function renderPageCountingWidgetScripts() {
-    const page = await SignInPage();
+    const page = await SignInPage({ searchParams: Promise.resolve({}) });
     render(page);
     // The form's widget renders only with a key: count Cloudflare's script tag.
     return document.querySelectorAll(`script[src="${TURNSTILE_SCRIPT_URL}"]`).length;

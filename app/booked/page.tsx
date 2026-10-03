@@ -13,6 +13,7 @@ import SnapshotThumb from '@/components/SnapshotThumb';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import { useBusyIds } from '@/lib/hooks/useBusyIds';
 import { useLocalToday } from '@/lib/hooks/useLocalToday';
+import { signInPath } from '@/lib/utils/callbackUrl';
 import { formatPriceFromObject } from '@/lib/utils/currency';
 import { createListChangeLog, mergeRefreshedList } from '@/lib/utils/listRefresh';
 import type { Occasion } from '@/lib/utils/occasion';
@@ -106,7 +107,7 @@ export default function BookedPage() {
   const account = useRef(userId);
 
   useEffect(() => {
-    if (status === 'unauthenticated') router.push('/');
+    if (status === 'unauthenticated') router.replace(signInPath('/booked'));
   }, [status, router]);
 
   // Another account signed in (from another tab): `status` stays

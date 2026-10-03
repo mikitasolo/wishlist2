@@ -13,7 +13,7 @@ vi.mock('nodemailer', () => ({ default: { createTransport } }));
 const RECIPIENT = 'friend@example.com';
 const MAGIC_LINK =
   'http://localhost:3000/api/auth/callback/nodemailer?token=secret-token-123&email=friend%40example.com';
-const INVITES_LINK = `http://localhost:3000/auth/signin?callbackUrl=${encodeURIComponent('/invites')}`;
+const INVITES_LINK = 'http://localhost:3000/invites';
 
 /** The magic link as it must appear in HTML, where a raw `&` isn't valid. */
 const MAGIC_LINK_HTML = MAGIC_LINK.replaceAll('&', '&amp;');
@@ -188,6 +188,22 @@ describe('EMAIL_TRANSPORT=smtp', () => {
     const output = consoleOutput();
     expect(output).not.toContain(RECIPIENT);
     expect(output).not.toContain(INVITES_LINK);
+  });
+
+  // regression: the button linked to `/auth/signin?callbackUrl=/invites`, and
+  // the sign-in page showed its email form even to an invitee already signed in
+  // (the usual case on a phone), who had to request a magic link to reach a page
+  // they could already open. The invites page sends a signed-out one to sign in.
+  it('links the invitation straight to the invites page', async () => {
+    const { sendWishlistInvitationEmail } = await loadEmail('smtp');
+
+    await sendWishlistInvitationEmail(RECIPIENT, 'Birthday', 'alice');
+
+    const { html, text } = sentMessage();
+    expect(html).toContain(`<a href="${INVITES_LINK}" class="email-button">Review invitation</a>`);
+    expect(text).toContain(`Accept or decline it on your Invitations page: ${INVITES_LINK}`);
+    expect(html).not.toContain('/auth/signin');
+    expect(text).not.toContain('/auth/signin');
   });
 
   // regression: a failed send used to log (and rethrow) nodemailer's raw error,

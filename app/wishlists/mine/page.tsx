@@ -10,6 +10,7 @@ import Icon from '@/components/Icon';
 import { SkeletonGrid } from '@/components/Skeleton';
 import { useToast } from '@/components/ToastProvider';
 import { useLocalToday } from '@/lib/hooks/useLocalToday';
+import { signInPath } from '@/lib/utils/callbackUrl';
 import { sortByUpcomingOccasion } from '@/lib/utils/occasion';
 import { IWishlist } from '@/models/Wishlist';
 
@@ -27,7 +28,7 @@ export default function MyWishlistsPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (status === 'unauthenticated') router.push('/');
+    if (status === 'unauthenticated') router.replace(signInPath('/wishlists/mine'));
   }, [status, router]);
 
   useEffect(() => {

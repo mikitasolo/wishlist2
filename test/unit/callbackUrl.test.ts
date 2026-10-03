@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { safeCallbackPath } from '@/lib/utils/callbackUrl';
+import {
+  AUTH_ONLY_PATHS,
+  isAuthOnlyPath,
+  safeCallbackPath,
+  signInPath,
+  SIGN_IN_PATH,
+} from '@/lib/utils/callbackUrl';
 
 const ORIGIN = 'https://wishlist.example';
 
@@ -56,5 +62,52 @@ describe('safeCallbackPath', () => {
     expect(safeCallbackPath('/welcome/x', ORIGIN, '/welcome')).toBe('/');
     // Only that page, not every path that starts with its name.
     expect(safeCallbackPath('/welcomes', ORIGIN, '/welcome')).toBe('/welcomes');
+  });
+
+  // What the sign-in page passes for a signed-in visitor: every auth page.
+  it('refuses anything under a section passed as the path to avoid', () => {
+    for (const authPage of ['/auth/signin?callbackUrl=%2Finvites', '/auth/error', '/auth']) {
+      expect(safeCallbackPath(authPage, ORIGIN, '/auth'), authPage).toBe('/');
+    }
+    expect(safeCallbackPath('/authors', ORIGIN, '/auth')).toBe('/authors');
+  });
+});
+
+describe('signInPath', () => {
+  it('sends to the sign-in page with the path as its encoded callbackUrl', () => {
+    expect(signInPath('/invites')).toBe('/auth/signin?callbackUrl=%2Finvites');
+    expect(signInPath('/wishlists/mine')).toBe('/auth/signin?callbackUrl=%2Fwishlists%2Fmine');
+  });
+
+  it('round-trips: the sign-in page reads back the same path, and continues to it', () => {
+    for (const path of AUTH_ONLY_PATHS) {
+      const url = new URL(signInPath(path), ORIGIN);
+      expect(url.pathname).toBe(SIGN_IN_PATH);
+      expect([...url.searchParams.keys()]).toEqual(['callbackUrl']);
+      expect(url.searchParams.get('callbackUrl')).toBe(path);
+      expect(safeCallbackPath(url.searchParams.get('callbackUrl'), ORIGIN, '/auth')).toBe(path);
+    }
+  });
+});
+
+describe('isAuthOnlyPath', () => {
+  it('matches each page that needs an account', () => {
+    for (const path of AUTH_ONLY_PATHS) expect(isAuthOnlyPath(path), path).toBe(true);
+  });
+
+  it('matches nothing else: not a public page, a longer path, or a prefix', () => {
+    for (const path of [
+      '/',
+      '/wishlists/abc123',
+      '/users/alice',
+      '/items/x',
+      '/wishlists/mine-too',
+      '/wishlists',
+      '/auth/signin',
+      '/welcome',
+      '',
+    ]) {
+      expect(isAuthOnlyPath(path), path).toBe(false);
+    }
   });
 });

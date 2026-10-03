@@ -1,14 +1,36 @@
 import { Suspense } from 'react';
+import { redirect } from 'next/navigation';
 import { connection } from 'next/server';
-import { getTurnstileKeys } from '@/lib/env';
+import { auth } from '@/lib/auth';
+import { getEnvVars, getTurnstileKeys } from '@/lib/env';
+import { safeCallbackPath } from '@/lib/utils/callbackUrl';
 import SignInForm from './SignInForm';
 
-export default async function SignIn() {
+interface SignInProps {
+  searchParams: Promise<{ callbackUrl?: string | string[] }>;
+}
+
+export default async function SignIn({ searchParams }: SignInProps) {
   // Rendered per request, so the widget is shown from the same reading of the
   // environment the server action checks its token against: never a widget
   // nothing checks, never a check with no widget to pass it.
   await connection();
   const turnstileSiteKey = getTurnstileKeys()?.siteKey;
+
+  // Already signed in (an invitee opening an older invite email, whose button
+  // came through here, or any link with sign-in in front): there's nothing to
+  // sign in to, so go straight on to where the link was headed. Only ever to a
+  // path on this site: `safeCallbackPath` gives `/` for anything else (an
+  // absolute URL counts only on NEXTAUTH_URL's origin, the one emails link to
+  // and Auth.js builds its callback URLs on), and for an auth page, which
+  // would loop. Signing in as someone else means signing out first. Without a
+  // session cookie this reads nothing from the database.
+  const session = await auth();
+  if (session?.user?.id) {
+    const { callbackUrl } = await searchParams;
+    const raw = Array.isArray(callbackUrl) ? callbackUrl[0] : callbackUrl;
+    redirect(safeCallbackPath(raw, new URL(getEnvVars().NEXTAUTH_URL).origin, '/auth'));
+  }
 
   return (
     <Suspense

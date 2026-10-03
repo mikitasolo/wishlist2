@@ -10,6 +10,7 @@ import Avatar from '@/components/Avatar';
 import Icon from '@/components/Icon';
 import { useToast } from '@/components/ToastProvider';
 import { useBusyIds } from '@/lib/hooks/useBusyIds';
+import { signInPath } from '@/lib/utils/callbackUrl';
 import { createMutationTracker } from '@/lib/utils/itemListMerge';
 
 interface Invite {
@@ -46,7 +47,7 @@ export default function InvitesPage() {
   const account = useRef(userId);
 
   useEffect(() => {
-    if (status === 'unauthenticated') router.push('/');
+    if (status === 'unauthenticated') router.replace(signInPath('/invites'));
   }, [status, router]);
 
   // Another account signed in (from another tab): `status` stays

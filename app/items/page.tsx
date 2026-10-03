@@ -12,6 +12,7 @@ import FilterDropdown, { type FilterOption } from '@/components/FilterDropdown';
 import MultiSelectDropdown from '@/components/MultiSelectDropdown';
 import Cover from '@/components/Cover';
 import { useToast } from '@/components/ToastProvider';
+import { signInPath } from '@/lib/utils/callbackUrl';
 import { formatPriceFromObject } from '@/lib/utils/currency';
 import { isSortType, sortItems, SORT_OPTIONS, type SortType } from '@/lib/utils/itemFilters';
 
@@ -73,7 +74,7 @@ export default function MyItemsPage() {
   const [sort, setSort] = useState<SortType>('date-desc');
 
   useEffect(() => {
-    if (status === 'unauthenticated') router.push('/');
+    if (status === 'unauthenticated') router.replace(signInPath('/items'));
   }, [status, router]);
 
   useEffect(() => {

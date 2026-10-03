@@ -8,6 +8,7 @@ import AppHeader from '@/components/AppHeader';
 import AuthButton from '@/components/AuthButton';
 import Icon from '@/components/Icon';
 import { useToast } from '@/components/ToastProvider';
+import { signInPath } from '@/lib/utils/callbackUrl';
 import {
   type NotificationView,
   notificationText,
@@ -37,7 +38,7 @@ export default function NotificationsPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (status === 'unauthenticated') router.push('/');
+    if (status === 'unauthenticated') router.replace(signInPath('/notifications'));
   }, [status, router]);
 
   useEffect(() => {

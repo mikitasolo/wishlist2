@@ -1,7 +1,7 @@
 import { test, expect } from './fixtures';
 
 // Signed-in smoke tests (session cookie from global-setup). If the seeded
-// session weren't accepted, the auth-gated pages would redirect home and these
+// session weren't accepted, the auth-gated pages would redirect to sign-in and these
 // would fail — so they double as a check that the session injection works.
 
 test('notifications page loads for a signed-in user (no redirect)', async ({ page }) => {
@@ -12,6 +12,22 @@ test('notifications page loads for a signed-in user (no redirect)', async ({ pag
 test('header shows the notification bell when signed in', async ({ page }) => {
   await page.goto('/notifications');
   await expect(page.getByRole('link', { name: /Notifications/i })).toBeVisible();
+});
+
+// regression: the sign-in page showed its email form to a visitor already
+// signed in, so an invitee following the invite email's link (which went
+// through sign-in) had to request a magic link to reach their invitations.
+test('regression: opening sign-in while signed in goes straight to its callbackUrl', async ({
+  page,
+}) => {
+  await page.goto('/auth/signin?callbackUrl=%2Finvites');
+  await expect(page).toHaveURL('/invites');
+  await expect(page.getByRole('heading', { name: 'Invitations', exact: true })).toBeVisible();
+});
+
+test('opening sign-in while signed in never follows an off-site callbackUrl', async ({ page }) => {
+  await page.goto(`/auth/signin?callbackUrl=${encodeURIComponent('https://evil.example/phish')}`);
+  await expect(page).toHaveURL('/');
 });
 
 test('my wishlists lists the seeded wishlist', async ({ page }) => {
