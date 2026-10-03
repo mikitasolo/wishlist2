@@ -24,7 +24,7 @@ vi.mock('@/components/ImageUpload', () => ({
 import AddItemModal from '@/components/AddItemModal';
 import ProposeItemModal from '@/components/ProposeItemModal';
 
-type Submit = (item: { name: string; price?: unknown; imageUrl?: string }) => Promise<void>;
+type Submit = (item: { name: string; price?: unknown; imageUrl?: string | null }) => Promise<void>;
 const currencies = { wishlistCurrency: 'PLN', userCurrency: 'USD' };
 
 // The modal as a page holds it: open until its onClose, which a test can see.
@@ -125,7 +125,8 @@ describe.each(modals)('$kind dialog — Keep adding', ({ kind, title, submit }) 
   // uploading when an item was saved landed in the cleared form and went onto
   // the next item.
   it('regression: a photo that finishes uploading after its item was saved stays off the next one', async () => {
-    const { user, onSubmit } = open();
+    const onSubmit = vi.fn<Submit>().mockResolvedValue(undefined);
+    const { user } = open(onSubmit);
     await user.click(keepAdding());
     await user.type(name(), 'Bike');
     // The upload starts here, with the onChange of this render.
