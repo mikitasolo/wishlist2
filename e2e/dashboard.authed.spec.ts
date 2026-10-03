@@ -131,17 +131,17 @@ test('Pin to top pins your list, and Unpin takes it off again', async ({ page })
   });
 
   try {
-    await card.getByRole('button', { name: 'Pin to top' }).click();
-    await expect(card.getByRole('button', { name: 'Unpin' })).toBeVisible();
-    await expect(card.getByText('Pinned')).toBeVisible();
+    await card.getByRole('button', { name: 'Pin to top', pressed: false }).click();
+    await expect(card.getByRole('button', { name: 'Pin to top', pressed: true })).toBeVisible();
+    // The pressed pin is the one sign it's pinned (WIS-302): no Pinned badge.
+    await expect(card.getByText('Pinned')).toHaveCount(0);
 
     // It's the server's: a fresh read still has it pinned.
     await page.reload();
-    await expect(card.getByRole('button', { name: 'Unpin' })).toBeVisible();
+    await expect(card.getByRole('button', { name: 'Pin to top', pressed: true })).toBeVisible();
 
-    await card.getByRole('button', { name: 'Unpin' }).click();
-    await expect(card.getByRole('button', { name: 'Pin to top' })).toBeVisible();
-    await expect(card.getByText('Pinned')).toHaveCount(0);
+    await card.getByRole('button', { name: 'Pin to top', pressed: true }).click();
+    await expect(card.getByRole('button', { name: 'Pin to top', pressed: false })).toBeVisible();
   } finally {
     // The seeded list is every spec's: never leave it pinned, whatever failed.
     const lists = await (await page.request.get('/api/wishlists')).json();
@@ -152,5 +152,5 @@ test('Pin to top pins your list, and Unpin takes it off again', async ({ page })
   // And on a phone, the row's pin.
   await page.setViewportSize({ width: 390, height: 844 });
   const row = own.getByRole('listitem').filter({ hasText: 'E2E Birthday List' });
-  await expect(row.getByRole('button', { name: 'Pin to top' })).toBeVisible();
+  await expect(row.getByRole('button', { name: 'Pin to top', pressed: false })).toBeVisible();
 });

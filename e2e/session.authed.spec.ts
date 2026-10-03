@@ -17,9 +17,13 @@ test('the old Invitations address opens Activity, query and all', async ({ page 
   await expect(page.getByRole('heading', { name: 'Activity', exact: true })).toBeVisible();
 });
 
-test('header shows the notification bell when signed in', async ({ page }) => {
-  await page.goto('/notifications');
-  await expect(page.getByRole('link', { name: /Notifications/i })).toBeVisible();
+// WIS-302: the bell duplicated Activity, which carries the unread count now
+// (`app-nav.authed.spec.ts`).
+test('the header has no notification bell when signed in', async ({ page }) => {
+  await page.goto('/booked');
+  await expect(page.getByRole('button', { name: /^Account menu/ })).toBeVisible();
+  await expect(page.getByRole('link', { name: /notification/i })).toHaveCount(0);
+  await expect(page.getByRole('banner').getByRole('link', { name: /^Activity/ })).toBeVisible();
 });
 
 // regression: the sign-in page showed its email form to a visitor already

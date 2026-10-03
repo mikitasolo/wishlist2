@@ -324,8 +324,10 @@ describe('WishlistList — Pin to top (WIS-252)', () => {
       />
     );
     const [birthday, booksRow, old] = within(screen.getByRole('list')).getAllByRole('listitem');
-    expect(within(birthday).getByRole('button', { name: 'Unpin' })).toBeInTheDocument();
-    const pin = within(booksRow).getByRole('button', { name: 'Pin to top' });
+    expect(
+      within(birthday).getByRole('button', { name: 'Pin to top', pressed: true })
+    ).toBeInTheDocument();
+    const pin = within(booksRow).getByRole('button', { name: 'Pin to top', pressed: false });
     expect(within(booksRow).getByRole('link')).not.toContainElement(pin);
     // An archived list isn't pinned to the top of anything.
     expect(within(old).queryByRole('button')).toBeNull();
@@ -343,7 +345,7 @@ describe('WishlistList — Pin to top (WIS-252)', () => {
         pins={{ pinning: lists[0]._id.toString(), onToggle: vi.fn() }}
       />
     );
-    for (const button of screen.getAllByRole('button', { name: 'Pin to top' })) {
+    for (const button of screen.getAllByRole('button', { name: 'Pin to top', pressed: false })) {
       expect(button).toBeDisabled();
     }
   });

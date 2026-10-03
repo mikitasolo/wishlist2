@@ -3,9 +3,9 @@
  * hold the right shape while the session loads (WIS-209, WIS-251).
  *
  * The session is read in the browser after the first paint (`useSession`), so
- * every page starts out not knowing who's there, and the signed-in header (New
- * list, the bell, the account menu, the nav links) is a different shape from
- * the signed-out one (Sign in). Whichever the loading header guessed, the other
+ * every page starts out not knowing who's there, and the signed-in header (the
+ * nav links, the account menu, the tab bar) is a different shape from the
+ * signed-out one (Sign in). Whichever the loading header guessed, the other
  * kind of visitor saw the row jump when it was replaced. The session cookie is
  * httpOnly, so the page can't look at it, and reading the session on the server
  * would make every page dynamic. Instead the browser remembers the answer

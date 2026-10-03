@@ -77,8 +77,8 @@ async function feedActors(userId: string, rows: FeedRow[]) {
 
 // GET /api/notifications - the current user's latest notifications + unread count.
 // `?actors=1` (Activity) also says who each row's actor is now (`feedActors`);
-// the header's bell, which reads this on every page and focus for its count,
-// leaves it off and skips those reads.
+// Activity's unread badge (`useUnreadNotifications`), which reads this on every
+// page and focus for its count, leaves it off and skips those reads.
 export async function GET(request: NextRequest) {
   try {
     const session = await auth();

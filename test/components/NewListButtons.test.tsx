@@ -32,8 +32,8 @@ vi.mock('next/link', () => ({
 }));
 // The header's other parts have their own fetches and tests.
 vi.mock('@/components/GlobalSearch', () => ({ default: () => null }));
-vi.mock('@/components/NotificationBell', () => ({ default: () => null }));
 vi.mock('@/components/AuthButton', () => ({ default: () => null }));
+vi.mock('@/lib/hooks/useUnreadNotifications', () => ({ useUnreadNotifications: () => 0 }));
 vi.mock('@/components/NeedsYou', () => ({ default: () => null }));
 vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }));
 // The create dialog has its own tests: here, only whether it's open.
@@ -86,24 +86,26 @@ afterEach(() => {
 
 const createDialog = () => screen.queryByRole('dialog', { name: 'Create new wishlist' });
 
-describe('the header’s New list', () => {
-  it('is named "New list", with the same tooltip, and opens the create dialog', async () => {
-    const user = userEvent.setup();
+// WIS-302: the header has no New list at any width, signed in or out: Home's
+// greeting row and My wishlists offer it in place.
+describe('the header', () => {
+  it.each([390, 640, 768, 1280])('has no New list at %ipx', (width) => {
+    atWidth(width);
     render(<AppHeader />);
-
-    const button = screen.getByRole('button', { name: 'New list' });
-    expect(button).toHaveAttribute('title', 'New list');
-    expect(screen.queryByRole('button', { name: 'New wishlist' })).toBeNull();
-
+    expect(within(screen.getByRole('banner')).queryByRole('button')).toBeNull();
+    expect(screen.queryByRole('button', { name: /New (list|wishlist)/ })).toBeNull();
     expect(createDialog()).toBeNull();
-    await user.click(button);
-    expect(createDialog()).toBeInTheDocument();
   });
 
-  it('is not offered to a signed-out visitor', () => {
+  it('has none for a signed-out visitor, nor while the session loads', () => {
     session.current = { data: null, status: 'unauthenticated' };
-    render(<AppHeader />);
+    const { unmount } = render(<AppHeader />);
     expect(screen.queryByRole('button', { name: 'New list' })).toBeNull();
+    unmount();
+
+    session.current = { data: null, status: 'loading' };
+    render(<AppHeader />);
+    expect(screen.getByRole('banner')).not.toHaveTextContent('New list');
   });
 });
 

@@ -203,7 +203,8 @@ export function usePendingInvites({ onAnswered }: PendingInvitesOptions = {}) {
         if (result.success) {
           dropInvite(invite._id);
           answered.current?.(invite, action === 'accept' ? 'accepted' : 'declined');
-          // Answering marked the invite's notification read: the bell re-counts.
+          // Answering marked the invite's notification read: Activity's badge
+          // re-counts.
           window.dispatchEvent(new Event('notifications-changed'));
           if (action === 'accept') {
             // An owner invite ends the reservations they held on the list, which

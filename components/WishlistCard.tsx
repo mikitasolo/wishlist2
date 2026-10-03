@@ -45,8 +45,11 @@ export interface PinControl {
   onToggle: () => void;
 }
 
-/** The pin button's label: what pressing it does. */
-export const pinLabel = (pinned: boolean) => (pinned ? 'Unpin' : 'Pin to top');
+/** The pin button's accessible name, the same pinned or not: `aria-pressed` says which. */
+export const PIN_LABEL = 'Pin to top';
+
+/** The pin button's tooltip: what pressing it does. */
+export const pinTooltip = (pinned: boolean) => (pinned ? 'Unpin' : PIN_LABEL);
 
 interface WishlistCardProps {
   wishlist: WishlistSummary;
@@ -112,16 +115,9 @@ export default function WishlistCard({
         >
           {badge.label}
         </Badge>
-        {wishlist.archived ? null : wishlist.featured ? (
-          // Beside the pin button when the card has one (`PinButton`).
-          <Badge
-            tone="glass"
-            icon="pin"
-            className={`absolute ${pin ? 'left-[3.25rem] top-4' : 'left-3 top-3'}`}
-          >
-            Pinned
-          </Badge>
-        ) : showRole && wishlist.userRole && !pin ? (
+        {/* The role, where the pin button isn't: that one says whether it's
+            pinned, so there's no Pinned badge (WIS-302). */}
+        {!wishlist.archived && showRole && wishlist.userRole && !pin ? (
           <Badge tone="glass" className="absolute left-3 top-3 capitalize">
             {wishlist.userRole}
           </Badge>
@@ -165,7 +161,7 @@ export default function WishlistCard({
 
   // The pin is a button, so it can't be inside the card's link: it sits over
   // the cover's top-left corner, where a role badge would be (the section is
-  // your own lists, so it would only say Owner), with Pinned beside it.
+  // your own lists, so it would only say Owner).
   return (
     <div className="relative">
       {card}
@@ -176,16 +172,19 @@ export default function WishlistCard({
 
 /**
  * Pin to top as a round frosted icon button, over a cover (a card's) or at the
- * end of a row (a phone's). Its name says what pressing it does: Pin to top,
- * or Unpin, with the pin filled in while it's pinned.
+ * end of a row (a phone's): the one sign that a list is pinned (WIS-302). A
+ * toggle button, so its name stays Pin to top and `aria-pressed` says whether
+ * it's pinned (a name that flipped to Unpin would read "Unpin, pressed"); the
+ * pin is filled in while it's pinned, and the tooltip says what pressing it
+ * does, Pin to top or Unpin.
  */
 export function PinButton({ pin, className = '' }: { pin: PinControl; className?: string }) {
-  const label = pinLabel(pin.pinned);
   return (
     <IconButton
       icon="pin"
-      label={label}
-      title={label}
+      label={PIN_LABEL}
+      title={pinTooltip(pin.pinned)}
+      aria-pressed={pin.pinned}
       variant="glass"
       shape="pill"
       onClick={pin.onToggle}

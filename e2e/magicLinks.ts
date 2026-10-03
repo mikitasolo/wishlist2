@@ -31,3 +31,10 @@ export function magicLinkPath(
  * browser that is already signed in as them when it opens a sign-up link.
  */
 export const FRIEND_SESSION_TOKEN = 'e2e-friend-session';
+
+/**
+ * A second session for the friend, for a spec that acts as them through the
+ * API (following the E2E user, so they have something unread). The sign-up
+ * spec ends `FRIEND_SESSION_TOKEN`, so this one is separate.
+ */
+export const FRIEND_API_SESSION_TOKEN = 'e2e-friend-api-session';

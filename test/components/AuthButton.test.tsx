@@ -57,7 +57,8 @@ afterEach(() => {
 // regression: a pending invite lit a red dot on the avatar, as well as the
 // bell's count, and the menu had an Invitations item: three signals that didn't
 // clear each other, the dot and the badge alike on a phone. Invitations live
-// in Activity now, and the bell is the one signal (D3, WIS-250).
+// in Activity now, and its unread badge is the one signal (D3, WIS-250,
+// WIS-302).
 describe('AuthButton — no invitation signal of its own', () => {
   it('regression: shows no dot on the avatar, and never reads the invitations', async () => {
     const { container } = render(<AuthButton />);

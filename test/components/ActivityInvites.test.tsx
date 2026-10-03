@@ -297,19 +297,20 @@ describe('Activity, pinned invites — answering an invite', () => {
   });
 
   // regression: answering marks the invite's notification read on the server,
-  // but the bell only re-counted on focus, so after a decline (which stays on
-  // this page) it kept counting the notification.
+  // but the header's bell (Activity's badge since WIS-302) only re-counted on
+  // focus, so after a decline (which stays on this page) it kept counting the
+  // notification.
   it.each([
     ['Decline', { status: 'declined' }],
     ['Accept', { status: 'accepted', wishlistSlug: 'birthday', wishlistId: 'w1' }],
-  ] as const)('regression: %s has the bell re-count its unread', async (name, data) => {
+  ] as const)('regression: %s has the unread badge re-count', async (name, data) => {
     mockFetch({ status: 200, body: { success: true, data } });
     await clickOnFirstCard(name);
 
     await waitFor(() => expect(notificationsChanged).toHaveBeenCalledTimes(1));
   });
 
-  it('leaves the bell alone when the answer failed', async () => {
+  it('leaves the unread badge alone when the answer failed', async () => {
     mockFetch({ status: 500, body: { success: false, error: 'Failed to update invite' } });
     await clickOnFirstCard('Decline');
 

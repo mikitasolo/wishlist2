@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, within, cleanup } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, within, cleanup, act } from '@testing-library/react';
 import type { ReactNode } from 'react';
 
 type User = { id: string; email: string; username?: string };
@@ -35,18 +35,30 @@ vi.mock('next/link', () => ({
 // The header's other parts have tests of their own; these are about its navigation.
 vi.mock('@/components/GlobalSearch', () => ({ default: () => null }));
 vi.mock('@/components/CreateWishlistModal', () => ({ default: () => null }));
-vi.mock('@/components/NotificationBell', () => ({ default: () => null }));
 
 import AppHeader from '@/components/AppHeader';
-import { TabBar } from '@/components/AppNav';
+import { HeaderNav, TabBar } from '@/components/AppNav';
 
 const me: User = { id: 'me', email: 'me@example.com', username: 'mikita' };
+
+// The unread count's reads (`useUnreadNotifications`): `unread` is what they answer.
+const fetchMock = vi.fn();
+let unread = 0;
 
 beforeEach(() => {
   cleanup();
   state.user = me;
   state.loading = false;
   state.pathname = '/';
+  unread = 0;
+  fetchMock.mockReset();
+  fetchMock.mockImplementation(async () => ({
+    json: async () => ({ success: true, data: [], unreadCount: unread }),
+  }));
+  vi.stubGlobal('fetch', fetchMock);
+});
+afterEach(() => {
+  vi.unstubAllGlobals();
 });
 
 const tabBar = () => document.querySelector<HTMLElement>('[data-tab-bar]');
@@ -100,10 +112,31 @@ describe('TabBar', () => {
     expect(screen.getByRole('link', { name: 'Me' })).toHaveAttribute('href', '/settings');
   });
 
-  // The bell is the one unread signal (D3): Activity carries no count of its own.
-  it('carries no count on Activity', () => {
-    render(<TabBar username="mikita" />);
-    expect(screen.getByRole('link', { name: 'Activity' })).toHaveTextContent(/^Activity$/);
+  // WIS-302: Activity carries the unread count, the one unread signal.
+  it('badges Activity’s icon with the unread count, and says it in the tab’s name', () => {
+    render(<TabBar username="mikita" unread={3} />);
+    const activity = screen.getByRole('link', { name: 'Activity, 3 unread' });
+    const badge = activity.querySelector('[data-badge]');
+    expect(badge).toHaveTextContent(/^3$/);
+    expect(badge).toHaveAttribute('aria-hidden', 'true');
+    // On the icon, in the same box: the label stays under it.
+    expect(badge?.parentElement?.querySelector('svg')).not.toBeNull();
+    // Only Activity has one.
+    expect(document.querySelectorAll('[data-badge]')).toHaveLength(1);
+  });
+
+  it('shows no badge on Activity while nothing is unread', () => {
+    render(<TabBar username="mikita" unread={0} />);
+    const activity = screen.getByRole('link', { name: 'Activity' });
+    expect(activity).not.toHaveAttribute('aria-label');
+    expect(activity).toHaveTextContent(/^Activity$/);
+    expect(document.querySelector('[data-badge]')).toBeNull();
+  });
+
+  it('caps the badge at 9+, while the name keeps the full count', () => {
+    render(<TabBar username="mikita" unread={12} />);
+    const activity = screen.getByRole('link', { name: 'Activity, 12 unread' });
+    expect(activity.querySelector('[data-badge]')).toHaveTextContent(/^9\+$/);
   });
 
   it('while the session loads, is a placeholder with no links, hidden from assistive tech', () => {
@@ -113,6 +146,28 @@ describe('TabBar', () => {
     expect(bar).toHaveAttribute('aria-hidden', 'true');
     expect(bar.querySelector('a')).toBeNull();
     expect(screen.queryByRole('navigation')).toBeNull();
+  });
+});
+
+describe('HeaderNav — Activity’s count', () => {
+  it('puts the unread count beside the Activity link, and says it in the link’s name', () => {
+    render(<HeaderNav username="mikita" unread={3} />);
+    const activity = screen.getByRole('link', { name: 'Activity, 3 unread' });
+    expect(activity.querySelector('[data-badge]')).toHaveTextContent(/^3$/);
+    expect(activity).toHaveTextContent(/^Activity3$/);
+    expect(document.querySelectorAll('[data-badge]')).toHaveLength(1);
+  });
+
+  it('shows no badge while nothing is unread', () => {
+    render(<HeaderNav username="mikita" />);
+    expect(screen.getByRole('link', { name: 'Activity' })).toHaveTextContent(/^Activity$/);
+    expect(document.querySelector('[data-badge]')).toBeNull();
+  });
+
+  it('caps the badge at 9+, while the name keeps the full count', () => {
+    render(<HeaderNav username="mikita" unread={30} />);
+    const activity = screen.getByRole('link', { name: 'Activity, 30 unread' });
+    expect(activity.querySelector('[data-badge]')).toHaveTextContent(/^9\+$/);
   });
 });
 
@@ -139,7 +194,7 @@ describe('AppHeader — navigation', () => {
     expect(screen.getByRole('banner')).not.toContainElement(tabBar());
   });
 
-  it('shows no tab bar and no links to a signed-out visitor, and no New list', () => {
+  it('shows no tab bar and no links to a signed-out visitor', () => {
     state.user = null;
     render(<AppHeader />);
     expect(tabBar()).toBeNull();
@@ -148,30 +203,108 @@ describe('AppHeader — navigation', () => {
     expect(screen.queryByRole('button', { name: 'New list' })).toBeNull();
   });
 
-  it('keeps New list in the header for someone signed in', () => {
+  // WIS-302: New list lives on Home and My wishlists, not in the header.
+  it('has no New list in the header for someone signed in', () => {
     render(<AppHeader />);
-    expect(screen.getByRole('button', { name: 'New list' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'New list' })).toBeNull();
   });
 
   // WIS-209: the signed-in row's shape is held while the session loads, so
   // nothing in it moves when the session lands. Placeholders are hidden from
   // assistive tech; CSS shows them only under the session hint.
-  it('while the session loads, holds the places of the links, New list and the tab bar', () => {
+  it('while the session loads, holds the places of the links and the tab bar, and nothing else', () => {
     state.user = null;
     state.loading = true;
     render(<AppHeader />);
 
     expect(tabBar()).toHaveAttribute('data-tab-bar', 'pending');
     expect(headerNav()).toHaveClass('hidden', 'sm:session-hint:flex');
-    const newList = screen.getByRole('banner').querySelector('[aria-hidden="true"] .skeleton');
-    expect(newList).toHaveTextContent('New list');
-    expect(screen.queryByRole('button', { name: 'New list' })).toBeNull();
+    // No New list and no bell to hold a place for (WIS-302): the account
+    // button's placeholder is AuthButton's own, not rendered here.
+    expect(screen.getByRole('banner').querySelector('.skeleton')).toBeNull();
   });
 
   it('keeps the navigation up while a known session is updated', () => {
     state.loading = true;
     render(<AppHeader />);
     expect(tabBar()).toHaveAttribute('data-tab-bar', 'shown');
-    expect(screen.getByRole('button', { name: 'New list' })).toBeInTheDocument();
+    expect(headerNav()).toHaveClass('flex');
+  });
+});
+
+// WIS-302: the bell duplicated Activity, so it's gone, and its count moved to
+// Activity's badge, read once for the tab bar and the header link alike.
+describe('AppHeader — Activity’s unread count', () => {
+  const activityLinks = () => screen.queryAllByRole('link', { name: /^Activity/ });
+
+  it('has no bell', async () => {
+    unread = 2;
+    render(<AppHeader />);
+    await screen.findAllByRole('link', { name: 'Activity, 2 unread' });
+    expect(screen.queryByRole('link', { name: /notification/i })).toBeNull();
+    expect(screen.queryByTitle('Notifications')).toBeNull();
+    // The banner's links: the logo and Home · Reserved · Activity, nothing else.
+    expect(
+      within(screen.getByRole('banner'))
+        .getAllByRole('link')
+        .map((a) => a.getAttribute('href'))
+    ).toEqual(['/', '/', '/booked', '/notifications']);
+  });
+
+  it('shows the count on both the tab and the header link, from one read', async () => {
+    unread = 3;
+    render(<AppHeader />);
+    const links = await screen.findAllByRole('link', { name: 'Activity, 3 unread' });
+    expect(links).toHaveLength(2);
+    expect(headerNav()).toContainElement(links[0]);
+    expect(tabBar()).toContainElement(links[1]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows no count at 0', async () => {
+    render(<AppHeader />);
+    await act(async () => {});
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(activityLinks().map((a) => a.textContent)).toEqual(['Activity', 'Activity']);
+    expect(document.querySelector('[data-badge]')).toBeNull();
+  });
+
+  it.each(['invites-changed', 'notifications-changed', 'focus'])(
+    'follows the count on %s, and the badge goes at 0',
+    async (event) => {
+      unread = 1;
+      render(<AppHeader />);
+      await screen.findAllByRole('link', { name: 'Activity, 1 unread' });
+
+      unread = 4;
+      await act(async () => {
+        window.dispatchEvent(new Event(event));
+      });
+      expect(screen.getAllByRole('link', { name: 'Activity, 4 unread' })).toHaveLength(2);
+
+      // Activity marked everything read.
+      unread = 0;
+      await act(async () => {
+        window.dispatchEvent(new Event(event));
+      });
+      expect(activityLinks().map((a) => a.getAttribute('aria-label'))).toEqual([null, null]);
+      expect(document.querySelector('[data-badge]')).toBeNull();
+    }
+  );
+
+  it('reads nothing and shows no count to a signed-out visitor', async () => {
+    state.user = null;
+    render(<AppHeader />);
+    await act(async () => {});
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(activityLinks()).toEqual([]);
+  });
+
+  it('shows no count on the placeholders while the session loads', () => {
+    state.user = null;
+    state.loading = true;
+    render(<AppHeader />);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(document.querySelector('[data-badge]')).toBeNull();
   });
 });

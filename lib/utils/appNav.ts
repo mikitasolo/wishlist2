@@ -73,3 +73,26 @@ export function activeDestination(
   if (decoded.toLowerCase() === me.toLowerCase()) return 'me';
   return null;
 }
+
+/**
+ * The count a destination's badge shows: Activity's unread notifications
+ * (WIS-302), and 0, no badge, for the others and while nothing is unread.
+ */
+export function navBadgeCount(id: NavDestinationId, unread: number): number {
+  return id === 'activity' && unread > 0 ? unread : 0;
+}
+
+/** A badge's count as it's drawn: up to 9, then "9+". */
+export function badgeText(count: number): string {
+  return count > 9 ? '9+' : String(count);
+}
+
+/**
+ * A destination's accessible name, when it isn't just its label: one with a
+ * badge says what it counts, in full ("Activity, 12 unread" where the badge
+ * shows "9+"). The badge itself is hidden from assistive tech.
+ */
+export function navAccessibleName(destination: NavDestination, unread: number): string | undefined {
+  const count = navBadgeCount(destination.id, unread);
+  return count > 0 ? `${destination.label}, ${count} unread` : undefined;
+}

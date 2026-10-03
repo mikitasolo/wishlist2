@@ -10,8 +10,8 @@ test('regression: a new list tells its owner it is empty, Add your first item ad
   page,
 }) => {
   await page.goto('/');
-  // The header's New list (the dashboard has one of its own beside "Your wishlists").
-  await page.getByRole('banner').getByRole('button', { name: 'New list' }).click();
+  // Home's New list, in its greeting row (the header has none since WIS-302).
+  await page.locator('main header').getByRole('button', { name: 'New list' }).click();
   const create = page.getByRole('dialog', { name: 'Create new wishlist' });
   await create.getByLabel('Wishlist name').fill('E2E New List');
   await create.getByRole('button', { name: 'Create wishlist' }).click();

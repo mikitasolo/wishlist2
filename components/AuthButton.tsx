@@ -22,7 +22,7 @@ const ACCOUNT_TRIGGER_BOX = 'items-center gap-1.5 rounded-full p-1 sm:pr-2';
  * avatar opens your profile (the menu's header and first item), Settings, the
  * theme and Sign out. Pages you go to are in the navigation (`AppNav`), not
  * here. It carries no signal of its own: pending invitations live in Activity,
- * and the bell's unread count is the one thing in the header that says
+ * and Activity's unread badge is the one thing in the navigation that says
  * something new is waiting.
  */
 export default function AuthButton() {
