@@ -8,8 +8,15 @@ import {
   compareMostWanted,
   savedWishlistSort,
   isSortType,
+  statusFilterOptions,
+  defaultStatusFilters,
+  toggleStatusFilter,
+  isEveryStatusSelected,
+  forgetSavedStatusFilters,
   SORT_OPTIONS,
   WISHLIST_SORT_STORAGE_KEY,
+  type FilterOption,
+  type FilterRole,
   type SortType,
   type SortableItem,
 } from '@/lib/utils/itemFilters';
@@ -65,6 +72,96 @@ describe('filterItemsMulti', () => {
 
   it('proposedByMe only matches the current user’s proposals', () => {
     expect(filterItemsMulti(items, ['proposedByMe'], ME).map((i) => i.name)).toEqual(['myprop']);
+  });
+});
+
+const ROLES: FilterRole[] = ['owner', 'member', 'visitor'];
+
+describe('statusFilterOptions / defaultStatusFilters', () => {
+  it('never offers an owner a booking filter, by default or otherwise', () => {
+    for (const filters of [statusFilterOptions('owner'), defaultStatusFilters('owner')]) {
+      expect(filters).not.toContain('bookedByMe');
+      expect(filters).not.toContain('bookedByOthers');
+    }
+  });
+
+  it.each(ROLES)("starts a %s on some of the role's own options, short of All", (role) => {
+    const defaults = defaultStatusFilters(role);
+    expect(defaults.length).toBeGreaterThan(0);
+    expect(defaults).not.toContain('all');
+    for (const f of defaults) expect(statusFilterOptions(role)).toContain(f);
+  });
+});
+
+describe('isEveryStatusSelected', () => {
+  const options = statusFilterOptions('owner');
+
+  it('is true for All, for every option ticked, and for no selection (which filters nothing)', () => {
+    expect(isEveryStatusSelected(['all'], options)).toBe(true);
+    expect(isEveryStatusSelected(['draft', 'proposed', 'available', 'completed'], options)).toBe(
+      true
+    );
+    expect(isEveryStatusSelected([], options)).toBe(true);
+  });
+
+  it('is false for anything narrower', () => {
+    expect(isEveryStatusSelected(defaultStatusFilters('owner'), options)).toBe(false);
+    expect(isEveryStatusSelected(['completed'], options)).toBe(false);
+  });
+});
+
+describe('toggleStatusFilter', () => {
+  const options = statusFilterOptions('member');
+  const defaults = defaultStatusFilters('member');
+  const toggle = (selected: FilterOption[], option: FilterOption) =>
+    toggleStatusFilter(selected, option, options, defaults);
+
+  // regression: unticking All left an empty selection, labelled "None
+  // selected", which filterItemsMulti reads as no filter and shows every item.
+  it('regression: goes back to the defaults when All is unticked, never to nothing', () => {
+    expect(toggle([...options], 'all')).toEqual(defaults);
+    expect(toggle(['all'], 'all')).toEqual(defaults);
+  });
+
+  it('regression: goes back to the defaults when the last option ticked is unticked', () => {
+    expect(toggle(['bookedByOthers'], 'bookedByOthers')).toEqual(defaults);
+  });
+
+  it('selects every option when All is ticked', () => {
+    expect(toggle(['completed'], 'all')).toEqual(options);
+  });
+
+  it('selects All once every other option is ticked', () => {
+    expect(
+      toggle(['available', 'bookedByMe', 'bookedByOthers', 'proposedByMe'], 'completed')
+    ).toEqual(options);
+  });
+
+  it('ticks and unticks one option, dropping All', () => {
+    expect(toggle(['available'], 'completed')).toEqual(['available', 'completed']);
+    expect(toggle([...options], 'bookedByOthers')).toEqual([
+      'available',
+      'bookedByMe',
+      'proposedByMe',
+      'completed',
+    ]);
+  });
+});
+
+describe('forgetSavedStatusFilters', () => {
+  // regression: the wishlist page saved the status filter under one key per
+  // role, so one picked on a list (a stat card's click included) opened every
+  // other list the same way. Deleting the keys keeps an old value from coming back.
+  it('regression: deletes every saved status filter, and leaves the sort alone', () => {
+    const entries = new Map<string, string>([
+      ['wishlist-filters-owner', '["completed"]'],
+      ['wishlist-filters-member', '["bookedByOthers"]'],
+      ['wishlist-filters-nonmember', '["completed"]'],
+      ['items-status-filters', '["draft"]'],
+      [WISHLIST_SORT_STORAGE_KEY, 'price-asc'],
+    ]);
+    forgetSavedStatusFilters({ removeItem: (key) => void entries.delete(key) });
+    expect([...entries.keys()]).toEqual([WISHLIST_SORT_STORAGE_KEY]);
   });
 });
 

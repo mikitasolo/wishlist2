@@ -62,6 +62,93 @@ export function filterItemsMulti(
   });
 }
 
+/** Who is looking at a list, as far as its status filter goes. */
+export type FilterRole = 'owner' | 'member' | 'visitor';
+
+/**
+ * The status filter's options for a role, in the order the stat cards above
+ * the list render, so the dropdown and the cards line up one-to-one. An
+ * owner's never mention booking: they don't see it, so a booked item is
+ * "available" to them.
+ */
+export function statusFilterOptions(role: FilterRole): FilterOption[] {
+  switch (role) {
+    case 'owner':
+      return ['all', 'draft', 'proposed', 'available', 'completed'];
+    case 'member':
+      return ['all', 'available', 'bookedByMe', 'bookedByOthers', 'proposedByMe', 'completed'];
+    case 'visitor':
+      return ['all', 'available', 'completed'];
+  }
+}
+
+/** What the status filter shows on a list the viewer has just opened. */
+export function defaultStatusFilters(role: FilterRole): FilterOption[] {
+  switch (role) {
+    case 'owner':
+      return ['draft', 'available', 'proposed'];
+    case 'member':
+      return ['available', 'bookedByMe', 'proposedByMe'];
+    case 'visitor':
+      return ['available'];
+  }
+}
+
+/**
+ * The status filter's selection once `option` is ticked or unticked.
+ * Ticking All, or every other option, selects everything. Unticking All, or
+ * the last option ticked, goes back to `defaults` rather than to an empty
+ * selection: `filterItemsMulti` shows every item for one, so a filter that
+ * said "None selected" would show them all.
+ */
+export function toggleStatusFilter(
+  selected: FilterOption[],
+  option: FilterOption,
+  options: FilterOption[],
+  defaults: FilterOption[]
+): FilterOption[] {
+  const others = options.filter((o) => o !== 'all');
+  if (option === 'all') {
+    return isEveryStatusSelected(selected, options) ? [...defaults] : [...options];
+  }
+  const next = selected.includes(option)
+    ? selected.filter((f) => f !== option && f !== 'all')
+    : [...selected.filter((f) => f !== 'all'), option];
+  if (others.every((o) => next.includes(o))) return [...options];
+  return next.length > 0 ? next : [...defaults];
+}
+
+/**
+ * Whether a selection shows every item: All, every other option, or nothing
+ * at all (which `filterItemsMulti` reads as no filter).
+ */
+export function isEveryStatusSelected(selected: FilterOption[], options: FilterOption[]): boolean {
+  return (
+    selected.length === 0 ||
+    selected.includes('all') ||
+    options.filter((o) => o !== 'all').every((o) => selected.includes(o))
+  );
+}
+
+/**
+ * Where the status filter used to be saved: one key per role on the wishlist
+ * page, which carried a filter picked on one list (a stat card's click
+ * included) to every other list, and one on the items page. The filter isn't
+ * saved any more, so a page that has one deletes these when it opens, and a
+ * value left in them can't come back.
+ */
+export const OLD_STATUS_FILTER_STORAGE_KEYS = [
+  'wishlist-filters-owner',
+  'wishlist-filters-member',
+  'wishlist-filters-nonmember',
+  'items-status-filters',
+] as const;
+
+/** Deletes every status filter an earlier version of the app saved. */
+export function forgetSavedStatusFilters(storage: Pick<Storage, 'removeItem'>): void {
+  for (const key of OLD_STATUS_FILTER_STORAGE_KEYS) storage.removeItem(key);
+}
+
 /**
  * Filters items to those whose name contains the query (case-insensitive
  * substring match). An empty or whitespace-only query returns all items.
