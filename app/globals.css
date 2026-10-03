@@ -115,83 +115,101 @@
 /*  Base                                                               */
 /* ------------------------------------------------------------------ */
 
-* {
-  border-color: var(--border);
+/* Base rules sit in `@layer base`, under Tailwind's utilities: CSS outside
+   any layer beats every layered rule, whatever its specificity, so these used
+   to override the utilities written on top of them (every `border-*` colour,
+   `bg-*` / `text-*` on fields, `cursor-*` on buttons, `rounded-*` under focus).
+   A rule here is a default, and a utility on the element always wins. */
+@layer base {
+  /* The pseudo-elements too: preflight resets their borders to currentColor. */
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--border);
+  }
+
+  /* The canvas behind the body — what iOS shows in the overscroll/rubber-band
+     area at the top of the page. Matched to the header's *resting* color so
+     that area doesn't flash the page background (black in dark mode). The
+     header is `.glass` (72% surface over the page), so we recreate that same
+     blend here rather than using pure surface. */
+  html {
+    background-color: color-mix(in srgb, var(--surface) 72%, var(--background));
+  }
+
+  body {
+    color: var(--foreground);
+    background-color: var(--background);
+    background-image: var(--bg-tint);
+    background-attachment: fixed;
+    min-height: 100vh;
+    font-family: var(--font-sans);
+    letter-spacing: -0.011em;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Tighter tracking on headings, Apple-style */
+  h1,
+  h2,
+  h3 {
+    letter-spacing: -0.025em;
+  }
+
+  /* Theme-aware form controls */
+  input,
+  textarea,
+  select {
+    background-color: var(--surface);
+    color: var(--foreground);
+  }
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--muted-foreground);
+    opacity: 1;
+  }
+
+  /* Interactive controls get the pointer cursor (buttons don't by default) */
+  button:not(:disabled),
+  select:not(:disabled),
+  [role='button']:not([aria-disabled='true']),
+  [role='menuitem'],
+  [role='switch'],
+  summary,
+  label[for] {
+    cursor: pointer;
+  }
+
+  /* Every control shows keyboard focus as an outline, which follows the
+     control's own radius. A dialog panel isn't a control: only script
+     focuses it (useFocusTrap, e.g. while its buttons are disabled), so it
+     gets no ring, not even the browser's own. A text field draws its focus
+     with `field-focus` instead (below), and a `Menu` row marks the active item
+     with its background alone, as a `Select` option does; `outline-hidden` on
+     them turns this one off. (Not `outline-none`: `outline-hidden` keeps a
+     transparent outline that forced-colors mode still draws, where borders
+     and box-shadows give way to the system colours.) */
+  *:focus-visible:not(:where([role='dialog'], [role='alertdialog'])) {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+  :is([role='dialog'], [role='alertdialog']):focus-visible {
+    outline: none;
+  }
 }
 
-/* The canvas behind the body — what iOS shows in the overscroll/rubber-band
-   area at the top of the page. Matched to the header's *resting* color so that
-   area doesn't flash the page background (black in dark mode). The header is
-   `.glass` (72% surface over the page), so we recreate that same blend here
-   rather than using pure surface. */
-html {
-  background-color: color-mix(in srgb, var(--surface) 72%, var(--background));
-}
-
-body {
-  color: var(--foreground);
-  background-color: var(--background);
-  background-image: var(--bg-tint);
-  background-attachment: fixed;
-  min-height: 100vh;
-  font-family: var(--font-sans);
-  letter-spacing: -0.011em;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-/* Tighter tracking on headings, Apple-style */
-h1,
-h2,
-h3 {
-  letter-spacing: -0.025em;
-}
-
-/* Theme-aware form controls */
-input,
-textarea,
-select {
-  background-color: var(--surface);
-  color: var(--foreground);
-}
-input::placeholder,
-textarea::placeholder {
-  color: var(--muted-foreground);
-  opacity: 1;
-}
-
-/* Interactive controls get the pointer cursor (buttons don't by default) */
-button:not(:disabled),
-select:not(:disabled),
-[role='button']:not([aria-disabled='true']),
-[role='menuitem'],
-[role='switch'],
-summary,
-label[for] {
-  cursor: pointer;
-}
-
-/* Consistent, accessible focus rings for interactive controls. A dialog panel
-   isn't one: only script focuses it (useFocusTrap, e.g. while its buttons are
-   disabled), so it gets no ring, not even the browser's own. :where() keeps
-   the specificity, so the form-field opt-out below still wins. */
-*:focus-visible:not(:where([role='dialog'], [role='alertdialog'])) {
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
-  border-radius: 6px;
-}
-:is([role='dialog'], [role='alertdialog']):focus-visible {
-  outline: none;
-}
-
-/* Form fields opt out of the accent focus ring (no blue border on focus) */
-input:focus,
-input:focus-visible,
-textarea:focus,
-textarea:focus-visible,
-select:focus,
-select:focus-visible {
-  outline: none;
+/* The focus style of a text field (and of a field-like trigger, such as
+   Select's), with `outline-hidden` beside it: its border takes the ring
+   colour, with a soft 2px halo. Put it on
+   the element that draws the field's border: the field itself, or the wrapper
+   around a borderless input (a prefix, an icon, a clear button), which shows
+   it while the input inside has focus, but not while its clear button does. */
+@utility field-focus {
+  &:is(:focus-visible, :has(:is(input, textarea, select):focus-visible)) {
+    @apply border-ring ring-2 ring-ring/20;
+  }
 }
 
 /* Frosted "material" surface (nav, floating chrome) */

@@ -133,7 +133,7 @@ export default function InviteMemberForm({ onInvite, isInviting, ref }: InviteMe
       >
         {/* Field + suggestions */}
         <div ref={fieldRef} className="relative flex-1">
-          <div className="flex h-11 items-center gap-2 rounded-xl border border-border-strong bg-surface px-3.5">
+          <div className="flex h-11 items-center gap-2 rounded-xl border border-border-strong bg-surface px-3.5 field-focus">
             <Icon name="search" size={16} className="flex-shrink-0 text-muted-foreground" />
             <input
               ref={inputRef}
@@ -146,7 +146,7 @@ export default function InviteMemberForm({ onInvite, isInviting, ref }: InviteMe
               onFocus={() => setShowSuggestions(true)}
               placeholder="Search by username"
               required
-              className="h-full min-w-0 flex-1 border-0 bg-transparent text-[15px] outline-none"
+              className="h-full min-w-0 flex-1 border-0 bg-transparent text-[15px] outline-hidden"
               disabled={isInviting}
               autoComplete="off"
               autoCapitalize="none"
