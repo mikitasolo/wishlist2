@@ -12,6 +12,7 @@ import { useToast } from '@/components/ToastProvider';
 import { useBusyIds } from '@/lib/hooks/useBusyIds';
 import { signInPath } from '@/lib/utils/callbackUrl';
 import { createMutationTracker } from '@/lib/utils/itemListMerge';
+import { acceptedInviteToast } from '@/lib/utils/confirmationCopy';
 
 interface Invite {
   _id: string;
@@ -152,7 +153,17 @@ export default function InvitesPage() {
           // Answering marked the invite's notification read: the bell re-counts.
           window.dispatchEvent(new Event('notifications-changed'));
           if (action === 'accept') {
-            showToast(`Joined “${invite.wishlistName}”`, 'success');
+            // An owner invite ends the reservations they held on the list, which
+            // go from their Reserved page. They're the gifter, so the count is
+            // theirs to see.
+            showToast(
+              acceptedInviteToast(
+                invite.role,
+                invite.wishlistName,
+                result.data?.cancelledReservations
+              ),
+              'success'
+            );
             router.push(`/wishlists/${result.data.wishlistSlug ?? result.data.wishlistId}`);
           } else {
             showToast('Invitation declined', 'info');

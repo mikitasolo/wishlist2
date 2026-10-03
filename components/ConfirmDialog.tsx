@@ -22,6 +22,12 @@ interface ConfirmDialogProps {
   pendingText?: string;
   cancelText?: string;
   type?: 'danger' | 'warning' | 'info';
+  /**
+   * The icon in the coloured chip, when the type's own doesn't fit the action:
+   * a danger dialog shows a trash can, which is wrong for leaving (`logout`) or
+   * removing someone (`user-minus`), where nothing is deleted.
+   */
+  icon?: IconName;
 }
 
 export default function ConfirmDialog({
@@ -34,6 +40,7 @@ export default function ConfirmDialog({
   pendingText = 'Please wait...',
   cancelText = 'Cancel',
   type = 'warning',
+  icon: iconOverride,
 }: ConfirmDialogProps) {
   // The ref blocks a second click synchronously, before the disabled state renders.
   const [isPending, setIsPending] = useState(false);
@@ -116,7 +123,8 @@ export default function ConfirmDialog({
       button: 'bg-primary-600 hover:bg-primary-700 active:bg-primary-800',
     },
   };
-  const { icon, chip, button } = accent[type];
+  const { chip, button } = accent[type];
+  const icon = iconOverride ?? accent[type].icon;
 
   return (
     <div
@@ -135,12 +143,17 @@ export default function ConfirmDialog({
       >
         <div className="flex gap-4">
           <span
+            data-icon={icon}
             className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl ${chip}`}
           >
             <Icon name={icon} size={22} />
           </span>
           <div className="min-w-0 flex-1">
-            <h2 id={titleId} className="text-lg font-semibold tracking-tight text-foreground">
+            {/* A title may carry a list's name, which can be one long word. */}
+            <h2
+              id={titleId}
+              className="break-words text-lg font-semibold tracking-tight text-foreground"
+            >
               {title}
             </h2>
             <p id={messageId} className="mt-1.5 text-sm text-muted-foreground">

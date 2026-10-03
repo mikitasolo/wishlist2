@@ -244,7 +244,7 @@ describe('the wishlist page after an owner is demoted or removed', () => {
     expect(
       await screen.findByRole('alertdialog', { name: "You're the only owner" })
     ).toBeInTheDocument();
-    expect(screen.queryByRole('alertdialog', { name: 'Leave Wishlist' })).toBeNull();
+    expect(screen.queryByRole('alertdialog', { name: 'Leave “Birthday”?' })).toBeNull();
   });
 
   // regression: Remove on an owner row had the same gap as Make member.
