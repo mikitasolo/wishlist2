@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import ImageUpload from './ImageUpload';
 import Toggle from './Toggle';
 import {
@@ -95,7 +95,8 @@ export default function ItemForm({
   const [formData, setFormData] = useState<ItemFormData>(initialData || blankFormData);
   const [isSubmitting, setIsSubmitting] = useState(false);
   // Whether to say what's wrong with the price: once the field has been left
-  // (or a save tried) with an amount that can't be read, not while it's typed.
+  // (or a save tried) with an amount that can't be read, not while it's typed,
+  // and until it's left with one that can.
   const [showPriceError, setShowPriceError] = useState(false);
   const priceInputRef = useRef<HTMLInputElement>(null);
   const locale = useViewerLocale();
@@ -151,10 +152,17 @@ export default function ItemForm({
   // An amount that can't be read is refused, not saved as "no price": the
   // browser won't submit the form while the field says why, as it does for a
   // missing name, and handleSubmit checks again.
-  const priceReadable = parsePriceInput(formData.price).ok;
-  const priceError = priceReadable
-    ? null
-    : `Enter a price like ${formatPriceInput(34900, formData.currency || 'USD', locale)}`;
+  const priceCurrency = formData.currency || 'USD';
+  const priceHints = useMemo(
+    () => ({
+      symbol: currencySymbol(priceCurrency, locale),
+      placeholder: formatPriceInput(9999, priceCurrency, locale),
+      example: formatPriceInput(34900, priceCurrency, locale),
+    }),
+    [priceCurrency, locale]
+  );
+  const priceReadable = parsePriceInput(formData.price, locale).ok;
+  const priceError = priceReadable ? null : `Enter a price like ${priceHints.example}`;
   useEffect(() => {
     priceInputRef.current?.setCustomValidity(priceError ?? '');
   }, [priceError]);
@@ -162,11 +170,9 @@ export default function ItemForm({
   // Leaving the field puts the amount in the same format as the cards ("349"
   // becomes "349.00", or "349,00" where that's how prices are written).
   const handlePriceBlur = () => {
-    const amount = parsePriceInput(formData.price);
-    if (!amount.ok) {
-      setShowPriceError(true);
-      return;
-    }
+    const amount = parsePriceInput(formData.price, locale);
+    setShowPriceError(!amount.ok);
+    if (!amount.ok) return;
     setFormData((f) => ({
       ...f,
       price:
@@ -199,7 +205,7 @@ export default function ItemForm({
 
     try {
       // Trimmed, the price in cents and its currency lowercase (to match rates).
-      const content = itemFormContent(formData);
+      const content = itemFormContent(formData, locale);
 
       // Status is only chosen in the form when creating or reviewing. When
       // editing an existing item, status is managed separately (publish / move
@@ -225,7 +231,7 @@ export default function ItemForm({
           mostWanted: mode === 'propose' ? undefined : content.mostWanted,
           status,
         },
-        itemChanges(formData, initialDataRef.current)
+        itemChanges(formData, initialDataRef.current, locale)
       );
 
       // Reset form only if not using external state
@@ -364,7 +370,7 @@ export default function ItemForm({
               format whatever the cards use, and refuses the other separator. */}
           <div className="flex flex-1 min-w-0 items-center gap-1.5 px-4 border border-border-strong rounded-lg bg-surface">
             <span className="flex-shrink-0 text-muted-foreground" aria-hidden="true">
-              {currencySymbol(formData.currency || 'USD', locale)}
+              {priceHints.symbol}
             </span>
             <input
               ref={priceInputRef}
@@ -372,10 +378,13 @@ export default function ItemForm({
               inputMode="decimal"
               id="price"
               value={formData.price}
-              onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+              onChange={(e) => {
+                const price = e.target.value;
+                setFormData((f) => ({ ...f, price }));
+              }}
               onBlur={handlePriceBlur}
               className="min-w-0 flex-1 border-0 bg-transparent py-2 outline-none"
-              placeholder={formatPriceInput(9999, formData.currency || 'USD', locale)}
+              placeholder={priceHints.placeholder}
               disabled={submitting}
               autoComplete="off"
               aria-invalid={showPriceError && priceError ? true : undefined}

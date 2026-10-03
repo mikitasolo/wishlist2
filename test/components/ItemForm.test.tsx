@@ -342,10 +342,38 @@ describe('ItemForm — price field', () => {
     typePrice('12.50');
     expect(priceInput()).not.toHaveAttribute('aria-invalid');
     expect(priceInput().validity.valid).toBe(true);
+    // Once fixed, typing isn't nagged again until the field is left.
+    fireEvent.change(priceInput(), { target: { value: '12.5.' } });
+    expect(screen.queryByText(/enter a price like/i)).toBeNull();
+    fireEvent.change(priceInput(), { target: { value: '12.50' } });
+
     submit();
     await waitFor(() =>
       expect(onSubmit).toHaveBeenCalledWith(
         expect.objectContaining({ price: { value: 1250, currency: 'usd' } }),
+        expect.anything()
+      )
+    );
+  });
+
+  // "1.999" is three decimals where "." is the decimal separator, not 1999.00:
+  // read that way, a typo would save 1000 times the price meant.
+  it('reads one separator before three digits as the viewer’s locale writes numbers', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(<ItemForm onSubmit={onSubmit} onCancel={vi.fn()} mode="create" />);
+    typePrice('1.999');
+    expect(priceInput()).toHaveAttribute('aria-invalid', 'true');
+
+    cleanup();
+    inLocale('de-DE');
+    render(<ItemForm onSubmit={onSubmit} onCancel={vi.fn()} mode="create" />);
+    fireEvent.change(screen.getByLabelText(/item name/i), { target: { value: 'Gift' } });
+    typePrice('1.999');
+    expect(priceInput()).toHaveValue('1.999,00');
+    submit();
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({ price: { value: 199900, currency: 'usd' } }),
         expect.anything()
       )
     );

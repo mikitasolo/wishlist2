@@ -31,12 +31,17 @@ export interface Price {
  */
 export const PRICE_FALLBACK_LOCALE = 'en-US';
 
-const formatters = new Map<string, Intl.NumberFormat>();
+/** A currency code as `Intl` takes it: uppercase, USD when there's none. */
+function currencyCode(currency: string | null | undefined): string {
+  return (currency || 'USD').trim().toUpperCase();
+}
+
+const formatters = new Map<string, Intl.NumberFormat | null>();
 
 /**
- * A cached `Intl.NumberFormat`, or `null` when `currency` isn't a well-formed
- * code (the API takes any non-empty one). A locale the runtime can't use falls
- * back to `PRICE_FALLBACK_LOCALE`.
+ * A cached `Intl.NumberFormat` with Latin digits, or `null` when `currency`
+ * isn't a well-formed code (the API takes any non-empty one). A locale the
+ * runtime can't use falls back to `PRICE_FALLBACK_LOCALE`.
  */
 function numberFormat(
   locale: string,
@@ -44,45 +49,44 @@ function numberFormat(
   fractionDigits: { min?: number; max?: number } = {}
 ): Intl.NumberFormat | null {
   const key = `${locale}|${currency}|${fractionDigits.min}|${fractionDigits.max}`;
-  const cached = formatters.get(key);
-  if (cached) return cached;
+  if (formatters.has(key)) return formatters.get(key)!;
   const options: Intl.NumberFormatOptions = {
     numberingSystem: 'latn',
     ...(currency ? { style: 'currency', currency } : {}),
     minimumFractionDigits: fractionDigits.min,
     maximumFractionDigits: fractionDigits.max,
   };
-  let format: Intl.NumberFormat;
+  let format: Intl.NumberFormat | null;
   try {
     format = new Intl.NumberFormat(locale, options);
   } catch {
     try {
       format = new Intl.NumberFormat(PRICE_FALLBACK_LOCALE, options);
     } catch {
-      return null; // a malformed currency code
+      format = null; // a malformed currency code
     }
   }
   formatters.set(key, format);
   return format;
 }
 
-/**
- * How many decimals an exact price shows: its currency's own (two for EUR, none
- * for JPY), but two whenever the amount has cents the currency's own would hide,
- * so "exact" never rounds.
- */
-function exactDigits(price: Price, locale: string): { min?: number; max?: number } {
-  const own = numberFormat(locale, price.currency.toUpperCase())?.resolvedOptions();
-  if (own && (own.maximumFractionDigits ?? 2) < 2 && price.value % 100 !== 0) {
-    return { min: 2, max: 2 };
-  }
-  return {};
+/** A plain number format, which every locale (or its fallback) has. */
+function decimalFormat(locale: string, digits: number): Intl.NumberFormat {
+  return numberFormat(locale, null, { min: digits, max: digits })!;
 }
 
-/** "EUR 349.00": what a code no `Intl` currency format accepts gets. */
-function plainPrice(price: Price, locale: string): string {
-  const amount = numberFormat(locale, null, { min: 2, max: 2 })!.format(price.value / 100);
-  return `${price.currency.toUpperCase()} ${amount}`;
+/**
+ * How many decimals an exact price shows: its currency's own (two for EUR, none
+ * for JPY), but two whenever the amount has cents the currency's own would
+ * hide, so "exact" never rounds, and never more than two (KWD has three), since
+ * a price has no more than that.
+ */
+function exactDigits(price: Price, locale: string): { min?: number; max?: number } {
+  const own = numberFormat(locale, currencyCode(price.currency))?.resolvedOptions()
+    .maximumFractionDigits;
+  if (own === undefined) return {};
+  if (own > 2 || (own < 2 && price.value % 100 !== 0)) return { min: 2, max: 2 };
+  return {};
 }
 
 /**
@@ -91,22 +95,27 @@ function plainPrice(price: Price, locale: string): string {
  * which). A malformed currency code is shown as it is ("EURO 5.00").
  */
 export function formatPrice(price: Price, locale: string = PRICE_FALLBACK_LOCALE): string {
-  const format = numberFormat(locale, price.currency.toUpperCase(), exactDigits(price, locale));
-  return format ? format.format(price.value / 100) : plainPrice(price, locale);
+  const code = currencyCode(price.currency);
+  const format = numberFormat(locale, code, exactDigits(price, locale));
+  if (format) return format.format(price.value / 100);
+  return `${code} ${decimalFormat(locale, 2).format(price.value / 100)}`;
 }
 
 /**
- * A converted price, which is only as good as the day's rate: "≈ €247", to the
- * whole unit (below one unit, exactly: "≈ €0.45"). Show the original price
- * next to it (see `priceToShow`).
+ * A converted price, which is only as good as the day's rate: "≈ €247". From
+ * ten units up it's rounded to the unit; below that, where a unit is a big
+ * share of the price, to the cent ("≈ €4.99"). A zero converts exactly, so it
+ * has no "≈". Show the original price with it (see `convertedPrice`).
  */
 export function formatApproxPrice(price: Price, locale: string = PRICE_FALLBACK_LOCALE): string {
-  if (Math.abs(price.value) < 100) return `≈ ${formatPrice(price, locale)}`;
-  const format = numberFormat(locale, price.currency.toUpperCase(), { min: 0, max: 0 });
+  if (price.value === 0) return formatPrice(price, locale);
+  if (Math.abs(price.value) < 1000) return `≈\u00a0${formatPrice(price, locale)}`;
+  const code = currencyCode(price.currency);
+  const format = numberFormat(locale, code, { min: 0, max: 0 });
   const amount = format
     ? format.format(price.value / 100)
-    : `${price.currency.toUpperCase()} ${Math.round(price.value / 100)}`;
-  return `≈ ${amount}`;
+    : `${code} ${decimalFormat(locale, 0).format(price.value / 100)}`;
+  return `≈\u00a0${amount}`;
 }
 
 /**
@@ -114,7 +123,7 @@ export function formatApproxPrice(price: Price, locale: string = PRICE_FALLBACK_
  * "PLN" (en-US) or "zł" (pl-PL). A malformed code comes back uppercased.
  */
 export function currencySymbol(currency: string, locale: string = PRICE_FALLBACK_LOCALE): string {
-  const code = currency.toUpperCase();
+  const code = currencyCode(currency);
   const part = numberFormat(locale, code)
     ?.formatToParts(0)
     .find((p) => p.type === 'currency');
@@ -125,28 +134,41 @@ export function currencySymbol(currency: string, locale: string = PRICE_FALLBACK
  * An amount in cents as the price input shows it: the number of
  * `formatPrice`'s output with no symbol, so the field and the card agree
  * ("349,00" in de-DE, "1,234.50" in en-US). Always something
- * `parsePriceInput` reads back as the same cents: a locale whose format it
- * couldn't read gets the fallback locale's.
+ * `parsePriceInput` reads back, in the same locale, as the same cents: should
+ * a locale's own form ever not be, the field gets a plain "1234.50" instead,
+ * which reads the same in every locale.
  */
 export function formatPriceInput(
   cents: number,
   currency: string,
   locale: string = PRICE_FALLBACK_LOCALE
 ): string {
-  const price = { value: cents, currency };
-  const numberOnly = (loc: string) => {
-    const format =
-      numberFormat(loc, currency.toUpperCase(), exactDigits(price, loc)) ??
-      numberFormat(loc, null, { min: 2, max: 2 })!;
-    return format
-      .formatToParts(cents / 100)
-      .filter((p) => ['integer', 'group', 'decimal', 'fraction'].includes(p.type))
-      .map((p) => p.value)
-      .join('');
-  };
-  const text = numberOnly(locale);
-  const read = parsePriceInput(text);
-  return read.ok && read.cents === cents ? text : numberOnly(PRICE_FALLBACK_LOCALE);
+  const code = currencyCode(currency);
+  const format =
+    numberFormat(locale, code, exactDigits({ value: cents, currency: code }, locale)) ??
+    decimalFormat(locale, 2);
+  const text = format
+    .formatToParts(cents / 100)
+    .filter((p) => ['integer', 'group', 'decimal', 'fraction'].includes(p.type))
+    .map((p) => p.value)
+    .join('');
+  const read = parsePriceInput(text, locale);
+  return read.ok && read.cents === cents ? text : (cents / 100).toFixed(2);
+}
+
+const decimalSeparators = new Map<string, string>();
+
+/** The decimal separator `locale` writes numbers with: "." or ",". */
+function decimalSeparator(locale: string): string {
+  let separator = decimalSeparators.get(locale);
+  if (separator === undefined) {
+    separator =
+      decimalFormat(locale, 1)
+        .formatToParts(1.5)
+        .find((p) => p.type === 'decimal')?.value ?? '.';
+    decimalSeparators.set(locale, separator);
+  }
+  return separator;
 }
 
 export type ParsedPriceInput = { ok: true; cents: number | null } | { ok: false };
@@ -154,28 +176,41 @@ export type ParsedPriceInput = { ok: true; cents: number | null } | { ok: false 
 // Spaces of every width (a plain one, the no-break and narrow no-break spaces
 // fr-FR groups with) and apostrophes (de-CH groups with ’) only ever group digits.
 const GROUP_ONLY = /[\s'’ʼ]/g;
-const CURRENCY_SIGN = /\p{Sc}/gu;
+// A currency sign pasted along with the amount ("$1,234.50", "349,00 €"), but
+// only at either end, and never the cent sign: "50¢" isn't 50.00.
+const LEADING_SIGN = /^\s*(?!¢)\p{Sc}/u;
+const TRAILING_SIGN = /(?!¢)\p{Sc}\s*$/u;
 // Left-to-right and right-to-left marks some locales put around a number.
-const BIDI_MARK = /[‎‏؜‪-‮⁦-⁩]/g;
+const BIDI_MARK = /[\u200e\u200f\u061c\u202a-\u202e\u2066-\u2069]/g;
 
 /**
  * Reads an amount someone typed into the price input, in cents. Either "," or
  * "." may be the decimal separator, whatever the locale: "349,00", "349.00",
  * "1 234,50", "1,234.50", "1.234,50", "1'234.50" and "1,23,456.00" (en-IN) all
- * read as you'd expect. With both, the last one is the decimal separator. One
- * on its own followed by exactly three digits groups thousands ("1,234" is
- * 1234.00), since a price has at most two decimals; otherwise it's the decimal
- * separator. Grouped digits must be grouped properly (threes, or en-IN's twos).
- * A currency sign is ignored.
+ * read as you'd expect. With both, the last one is the decimal separator; one
+ * on its own followed by one or two digits is too. One on its own followed by
+ * exactly three digits ("1.234") is read as `locale` writes numbers: as
+ * grouping (1234.00) where that separator isn't its decimal one, and refused
+ * where it is (in en-US, "1.234" is three decimals, which no price has), so a
+ * typo is never read as 1000 times the price meant.
+ * Grouped digits must be grouped properly (threes, or en-IN's twos). A currency
+ * sign at either end is ignored.
  *
  * `{ ok: true, cents: null }` for an empty field (no price), `{ ok: false }` for
  * anything else that isn't an amount of zero or more with at most two decimals:
  * a negative, letters, "1.2.3", "12.345,678".
  */
-export function parsePriceInput(text: string): ParsedPriceInput {
+export function parsePriceInput(
+  text: string,
+  locale: string = PRICE_FALLBACK_LOCALE
+): ParsedPriceInput {
   const invalid = { ok: false } as const;
-  const input = text.replace(CURRENCY_SIGN, '').replace(BIDI_MARK, '').replace(GROUP_ONLY, ' ');
-  const trimmed = input.trim();
+  const trimmed = text
+    .replace(BIDI_MARK, '')
+    .replace(LEADING_SIGN, '')
+    .replace(TRAILING_SIGN, '')
+    .replace(GROUP_ONLY, ' ')
+    .trim();
   if (!trimmed) return { ok: true, cents: null };
   if (!/^[\d., ]+$/.test(trimmed) || !/\d/.test(trimmed)) return invalid;
 
@@ -186,8 +221,11 @@ export function parsePriceInput(text: string): ParsedPriceInput {
     decimalAt = Math.max(lastDot, lastComma);
   } else if (lastDot >= 0 || lastComma >= 0) {
     const at = Math.max(lastDot, lastComma);
-    const only = trimmed.indexOf(trimmed[at]) === at;
-    if (only && !/^\d{3}$/.test(trimmed.slice(at + 1))) decimalAt = at;
+    const separator = trimmed[at];
+    const once = trimmed.indexOf(separator) === at;
+    const groupsThousands =
+      /^\d{3}$/.test(trimmed.slice(at + 1)) && separator !== decimalSeparator(locale);
+    if (once && !groupsThousands) decimalAt = at;
   }
 
   const whole = decimalAt >= 0 ? trimmed.slice(0, decimalAt) : trimmed;
@@ -250,21 +288,19 @@ export function convertPrice(
 }
 
 /**
- * The price to show for `price` when the viewer picked `currency` ('original'
- * keeps each price's own): `converted` is set, with `price` as the original,
- * only when it really was converted. A price already in that currency, or one
- * with no rate yet (`rates` missing, or lacking either currency), is shown as
- * it is, exactly.
+ * `price` in the currency the viewer picked ('original' keeps each price's
+ * own), to show as approximate with the original under it: `null` when it
+ * isn't converted, so the original is shown alone, exactly. That's a price
+ * already in that currency, and one with no rate yet (`rates` missing, or
+ * lacking either currency).
  */
-export function priceToShow(
+export function convertedPrice(
   price: Price,
   currency: string,
   rates: Record<string, number> | null
-): { price: Price; converted: Price | null } {
-  if (currency === 'original' || !rates) return { price, converted: null };
+): Price | null {
+  if (currency === 'original' || !rates) return null;
   const converted = convertPrice(price, currency, rates);
-  if (!converted || converted.currency === price.currency.toLowerCase()) {
-    return { price, converted: null };
-  }
-  return { price, converted };
+  if (!converted || converted.currency === price.currency.toLowerCase()) return null;
+  return converted;
 }

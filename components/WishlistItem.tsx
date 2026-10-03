@@ -3,7 +3,7 @@
 import { memo, useMemo, useCallback, useState, useEffect } from 'react';
 import { ApiItem } from '@/types/api';
 import { useSession } from 'next-auth/react';
-import { formatApproxPrice, formatPrice, priceToShow } from '@/lib/utils/currency';
+import { convertedPrice, formatApproxPrice, formatPrice } from '@/lib/utils/currency';
 import { useViewerLocale } from '@/lib/hooks/useViewerLocale';
 import Icon, { type IconName } from '@/components/Icon';
 import Cover from '@/components/Cover';
@@ -126,8 +126,8 @@ function WishlistItem({
   // currency, which is only approximate ("≈ €247"), so the original goes under
   // it. Without the rate (yet), the original alone.
   const locale = useViewerLocale();
-  const shownPrice = useMemo(
-    () => (item.price ? priceToShow(item.price, priceCurrency, rates) : null),
+  const converted = useMemo(
+    () => (item.price ? convertedPrice(item.price, priceCurrency, rates) : null),
     [item.price, priceCurrency, rates]
   );
 
@@ -438,21 +438,13 @@ function WishlistItem({
 
         {/* Price - fixed position */}
         <div className="mb-2 flex min-h-[28px] flex-col justify-center sm:mb-3 sm:min-h-[32px]">
-          {shownPrice?.converted ? (
-            <>
-              <p className="text-lg font-semibold text-foreground sm:text-xl">
-                {formatApproxPrice(shownPrice.converted, locale)}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {formatPrice(shownPrice.price, locale)}
-              </p>
-            </>
-          ) : (
-            shownPrice && (
-              <p className="text-lg font-semibold text-foreground sm:text-xl">
-                {formatPrice(shownPrice.price, locale)}
-              </p>
-            )
+          {item.price && (
+            <p className="text-lg font-semibold text-foreground sm:text-xl">
+              {converted ? formatApproxPrice(converted, locale) : formatPrice(item.price, locale)}
+            </p>
+          )}
+          {item.price && converted && (
+            <p className="text-xs text-muted-foreground">{formatPrice(item.price, locale)}</p>
           )}
         </div>
 

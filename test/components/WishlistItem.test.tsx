@@ -776,7 +776,7 @@ describe('WishlistItem — price conversion', () => {
         rates={rates}
       />
     );
-    expect(screen.getByText('≈ $1')).toBeInTheDocument();
+    expect(screen.getByText('≈ $1.00')).toBeInTheDocument();
   });
 
   // regression: a converted price looked exact ("EUR 246.54" from USD 279),

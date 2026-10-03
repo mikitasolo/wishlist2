@@ -2,23 +2,23 @@ import { describe, it, expect } from 'vitest';
 import {
   PRICE_FALLBACK_LOCALE,
   convertPrice,
+  convertedPrice,
   currencySymbol,
   formatApproxPrice,
   formatPrice,
   formatPriceInput,
   parsePriceInput,
-  priceToShow,
 } from '@/lib/utils/currency';
 
 // Intl separates some locales' digits from their symbol with a no-break space
 // (U+00A0) or a narrow one (U+202F): compare with plain spaces.
-const plain = (text: string) => text.replace(/[  ]/g, ' ');
+const plain = (text: string) => text.replace(/[\u00a0\u202f]/g, ' ');
 
 describe('formatPrice', () => {
   // regression: cards printed `${CODE} ${toFixed(2)}` ("EUR 349.00", "PLN
   // 12000.00"), with no locale and no thousands separator, while the item
   // dialog showed the browser's own decimal format ("349,00").
-  it('formats a price in the given locale, with its currency’s symbol and grouping', () => {
+  it('regression: formats a price in the given locale, with its currency’s symbol and grouping', () => {
     expect(formatPrice({ value: 34900, currency: 'eur' }, 'en-US')).toBe('€349.00');
     expect(plain(formatPrice({ value: 34900, currency: 'eur' }, 'de-DE'))).toBe('349,00 €');
     expect(plain(formatPrice({ value: 1200000, currency: 'pln' }, 'en-US'))).toBe('PLN 12,000.00');
@@ -48,6 +48,10 @@ describe('formatPrice', () => {
     expect(formatPrice({ value: 100050, currency: 'jpy' }, 'en-US')).toBe('¥1,000.50');
   });
 
+  it('shows two decimals for a currency with more, since a price has no more than that', () => {
+    expect(plain(formatPrice({ value: 34900, currency: 'kwd' }, 'en-US'))).toBe('KWD 349.00');
+  });
+
   it('always uses Latin digits, so the price field can read back what it shows', () => {
     expect(formatPrice({ value: 34900, currency: 'eur' }, 'ar-EG')).toMatch(/349\.00/);
   });
@@ -55,6 +59,12 @@ describe('formatPrice', () => {
   it('shows a code Intl refuses as it is, and falls back from a locale it can’t use', () => {
     expect(formatPrice({ value: 500, currency: 'euro' }, 'en-US')).toBe('EURO 5.00');
     expect(formatPrice({ value: 500, currency: 'eur' }, 'not a locale!')).toBe('€5.00');
+  });
+
+  it('takes a price with no currency as USD, as it always has', () => {
+    expect(formatPrice({ value: 100 } as { value: number; currency: string }, 'en-US')).toBe(
+      '$1.00'
+    );
   });
 });
 
@@ -65,38 +75,40 @@ describe('formatApproxPrice', () => {
     expect(plain(formatApproxPrice({ value: 1234567, currency: 'pln' }, 'en-US'))).toBe(
       '≈ PLN 12,346'
     );
+    expect(plain(formatApproxPrice({ value: 1049, currency: 'eur' }, 'en-US'))).toBe('≈ €10');
   });
 
-  it('keeps the cents below one unit, rather than round it to nothing', () => {
+  it('keeps the cents below ten units, where a rounded unit would be far off', () => {
+    expect(plain(formatApproxPrice({ value: 149, currency: 'eur' }, 'en-US'))).toBe('≈ €1.49');
     expect(plain(formatApproxPrice({ value: 45, currency: 'eur' }, 'en-US'))).toBe('≈ €0.45');
   });
 
+  it('shows a zero as it is: it converts exactly', () => {
+    expect(formatApproxPrice({ value: 0, currency: 'eur' }, 'en-US')).toBe('€0.00');
+  });
+
   it('keeps ≈ on the same line as the amount', () => {
-    expect(formatApproxPrice({ value: 24654, currency: 'eur' }, 'en-US')).toBe('≈ €247');
+    expect(formatApproxPrice({ value: 24654, currency: 'eur' }, 'en-US')).toBe('≈\u00a0€247');
   });
 });
 
-describe('priceToShow', () => {
+describe('convertedPrice', () => {
   // 1 USD = 0.88 EUR, 1 USD = 4 PLN
   const rates = { eur: 0.88, pln: 4 };
   const usd279 = { value: 27900, currency: 'usd' };
 
-  it('converts to the picked currency, keeping the original to show under it', () => {
-    expect(priceToShow(usd279, 'EUR', rates)).toEqual({
-      price: usd279,
-      converted: { value: 24552, currency: 'eur' },
-    });
+  it('converts to the picked currency', () => {
+    expect(convertedPrice(usd279, 'EUR', rates)).toEqual({ value: 24552, currency: 'eur' });
   });
 
-  it('shows the price as it is for "original", without rates, or without a rate', () => {
-    expect(priceToShow(usd279, 'original', rates)).toEqual({ price: usd279, converted: null });
-    expect(priceToShow(usd279, 'EUR', null)).toEqual({ price: usd279, converted: null });
-    expect(priceToShow(usd279, 'GBP', rates)).toEqual({ price: usd279, converted: null });
+  it('is null for "original", without rates, or without a rate: the price shows as it is', () => {
+    expect(convertedPrice(usd279, 'original', rates)).toBeNull();
+    expect(convertedPrice(usd279, 'EUR', null)).toBeNull();
+    expect(convertedPrice(usd279, 'GBP', rates)).toBeNull();
   });
 
-  it('shows a price already in the picked currency exactly, whatever the casing', () => {
-    const pln = { value: 1000, currency: 'pln' };
-    expect(priceToShow(pln, 'PLN', rates)).toEqual({ price: pln, converted: null });
+  it('is null for a price already in the picked currency, whatever the casing', () => {
+    expect(convertedPrice({ value: 1000, currency: 'pln' }, 'PLN', rates)).toBeNull();
   });
 });
 
@@ -122,6 +134,12 @@ describe('formatPriceInput', () => {
     expect(formatPriceInput(123450, 'chf', 'de-CH')).toBe('1’234.50');
     expect(formatPriceInput(0, 'eur', 'en-US')).toBe('0.00');
     expect(formatPriceInput(100000, 'jpy', 'en-US')).toBe('1,000');
+    expect(formatPriceInput(123400, 'jpy', 'de-DE')).toBe('1.234');
+  });
+
+  it('writes no more than two decimals, whatever the currency', () => {
+    expect(formatPriceInput(34900, 'kwd', 'en-US')).toBe('349.00');
+    expect(formatPriceInput(34900, 'clf', 'en-US')).toBe('349.00');
   });
 
   it.each([
@@ -135,16 +153,21 @@ describe('formatPriceInput', () => {
     'ar-EG',
     'fa-IR',
     'hi-IN',
-  ])('is always read back as the same cents (%s)', (locale) => {
+    'not a locale!',
+  ])('is always read back, in the same locale, as the same cents (%s)', (locale) => {
     for (const [cents, currency] of [
       [123456789, 'eur'],
       [34900, 'usd'],
       [1234500, 'inr'],
       [100050, 'jpy'],
+      [123400, 'jpy'],
+      [34900, 'kwd'],
+      [34900, 'clf'],
       [5, 'pln'],
+      [500, 'euro'],
     ] as const) {
       const text = formatPriceInput(cents, currency, locale);
-      expect(parsePriceInput(text)).toEqual({ ok: true, cents });
+      expect(parsePriceInput(text, locale)).toEqual({ ok: true, cents });
     }
   });
 });
@@ -156,7 +179,7 @@ describe('parsePriceInput', () => {
     ['1.234,50', 123450],
     ["1'234.50", 123450],
     ['1’234.50', 123450],
-    ['1 234,50', 123450],
+    ['1\u202f234,50', 123450],
     ['1,23,456.00', 12345600],
     ['349,00', 34900],
     ['349.00', 34900],
@@ -166,20 +189,35 @@ describe('parsePriceInput', () => {
     ['.5', 50],
     ['0', 0],
     ['0,00', 0],
-    ['1,234', 123400],
-    ['1.234', 123400],
     ['1,234,567', 123456700],
     ['1.000.000,00', 100000000],
     ['  349,00 ', 34900],
     ['€349,00', 34900],
     ['$ 1,234.50', 123450],
-  ])('reads %j as %d cents', (text, cents) => {
-    expect(parsePriceInput(text)).toEqual({ ok: true, cents });
+    ['349,00 €', 34900],
+  ])('reads %j as %d cents, in any locale', (text, cents) => {
+    for (const locale of ['en-US', 'de-DE']) {
+      expect(parsePriceInput(text, locale)).toEqual({ ok: true, cents });
+    }
   });
 
   it('reads an empty field as no price', () => {
     expect(parsePriceInput('')).toEqual({ ok: true, cents: null });
     expect(parsePriceInput('   ')).toEqual({ ok: true, cents: null });
+  });
+
+  // Read without the locale, "1.999" (a typo for 1.99, say) would be 1999.00,
+  // saved at 1000 times the price meant, where the number field this replaced
+  // refused it.
+  it('reads one separator before three digits as the locale writes numbers', () => {
+    // Grouping where it isn't the locale's decimal separator...
+    expect(parsePriceInput('1,234', 'en-US')).toEqual({ ok: true, cents: 123400 });
+    expect(parsePriceInput('1.234', 'de-DE')).toEqual({ ok: true, cents: 123400 });
+    // ...and three decimals, refused, where it is.
+    expect(parsePriceInput('1.999', 'en-US')).toEqual({ ok: false });
+    expect(parsePriceInput('1,999', 'de-DE')).toEqual({ ok: false });
+    // The fixed fallback locale when given none.
+    expect(parsePriceInput('1.999')).toEqual({ ok: false });
   });
 
   it.each([
@@ -188,6 +226,7 @@ describe('parsePriceInput', () => {
     '1e5',
     '12.345,678',
     '0.123',
+    '0,123',
     '12.345.67',
     '1.2.3',
     '1,2,3',
@@ -197,8 +236,14 @@ describe('parsePriceInput', () => {
     ',',
     '349 PLN',
     '99999999999999999',
+    // A sign is only ignored at either end, and never the cent sign.
+    '50¢',
+    '5$5',
+    '1€234',
   ])('refuses %j', (text) => {
-    expect(parsePriceInput(text)).toEqual({ ok: false });
+    for (const locale of ['en-US', 'de-DE']) {
+      expect(parsePriceInput(text, locale)).toEqual({ ok: false });
+    }
   });
 });
 

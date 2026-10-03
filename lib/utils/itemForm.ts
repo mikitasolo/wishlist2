@@ -84,12 +84,13 @@ export function itemToFormData(
 }
 
 /**
- * The price the form holds, in cents. An empty amount is no price, whatever
- * currency is picked, and so is one that `parsePriceInput` can't read, which
- * the form refuses to submit (`ItemForm`) rather than save a typo as no price.
+ * The price the form holds, in cents, read as `locale` writes numbers (see
+ * `parsePriceInput`). An empty amount is no price, whatever currency is
+ * picked, and so is one that can't be read, which the form refuses to submit
+ * (`ItemForm`) rather than save a typo as no price.
  */
-function formPrice(form: ItemFormData): ItemContent['price'] {
-  const amount = parsePriceInput(form.price);
+function formPrice(form: ItemFormData, locale: string): ItemContent['price'] {
+  const amount = parsePriceInput(form.price, locale);
   if (!amount.ok || amount.cents === null) return null;
   return {
     value: amount.cents,
@@ -97,12 +98,18 @@ function formPrice(form: ItemFormData): ItemContent['price'] {
   };
 }
 
-/** The item content the form holds, trimmed, the way an edit sends it. */
-export function itemFormContent(form: ItemFormData): ItemContent {
+/**
+ * The item content the form holds, trimmed, the way an edit sends it. The
+ * amount is read in `locale`, the one the form was filled and is shown in.
+ */
+export function itemFormContent(
+  form: ItemFormData,
+  locale: string = PRICE_FALLBACK_LOCALE
+): ItemContent {
   return {
     name: form.name.trim(),
     imageUrl: form.imageUrl.trim() || null,
-    price: formPrice(form),
+    price: formPrice(form, locale),
     link: form.link.trim() || null,
     notes: form.notes.trim() || null,
     mostWanted: form.mostWanted,
@@ -124,15 +131,19 @@ function copyField<K extends keyof ItemContent>(to: ItemContentChanges, from: It
  * The content the form changed from `filledFrom`, the form as it was last
  * filled (from the item, or with what a save of it stored). Both are read the
  * way an edit sends them, so a field that would be sent as it already was (a
- * trailing space, `10` or `10,00` for `10.00`, another currency on no price) isn't a
- * change. The price is one field, its amount and currency together. An
+ * trailing space, `10` or `10,00` for `10.00`, another currency on no price)
+ * isn't a change. The price is one field, its amount and currency together. An
  * unchanged field is left out, so the write doesn't touch it, and so is the
  * status (`isDraft`): editing an item never changes it. Empty (`{}`) when
  * nothing changed, which the API would refuse, so the caller sends nothing.
  */
-export function itemChanges(form: ItemFormData, filledFrom: ItemFormData): ItemContentChanges {
-  const next = itemFormContent(form);
-  const saved = itemFormContent(filledFrom);
+export function itemChanges(
+  form: ItemFormData,
+  filledFrom: ItemFormData,
+  locale: string = PRICE_FALLBACK_LOCALE
+): ItemContentChanges {
+  const next = itemFormContent(form, locale);
+  const saved = itemFormContent(filledFrom, locale);
   const changes: ItemContentChanges = {};
   for (const field of PLAIN_FIELDS) {
     if (next[field] !== saved[field]) copyField(changes, next, field);
