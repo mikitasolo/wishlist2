@@ -208,7 +208,8 @@ describe('a list with no items at all', () => {
 
     await user.click(screen.getAllByRole('button', { name: 'Share' })[0]);
     await user.click(screen.getByRole('menuitem', { name: 'Invite people to reserve gifts' }));
-    expect(await screen.findByRole('textbox', { name: 'Search by username' })).toBeVisible();
+    // The invite form's username field is a combobox (its suggestions' list).
+    expect(await screen.findByRole('combobox', { name: 'Search by username' })).toBeVisible();
     expect(screen.getAllByRole('button', { name: 'Back to items' })).not.toHaveLength(0);
   });
 
