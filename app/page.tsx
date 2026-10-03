@@ -16,8 +16,9 @@ import FollowListModal, { type FollowTab } from '@/components/FollowListModal';
 import Button from '@/components/Button';
 import { buttonClassName } from '@/components/buttonStyles';
 import Icon, { IconName } from '@/components/Icon';
+import EmptyState from '@/components/EmptyState';
 import LoadError from '@/components/LoadError';
-import { SkeletonGrid } from '@/components/Skeleton';
+import { Skeleton, SkeletonGrid } from '@/components/Skeleton';
 import { useToast } from '@/components/ToastProvider';
 import { useLocalToday } from '@/lib/hooks/useLocalToday';
 import { sortByUpcomingOccasion } from '@/lib/utils/occasion';
@@ -251,14 +252,20 @@ export default function Home() {
   const profileUsername = (session?.user as { username?: string })?.username || null;
   const name = profileUsername || (session?.user?.email || '').split('@')[0] || 'there';
 
-  // ---- Auth still resolving: neutral loader --------------------------
+  // ---- Auth still resolving: the dashboard's skeleton ----------------
   if (status === 'loading') {
     return (
       <div className="min-h-screen">
         <AppHeader actions={<AuthButton />} />
-        <div className="flex min-h-[60vh] items-center justify-center">
-          <div className="spinner h-8 w-8 text-primary-600" />
-        </div>
+        <main aria-hidden="true" className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
+          {/* The greeting, its summary and the follow counts. */}
+          <div className="mb-8 sm:mb-10">
+            <Skeleton className="h-9 w-72 max-w-full sm:h-10" />
+            <Skeleton className="mt-3 h-5 w-56 max-w-full" />
+            <Skeleton className="mt-4 h-4 w-40" />
+          </div>
+          <DashboardSkeleton />
+        </main>
       </div>
     );
   }
@@ -395,38 +402,20 @@ export default function Home() {
         <CreateWishlistModal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} />
 
         {loading ? (
-          <>
-            {/* Bento skeleton: featured card (col-span-2, row-span-2) + 4 stat tiles,
-                the first row a line taller for the Items tile's drafts line */}
-            <div className="mb-12 grid grid-cols-2 gap-4 lg:grid-cols-4">
-              <div className="skeleton col-span-2 min-h-[260px] rounded-3xl lg:row-span-2 lg:min-h-[300px]" />
-              <div className="skeleton h-[181px] rounded-3xl" />
-              <div className="skeleton h-[181px] rounded-3xl" />
-              <div className="skeleton h-[160px] rounded-3xl" />
-              <div className="skeleton h-[160px] rounded-3xl" />
-            </div>
-            {/* Section skeleton */}
-            <div className="skeleton mb-5 h-6 w-40 rounded-md" />
-            <SkeletonGrid count={4} variant="wishlist" />
-          </>
+          <DashboardSkeleton />
         ) : loadFailed ? (
           <LoadError title="Couldn’t load your wishlists" onRetry={retryLoad} />
         ) : !hasAny ? (
-          <div className="flex flex-col items-center rounded-3xl border border-dashed border-border-strong bg-surface/50 py-20 text-center">
-            <span className="mb-5 inline-flex h-16 w-16 items-center justify-center rounded-3xl bg-primary-500/12 text-accent dark:text-primary-300">
-              <Icon name="gift" size={30} />
-            </span>
-            <h3 className="text-xl font-semibold text-foreground">No wishlists yet</h3>
-            <p className="mx-auto mt-2 max-w-sm px-4 text-body text-muted-foreground">
-              Create your first wishlist to start collecting the things you love and share it with
-              friends and family.
-            </p>
-            <div className="mt-7">
+          <EmptyState
+            icon="gift"
+            title="No wishlists yet"
+            body="Create your first wishlist to start collecting the things you love and share it with friends and family."
+            actions={
               <Button icon="plus" onClick={() => setShowCreateModal(true)}>
                 Create wishlist
               </Button>
-            </div>
-          </div>
+            }
+          />
         ) : (
           <>
             {/* Bento overview */}
@@ -584,6 +573,27 @@ export default function Home() {
   );
 }
 
+/**
+ * The dashboard's content while its lists are read: the bento (the featured
+ * card over two rows, and four stat tiles, the first row a line taller for the
+ * Items tile's drafts line), then a section heading over a row of cards.
+ */
+function DashboardSkeleton() {
+  return (
+    <>
+      <div className="mb-12 grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <Skeleton className="col-span-2 min-h-[260px] rounded-3xl lg:row-span-2 lg:min-h-[300px]" />
+        <Skeleton className="h-[181px] rounded-3xl" />
+        <Skeleton className="h-[181px] rounded-3xl" />
+        <Skeleton className="h-[160px] rounded-3xl" />
+        <Skeleton className="h-[160px] rounded-3xl" />
+      </div>
+      <Skeleton className="mb-5 h-6 w-40" />
+      <SkeletonGrid count={4} variant="wishlist" />
+    </>
+  );
+}
+
 /** The noun beside a count, plural until the count is known to be 1. */
 function countNoun(count: Count, one: string): string {
   return pluralNoun(typeof count === 'number' ? count : 2, one);
@@ -606,9 +616,9 @@ function CountValue({
   if (typeof count === 'number') return <span className={className}>{count}</span>;
   if (count === 'loading') {
     return (
-      <span className={`skeleton inline-block ${placeholderClassName}`}>
+      <Skeleton as="span" className={`inline-block ${placeholderClassName}`}>
         <span className="sr-only">Loading</span>
-      </span>
+      </Skeleton>
     );
   }
   return (

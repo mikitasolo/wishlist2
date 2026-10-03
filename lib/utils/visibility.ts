@@ -31,6 +31,13 @@ export const visibilityMeta: Record<Visibility, { label: string; icon: IconName;
     },
   };
 
+/** The three tiers, widest first, as the visibility picker's options (a `SegmentedControl`). */
+export const VISIBILITY_OPTIONS = (['everyone', 'friends', 'private'] as const).map((value) => ({
+  value,
+  label: visibilityMeta[value].label,
+  icon: visibilityMeta[value].icon,
+}));
+
 /**
  * The pill on a list's cover: its visibility, unless it's archived. An archived
  * list is owner-only whatever its visibility says (everyone else gets the

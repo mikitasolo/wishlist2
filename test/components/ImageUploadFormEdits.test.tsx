@@ -190,7 +190,7 @@ describe('CreateWishlistModal — editing while its banner uploads', () => {
     const description = screen.getByLabelText('Description');
     await user.type(name, 'Birthday');
     await user.type(description, 'Turning 30');
-    await user.click(screen.getByRole('button', { name: 'Friends' }));
+    await user.click(screen.getByRole('radio', { name: 'Friends' }));
     expect(screen.getByText(/their friends \(mutual follows\)/i)).toBeInTheDocument();
 
     await answerUpload();

@@ -298,9 +298,7 @@ describe('CreateWishlistModal — the currency Select by keyboard', () => {
     expect(currency()).toHaveTextContent('EUR · Euro');
     expect(currency()).toHaveFocus();
 
-    // On past the banner and the three visibility choices.
-    await user.tab();
-    await user.tab();
+    // On past the banner and the visibility choice (one stop: a radio group).
     await user.tab();
     await user.tab();
     await user.tab();

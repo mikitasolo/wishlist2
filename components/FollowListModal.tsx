@@ -5,6 +5,9 @@ import Link from 'next/link';
 import Avatar from './Avatar';
 import BaseModal from './BaseModal';
 import LoadError from './LoadError';
+import EmptyState from './EmptyState';
+import SegmentedControl from './SegmentedControl';
+import { Skeleton } from './Skeleton';
 import { plural } from '@/lib/utils/plural';
 
 export type FollowTab = 'followers' | 'following';
@@ -81,39 +84,27 @@ export default function FollowListModal({
       size="sm"
       closeLabel="Close"
       headerContent={
-        <div className="relative flex rounded-xl border border-border bg-surface-2 p-1">
-          <span
-            aria-hidden
-            className="absolute bottom-1 top-1 rounded-lg bg-surface shadow-sm transition-[left] duration-300 ease-[cubic-bezier(0.2,0.7,0.2,1)]"
-            style={{
-              width: 'calc((100% - 0.5rem) / 2)',
-              left: `calc(${tab === 'followers' ? 0 : 1} * ((100% - 0.5rem) / 2) + 0.25rem)`,
-            }}
-          />
-          {(['followers', 'following'] as FollowTab[]).map((t) => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={`relative z-10 flex-1 rounded-lg py-1.5 text-sm font-semibold transition-colors ${
-                tab === t ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              {t === 'followers'
-                ? plural(followerCount, 'follower')
-                : plural(followingCount, 'following')}
-            </button>
-          ))}
-        </div>
+        <SegmentedControl
+          size="sm"
+          ariaLabel="Connections"
+          value={tab}
+          onChange={setTab}
+          options={[
+            { value: 'followers', label: plural(followerCount, 'follower') },
+            { value: 'following', label: plural(followingCount, 'following') },
+          ]}
+        />
       }
     >
       {/* The rows sit inset from the panel's edge, their hover inside it. */}
       <div ref={listRef} className="-mx-3 -my-3 min-h-[8rem]">
         {loading && !list ? (
-          <div className="space-y-1">
+          <div>
+            {/* Rows shaped like the people to come: a 40px avatar and a name. */}
             {Array.from({ length: 4 }).map((_, i) => (
               <div key={i} className="flex items-center gap-3 px-2 py-2">
-                <div className="skeleton h-9 w-9 rounded-full" />
-                <div className="skeleton h-4 w-32 rounded-md" />
+                <Skeleton className="h-10 w-10 flex-shrink-0 rounded-full" />
+                <Skeleton className="h-4 w-32" />
               </div>
             ))}
           </div>
@@ -142,11 +133,13 @@ export default function FollowListModal({
             </Link>
           ))
         ) : (
-          <div className="flex h-32 flex-col items-center justify-center text-center">
-            <p className="text-sm text-muted-foreground">
-              {tab === 'followers' ? 'No followers yet.' : 'Not following anyone yet.'}
-            </p>
-          </div>
+          <EmptyState
+            compact
+            framed={false}
+            tone="muted"
+            icon="users"
+            title={tab === 'followers' ? 'No followers yet' : 'Not following anyone yet'}
+          />
         )}
       </div>
     </BaseModal>

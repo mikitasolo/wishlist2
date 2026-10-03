@@ -316,7 +316,7 @@ function noteOn(itemName: string) {
     card = card.parentElement;
   }
   if (!card) throw new Error(`no reservation card for ${itemName}`);
-  return card.querySelector('p.rounded-full')?.textContent ?? null;
+  return card.querySelector('p > span.rounded-full')?.textContent ?? null;
 }
 
 /** The link to its list on the reservation card for `itemName`. */

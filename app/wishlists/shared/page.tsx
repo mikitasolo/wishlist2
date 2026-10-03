@@ -6,7 +6,7 @@ import { useSession } from 'next-auth/react';
 import AppHeader from '@/components/AppHeader';
 import AuthButton from '@/components/AuthButton';
 import WishlistCard from '@/components/WishlistCard';
-import Icon from '@/components/Icon';
+import EmptyState from '@/components/EmptyState';
 import { SkeletonGrid } from '@/components/Skeleton';
 import { useToast } from '@/components/ToastProvider';
 import { signInPath } from '@/lib/utils/callbackUrl';
@@ -53,15 +53,13 @@ export default function SharedWishlistsPage() {
             <SkeletonGrid count={8} variant="wishlist" />
           </div>
         ) : member.length === 0 ? (
-          <div className="mt-8 flex flex-col items-center rounded-3xl border border-dashed border-border-strong py-20 text-center">
-            <span className="mb-5 inline-flex h-16 w-16 items-center justify-center rounded-3xl bg-surface-2 text-muted-foreground">
-              <Icon name="users" size={30} />
-            </span>
-            <h3 className="text-xl font-semibold text-foreground">Nothing shared yet</h3>
-            <p className="mx-auto mt-2 max-w-sm px-4 text-body text-muted-foreground">
-              When someone invites you to their wishlist, it’ll show up here.
-            </p>
-          </div>
+          <EmptyState
+            className="mt-8"
+            tone="muted"
+            icon="users"
+            title="Nothing shared yet"
+            body="When someone invites you to their wishlist, it’ll show up here."
+          />
         ) : (
           <div className="mt-8 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {member.map((w) => (

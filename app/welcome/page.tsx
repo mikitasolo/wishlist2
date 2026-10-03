@@ -6,6 +6,8 @@ import { useSession } from 'next-auth/react';
 import AppHeader from '@/components/AppHeader';
 import AuthButton from '@/components/AuthButton';
 import Button from '@/components/Button';
+import Panel from '@/components/Panel';
+import { Skeleton } from '@/components/Skeleton';
 import UsernameField from '@/components/UsernameField';
 import { useToast } from '@/components/ToastProvider';
 import { useUsernameAvailability } from '@/lib/hooks/useUsernameAvailability';
@@ -13,13 +15,29 @@ import { safeCallbackPath } from '@/lib/utils/callbackUrl';
 
 const SAVE_FAILED = "Couldn't save your username";
 
+/** The page's skeleton: its heading, then the username panel, while the session is read. */
 function Loading() {
   return (
     <div className="min-h-screen">
       <AppHeader actions={<AuthButton />} />
-      <div className="flex min-h-[60vh] items-center justify-center">
-        <div className="spinner h-8 w-8 text-primary-600" />
-      </div>
+      <main aria-hidden="true" className="mx-auto max-w-xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
+        <Skeleton className="mb-2 h-9 w-72 max-w-full" />
+        <Skeleton className="mb-8 h-5 w-96 max-w-full" />
+        <Panel>
+          <Skeleton className="h-6 w-40" />
+          <Skeleton className="mt-2 h-4 w-full" />
+          <Skeleton className="mt-1.5 h-4 w-2/3" />
+          <div className="mt-5">
+            <Skeleton className="mb-1.5 h-4 w-20" />
+            <Skeleton className="h-11 w-full rounded-xl" />
+            <Skeleton className="mt-1.5 h-3 w-1/2" />
+          </div>
+          <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+            <Skeleton className="h-11 w-full rounded-xl sm:w-40" />
+            <Skeleton className="h-11 w-full rounded-xl sm:w-36" />
+          </div>
+        </Panel>
+      </main>
     </div>
   );
 }
@@ -106,22 +124,23 @@ function Welcome() {
           One quick thing before you start: how people will see you.
         </p>
 
-        <form
+        <Panel
+          as="form"
           onSubmit={handleSave}
-          className="rounded-2xl border border-border bg-surface p-6 shadow-md"
+          title="Pick a username"
+          description={
+            <>
+              {shownCurrent && (
+                <>
+                  We&apos;ve given you <strong className="text-foreground">@{shownCurrent}</strong>{' '}
+                  for now.{' '}
+                </>
+              )}
+              Your username is how other people find and see you. Your email stays private. You can
+              change it any time in Settings.
+            </>
+          }
         >
-          <h2 className="mb-1 text-lg font-semibold text-foreground">Pick a username</h2>
-          <p className="mb-5 text-sm text-muted-foreground">
-            {shownCurrent && (
-              <>
-                We&apos;ve given you <strong className="text-foreground">@{shownCurrent}</strong>{' '}
-                for now.{' '}
-              </>
-            )}
-            Your username is how other people find and see you. Your email stays private. You can
-            change it any time in Settings.
-          </p>
-
           <UsernameField
             value={username}
             onChange={setDraft}
@@ -138,7 +157,7 @@ function Welcome() {
               {saving ? 'Saving…' : 'Save username'}
             </Button>
           </div>
-        </form>
+        </Panel>
       </main>
     </div>
   );

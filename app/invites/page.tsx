@@ -7,8 +7,9 @@ import { useSession } from 'next-auth/react';
 import AppHeader from '@/components/AppHeader';
 import AuthButton from '@/components/AuthButton';
 import Avatar from '@/components/Avatar';
-import Icon from '@/components/Icon';
+import EmptyState from '@/components/EmptyState';
 import LoadError from '@/components/LoadError';
+import { Skeleton } from '@/components/Skeleton';
 import { useToast } from '@/components/ToastProvider';
 import { useBusyIds } from '@/lib/hooks/useBusyIds';
 import { createAcceptRedirect } from '@/lib/utils/acceptRedirect';
@@ -231,8 +232,24 @@ export default function InvitesPage() {
 
         {loading ? (
           <div className="mt-8 space-y-3">
+            {/* Rows shaped like the invites: avatar, list name and who invited you, Decline and Accept. */}
             {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="skeleton h-24 rounded-2xl" />
+              <div
+                key={i}
+                className="flex flex-col gap-3 rounded-2xl border border-border bg-surface p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-5"
+              >
+                <div className="flex min-w-0 flex-1 items-center gap-3">
+                  <Skeleton className="h-10 w-10 flex-shrink-0 rounded-full" />
+                  <div className="flex-1 space-y-2">
+                    <Skeleton className="h-4 w-40 max-w-full" />
+                    <Skeleton className="h-3.5 w-32 max-w-full" />
+                  </div>
+                </div>
+                <div className="flex flex-shrink-0 items-center gap-2">
+                  <Skeleton className="h-9 w-20 rounded-xl" />
+                  <Skeleton className="h-9 w-20 rounded-xl" />
+                </div>
+              </div>
             ))}
           </div>
         ) : loadFailed ? (
@@ -240,17 +257,13 @@ export default function InvitesPage() {
             <LoadError title="Couldn’t load your invitations" onRetry={retryLoad} />
           </div>
         ) : invites.length === 0 ? (
-          <div className="mt-8 flex flex-col items-center rounded-3xl border border-dashed border-border-strong py-16 text-center sm:py-20">
-            <span className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
-              <Icon name="inbox" size={28} />
-            </span>
-            <h3 className="text-lg font-semibold text-foreground sm:text-xl">
-              No pending invitations
-            </h3>
-            <p className="mx-auto mt-1.5 max-w-sm px-4 text-sm text-muted-foreground">
-              When someone invites you to a wishlist, it&apos;ll show up here.
-            </p>
-          </div>
+          <EmptyState
+            className="mt-8"
+            tone="muted"
+            icon="inbox"
+            title="No pending invitations"
+            body="When someone invites you to a wishlist, it'll show up here."
+          />
         ) : (
           <ul className="mt-8 space-y-3">
             {invites.map((invite) => (

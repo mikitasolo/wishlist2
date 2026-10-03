@@ -1,12 +1,14 @@
 'use client';
 
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, useId } from 'react';
 import ImageUpload from './ImageUpload';
 import Toggle from './Toggle';
 import Button from './Button';
+import Callout from './Callout';
 import Field from './Field';
 import Icon from './Icon';
 import Input from './Input';
+import SegmentedControl from './SegmentedControl';
 import Textarea from './Textarea';
 import { FIELD_LABEL, inputClassName } from './fieldStyles';
 import {
@@ -22,7 +24,6 @@ import {
 } from '@/lib/utils/itemForm';
 import { currencySymbol, formatPriceInput, parsePriceInput } from '@/lib/utils/currency';
 import { useViewerLocale } from '@/lib/hooks/useViewerLocale';
-import { STATUS_META } from '@/lib/utils/itemStatus';
 
 export { itemToFormData, type ItemFormData } from '@/lib/utils/itemForm';
 
@@ -112,6 +113,8 @@ export default function ItemForm({
   const currencyRef = useRef<HTMLDivElement>(null);
   const internalFirstInputRef = useRef<HTMLInputElement>(null);
   const firstInputRef = externalFirstInputRef || internalFirstInputRef;
+  const statusLabelId = useId();
+  const statusHelperId = useId();
   const submitting = externalIsSubmitting !== undefined ? externalIsSubmitting : isSubmitting;
 
   // Track initial data for comparison
@@ -266,73 +269,33 @@ export default function ItemForm({
           Editing never shows it; status is changed via publish / move-to-draft. */}
       {(mode === 'create' || mode === 'review') && (
         <div>
-          <label className={FIELD_LABEL}>Status</label>
-          {mode === 'review' ? (
-            <p className="text-xs text-muted-foreground mb-2">
-              Select the status for this item after review
-            </p>
-          ) : (
-            <p className="text-xs text-muted-foreground mb-2">
-              Draft items are not visible to others
-            </p>
-          )}
-          <div className="relative flex items-center justify-between p-1 bg-muted rounded-lg">
-            {/* Sliding indicator */}
-            <div
-              className={`absolute top-1 bottom-1 bg-surface rounded-md shadow-sm transition-all duration-300 ease-in-out ${
-                !formData.isDraft
-                  ? 'left-1 right-[calc(50%+0.25rem)]'
-                  : 'left-[calc(50%+0.25rem)] right-1'
-              }`}
-            />
-            <button
-              type="button"
-              onClick={() => setFormData({ ...formData, isDraft: false })}
-              disabled={submitting}
-              className={`relative z-10 flex-1 px-4 py-2 text-sm font-medium rounded-md transition-colors duration-300 cursor-pointer ${
-                !formData.isDraft
-                  ? 'text-foreground'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              Published
-            </button>
-            <button
-              type="button"
-              onClick={() => setFormData({ ...formData, isDraft: true })}
-              disabled={submitting}
-              className={`relative z-10 flex-1 px-4 py-2 text-sm font-medium rounded-md transition-colors duration-300 cursor-pointer ${
-                formData.isDraft ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              Draft
-            </button>
-          </div>
+          <span id={statusLabelId} className={FIELD_LABEL}>
+            Status
+          </span>
+          <p id={statusHelperId} className="mb-2 text-xs text-muted-foreground">
+            {mode === 'review'
+              ? 'Select the status for this item after review'
+              : 'Draft items are not visible to others'}
+          </p>
+          <SegmentedControl
+            ariaLabelledBy={statusLabelId}
+            ariaDescribedBy={statusHelperId}
+            value={formData.isDraft ? 'draft' : 'published'}
+            onChange={(v) => setFormData({ ...formData, isDraft: v === 'draft' })}
+            disabled={submitting}
+            options={[
+              { value: 'published', label: 'Published' },
+              { value: 'draft', label: 'Draft' },
+            ]}
+          />
         </div>
       )}
 
       {/* Tip for propose mode */}
       {mode === 'propose' && (
-        <div className={`rounded-lg p-4 ${STATUS_META.proposed.classes.notice}`}>
-          <div className="flex items-start gap-2">
-            <svg
-              className="w-5 h-5 mt-0.5 flex-shrink-0"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-              />
-            </svg>
-            <p className="text-sm">
-              This item will appear in the wishlist after approval from the wishlist owner.
-            </p>
-          </div>
-        </div>
+        <Callout tone="info">
+          This item will appear in the wishlist after approval from the wishlist owner.
+        </Callout>
       )}
 
       {/* Item name */}

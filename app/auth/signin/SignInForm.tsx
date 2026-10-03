@@ -7,6 +7,7 @@ import Icon from '@/components/Icon';
 import TurnstileWidget, { type TurnstileHandle } from '@/components/TurnstileWidget';
 import { requestMagicLink } from './actions';
 import Button from '@/components/Button';
+import Callout from '@/components/Callout';
 import Field from '@/components/Field';
 import Input from '@/components/Input';
 
@@ -132,12 +133,9 @@ export default function SignInForm({ turnstileSiteKey }: SignInFormProps) {
         </div>
 
         {bannerMessage && (
-          <div
-            role="alert"
-            className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-500/30 dark:bg-red-500/10"
-          >
-            <p className="text-sm text-red-700 dark:text-red-400">{bannerMessage}</p>
-          </div>
+          <Callout tone="danger" className="mb-6">
+            {bannerMessage}
+          </Callout>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-6" autoComplete="off">

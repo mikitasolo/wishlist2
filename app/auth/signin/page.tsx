@@ -4,6 +4,7 @@ import { connection } from 'next/server';
 import { auth } from '@/lib/auth';
 import { getEnvVars, getTurnstileKeys } from '@/lib/env';
 import { safeCallbackPath } from '@/lib/utils/callbackUrl';
+import Spinner from '@/components/Spinner';
 import SignInForm from './SignInForm';
 
 interface SignInProps {
@@ -37,7 +38,7 @@ export default async function SignIn({ searchParams }: SignInProps) {
       fallback={
         <div className="min-h-screen flex items-center justify-center bg-background px-4">
           <div className="max-w-md w-full bg-surface rounded-2xl border border-border shadow-lg p-8 text-center">
-            <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+            <Spinner size="lg" />
           </div>
         </div>
       }

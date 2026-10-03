@@ -4,11 +4,11 @@ import { useState, useEffect } from 'react';
 import { ApiItem } from '@/types/api';
 import BaseModal from './BaseModal';
 import Button from './Button';
+import Callout from './Callout';
 import ItemForm, { itemToFormData } from './ItemForm';
 import ConfirmDialog from './ConfirmDialog';
 import { defaultItemCurrency } from '@/lib/utils/currencies';
 import { useViewerLocale } from '@/lib/hooks/useViewerLocale';
-import { STATUS_META } from '@/lib/utils/itemStatus';
 
 interface ReviewItemModalProps {
   isOpen: boolean;
@@ -145,27 +145,10 @@ export default function ReviewItemModal({
         shouldInterceptClose={() => hasUnsavedChanges}
         onInterceptClose={() => setShowConfirmClose(true)}
       >
-        <div className={`mb-4 rounded-lg p-4 ${STATUS_META.proposed.classes.notice}`}>
-          <div className="flex items-start gap-2">
-            <svg
-              className="w-5 h-5 mt-0.5 flex-shrink-0"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-              />
-            </svg>
-            <p className="text-sm">
-              Review this proposed item. You can edit any fields, select the status (Published or
-              Draft), and then approve or delete it.
-            </p>
-          </div>
-        </div>
+        <Callout tone="info" className="mb-4">
+          Review this proposed item. You can edit any fields, select the status (Published or
+          Draft), and then approve or delete it.
+        </Callout>
         <ItemForm
           key={itemFormKey}
           initialData={formData}

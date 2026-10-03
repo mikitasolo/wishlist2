@@ -5,6 +5,7 @@ import Icon from './Icon';
 import BannerImage from './BannerImage';
 import ImageCropModal from './ImageCropModal';
 import Button from './Button';
+import Spinner from './Spinner';
 
 interface ImageUploadProps {
   value: string | null;
@@ -156,7 +157,7 @@ export default function ImageUpload({
             )}
             {uploading && (
               <div className="absolute inset-0 flex items-center justify-center bg-black/40 text-white">
-                <span className="spinner h-6 w-6 text-white" />
+                <Spinner className="text-white" />
               </div>
             )}
           </button>
@@ -219,7 +220,7 @@ export default function ImageUpload({
           </div>
           {uploading && (
             <div className="absolute inset-0 flex items-center justify-center bg-black/40 text-white">
-              <span className="h-6 w-6 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+              <Spinner className="text-white" />
             </div>
           )}
         </div>
@@ -249,7 +250,7 @@ export default function ImageUpload({
         >
           {uploading ? (
             <>
-              <span className="spinner h-6 w-6 text-primary-600" />
+              <Spinner />
               <span className="text-sm text-muted-foreground">Uploading…</span>
             </>
           ) : (

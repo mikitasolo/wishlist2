@@ -7,7 +7,9 @@ import { useSession } from 'next-auth/react';
 import AppHeader from '@/components/AppHeader';
 import AuthButton from '@/components/AuthButton';
 import Icon from '@/components/Icon';
+import EmptyState from '@/components/EmptyState';
 import LoadError from '@/components/LoadError';
+import { Skeleton } from '@/components/Skeleton';
 import { signInPath } from '@/lib/utils/callbackUrl';
 import {
   type NotificationView,
@@ -123,10 +125,10 @@ export default function NotificationsPage() {
                 key={i}
                 className="flex items-center gap-3 rounded-2xl border border-border bg-surface p-4"
               >
-                <div className="skeleton h-10 w-10 flex-shrink-0 rounded-full" />
+                <Skeleton className="h-10 w-10 flex-shrink-0 rounded-full" />
                 <div className="flex flex-1 flex-col gap-2">
-                  <div className="skeleton h-4 w-3/4 rounded-md" />
-                  <div className="skeleton h-3 w-1/4 rounded-md" />
+                  <Skeleton className="h-4 w-3/4" />
+                  <Skeleton className="h-3 w-1/4" />
                 </div>
               </div>
             ))}
@@ -136,16 +138,12 @@ export default function NotificationsPage() {
             <LoadError title="Couldn’t load notifications" onRetry={retryLoad} />
           </div>
         ) : items.length === 0 ? (
-          <div className="mt-8 flex flex-col items-center rounded-3xl border border-dashed border-border-strong py-16 text-center">
-            <span className="mb-5 inline-flex h-16 w-16 items-center justify-center rounded-3xl bg-primary-500/12 text-accent dark:text-primary-300">
-              <Icon name="bell" size={30} />
-            </span>
-            <h3 className="text-xl font-semibold text-foreground">You’re all caught up</h3>
-            <p className="mx-auto mt-2 max-w-sm px-4 text-body text-muted-foreground">
-              When someone follows you, invites you to a wishlist, or acts on a proposal, it’ll show
-              up here.
-            </p>
-          </div>
+          <EmptyState
+            className="mt-8"
+            icon="bell"
+            title="You’re all caught up"
+            body="When someone follows you, invites you to a wishlist, or acts on a proposal, it’ll show up here."
+          />
         ) : (
           <ul className="mt-8 space-y-2">
             {items.map((n) => {

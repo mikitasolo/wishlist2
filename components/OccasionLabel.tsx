@@ -1,5 +1,6 @@
 'use client';
 
+import { badgeClassName } from '@/components/Badge';
 import Icon from '@/components/Icon';
 import { useLocalToday } from '@/lib/hooks/useLocalToday';
 import {
@@ -12,13 +13,11 @@ import {
 
 // How the icon and text sit together; always applied.
 const LAYOUT = 'inline-flex flex-shrink-0 items-center gap-1 whitespace-nowrap';
-// How it looks, which a caller can replace (e.g. on a cover image).
-const PILL =
-  'rounded-full border border-border bg-surface px-2.5 py-1 text-badge font-semibold text-foreground shadow-xs';
+// How it looks, which a caller can replace (e.g. on a cover image): a `Badge`'s.
+const PILL = `${badgeClassName({ tone: 'neutral' })} shadow-xs`;
 
 /** The look over a cover image, like the other badges on a list's card. Add the position. */
-export const OCCASION_ON_COVER =
-  'rounded-full border border-white/25 bg-white/20 px-2.5 py-1 text-badge font-semibold text-white backdrop-blur-md';
+export const OCCASION_ON_COVER = badgeClassName({ tone: 'glass' });
 
 /**
  * A list's occasion with its countdown, e.g. "Birthday · in 12 days", for

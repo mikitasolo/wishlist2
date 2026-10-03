@@ -348,10 +348,13 @@
     transform: translateX(100%);
   }
 }
+/* A tint of the text colour rather than `--surface-2`, which is the light
+   page background's own colour: a placeholder straight on the page (the
+   dashboard's tiles, a page heading) showed nothing there. */
 .skeleton {
   position: relative;
   overflow: hidden;
-  background-color: var(--surface-2);
+  background-color: color-mix(in srgb, var(--foreground) 7%, transparent);
 }
 .skeleton::after {
   content: '';
