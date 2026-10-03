@@ -27,13 +27,22 @@ test('regression: the owner\'s "Edit Item" modal keeps the changes when saving f
 
   const dialog = page.getByRole('dialog', { name: 'Edit Item' });
   await dialog.getByLabel('Item Name').fill('E2E Bike');
-  await dialog.getByLabel('Price').fill('120');
+  // Either decimal separator, whatever the locale (this browser's is en-US).
+  await dialog.getByLabel('Price').fill('349,00');
+  const patched = page.waitForRequest(
+    (req) => req.method() === 'PATCH' && /\/api\/items\/\w+$/.test(req.url())
+  );
   await dialog.getByRole('button', { name: 'Save Changes' }).click();
+  expect((await patched).postDataJSON()).toMatchObject({
+    name: 'E2E Bike',
+    price: { value: 34900 },
+  });
 
   await expect(page.getByRole('status').getByText('Something went wrong')).toBeVisible();
   await expect(dialog).toBeVisible();
   await expect(dialog.getByLabel('Item Name')).toHaveValue('E2E Bike');
-  await expect(dialog.getByLabel('Price')).toHaveValue('120');
+  // Leaving the field put the amount in the cards' format.
+  await expect(dialog.getByLabel('Price')).toHaveValue('349.00');
   await expect(dialog.getByRole('button', { name: 'Save Changes' })).toBeEnabled();
 
   // The optimistic edit is rolled back: the list shows the server's item while

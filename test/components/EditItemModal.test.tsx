@@ -74,7 +74,7 @@ describe('EditItemModal — save outcome', () => {
     expect(onSave).toHaveBeenCalledTimes(1);
     expect(onClose).not.toHaveBeenCalled();
     expect(nameInput()).toHaveValue('Road bike');
-    expect(priceInput()).toHaveValue(120.5);
+    expect(priceInput()).toHaveValue('120.50');
     expect(screen.getByRole('button', { name: 'EUR' })).toBeInTheDocument();
   });
 

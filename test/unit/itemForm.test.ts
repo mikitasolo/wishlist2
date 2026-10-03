@@ -67,6 +67,18 @@ describe('itemFormContent', () => {
     expect(itemFormContent(edited({ price: '-5' })).price).toBeNull();
   });
 
+  it('reads the amount with either decimal separator, and with grouping', () => {
+    for (const [price, value] of [
+      ['349,00', 34900],
+      ['349.00', 34900],
+      ['1 234,50', 123450],
+      ['1,234.50', 123450],
+      ['1.234,50', 123450],
+    ] as const) {
+      expect(itemFormContent(edited({ price })).price).toEqual({ value, currency: 'eur' });
+    }
+  });
+
   it('keeps a zero price, and falls back to USD with no currency', () => {
     expect(itemFormContent(edited({ price: '0' })).price).toEqual({ value: 0, currency: 'eur' });
     expect(itemFormContent(edited({ price: '3', currency: '' })).price).toEqual({
@@ -121,6 +133,9 @@ describe('itemChanges', () => {
     expect(itemChanges(edited({ name: 'Blue Mug  ', notes: ' Size M' }), filledFrom)).toEqual({});
     expect(itemChanges(edited({ imageUrl: ` ${IMAGE}` }), filledFrom)).toEqual({});
     expect(itemChanges(edited({ price: '12.5' }), filledFrom)).toEqual({});
+    // The same amount in the other separator, or as the field reformats it.
+    expect(itemChanges(edited({ price: '12,50' }), filledFrom)).toEqual({});
+    expect(itemChanges(edited({ price: '€12.50' }), filledFrom)).toEqual({});
     // Changed and changed back.
     expect(itemChanges(edited({ name: 'Blue Mug' }), filledFrom)).toEqual({});
   });
@@ -128,6 +143,9 @@ describe('itemChanges', () => {
   it('sends the price as one field: the amount and currency together', () => {
     expect(itemChanges(edited({ price: '15' }), filledFrom)).toEqual({
       price: { value: 1500, currency: 'eur' },
+    });
+    expect(itemChanges(edited({ price: '1 234,50' }), filledFrom)).toEqual({
+      price: { value: 123450, currency: 'eur' },
     });
     expect(itemChanges(edited({ currency: 'GBP' }), filledFrom)).toEqual({
       price: { value: 1250, currency: 'gbp' },
@@ -153,5 +171,34 @@ describe('itemChanges', () => {
 
   it('never sends a status: editing an item never changes it', () => {
     expect(itemChanges(edited({ isDraft: true }), filledFrom)).toEqual({});
+  });
+});
+
+describe('itemToFormData — the price', () => {
+  const priced = (value: number, currency: string) =>
+    ({ name: 'Bike', price: { value, currency }, status: 'available' }) as const;
+
+  it('fills the amount in the format the card shows it in, for the given locale', () => {
+    expect(itemToFormData(priced(34900, 'eur'), 'USD', 'de-DE').price).toBe('349,00');
+    expect(itemToFormData(priced(34900, 'eur'), 'USD', 'en-US').price).toBe('349.00');
+    expect(itemToFormData(priced(1234550, 'pln'), 'USD', 'en-US').price).toBe('12,345.50');
+  });
+
+  it('fills it in the fixed fallback locale when given none', () => {
+    expect(itemToFormData(priced(123450, 'eur'), 'USD').price).toBe('1,234.50');
+  });
+
+  it('reads back, unchanged, as the price it was filled from', () => {
+    for (const locale of ['de-DE', 'en-US', 'fr-FR', 'de-CH', 'en-IN']) {
+      // "1.234" in de-DE: a yen price has no decimals, so its one separator groups.
+      for (const price of [
+        { value: 12345678, currency: 'eur' },
+        { value: 123400, currency: 'jpy' },
+      ]) {
+        const form = itemToFormData(priced(price.value, price.currency), 'USD', locale);
+        expect(itemFormContent(form, locale).price).toEqual(price);
+        expect(itemChanges({ ...form, notes: 'Blue' }, form, locale)).toEqual({ notes: 'Blue' });
+      }
+    }
   });
 });

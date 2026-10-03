@@ -14,7 +14,8 @@ import ConfirmDialog from '@/components/ConfirmDialog';
 import { useBusyIds } from '@/lib/hooks/useBusyIds';
 import { useLocalToday } from '@/lib/hooks/useLocalToday';
 import { signInPath } from '@/lib/utils/callbackUrl';
-import { formatPriceFromObject } from '@/lib/utils/currency';
+import { formatPrice } from '@/lib/utils/currency';
+import { useViewerLocale } from '@/lib/hooks/useViewerLocale';
 import { createListChangeLog, mergeRefreshedList } from '@/lib/utils/listRefresh';
 import type { Occasion } from '@/lib/utils/occasion';
 import { withRequestTimeout } from '@/lib/utils/requestTimeout';
@@ -114,6 +115,7 @@ export default function BookedPage() {
   // The viewer's local date, which "To give" is grouped by: `null` until it's
   // known (see `useLocalToday`), and until then the cards aren't grouped.
   const today = useLocalToday();
+  const locale = useViewerLocale();
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [gifts, setGifts] = useState<Gift[]>([]);
   const [loading, setLoading] = useState(true);
@@ -521,7 +523,7 @@ export default function BookedPage() {
                           <p className="truncate text-xs text-muted-foreground">
                             {/* What isn't known (a recipient, say) is left out, not stood in for. */}
                             {[
-                              g.itemPrice ? formatPriceFromObject(g.itemPrice) : null,
+                              g.itemPrice ? formatPrice(g.itemPrice, locale) : null,
                               g.recipientUsername ? `to @${g.recipientUsername}` : null,
                               g.wishlistName,
                               new Date(g.giftedAt).toLocaleDateString(undefined, {
@@ -644,6 +646,7 @@ function ReservationCard({
   secondary: CardAction;
 }) {
   const note = reservationNote(r);
+  const locale = useViewerLocale();
   return (
     <div
       className={`flex flex-col overflow-hidden rounded-2xl border bg-surface shadow-sm ${
@@ -656,7 +659,7 @@ function ReservationCard({
           <p className="truncate text-[15px] font-semibold text-foreground">{r.itemName}</p>
           {r.itemPrice && (
             <p className="text-sm font-medium text-muted-foreground">
-              {formatPriceFromObject(r.itemPrice)}
+              {formatPrice(r.itemPrice, locale)}
             </p>
           )}
           <Link

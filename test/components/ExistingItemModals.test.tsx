@@ -104,7 +104,7 @@ describe.each(modals)('$name — price and currency', (modal) => {
     const { onSubmit } = open({ price: { value: 1000, currency: 'eur' } });
     expect(currencyButton('EUR')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'PLN' })).toBeNull();
-    expect(priceInput()).toHaveValue(10);
+    expect(priceInput()).toHaveValue('10.00');
 
     fireEvent.change(priceInput(), { target: { value: '12' } });
     fireEvent.click(screen.getByRole('button', { name: submitLabel }));

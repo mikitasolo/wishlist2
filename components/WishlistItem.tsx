@@ -3,7 +3,8 @@
 import { memo, useMemo, useCallback, useState, useEffect } from 'react';
 import { ApiItem } from '@/types/api';
 import { useSession } from 'next-auth/react';
-import { formatPriceFromObject, convertPrice } from '@/lib/utils/currency';
+import { convertedPrice, formatApproxPrice, formatPrice } from '@/lib/utils/currency';
+import { useViewerLocale } from '@/lib/hooks/useViewerLocale';
 import Icon, { type IconName } from '@/components/Icon';
 import Cover from '@/components/Cover';
 import ConfirmDialog from '@/components/ConfirmDialog';
@@ -121,13 +122,14 @@ function WishlistItem({
   // While the notes are hidden, the cover links to the product page.
   const productLink = item.link && !showNotes ? item.link : null;
 
-  // Price to display: original currency, or converted to the picked currency
-  // (falling back to original if the rate isn't available yet).
-  const displayPrice = useMemo(() => {
-    if (!item.price) return null;
-    if (priceCurrency === 'original' || !rates) return item.price;
-    return convertPrice(item.price, priceCurrency, rates) ?? item.price;
-  }, [item.price, priceCurrency, rates]);
+  // Price to display: the item's own, exactly, or converted to the picked
+  // currency, which is only approximate ("≈ €247"), so the original goes under
+  // it. Without the rate (yet), the original alone.
+  const locale = useViewerLocale();
+  const converted = useMemo(
+    () => (item.price ? convertedPrice(item.price, priceCurrency, rates) : null),
+    [item.price, priceCurrency, rates]
+  );
 
   const handleToggleBooked = useCallback(async () => {
     if (isOwner || isUpdating) return;
@@ -435,11 +437,14 @@ function WishlistItem({
         </div>
 
         {/* Price - fixed position */}
-        <div className="mb-2 flex min-h-[28px] items-center sm:mb-3 sm:min-h-[32px]">
-          {displayPrice && (
+        <div className="mb-2 flex min-h-[28px] flex-col justify-center sm:mb-3 sm:min-h-[32px]">
+          {item.price && (
             <p className="text-lg font-semibold text-foreground sm:text-xl">
-              {formatPriceFromObject(displayPrice)}
+              {converted ? formatApproxPrice(converted, locale) : formatPrice(item.price, locale)}
             </p>
+          )}
+          {item.price && converted && (
+            <p className="text-xs text-muted-foreground">{formatPrice(item.price, locale)}</p>
           )}
         </div>
 

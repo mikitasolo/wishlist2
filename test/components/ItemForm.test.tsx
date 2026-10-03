@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 
 // ImageUpload pulls in react-easy-crop; stub it out.
@@ -267,5 +267,131 @@ describe('ItemForm — most wanted', () => {
     fireEvent.click(screen.getByRole('button', { name: /^submit$/i }));
     await waitFor(() => expect(onSubmit).toHaveBeenCalled());
     expect(onSubmit.mock.calls[0][0].mostWanted).toBeUndefined();
+  });
+});
+
+describe('ItemForm — price field', () => {
+  const priceInput = () => screen.getByLabelText(/^price$/i) as HTMLInputElement;
+  const submit = () => fireEvent.click(screen.getByRole('button', { name: /^submit$/i }));
+  const typePrice = (value: string) => {
+    fireEvent.change(priceInput(), { target: { value } });
+    fireEvent.blur(priceInput());
+  };
+  const inLocale = (locale: string) =>
+    vi.spyOn(navigator, 'language', 'get').mockReturnValue(locale);
+
+  afterEach(() => vi.restoreAllMocks());
+
+  // regression: a `type=number` field showed the browser's own decimal format
+  // ("349,00") next to the card's ("349.00"), and refused the other separator.
+  it('regression: is a decimal text field that takes either separator', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(<ItemForm onSubmit={onSubmit} onCancel={vi.fn()} mode="create" defaultCurrency="EUR" />);
+    expect(priceInput()).toHaveAttribute('type', 'text');
+    expect(priceInput()).toHaveAttribute('inputmode', 'decimal');
+
+    fireEvent.change(screen.getByLabelText(/item name/i), { target: { value: 'Gift' } });
+    fireEvent.change(priceInput(), { target: { value: '349,00' } });
+    submit();
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({ price: { value: 34900, currency: 'eur' } }),
+        expect.anything()
+      )
+    );
+  });
+
+  it('shows the currency’s symbol in front of the amount, in the viewer’s locale', () => {
+    inLocale('pl-PL');
+    render(<ItemForm onSubmit={vi.fn()} onCancel={vi.fn()} mode="create" defaultCurrency="PLN" />);
+    expect(priceInput().parentElement).toHaveTextContent(/^zł$/);
+    pickCurrency('PLN', /EUR\s*Euro/);
+    expect(priceInput().parentElement).toHaveTextContent(/^€$/);
+  });
+
+  it('puts the amount in the cards’ format when the field is left', () => {
+    inLocale('de-DE');
+    render(<ItemForm onSubmit={vi.fn()} onCancel={vi.fn()} mode="create" defaultCurrency="EUR" />);
+    typePrice('1234,5');
+    expect(priceInput()).toHaveValue('1.234,50');
+    typePrice('1,234.50');
+    expect(priceInput()).toHaveValue('1.234,50');
+    typePrice('  ');
+    expect(priceInput()).toHaveValue('');
+  });
+
+  it('refuses an amount it can’t read, rather than save it as no price', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(<ItemForm onSubmit={onSubmit} onCancel={vi.fn()} mode="create" />);
+    fireEvent.change(screen.getByLabelText(/item name/i), { target: { value: 'Gift' } });
+
+    // Typing isn't nagged; leaving the field says what's wrong, and keeps it.
+    fireEvent.change(priceInput(), { target: { value: '12,34,5' } });
+    expect(screen.queryByText(/enter a price like/i)).toBeNull();
+    fireEvent.blur(priceInput());
+    expect(priceInput()).toHaveValue('12,34,5');
+    expect(priceInput()).toHaveAttribute('aria-invalid', 'true');
+    expect(priceInput()).toHaveAccessibleDescription('Enter a price like 349.00');
+    // The browser won't submit it either, as for a missing name.
+    expect(priceInput().validity.valid).toBe(false);
+
+    submit();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(onSubmit).not.toHaveBeenCalled();
+
+    typePrice('12.50');
+    expect(priceInput()).not.toHaveAttribute('aria-invalid');
+    expect(priceInput().validity.valid).toBe(true);
+    // Once fixed, typing isn't nagged again until the field is left.
+    fireEvent.change(priceInput(), { target: { value: '12.5.' } });
+    expect(screen.queryByText(/enter a price like/i)).toBeNull();
+    fireEvent.change(priceInput(), { target: { value: '12.50' } });
+
+    submit();
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({ price: { value: 1250, currency: 'usd' } }),
+        expect.anything()
+      )
+    );
+  });
+
+  // "1.999" is three decimals where "." is the decimal separator, not 1999.00:
+  // read that way, a typo would save 1000 times the price meant.
+  it('reads one separator before three digits as the viewer’s locale writes numbers', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(<ItemForm onSubmit={onSubmit} onCancel={vi.fn()} mode="create" />);
+    typePrice('1.999');
+    expect(priceInput()).toHaveAttribute('aria-invalid', 'true');
+
+    cleanup();
+    inLocale('de-DE');
+    render(<ItemForm onSubmit={onSubmit} onCancel={vi.fn()} mode="create" />);
+    fireEvent.change(screen.getByLabelText(/item name/i), { target: { value: 'Gift' } });
+    typePrice('1.999');
+    expect(priceInput()).toHaveValue('1.999,00');
+    submit();
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({ price: { value: 199900, currency: 'usd' } }),
+        expect.anything()
+      )
+    );
+  });
+
+  it('does not count a reformatted amount as an unsaved change', () => {
+    const onFormChange = vi.fn();
+    render(
+      <ItemForm
+        onSubmit={vi.fn()}
+        onCancel={vi.fn()}
+        mode="edit"
+        initialData={{ ...filled, price: '10.00' }}
+        onFormChange={onFormChange}
+      />
+    );
+    typePrice('10');
+    expect(priceInput()).toHaveValue('10.00');
+    expect(onFormChange).toHaveBeenLastCalledWith(false);
   });
 });

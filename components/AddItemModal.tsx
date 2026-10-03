@@ -5,6 +5,7 @@ import BaseModal from './BaseModal';
 import ItemForm, { itemToFormData } from './ItemForm';
 import ConfirmDialog from './ConfirmDialog';
 import { defaultItemCurrency } from '@/lib/utils/currencies';
+import { useViewerLocale } from '@/lib/hooks/useViewerLocale';
 import type { ApiItem } from '@/types/api';
 
 /** What a copy of an item ("Save to my list") starts from. */
@@ -60,6 +61,8 @@ export default function AddItemModal({
   const [confirmLeave, setConfirmLeave] = useState<'close' | 'back' | null>(null);
 
   const defaultCurrency = defaultItemCurrency(wishlistCurrency, userCurrency);
+  // A copied price is filled in the format the item's card shows it in.
+  const locale = useViewerLocale();
   // Only the copied fields come across; the rest is a new item's. A stable
   // snapshot, so nothing the caller re-renders with resets the user's edits.
   const [initialData] = useState(() =>
@@ -74,7 +77,8 @@ export default function AddItemModal({
             mostWanted: false,
             status: 'available',
           },
-          defaultCurrency
+          defaultCurrency,
+          locale
         )
       : undefined
   );
