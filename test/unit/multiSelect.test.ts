@@ -54,7 +54,7 @@ describe('statusFilterPicker', () => {
       { value: 'draft', label: 'Draft' },
       { value: 'proposed', label: 'Proposed' },
       { value: 'available', label: 'Available' },
-      { value: 'completed', label: 'Completed' },
+      { value: 'completed', label: 'Received' },
     ]);
     expect(picker.allLabel).toBe('All');
   });

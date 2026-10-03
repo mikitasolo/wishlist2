@@ -26,18 +26,18 @@ function ModalPage(props: ModalProps) {
       <BaseModal
         isOpen={open}
         onClose={() => setOpen(false)}
-        title="Edit Item"
+        title="Edit item"
         titleId="edit-item-title"
         {...props}
       >
-        {props.children ?? <input aria-label="Item Name" />}
+        {props.children ?? <input aria-label="Item name" />}
       </BaseModal>
     </>
   );
 }
 
 const button = (name: string) => screen.getByRole('button', { name });
-const modal = () => screen.getByRole('dialog', { name: 'Edit Item' });
+const modal = () => screen.getByRole('dialog', { name: 'Edit item' });
 
 async function openModal(props: ModalProps = {}) {
   const user = userEvent.setup();
@@ -66,7 +66,7 @@ describe('BaseModal — sizes', () => {
 describe('BaseModal — the header', () => {
   it('names the dialog by its title, with a close button named by closeLabel', async () => {
     await openModal({ closeLabel: 'Cancel' });
-    expect(within(modal()).getByRole('heading', { name: 'Edit Item' })).toBeInTheDocument();
+    expect(within(modal()).getByRole('heading', { name: 'Edit item' })).toBeInTheDocument();
     expect(button('Cancel')).toHaveFocus();
     expect(screen.queryByRole('button', { name: 'Close modal' })).toBeNull();
   });
@@ -77,7 +77,7 @@ describe('BaseModal — the header', () => {
     await user.tab();
     expect(button('Followers')).toHaveFocus();
     await user.tab();
-    expect(screen.getByLabelText('Item Name')).toHaveFocus();
+    expect(screen.getByLabelText('Item name')).toHaveFocus();
   });
 });
 
@@ -91,7 +91,7 @@ describe('BaseModal — the footer', () => {
 
   it('is pinned outside the scrolling body, Cancel then the primary action', async () => {
     await openModal({ footer });
-    const field = screen.getByLabelText('Item Name');
+    const field = screen.getByLabelText('Item name');
     const cancel = button('Cancel');
     const bar = cancel.parentElement!;
     // Not inside the body that scrolls, which holds the content.
@@ -105,7 +105,7 @@ describe('BaseModal — the footer', () => {
     const user = await openModal({ footer });
     expect(button('Close modal')).toHaveFocus();
     await user.tab();
-    expect(screen.getByLabelText('Item Name')).toHaveFocus();
+    expect(screen.getByLabelText('Item name')).toHaveFocus();
     await user.tab();
     expect(button('Cancel')).toHaveFocus();
     await user.tab();
@@ -148,7 +148,7 @@ describe('BaseModal — a form with its submit button in the footer', () => {
         <BaseModal
           isOpen={open}
           onClose={() => setOpen(false)}
-          title="Edit Item"
+          title="Edit item"
           titleId="edit-item-title"
           onSubmit={submit}
           isSubmitting={saving}
@@ -163,7 +163,7 @@ describe('BaseModal — a form with its submit button in the footer', () => {
             </>
           }
         >
-          <input aria-label="Item Name" disabled={saving} />
+          <input aria-label="Item name" disabled={saving} />
           <input aria-label="Notes" disabled={saving} />
         </BaseModal>
       </>
@@ -226,7 +226,7 @@ describe('BaseModal — busy, and the backdrop', () => {
         <BaseModal
           isOpen={open}
           onClose={() => setOpen(false)}
-          title="Edit Item"
+          title="Edit item"
           titleId="edit-item-title"
           busy={busy}
           closeOnBackdrop={closeOnBackdrop}

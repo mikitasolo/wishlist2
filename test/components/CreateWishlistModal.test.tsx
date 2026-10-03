@@ -153,15 +153,15 @@ describe('CreateWishlistModal — keyboard focus', () => {
 });
 
 describe('CreateWishlistModal — on BaseModal', () => {
-  it('is a md-wide dialog with Cancel and Create Wishlist in its pinned footer', async () => {
+  it('is a md-wide dialog with Cancel and Create wishlist in its pinned footer', async () => {
     await openModal();
     expect(modal()).toHaveClass('max-w-md');
     expect(modal().tagName).toBe('FORM');
     const cancel = button('Cancel');
     const bar = cancel.parentElement!;
-    expect(bar).toContainElement(button('Create Wishlist'));
+    expect(bar).toContainElement(button('Create wishlist'));
     expect(bar).not.toContainElement(nameField());
-    expect(button('Create Wishlist')).toHaveAttribute('type', 'submit');
+    expect(button('Create wishlist')).toHaveAttribute('type', 'submit');
   });
 
   // regression: the discard confirmation, no longer inside the modal's portal,
@@ -172,7 +172,7 @@ describe('CreateWishlistModal — on BaseModal', () => {
     await user.type(nameField(), 'Birthday');
     await user.tab();
     await user.keyboard('{Escape}');
-    const confirmation = screen.getByRole('alertdialog', { name: 'Discard Changes?' });
+    const confirmation = screen.getByRole('alertdialog', { name: 'Discard changes?' });
     expect(confirmation.parentElement!.parentElement).toBe(document.body);
     expect(modal().parentElement!.parentElement).toBe(document.body);
   });
