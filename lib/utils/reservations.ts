@@ -1,20 +1,27 @@
 // Client-safe classification of a gifter's reservations for the "Reserved by
 // you" page. The API (app/api/users/me/reservations) returns each reservation's
-// live `itemStatus`, whether it's `stillReserved` by this gifter, and whether
-// they can still open its list (`listOpen`); these helpers turn that into UI
-// grouping and copy.
+// live `itemStatus`, whether it's `stillReserved` by this gifter, whether
+// they can still open its list (`listOpen`), and whether that list is archived
+// (`listArchived`); these helpers turn that into UI grouping and copy.
 
 import { NO_UPCOMING_OCCASION, occasionSortKey, type Occasion } from '@/lib/utils/occasion';
 
 export interface ReservationStatusInfo {
-  itemStatus: string;
-  /** The live item is still booked by the gifter. */
-  stillReserved: boolean;
+  /** The live item's status: `null` on an archived list, which shows none. */
+  itemStatus: string | null;
+  /** The live item is still booked by the gifter: `null` on an archived list. */
+  stillReserved: boolean | null;
   /**
    * The gifter can still open the reservation's list. Only their own access:
-   * never why they can't (an archived list looks exactly like a missing one).
+   * never why they can't, except that an archived list says so (`listArchived`).
    */
   listOpen: boolean;
+  /**
+   * The list is archived, and so out of the gifter's reach. The reservation is
+   * frozen: shown as its snapshot only, with nothing live of the list or the
+   * item (`itemStatus` and `stillReserved` are `null`), until it's unarchived.
+   */
+  listArchived: boolean;
 }
 
 /**
@@ -23,7 +30,8 @@ export interface ReservationStatusInfo {
  * else took it, or the gifter left or was removed from the wishlist — or when
  * it still is, but on a list the gifter can no longer open. The list's own
  * unbook (Release) refuses anyone the list is hidden from, so that booking can
- * only be released by an owner. In every such case the durable Reservation
+ * only be released by an owner. That includes one on an archived list, which
+ * isn't open to them and says nothing of its item. In every such case the durable Reservation
  * lingers (by design), so we prompt the gifter to resolve it: log the gift or
  * dismiss it, keeping their history accurate without ever mutating the owner's
  * item.
@@ -37,6 +45,8 @@ export function needsConfirmation(r: ReservationStatusInfo): boolean {
  * null while the reservation is still active (no note needed).
  */
 export function reservationNote(r: ReservationStatusInfo): string | null {
+  // Frozen: there's no live item to say anything of, only the list's state.
+  if (r.listArchived) return 'This list was archived';
   if (r.stillReserved) {
     // Still theirs, on a list they can't open: say only that, never why.
     return r.listOpen ? null : 'This list is no longer available to you';

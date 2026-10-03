@@ -76,21 +76,32 @@ export interface WishlistViewer {
  */
 export function viewableWishlistsFilter(viewer: WishlistViewer | null): FilterQuery<IWishlist> {
   if (!viewer) return { archived: { $ne: true }, ...EVERYONE_TIER };
-  const owned = ownedByFilter(viewer.id);
   return {
     $and: [
       // isHiddenByArchive: an archived list is its owners' alone.
-      { $or: [{ archived: { $ne: true } }, owned] },
-      {
-        $or: [
-          EVERYONE_TIER,
-          // Owners and members get in at every tier.
-          owned,
-          { _id: { $in: toObjectIds(viewer.memberOf) } },
-          // `friends` admits a friend of *any* owner.
-          { visibility: 'friends', owners: { $in: toObjectIds(viewer.friendIds) } },
-        ],
-      },
+      { $or: [{ archived: { $ne: true } }, ownedByFilter(viewer.id)] },
+      viewableUnlessArchivedFilter(viewer),
+    ],
+  };
+}
+
+/**
+ * `viewableWishlistsFilter` with archiving left out: the lists `viewer` may
+ * open, or could if they weren't archived (visibility tier, ownership,
+ * membership, any owner's friends). Only for a read that has to tell a list
+ * hidden from them by its archiving alone from one hidden for any other reason
+ * (the Booked page's reservations, `readReservationWishlists`); anything that
+ * admits a viewer goes through `viewableWishlistsFilter`.
+ */
+export function viewableUnlessArchivedFilter(viewer: WishlistViewer): FilterQuery<IWishlist> {
+  return {
+    $or: [
+      EVERYONE_TIER,
+      // Owners and members get in at every tier.
+      ownedByFilter(viewer.id),
+      { _id: { $in: toObjectIds(viewer.memberOf) } },
+      // `friends` admits a friend of *any* owner.
+      { visibility: 'friends', owners: { $in: toObjectIds(viewer.friendIds) } },
     ],
   };
 }

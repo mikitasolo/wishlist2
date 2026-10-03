@@ -33,6 +33,7 @@ const reservation = {
   wishlistId: 'w1',
   wishlistSlug: 'birthday',
   listOpen: true,
+  listArchived: false,
 };
 
 const reservations = [
@@ -84,10 +85,16 @@ const scarfGift = {
   giftedAt: '2026-10-01T10:05:00.000Z',
 };
 
-type Reservation = Omit<(typeof reservations)[number], 'wishlistSlug'> & {
+type Reservation = Omit<
+  (typeof reservations)[number],
+  'wishlistSlug' | 'itemStatus' | 'stillReserved'
+> & {
   /** `null` for a list the gifter can no longer open, as the read has it. */
   wishlistSlug: string | null;
   wishlistOccasion?: Occasion | null;
+  /** Both `null` on an archived list (`listArchived`), which says nothing live. */
+  itemStatus: string | null;
+  stillReserved: boolean | null;
 };
 type Gift = typeof legoGift;
 
@@ -105,6 +112,16 @@ const failed = (error: string): Reply => ({ status: 500, body: { success: false,
 const notFound = (error: string): Reply => ({ status: 404, body: { success: false, error } });
 /** A list route's answer. */
 const listed = (data: unknown[]): Reply => ({ status: 200, body: { success: true, data } });
+
+/** What the reservations read has of a reservation on an archived list. */
+const ARCHIVED = {
+  listOpen: false,
+  listArchived: true,
+  wishlistSlug: null,
+  wishlistOccasion: null,
+  itemStatus: null,
+  stillReserved: null,
+};
 
 /** What one read of the page's two lists is answered with. */
 interface Lists {
@@ -169,13 +186,23 @@ function mockHeldFetch({
       );
     },
     /**
-     * The gifter can no longer open a reservation's list (it was archived,
-     * say), while the item is still booked by them: the read has no slug or
-     * occasion for it, and says only that it isn't open to them.
+     * The gifter can no longer open a reservation's list (they left it, and
+     * it was made private since, say), while the item is still booked by them:
+     * the read has no slug or occasion for it, and says only that it isn't
+     * open to them.
      */
     closeList(id: string) {
       lists.reservations = lists.reservations.map((r) =>
         r._id === id ? { ...r, listOpen: false, wishlistSlug: null, wishlistOccasion: null } : r
+      );
+    },
+    /**
+     * A reservation's list is archived: the read is frozen, with nothing live
+     * of the list or the item, only that the list is archived.
+     */
+    archiveList(id: string) {
+      lists.reservations = lists.reservations.map((r) =>
+        r._id === id ? { ...r, ...ARCHIVED } : r
       );
     },
     /** A gift-history entry is deleted elsewhere. */
@@ -1070,6 +1097,50 @@ describe('BookedPage — reading both lists again while the page is open', () =>
     await answerRead(2);
     expect(listLink('Lego set')).toHaveAttribute('href', '/wishlists/birthday');
     expect(screen.queryByText(/no longer available to you/)).toBeNull();
+  });
+
+  // regression (WIS-124): a card on an archived list kept saying what its
+  // owners had done to the item since ("The owner marked this received"), and
+  // the read kept giving it. The read is frozen now, and the card shows only
+  // its snapshot: the list's name with no link, "This list was archived", and
+  // no hint about the item. It still settles as before, by Mark as given or
+  // Dismiss (Release can't reach the list), and is back once it's unarchived.
+  it('regression: a card on an archived list shows only its snapshot, marked archived', async () => {
+    const { server, answerRead } = await renderLoaded();
+    expect(noteOn('Scarf')).toMatch(/removed/i);
+
+    server.archiveList('res-lego');
+    server.archiveList('res-scarf');
+    comeBack('focus');
+    await answerRead(1);
+
+    for (const name of ['Lego set', 'Scarf']) {
+      expect(noteOn(name)).toBe('This list was archived');
+      const buttons = reservationButtons(name);
+      expect(buttons.release).toBeNull();
+      expect(buttons.dismiss).toBeEnabled();
+      expect(buttons.gift).toBeEnabled();
+    }
+    // Named from the snapshot, unlinked, and said once, by the note.
+    expect(screen.queryByRole('link', { name: /Birthday/ })).toBeNull();
+    expect(screen.getAllByText('Birthday')).toHaveLength(2);
+    expect(screen.getAllByText('This list was archived')).toHaveLength(2);
+    // Nothing of the item: no hint that it was removed, nor that it's still theirs.
+    expect(document.body.textContent).not.toMatch(
+      /removed|received|draft|no longer reserved|no longer available/i
+    );
+    expect(
+      screen.getByRole('heading', { level: 2, name: /Needs your confirmation/ })
+    ).toHaveTextContent('Needs your confirmation2');
+    expect(screen.getByText('Nothing actively reserved right now.')).toBeInTheDocument();
+
+    // Unarchived: as before, the link and the item's hints with it.
+    comeBack('focus');
+    await answerRead(2, { reservations: listed(reservations) });
+    expect(screen.queryByText('This list was archived')).toBeNull();
+    expect(listLink('Lego set')).toHaveAttribute('href', '/wishlists/birthday');
+    expect(reservationButtons('Lego set').release).toBeEnabled();
+    expect(noteOn('Scarf')).toMatch(/removed/i);
   });
 
   const loadError = () =>

@@ -8,16 +8,43 @@ import {
 } from '@/lib/utils/reservations';
 import type { Occasion } from '@/lib/utils/occasion';
 
-const active = { itemStatus: 'booked', stillReserved: true, listOpen: true };
-const completed = { itemStatus: 'completed', stillReserved: false, listOpen: true };
-const deleted = { itemStatus: 'deleted', stillReserved: false, listOpen: true };
-const draft = { itemStatus: 'draft', stillReserved: false, listOpen: true };
+const active = { itemStatus: 'booked', stillReserved: true, listOpen: true, listArchived: false };
+const completed = {
+  itemStatus: 'completed',
+  stillReserved: false,
+  listOpen: true,
+  listArchived: false,
+};
+const deleted = {
+  itemStatus: 'deleted',
+  stillReserved: false,
+  listOpen: true,
+  listArchived: false,
+};
+const draft = { itemStatus: 'draft', stillReserved: false, listOpen: true, listArchived: false };
 // Detached but the item still exists as "available" (owner reopened / someone else took it).
-const detachedAvailable = { itemStatus: 'available', stillReserved: false, listOpen: true };
-// Still booked by the gifter, on a list they can no longer open (archived, say).
-const listClosed = { itemStatus: 'booked', stillReserved: true, listOpen: false };
+const detachedAvailable = {
+  itemStatus: 'available',
+  stillReserved: false,
+  listOpen: true,
+  listArchived: false,
+};
+// Still booked by the gifter, on a list they can no longer open (left, and made private since).
+const listClosed = {
+  itemStatus: 'booked',
+  stillReserved: true,
+  listOpen: false,
+  listArchived: false,
+};
 // Booked by someone else since, on a list they can no longer open either.
-const takenListClosed = { itemStatus: 'booked', stillReserved: false, listOpen: false };
+const takenListClosed = {
+  itemStatus: 'booked',
+  stillReserved: false,
+  listOpen: false,
+  listArchived: false,
+};
+// On an archived list: frozen, so the read says nothing live of the item.
+const archived = { itemStatus: null, stillReserved: null, listOpen: false, listArchived: true };
 
 describe('needsConfirmation', () => {
   it('is false only while still reserved by the gifter, on a list they can open', () => {
@@ -29,6 +56,8 @@ describe('needsConfirmation', () => {
     // Release can't reach a list they can't open, so it needs their confirmation.
     expect(needsConfirmation(listClosed)).toBe(true);
     expect(needsConfirmation(takenListClosed)).toBe(true);
+    // Nor can it reach an archived one, whatever the item's state.
+    expect(needsConfirmation(archived)).toBe(true);
   });
 });
 
@@ -48,8 +77,8 @@ describe('reservationNote', () => {
 
   // regression: a booking still theirs, on a list they could no longer open,
   // said "No longer reserved to you", which isn't so. It says only that the
-  // list isn't available to them, never why (an archived list looks exactly
-  // like a missing one).
+  // list isn't available to them, never why (an archived list says so on its
+  // own: see below).
   it('regression: says a still-reserved gift is on a list no longer available to them', () => {
     expect(reservationNote(listClosed)).toBe('This list is no longer available to you');
     expect(reservationNote(listClosed)).not.toMatch(/archiv|reserved/i);
@@ -60,13 +89,27 @@ describe('reservationNote', () => {
     expect(reservationNote({ ...deleted, listOpen: false })).toMatch(/removed/i);
     expect(reservationNote({ ...completed, listOpen: false })).toMatch(/received/i);
   });
+
+  // regression (WIS-124): a reservation on an archived list kept hinting at what
+  // its owners did to the item since (received, drafted, removed), though the
+  // list is theirs alone. It's frozen: the note says only that the list was
+  // archived, whatever the item's state.
+  it('regression: says only that the list was archived, never anything of the item', () => {
+    expect(reservationNote(archived)).toBe('This list was archived');
+    // Even were a status to come with it, it isn't shown.
+    for (const item of [deleted, completed, draft, detachedAvailable, listClosed]) {
+      expect(reservationNote({ ...item, listOpen: false, listArchived: true })).toBe(
+        'This list was archived'
+      );
+    }
+  });
 });
 
 describe('partitionReservations', () => {
   it('splits into needsConfirm and active, preserving order', () => {
-    const list = [active, completed, active, listClosed, deleted];
+    const list = [active, completed, active, listClosed, archived, deleted];
     const { needsConfirm, active: stillActive } = partitionReservations(list);
-    expect(needsConfirm).toEqual([completed, listClosed, deleted]);
+    expect(needsConfirm).toEqual([completed, listClosed, archived, deleted]);
     expect(stillActive).toEqual([active, active]);
   });
 

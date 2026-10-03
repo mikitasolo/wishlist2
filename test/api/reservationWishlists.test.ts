@@ -23,8 +23,10 @@ import WishlistMember from '@/models/WishlistMember';
  * `listOpen`, whether the gifter may open it at all (the card links it only if
  * so). A Reservation outlives the gifter's access to its list, so each is only
  * returned while the gifter may still open that list
- * (`getWishlistViewAccess`'s rules). Otherwise it's `null`. (The gift history
- * reads nothing of the live list: `test/api/reservations.test.ts`.)
+ * (`getWishlistViewAccess`'s rules). Otherwise it's `null`. A list archived
+ * out of their reach says only that (`listArchived`), and its reservation is
+ * frozen: nothing live of the item either (WIS-124). (The gift history reads
+ * nothing of the live list: `test/api/reservations.test.ts`.)
  */
 
 const session = vi.mocked(auth);
@@ -135,6 +137,9 @@ interface Row {
   wishlistSlug: string | null;
   wishlistOccasion?: unknown;
   listOpen?: boolean;
+  listArchived?: boolean;
+  itemStatus?: string | null;
+  stillReserved?: boolean | null;
 }
 
 /** The gifter's reservations, as the Booked page reads them. */
@@ -157,6 +162,7 @@ const of = (row: Row) => ({
   slug: row.wishlistSlug,
   occasion: row.wishlistOccasion,
   listOpen: row.listOpen,
+  listArchived: row.listArchived,
 });
 
 /** The list's slug and its (default) occasion, as a gifter who may open it reads them. */
@@ -164,9 +170,12 @@ const visible = (wishlistId: string) => ({
   slug: slugs.get(wishlistId),
   occasion: BIRTHDAY,
   listOpen: true,
+  listArchived: false,
 });
 /** Nothing of the live list: the card names it, unlinked, under "No date". */
-const HIDDEN = { slug: null, occasion: null, listOpen: false };
+const HIDDEN = { slug: null, occasion: null, listOpen: false, listArchived: false };
+/** Nothing of the live list but that it's archived: the card is frozen. */
+const ARCHIVED = { slug: null, occasion: null, listOpen: false, listArchived: true };
 
 describe('GET /api/users/me/reservations — the live list’s slug and occasion', () => {
   it('refuses a signed-out caller', async () => {
@@ -242,7 +251,7 @@ describe('GET /api/users/me/reservations — the live list’s slug and occasion
         const id = await list({ visibility });
         await book(id);
         await ownerEdits(id, { archived: true });
-        expect(await shown()).toEqual(HIDDEN);
+        expect(await shown()).toEqual(ARCHIVED);
 
         // Unarchived, they're back.
         await ownerEdits(id, { archived: false });
@@ -289,6 +298,7 @@ describe('GET /api/users/me/reservations — the live list’s slug and occasion
     expect(row).toMatchObject({
       wishlistId: id,
       listOpen: false,
+      listArchived: false,
       wishlistSlug: null,
       wishlistOccasion: null,
     });
@@ -303,7 +313,12 @@ describe('GET /api/users/me/reservations — the live list’s slug and occasion
       { $unset: { slug: '' } }
     );
     await book(id);
-    expect(await shown()).toEqual({ slug: null, occasion: BIRTHDAY, listOpen: true });
+    expect(await shown()).toEqual({
+      slug: null,
+      occasion: BIRTHDAY,
+      listOpen: true,
+      listArchived: false,
+    });
   });
 
   it('reads them live: a rename, or a changed or cleared date, shows on the next read', async () => {
@@ -312,13 +327,28 @@ describe('GET /api/users/me/reservations — the live list’s slug and occasion
     expect(await shown()).toEqual(visible(id));
 
     await rename(id);
-    expect(await shown()).toEqual({ slug: 'annas-30th', occasion: BIRTHDAY, listOpen: true });
+    expect(await shown()).toEqual({
+      slug: 'annas-30th',
+      occasion: BIRTHDAY,
+      listOpen: true,
+      listArchived: false,
+    });
 
     await ownerEdits(id, { occasion: WEDDING });
-    expect(await shown()).toEqual({ slug: 'annas-30th', occasion: WEDDING, listOpen: true });
+    expect(await shown()).toEqual({
+      slug: 'annas-30th',
+      occasion: WEDDING,
+      listOpen: true,
+      listArchived: false,
+    });
 
     await ownerEdits(id, { occasion: null });
-    expect(await shown()).toEqual({ slug: 'annas-30th', occasion: null, listOpen: true });
+    expect(await shown()).toEqual({
+      slug: 'annas-30th',
+      occasion: null,
+      listOpen: true,
+      listArchived: false,
+    });
 
     // Nothing was copied into the Reservation.
     const stored = await Reservation.findOne({ gifter }).lean();
@@ -334,6 +364,127 @@ describe('GET /api/users/me/reservations — the live list’s slug and occasion
     await WishlistMember.create({ wishlist: id, user: other });
 
     expect(await read(other)).toEqual([]);
+  });
+});
+
+/** What the owners do to the gifter's reserved item, as their status change leaves it. */
+const OWNER_ACTIONS = {
+  'leave it as it is': async () => {},
+  'mark it as received': () =>
+    Item.updateOne({ name: 'Blue Mug' }, { status: 'completed', bookedBy: null }),
+  'move it to draft': () =>
+    Item.updateOne({ name: 'Blue Mug' }, { status: 'draft', bookedBy: null }),
+  'delete it': () => Item.deleteOne({ name: 'Blue Mug' }),
+};
+
+/** What a reservation's row says of the live item. */
+const liveItem = (row: Row) => ({ itemStatus: row.itemStatus, stillReserved: row.stillReserved });
+
+describe('GET /api/users/me/reservations — a reservation on an archived list is frozen', () => {
+  // regression (WIS-124): an archived list is its owners' alone, yet a
+  // gifter's reservation on it still came back with the live item's status and
+  // `stillReserved`, so they kept learning what the owners did to the item
+  // (received, drafted, deleted). It now comes back as its snapshot only,
+  // marked as on an archived list, with nothing live of the list or the item.
+  it.each(Object.entries(OWNER_ACTIONS))(
+    'regression: says nothing live once the list is archived, whatever the owners %s',
+    async (_label, ownersAct) => {
+      const id = await list({ visibility: 'private' });
+      await book(id);
+      const item = await Item.findOne({ name: 'Blue Mug' }).lean();
+      await ownerEdits(id, { archived: true });
+      await ownersAct();
+
+      const [row] = await read();
+      expect(row).toEqual({
+        _id: expect.any(String),
+        // The snapshot, and the records' own ids, as before.
+        itemId: item!._id.toString(),
+        itemName: 'Blue Mug',
+        itemImage: null,
+        itemPrice: null,
+        wishlistName: 'Birthday',
+        wishlistId: id,
+        // Nothing live: no link, no date, no item status.
+        wishlistSlug: null,
+        wishlistOccasion: null,
+        itemStatus: null,
+        stillReserved: null,
+        listOpen: false,
+        listArchived: true,
+      });
+    }
+  );
+
+  it('comes back as before once the list is unarchived, with what the owners did meanwhile', async () => {
+    const id = await list();
+    await book(id);
+    expect(liveItem((await read())[0])).toEqual({ itemStatus: 'booked', stillReserved: true });
+
+    await ownerEdits(id, { archived: true });
+    await OWNER_ACTIONS['mark it as received']();
+    expect(await shown()).toEqual(ARCHIVED);
+    expect(liveItem((await read())[0])).toEqual({ itemStatus: null, stillReserved: null });
+
+    await ownerEdits(id, { archived: false });
+    expect(await shown()).toEqual(visible(id));
+    expect(liveItem((await read())[0])).toEqual({ itemStatus: 'completed', stillReserved: false });
+  });
+
+  // A gifter the list was hidden from already (kicked from a private list, say)
+  // isn't told it was archived, or unarchived: that would let them follow what
+  // its owners do with a list they can't open, and tell an archived list from a
+  // deleted one. Their read is the same either way. (Whether it should keep the
+  // live item status at all is WIS-295.)
+  it.each([
+    ['removed from a private list', { visibility: 'private' }, removeGifter],
+    [
+      'whose friendship with its owner ended',
+      { visibility: 'friends', member: false },
+      () => Follow.deleteOne({ follower: owner, following: gifter }),
+    ],
+  ])(
+    'never marks it archived for a gifter %s, which hid it from them already',
+    async (_label, fields, loseAccess) => {
+      // Friends with the owner, which lets nobody into a private list.
+      await befriend(gifter, owner);
+      const id = await list(fields);
+      await book(id);
+      await loseAccess(id);
+      const before = await read();
+      expect(of(before[0])).toEqual(HIDDEN);
+
+      await ownerEdits(id, { archived: true });
+      expect(await read()).toEqual(before);
+
+      await ownerEdits(id, { archived: false });
+      expect(await read()).toEqual(before);
+    }
+  );
+
+  // Owners never hold reservations on their own lists (becoming one cancels
+  // them: `releaseHoldingsForRole`), and an archived list hides nothing from
+  // its owners. Were one ever there, it reads as on any list they can open.
+  it('hides nothing from an owner of the archived list, nor marks it', async () => {
+    const id = await list({ archived: true });
+    const item = await Item.create({
+      wishlist: id,
+      name: 'Lamp',
+      status: 'booked',
+      bookedBy: coOwner,
+    });
+    await Reservation.create({
+      gifter: coOwner,
+      wishlist: id,
+      item: item._id,
+      owner,
+      itemName: 'Lamp',
+      wishlistName: 'Birthday',
+    });
+
+    const [row] = await read(coOwner);
+    expect(of(row)).toEqual(visible(id));
+    expect(liveItem(row)).toEqual({ itemStatus: 'booked', stillReserved: true });
   });
 });
 
@@ -359,9 +510,11 @@ async function countQueries<T>(readIt: () => Promise<T>) {
 /**
  * Six more records, by `record`, on five lists of every visibility and
  * relationship, after an `Item 0` on a friend's friends-only list. The gifter
- * may no longer open the lists of these two.
+ * may no longer open the lists of these two: the first is private to them, the
+ * second archived.
  */
 const HIDDEN_FROM_GIFTER = ['Item 3', 'Item 4'];
+const ARCHIVED_FOR_GIFTER = ['Item 4'];
 async function recordOnManyLists(record: (wishlistId: string, itemName: string) => unknown) {
   await record(await list({ visibility: 'everyone' }), 'Item 1');
   await record(await list({ visibility: 'private' }), 'Item 2');
@@ -395,7 +548,13 @@ describe('GET /api/users/me/reservations — query count', () => {
     const byItem = (f: (r: Row) => unknown) =>
       Object.fromEntries(many.rows.map((r) => [r.itemName, f(r)]));
     expect(byItem(of)).toEqual(
-      byItem((r) => (HIDDEN_FROM_GIFTER.includes(r.itemName) ? HIDDEN : visible(r.wishlistId!)))
+      byItem((r) =>
+        ARCHIVED_FOR_GIFTER.includes(r.itemName)
+          ? ARCHIVED
+          : HIDDEN_FROM_GIFTER.includes(r.itemName)
+            ? HIDDEN
+            : visible(r.wishlistId!)
+      )
     );
   });
 

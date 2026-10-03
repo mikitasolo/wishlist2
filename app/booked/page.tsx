@@ -55,16 +55,22 @@ interface Reservation {
   wishlistSlug: string | null;
   /** The live list's occasion, `null` for none or a list the gifter can no longer see. */
   wishlistOccasion: Occasion | null;
-  itemStatus: string;
-  /** The live item is still booked by the gifter. */
-  stillReserved: boolean;
+  /** The live item's status, `null` on an archived list. */
+  itemStatus: string | null;
+  /** The live item is still booked by the gifter (`null` on an archived list). */
+  stillReserved: boolean | null;
   /**
-   * The gifter can still open the list (never why not). Still reserved on a
-   * list they can open, the card is under "To give" and offers Release;
-   * otherwise it needs their confirmation, and offers Dismiss. A card whose
-   * list isn't open names it without a link.
+   * The gifter can still open the list (never why not, unless it's archived).
+   * Still reserved on a list they can open, the card is under "To give" and
+   * offers Release; otherwise it needs their confirmation, and offers Dismiss.
+   * A card whose list isn't open names it without a link.
    */
   listOpen: boolean;
+  /**
+   * The list is archived: the card is frozen, its snapshot only, with no hint
+   * of what has happened to the item since, until the list is unarchived.
+   */
+  listArchived: boolean;
 }
 
 interface Gift {
@@ -699,11 +705,14 @@ function ReservationCard({
             </Link>
           ) : (
             // A link would only lead to "not available": say so here instead,
-            // unless the note already does (still reserved to them, it's the one
-            // thing it says).
+            // unless the note already says why it isn't (still reserved to
+            // them, it's the one thing it says, and on an archived list it says
+            // that).
             <p className="mt-0.5 inline-flex items-center gap-1 text-xs font-medium text-muted-foreground">
               <Icon name="gift" size={12} />
-              {r.stillReserved ? r.wishlistName : `${r.wishlistName} · no longer available to you`}
+              {r.stillReserved || r.listArchived
+                ? r.wishlistName
+                : `${r.wishlistName} · no longer available to you`}
             </p>
           )}
           {note && (
