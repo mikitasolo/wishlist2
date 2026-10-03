@@ -5,7 +5,7 @@ import { TONE_CLASSES } from '@/lib/utils/statusTones';
 /**
  * - `info`: something worth knowing before you go on (a proposal waits for the
  *   owner, how reviewing works).
- * - `warning`: think before you go on (an owner gets full control).
+ * - `warning`: think before you go on.
  * - `danger`: something failed (a sign-in link that didn't work).
  */
 export type CalloutTone = 'info' | 'warning' | 'danger';

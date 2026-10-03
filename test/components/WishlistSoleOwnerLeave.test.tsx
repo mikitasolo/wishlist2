@@ -186,7 +186,7 @@ describe('Leave for the sole owner of a list', () => {
     render(<WishlistDetail />);
     const leave = await openManage(user);
     const field = screen.getByPlaceholderText('Search by username');
-    expect(screen.getByRole('combobox', { name: 'Role' })).toHaveTextContent('Member');
+    expect(screen.getByRole('radio', { name: 'Member' })).toBeChecked();
 
     await user.click(leave);
     const dialog = await screen.findByRole('alertdialog', { name: "You're the only owner" });
@@ -194,7 +194,7 @@ describe('Leave for the sole owner of a list', () => {
 
     await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
     expect(field).toHaveFocus();
-    expect(screen.getByRole('combobox', { name: 'Role' })).toHaveTextContent('Owner');
+    expect(screen.getByRole('radio', { name: 'Co-owner' })).toBeChecked();
     expect(scrollIntoView).toHaveBeenCalledTimes(1);
     expect(scrollIntoView.mock.contexts[0]).toContainElement(field);
     // Only once the dialog's scroll lock has put the page back where it was,

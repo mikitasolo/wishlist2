@@ -30,6 +30,6 @@ test("the sole owner's Leave explains, and takes them to an owner invite", async
   await expect(dialog).toBeHidden();
   await expect(field).toBeFocused();
   await expect(field).toBeInViewport();
-  await expect(page.getByRole('combobox', { name: 'Role' })).toHaveText(/Owner/);
+  await expect(page.getByRole('radio', { name: 'Co-owner' })).toBeChecked();
   expect(leaves).toEqual([]);
 });

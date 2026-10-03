@@ -22,6 +22,7 @@ import SearchField from '@/components/SearchField';
 import { FIELD_HELPER, FIELD_LABEL } from '@/components/fieldStyles';
 import Icon from '@/components/Icon';
 import InviteMemberForm, { type InviteMemberFormHandle } from '@/components/InviteMemberForm';
+import { listStatusByUsername } from '@/lib/utils/inviteSuggestions';
 import Cover from '@/components/Cover';
 import ShareButton from '@/components/ShareButton';
 import ImageUpload from '@/components/ImageUpload';
@@ -1170,6 +1171,19 @@ export default function WishlistDetail() {
   // separately, because they aren't rungs on a ladder.
   const ownerRows = useMemo(() => members.filter((m) => m.role === 'owner'), [members]);
   const memberRows = useMemo(() => members.filter((m) => m.role !== 'owner'), [members]);
+  // Who each username suggestion in the invite form already is on the list.
+  const inviteStatuses = useMemo(
+    () =>
+      listStatusByUsername({
+        owners: owners.usernames,
+        members: memberRows.map((m) => ({
+          userId: String(m.user._id),
+          username: m.user.username,
+        })),
+        invited: pendingInvites.map((i) => i.username),
+      }),
+    [owners.usernames, memberRows, pendingInvites]
+  );
 
   const stats = useMemo(() => calculateStats(items, session?.user?.id), [items, session?.user?.id]);
 
@@ -1760,6 +1774,10 @@ export default function WishlistDetail() {
                 ref={inviteFormRef}
                 onInvite={handleInvite}
                 isInviting={isInviting}
+                statuses={inviteStatuses}
+                // A member's suggestion makes them a co-owner through the same
+                // confirmation and promotion invite as their Make owner.
+                onPromote={setPromoteConfirm}
               />
             )}
 
