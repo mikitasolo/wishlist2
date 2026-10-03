@@ -127,13 +127,17 @@ const shown = () =>
 
 const statusDropdown = () => screen.getByRole('button', { name: 'Filter by status' });
 /** A stat card, by its label (its accessible name is the label and the count). */
-const card = (label: string) => screen.getByRole('button', { name: new RegExp(`^${label}\\s*\\d+$`) });
+const card = (label: string) =>
+  screen.getByRole('button', { name: new RegExp(`^${label}\\s*\\d+$`) });
 
 /** Open a list (as Next does, on a page of its own) and wait for its items. */
 async function open(id: string) {
   params.id = id;
   const view = render(<WishlistDetail />);
-  await screen.findByRole('heading', { level: 1, name: id === 'birthday' ? 'Birthday' : 'Christmas' });
+  await screen.findByRole('heading', {
+    level: 1,
+    name: id === 'birthday' ? 'Birthday' : 'Christmas',
+  });
   await waitFor(() => expect(screen.queryAllByRole('article').length).toBeGreaterThan(0));
   return view;
 }
@@ -189,7 +193,9 @@ describe('the status filter is not carried from one list to another', () => {
     }
   );
 
-  it('regression: puts the filter back to the defaults when the same page moves to another list', async () => {
+  // Next mounts each list's page on its own, but the filter is kept with the
+  // list it was picked for, so it doesn't rely on that.
+  it('regression: puts the filter back to the defaults even when the page is reused for another list', async () => {
     const user = userEvent.setup();
     const view = await open('birthday');
     await user.click(card('Booked by Others'));
@@ -248,9 +254,7 @@ describe('the sort is still remembered', () => {
     first.unmount();
     await open('christmas');
 
-    expect(screen.getByRole('combobox', { name: 'Sort items by' })).toHaveTextContent(
-      'Name (Z-A)'
-    );
+    expect(screen.getByRole('combobox', { name: 'Sort items by' })).toHaveTextContent('Name (Z-A)');
     expect(shown()).toEqual(['Scarf', 'Lamp', 'Idea']);
     expect(localStorage.getItem(WISHLIST_SORT_STORAGE_KEY)).toBe('name-desc');
   });
@@ -262,7 +266,7 @@ describe('the status filter is never empty', () => {
   it('regression: goes back to the defaults when All is unticked', async () => {
     const user = userEvent.setup();
     await open('birthday');
-    await user.click(card('Total Items'));
+    await toggleStatus(user, 'All');
     expect(shown()).toHaveLength(5);
     expect(statusDropdown()).toHaveTextContent('All');
 

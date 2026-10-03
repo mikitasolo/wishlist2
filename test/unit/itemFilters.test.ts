@@ -13,7 +13,6 @@ import {
   toggleStatusFilter,
   isEveryStatusSelected,
   forgetSavedStatusFilters,
-  OLD_STATUS_FILTER_STORAGE_KEYS,
   SORT_OPTIONS,
   WISHLIST_SORT_STORAGE_KEY,
   type FilterOption,
@@ -163,7 +162,6 @@ describe('forgetSavedStatusFilters', () => {
     ]);
     forgetSavedStatusFilters({ removeItem: (key) => void entries.delete(key) });
     expect([...entries.keys()]).toEqual([WISHLIST_SORT_STORAGE_KEY]);
-    expect(OLD_STATUS_FILTER_STORAGE_KEYS).toHaveLength(4);
   });
 });
 

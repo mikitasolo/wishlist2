@@ -58,7 +58,7 @@ const STATUS_FILTER_OPTIONS: FilterOption[] = [
 ];
 
 // localStorage keys — kept separate from the per-wishlist page's keys. The
-// status filter isn't saved: like the wishlist page's, it starts on All each
+// status filter isn't saved, as on the wishlist page: it starts on All each
 // visit, so a stat card clicked once doesn't narrow the page for good.
 const LS_LISTS = 'items-wishlist-filters';
 const LS_SORT = 'items-sort';
@@ -228,8 +228,7 @@ export default function MyItemsPage() {
     const everyStatus = isEveryStatusSelected(statusFilters, STATUS_FILTER_OPTIONS);
     const list = items.filter(
       (i) =>
-        wishlistFilters.includes(i.wishlistId) &&
-        (everyStatus || statusFilters.includes(i.status))
+        wishlistFilters.includes(i.wishlistId) && (everyStatus || statusFilters.includes(i.status))
     );
     // The wishlist page's sorter, so the two grids order items the same way.
     return sortItems(list, sort);

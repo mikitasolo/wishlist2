@@ -245,26 +245,23 @@ export default function WishlistDetail() {
   const filterOptions = useMemo(() => statusFilterOptions(filterRole), [filterRole]);
   const defaultFilters = useMemo(() => defaultStatusFilters(filterRole), [filterRole]);
 
-  // The status filter picked on this list in this visit, with the list and role
-  // it was picked for. Anywhere else (another list, or this one once the
-  // viewer's role on it has changed) the filter is the role's defaults. It's
-  // never saved: a filter is a question about one list, and a saved one (a
-  // stat card's click included) used to follow the viewer to every other list.
+  // The status filter picked on this list in this visit, with the list (by id,
+  // whether the URL has its id or its slug) and the role it was picked for.
+  // Anywhere else (another list, or this one once the viewer's role on it has
+  // changed) the filter is the role's defaults. It's never saved: a filter is
+  // a question about one list, and a saved one (a stat card's click included)
+  // used to follow the viewer to every other list. The cards and the dropdown
+  // never pick an empty selection (`toggleStatusFilter`).
   const [statusChoice, setStatusChoice] = useState<{
     scope: string;
     filters: FilterOption[];
   } | null>(null);
-  const filterScope = `${wishlistId}:${filterRole}`;
+  const filterScope = `${wishlist ? String(wishlist._id) : ''}:${filterRole}`;
   const selectedFilters =
     statusChoice?.scope === filterScope ? statusChoice.filters : defaultFilters;
-  // An empty selection would show every item, so it's the defaults instead.
   const chooseStatusFilters = useCallback(
-    (filters: FilterOption[]) =>
-      setStatusChoice({
-        scope: filterScope,
-        filters: filters.length > 0 ? filters : defaultFilters,
-      }),
-    [filterScope, defaultFilters]
+    (filters: FilterOption[]) => setStatusChoice({ scope: filterScope, filters }),
+    [filterScope]
   );
 
   // Restore the visitor's saved sort, else the default. It's one setting for
