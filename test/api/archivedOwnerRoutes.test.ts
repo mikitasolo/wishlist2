@@ -347,7 +347,9 @@ describe.each(RACES)('%s, as an owner removed mid-request', (name, model, method
       featuredBy: [],
     });
     expect(after.members).toEqual([carol]);
-    expect(after.invites).toEqual([`${frank}:member:pending`]);
+    // Frank's invite was alice's, so bob's removal of her cancels it
+    // (`cancelInvitesSentBy`), and her request issued no other.
+    expect(after.invites).toEqual([]);
     expect(after.emails).toBe(0);
   });
 });

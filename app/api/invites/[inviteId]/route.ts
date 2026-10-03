@@ -4,15 +4,20 @@ import { auth } from '@/lib/auth';
 import connectDB from '@/lib/mongodb';
 import Wishlist from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
-import WishlistInvite from '@/models/WishlistInvite';
-import { createNotification, recordInviteAnswer } from '@/lib/notifications';
-import { isWishlistOwner } from '@/lib/utils/wishlistOwners';
+import WishlistInvite, { type IWishlistInvite } from '@/models/WishlistInvite';
+import { createNotifications, recordInviteAnswer } from '@/lib/notifications';
+import { isWishlistOwner, ownerIds } from '@/lib/utils/wishlistOwners';
+import { errorKind } from '@/lib/utils/errorKind';
 import {
   addWishlistOwner,
   promoteMemberToOwner,
   releaseHoldingsForRole,
 } from '@/lib/utils/wishlistOwnership';
-import { isInvitePaused, withdrawInvite } from '@/lib/utils/wishlistInvites';
+import {
+  isInvitePaused,
+  withdrawInvite,
+  withdrawUnlessInviterOwns,
+} from '@/lib/utils/wishlistInvites';
 import { isObjectIdParam } from '@/lib/utils/objectId';
 
 const inviteNotFound = () =>
@@ -45,15 +50,27 @@ async function claimInvite(
  * The grant may have got part of the way (ownership landed, bookings not yet
  * released); accepting again finishes it. Best-effort: the request is failing
  * already.
+ *
+ * An invite whose sender has stopped owning the list since is withdrawn instead
+ * (`withdrawUnlessInviterOwns`), unless the grant already made the invitee an
+ * owner, which only accepting again can finish. While it was claimed, a removal
+ * or demotion of its sender skipped it (`cancelInvitesSentBy` only takes pending
+ * invites), so reopening it would bring back an invite that removal cancels.
  */
-async function releaseClaim(inviteId: mongoose.Types.ObjectId): Promise<void> {
+async function releaseClaim(
+  invite: Pick<IWishlistInvite, '_id' | 'wishlist' | 'invitedUser' | 'invitedBy'>
+): Promise<void> {
   try {
-    await WishlistInvite.updateOne(
-      { _id: inviteId, status: 'accepted' },
+    const { modifiedCount } = await WishlistInvite.updateOne(
+      { _id: invite._id, status: 'accepted' },
       { $set: { status: 'pending' } }
     );
+    if (!modifiedCount) return;
+    const list = await Wishlist.findById(invite.wishlist).select('owners').lean();
+    if (list && isWishlistOwner(list, invite.invitedUser.toString())) return;
+    await withdrawUnlessInviterOwns(invite);
   } catch (err) {
-    console.error(`Could not reopen invite ${inviteId} after a failed accept:`, err);
+    console.error(`Could not reopen invite ${invite._id} after a failed accept:`, err);
   }
 }
 
@@ -97,6 +114,33 @@ async function joinAsMember(
   if (existing) return 'paused';
   const { deletedCount } = await WishlistMember.deleteMany({ wishlist: wishlistId, user: userId });
   return deletedCount ? 'paused' : 'removed';
+}
+
+/**
+ * Who's told that an invite was accepted: whoever sent it, while they still own
+ * the list. An owner who has since left, or been removed or demoted, is off the
+ * list's management and mustn't learn who joins it, so it goes to the current
+ * owners instead, the invitee aside (a promotion has just made them one).
+ *
+ * Read once the role is granted, so the owners are the list's as of the join. A
+ * removal landing after this read is one the join came before, while the inviter
+ * still owned the list. Best-effort, like the notification itself: a failed read
+ * is logged by its kind and tells nobody. So does a list that's gone by now.
+ */
+async function inviteAcceptedRecipients(
+  invite: Pick<IWishlistInvite, 'wishlist' | 'invitedBy'>,
+  inviteeId: string
+): Promise<string[]> {
+  try {
+    const list = await Wishlist.findById(invite.wishlist).select('owners').lean();
+    if (!list) return [];
+    const inviter = invite.invitedBy.toString();
+    if (isWishlistOwner(list, inviter)) return [inviter];
+    return ownerIds(list).filter((id) => id !== inviteeId);
+  } catch (err) {
+    console.error('Could not read who to tell about an accepted invite:', errorKind(err));
+    return [];
+  }
 }
 
 // PATCH /api/invites/[inviteId] - accept or decline a pending invite (invitee).
@@ -192,7 +236,7 @@ export async function PATCH(
           // The list was archived since the read above. The invite is paused, not
           // over, so the claim is put back, as a failed grant's is, and the answer
           // is the one an accept that came after the archive gets.
-          await releaseClaim(invite._id);
+          await releaseClaim(invite);
           return inviteNotFound();
         }
       } else if (promotion) {
@@ -201,7 +245,7 @@ export async function PATCH(
         released = await addWishlistOwner(wishlist, userId);
       }
     } catch (err) {
-      await releaseClaim(invite._id);
+      await releaseClaim(invite);
       throw err;
     }
 
@@ -217,18 +261,20 @@ export async function PATCH(
       return (await Wishlist.exists({ _id: invite.wishlist })) ? inviteNotFound() : wishlistGone();
     }
 
-    // Let the inviter know their invitation was accepted, and turn the invitee's
-    // own invite notification into "You joined …". Only now that the role is
-    // granted: a failed grant reopens the invite, which is pending again.
+    // Let the inviter know their invitation was accepted (or the current owners,
+    // if the inviter isn't one any more), and turn the invitee's own invite
+    // notification into "You joined …". Only now that the role is granted: a
+    // failed grant reopens the invite, which is pending again.
     await Promise.all([
-      createNotification({
-        user: invite.invitedBy,
-        type: 'invite_accepted',
-        actorUsername: session.user.username ?? null,
-        wishlist: invite.wishlist,
-        wishlistName: wishlist.name,
-        wishlistSlug: wishlist.slug ?? null,
-      }),
+      inviteAcceptedRecipients(invite, userId).then((recipients) =>
+        createNotifications(recipients, {
+          type: 'invite_accepted',
+          actorUsername: session.user.username ?? null,
+          wishlist: invite.wishlist,
+          wishlistName: wishlist.name,
+          wishlistSlug: wishlist.slug ?? null,
+        })
+      ),
       recordInviteAnswer({ invite, answer: 'accepted', answeredAt }),
     ]);
 
