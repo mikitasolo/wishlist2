@@ -31,7 +31,13 @@ vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }
 import WishlistDetail from '@/app/wishlists/[id]/page';
 
 /** What the list read answers the signed-in viewer (or no one). */
-let list: { owners: string[]; userRole: 'owner' | 'member' | null; featured: boolean };
+let list: {
+  owners: string[];
+  userRole: 'owner' | 'member' | null;
+  featured: boolean;
+  bannerUrl?: string | null;
+  description?: string;
+};
 /** Makes the next pin or unpin fail. */
 let failPin: boolean;
 
@@ -67,7 +73,7 @@ beforeEach(() => {
           _id: 'w1',
           name: 'Birthday',
           slug: 'birthday',
-          description: '',
+          description: list.description ?? '',
           owners: [...list.owners],
           ownerUsernames: [...list.owners],
           userRole: list.userRole,
@@ -76,7 +82,7 @@ beforeEach(() => {
           archived: false,
           featured: list.featured,
           currency: 'EUR',
-          bannerUrl: null,
+          bannerUrl: list.bannerUrl ?? null,
           occasion: null,
         },
       });
@@ -237,5 +243,47 @@ describe('Pin to my dashboard', () => {
     await screen.findByRole('heading', { name: 'Wishlist settings' });
     expect(screen.queryByText(/Feature/)).toBeNull();
     expect(screen.queryByRole('button', { name: /feature/i })).toBeNull();
+  });
+});
+
+describe('the cover strip and the description', () => {
+  const BANNER = 'https://teststore42.public.blob.vercel-storage.com/uploads/alice/banner.webp';
+  const openList = () => {
+    render(<WishlistDetail />);
+    return screen.findByRole('heading', { level: 1, name: 'Birthday' });
+  };
+  const follows = (a: Node, b: Node) =>
+    !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+
+  // A list with no banner used to get a 16:9 gradient block under its title,
+  // which said nothing and pushed the items down.
+  it('shows no cover at all on a list without a banner', async () => {
+    signIn('alice');
+    await openList();
+    expect(screen.getByRole('main').querySelector('img')).toBeNull();
+  });
+
+  it('puts the banner above the title, and keeps it there in Manage', async () => {
+    signIn('alice');
+    list.bannerUrl = BANNER;
+    const h1 = await openList();
+    const banner = () => screen.getByRole('main').querySelector('img')!;
+    expect(banner().getAttribute('src')).toContain(encodeURIComponent(BANNER));
+    expect(follows(banner(), h1)).toBe(true);
+
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Manage wishlist' }));
+    expect(screen.getByRole('heading', { name: 'Manage wishlist' })).toBeInTheDocument();
+    expect(follows(banner(), screen.getByRole('heading', { level: 1 }))).toBe(true);
+  });
+
+  it('shows the description as plain text under the title, for every viewer', async () => {
+    signIn(null);
+    list.userRole = null;
+    list.description = 'Turning 30 at the lake.';
+    const h1 = await openList();
+    const text = screen.getByText('Turning 30 at the lake.');
+    expect(text.tagName).toBe('P');
+    expect(follows(h1, text)).toBe(true);
+    expect(text.parentElement).toHaveClass('line-clamp-3');
   });
 });

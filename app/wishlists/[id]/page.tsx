@@ -23,13 +23,14 @@ import { FIELD_HELPER, FIELD_LABEL } from '@/components/fieldStyles';
 import Icon from '@/components/Icon';
 import InviteMemberForm, { type InviteMemberFormHandle } from '@/components/InviteMemberForm';
 import { listStatusByUsername } from '@/lib/utils/inviteSuggestions';
-import Cover from '@/components/Cover';
 import ShareButton from '@/components/ShareButton';
 import ImageUpload from '@/components/ImageUpload';
 import Select from '@/components/Select';
 import OccasionField from '@/components/OccasionField';
 import WishlistHeader, { WishlistHeaderSkeleton } from '@/components/WishlistHeader';
 import JoinListCallout from '@/components/JoinListCallout';
+import WishlistCover from '@/components/WishlistCover';
+import WishlistDescription from '@/components/WishlistDescription';
 import {
   ListControlsSkeleton,
   Skeleton,
@@ -1317,7 +1318,9 @@ export default function WishlistDetail() {
       <div className="min-h-screen">
         <AppHeader actions={<AuthButton />} />
         <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
-          {/* Header: the name, the meta line, the actions */}
+          {/* Header: the name, the meta line, the actions. No cover strip or
+              description: a list may have neither, so the skeleton doesn't
+              promise them. */}
           <WishlistHeaderSkeleton />
           {/* Signed out, the viewer is a visitor, who gets the note on getting
               invited (its text wraps to three lines on a phone, two at sm, one
@@ -1325,11 +1328,6 @@ export default function WishlistDetail() {
           {status === 'unauthenticated' && (
             <Skeleton className="mb-6 h-[8.625rem] rounded-xl sm:mb-8 sm:h-[7.25rem] lg:h-[6.125rem]" />
           )}
-          {/* Image + description row */}
-          <div className="mb-6 grid gap-4 sm:mb-8 sm:grid-cols-[minmax(0,26rem)_minmax(0,1fr)] sm:items-start">
-            <Skeleton className="aspect-[16/9] rounded-3xl" />
-            <Skeleton className="hidden h-full min-h-[8rem] rounded-2xl sm:block" />
-          </div>
           {/* The status chips and toolbar. The role isn't known yet: signed out,
               it's a visitor's, with no chips; otherwise a member's four. */}
           <ListControlsSkeleton chips={status === 'unauthenticated' ? 0 : 4} />
@@ -1343,8 +1341,11 @@ export default function WishlistDetail() {
     <div className="min-h-screen">
       <AppHeader actions={<AuthButton />} />
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
-        {/* The name, the meta line (owners, occasion, visibility) and the
-            viewer's actions, with Leave list… and Pin in the ⋯ menu. */}
+        {/* The banner, as a short strip across the top (none without one), then
+            the name, the meta line (owners, occasion, visibility) and the
+            viewer's actions, with Leave list… and Pin in the ⋯ menu, then the
+            description. The same in Manage, so opening it doesn't move them. */}
+        <WishlistCover bannerUrl={wishlist.bannerUrl} seed={wishlist._id.toString()} />
         <WishlistHeader
           name={wishlist.name}
           ownerUsernames={ownerUsernames}
@@ -1383,6 +1384,7 @@ export default function WishlistDetail() {
             )
           }
         />
+        {wishlist.description && <WishlistDescription text={wishlist.description} />}
 
         {/* How to get invited, for anyone who isn't on the list (signed out,
             or signed in but neither an owner nor a member). An archived list
@@ -1440,30 +1442,6 @@ export default function WishlistDetail() {
                 </Button>
               </div>
             )}
-
-            {/* Image + description row */}
-            <div
-              className={`mb-6 grid gap-4 sm:mb-8 ${
-                wishlist.description
-                  ? 'sm:grid-cols-[minmax(0,26rem)_minmax(0,1fr)] sm:items-start'
-                  : 'sm:max-w-md'
-              }`}
-            >
-              <Cover
-                src={wishlist.bannerUrl}
-                seed={wishlist._id.toString()}
-                priority
-                sizes="(max-width: 1024px) 100vw, 26rem"
-                className="relative aspect-[16/9] overflow-hidden rounded-3xl border border-border bg-surface-2 shadow-md"
-              />
-              {wishlist.description && (
-                <div className="rounded-2xl border border-border bg-surface p-5">
-                  <p className="whitespace-pre-line break-words text-body text-muted-foreground">
-                    {wishlist.description}
-                  </p>
-                </div>
-              )}
-            </div>
 
             {!itemsLoaded ? (
               // No read of the items has landed yet: no counts or controls,
@@ -1983,9 +1961,7 @@ export default function WishlistDetail() {
                     onChange={(url) => editSettings({ bannerUrl: url ?? '' })}
                     disabled={isSavingSettings}
                   />
-                  <p className={FIELD_HELPER}>
-                    Used as the cover instead of the gradient. Remove it to use the gradient.
-                  </p>
+                  <p className={FIELD_HELPER}>Shown across the top of the list, and on its card.</p>
                 </div>
 
                 <div>
