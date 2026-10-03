@@ -7,23 +7,20 @@ const wishlist = new Types.ObjectId();
 const giftedAt = new Date('2026-10-01T10:00:00.000Z');
 
 describe('serializeGiftLog', () => {
-  it('shapes an entry, linking its wishlist by the current slug', () => {
-    const slugs = new Map([[wishlist.toString(), 'birthday-a1b2c']]);
-
+  // The entry is the snapshot the gift took, and its list's id: nothing read
+  // from the live list, so no slug to link it by.
+  it('shapes an entry from its snapshot alone', () => {
     expect(
-      serializeGiftLog(
-        {
-          _id: id,
-          itemName: 'Blue Mug',
-          itemImage: 'https://shop.example/mug.png',
-          itemPrice: { value: 1250, currency: 'usd' },
-          recipientUsername: 'alice',
-          wishlistName: 'Birthday',
-          wishlist,
-          giftedAt,
-        },
-        slugs
-      )
+      serializeGiftLog({
+        _id: id,
+        itemName: 'Blue Mug',
+        itemImage: 'https://shop.example/mug.png',
+        itemPrice: { value: 1250, currency: 'usd' },
+        recipientUsername: 'alice',
+        wishlistName: 'Birthday',
+        wishlist,
+        giftedAt,
+      })
     ).toEqual({
       _id: id.toString(),
       itemName: 'Blue Mug',
@@ -32,13 +29,12 @@ describe('serializeGiftLog', () => {
       recipientUsername: 'alice',
       wishlistName: 'Birthday',
       wishlistId: wishlist.toString(),
-      wishlistSlug: 'birthday-a1b2c',
       giftedAt,
     });
   });
 
   it('answers null for every snapshot field the entry lacks', () => {
-    expect(serializeGiftLog({ _id: id, itemName: 'Blue Mug', giftedAt }, new Map())).toEqual({
+    expect(serializeGiftLog({ _id: id, itemName: 'Blue Mug', giftedAt })).toEqual({
       _id: id.toString(),
       itemName: 'Blue Mug',
       itemImage: null,
@@ -46,17 +42,7 @@ describe('serializeGiftLog', () => {
       recipientUsername: null,
       wishlistName: null,
       wishlistId: null,
-      wishlistSlug: null,
       giftedAt,
     });
-  });
-
-  it('keeps the pointer but has no slug for a wishlist that no longer exists', () => {
-    const entry = serializeGiftLog(
-      { _id: id, itemName: 'Blue Mug', wishlist, giftedAt },
-      new Map()
-    );
-    expect(entry.wishlistId).toBe(wishlist.toString());
-    expect(entry.wishlistSlug).toBeNull();
   });
 });

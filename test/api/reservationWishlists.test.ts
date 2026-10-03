@@ -8,12 +8,9 @@ vi.mock('@/lib/auth', () => ({ auth: vi.fn() }));
 
 import { auth } from '@/lib/auth';
 import { GET as LIST_RESERVATIONS } from '@/app/api/users/me/reservations/route';
-import { GET as LIST_GIFTS } from '@/app/api/users/me/gifts/route';
-import { POST as GIFT } from '@/app/api/reservations/[id]/gift/route';
 import { PATCH } from '@/app/api/wishlists/[id]/route';
 import User from '@/models/User';
 import Follow from '@/models/Follow';
-import GiftLog from '@/models/GiftLog';
 import Item from '@/models/Item';
 import Reservation from '@/models/Reservation';
 import Wishlist from '@/models/Wishlist';
@@ -21,14 +18,13 @@ import WishlistMember from '@/models/WishlistMember';
 
 /**
  * What the Booked page reads of the live list behind each of a gifter's
- * records. `GET /api/users/me/reservations` returns its slug, which the card
- * links it by, its occasion, which "To give" is grouped by, and `listOpen`,
- * whether the gifter may open it at all (the card links it only if so).
- * `GET /api/users/me/gifts`, and the gift route's answer (which the page adds
- * to its history as is), return its slug. A Reservation and a GiftLog outlive
- * the gifter's access to their list, so each is only returned while the gifter
- * may still open that list (`getWishlistViewAccess`'s rules). Otherwise it's
- * `null`, and a reservation's card links the list by its id.
+ * reservations. `GET /api/users/me/reservations` returns its slug, which the
+ * card links it by, its occasion, which "To give" is grouped by, and
+ * `listOpen`, whether the gifter may open it at all (the card links it only if
+ * so). A Reservation outlives the gifter's access to its list, so each is only
+ * returned while the gifter may still open that list
+ * (`getWishlistViewAccess`'s rules). Otherwise it's `null`. (The gift history
+ * reads nothing of the live list: `test/api/reservations.test.ts`.)
  */
 
 const session = vi.mocked(auth);
@@ -103,18 +99,6 @@ async function book(wishlistId: string, itemName = 'Blue Mug') {
   return reservation._id.toString();
 }
 
-/** A gift `gifter` gave from the list, in their gift history. */
-async function gave(wishlistId: string | null, itemName = 'Blue Mug') {
-  await GiftLog.create({
-    gifter,
-    giftedAt: new Date(),
-    itemName,
-    recipient: owner,
-    wishlistName: 'Birthday',
-    wishlist: wishlistId,
-  });
-}
-
 async function befriend(a: string, b: string) {
   await Follow.create([
     { follower: a, following: b },
@@ -161,14 +145,6 @@ async function read(userId: string | null = gifter): Promise<Row[]> {
   return (await res.json()).data;
 }
 
-/** The gifter's gift history, as the Booked page reads it. */
-async function readGifts(): Promise<Row[]> {
-  signIn(gifter);
-  const res = await LIST_GIFTS();
-  expect(res.status).toBe(200);
-  return (await res.json()).data;
-}
-
 /** What the gifter's one reservation comes back with of its live list. */
 async function shown() {
   const rows = await read();
@@ -191,13 +167,6 @@ const visible = (wishlistId: string) => ({
 });
 /** Nothing of the live list: the card names it, unlinked, under "No date". */
 const HIDDEN = { slug: null, occasion: null, listOpen: false };
-
-/** The slug the gifter's one gift-history entry comes back with. */
-async function giftSlugShown() {
-  const rows = await readGifts();
-  expect(rows).toHaveLength(1);
-  return rows[0].wishlistSlug;
-}
 
 describe('GET /api/users/me/reservations — the live list’s slug and occasion', () => {
   it('refuses a signed-out caller', async () => {
@@ -368,128 +337,6 @@ describe('GET /api/users/me/reservations — the live list’s slug and occasion
   });
 });
 
-describe('GET /api/users/me/gifts — the live list’s slug', () => {
-  it.each([
-    ['a member of a public list', { visibility: 'everyone' }],
-    ['a member of a private list', { visibility: 'private' }],
-    ['a former member of a public list', { visibility: 'everyone', member: false }],
-  ])('returns it to %s', async (_label, fields) => {
-    const id = await list(fields);
-    await gave(id);
-    expect(await giftSlugShown()).toBe(slugs.get(id));
-  });
-
-  it("returns it to a friend of a co-owner's friends-only list", async () => {
-    await befriend(gifter, coOwner);
-    const id = await list({ visibility: 'friends', member: false });
-    await gave(id);
-    expect(await giftSlugShown()).toBe(slugs.get(id));
-  });
-
-  it('reads it live: a rename shows on the next read', async () => {
-    const id = await list({ visibility: 'private' });
-    await gave(id);
-    await rename(id);
-    expect(await giftSlugShown()).toBe('annas-30th');
-  });
-
-  // regression: the gift history read the current slug of every entry's list,
-  // whatever the gifter's access to it now, so a rename reached a gifter who
-  // could no longer open the list.
-  it.each<{
-    label: string;
-    fields: Record<string, unknown>;
-    befriended?: boolean;
-    lose: (wishlistId: string) => Promise<unknown>;
-  }>([
-    {
-      label: 'removed from a private list, renamed since',
-      fields: { visibility: 'private' },
-      lose: async (id: string) => {
-        await removeGifter(id);
-        await rename(id);
-      },
-    },
-    {
-      label: 'removed from a friends-only list',
-      fields: { visibility: 'friends' },
-      lose: removeGifter,
-    },
-    {
-      label: 'who is a member, once the list is archived',
-      fields: { visibility: 'everyone' },
-      lose: (id: string) => ownerEdits(id, { archived: true }),
-    },
-    {
-      label: 'who is no member, once a public list is made private',
-      fields: { visibility: 'everyone', member: false },
-      lose: (id: string) => ownerEdits(id, { visibility: 'private' }),
-    },
-    {
-      label: 'who is a friend, once the friendship ends',
-      fields: { visibility: 'friends', member: false },
-      befriended: true,
-      lose: () => Follow.deleteOne({ follower: owner, following: gifter }),
-    },
-  ])('returns null to a gifter $label', async ({ fields, befriended, lose }) => {
-    if (befriended) await befriend(gifter, owner);
-    const id = await list(fields);
-    await gave(id);
-    expect(await giftSlugShown()).toBe(slugs.get(id));
-
-    await lose(id);
-    const [row] = await readGifts();
-    expect(row).toMatchObject({ itemName: 'Blue Mug', wishlistId: id, wishlistSlug: null });
-  });
-
-  it('returns null for an entry whose list was deleted, or that points at none', async () => {
-    const id = await list();
-    await gave(id, 'Vase');
-    await Wishlist.deleteOne({ _id: id });
-    await gave(null, 'Lamp');
-
-    const rows = Object.fromEntries((await readGifts()).map((r) => [r.itemName, r]));
-    expect(rows.Vase).toMatchObject({ wishlistId: id, wishlistSlug: null });
-    expect(rows.Lamp).toMatchObject({ wishlistId: null, wishlistSlug: null });
-  });
-
-  describe("the gift route's answer, which the page adds to its history as is", () => {
-    async function giftIt(reservationId: string) {
-      signIn(gifter);
-      const res = await GIFT(
-        new NextRequest(`http://localhost/api/reservations/${reservationId}/gift`, {
-          method: 'POST',
-        }),
-        { params: Promise.resolve({ id: reservationId }) }
-      );
-      expect(res.status).toBe(201);
-      return (await res.json()).data as Row;
-    }
-
-    it('links a list the gifter may still open by its slug', async () => {
-      const id = await list({ visibility: 'private' });
-      const entry = await giftIt(await book(id));
-
-      expect(entry).toMatchObject({ wishlistId: id, wishlistSlug: slugs.get(id) });
-      expect(await readGifts()).toEqual([entry]);
-    });
-
-    // regression: the answer carried the list's current slug, whatever the
-    // gifter's access to it.
-    it('has no slug for a list the gifter was removed from, as the history has none', async () => {
-      const id = await list({ visibility: 'private' });
-      const reservationId = await book(id);
-      // The Reservation outlives the kick, so the gift can still be logged.
-      await removeGifter(id);
-      await rename(id);
-      const entry = await giftIt(reservationId);
-
-      expect(entry).toMatchObject({ wishlistId: id, wishlistSlug: null });
-      expect(await readGifts()).toEqual([entry]);
-    });
-  });
-});
-
 /**
  * Every query a read sends, by collection. Index builds are left out: the
  * models' `autoIndex` sends them in the background, whenever they happen to
@@ -555,39 +402,6 @@ describe('GET /api/users/me/reservations — query count', () => {
   it('sends no wishlist query when there are no reservations', async () => {
     const { rows, ops } = await countQueries(() => read());
     expect(rows).toEqual([]);
-    expect(ops[Wishlist.collection.collectionName]).toBeUndefined();
-  });
-});
-
-describe('GET /api/users/me/gifts — query count', () => {
-  afterEach(() => {
-    mongoose.set('debug', false);
-  });
-
-  it('reads the wishlists in one query, however many entries there are', async () => {
-    await befriend(gifter, owner);
-    await gave(await list({ visibility: 'friends', member: false }), 'Item 0');
-    const one = await countQueries(() => readGifts());
-    expect(one.rows).toHaveLength(1);
-    expect(one.ops[Wishlist.collection.collectionName]).toBe(1);
-
-    await recordOnManyLists(gave);
-    const many = await countQueries(() => readGifts());
-    expect(many.rows).toHaveLength(7);
-    expect(many.ops[Wishlist.collection.collectionName]).toBe(1);
-    expect(many.ops).toEqual(one.ops);
-
-    const byItem = (f: (r: Row) => unknown) =>
-      Object.fromEntries(many.rows.map((r) => [r.itemName, f(r)]));
-    expect(byItem((r) => r.wishlistSlug)).toEqual(
-      byItem((r) => (HIDDEN_FROM_GIFTER.includes(r.itemName) ? null : slugs.get(r.wishlistId!)))
-    );
-  });
-
-  it('sends no wishlist query when no entry points at a list', async () => {
-    await gave(null);
-    const { rows, ops } = await countQueries(() => readGifts());
-    expect(rows).toHaveLength(1);
     expect(ops[Wishlist.collection.collectionName]).toBeUndefined();
   });
 });

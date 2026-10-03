@@ -72,8 +72,6 @@ interface Gift {
   recipientUsername: string | null;
   wishlistName: string | null;
   wishlistId: string | null;
-  /** As a reservation's: `null` for a list that's gone or the gifter can no longer see. */
-  wishlistSlug: string | null;
   giftedAt: string;
 }
 

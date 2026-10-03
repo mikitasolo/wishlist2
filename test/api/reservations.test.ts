@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
 import { NextRequest } from 'next/server';
+import mongoose from 'mongoose';
 import { connectTestDB, disconnectTestDB, clearTestDB } from '../db';
 
 vi.mock('@/lib/mongodb', () => ({ default: vi.fn().mockResolvedValue(undefined) }));
@@ -15,6 +16,8 @@ import Item from '@/models/Item';
 import Reservation from '@/models/Reservation';
 import GiftLog from '@/models/GiftLog';
 import Wishlist from '@/models/Wishlist';
+import WishlistMember from '@/models/WishlistMember';
+import Follow from '@/models/Follow';
 
 const session = vi.mocked(auth);
 
@@ -83,13 +86,14 @@ describe('POST /api/reservations/[id]/gift', () => {
   });
 
   // The Booked page adds the answer's entry to its gift history as is, rather
-  // than re-reading the list, so it must be the entry the list would hold.
+  // than re-reading the list, so it must be the entry the list would hold. That
+  // entry is the GiftLog's snapshot and its list's id, with no slug to link the
+  // list by, whatever the gifter's access to the list now.
   it.each([
     {
-      wishlist: 'a live wishlist',
+      wishlist: 'a wishlist the gifter may open',
       setUp: async () => {
-        // Public, so the gifter, who isn't a member, may still open it and
-        // gets its slug.
+        // Public, so the gifter, who isn't a member, may still open it.
         const wishlist = await Wishlist.create({
           name: 'Birthday',
           owners: [ownerId],
@@ -106,10 +110,24 @@ describe('POST /api/reservations/[id]/gift', () => {
         );
         return {
           wishlistId: wishlist._id.toString(),
-          wishlistSlug: 'birthday-a1b2c',
           itemImage: 'https://shop.example/mug.png',
           itemPrice: { value: 1250, currency: 'usd' },
         };
+      },
+    },
+    {
+      // Private, and the gifter is no member (say they were kicked): the
+      // Reservation outlives that, so the gift can still be logged.
+      wishlist: 'a wishlist the gifter may no longer open',
+      setUp: async () => {
+        const wishlist = await Wishlist.create({
+          name: 'Anna’s 30th',
+          owners: [ownerId],
+          slug: 'annas-30th',
+          visibility: 'private',
+        });
+        await Reservation.updateOne({ _id: reservationId }, { wishlist: wishlist._id });
+        return { wishlistId: wishlist._id.toString(), itemImage: null, itemPrice: null };
       },
     },
     {
@@ -117,7 +135,6 @@ describe('POST /api/reservations/[id]/gift', () => {
       wishlist: 'a deleted wishlist',
       setUp: async () => ({
         wishlistId: '507f1f77bcf86cd799439011',
-        wishlistSlug: null,
         itemImage: null,
         itemPrice: null,
       }),
@@ -133,52 +150,55 @@ describe('POST /api/reservations/[id]/gift', () => {
       const { data } = await res.json();
 
       const entry = await GiftLog.findOne({ gifter: gifterId });
-      expect(data).toEqual({
+      // Exactly these fields: no `wishlistSlug`, nor anything else read live.
+      expect(data).toStrictEqual({
         _id: entry!._id.toString(),
         itemName: 'Blue Mug',
         recipientUsername: 'owner',
+        // The snapshot's name, never the live list's.
         wishlistName: 'Birthday',
         giftedAt: entry!.giftedAt.toISOString(),
         ...expected,
       });
       const history = await (await LIST_GIFTS()).json();
-      expect(history.data).toEqual([data]);
+      expect(history.data).toStrictEqual([data]);
     }
   );
 
-  // The slug is read once the gift is logged, so failing to read it must not
-  // answer 500: the page would keep the card, and its retry could only 404.
-  it("answers 201 without the slug when the entry's wishlist slug can't be read", async () => {
+  // The answer used to read the entry's list (for its slug) once the gift was
+  // logged, a read that could fail after the gift had landed. Neither it nor
+  // the history reads any list, membership or friendship now, so no list read
+  // can change or fail either answer.
+  it('answers, and lists the history, without reading any list', async () => {
     const wishlist = await Wishlist.create({
       name: 'Birthday',
       owners: [ownerId],
       slug: 'birthday-a1b2c',
+      visibility: 'everyone',
     });
     await Reservation.updateOne({ _id: reservationId }, { wishlist: wishlist._id });
     session.mockResolvedValue({ user: { id: gifterId } } as never);
-    const find = vi.spyOn(Wishlist, 'find').mockImplementationOnce(() => {
-      throw new Error('db down');
+
+    const queried = new Set<string>();
+    mongoose.set('debug', (collection: string) => {
+      queried.add(collection);
     });
-    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {});
-    let res;
+    let gift, history;
     try {
-      res = await call(GIFT, reservationId, 'POST');
-      expect(errorLog).toHaveBeenCalledWith(
-        'Could not read the wishlist slug of a logged gift:',
-        expect.any(Error)
-      );
+      gift = await call(GIFT, reservationId, 'POST');
+      history = await LIST_GIFTS();
     } finally {
-      find.mockRestore();
-      errorLog.mockRestore();
+      mongoose.set('debug', false);
     }
 
-    expect(res.status).toBe(201);
-    expect((await res.json()).data).toMatchObject({
-      itemName: 'Blue Mug',
-      wishlistId: wishlist._id.toString(),
-      wishlistSlug: null,
-    });
-    expect(await GiftLog.countDocuments()).toBe(1);
+    expect(gift.status).toBe(201);
+    expect(history.status).toBe(200);
+    expect((await history.json()).data).toStrictEqual([(await gift.json()).data]);
+    for (const model of [Wishlist, WishlistMember, Follow]) {
+      expect(queried).not.toContain(model.collection.collectionName);
+    }
+    // The hook did see the routes' own queries.
+    expect(queried).toContain(GiftLog.collection.collectionName);
     expect(await Reservation.findById(reservationId)).toBeNull();
   });
 

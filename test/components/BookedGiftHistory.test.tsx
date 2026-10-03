@@ -21,7 +21,6 @@ const gift = {
   recipientUsername: 'ben',
   wishlistName: 'Ben’s 30th',
   wishlistId: 'w1',
-  wishlistSlug: 'bens-30th',
   giftedAt: '2026-08-24T12:00:00.000Z',
 };
 

@@ -9,7 +9,7 @@ type Id = string | mongoose.Types.ObjectId;
 
 /**
  * What the Booked page gets of the live wishlist behind one of a gifter's
- * reservations or gift-history entries, while the gifter may still open it.
+ * reservations, while the gifter may still open it.
  */
 export interface ReservationWishlist {
   /** The list's current slug, which the card links it by (`null` if it has none). */
@@ -34,14 +34,13 @@ interface StoredWishlist {
 }
 
 /**
- * The live wishlists behind a gifter's reservations, or their gift-history
- * entries (`giftWishlistSlugs`), by id, read in a fixed number of queries
- * however many there are: one for the gifter's memberships of them,
- * `getFriendIds` for their friends, and one for the lists themselves.
+ * The live wishlists behind a gifter's reservations, by id, read in a fixed
+ * number of queries however many there are: one for the gifter's memberships
+ * of them, `getFriendIds` for their friends, and one for the lists themselves.
  *
- * A Reservation and a GiftLog outlive the gifter's access to their list (leave,
- * kick, the list archived or made private: see `models/Reservation.ts`), so a
- * list is only returned while the gifter may still open it. That's decided by
+ * A Reservation outlives the gifter's access to its list (leave, kick, the
+ * list archived or made private: see `models/Reservation.ts`), so a list is
+ * only returned while the gifter may still open it. That's decided by
  * `viewableWishlistsFilter`, the query form of `getWishlistViewAccess`, applied
  * inside that one query. A list they may no longer open has no entry, as a
  * deleted one has none, so nothing it says now reaches them: not its occasion,
