@@ -17,6 +17,11 @@ interface BaseModalProps {
   shouldInterceptClose?: () => boolean;
   // Optional: function to handle intercepted close (e.g., show confirmation)
   onInterceptClose?: () => void;
+  /**
+   * A step back, shown above the title ("‹ Change list"), for a dialog that is
+   * one step of a flow. Disabled while submitting, like the close button.
+   */
+  back?: { label: string; onClick: () => void };
 }
 
 export default function BaseModal({
@@ -28,6 +33,7 @@ export default function BaseModal({
   isSubmitting = false,
   shouldInterceptClose,
   onInterceptClose,
+  back,
 }: BaseModalProps) {
   const handleClose = useCallback(() => {
     if (shouldInterceptClose && shouldInterceptClose() && onInterceptClose) {
@@ -97,12 +103,25 @@ export default function BaseModal({
       >
         {/* Pinned header */}
         <div className="flex flex-shrink-0 items-center justify-between gap-4 border-b border-border px-5 py-4 sm:px-6">
-          <h2
-            id={titleId}
-            className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl"
-          >
-            {title}
-          </h2>
+          <div className="min-w-0">
+            {back && (
+              <button
+                type="button"
+                onClick={back.onClick}
+                disabled={isSubmitting}
+                className="-ml-1.5 mb-1 inline-flex items-center gap-0.5 rounded-md py-0.5 pl-0.5 pr-1.5 text-sm font-medium text-accent transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Icon name="chevron-left" size={16} />
+                {back.label}
+              </button>
+            )}
+            <h2
+              id={titleId}
+              className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl"
+            >
+              {title}
+            </h2>
+          </div>
           <button
             ref={closeButtonRef}
             onClick={handleClose}

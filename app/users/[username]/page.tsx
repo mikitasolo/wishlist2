@@ -11,8 +11,11 @@ import Avatar from '@/components/Avatar';
 import Icon from '@/components/Icon';
 import ShareButton from '@/components/ShareButton';
 import FollowListModal, { type FollowTab } from '@/components/FollowListModal';
+import CreateWishlistModal from '@/components/CreateWishlistModal';
+import Button from '@/components/Button';
 import { SkeletonGrid } from '@/components/Skeleton';
 import { useToast } from '@/components/ToastProvider';
+import { pluralNoun } from '@/lib/utils/plural';
 import { IWishlist } from '@/models/Wishlist';
 import { FOLLOWERS_PARAM } from '@/lib/utils/profileLinks';
 
@@ -47,6 +50,9 @@ export default function UserProfile() {
   const [loading, setLoading] = useState(true);
   const [restricted, setRestricted] = useState(false);
   const [followBusy, setFollowBusy] = useState(false);
+  const [showCreate, setShowCreate] = useState(false);
+  const viewerId = session?.user?.id ?? null;
+
   // `?followers=1` (`followersHref`, which a follow notification links to)
   // opens the followers list as soon as the profile has loaded.
   const pathname = usePathname();
@@ -67,7 +73,16 @@ export default function UserProfile() {
     window.history.replaceState(null, '', query ? `${pathname}?${query}` : pathname);
   }
 
+  // What the profile shows depends on who's looking, so it waits for the
+  // session's first read (`status`) rather than loading both before and after
+  // it, and loads again only when the viewer changes: signing in or out, or
+  // another account taking over the session.
   useEffect(() => {
+    if (status === 'loading') return;
+    // A load a newer one has replaced (the viewer changed meanwhile) is dropped,
+    // so it can't put back what the previous viewer could see.
+    let current = true;
+
     async function load() {
       if (!username) return;
 
@@ -78,6 +93,7 @@ export default function UserProfile() {
         const userResponse = await fetch(`/api/users/by-username/${encodeURIComponent(username)}`, {
           cache: 'no-store',
         });
+        if (!current) return;
         if (!userResponse.ok) {
           if (userResponse.status === 404) {
             showToast('User not found', 'error');
@@ -87,12 +103,14 @@ export default function UserProfile() {
           throw new Error('Failed to fetch user');
         }
         const userResult = await userResponse.json();
+        if (!current) return;
         if (!userResult.success) throw new Error('Failed to fetch user');
         setProfile(userResult.data);
 
         const wishlistsResponse = await fetch(`/api/users/${userResult.data._id}/wishlists`, {
           cache: 'no-store',
         });
+        if (!current) return;
         if (wishlistsResponse.status === 403) {
           setRestricted(true);
           setWishlists([]);
@@ -100,17 +118,22 @@ export default function UserProfile() {
         }
         if (!wishlistsResponse.ok) throw new Error('Failed to fetch wishlists');
         const wishlistsResult = await wishlistsResponse.json();
+        if (!current) return;
         if (wishlistsResult.success) setWishlists(wishlistsResult.data || []);
         else showToast('Failed to load wishlists', 'error');
       } catch (error) {
+        if (!current) return;
         console.error('Error fetching profile:', error);
         showToast('Failed to load profile', 'error');
       } finally {
-        setLoading(false);
+        if (current) setLoading(false);
       }
     }
     load();
-  }, [username, session?.user?.username, router, showToast]);
+    return () => {
+      current = false;
+    };
+  }, [username, status, viewerId, router, showToast]);
 
   async function toggleFollow() {
     if (!profile || followBusy) return;
@@ -208,7 +231,7 @@ export default function UserProfile() {
                   <span className="font-semibold text-foreground">
                     {profile?.followerCount ?? 0}
                   </span>{' '}
-                  followers
+                  {pluralNoun(profile?.followerCount ?? 0, 'follower')}
                 </button>
                 <span aria-hidden>·</span>
                 <button
@@ -219,7 +242,7 @@ export default function UserProfile() {
                   <span className="font-semibold text-foreground">
                     {profile?.followingCount ?? 0}
                   </span>{' '}
-                  following
+                  {pluralNoun(profile?.followingCount ?? 0, 'following')}
                 </button>
                 {profile?.followsYou && !profile.isFriend ? <span>· Follows you</span> : null}
               </div>
@@ -285,12 +308,29 @@ export default function UserProfile() {
             <span className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
               <Icon name="list" size={28} />
             </span>
-            <h3 className="text-lg font-semibold text-foreground sm:text-xl">
-              No wishlists to show
-            </h3>
-            <p className="mx-auto mt-1.5 max-w-sm px-4 text-sm text-muted-foreground">
-              This person has no wishlists you can view right now.
-            </p>
+            {profile?.isSelf ? (
+              <>
+                <h3 className="text-lg font-semibold text-foreground sm:text-xl">
+                  You haven’t made a wishlist yet
+                </h3>
+                <div className="mt-6">
+                  <Button onClick={() => setShowCreate(true)}>
+                    <Icon name="plus" size={18} />
+                    New list
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <>
+                <h3 className="text-lg font-semibold text-foreground sm:text-xl">
+                  No wishlists to show
+                </h3>
+                <p className="mx-auto mt-1.5 max-w-sm px-4 text-sm text-muted-foreground">
+                  {profile ? `@${profile.username}` : 'This person'} hasn’t shared any wishlists
+                  with you yet.
+                </p>
+              </>
+            )}
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3 xl:grid-cols-4">
@@ -300,6 +340,10 @@ export default function UserProfile() {
           </div>
         )}
       </main>
+
+      {profile?.isSelf && (
+        <CreateWishlistModal isOpen={showCreate} onClose={() => setShowCreate(false)} />
+      )}
 
       {followModal && profile && (
         <FollowListModal

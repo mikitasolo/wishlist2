@@ -17,6 +17,7 @@ export type IconName =
   | 'alert'
   | 'info'
   | 'chevron-down'
+  | 'chevron-left'
   | 'image'
   | 'note'
   | 'sparkles'
@@ -91,6 +92,7 @@ const paths: Record<IconName, React.ReactNode> = {
     </>
   ),
   'chevron-down': <path d="m6 9 6 6 6-6" />,
+  'chevron-left': <path d="m15 18-6-6 6-6" />,
   image: (
     <>
       <rect x="3" y="3" width="18" height="18" rx="2" />

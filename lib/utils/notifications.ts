@@ -1,3 +1,4 @@
+import { plural } from '@/lib/utils/plural';
 import type { IconName } from '@/components/Icon';
 import { followersHref, profileHref } from '@/lib/utils/profileLinks';
 
@@ -67,7 +68,7 @@ function followText(n: NotificationView): string {
   if (count === 1) return `${latest} followed you`;
   if (count === 2 && previous) return `${latest} and ${previous} followed you`;
   const others = count - 1;
-  return `${latest} and ${others} ${others === 1 ? 'other' : 'others'} followed you`;
+  return `${latest} and ${plural(others, 'other')} followed you`;
 }
 
 /**

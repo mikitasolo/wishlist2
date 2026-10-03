@@ -137,4 +137,24 @@ describe('FollowListModal — keyboard focus', () => {
   );
 });
 
+describe('FollowListModal — its tabs', () => {
+  // regression: the tabs read "1 followers": each wrote a plural noun after its
+  // count, whatever the count.
+  it('regression: agrees each count with its noun', async () => {
+    render(
+      <FollowListModal
+        userId="u1"
+        initialTab="followers"
+        followerCount={1}
+        followingCount={1}
+        onClose={() => {}}
+      />
+    );
+    await screen.findByRole('link', { name: '@bob' });
+
+    expect(button('1 follower')).toBeInTheDocument();
+    expect(button('1 following')).toBeInTheDocument();
+  });
+});
+
 type User = ReturnType<typeof userEvent.setup>;

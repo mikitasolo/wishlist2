@@ -5,7 +5,8 @@ import connectDB from '@/lib/mongodb';
 /** Slugs: lowercase, alphanumeric words joined by single hyphens. */
 export const WISHLIST_SLUG_REGEX = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
-// Slugs that would collide with real routes under /wishlists/*.
+// Slugs that would collide with real routes under /wishlists/*. `new` was one
+// (a redirect home, now gone) and stays reserved, so no list takes its address.
 const RESERVED = new Set(['new', 'mine', 'shared']);
 
 export function isReservedWishlistSlug(slug: string): boolean {

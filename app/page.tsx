@@ -19,6 +19,7 @@ import { SkeletonGrid } from '@/components/Skeleton';
 import { useToast } from '@/components/ToastProvider';
 import { useLocalToday } from '@/lib/hooks/useLocalToday';
 import { sortByUpcomingOccasion } from '@/lib/utils/occasion';
+import { plural, pluralNoun } from '@/lib/utils/plural';
 import { getVisibility, visibilityMeta } from '@/lib/utils/visibility';
 import { formatItemCount, formatOwnerExtras, sumItemCounts } from '@/lib/utils/itemCounts';
 import { IWishlist } from '@/models/Wishlist';
@@ -291,7 +292,7 @@ export default function Home() {
   const summary = loading
     ? 'Loading your wishlists…'
     : activeOwned.length > 0
-      ? `${activeOwned.length} ${activeOwned.length === 1 ? 'list' : 'lists'} · ${formatItemCount(totalItems)} in your lists`
+      ? `${plural(activeOwned.length, 'list')} · ${formatItemCount(totalItems)} in your lists`
       : owned.length > 0
         ? 'Let’s create a new wishlist.'
         : 'Let’s create your first wishlist.';
@@ -314,14 +315,16 @@ export default function Home() {
                   onClick={() => meId && setFollowModal('followers')}
                   className="text-muted-foreground transition-colors hover:text-foreground"
                 >
-                  <span className="font-semibold text-foreground">{followerCount}</span> followers
+                  <span className="font-semibold text-foreground">{followerCount}</span>{' '}
+                  {pluralNoun(followerCount, 'follower')}
                 </button>
                 <button
                   type="button"
                   onClick={() => meId && setFollowModal('following')}
                   className="text-muted-foreground transition-colors hover:text-foreground"
                 >
-                  <span className="font-semibold text-foreground">{followingCount}</span> following
+                  <span className="font-semibold text-foreground">{followingCount}</span>{' '}
+                  {pluralNoun(followingCount, 'following')}
                 </button>
               </div>
             )}
