@@ -1,33 +1,46 @@
 // Client-safe classification of a gifter's reservations for the "Reserved by
 // you" page. The API (app/api/users/me/reservations) returns each reservation's
-// live `itemStatus` and whether it's `stillReserved` by this gifter; these
-// helpers turn that into UI grouping and copy.
+// live `itemStatus`, whether it's `stillReserved` by this gifter, and whether
+// they can still open its list (`listOpen`); these helpers turn that into UI
+// grouping and copy.
 
 import { NO_UPCOMING_OCCASION, occasionSortKey, type Occasion } from '@/lib/utils/occasion';
 
 export interface ReservationStatusInfo {
   itemStatus: string;
+  /** The live item is still booked by the gifter. */
   stillReserved: boolean;
+  /**
+   * The gifter can still open the reservation's list. Only their own access:
+   * never why they can't (an archived list looks exactly like a missing one).
+   */
+  listOpen: boolean;
 }
 
 /**
  * A reservation "needs confirmation" when the live item is no longer actively
  * reserved by the gifter — the owner completed / removed / drafted it, someone
- * else took it, or the gifter left or was removed from the wishlist. In every
- * such case the durable Reservation lingers (by design), so we prompt the
- * gifter to resolve it: log the gift or dismiss it, keeping their history
- * accurate without ever mutating the owner's item.
+ * else took it, or the gifter left or was removed from the wishlist — or when
+ * it still is, but on a list the gifter can no longer open. The list's own
+ * unbook (Release) refuses anyone the list is hidden from, so that booking can
+ * only be released by an owner. In every such case the durable Reservation
+ * lingers (by design), so we prompt the gifter to resolve it: log the gift or
+ * dismiss it, keeping their history accurate without ever mutating the owner's
+ * item.
  */
 export function needsConfirmation(r: ReservationStatusInfo): boolean {
-  return !r.stillReserved;
+  return !r.stillReserved || !r.listOpen;
 }
 
 /**
- * Why a reservation detached from its item, phrased for the gifter. Returns
+ * Why a reservation needs the gifter's confirmation, phrased for them. Returns
  * null while the reservation is still active (no note needed).
  */
 export function reservationNote(r: ReservationStatusInfo): string | null {
-  if (r.stillReserved) return null;
+  if (r.stillReserved) {
+    // Still theirs, on a list they can't open: say only that, never why.
+    return r.listOpen ? null : 'This list is no longer available to you';
+  }
   switch (r.itemStatus) {
     case 'deleted':
       return 'The owner removed this item';

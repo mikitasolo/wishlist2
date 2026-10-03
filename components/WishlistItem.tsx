@@ -25,6 +25,8 @@ const PRIMARY_TONES = {
   soft: 'bg-primary-500/12 text-accent hover:bg-primary-500/18 dark:text-primary-300',
   // Undoing your own booking.
   neutral: 'bg-muted text-foreground hover:bg-surface-2',
+  // A gift you've given: done, in the emerald of your booking.
+  given: 'bg-emerald-500/12 text-emerald-700 dark:text-emerald-300',
   // Booked by someone else: nothing to do.
   off: 'bg-muted text-muted-foreground',
 } as const;
@@ -45,7 +47,10 @@ interface PrimaryAction {
    * the card's update runs. Edit and Review aren't, as they never were.
    */
   changesStatus?: boolean;
-  /** Nothing the viewer can do (an item someone else booked): really disabled. */
+  /**
+   * Nothing the viewer can do here (an item someone else booked, a gift they've
+   * given): really disabled.
+   */
   unavailable?: boolean;
 }
 
@@ -83,6 +88,7 @@ function WishlistItem({
   const [isUpdating, setIsUpdating] = useState(false);
   const [showCompleteConfirm, setShowCompleteConfirm] = useState(false);
   const [showToDraftConfirm, setShowToDraftConfirm] = useState(false);
+  const [showReleaseConfirm, setShowReleaseConfirm] = useState(false);
 
   // Reset showNotes when item changes
   useEffect(() => {
@@ -93,6 +99,12 @@ function WishlistItem({
     () => item.bookedBy && session?.user?.id && item.bookedBy === session.user.id,
     [item.bookedBy, session?.user?.id]
   );
+
+  // A gift the member booked and has since marked as given (only a member's own
+  // read of the list carries `givenByMe`). It stays booked by them, but isn't
+  // offered back up with Unbook: releasing it is in the menu, behind a warning.
+  const isGivenByCurrentUser =
+    !isOwner && item.status === 'booked' && !!isBookedByCurrentUser && item.givenByMe === true;
 
   const isProposedByCurrentUser = useMemo(
     () =>
@@ -139,6 +151,14 @@ function WishlistItem({
     },
     [item._id, onUpdate]
   );
+
+  // Releasing a gift already marked as given, once confirmed. Only ever an
+  // unbook: if a poll has shown the item isn't theirs any more while the
+  // warning was open, there's nothing left to release.
+  const handleRelease = useCallback(() => {
+    if (isOwner || isUpdating || item.status !== 'booked' || !isBookedByCurrentUser) return;
+    applyStatus('available');
+  }, [isOwner, isUpdating, item.status, isBookedByCurrentUser, applyStatus]);
 
   const handleToggleCompleted = useCallback(() => {
     if (!isOwner || isUpdating) return;
@@ -219,23 +239,32 @@ function WishlistItem({
     };
   } else if (isAuthenticated && isMember && item.status === 'booked') {
     // Owners never get here: for them a booked item is just available.
-    primary = isBookedByCurrentUser
+    primary = isGivenByCurrentUser
       ? {
-          label: 'Unbook',
-          ariaLabel: 'Unbook this item',
-          icon: 'undo',
-          tone: 'neutral',
-          onClick: handleToggleBooked,
-          changesStatus: true,
-        }
-      : {
-          label: 'Booked',
-          ariaLabel: 'This item is already booked',
-          icon: 'lock',
-          tone: 'off',
+          label: 'Given by you',
+          ariaLabel: 'Given by you',
+          icon: 'check-circle',
+          tone: 'given',
           onClick: () => {},
           unavailable: true,
-        };
+        }
+      : isBookedByCurrentUser
+        ? {
+            label: 'Unbook',
+            ariaLabel: 'Unbook this item',
+            icon: 'undo',
+            tone: 'neutral',
+            onClick: handleToggleBooked,
+            changesStatus: true,
+          }
+        : {
+            label: 'Booked',
+            ariaLabel: 'This item is already booked',
+            icon: 'lock',
+            tone: 'off',
+            onClick: () => {},
+            unavailable: true,
+          };
   }
 
   // Everything else the viewer may do. Moving a completed item to draft isn't
@@ -261,6 +290,14 @@ function WishlistItem({
   }
   if (isAuthenticated && isOwner && isDraft && onEdit) {
     menuItems.push({ label: 'Edit', icon: 'edit', onSelect: () => onEdit(item) });
+  }
+  if (isAuthenticated && isMember && isGivenByCurrentUser) {
+    menuItems.push({
+      label: 'Release…',
+      icon: 'undo',
+      onSelect: () => setShowReleaseConfirm(true),
+      disabled: isUpdating,
+    });
   }
   if (isAuthenticated && onSaveToList) {
     menuItems.push({
@@ -489,6 +526,22 @@ function WishlistItem({
             applyStatus('draft');
           }}
           onCancel={() => setShowToDraftConfirm(false)}
+        />
+      )}
+
+      {showReleaseConfirm && (
+        <ConfirmDialog
+          isOpen
+          title="Release this gift?"
+          message="You’ve marked it as given. Once it’s released, someone else on the list could reserve it and buy it again."
+          confirmText="Release"
+          cancelText="Cancel"
+          type="warning"
+          onConfirm={() => {
+            setShowReleaseConfirm(false);
+            handleRelease();
+          }}
+          onCancel={() => setShowReleaseConfirm(false)}
         />
       )}
     </div>

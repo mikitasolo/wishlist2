@@ -10,7 +10,9 @@ import { giftWishlistSlugs, serializeGiftLog } from '@/lib/utils/giftHistory';
 // POST /api/reservations/[id]/gift - mark a reservation as gifted. Writes a
 // permanent GiftLog entry from the reservation's snapshot and removes the
 // reservation. Deliberately does NOT touch the live item — completing it on the
-// owner's list is the owner's decision, not the gifter's.
+// owner's list is the owner's decision, not the gifter's. The item stays booked
+// by the gifter, and their own read of the list flags it as given (`givenByMe`),
+// so the card shows "Given by you" rather than an Unbook.
 //
 // Answers 201 with the new entry, shaped as `GET /api/users/me/gifts` lists it,
 // so the Booked page can add it to its gift history without re-reading the

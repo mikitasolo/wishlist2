@@ -26,6 +26,12 @@ export interface ApiItem {
   status: 'draft' | 'available' | 'booked' | 'completed' | 'proposed';
   bookedBy?: string | null; // User ID as string, or undefined if hidden
   proposedBy?: string | null; // User ID as string, or undefined if hidden
+  /**
+   * A member's own read only: true on an item they hold the booking of and have
+   * marked as given (their gift history has it). Absent for owners, who never
+   * see booking status, and for anyone who isn't a member.
+   */
+  givenByMe?: boolean;
   createdAt: string; // ISO date string
   updatedAt: string; // ISO date string
 }

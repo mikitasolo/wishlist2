@@ -303,6 +303,19 @@ describe('WishlistItem — the action row, by role and state', () => {
       },
     },
     {
+      // regression: Unbook stayed on a gift already given, so tidying up put it
+      // back up for someone else to buy. Releasing it is in the menu, behind a
+      // warning (see below).
+      name: 'member, item they booked and have marked as given',
+      item: { link: LINK, status: 'booked', bookedBy: ME, givenByMe: true },
+      props: { isMember: true, onSaveToList: vi.fn() },
+      offer: {
+        primary: { button: 'Given by you', text: 'Given by you', disabled: true },
+        linkButton: 'link',
+        menu: ['Release…', 'Save to my list'],
+      },
+    },
+    {
       name: 'member, item someone else booked',
       item: { link: LINK, status: 'booked' },
       props: { isMember: true, onSaveToList: vi.fn() },
@@ -403,6 +416,108 @@ describe('WishlistItem — the action row, by role and state', () => {
 
     // Owners never see booking status, whatever the item's.
     if (props.isOwner) expect(within(card).queryByText(/book/i)).toBeNull();
+  });
+});
+
+describe('WishlistItem — a gift the member has marked as given', () => {
+  const given = item({ link: LINK, status: 'booked', bookedBy: ME, givenByMe: true });
+
+  // regression: after "Mark as gifted" on the Reserved page, the card still
+  // offered Unbook, and pressing it to tidy up put a gift already given back up
+  // for someone else on the list to buy.
+  it('regression: shows "Given by you" in place of Unbook', () => {
+    render(<WishlistItem item={given} onUpdate={vi.fn()} isAuthenticated isMember />);
+
+    expect(screen.getByRole('button', { name: 'Given by you' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Unbook this item' })).toBeNull();
+  });
+
+  it('warns before Release… in the menu unbooks it', async () => {
+    const onUpdate = vi.fn().mockResolvedValue(undefined);
+    render(<WishlistItem item={given} onUpdate={onUpdate} isAuthenticated isMember />);
+
+    pick('Release…');
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveTextContent('Release this gift?');
+    expect(dialog).toHaveTextContent('someone else on the list could reserve it and buy it again');
+    expect(onUpdate).not.toHaveBeenCalled();
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Release' }));
+    expect(onUpdate).toHaveBeenCalledTimes(1);
+    expect(onUpdate).toHaveBeenCalledWith('item-1', { status: 'available' });
+    await act(async () => {});
+  });
+
+  it('releases nothing when the warning is cancelled', () => {
+    const onUpdate = vi.fn();
+    render(<WishlistItem item={given} onUpdate={onUpdate} isAuthenticated isMember />);
+
+    pick('Release…');
+    fireEvent.click(screen.getByRole('button', { name: 'cancel' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(onUpdate).not.toHaveBeenCalled();
+  });
+
+  it('holds Release… while the unbook runs', async () => {
+    let settle!: () => void;
+    const onUpdate = vi.fn(() => new Promise<void>((resolve) => (settle = resolve)));
+    render(<WishlistItem item={given} onUpdate={onUpdate} isAuthenticated isMember />);
+
+    pick('Release…');
+    fireEvent.click(screen.getByRole('button', { name: 'Release' }));
+    expect(onUpdate).toHaveBeenCalledTimes(1);
+
+    openMenu();
+    const releaseItem = screen.getByRole('menuitem', { name: 'Release…' });
+    expect(releaseItem).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(releaseItem);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(onUpdate).toHaveBeenCalledTimes(1);
+    await act(async () => settle());
+  });
+
+  it('releases nothing if the item stopped being theirs while the warning was open', () => {
+    const onUpdate = vi.fn();
+    const view = render(<WishlistItem item={given} onUpdate={onUpdate} isAuthenticated isMember />);
+
+    pick('Release…');
+    // A poll lands meanwhile: they've released it from another tab.
+    view.rerender(
+      <WishlistItem
+        item={{ ...given, status: 'available', bookedBy: undefined, givenByMe: false }}
+        onUpdate={onUpdate}
+        isAuthenticated
+        isMember
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Release' }));
+    expect(onUpdate).not.toHaveBeenCalled();
+  });
+
+  it('shows Unbook as before on a booking not marked as given', () => {
+    render(
+      <WishlistItem
+        item={item({ status: 'booked', bookedBy: ME, givenByMe: false })}
+        onUpdate={vi.fn()}
+        isAuthenticated
+        isMember
+      />
+    );
+    expect(screen.getByRole('button', { name: 'Unbook this item' })).toBeEnabled();
+    expect(screen.queryByText('Given by you')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'More actions' })).toBeNull();
+  });
+
+  // The flag never reaches an owner (the API leaves it out), and the card
+  // wouldn't show it to one anyway: owners never see booking status.
+  it('regression guard: an owner never sees it', () => {
+    render(
+      <WishlistItem item={given} onUpdate={vi.fn()} onEdit={vi.fn()} isAuthenticated isOwner />
+    );
+    expect(screen.queryByText(/given/i)).toBeNull();
+    expect(screen.queryByText(/book/i)).toBeNull();
+    openMenu();
+    expect(screen.queryByRole('menuitem', { name: 'Release…' })).toBeNull();
   });
 });
 

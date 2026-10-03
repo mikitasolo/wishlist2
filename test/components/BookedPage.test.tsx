@@ -32,6 +32,7 @@ const reservation = {
   wishlistName: 'Birthday',
   wishlistId: 'w1',
   wishlistSlug: 'birthday',
+  listOpen: true,
 };
 
 const reservations = [
@@ -39,6 +40,7 @@ const reservations = [
   {
     ...reservation,
     _id: 'res-lego',
+    itemId: 'item-lego',
     itemName: 'Lego set',
     itemStatus: 'booked',
     stillReserved: true,
@@ -47,6 +49,7 @@ const reservations = [
   {
     ...reservation,
     _id: 'res-scarf',
+    itemId: 'item-scarf',
     itemName: 'Scarf',
     itemStatus: 'deleted',
     stillReserved: false,
@@ -82,7 +85,11 @@ const scarfGift = {
   giftedAt: '2026-10-01T10:05:00.000Z',
 };
 
-type Reservation = (typeof reservations)[number] & { wishlistOccasion?: Occasion | null };
+type Reservation = Omit<(typeof reservations)[number], 'wishlistSlug'> & {
+  /** `null` for a list the gifter can no longer open, as the read has it. */
+  wishlistSlug: string | null;
+  wishlistOccasion?: Occasion | null;
+};
 type Gift = typeof legoGift;
 
 /** A JSON answer, a non-JSON one (`html`), or a network failure. */
@@ -152,6 +159,26 @@ function mockHeldFetch({
     dropReservation(id: string) {
       lists.reservations = lists.reservations.filter((r) => r._id !== id);
     },
+    /**
+     * A reservation's item stops being booked by the gifter (an owner's status
+     * change, someone else's booking after they left, the list archived): the
+     * reservation stays, needing their confirmation.
+     */
+    detach(id: string, itemStatus: string) {
+      lists.reservations = lists.reservations.map((r) =>
+        r._id === id ? { ...r, itemStatus, stillReserved: false } : r
+      );
+    },
+    /**
+     * The gifter can no longer open a reservation's list (it was archived,
+     * say), while the item is still booked by them: the read has no slug or
+     * occasion for it, and says only that it isn't open to them.
+     */
+    closeList(id: string) {
+      lists.reservations = lists.reservations.map((r) =>
+        r._id === id ? { ...r, listOpen: false, wishlistSlug: null, wishlistOccasion: null } : r
+      );
+    },
     /** A gift-history entry is deleted elsewhere. */
     dropGift(id: string) {
       lists.gifts = lists.gifts.filter((g) => g._id !== id);
@@ -171,9 +198,17 @@ function mockHeldFetch({
   /** Saves an action the way its route would, once it has answered `reply`. */
   function save(key: string, reply: Reply) {
     if (reply instanceof Error || !('body' in reply)) return;
-    if (reply.status >= 400 && reply.status !== 404) return;
     const [method, url] = key.split(' ');
     const id = url.split('/')[3];
+    // Release: the item route's unbook. Its success ends the reservation of
+    // that item; it refuses (or fails) without touching it.
+    if (url.startsWith('/api/items/')) {
+      if (reply.status === 200) {
+        lists.reservations = lists.reservations.filter((r) => r.itemId !== id);
+      }
+      return;
+    }
+    if (reply.status >= 400 && reply.status !== 404) return;
     if (url.startsWith('/api/gifts/')) server.dropGift(id);
     else if (method === 'POST' && reply.status === 201) {
       server.gift(id, (reply.body as { data: Gift }).data);
@@ -238,9 +273,16 @@ function mockHeldFetch({
 
 const markGiftedKey = (id: string) => `POST /api/reservations/${id}/gift`;
 const dismissKey = (id: string) => `DELETE /api/reservations/${id}`;
+/** Release sends the list's own unbook, to the reserved item. */
+const releaseKey = (itemId: string) => `PATCH /api/items/${itemId}`;
 const deleteGiftKey = (id: string) => `DELETE /api/gifts/${id}`;
 
-/** The "Mark as gifted" and "Dismiss" buttons on the reservation card for `itemName`. */
+/**
+ * The buttons on the reservation card for `itemName`: "Mark as gifted", then
+ * Release on an active card or Dismiss on one that needs confirmation (each
+ * null where the card doesn't have it), and `second`, whichever of the two it
+ * has.
+ */
 function reservationButtons(itemName: string) {
   // The card is the nearest ancestor of its name that holds its buttons.
   let card: HTMLElement | null = cardName(itemName);
@@ -249,9 +291,15 @@ function reservationButtons(itemName: string) {
     card = card.parentElement;
   }
   const scope = within(card!);
+  const release = scope.queryByRole('button', { name: 'Release' });
+  const dismiss = scope.queryByRole('button', { name: 'Dismiss' });
+  const second = release ?? dismiss;
+  if (!second) throw new Error(`no Release or Dismiss on the card for ${itemName}`);
   return {
     gift: scope.getByRole('button', { name: 'Mark as gifted' }),
-    dismiss: scope.getByRole('button', { name: 'Dismiss' }),
+    release,
+    dismiss,
+    second,
   };
 }
 
@@ -261,6 +309,16 @@ function reservationButtons(itemName: string) {
  */
 const cardName = (itemName: string) =>
   screen.queryAllByText(itemName).find((el) => !el.closest('li')) ?? null;
+
+/** The note on the reservation card for `itemName` (why it needs confirmation), or null. */
+function noteOn(itemName: string) {
+  let card: HTMLElement | null = cardName(itemName);
+  while (card && !within(card).queryByRole('button', { name: 'Mark as gifted' })) {
+    card = card.parentElement;
+  }
+  if (!card) throw new Error(`no reservation card for ${itemName}`);
+  return card.querySelector('p.rounded-full')?.textContent ?? null;
+}
 
 /** The link to its list on the reservation card for `itemName`. */
 function listLink(itemName: string) {
@@ -294,19 +352,27 @@ function clickAndConfirm(button: HTMLElement, confirmText: string) {
 
 const markGifted = (itemName: string) =>
   clickAndConfirm(reservationButtons(itemName).gift, 'Mark as gifted');
-const dismiss = (itemName: string) =>
-  clickAndConfirm(reservationButtons(itemName).dismiss, 'Remove');
+function dismiss(itemName: string) {
+  const { dismiss } = reservationButtons(itemName);
+  if (!dismiss) throw new Error(`no Dismiss on the card for ${itemName}`);
+  clickAndConfirm(dismiss, 'Remove');
+}
+function release(itemName: string) {
+  const { release } = reservationButtons(itemName);
+  if (!release) throw new Error(`no Release on the card for ${itemName}`);
+  clickAndConfirm(release, 'Release');
+}
 const deleteGift = (itemName: string) => clickAndConfirm(deleteGiftButton(itemName), 'Delete');
 
 function expectReservationDisabled(itemName: string) {
   const buttons = reservationButtons(itemName);
   expect(buttons.gift).toBeDisabled();
-  expect(buttons.dismiss).toBeDisabled();
+  expect(buttons.second).toBeDisabled();
 }
 function expectReservationEnabled(itemName: string) {
   const buttons = reservationButtons(itemName);
   expect(buttons.gift).toBeEnabled();
-  expect(buttons.dismiss).toBeEnabled();
+  expect(buttons.second).toBeEnabled();
 }
 
 type Held = ReturnType<typeof mockHeldFetch>;
@@ -351,7 +417,7 @@ describe('BookedPage — acting on several cards at once', () => {
 
     // A's disabled buttons open no second dialog, so nothing more goes out for A.
     fireEvent.click(reservationButtons('Lego set').gift);
-    fireEvent.click(reservationButtons('Lego set').dismiss);
+    fireEvent.click(reservationButtons('Lego set').second);
     expect(screen.queryByRole('alertdialog')).toBeNull();
 
     // B settling first doesn't unlock A either...
@@ -364,16 +430,16 @@ describe('BookedPage — acting on several cards at once', () => {
     await waitFor(() => expect(showToast).toHaveBeenCalledWith('Failed to log gift', 'error'));
     expectReservationEnabled('Lego set');
     expect(sent(markGiftedKey('res-lego'))).toBe(1);
-    expect(sent(dismissKey('res-lego'))).toBe(0);
+    expect(sent(releaseKey('item-lego'))).toBe(0);
   });
 
   it('re-enables only the card whose request failed', async () => {
     const { answer } = await renderHeld();
 
-    dismiss('Lego set');
+    release('Lego set');
     markGifted('Scarf');
 
-    await answer(dismissKey('res-lego'), new TypeError('Failed to fetch'));
+    await answer(releaseKey('item-lego'), new TypeError('Failed to fetch'));
     await waitFor(() => expect(showToast).toHaveBeenCalledWith('Something went wrong', 'error'));
     expectReservationEnabled('Lego set');
     expectReservationDisabled('Scarf');
@@ -438,7 +504,7 @@ describe('BookedPage — acting on several cards at once', () => {
 
     // Both confirmations for one card, opened before either is confirmed.
     fireEvent.click(lego.gift);
-    fireEvent.click(lego.dismiss);
+    fireEvent.click(lego.second);
     const confirm = (title: string, confirmText: string) =>
       fireEvent.click(
         within(screen.getByRole('alertdialog', { name: title })).getByRole('button', {
@@ -448,17 +514,204 @@ describe('BookedPage — acting on several cards at once', () => {
 
     confirm('Mark as gifted?', 'Mark as gifted');
     expectReservationDisabled('Lego set');
-    confirm('Remove from reservations?', 'Remove');
+    confirm('Release this gift?', 'Release');
     expect(screen.queryByRole('alertdialog')).toBeNull();
 
     expect(sent(markGiftedKey('res-lego'))).toBe(1);
-    expect(sent(dismissKey('res-lego'))).toBe(0);
+    expect(sent(releaseKey('item-lego'))).toBe(0);
     expectReservationDisabled('Lego set');
 
     await answer(markGiftedKey('res-lego'), failed('Failed to log gift'));
     await waitFor(() => expectReservationEnabled('Lego set'));
     expect(showToast).toHaveBeenCalledTimes(1);
+    expect(sent(releaseKey('item-lego'))).toBe(0);
+  });
+});
+
+describe('BookedPage — Release on an active card, Dismiss on a changed one', () => {
+  const refused = (status: number, error: string): Reply => ({
+    status,
+    body: { success: false, error },
+  });
+  const REFUSED_TOAST = 'This gift can’t be released from its list any more.';
+
+  // regression: every card offered Dismiss, active ones included, and Dismiss
+  // only deletes the Reservation: the item stayed reserved under the gifter's
+  // name on the list, so the other members kept seeing it taken and nobody
+  // bought it, while the gifter had lost the only page that tracked it.
+  it('regression: an active card offers Release, not Dismiss; a changed card offers Dismiss', async () => {
+    await renderHeld();
+
+    const lego = reservationButtons('Lego set');
+    expect(lego.release).toBeInTheDocument();
+    expect(lego.dismiss).toBeNull();
+
+    const scarf = reservationButtons('Scarf');
+    expect(scarf.dismiss).toBeInTheDocument();
+    expect(scarf.release).toBeNull();
+  });
+
+  it("asks first, then sends the list's own unbook to the item, and takes the card off once it lands", async () => {
+    const { answer, sent } = await renderHeld();
+
+    fireEvent.click(reservationButtons('Lego set').release!);
+    const dialog = screen.getByRole('alertdialog', { name: 'Release this gift?' });
+    expect(dialog).toHaveTextContent('Others on the list will be able to reserve it.');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Release' }));
+
+    // The item route's unbook, as Unbook on the list sends it: nothing else
+    // frees the item, and the reservation isn't dismissed on its own.
+    expect(sent(releaseKey('item-lego'))).toBe(1);
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/items/item-lego',
+      expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ status: 'available' }) })
+    );
     expect(sent(dismissKey('res-lego'))).toBe(0);
+    expectReservationDisabled('Lego set');
+
+    await answer(releaseKey('item-lego'), ok);
+    await waitFor(() => expect(cardName('Lego set')).toBeNull());
+    expect(showToast).toHaveBeenCalledTimes(1);
+    expect(showToast).toHaveBeenCalledWith(
+      'Released. Others on the list can reserve it now.',
+      'success'
+    );
+    expect(screen.getByText('Scarf')).toBeInTheDocument();
+    // Released, not given: the gift history is as it was.
+    expect(historyNames()).toEqual(['Cookbook', 'Mug']);
+  });
+
+  it('sends nothing when the confirmation is cancelled', async () => {
+    const { sent } = await renderHeld();
+
+    fireEvent.click(reservationButtons('Lego set').release!);
+    fireEvent.click(
+      within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Cancel' })
+    );
+
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(sent(releaseKey('item-lego'))).toBe(0);
+    expectReservationEnabled('Lego set');
+  });
+
+  // The item route refuses an unbook the gifter can no longer make, and the
+  // Reservation is still there: the card is out of date, not gone. So the page
+  // says so, keeps it, and reads both lists again, which show it needing their
+  // confirmation, with Dismiss.
+  it.each([
+    {
+      refusal: 'no longer a member (403)',
+      reply: refused(403, 'Unauthorized - No access to this wishlist'),
+      itemStatus: 'available',
+    },
+    {
+      refusal: 'someone else holds it now (403)',
+      reply: refused(403, 'You can only unbook items you have booked'),
+      itemStatus: 'booked',
+    },
+    {
+      refusal: 'the owner marked it received (400)',
+      reply: refused(400, 'Invalid status transition'),
+      itemStatus: 'completed',
+    },
+    {
+      refusal: 'it changed while the unbook was on its way (409)',
+      reply: refused(409, 'This item is no longer booked by you'),
+      itemStatus: 'draft',
+    },
+    {
+      refusal: 'the item is gone, or the list archived (404)',
+      reply: notFound('Item not found'),
+      itemStatus: 'deleted',
+    },
+  ])(
+    'a refused Release ($refusal) says so, keeps the card, and reads both lists again',
+    async ({ reply, itemStatus }) => {
+      const { server, answer, reads } = await renderHeld();
+
+      release('Lego set');
+      // What the route found: the item is no longer theirs to release.
+      server.detach('res-lego', itemStatus);
+      await answer(releaseKey('item-lego'), reply);
+
+      await waitFor(() => expect(showToast).toHaveBeenCalledWith(REFUSED_TOAST, 'info'));
+      expect(showToast).toHaveBeenCalledTimes(1);
+      expect(reads()).toBe(2);
+      // The read moves it to "Needs your confirmation", where it offers Dismiss.
+      await waitFor(() => expect(reservationButtons('Lego set').dismiss).not.toBeNull());
+      expect(reservationButtons('Lego set').release).toBeNull();
+      expectReservationEnabled('Lego set');
+      expect(screen.getByText('Scarf')).toBeInTheDocument();
+    }
+  );
+
+  // The route's 404 is all a list gone out of reach gives: the item is still
+  // booked by them, so the read keeps the card, and its note says only that
+  // the list isn't available to them, never why.
+  it('a Release refused because the list is out of reach moves the card to confirmation, saying so', async () => {
+    const { server, answer } = await renderHeld();
+
+    release('Lego set');
+    server.closeList('res-lego');
+    await answer(releaseKey('item-lego'), notFound('Item not found'));
+
+    await waitFor(() => expect(showToast).toHaveBeenCalledWith(REFUSED_TOAST, 'info'));
+    await waitFor(() => expect(reservationButtons('Lego set').dismiss).not.toBeNull());
+    expect(reservationButtons('Lego set').release).toBeNull();
+    expect(noteOn('Lego set')).toBe('This list is no longer available to you');
+  });
+
+  // regression: a gift still reserved to them, on a list they could no longer
+  // open, said "No longer reserved to you", which isn't so. It says only that
+  // the list isn't available to them (an archived list must look exactly like
+  // a missing one), and keeps Dismiss: Release can't reach that list.
+  it('regression: a card on a list no longer available to them says so, and offers Dismiss', async () => {
+    mockHeldFetch({
+      initial: [
+        { ...reservations[0], listOpen: false, wishlistSlug: null },
+        // Booked by someone else since: really no longer theirs.
+        {
+          ...reservations[0],
+          _id: 'res-kite',
+          itemId: 'item-kite',
+          itemName: 'Kite',
+          stillReserved: false,
+        },
+      ],
+    });
+    render(<BookedPage />);
+    await screen.findByText('Lego set');
+
+    const lego = reservationButtons('Lego set');
+    expect(lego.dismiss).toBeInTheDocument();
+    expect(lego.release).toBeNull();
+    expect(noteOn('Lego set')).toBe('This list is no longer available to you');
+    expect(noteOn('Kite')).toBe('No longer reserved to you');
+    expect(document.body.textContent).not.toMatch(/archiv/i);
+    // Both need confirmation; nothing is left to give.
+    expect(
+      screen.getByRole('heading', { level: 2, name: /Needs your confirmation/ })
+    ).toHaveTextContent('Needs your confirmation2');
+    expect(screen.getByText('Nothing actively reserved right now.')).toBeInTheDocument();
+  });
+
+  it('releases nothing, and says why, for a card a read has found changed while its confirmation was open', async () => {
+    const { server, sent } = await renderHeld();
+
+    fireEvent.click(reservationButtons('Lego set').release!);
+    // Elsewhere, meanwhile: the owner marks it received, and the page reads it.
+    server.detach('res-lego', 'completed');
+    act(() => {
+      window.dispatchEvent(new Event('focus'));
+    });
+    await waitFor(() => expect(reservationButtons('Lego set').dismiss).not.toBeNull());
+
+    fireEvent.click(
+      within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Release' })
+    );
+    expect(sent(releaseKey('item-lego'))).toBe(0);
+    expect(showToast).toHaveBeenCalledTimes(1);
+    expect(showToast).toHaveBeenCalledWith(REFUSED_TOAST, 'info');
   });
 });
 
@@ -647,7 +900,20 @@ describe('BookedPage — failures worth retrying keep the card', () => {
     },
   ];
 
-  it.each(cardActions.flatMap((a) => failures.map((f) => ({ ...a, ...f }))))(
+  // Release's own 404 is a refusal, not a record that's gone (see below), so it
+  // isn't in `cardActions`; its failures worth retrying are as theirs.
+  const retryable = [
+    ...cardActions,
+    {
+      action: 'Release',
+      run: () => release('Lego set'),
+      key: releaseKey('item-lego'),
+      itemName: 'Lego set',
+      expectEnabled: () => expectReservationEnabled('Lego set'),
+    },
+  ];
+
+  it.each(retryable.flatMap((a) => failures.map((f) => ({ ...a, ...f }))))(
     'keeps the card and re-enables it when $action gets $failure',
     async ({ run, key, itemName, reply, toast, expectEnabled }) => {
       const { answer } = await renderHeld();
@@ -668,6 +934,7 @@ describe('BookedPage — reading both lists again while the page is open', () =>
   const headphones = {
     ...reservation,
     _id: 'res-headphones',
+    itemId: 'item-headphones',
     itemName: 'Headphones',
     itemStatus: 'booked',
     stillReserved: true,
@@ -990,7 +1257,8 @@ describe('BookedPage — reading both lists again while the page is open', () =>
 
   it.each([
     { dialog: 'Mark as gifted?', open: () => reservationButtons('Lego set').gift },
-    { dialog: 'Remove from reservations?', open: () => reservationButtons('Scarf').dismiss },
+    { dialog: 'Remove from reservations?', open: () => reservationButtons('Scarf').second },
+    { dialog: 'Release this gift?', open: () => reservationButtons('Lego set').second },
     { dialog: 'Delete from gift history?', open: () => deleteGiftButton('Cookbook') },
   ])(
     'another account signing in closes a "$dialog" confirmation left open for the previous one',
@@ -1120,14 +1388,14 @@ describe('BookedPage — keyboard focus in a confirmation', () => {
         expect(dialog).toContainElement(document.activeElement as HTMLElement);
       }
     }
-    expect(lego.dismiss).not.toHaveFocus();
+    expect(lego.second).not.toHaveFocus();
 
     // Closing it hands focus back to the card's button that opened it.
     await user.keyboard('{Escape}');
     expect(screen.queryByRole('alertdialog')).toBeNull();
     expect(lego.gift).toHaveFocus();
     expect(sent(markGiftedKey('res-lego'))).toBe(0);
-    expect(sent(dismissKey('res-lego'))).toBe(0);
+    expect(sent(releaseKey('item-lego'))).toBe(0);
   });
 
   it("hands focus back to the card's button once a failed request re-enables it", async () => {
@@ -1166,6 +1434,7 @@ describe('BookedPage — "To give" grouped by the list’s upcoming occasion', (
   ): Reservation => ({
     ...reservation,
     _id,
+    itemId: `item-${_id}`,
     itemName,
     wishlistId,
     wishlistName,
@@ -1264,7 +1533,7 @@ describe('BookedPage — "To give" grouped by the list’s upcoming occasion', (
     const { answer } = await renderGrouped();
 
     markGifted('Kite');
-    dismiss('Vase');
+    release('Vase');
     expectReservationDisabled('Kite');
     expectReservationDisabled('Vase');
     expectReservationEnabled('Toy train');
@@ -1274,16 +1543,19 @@ describe('BookedPage — "To give" grouped by the list’s upcoming occasion', (
     expect(cardsUnder(BIRTHDAY_GROUP)).toEqual(['Toy train']);
     expectReservationDisabled('Vase');
 
-    await answer(dismissKey('res-vase'), ok);
+    await answer(releaseKey('item-res-vase'), ok);
     await waitFor(() => expect(cardName('Vase')).toBeNull());
     expect(headings()).toEqual([BIRTHDAY_GROUP, 'No date']);
-    expect(showToast).toHaveBeenCalledWith('Removed from your reservations', 'success');
+    expect(showToast).toHaveBeenCalledWith(
+      'Released. Others on the list can reserve it now.',
+      'success'
+    );
   });
 
   it('regroups the cards on the next read once an owner changes a date, and leaves a card in flight alone', async () => {
     const { server, answer } = await renderGrouped();
 
-    dismiss('Vase');
+    release('Vase');
     // Elsewhere: the odds-and-ends list gets a holiday tomorrow, Anna's birthday
     // is cleared, and the wedding moves to next week.
     server.setOccasion('w-misc', { kind: 'holiday', date: '2026-10-03', recurrence: null });
@@ -1302,7 +1574,7 @@ describe('BookedPage — "To give" grouped by the list’s upcoming occasion', (
     expect(cardsUnder(WEDDING_GROUP)).toEqual(['Vase']);
     expectReservationDisabled('Vase');
 
-    await answer(dismissKey('res-vase'), ok);
+    await answer(releaseKey('item-res-vase'), ok);
     await waitFor(() => expect(cardName('Vase')).toBeNull());
     expect(headings()).toEqual([HOLIDAY_GROUP, 'No date']);
   });

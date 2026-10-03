@@ -20,6 +20,7 @@ import type { Occasion } from '@/lib/utils/occasion';
 import { withRequestTimeout } from '@/lib/utils/requestTimeout';
 import {
   groupByOccasion,
+  needsConfirmation,
   partitionReservations,
   reservationNote,
   type OccasionGroup,
@@ -32,6 +33,8 @@ interface Price {
 
 interface Reservation {
   _id: string;
+  /** The reserved item's id, which Release sends the list's own unbook to. */
+  itemId: string;
   itemName: string;
   itemImage: string | null;
   itemPrice: Price | null;
@@ -45,7 +48,14 @@ interface Reservation {
   /** The live list's occasion, `null` for none or a list the gifter can no longer see. */
   wishlistOccasion: Occasion | null;
   itemStatus: string;
+  /** The live item is still booked by the gifter. */
   stillReserved: boolean;
+  /**
+   * The gifter can still open the list (never why not). Still reserved on a
+   * list they can open, the card is under "To give" and offers Release;
+   * otherwise it needs their confirmation, and offers Dismiss.
+   */
+  listOpen: boolean;
 }
 
 interface Gift {
@@ -60,6 +70,21 @@ interface Gift {
   wishlistSlug: string | null;
   giftedAt: string;
 }
+
+/**
+ * The item route's answers refusing a Release's unbook, which retrying won't
+ * change: the item is no longer booked by the gifter (someone else's now, an
+ * owner's status change, deleted), they're no longer a member, or the list has
+ * been archived. A 429, a 5xx or a network failure is worth retrying instead.
+ */
+const RELEASE_REFUSED = new Set([400, 403, 404, 409]);
+
+/**
+ * What the page says when a Release finds the card out of date: true of every
+ * refusal (the item isn't theirs any more, or the list isn't available to them),
+ * and never why. The read it sends then shows the card's own note.
+ */
+const RELEASE_REFUSED_MESSAGE = 'This gift can’t be released from its list any more.';
 
 /** The gift history's order, as `GET /api/users/me/gifts` gives it: newest first. */
 const newestFirst = (a: Gift, b: Gift) => Date.parse(b.giftedAt) - Date.parse(a.giftedAt);
@@ -96,6 +121,7 @@ export default function BookedPage() {
   const { busy, run, running } = useBusyIds();
   const [giftConfirm, setGiftConfirm] = useState<string | null>(null);
   const [dismissConfirm, setDismissConfirm] = useState<string | null>(null);
+  const [releaseConfirm, setReleaseConfirm] = useState<string | null>(null);
   const [deleteGiftConfirm, setDeleteGiftConfirm] = useState<string | null>(null);
   // The page's own changes to both lists (their ids never clash), so a read of
   // them is merged with the changes made while it was on its way instead of
@@ -125,6 +151,7 @@ export default function BookedPage() {
     setGifts((prev) => (prev.length ? [] : prev));
     setGiftConfirm(null);
     setDismissConfirm(null);
+    setReleaseConfirm(null);
     setDeleteGiftConfirm(null);
     setLoading(true);
   }, [userId, changes]);
@@ -286,6 +313,50 @@ export default function BookedPage() {
     });
   }
 
+  // Release, on a reservation still active: the list's own unbook
+  // (`PATCH /api/items/[itemId]`), as Unbook on the list sends it, so the item is
+  // freed for others and the route ends the Reservation exactly as an unbook
+  // from the list does (`cancelUnbookedReservation`). The page has no way of
+  // its own to free an item. A refusal means the card is out of date: it isn't
+  // taken off (the Reservation is still there, and the route didn't touch it),
+  // but both lists are read again, which shows it as it now is.
+  function release(id: string) {
+    const r = reservations.find((x) => x._id === id);
+    // Taken off the page since the confirmation opened (by an action or a read
+    // that has said so already): nothing to free.
+    if (!r) return;
+    // A read found it no longer active while the confirmation was open: say so,
+    // as the route would have.
+    if (needsConfirmation(r)) {
+      showToast(RELEASE_REFUSED_MESSAGE, 'info');
+      return;
+    }
+    return run(id, async () => {
+      const actedFor = account.current;
+      try {
+        const res = await fetch(`/api/items/${r.itemId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'available' }),
+        });
+        // Parsed first, and dropped after another account signs in, as in markGifted.
+        const result = await res.json();
+        if (account.current !== actedFor) return;
+        if (result.success) {
+          dropReservation(id);
+          showToast('Released. Others on the list can reserve it now.', 'success');
+        } else if (RELEASE_REFUSED.has(res.status)) {
+          showToast(RELEASE_REFUSED_MESSAGE, 'info');
+          load(true);
+        } else {
+          showToast(result.error || 'Something went wrong', 'error');
+        }
+      } catch {
+        if (account.current === actedFor) showToast('Something went wrong', 'error');
+      }
+    });
+  }
+
   function deleteGift(id: string) {
     return run(id, async () => {
       const actedFor = account.current;
@@ -385,7 +456,11 @@ export default function BookedPage() {
                               busy={busy(r._id)}
                               highlight
                               onGift={() => setGiftConfirm(r._id)}
-                              onDismiss={() => setDismissConfirm(r._id)}
+                              secondary={{
+                                label: 'Dismiss',
+                                title: 'Remove from reservations',
+                                onClick: () => setDismissConfirm(r._id),
+                              }}
                             />
                           ))}
                         </div>
@@ -409,7 +484,15 @@ export default function BookedPage() {
                                   r={r}
                                   busy={busy(r._id)}
                                   onGift={() => setGiftConfirm(r._id)}
-                                  onDismiss={() => setDismissConfirm(r._id)}
+                                  // Still reserved to them, on a list they can open:
+                                  // Release frees it there too. Dismissing would
+                                  // leave it reserved under their name, with
+                                  // nothing tracking it.
+                                  secondary={{
+                                    label: 'Release',
+                                    title: 'Release this gift so others can reserve it',
+                                    onClick: () => setReleaseConfirm(r._id),
+                                  }}
                                 />
                               ))}
                             </ReservationGroup>
@@ -498,6 +581,22 @@ export default function BookedPage() {
         />
       )}
 
+      {releaseConfirm && (
+        <ConfirmDialog
+          isOpen
+          title="Release this gift?"
+          message="Others on the list will be able to reserve it."
+          confirmText="Release"
+          cancelText="Cancel"
+          type="warning"
+          onConfirm={() => {
+            release(releaseConfirm);
+            setReleaseConfirm(null);
+          }}
+          onCancel={() => setReleaseConfirm(null)}
+        />
+      )}
+
       {deleteGiftConfirm && (
         <ConfirmDialog
           isOpen
@@ -517,18 +616,28 @@ export default function BookedPage() {
   );
 }
 
+/**
+ * A reservation card's second action: Release on one still active, Dismiss on
+ * one that needs confirmation.
+ */
+interface CardAction {
+  label: 'Release' | 'Dismiss';
+  title: string;
+  onClick: () => void;
+}
+
 function ReservationCard({
   r,
   busy,
   highlight = false,
   onGift,
-  onDismiss,
+  secondary,
 }: {
   r: Reservation;
   busy: boolean;
   highlight?: boolean;
   onGift: () => void;
-  onDismiss: () => void;
+  secondary: CardAction;
 }) {
   const note = reservationNote(r);
   return (
@@ -572,11 +681,11 @@ function ReservationCard({
         </button>
         <button
           disabled={busy}
-          onClick={onDismiss}
+          onClick={secondary.onClick}
           className="flex h-9 items-center justify-center gap-1.5 rounded-xl bg-surface-2 px-3 text-[13px] font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
-          title="Remove from reservations"
+          title={secondary.title}
         >
-          Dismiss
+          {secondary.label}
         </button>
       </div>
     </div>

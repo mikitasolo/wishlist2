@@ -8,20 +8,27 @@ import {
 } from '@/lib/utils/reservations';
 import type { Occasion } from '@/lib/utils/occasion';
 
-const active = { itemStatus: 'booked', stillReserved: true };
-const completed = { itemStatus: 'completed', stillReserved: false };
-const deleted = { itemStatus: 'deleted', stillReserved: false };
-const draft = { itemStatus: 'draft', stillReserved: false };
+const active = { itemStatus: 'booked', stillReserved: true, listOpen: true };
+const completed = { itemStatus: 'completed', stillReserved: false, listOpen: true };
+const deleted = { itemStatus: 'deleted', stillReserved: false, listOpen: true };
+const draft = { itemStatus: 'draft', stillReserved: false, listOpen: true };
 // Detached but the item still exists as "available" (owner reopened / someone else took it).
-const detachedAvailable = { itemStatus: 'available', stillReserved: false };
+const detachedAvailable = { itemStatus: 'available', stillReserved: false, listOpen: true };
+// Still booked by the gifter, on a list they can no longer open (archived, say).
+const listClosed = { itemStatus: 'booked', stillReserved: true, listOpen: false };
+// Booked by someone else since, on a list they can no longer open either.
+const takenListClosed = { itemStatus: 'booked', stillReserved: false, listOpen: false };
 
 describe('needsConfirmation', () => {
-  it('is false only while still reserved by the gifter', () => {
+  it('is false only while still reserved by the gifter, on a list they can open', () => {
     expect(needsConfirmation(active)).toBe(false);
     expect(needsConfirmation(completed)).toBe(true);
     expect(needsConfirmation(deleted)).toBe(true);
     expect(needsConfirmation(draft)).toBe(true);
     expect(needsConfirmation(detachedAvailable)).toBe(true);
+    // Release can't reach a list they can't open, so it needs their confirmation.
+    expect(needsConfirmation(listClosed)).toBe(true);
+    expect(needsConfirmation(takenListClosed)).toBe(true);
   });
 });
 
@@ -38,13 +45,28 @@ describe('reservationNote', () => {
     expect(reservationNote(draft)).toMatch(/draft/i);
     expect(reservationNote(detachedAvailable)).toMatch(/no longer reserved/i);
   });
+
+  // regression: a booking still theirs, on a list they could no longer open,
+  // said "No longer reserved to you", which isn't so. It says only that the
+  // list isn't available to them, never why (an archived list looks exactly
+  // like a missing one).
+  it('regression: says a still-reserved gift is on a list no longer available to them', () => {
+    expect(reservationNote(listClosed)).toBe('This list is no longer available to you');
+    expect(reservationNote(listClosed)).not.toMatch(/archiv|reserved/i);
+  });
+
+  it('keeps the item-based note when the item really is no longer theirs', () => {
+    expect(reservationNote(takenListClosed)).toBe('No longer reserved to you');
+    expect(reservationNote({ ...deleted, listOpen: false })).toMatch(/removed/i);
+    expect(reservationNote({ ...completed, listOpen: false })).toMatch(/received/i);
+  });
 });
 
 describe('partitionReservations', () => {
   it('splits into needsConfirm and active, preserving order', () => {
-    const list = [active, completed, active, deleted];
+    const list = [active, completed, active, listClosed, deleted];
     const { needsConfirm, active: stillActive } = partitionReservations(list);
-    expect(needsConfirm).toEqual([completed, deleted]);
+    expect(needsConfirm).toEqual([completed, listClosed, deleted]);
     expect(stillActive).toEqual([active, active]);
   });
 
