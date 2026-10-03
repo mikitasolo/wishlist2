@@ -3,6 +3,8 @@
  */
 
 import { ApiItem } from '@/types/api';
+import { FILTER_META } from '@/lib/utils/itemStatus';
+import type { MultiSelectOption, MultiSelectRule } from '@/lib/utils/multiSelect';
 
 export type FilterOption =
   | 'all'
@@ -128,6 +130,31 @@ export function isEveryStatusSelected(selected: FilterOption[], options: FilterO
     selected.includes('all') ||
     options.filter((o) => o !== 'all').every((o) => selected.includes(o))
   );
+}
+
+/**
+ * The status filter as `MultiSelectDropdown` takes it: a row per option but
+ * All (which is its own row), labelled as the stat cards are, and the rule
+ * above for what a click does, so it never ends up empty.
+ */
+export function statusFilterPicker(
+  options: FilterOption[],
+  defaults: FilterOption[]
+): {
+  options: MultiSelectOption<FilterOption>[];
+  allLabel: string;
+  rule: MultiSelectRule<FilterOption>;
+} {
+  return {
+    options: options
+      .filter((o) => o !== 'all')
+      .map((o) => ({ value: o, label: FILTER_META[o].label })),
+    allLabel: FILTER_META.all.label,
+    rule: {
+      isAll: (selected) => isEveryStatusSelected(selected, options),
+      toggle: (selected, value) => toggleStatusFilter(selected, value ?? 'all', options, defaults),
+    },
+  };
 }
 
 /**

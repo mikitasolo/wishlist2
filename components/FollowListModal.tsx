@@ -3,10 +3,8 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import Link from 'next/link';
 import Avatar from './Avatar';
-import IconButton from './IconButton';
+import BaseModal from './BaseModal';
 import LoadError from './LoadError';
-import { useBodyScrollLock } from '@/lib/hooks/useBodyScrollLock';
-import { useFocusTrap } from '@/lib/hooks/useFocusTrap';
 import { plural } from '@/lib/utils/plural';
 
 export type FollowTab = 'followers' | 'following';
@@ -43,21 +41,8 @@ export default function FollowListModal({
   const [failedTab, setFailedTab] = useState<FollowTab | null>(null);
   const [attempt, setAttempt] = useState(0);
 
-  useBodyScrollLock(true);
-
-  // Focus starts on the close button, stays inside while it's open, and goes
-  // back to the count that opened it on close.
-  const dialogRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
-  useFocusTrap(true, dialogRef);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (cache[tab]) return;
@@ -84,29 +69,19 @@ export default function FollowListModal({
 
   const list = cache[tab];
 
+  // Focus starts on the close button, stays inside while it's open, and goes
+  // back to the count that opened it on close. The tabs are pinned in the
+  // header, so they stay in view while a long list scrolls.
   return (
-    <div
-      className="animate-fade-in fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div
-        ref={dialogRef}
-        tabIndex={-1}
-        className="animate-dialog-in flex max-h-[80vh] w-full max-w-sm flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-lg"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-      >
-        {/* Header + tabs */}
-        <div className="flex items-center justify-between px-4 pt-3">
-          <h2 id={titleId} className="text-base font-semibold text-foreground">
-            Connections
-          </h2>
-          <IconButton icon="close" label="Close" onClick={onClose} shape="pill" />
-        </div>
-        <div className="relative mx-4 mt-3 mb-1 flex rounded-xl border border-border bg-surface-2 p-1">
+    <BaseModal
+      isOpen
+      onClose={onClose}
+      title="Connections"
+      titleId={titleId}
+      size="sm"
+      closeLabel="Close"
+      headerContent={
+        <div className="relative flex rounded-xl border border-border bg-surface-2 p-1">
           <span
             aria-hidden
             className="absolute bottom-1 top-1 rounded-lg bg-surface shadow-sm transition-[left] duration-300 ease-[cubic-bezier(0.2,0.7,0.2,1)]"
@@ -129,51 +104,51 @@ export default function FollowListModal({
             </button>
           ))}
         </div>
-
-        {/* List */}
-        <div className="min-h-[8rem] flex-1 overflow-y-auto p-2">
-          {loading && !list ? (
-            <div className="space-y-1 p-2">
-              {Array.from({ length: 4 }).map((_, i) => (
-                <div key={i} className="flex items-center gap-3 px-2 py-2">
-                  <div className="skeleton h-9 w-9 rounded-full" />
-                  <div className="skeleton h-4 w-32 rounded-md" />
-                </div>
-              ))}
-            </div>
-          ) : !list && failedTab === tab ? (
-            <LoadError
-              compact
-              level={3}
-              title={tab === 'followers' ? 'Couldn’t load followers' : 'Couldn’t load following'}
-              onRetry={() => {
-                // Its button goes with it while the list is read again: keep
-                // focus in the dialog rather than let it drop to <body>.
-                dialogRef.current?.focus();
-                setAttempt((n) => n + 1);
-              }}
-            />
-          ) : list && list.length > 0 ? (
-            list.map((u) => (
-              <Link
-                key={u._id}
-                href={`/users/${u.username}`}
-                onClick={onClose}
-                className="flex items-center gap-3 rounded-xl px-2 py-2 transition-colors hover:bg-muted"
-              >
-                <Avatar name={u.username} src={u.image} size="md" />
-                <span className="truncate text-sm font-medium text-foreground">@{u.username}</span>
-              </Link>
-            ))
-          ) : (
-            <div className="flex h-32 flex-col items-center justify-center text-center">
-              <p className="text-sm text-muted-foreground">
-                {tab === 'followers' ? 'No followers yet.' : 'Not following anyone yet.'}
-              </p>
-            </div>
-          )}
-        </div>
+      }
+    >
+      {/* The rows sit inset from the panel's edge, their hover inside it. */}
+      <div ref={listRef} className="-mx-3 -my-3 min-h-[8rem]">
+        {loading && !list ? (
+          <div className="space-y-1">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-3 px-2 py-2">
+                <div className="skeleton h-9 w-9 rounded-full" />
+                <div className="skeleton h-4 w-32 rounded-md" />
+              </div>
+            ))}
+          </div>
+        ) : !list && failedTab === tab ? (
+          <LoadError
+            compact
+            level={3}
+            title={tab === 'followers' ? 'Couldn’t load followers' : 'Couldn’t load following'}
+            onRetry={() => {
+              // Its button goes with it while the list is read again: keep
+              // focus in the dialog rather than let it drop to <body>.
+              listRef.current?.closest<HTMLElement>('[role="dialog"]')?.focus();
+              setAttempt((n) => n + 1);
+            }}
+          />
+        ) : list && list.length > 0 ? (
+          list.map((u) => (
+            <Link
+              key={u._id}
+              href={`/users/${u.username}`}
+              onClick={onClose}
+              className="flex items-center gap-3 rounded-xl px-2 py-2 transition-colors hover:bg-muted"
+            >
+              <Avatar name={u.username} src={u.image} size="md" />
+              <span className="truncate text-sm font-medium text-foreground">@{u.username}</span>
+            </Link>
+          ))
+        ) : (
+          <div className="flex h-32 flex-col items-center justify-center text-center">
+            <p className="text-sm text-muted-foreground">
+              {tab === 'followers' ? 'No followers yet.' : 'Not following anyone yet.'}
+            </p>
+          </div>
+        )}
       </div>
-    </div>
+    </BaseModal>
   );
 }

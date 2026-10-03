@@ -1,24 +1,21 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { createPortal } from 'react-dom';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { useToast } from './ToastProvider';
+import BaseModal from './BaseModal';
 import ConfirmDialog from './ConfirmDialog';
 import Icon from './Icon';
 import ImageUpload from './ImageUpload';
 import Select from './Select';
 import Button from './Button';
-import IconButton from './IconButton';
 import Field from './Field';
 import Input from './Input';
 import Textarea from './Textarea';
 import { FIELD_HELPER, FIELD_LABEL } from './fieldStyles';
 import { visibilityMeta, type Visibility } from '@/lib/utils/visibility';
 import { currencySelectOptions } from '@/lib/utils/currencies';
-import { useBodyScrollLock } from '@/lib/hooks/useBodyScrollLock';
-import { useFocusTrap } from '@/lib/hooks/useFocusTrap';
 
 /** The new list, as `POST /api/wishlists` answers it: the fields a caller of `onCreated` reads. */
 export interface CreatedWishlist {
@@ -59,8 +56,6 @@ export default function CreateWishlistModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showConfirmClose, setShowConfirmClose] = useState(false);
-  const dialogRef = useRef<HTMLDivElement>(null);
-  const firstInputRef = useRef<HTMLInputElement>(null);
 
   // Reset form when modal closes
   useEffect(() => {
@@ -88,14 +83,6 @@ export default function CreateWishlistModal({
       setFormData((f) => ({ ...f, currency: cur }));
     }
   }, [isOpen, session?.user?.defaultCurrency]);
-
-  // Prevent body scroll while the modal is open (shared, ref-counted lock)
-  useBodyScrollLock(isOpen);
-
-  // Focus starts on the name field, stays inside while it's open (the currency
-  // menu included), and goes back on close. While the form submits, it's held
-  // on the panel, then goes back to the control that had it if the submit fails.
-  useFocusTrap(isOpen, dialogRef, firstInputRef, { busy: isSubmitting });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -130,13 +117,12 @@ export default function CreateWishlistModal({
     }
   };
 
-  const handleClose = useCallback(() => {
-    if (hasUnsavedChanges) {
-      setShowConfirmClose(true);
-    } else {
-      onClose();
-    }
-  }, [hasUnsavedChanges, onClose]);
+  // Cancel, like Escape, the backdrop and the close button, asks before
+  // throwing away what's been typed.
+  const handleClose = () => {
+    if (hasUnsavedChanges) setShowConfirmClose(true);
+    else onClose();
+  };
 
   const handleConfirmClose = () => {
     setShowConfirmClose(false);
@@ -144,79 +130,38 @@ export default function CreateWishlistModal({
     onClose();
   };
 
-  const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    // Only close if clicking the backdrop itself, not the modal content
-    if (e.target === e.currentTarget && !isSubmitting) {
-      handleClose();
-    }
-  };
-
-  // Handle Escape key press
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !isSubmitting) {
-        handleClose();
-      }
-    };
-
-    document.addEventListener('keydown', handleEscape);
-    return () => document.removeEventListener('keydown', handleEscape);
-  }, [isOpen, isSubmitting, handleClose]);
-
-  if (!isOpen) return null;
-
-  // Rendered in a portal on <body> so the fixed overlay escapes any ancestor
-  // with backdrop-filter/transform (e.g. the frosted header), which would
-  // otherwise become its positioning container and mis-place it on scroll.
-  return createPortal(
-    <div
-      className="animate-fade-in fixed left-0 right-0 top-0 z-50 flex h-[100dvh] items-center justify-center bg-slate-900/40 backdrop-blur-sm"
-      onClick={handleBackdropClick}
-      style={{
-        paddingTop: 'max(0.75rem, env(safe-area-inset-top))',
-        paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))',
-        paddingLeft: 'max(0.75rem, env(safe-area-inset-left))',
-        paddingRight: 'max(0.75rem, env(safe-area-inset-right))',
-      }}
-    >
-      <div
-        ref={dialogRef}
-        tabIndex={-1}
-        className="animate-dialog-in flex max-h-full w-full max-w-md flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-lg"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="create-wishlist-title"
+  return (
+    <>
+      {/* Focus starts on the name field (its autoFocus), stays inside while
+          it's open (the currency menu included), and goes back on close.
+          While the form submits, it's held on the panel, then goes back to the
+          control that had it if the submit fails. */}
+      <BaseModal
+        isOpen={isOpen}
+        onClose={onClose}
+        title="Create new wishlist"
+        titleId="create-wishlist-title"
+        size="md"
+        onSubmit={handleSubmit}
+        isSubmitting={isSubmitting}
+        shouldInterceptClose={() => hasUnsavedChanges}
+        onInterceptClose={() => setShowConfirmClose(true)}
+        footer={
+          <>
+            <Button type="button" variant="secondary" onClick={handleClose} disabled={isSubmitting}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={isSubmitting}>
+              {isSubmitting ? 'Creating...' : 'Create Wishlist'}
+            </Button>
+          </>
+        }
       >
-        {/* Pinned header */}
-        <div className="flex flex-shrink-0 items-center justify-between gap-4 border-b border-border px-5 py-4 sm:px-6">
-          <h2
-            id="create-wishlist-title"
-            className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl"
-          >
-            Create new wishlist
-          </h2>
-          <IconButton
-            icon="close"
-            label="Close modal"
-            onClick={handleClose}
-            disabled={isSubmitting}
-            className="-mr-1"
-          />
-        </div>
-
-        {/* Scrollable body */}
-        <form
-          onSubmit={handleSubmit}
-          className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-5 py-5 sm:px-6"
-          autoComplete="off"
-        >
+        <div className="space-y-4">
           <Field label="Wishlist Name *" id="name">
             <Input
               required
-              ref={firstInputRef}
+              autoFocus
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               placeholder="My Wishlist"
@@ -300,23 +245,8 @@ export default function CreateWishlistModal({
               ))}
             </div>
           </div>
-
-          <div className="flex gap-3 pt-4">
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={handleClose}
-              disabled={isSubmitting}
-              className="flex-1"
-            >
-              Cancel
-            </Button>
-            <Button type="submit" disabled={isSubmitting} className="flex-1">
-              {isSubmitting ? 'Creating...' : 'Create Wishlist'}
-            </Button>
-          </div>
-        </form>
-      </div>
+        </div>
+      </BaseModal>
 
       <ConfirmDialog
         isOpen={showConfirmClose}
@@ -328,7 +258,6 @@ export default function CreateWishlistModal({
         cancelText="Cancel"
         type="warning"
       />
-    </div>,
-    document.body
+    </>
   );
 }

@@ -9,7 +9,6 @@ import AuthButton from '@/components/AuthButton';
 import Icon from '@/components/Icon';
 import LoadError from '@/components/LoadError';
 import Select from '@/components/Select';
-import FilterDropdown, { type FilterOption } from '@/components/FilterDropdown';
 import MultiSelectDropdown from '@/components/MultiSelectDropdown';
 import Cover from '@/components/Cover';
 import { useToast } from '@/components/ToastProvider';
@@ -22,6 +21,8 @@ import {
   isSortType,
   sortItems,
   SORT_OPTIONS,
+  statusFilterPicker,
+  type FilterOption,
   type SortType,
 } from '@/lib/utils/itemFilters';
 import { formatOwnerItemSummary, tallyItems } from '@/lib/utils/itemCounts';
@@ -53,6 +54,7 @@ const STATUS_FILTER_OPTIONS: FilterOption[] = [
   'available',
   'completed',
 ];
+const STATUS_PICKER = statusFilterPicker(STATUS_FILTER_OPTIONS, STATUS_FILTER_OPTIONS);
 
 // localStorage keys — kept separate from the per-wishlist page's keys. The
 // status filter isn't saved, as on the wishlist page: it starts on All each
@@ -345,17 +347,17 @@ export default function MyItemsPage() {
                 <label className="mb-2 block whitespace-nowrap text-xs font-medium text-foreground sm:text-sm">
                   Status
                 </label>
-                <FilterDropdown
-                  options={STATUS_FILTER_OPTIONS}
-                  selectedFilters={statusFilters}
+                <MultiSelectDropdown
+                  {...STATUS_PICKER}
+                  selected={statusFilters}
                   onChange={setStatusFilters}
-                  defaultFilters={STATUS_FILTER_OPTIONS}
                   ariaLabel="Filter by status"
                   className="w-full sm:w-auto sm:min-w-[200px]"
                 />
               </div>
               <MultiSelectDropdown
                 label="List"
+                className="min-w-[200px]"
                 options={wishlistOptions}
                 selected={wishlistFilters}
                 onChange={setWishlistFilters}

@@ -3,6 +3,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import Icon from './Icon';
+import { POPOVER_OPTION_ROW, POPOVER_SURFACE } from './popoverStyles';
 
 export interface SelectOption {
   value: string;
@@ -297,7 +298,7 @@ export default function Select({
             // move it to <body>, and the blur would close the menu before the
             // click lands.
             onMouseDown={(e) => e.preventDefault()}
-            className="animate-fade-in fixed z-[70] max-h-72 overflow-auto rounded-xl border border-border bg-surface py-1.5 shadow-lg"
+            className={`animate-fade-in fixed z-[70] max-h-72 overflow-auto ${POPOVER_SURFACE}`}
             style={{
               top: rect.bottom + 6,
               left: menuAlign === 'right' ? undefined : rect.left,
@@ -319,9 +320,9 @@ export default function Select({
                   onMouseMove={() => {
                     if (i !== active) setActive(i);
                   }}
-                  className={`flex w-full cursor-pointer items-center justify-between gap-4 whitespace-nowrap px-3.5 py-2 text-left text-sm transition-colors hover:bg-muted ${
+                  className={`${POPOVER_OPTION_ROW} cursor-pointer justify-between whitespace-nowrap transition-colors hover:bg-muted ${
                     i === active ? 'bg-muted' : ''
-                  } ${isSel ? 'font-semibold text-accent' : 'text-foreground'}`}
+                  } ${isSel ? 'text-accent' : 'text-foreground'}`}
                 >
                   {o.label}
                   {isSel && <Icon name="check" size={15} className="flex-shrink-0" />}

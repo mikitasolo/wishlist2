@@ -2,7 +2,16 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup, act, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import Menu, { type MenuItem } from '@/components/Menu';
+import { useState } from 'react';
+import Menu, { type MenuEntry, type MenuItem } from '@/components/Menu';
+
+vi.mock('next/link', () => ({
+  default: ({ href, children, ...rest }: { href: string; children: React.ReactNode }) => (
+    <a href={href} {...rest}>
+      {children}
+    </a>
+  ),
+}));
 
 const picked = vi.fn();
 
@@ -361,8 +370,8 @@ describe('Menu — placement', () => {
     const user = userEvent.setup();
     render(<Page />);
     await user.click(trigger());
-    expect(menu()!.className).toMatch(/\btop-full\b/);
-    expect(menu()!.className).toMatch(/\bright-0\b/);
+    expect(menu()!.parentElement!.className).toMatch(/\btop-full\b/);
+    expect(menu()!.parentElement!.className).toMatch(/\bright-0\b/);
   });
 
   it('opens above the trigger when there is more room there than below', async () => {
@@ -373,7 +382,7 @@ describe('Menu — placement', () => {
     const user = userEvent.setup();
     render(<Page />);
     await user.click(trigger());
-    expect(menu()!.className).toMatch(/\bbottom-full\b/);
+    expect(menu()!.parentElement!.className).toMatch(/\bbottom-full\b/);
   });
 
   it('aligns with the left edge of the trigger when right-aligned would run off the screen', async () => {
@@ -381,6 +390,186 @@ describe('Menu — placement', () => {
     const user = userEvent.setup();
     render(<Page />);
     await user.click(trigger());
-    expect(menu()!.className).toMatch(/\bleft-0\b/);
+    expect(menu()!.parentElement!.className).toMatch(/\bleft-0\b/);
+  });
+});
+
+describe('Menu — a custom trigger, a header, links and a radio group (the account menu)', () => {
+  const opened = vi.fn();
+
+  /** An account-style menu: an avatar trigger, a header, links, a theme choice and an action. */
+  function AccountPage() {
+    const [theme, setTheme] = useState('light');
+    const entries: MenuEntry[] = [
+      { label: 'Your profile', icon: 'user', href: '#profile', onSelect: () => picked('profile') },
+      { label: 'Settings', icon: 'settings', href: '#settings' },
+      {
+        type: 'radio-group',
+        label: 'Theme',
+        value: theme,
+        options: [
+          { value: 'light', label: 'Light', icon: 'sun' },
+          { value: 'dark', label: 'Dark', icon: 'moon' },
+        ],
+        onChange: setTheme,
+      },
+      { label: 'Sign out', icon: 'logout', separated: true, onSelect: () => picked('signout') },
+    ];
+    return (
+      <>
+        <button>Before</button>
+        <Menu
+          label="Account menu"
+          menuLabel="Account"
+          trigger={(open) => <span data-testid="avatar">{open ? 'open' : 'closed'}</span>}
+          header={<p>me@example.com</p>}
+          onOpenChange={opened}
+          items={entries}
+        />
+        <p data-testid="theme">{theme}</p>
+      </>
+    );
+  }
+
+  const accountTrigger = () => screen.getByRole('button', { name: 'Account menu' });
+  const radio = (name: string) => screen.getByRole('menuitemradio', { name });
+  const stops = () =>
+    Array.from(menu()!.querySelectorAll('[role="menuitem"], [role="menuitemradio"]')).map(
+      (el) => el.textContent
+    );
+
+  beforeEach(() => opened.mockReset());
+
+  async function openAccount() {
+    const user = userEvent.setup();
+    render(<AccountPage />);
+    act(() => accountTrigger().focus());
+    await user.keyboard('{Enter}');
+    return user;
+  }
+
+  it('draws the custom trigger, told whether the menu is open, named by its label with no tooltip', async () => {
+    const user = userEvent.setup();
+    render(<AccountPage />);
+    expect(accountTrigger()).toHaveTextContent('closed');
+    expect(accountTrigger()).not.toHaveAttribute('title');
+    expect(accountTrigger()).toHaveAttribute('aria-haspopup', 'menu');
+
+    await user.click(accountTrigger());
+    expect(accountTrigger()).toHaveTextContent('open');
+    expect(menu()).toHaveAccessibleName('Account');
+  });
+
+  it('tells onOpenChange once each time it opens and closes', async () => {
+    const user = await openAccount();
+    expect(opened.mock.calls).toEqual([[true]]);
+    await user.keyboard('{Escape}');
+    expect(opened.mock.calls).toEqual([[true], [false]]);
+  });
+
+  it('shows the header outside the menu, so it is no item and the keys skip it', async () => {
+    const user = await openAccount();
+    const header = screen.getByText('me@example.com');
+    expect(header).toBeVisible();
+    expect(menu()).not.toContainElement(header);
+    expect(stops()).toEqual(['Your profile', 'Settings', 'Light', 'Dark', 'Sign out']);
+
+    // From the keyboard it opens on the first item, not the header.
+    expect(item('Your profile')).toHaveFocus();
+    await user.keyboard('{ArrowUp}');
+    expect(item('Sign out')).toHaveFocus();
+  });
+
+  it('moves through the radio options in the arrow-key order, Home and End included', async () => {
+    const user = await openAccount();
+    await user.keyboard('{ArrowDown}{ArrowDown}');
+    expect(radio('Light')).toHaveFocus();
+    await user.keyboard('{ArrowDown}');
+    expect(radio('Dark')).toHaveFocus();
+    await user.keyboard('{ArrowDown}');
+    expect(item('Sign out')).toHaveFocus();
+    await user.keyboard('{ArrowDown}');
+    expect(item('Your profile')).toHaveFocus();
+    await user.keyboard('{End}');
+    expect(item('Sign out')).toHaveFocus();
+    await user.keyboard('{Home}');
+    expect(item('Your profile')).toHaveFocus();
+    // Type-ahead reaches them too.
+    await user.keyboard('d');
+    expect(radio('Dark')).toHaveFocus();
+  });
+
+  it('groups the radio options under their name, and says which one is on', async () => {
+    await openAccount();
+    expect(screen.getByRole('group', { name: 'Theme' })).toContainElement(radio('Light'));
+    expect(radio('Light')).toHaveAttribute('aria-checked', 'true');
+    expect(radio('Dark')).toHaveAttribute('aria-checked', 'false');
+    for (const el of screen.getAllByRole('menuitemradio'))
+      expect(el).toHaveAttribute('tabindex', '-1');
+  });
+
+  it('picks a radio option with Enter or Space, leaving the menu open on it', async () => {
+    const user = await openAccount();
+    await user.keyboard('{ArrowDown}{ArrowDown}{ArrowDown}');
+    expect(radio('Dark')).toHaveFocus();
+
+    await user.keyboard('{Enter}');
+    expect(screen.getByTestId('theme')).toHaveTextContent('dark');
+    expect(radio('Dark')).toHaveAttribute('aria-checked', 'true');
+    expect(radio('Light')).toHaveAttribute('aria-checked', 'false');
+    expect(menu()).toBeInTheDocument();
+    expect(radio('Dark')).toHaveFocus();
+
+    await user.keyboard('{ArrowUp} ');
+    expect(screen.getByTestId('theme')).toHaveTextContent('light');
+    expect(radio('Light')).toHaveFocus();
+    expect(picked).not.toHaveBeenCalled();
+  });
+
+  it('picks a radio option with a click, leaving the menu open', async () => {
+    const user = userEvent.setup();
+    render(<AccountPage />);
+    await user.click(accountTrigger());
+    await user.click(radio('Dark'));
+    expect(screen.getByTestId('theme')).toHaveTextContent('dark');
+    expect(menu()).toBeInTheDocument();
+  });
+
+  it('renders a link item as a link, which Enter follows, closing the menu to the trigger first', async () => {
+    const user = await openAccount();
+    const profile = item('Your profile');
+    expect(profile.tagName).toBe('A');
+    expect(profile).toHaveAttribute('href', '#profile');
+    expect(profile).toHaveAttribute('tabindex', '-1');
+
+    await user.keyboard('{Enter}');
+    expect(picked).toHaveBeenCalledExactlyOnceWith('profile');
+    expect(menu()).toBeNull();
+    expect(accountTrigger()).toHaveFocus();
+  });
+
+  it('follows a link item with Space too', async () => {
+    const user = await openAccount();
+    const followed = vi.fn((e: Event) => e.preventDefault());
+    item('Settings').addEventListener('click', followed);
+    await user.keyboard('{ArrowDown} ');
+    expect(followed).toHaveBeenCalledTimes(1);
+    expect(menu()).toBeNull();
+    expect(accountTrigger()).toHaveFocus();
+  });
+
+  it('closes with Escape and with Tab, with focus back on the trigger', async () => {
+    const user = await openAccount();
+    await user.keyboard('{ArrowDown}{ArrowDown}');
+    expect(radio('Light')).toHaveFocus();
+    await user.keyboard('{Escape}');
+    expect(menu()).toBeNull();
+    expect(accountTrigger()).toHaveFocus();
+
+    await user.keyboard('{Enter}');
+    expect(item('Your profile')).toHaveFocus();
+    fireEvent.keyDown(item('Your profile'), { key: 'Tab' });
+    expect(menu()).toBeNull();
+    expect(accountTrigger()).toHaveFocus();
   });
 });
