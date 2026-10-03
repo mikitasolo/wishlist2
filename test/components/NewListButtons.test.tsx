@@ -1,0 +1,153 @@
+// @vitest-environment jsdom
+// New list (WIS-242): the header's "+" says what it makes, and the dashboard
+// and My wishlists offer it in place, beside their "Your wishlists" heading
+// and in My wishlists' empty state. Each opens the create dialog on the page.
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, within, cleanup } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import type { ReactNode } from 'react';
+
+const { showToast, session } = vi.hoisted(() => ({
+  showToast: vi.fn(),
+  session: {
+    current: {
+      data: { user: { id: 'me', username: 'me' } },
+      status: 'authenticated',
+    } as { data: { user: { id: string; username: string } } | null; status: string },
+  },
+}));
+
+vi.mock('next-auth/react', () => ({ useSession: () => session.current, signIn: vi.fn() }));
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }) }));
+vi.mock('next/link', () => ({
+  default: ({ href, children, ...rest }: { href: string; children: ReactNode }) => (
+    <a href={href} {...rest}>
+      {children}
+    </a>
+  ),
+}));
+// The header's other parts have their own fetches and tests.
+vi.mock('@/components/GlobalSearch', () => ({ default: () => null }));
+vi.mock('@/components/NotificationBell', () => ({ default: () => null }));
+vi.mock('@/components/AuthButton', () => ({ default: () => null }));
+vi.mock('@/components/CurrencyPrompt', () => ({ default: () => null }));
+vi.mock('@/components/FollowListModal', () => ({ default: () => null }));
+vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }));
+// The create dialog has its own tests: here, only whether it's open.
+vi.mock('@/components/CreateWishlistModal', () => ({
+  default: ({ isOpen }: { isOpen: boolean }) =>
+    isOpen ? <div role="dialog" aria-label="Create new wishlist" /> : null,
+}));
+
+import AppHeader from '@/components/AppHeader';
+import Home from '@/app/page';
+import MyWishlistsPage from '@/app/wishlists/mine/page';
+
+function list(id: string, fields: Record<string, unknown> = {}) {
+  return {
+    _id: id,
+    slug: id,
+    name: id,
+    visibility: 'everyone',
+    owners: ['me'],
+    featured: false,
+    occasion: null,
+    itemCount: 1,
+    ...fields,
+  };
+}
+
+let owned: unknown[];
+
+const json = (body: unknown) => ({ ok: true, status: 200, json: async () => body });
+
+beforeEach(() => {
+  session.current = { data: { user: { id: 'me', username: 'me' } }, status: 'authenticated' };
+  owned = [list('birthday')];
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string) => {
+      if (url === '/api/wishlists') return json({ success: true, data: { owned, member: [] } });
+      if (url === '/api/users/me/reservations/count') {
+        return json({ success: true, data: { count: 0 } });
+      }
+      if (url === '/api/users/me') {
+        return json({ success: true, data: { _id: 'me', followerCount: 0, followingCount: 0 } });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    })
+  );
+});
+
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
+
+const createDialog = () => screen.queryByRole('dialog', { name: 'Create new wishlist' });
+
+describe('the header’s New list', () => {
+  it('is named "New list", with the same tooltip, and opens the create dialog', async () => {
+    const user = userEvent.setup();
+    render(<AppHeader />);
+
+    const button = screen.getByRole('button', { name: 'New list' });
+    expect(button).toHaveAttribute('title', 'New list');
+    expect(screen.queryByRole('button', { name: 'New wishlist' })).toBeNull();
+
+    expect(createDialog()).toBeNull();
+    await user.click(button);
+    expect(createDialog()).toBeInTheDocument();
+  });
+
+  it('is not offered to a signed-out visitor', () => {
+    session.current = { data: null, status: 'unauthenticated' };
+    render(<AppHeader />);
+    expect(screen.queryByRole('button', { name: 'New list' })).toBeNull();
+  });
+});
+
+/** The heading's row: the heading and what sits beside it. */
+const headingRow = (heading: HTMLElement) => heading.parentElement as HTMLElement;
+
+describe('the dashboard’s New list', () => {
+  it('sits beside the Your wishlists heading and opens the create dialog in place', async () => {
+    const user = userEvent.setup();
+    render(<Home />);
+
+    const heading = await screen.findByRole('heading', { level: 2, name: 'Your wishlists' });
+    const button = within(headingRow(heading)).getByRole('button', { name: 'New list' });
+
+    await user.click(button);
+    expect(createDialog()).toBeInTheDocument();
+  });
+});
+
+describe('My wishlists’ New list', () => {
+  it('sits beside the Your wishlists heading and opens the create dialog in place', async () => {
+    const user = userEvent.setup();
+    render(<MyWishlistsPage />);
+    await screen.findByRole('link', { name: /birthday/ });
+
+    const heading = screen.getByRole('heading', { level: 1, name: 'Your wishlists' });
+    const button = within(headingRow(heading)).getByRole('button', { name: 'New list' });
+
+    await user.click(button);
+    expect(createDialog()).toBeInTheDocument();
+  });
+
+  // regression: the empty state said "Create a wishlist from the header", with
+  // no button of its own.
+  it('regression: offers New list in the empty state too', async () => {
+    owned = [];
+    const user = userEvent.setup();
+    render(<MyWishlistsPage />);
+
+    const empty = (await screen.findByRole('heading', { name: 'No wishlists yet' }))
+      .parentElement as HTMLElement;
+    expect(empty).not.toHaveTextContent(/from the header/);
+
+    await user.click(within(empty).getByRole('button', { name: 'New list' }));
+    expect(createDialog()).toBeInTheDocument();
+  });
+});

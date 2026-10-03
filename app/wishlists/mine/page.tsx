@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import AppHeader from '@/components/AppHeader';
 import AuthButton from '@/components/AuthButton';
+import Button from '@/components/Button';
+import CreateWishlistModal from '@/components/CreateWishlistModal';
 import WishlistCard from '@/components/WishlistCard';
 import EmptyState from '@/components/EmptyState';
 import Icon from '@/components/Icon';
@@ -27,6 +29,7 @@ export default function MyWishlistsPage() {
   const { showToast } = useToast();
   const [owned, setOwned] = useState<Wishlist[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showCreate, setShowCreate] = useState(false);
 
   useEffect(() => {
     if (status === 'unauthenticated') router.replace(signInPath('/wishlists/mine'));
@@ -68,7 +71,19 @@ export default function MyWishlistsPage() {
     <div className="min-h-screen">
       <AppHeader actions={<AuthButton />} />
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
-        <h1 className="text-3xl font-semibold tracking-tight text-foreground">Your wishlists</h1>
+        {/* New list is offered while the lists load too: it claims nothing about them. */}
+        <div className="flex items-center justify-between gap-3">
+          <h1 className="text-3xl font-semibold tracking-tight text-foreground">Your wishlists</h1>
+          <Button
+            variant="secondary"
+            size="sm"
+            shape="pill"
+            icon="plus"
+            onClick={() => setShowCreate(true)}
+          >
+            New list
+          </Button>
+        </div>
         <p className="mt-1 text-muted-foreground">Wishlists you own.</p>
 
         {loading ? (
@@ -80,7 +95,12 @@ export default function MyWishlistsPage() {
             className="mt-8"
             icon="list"
             title="No wishlists yet"
-            body="Create a wishlist from the header to start collecting things you love."
+            body="Create a wishlist to start collecting things you love."
+            actions={
+              <Button icon="plus" onClick={() => setShowCreate(true)}>
+                New list
+              </Button>
+            }
           />
         ) : (
           <div className="mt-8 space-y-12">
@@ -107,6 +127,7 @@ export default function MyWishlistsPage() {
           </div>
         )}
       </main>
+      <CreateWishlistModal isOpen={showCreate} onClose={() => setShowCreate(false)} />
     </div>
   );
 }

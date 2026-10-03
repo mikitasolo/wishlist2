@@ -36,16 +36,25 @@ test('two cards sit side by side at 390px, the link in each card’s menu', asyn
   await expect(gift).toBeVisible();
   await expect(linked).toBeVisible();
 
-  const [a, b] = await Promise.all([gift.boundingBox(), linked.boundingBox()]);
-  const [left, right] = a!.x < b!.x ? [a!, b!] : [b!, a!];
+  // The owner's Add item tile is the grid's first cell (WIS-242), so the first
+  // row is the tile and a card, and the other card starts the second.
+  const tile = gift.locator('..').locator('> button', { hasText: 'Add item' });
+  const boxes = (
+    await Promise.all([tile.boundingBox(), gift.boundingBox(), linked.boundingBox()])
+  ).map((b) => b!);
+  const [left, right, next] = [...boxes].sort((p, q) => p.y - q.y || p.x - q.x);
   // One row: the same top, the second to the right of the first, each about
   // half the width between the page's 16px gutters.
+  expect(left).toBe(boxes[0]);
   expect(right.y).toBeCloseTo(left.y, 0);
   expect(right.x).toBeGreaterThan(left.x + left.width);
-  for (const box of [left, right]) {
+  expect(next.y).toBeGreaterThan(left.y + left.height);
+  for (const box of [left, right, next]) {
     expect(box.width).toBeGreaterThan(160);
     expect(box.width).toBeLessThan(180);
   }
+  // The tile is the size of the compact card beside it.
+  expect(left.height).toBeCloseTo(right.height, 0);
 
   // [Edit] [⋯]: no link square, no "no link" marker.
   for (const card of [gift, linked]) {
@@ -104,6 +113,15 @@ test('from sm up, the link is a square beside the primary again, not in the menu
   const square = linked.locator('a[title="View product page"]');
   await expect(square).toBeVisible();
   await expect(square).toHaveAttribute('href', LINK);
+
+  // The Add item tile is a full card's size here: first in the row, as wide
+  // and as tall as the cards beside it.
+  const tile = linked.locator('..').locator('> button', { hasText: 'Add item' });
+  const [tileBox, cardBox] = await Promise.all([tile.boundingBox(), linked.boundingBox()]);
+  expect(tileBox!.y).toBeCloseTo(cardBox!.y, 0);
+  expect(tileBox!.x).toBeLessThan(cardBox!.x);
+  expect(tileBox!.width).toBeCloseTo(cardBox!.width, 0);
+  expect(tileBox!.height).toBeCloseTo(cardBox!.height, 0);
 
   await linked.getByRole('button', { name: 'More actions' }).click();
   await expect(linked.getByRole('menuitem')).toHaveText([

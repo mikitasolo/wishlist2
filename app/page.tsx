@@ -517,9 +517,23 @@ export default function Home() {
             {/* Your wishlists */}
             {activeOwned.length > 0 && (
               <section>
-                <h2 className="mb-5 px-1 text-xl font-semibold tracking-tight text-foreground">
-                  Your wishlists
-                </h2>
+                {/* The heading's line keeps its height: the 36px button
+                    reaches into the margin under it. */}
+                <div className="mb-5 flex items-center justify-between gap-3">
+                  <h2 className="px-1 text-xl font-semibold tracking-tight text-foreground">
+                    Your wishlists
+                  </h2>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    shape="pill"
+                    icon="plus"
+                    onClick={() => setShowCreateModal(true)}
+                    className="-my-1"
+                  >
+                    New list
+                  </Button>
+                </div>
                 <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                   {ownedByOccasion.map((w) => (
                     <WishlistCard key={w._id.toString()} wishlist={w} />
@@ -604,9 +618,10 @@ function DashboardSkeleton() {
         </div>
       </div>
       <div>
-        {/* The section heading's line (text-xl) */}
-        <div className="mb-5 flex h-7 items-center px-1">
-          <Skeleton className="h-5 w-40" />
+        {/* The section heading's line (text-xl), and its New list */}
+        <div className="mb-5 flex h-7 items-center justify-between">
+          <Skeleton className="ml-1 h-5 w-40" />
+          <Skeleton className="-my-1 h-9 w-[6.5rem] rounded-full" />
         </div>
         <SkeletonGrid count={4} variant="wishlist" />
       </div>

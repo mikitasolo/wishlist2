@@ -179,3 +179,26 @@ export function orderListItems<T extends ChipItem & SortableItem>(
     .sort((a, b) => a.group - b.group || compareItems(a.item, b.item, sortBy))
     .map(({ item }) => item);
 }
+
+/** The grid's first cell: an owner's Add item tile, or a member's Propose an item. */
+export type AddTile = 'add' | 'propose';
+
+// The chips a role's tile shows under: the ones a new item (or proposal) is
+// sure to be listed in. An owner's new item is live or a draft, as its form
+// says, so only All is certain; a member's proposal is always one of theirs.
+const ADD_TILE_CHIPS: Record<ViewerRole, readonly ListChip[]> = {
+  owner: ['all'],
+  member: ['all', 'your-proposals'],
+  visitor: [],
+};
+
+/**
+ * Which add tile the grid starts with, if any: an owner's `add`, a member's
+ * `propose`, and none for a visitor. Only under a chip the new item is sure to
+ * be listed in, and not while a search narrows the grid, which the new item
+ * may not match.
+ */
+export function addTileFor(role: ViewerRole, chip: ListChip, searching: boolean): AddTile | null {
+  if (searching || !ADD_TILE_CHIPS[role].includes(chip)) return null;
+  return role === 'owner' ? 'add' : 'propose';
+}

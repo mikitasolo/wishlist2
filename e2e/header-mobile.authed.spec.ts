@@ -39,18 +39,22 @@ for (const width of [320, 360]) {
 
 // regression: from `sm` up the open search field sits in the header row, and
 // the account button couldn't shrink to make room for it, so at 640px it was
-// pushed past the right edge and the page scrolled sideways.
-test('regression: at 640px the open search leaves the account button on screen', async ({
-  page,
-}) => {
-  await page.setViewportSize({ width: 640, height: 800 });
-  await open(page, '/booked');
-  await page.getByRole('button', { name: 'Search', exact: true }).click();
-  await expect(page.getByRole('textbox', { name: 'Search people and wishlists' })).toBeVisible();
+// pushed past the right edge and the page scrolled sideways. At 768px New list
+// gets its label (WIS-242), which has to fit beside the open search too.
+for (const width of [640, 768]) {
+  test(`regression: at ${width}px the open search leaves the account button on screen`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 800 });
+    await open(page, '/booked');
+    await page.getByRole('button', { name: 'Search', exact: true }).click();
+    await expect(page.getByRole('textbox', { name: 'Search people and wishlists' })).toBeVisible();
 
-  expect(await sidewaysScroll(page)).toBe(0);
-  await expect(accountButton(page)).toBeInViewport({ ratio: 1 });
-});
+    expect(await sidewaysScroll(page)).toBe(0);
+    await expect(accountButton(page)).toBeInViewport({ ratio: 1 });
+    await expect(page.getByRole('button', { name: 'New list' })).toBeInViewport({ ratio: 1 });
+  });
+}
 
 test('a wide screen still shows the wordmark and the account name', async ({ page }) => {
   await open(page, '/booked');

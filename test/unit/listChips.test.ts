@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  addTileFor,
   countListChips,
   isDimmedInAll,
   listChipFor,
@@ -250,5 +251,31 @@ describe('listChipFor', () => {
     expect(listChipFor('reserved-by-you', 'owner')).toBe('all');
     expect(listChipFor('drafts', 'member')).toBe('all');
     expect(listChipFor('__proto__', 'member')).toBe('all');
+  });
+});
+
+describe('addTileFor', () => {
+  it('gives an owner Add item and a member Propose an item under All, and a visitor nothing', () => {
+    expect(addTileFor('owner', 'all', false)).toBe('add');
+    expect(addTileFor('member', 'all', false)).toBe('propose');
+    expect(addTileFor('visitor', 'all', false)).toBeNull();
+  });
+
+  it("keeps a member's under Your proposals, where a proposal is always listed", () => {
+    expect(addTileFor('member', 'your-proposals', false)).toBe('propose');
+  });
+
+  it('leaves it out under any other chip, which the new item may not be in', () => {
+    for (const chip of ['drafts', 'proposals', 'live', 'received'] as ListChip[]) {
+      expect(addTileFor('owner', chip, false)).toBeNull();
+    }
+    for (const chip of ['available', 'reserved-by-you'] as ListChip[]) {
+      expect(addTileFor('member', chip, false)).toBeNull();
+    }
+  });
+
+  it('leaves it out while a search narrows the grid', () => {
+    expect(addTileFor('owner', 'all', true)).toBeNull();
+    expect(addTileFor('member', 'your-proposals', true)).toBeNull();
   });
 });
