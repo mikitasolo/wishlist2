@@ -208,7 +208,9 @@ describe('SaveToListModal — the list picker', () => {
     fireEvent.click(opener);
 
     const form = await pick('Birthday');
-    expect(form.contains(document.activeElement)).toBe(true);
+    // regression (WIS-288): the focus trap moves focus in from an effect, which
+    // can run after the dialog is found on a slow runner, so wait for it.
+    await waitFor(() => expect(form).toContainElement(document.activeElement as HTMLElement));
     fireEvent.click(within(form).getByRole('button', { name: /^cancel$/i }));
 
     await waitFor(() => expect(opener).toHaveFocus());
@@ -262,7 +264,8 @@ describe('SaveToListModal — creating a list to save to', () => {
     expect(push).not.toHaveBeenCalled();
     expect(screen.queryByRole('dialog', { name: 'Create new wishlist' })).toBeNull();
     expect(within(form).getByLabelText(/item name/i)).toHaveValue('Blue Mug');
-    expect(form.contains(document.activeElement)).toBe(true);
+    // regression (WIS-288): flaked in CI when asserted at once; see above.
+    await waitFor(() => expect(form).toContainElement(document.activeElement as HTMLElement));
 
     fireEvent.click(within(form).getByRole('button', { name: /^add item$/i }));
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
