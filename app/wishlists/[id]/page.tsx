@@ -1664,9 +1664,18 @@ export default function WishlistDetail() {
                         : 'No items match this filter.'
                     }
                     actions={
-                      <Button onClick={showAllItems} variant="secondary">
-                        Show all
-                      </Button>
+                      <>
+                        {/* A member's Your proposals with none yet: the tile's
+                            way to make one, since there's no grid to hold it. */}
+                        {addTile === 'propose' && (
+                          <Button onClick={() => setShowProposeItemModal(true)}>
+                            Propose an item
+                          </Button>
+                        )}
+                        <Button onClick={showAllItems} variant="secondary">
+                          Show all
+                        </Button>
+                      </>
                     }
                   />
                 ) : (

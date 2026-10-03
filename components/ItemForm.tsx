@@ -125,6 +125,12 @@ export default function ItemForm({
   // next item from Name. Set by the save, acted on once the form is enabled
   // again: the name field can't take focus while the save has it disabled.
   const [focusNameNext, setFocusNameNext] = useState(false);
+  // Which item the form is for: bumped each time it clears for the next one.
+  // A photo still uploading when an item is saved lands after that, and must
+  // not end up on the next item: an upload's onChange is the one from the
+  // render that started it, so it carries the generation it was started in.
+  const [generation, setGeneration] = useState(0);
+  const generationRef = useRef(0);
   useEffect(() => {
     if (!focusNameNext || submitting) return;
     setFocusNameNext(false);
@@ -259,11 +265,19 @@ export default function ItemForm({
       );
 
       // A new item's form clears for the next one (it only stays open with
-      // Keep adding). The currency stays as it was picked: the next item is
-      // most likely priced in it too, and the cleared form is the new
-      // "unsaved changes" baseline, so the currency alone isn't an edit.
+      // Keep adding). The currency and the status stay as they were picked:
+      // the next item is most likely priced in it and meant to be published
+      // (or kept as a draft) like this one, and the cleared form is the new
+      // "unsaved changes" baseline, so neither alone is an edit.
       if (!initialData) {
-        const next = { ...blankFormData, currency: formData.currency };
+        // The status stays too: a batch of drafts stays drafts.
+        const next = {
+          ...blankFormData,
+          currency: formData.currency,
+          isDraft: formData.isDraft,
+        };
+        generationRef.current += 1;
+        setGeneration(generationRef.current);
         setFormData(next);
         setShowPriceError(false);
         setIsCurrencyOpen(false);
@@ -339,7 +353,10 @@ export default function ItemForm({
         {/* An upload lands after the render that started it: update the form as it is by then. */}
         <ImageUpload
           value={formData.imageUrl || null}
-          onChange={(url) => setFormData((f) => ({ ...f, imageUrl: url ?? '' }))}
+          onChange={(url) => {
+            if (generation !== generationRef.current) return;
+            setFormData((f) => ({ ...f, imageUrl: url ?? '' }));
+          }}
           disabled={submitting}
           aspect={1}
         />

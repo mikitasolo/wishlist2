@@ -227,6 +227,18 @@ describe('the add tile', () => {
     expect(gridCells()).toEqual(['Item: Lamp']);
   });
 
+  it('offers Propose an item under a member’s Your proposals before they have any', async () => {
+    userRole = 'member';
+    const user = userEvent.setup();
+    await open();
+
+    await user.click(chip('Your proposals'));
+    const empty = screen.getByRole('heading', { name: 'No items found' })
+      .parentElement as HTMLElement;
+    await user.click(within(empty).getByRole('button', { name: 'Propose an item' }));
+    expect(await screen.findByRole('dialog', { name: 'Propose new item' })).toBeInTheDocument();
+  });
+
   it('steps aside while a search narrows the grid', async () => {
     const user = userEvent.setup();
     await open();

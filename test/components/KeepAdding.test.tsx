@@ -9,15 +9,22 @@ import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { emulateFocusFixup } from '../focusFixup';
 
-// ImageUpload pulls in react-easy-crop; stub it out.
+// ImageUpload pulls in react-easy-crop; stub it out. The stub keeps the
+// onChange of each render, as an upload keeps the one it started with.
+const { uploads } = vi.hoisted(() => ({
+  uploads: { onChange: null as ((url: string | null) => void) | null },
+}));
 vi.mock('@/components/ImageUpload', () => ({
-  default: () => <div data-testid="image-upload" />,
+  default: ({ onChange }: { onChange: (url: string | null) => void }) => {
+    uploads.onChange = onChange;
+    return <div data-testid="image-upload" />;
+  },
 }));
 
 import AddItemModal from '@/components/AddItemModal';
 import ProposeItemModal from '@/components/ProposeItemModal';
 
-type Submit = (item: { name: string; price?: unknown }) => Promise<void>;
+type Submit = (item: { name: string; price?: unknown; imageUrl?: string }) => Promise<void>;
 const currencies = { wishlistCurrency: 'PLN', userCurrency: 'USD' };
 
 // The modal as a page holds it: open until its onClose, which a test can see.
@@ -114,6 +121,27 @@ describe.each(modals)('$kind dialog — Keep adding', ({ kind, title, submit }) 
     expect(screen.queryByRole('dialog', { name: 'Discard changes?' })).toBeNull();
   });
 
+  // regression: with Keep adding the form stays mounted, so a photo still
+  // uploading when an item was saved landed in the cleared form and went onto
+  // the next item.
+  it('regression: a photo that finishes uploading after its item was saved stays off the next one', async () => {
+    const { user, onSubmit } = open();
+    await user.click(keepAdding());
+    await user.type(name(), 'Bike');
+    // The upload starts here, with the onChange of this render.
+    const lateUpload = uploads.onChange!;
+    await user.click(screen.getByRole('button', { name: submit }));
+    await waitFor(() => expect(name()).toHaveValue(''));
+
+    await act(async () => lateUpload('https://blob.example/uploads/me/bike.webp'));
+
+    await user.type(name(), 'Helmet');
+    await user.click(screen.getByRole('button', { name: submit }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(2));
+    expect(onSubmit.mock.calls[1][0]).toEqual(expect.objectContaining({ name: 'Helmet' }));
+    expect(onSubmit.mock.calls[1][0].imageUrl).toBeUndefined();
+  });
+
   // regression: a failed save must keep what was typed (WIS-72), and Keep
   // adding's clear-for-the-next-item must not run on one.
   it('regression: a failed save with Keep adding on keeps the input and the dialog', async () => {
@@ -189,4 +217,21 @@ it('is not offered when adding a copy of an item (Save to my list)', () => {
   );
   expect(screen.getByRole('dialog', { name: 'Add new item' })).toBeInTheDocument();
   expect(screen.queryByRole('checkbox', { name: 'Keep adding' })).toBeNull();
+});
+
+it('keeps an owner’s Draft status for the next item, as a batch of drafts', async () => {
+  const user = userEvent.setup();
+  const onAdd = vi.fn().mockResolvedValue(undefined);
+  render(<AddItemModal isOpen onClose={vi.fn()} onAdd={onAdd} {...currencies} />);
+  await user.click(screen.getByRole('checkbox', { name: 'Keep adding' }));
+  await user.click(screen.getByRole('radio', { name: 'Draft' }));
+  await user.type(screen.getByLabelText(/item name/i), 'Surprise A');
+  await user.click(screen.getByRole('button', { name: 'Add item' }));
+  await waitFor(() => expect(screen.getByLabelText(/item name/i)).toHaveValue(''));
+
+  expect(screen.getByRole('radio', { name: 'Draft' })).toBeChecked();
+  await user.type(screen.getByLabelText(/item name/i), 'Surprise B');
+  await user.click(screen.getByRole('button', { name: 'Add item' }));
+  await waitFor(() => expect(onAdd).toHaveBeenCalledTimes(2));
+  expect(onAdd.mock.calls.map(([item]) => item.status)).toEqual(['draft', 'draft']);
 });
