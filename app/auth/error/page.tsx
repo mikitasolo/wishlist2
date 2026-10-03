@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Suspense } from 'react';
 import Icon from '@/components/Icon';
 import { buttonClassName } from '@/components/buttonStyles';
+import Spinner from '@/components/Spinner';
 
 function AuthErrorContent() {
   const searchParams = useSearchParams();
@@ -45,7 +46,7 @@ export default function AuthError() {
       fallback={
         <div className="min-h-screen flex items-center justify-center bg-background px-4">
           <div className="max-w-md w-full bg-surface rounded-2xl border border-border shadow-lg p-8 text-center">
-            <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+            <Spinner size="lg" />
           </div>
         </div>
       }

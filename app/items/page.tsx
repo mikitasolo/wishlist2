@@ -6,11 +6,14 @@ import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import AppHeader from '@/components/AppHeader';
 import AuthButton from '@/components/AuthButton';
+import Badge from '@/components/Badge';
+import EmptyState from '@/components/EmptyState';
 import Icon from '@/components/Icon';
 import LoadError from '@/components/LoadError';
 import Select from '@/components/Select';
 import MultiSelectDropdown from '@/components/MultiSelectDropdown';
 import Cover from '@/components/Cover';
+import { Skeleton } from '@/components/Skeleton';
 import { useToast } from '@/components/ToastProvider';
 import { signInPath } from '@/lib/utils/callbackUrl';
 import { formatPrice } from '@/lib/utils/currency';
@@ -259,7 +262,7 @@ export default function MyItemsPage() {
               style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(8rem, 1fr))' }}
             >
               {Array.from({ length: 5 }).map((_, i) => (
-                <div key={i} className="skeleton h-[70px] rounded-xl sm:h-[78px]" />
+                <Skeleton key={i} className="h-[70px] rounded-xl sm:h-[78px]" />
               ))}
             </div>
             {/* Item grid — square image + small body, matching the real cards */}
@@ -269,11 +272,11 @@ export default function MyItemsPage() {
                   key={i}
                   className="flex flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-sm"
                 >
-                  <div className="skeleton aspect-square w-full" />
+                  <Skeleton className="aspect-square w-full rounded-none" />
                   <div className="flex flex-col gap-2 p-3">
-                    <div className="skeleton h-4 w-4/5 rounded-md" />
-                    <div className="skeleton h-3 w-1/3 rounded-md" />
-                    <div className="skeleton mt-1 h-3 w-1/2 rounded-md" />
+                    <Skeleton className="h-4 w-4/5" />
+                    <Skeleton className="h-3 w-1/3" />
+                    <Skeleton className="mt-1 h-3 w-1/2" />
                   </div>
                 </div>
               ))}
@@ -284,27 +287,26 @@ export default function MyItemsPage() {
             <LoadError title="Couldn’t load your items" onRetry={retryLoad} />
           </div>
         ) : items.length === 0 ? (
-          <div className="mt-8 flex flex-col items-center rounded-3xl border border-dashed border-border-strong py-20 text-center">
-            <span className="mb-5 inline-flex h-16 w-16 items-center justify-center rounded-3xl bg-primary-500/12 text-accent dark:text-primary-300">
-              <Icon name="package" size={30} />
-            </span>
-            <h3 className="text-xl font-semibold text-foreground">No items yet</h3>
-            <p className="mx-auto mt-2 max-w-sm px-4 text-body text-muted-foreground">
-              Items you add to your wishlists will appear here.
-            </p>
-            {/* Archived lists are left out by default, and the List filter that
-                brings them back isn't shown without items. */}
-            {!includeArchived && archivedItems > 0 && (
-              <button
-                type="button"
-                onClick={() => changeIncludeArchived(true)}
-                disabled={archivedWanted !== null}
-                className="mt-6 text-sm font-semibold text-accent hover:underline disabled:opacity-60"
-              >
-                Include archived lists
-              </button>
-            )}
-          </div>
+          <EmptyState
+            className="mt-8"
+            icon="package"
+            title="No items yet"
+            body="Items you add to your wishlists will appear here."
+            actions={
+              // Archived lists are left out by default, and the List filter
+              // that brings them back isn't shown without items.
+              !includeArchived && archivedItems > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => changeIncludeArchived(true)}
+                  disabled={archivedWanted !== null}
+                  className="text-sm font-semibold text-accent hover:underline disabled:opacity-60"
+                >
+                  Include archived lists
+                </button>
+              ) : undefined
+            }
+          />
         ) : (
           <>
             {/* Stat cards — full-width row; click to filter by status */}
@@ -388,9 +390,13 @@ export default function MyItemsPage() {
             </div>
 
             {visibleItems.length === 0 ? (
-              <div className="mt-8 rounded-3xl border border-dashed border-border-strong py-16 text-center text-body text-muted-foreground">
-                No items match these filters.
-              </div>
+              <EmptyState
+                className="mt-8"
+                tone="muted"
+                icon="package"
+                title="No items found"
+                body="No items match these filters."
+              />
             ) : (
               <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
                 {visibleItems.map((it) => {
@@ -409,14 +415,11 @@ export default function MyItemsPage() {
                         className="relative aspect-square w-full bg-surface-2"
                       >
                         {badge.badge && (
-                          <span
-                            className={`absolute left-2 top-2 flex items-center gap-1 rounded-full px-2 py-0.5 text-badge font-semibold shadow-sm ${badge.classes.badge}`}
-                          >
-                            {badge.icon && (
-                              <Icon name={badge.icon} size={11} className="flex-shrink-0" />
-                            )}
-                            {badge.label}
-                          </span>
+                          <Badge
+                            status={badge}
+                            size="sm"
+                            className="absolute left-2 top-2 shadow-sm"
+                          />
                         )}
                         {it.mostWanted && (
                           <span

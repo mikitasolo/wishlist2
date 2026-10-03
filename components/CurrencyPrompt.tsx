@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Button from './Button';
 import Icon from './Icon';
+import Panel from './Panel';
 import { useToast } from './ToastProvider';
 import { CURRENCY_OPTIONS, SETTINGS_CURRENCY_PATH } from '@/lib/utils/currencies';
 import { browserCurrencySuggestion, currencyToOffer } from '@/lib/utils/currencySuggestion';
@@ -93,9 +94,9 @@ export default function CurrencyPrompt() {
   }
 
   return (
-    <section
+    <Panel
       aria-labelledby={headingId}
-      className="mb-8 flex flex-col gap-4 rounded-2xl border border-border bg-surface p-5 shadow-md md:flex-row md:items-center md:justify-between"
+      className="mb-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between"
     >
       <div className="flex min-w-0 items-start gap-3">
         <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-500/12 text-accent dark:text-primary-300">
@@ -131,6 +132,6 @@ export default function CurrencyPrompt() {
           Choose another currency
         </Button>
       </div>
-    </section>
+    </Panel>
   );
 }

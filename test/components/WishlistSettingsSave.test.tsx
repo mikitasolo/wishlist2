@@ -147,7 +147,7 @@ describe('the wishlist settings form', () => {
   it('sends the settings that were changed together', async () => {
     const user = await openSettings();
 
-    await user.click(screen.getByRole('button', { name: /Friends/ }));
+    await user.click(screen.getByRole('radio', { name: /Friends/ }));
     await user.clear(description());
     await user.click(save());
 

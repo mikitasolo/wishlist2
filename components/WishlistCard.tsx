@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { IWishlist } from '@/models/Wishlist';
 import Avatar from '@/components/Avatar';
-import Icon from '@/components/Icon';
+import Badge from '@/components/Badge';
 import Cover from '@/components/Cover';
 import OccasionLabel, { OCCASION_ON_COVER } from '@/components/OccasionLabel';
 import { coverBadge } from '@/lib/utils/visibility';
@@ -64,23 +64,22 @@ export default function WishlistCard({ wishlist, showOwner = false }: WishlistCa
         sizes={WISHLIST_CARD_COVER_SIZES}
         className={`relative aspect-[16/9] bg-surface-2 ${wishlist.archived ? 'grayscale' : ''}`}
       >
-        <span
-          className={`absolute right-3 top-3 inline-flex items-center gap-1.5 rounded-full border border-white/25 px-2.5 py-1 text-badge font-semibold text-white backdrop-blur-md ${
-            wishlist.archived ? 'bg-black/30' : 'bg-white/20'
-          }`}
+        <Badge
+          tone="glass"
+          dim={!!wishlist.archived}
+          icon={badge.icon}
+          className="absolute right-3 top-3"
         >
-          <Icon name={badge.icon} size={12} />
           {badge.label}
-        </span>
+        </Badge>
         {wishlist.archived ? null : wishlist.featured ? (
-          <span className="absolute left-3 top-3 inline-flex items-center gap-1 rounded-full border border-white/25 bg-white/20 px-2.5 py-1 text-badge font-semibold text-white backdrop-blur-md">
-            <Icon name="sparkles" size={12} />
+          <Badge tone="glass" icon="sparkles" className="absolute left-3 top-3">
             Featured
-          </span>
+          </Badge>
         ) : wishlist.userRole ? (
-          <span className="absolute left-3 top-3 inline-flex items-center rounded-full border border-white/25 bg-white/20 px-2.5 py-1 text-badge font-semibold capitalize text-white backdrop-blur-md">
+          <Badge tone="glass" className="absolute left-3 top-3 capitalize">
             {wishlist.userRole}
-          </span>
+          </Badge>
         ) : null}
         {/* The list's occasion and its countdown, in the viewer's local date.
             Over the cover, so a card with one is the same size as one without.

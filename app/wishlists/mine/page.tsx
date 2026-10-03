@@ -6,6 +6,7 @@ import { useSession } from 'next-auth/react';
 import AppHeader from '@/components/AppHeader';
 import AuthButton from '@/components/AuthButton';
 import WishlistCard from '@/components/WishlistCard';
+import EmptyState from '@/components/EmptyState';
 import Icon from '@/components/Icon';
 import { SkeletonGrid } from '@/components/Skeleton';
 import { useToast } from '@/components/ToastProvider';
@@ -75,15 +76,12 @@ export default function MyWishlistsPage() {
             <SkeletonGrid count={8} variant="wishlist" />
           </div>
         ) : owned.length === 0 ? (
-          <div className="mt-8 flex flex-col items-center rounded-3xl border border-dashed border-border-strong py-20 text-center">
-            <span className="mb-5 inline-flex h-16 w-16 items-center justify-center rounded-3xl bg-primary-500/12 text-accent dark:text-primary-300">
-              <Icon name="list" size={30} />
-            </span>
-            <h3 className="text-xl font-semibold text-foreground">No wishlists yet</h3>
-            <p className="mx-auto mt-2 max-w-sm px-4 text-body text-muted-foreground">
-              Create a wishlist from the header to start collecting things you love.
-            </p>
-          </div>
+          <EmptyState
+            className="mt-8"
+            icon="list"
+            title="No wishlists yet"
+            body="Create a wishlist from the header to start collecting things you love."
+          />
         ) : (
           <div className="mt-8 space-y-10">
             {active.length > 0 && (

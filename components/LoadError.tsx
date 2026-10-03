@@ -2,25 +2,25 @@
 
 import type { ReactNode } from 'react';
 import Button from '@/components/Button';
-import StatePanel from '@/components/StatePanel';
+import EmptyState from '@/components/EmptyState';
 
 interface LoadErrorProps {
   /** What couldn't be loaded: "Couldn’t load this wishlist". */
   title: ReactNode;
   /** Reads it again. */
   onRetry: () => void;
-  /** The title's heading level (see `StatePanel`). */
+  /** The title's heading level (see `EmptyState`). */
   level?: 1 | 2 | 3;
   body?: ReactNode;
-  /** Smaller, inside a dialog (see `StatePanel`). */
+  /** Smaller, inside a dialog (see `EmptyState`). */
   compact?: boolean;
 }
 
 /**
  * A read that failed in a way that may not last (a 5xx, a network error: see
- * `readResource`), in place of what it would have shown, with Try again. Never
- * for a refusal (missing, or hidden from the viewer), which trying again won't
- * change.
+ * `readResource`), in place of what it would have shown, with Try again: the
+ * `error` tone of `EmptyState`. Never for a refusal (missing, or hidden from
+ * the viewer), which trying again won't change.
  *
  * A page shows it when its first load fails, instead of its empty state (which
  * would claim there's nothing there) and without a toast. A later read that
@@ -34,7 +34,8 @@ export default function LoadError({
   compact = false,
 }: LoadErrorProps) {
   return (
-    <StatePanel
+    <EmptyState
+      framed={false}
       icon="alert"
       tone="error"
       title={title}

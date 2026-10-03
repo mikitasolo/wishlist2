@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { signIn } from 'next-auth/react';
 import Button from '@/components/Button';
-import StatePanel from '@/components/StatePanel';
+import EmptyState from '@/components/EmptyState';
 import { buttonClassName } from '@/components/buttonStyles';
 
 /**
@@ -19,7 +19,8 @@ import { buttonClassName } from '@/components/buttonStyles';
 export default function WishlistUnavailable({ signedIn }: { signedIn: boolean }) {
   if (signedIn) {
     return (
-      <StatePanel
+      <EmptyState
+        framed={false}
         icon="link-off"
         level={1}
         title="This wishlist isn’t available to you"
@@ -33,7 +34,8 @@ export default function WishlistUnavailable({ signedIn }: { signedIn: boolean })
     );
   }
   return (
-    <StatePanel
+    <EmptyState
+      framed={false}
       icon="link-off"
       level={1}
       title="This wishlist isn’t available"

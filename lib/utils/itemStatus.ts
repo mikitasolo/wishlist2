@@ -2,9 +2,10 @@
  * How each item status looks, in one place: its label, tone, icon and
  * classes, for the viewer's role. Every surface that shows a status reads it
  * from here (the item card's badge and border, the stat tiles and status
- * filter on a list and on /items, /items' badges, the Booked page, the
- * notices in the item forms), so a status has one colour and one name
- * everywhere, and renaming one is a change to this file.
+ * filter on a list and on /items, /items' badges, the Booked page), so a
+ * status has one colour and one name everywhere, and renaming one is a change
+ * to this file. A status badge is a `Badge` given its `StatusMeta` (`status`),
+ * never one coloured by hand.
  *
  * The colours are the status tokens in `app/globals.css` (`bg-success-fill`,
  * `text-warning`, …). Never colour a status with raw palette classes

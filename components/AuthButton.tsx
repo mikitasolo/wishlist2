@@ -6,6 +6,7 @@ import Avatar from '@/components/Avatar';
 import Icon from '@/components/Icon';
 import Button from '@/components/Button';
 import Menu, { type MenuEntry } from '@/components/Menu';
+import { Skeleton } from '@/components/Skeleton';
 import { useTheme } from '@/components/ThemeProvider';
 import { isAuthOnlyPath } from '@/lib/utils/callbackUrl';
 
@@ -73,7 +74,7 @@ export default function AuthButton() {
   }, [open, status, checkInvites]);
 
   if (status === 'loading') {
-    return <div className="skeleton h-10 w-10 rounded-full" />;
+    return <Skeleton className="h-10 w-10 rounded-full" />;
   }
 
   if (session?.user) {

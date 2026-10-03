@@ -14,10 +14,11 @@ import FollowListModal, { type FollowTab } from '@/components/FollowListModal';
 import CreateWishlistModal from '@/components/CreateWishlistModal';
 import Button from '@/components/Button';
 import GlobalSearch from '@/components/GlobalSearch';
+import Badge from '@/components/Badge';
 import LoadError from '@/components/LoadError';
-import StatePanel from '@/components/StatePanel';
+import EmptyState from '@/components/EmptyState';
 import { buttonClassName, CONTROL_ICON_SIZE } from '@/components/buttonStyles';
-import { SkeletonGrid } from '@/components/Skeleton';
+import { Skeleton, SkeletonGrid } from '@/components/Skeleton';
 import { useToast } from '@/components/ToastProvider';
 import { pluralNoun } from '@/lib/utils/plural';
 import { readResource } from '@/lib/utils/resourceRead';
@@ -197,18 +198,18 @@ export default function UserProfile() {
         <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
           <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-4">
-              <div className="skeleton h-16 w-16 rounded-full" />
+              <Skeleton className="h-16 w-16 rounded-full" />
               <div className="space-y-2">
-                <div className="skeleton h-9 w-48 rounded-md sm:h-10" />
-                <div className="skeleton h-4 w-40 rounded-md" />
+                <Skeleton className="h-9 w-48 sm:h-10" />
+                <Skeleton className="h-4 w-40" />
               </div>
             </div>
             <div className="flex flex-shrink-0 items-center gap-2">
-              <div className="skeleton h-9 w-24 rounded-full" />
-              <div className="skeleton h-9 w-28 rounded-full" />
+              <Skeleton className="h-9 w-24 rounded-full" />
+              <Skeleton className="h-9 w-28 rounded-full" />
             </div>
           </div>
-          <SkeletonGrid count={8} variant="wishlist" />
+          <SkeletonGrid count={8} variant="wishlist" gapClassName="gap-4 sm:gap-6" />
         </main>
       </div>
     );
@@ -220,7 +221,8 @@ export default function UserProfile() {
         <AppHeader actions={<AuthButton />} />
         <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           {profileLoad === 'missing' ? (
-            <StatePanel
+            <EmptyState
+              framed={false}
               icon="user"
               level={1}
               title={`No one goes by @${username}`}
@@ -232,7 +234,7 @@ export default function UserProfile() {
               }
             >
               <GlobalSearch variant="inline" />
-            </StatePanel>
+            </EmptyState>
           ) : (
             <LoadError
               level={1}
@@ -259,10 +261,9 @@ export default function UserProfile() {
                   @{profile?.username || 'user'}
                 </h1>
                 {profile?.isFriend && (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-primary-500/12 px-2.5 py-1 text-badge font-semibold text-accent dark:text-primary-300">
-                    <Icon name="users" size={12} />
+                  <Badge tone="info" icon="users">
                     Friends
-                  </span>
+                  </Badge>
                 )}
               </div>
               <div className="mt-1 flex flex-wrap items-center gap-x-1.5 text-sm text-muted-foreground">
@@ -326,18 +327,12 @@ export default function UserProfile() {
 
         {/* Content */}
         {restricted ? (
-          <div className="flex flex-col items-center rounded-3xl border border-dashed border-border-strong py-16 text-center sm:py-20">
-            <span className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
-              <Icon name="lock" size={28} />
-            </span>
-            <h3 className="text-lg font-semibold text-foreground sm:text-xl">
-              Wishlists are private
-            </h3>
-            <p className="mx-auto mt-1.5 max-w-sm px-4 text-sm text-muted-foreground">
-              @{profile?.username} only shares their wishlists with friends. Follow each other to
-              connect.
-            </p>
-          </div>
+          <EmptyState
+            tone="muted"
+            icon="lock"
+            title="Wishlists are private"
+            body={`@${profile?.username} only shares their wishlists with friends. Follow each other to connect.`}
+          />
         ) : listsFailed ? (
           <LoadError
             title={
@@ -348,34 +343,23 @@ export default function UserProfile() {
             onRetry={() => setAttempt((n) => n + 1)}
           />
         ) : wishlists.length === 0 ? (
-          <div className="flex flex-col items-center rounded-3xl border border-dashed border-border-strong py-16 text-center sm:py-20">
-            <span className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
-              <Icon name="list" size={28} />
-            </span>
-            {profile?.isSelf ? (
-              <>
-                <h3 className="text-lg font-semibold text-foreground sm:text-xl">
-                  You haven’t made a wishlist yet
-                </h3>
-                <div className="mt-6">
-                  <Button onClick={() => setShowCreate(true)}>
-                    <Icon name="plus" size={18} />
-                    New list
-                  </Button>
-                </div>
-              </>
-            ) : (
-              <>
-                <h3 className="text-lg font-semibold text-foreground sm:text-xl">
-                  No wishlists to show
-                </h3>
-                <p className="mx-auto mt-1.5 max-w-sm px-4 text-sm text-muted-foreground">
-                  {profile ? `@${profile.username}` : 'This person'} hasn’t shared any wishlists
-                  with you yet.
-                </p>
-              </>
-            )}
-          </div>
+          <EmptyState
+            tone="muted"
+            icon="list"
+            {...(profile?.isSelf
+              ? {
+                  title: 'You haven’t made a wishlist yet',
+                  actions: (
+                    <Button icon="plus" onClick={() => setShowCreate(true)}>
+                      New list
+                    </Button>
+                  ),
+                }
+              : {
+                  title: 'No wishlists to show',
+                  body: `${profile ? `@${profile.username}` : 'This person'} hasn’t shared any wishlists with you yet.`,
+                })}
+          />
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3 xl:grid-cols-4">
             {wishlists.map((wishlist) => (

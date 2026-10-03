@@ -9,6 +9,9 @@ import Button from '@/components/Button';
 import Icon from '@/components/Icon';
 import ImageUpload from '@/components/ImageUpload';
 import LoadError from '@/components/LoadError';
+import Panel from '@/components/Panel';
+import SegmentedControl from '@/components/SegmentedControl';
+import { Skeleton } from '@/components/Skeleton';
 import Select from '@/components/Select';
 import Toggle from '@/components/Toggle';
 import UsernameField from '@/components/UsernameField';
@@ -165,23 +168,24 @@ export default function SettingsPage() {
     }
   }
 
-  if (status === 'loading' || loading) {
-    return (
-      <div className="min-h-screen">
-        <AppHeader actions={<AuthButton />} />
-        <div className="flex min-h-[60vh] items-center justify-center">
-          <div className="spinner h-8 w-8 text-primary-600" />
-        </div>
-      </div>
-    );
-  }
-
   const heading = (
     <>
       <h1 className="mb-1 text-3xl font-semibold tracking-tight text-foreground">Settings</h1>
       <p className="mb-8 text-muted-foreground">Manage your identity and privacy.</p>
     </>
   );
+
+  if (status === 'loading' || loading) {
+    return (
+      <div className="min-h-screen">
+        <AppHeader actions={<AuthButton />} />
+        <main className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
+          {heading}
+          <SettingsSkeleton />
+        </main>
+      </div>
+    );
+  }
 
   // Never the form before the profile has been read into it.
   if (loadFailed || !saved) {
@@ -203,12 +207,11 @@ export default function SettingsPage() {
         {heading}
 
         {/* Profile */}
-        <section className="mb-6 rounded-2xl border border-border bg-surface p-6 shadow-md">
-          <h2 className="mb-1 text-lg font-semibold text-foreground">Profile</h2>
-          <p className="mb-5 text-sm text-muted-foreground">
-            Your username is how other people find and see you. Your email stays private.
-          </p>
-
+        <Panel
+          className="mb-6"
+          title="Profile"
+          description="Your username is how other people find and see you. Your email stays private."
+        >
           <div className="mb-5">
             <span className={FIELD_LABEL}>Profile photo</span>
             <ImageUpload
@@ -263,13 +266,10 @@ export default function SettingsPage() {
             <span className="text-sm font-medium text-foreground">Email</span>
             <p className="mt-0.5 text-sm text-muted-foreground">{email}</p>
           </div>
-        </section>
+        </Panel>
 
         {/* Privacy */}
-        <section className="mb-6 rounded-2xl border border-border bg-surface p-6 shadow-md">
-          <h2 className="mb-1 text-lg font-semibold text-foreground">Privacy</h2>
-          <p className="mb-5 text-sm text-muted-foreground">Control who can find and reach you.</p>
-
+        <Panel className="mb-6" title="Privacy" description="Control who can find and reach you.">
           <Toggle
             label="Searchable"
             description="Let people find your profile by searching your username."
@@ -280,7 +280,9 @@ export default function SettingsPage() {
           <div className="mt-6">
             <p className="text-sm font-medium text-foreground">Who can invite you to wishlists</p>
             <div className="mt-2">
-              <Segmented
+              <SegmentedControl
+                size="sm"
+                className="max-w-sm"
                 ariaLabel="Who can invite you to wishlists"
                 value={form.whoCanInvite}
                 onChange={(v) => edit({ whoCanInvite: v as InvitePolicy })}
@@ -300,7 +302,9 @@ export default function SettingsPage() {
               visible so people can follow you. Each wishlist’s own visibility still applies.
             </p>
             <div className="mt-2">
-              <Segmented
+              <SegmentedControl
+                size="sm"
+                className="max-w-sm"
                 ariaLabel="Who can see your wishlists"
                 value={form.profileVisibility}
                 onChange={(v) => edit({ profileVisibility: v as ProfileVisibility })}
@@ -311,7 +315,7 @@ export default function SettingsPage() {
               />
             </div>
           </div>
-        </section>
+        </Panel>
 
         <div className="flex justify-end">
           <Button onClick={handleSave} disabled={!canSave}>
@@ -323,50 +327,58 @@ export default function SettingsPage() {
   );
 }
 
-function Segmented({
-  ariaLabel,
-  value,
-  onChange,
-  options,
-}: {
-  ariaLabel: string;
-  value: string;
-  onChange: (v: string) => void;
-  options: { value: string; label: string }[];
-}) {
-  const n = options.length;
-  const idx = Math.max(
-    0,
-    options.findIndex((o) => o.value === value)
+/** The two panels and the Save button, shaped like the form, while the profile is read. */
+function SettingsSkeleton() {
+  const field = (labelWidth: string) => (
+    <div className="mt-5">
+      <Skeleton className={`mb-1.5 h-4 ${labelWidth}`} />
+      <Skeleton className="h-11 w-full rounded-xl" />
+      <Skeleton className="mt-1.5 h-3 w-2/3" />
+    </div>
   );
   return (
-    <div
-      role="group"
-      aria-label={ariaLabel}
-      className="relative inline-flex w-full max-w-sm rounded-xl border border-border bg-surface-2 p-1"
-    >
-      {/* Sliding selected indicator */}
-      <span
-        aria-hidden
-        className="absolute bottom-1 top-1 rounded-lg bg-surface shadow-sm transition-[left] duration-300 ease-[cubic-bezier(0.2,0.7,0.2,1)]"
-        style={{
-          width: `calc((100% - 0.5rem) / ${n})`,
-          left: `calc(${idx} * ((100% - 0.5rem) / ${n}) + 0.25rem)`,
-        }}
-      />
-      {options.map((o) => (
-        <button
-          key={o.value}
-          type="button"
-          aria-pressed={value === o.value}
-          onClick={() => onChange(o.value)}
-          className={`relative z-10 flex-1 rounded-lg px-4 py-1.5 text-sm font-semibold transition-colors ${
-            value === o.value ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          {o.label}
-        </button>
-      ))}
+    <div aria-hidden="true">
+      <Panel className="mb-6">
+        <Skeleton className="h-6 w-20" />
+        <Skeleton className="mt-2 h-4 w-full max-w-md" />
+        <div className="mt-5">
+          <Skeleton className="mb-1.5 h-4 w-24" />
+          <div className="flex items-center gap-4">
+            <Skeleton className="h-24 w-24 flex-shrink-0 rounded-full" />
+            <Skeleton className="h-9 w-32 rounded-xl" />
+          </div>
+        </div>
+        {field('w-20')}
+        <div className="mt-5">
+          <Skeleton className="mb-1.5 h-4 w-10" />
+          <Skeleton className="h-[5.5rem] w-full rounded-xl" />
+        </div>
+        {field('w-32')}
+        <div className="mt-5 border-t border-border pt-4">
+          <Skeleton className="h-4 w-12" />
+          <Skeleton className="mt-1.5 h-4 w-48" />
+        </div>
+      </Panel>
+      <Panel className="mb-6">
+        <Skeleton className="h-6 w-20" />
+        <Skeleton className="mt-2 h-4 w-64 max-w-full" />
+        <div className="mt-5 flex items-center justify-between gap-4">
+          <div className="flex-1 space-y-1.5">
+            <Skeleton className="h-4 w-24" />
+            <Skeleton className="h-4 w-3/4" />
+          </div>
+          <Skeleton className="h-6 w-11 rounded-full" />
+        </div>
+        {[0, 1].map((i) => (
+          <div key={i} className="mt-6">
+            <Skeleton className="h-4 w-56 max-w-full" />
+            <Skeleton className="mt-2 h-[2.625rem] w-full max-w-sm rounded-xl" />
+          </div>
+        ))}
+      </Panel>
+      <div className="flex justify-end">
+        <Skeleton className="h-11 w-36 rounded-xl" />
+      </div>
     </div>
   );
 }

@@ -28,12 +28,21 @@ import ImageUpload from '@/components/ImageUpload';
 import Select from '@/components/Select';
 import OccasionField from '@/components/OccasionField';
 import OccasionLabel from '@/components/OccasionLabel';
-import { SkeletonGrid, MemberRowSkeleton } from '@/components/Skeleton';
+import { Skeleton, SkeletonGrid, MemberRowSkeleton } from '@/components/Skeleton';
+import Badge from '@/components/Badge';
+import EmptyState from '@/components/EmptyState';
+import Panel, { PanelRow, PanelSection } from '@/components/Panel';
+import SegmentedControl from '@/components/SegmentedControl';
 import Avatar from '@/components/Avatar';
 import LoadError from '@/components/LoadError';
 import WishlistUnavailable from '@/components/WishlistUnavailable';
 import { readResource, ReadRefusedError } from '@/lib/utils/resourceRead';
-import { coverBadge, visibilityMeta, type Visibility } from '@/lib/utils/visibility';
+import {
+  coverBadge,
+  visibilityMeta,
+  VISIBILITY_OPTIONS,
+  type Visibility,
+} from '@/lib/utils/visibility';
 import { currencySelectOptions } from '@/lib/utils/currencies';
 import { missingFromDraft } from '@/lib/utils/occasion';
 import {
@@ -1304,18 +1313,18 @@ export default function WishlistDetail() {
           {/* Header: title + author on the left, actions on the right */}
           <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
             <div className="flex min-w-0 flex-1 items-baseline gap-3">
-              <div className="skeleton h-9 w-56 rounded-md sm:h-10" />
-              <div className="skeleton h-4 w-20 rounded-md" />
+              <Skeleton className="h-9 w-56 sm:h-10" />
+              <Skeleton className="h-4 w-20" />
             </div>
             <div className="flex flex-shrink-0 items-center gap-2">
-              <div className="skeleton h-9 w-24 rounded-full" />
-              <div className="skeleton h-9 w-24 rounded-full" />
+              <Skeleton className="h-9 w-24 rounded-full" />
+              <Skeleton className="h-9 w-24 rounded-full" />
             </div>
           </div>
           {/* Image + description row */}
           <div className="mb-6 grid gap-4 sm:mb-8 sm:grid-cols-[minmax(0,26rem)_minmax(0,1fr)] sm:items-start">
-            <div className="skeleton aspect-[16/9] rounded-3xl" />
-            <div className="skeleton hidden h-full min-h-[8rem] rounded-2xl sm:block" />
+            <Skeleton className="aspect-[16/9] rounded-3xl" />
+            <Skeleton className="hidden h-full min-h-[8rem] rounded-2xl sm:block" />
           </div>
           {/* Stat cards (full-width auto-fit row) */}
           <div
@@ -1323,7 +1332,7 @@ export default function WishlistDetail() {
             style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(8rem, 1fr))' }}
           >
             {Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="skeleton h-[70px] rounded-xl sm:h-[78px]" />
+              <Skeleton key={i} className="h-[70px] rounded-xl sm:h-[78px]" />
             ))}
           </div>
           <SkeletonGrid count={8} variant="item" />
@@ -1467,10 +1476,13 @@ export default function WishlistDetail() {
               >
                 {/* Archived instead of the visibility on an archived list: it's
                     owner-only, whatever the visibility says. */}
-                <span className="absolute right-3 top-3 inline-flex items-center gap-1.5 rounded-full border border-white/25 bg-white/20 px-2.5 py-1 text-badge font-semibold text-white backdrop-blur-md">
-                  <Icon name={coverBadge(wishlist).icon} size={12} />
+                <Badge
+                  tone="glass"
+                  icon={coverBadge(wishlist).icon}
+                  className="absolute right-3 top-3"
+                >
                   {coverBadge(wishlist).label}
-                </span>
+                </Badge>
               </Cover>
               {wishlist.description && (
                 <div className="rounded-2xl border border-border bg-surface p-5">
@@ -1494,16 +1506,16 @@ export default function WishlistDetail() {
                     style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(8rem, 1fr))' }}
                   >
                     {filterOptions.map((key) => (
-                      <div key={key} className="skeleton h-[70px] rounded-xl sm:h-[78px]" />
+                      <Skeleton key={key} className="h-[70px] rounded-xl sm:h-[78px]" />
                     ))}
                   </div>
                   <div className="mb-6 flex flex-col gap-3 sm:mb-8 sm:gap-4">
-                    <div className="skeleton h-9 rounded-xl" />
+                    <Skeleton className="h-9 rounded-xl" />
                     <div className="flex flex-col gap-3 sm:flex-row sm:gap-4">
                       {Array.from({ length: session?.user ? 3 : 2 }).map((_, i) => (
                         <div key={i} className="flex flex-col gap-1.5 sm:flex-1">
-                          <div className="skeleton h-3 w-16 rounded" />
-                          <div className="skeleton h-9 rounded-xl" />
+                          <Skeleton className="h-3 w-16 rounded" />
+                          <Skeleton className="h-9 rounded-xl" />
                         </div>
                       ))}
                     </div>
@@ -1620,56 +1632,54 @@ export default function WishlistDetail() {
                 ) : listIsEmpty ? (
                   // Nothing on the list (that this viewer can see), so it says so,
                   // with what each role can do about it, rather than blaming a filter.
-                  <div className="flex flex-col items-center rounded-2xl border border-dashed border-border-strong px-4 py-16 text-center sm:py-20">
-                    <span className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
-                      <Icon name="gift" size={28} />
-                    </span>
-                    <h3 className="text-lg font-semibold text-foreground sm:text-xl">
-                      {isOwner
+                  <EmptyState
+                    tone="muted"
+                    icon="gift"
+                    title={
+                      isOwner
                         ? 'Your list is empty'
                         : isMember
                           ? 'Nothing here yet'
-                          : 'No items yet'}
-                    </h3>
-                    {isOwner && (
-                      <>
-                        <p className="mx-auto mt-1.5 max-w-sm text-sm text-muted-foreground">
-                          Add the things you&apos;d love to get. You can keep them as drafts until
-                          you&apos;re ready to share.
-                        </p>
-                        <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+                          : 'No items yet'
+                    }
+                    body={
+                      isOwner
+                        ? "Add the things you'd love to get. You can keep them as drafts until you're ready to share."
+                        : undefined
+                    }
+                    actions={
+                      isOwner ? (
+                        <>
                           <Button onClick={() => setShowAddItemModal(true)}>
                             Add your first item
                           </Button>
                           {/* Not on an archived list, as the header's Share isn't. */}
                           {!wishlist.archived && <ShareButton variant="button" />}
-                        </div>
-                      </>
-                    )}
-                    {isMember && !isOwner && (
-                      <Button onClick={() => setShowProposeItemModal(true)} className="mt-6">
-                        Propose an item
-                      </Button>
-                    )}
-                  </div>
+                        </>
+                      ) : isMember ? (
+                        <Button onClick={() => setShowProposeItemModal(true)}>
+                          Propose an item
+                        </Button>
+                      ) : undefined
+                    }
+                  />
                 ) : sortedItems.length === 0 ? (
                   // There are items, but the search or the status filter hides every one.
-                  <div className="flex flex-col items-center rounded-2xl border border-dashed border-border-strong px-4 py-16 text-center sm:py-20">
-                    <span className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
-                      <Icon name="package" size={28} />
-                    </span>
-                    <h3 className="text-lg font-semibold text-foreground sm:text-xl">
-                      No items found
-                    </h3>
-                    <p className="mx-auto mt-1.5 max-w-sm text-sm text-muted-foreground">
-                      {searchQuery.trim()
+                  <EmptyState
+                    tone="muted"
+                    icon="package"
+                    title="No items found"
+                    body={
+                      searchQuery.trim()
                         ? `No items match “${searchQuery.trim()}”.`
-                        : 'No items match the selected filters.'}
-                    </p>
-                    <Button onClick={showAllItems} variant="secondary" className="mt-6">
-                      Show all
-                    </Button>
-                  </div>
+                        : 'No items match the selected filters.'
+                    }
+                    actions={
+                      <Button onClick={showAllItems} variant="secondary">
+                        Show all
+                      </Button>
+                    }
+                  />
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
                     {sortedItems.map((item) => (
@@ -1723,23 +1733,19 @@ export default function WishlistDetail() {
             {/* Owners and members are two different relationships to the list, not
                 two points on a scale — so they get their own blocks with their own
                 actions, rather than one list behind a role dropdown. */}
-            <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-sm">
-              <div className="border-b border-border px-4 py-4 sm:px-6">
-                <h2 className="text-lg font-semibold text-foreground">Owners</h2>
-                <p className="mt-1 text-sm text-muted-foreground">
+            <Panel
+              variant="list"
+              title="Owners"
+              description={
+                <>
                   Full control of this list, and it shows on each of their profiles. Owners never
                   see what&apos;s been reserved.
-                </p>
-              </div>
-              {loadingMembers ? (
-                <div className="divide-y divide-border">
-                  {Array.from({ length: 2 }).map((_, i) => (
-                    <MemberRowSkeleton key={i} />
-                  ))}
-                </div>
-              ) : (
-                <div className="divide-y divide-border">
-                  {ownerRows.map((member) => {
+                </>
+              }
+            >
+              {loadingMembers
+                ? Array.from({ length: 2 }).map((_, i) => <MemberRowSkeleton key={i} />)
+                : ownerRows.map((member) => {
                     const memberUserId = String(member.user._id);
                     const isCurrentUser = memberUserId === session?.user?.id;
                     // Owner changes are owners-only, never on yourself, and never on
@@ -1747,9 +1753,9 @@ export default function WishlistDetail() {
                     const canEditRow = isOwner && !isCurrentUser && ownerCount > 1;
 
                     return (
-                      <div
+                      <PanelRow
                         key={memberUserId}
-                        className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6"
+                        className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
                       >
                         <div className="flex min-w-0 flex-1 items-center gap-3">
                           <Avatar
@@ -1814,132 +1820,118 @@ export default function WishlistDetail() {
                             </Button>
                           )}
                         </div>
-                      </div>
+                      </PanelRow>
                     );
                   })}
-                </div>
-              )}
-            </div>
+            </Panel>
 
-            <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-sm">
-              <div className="border-b border-border px-4 py-4 sm:px-6">
-                <h2 className="text-lg font-semibold text-foreground">Members</h2>
-                <p className="mt-1 text-sm text-muted-foreground">
+            <Panel
+              variant="list"
+              title="Members"
+              description={
+                <>
                   They can browse the list, propose items, and reserve gifts. Making someone an
                   owner releases whatever they&apos;ve reserved here, since owners can&apos;t see
                   reservations.
-                </p>
-              </div>
+                </>
+              }
+            >
               {loadingMembers ? (
-                <div className="divide-y divide-border">
-                  {Array.from({ length: 2 }).map((_, i) => (
-                    <MemberRowSkeleton key={i} />
-                  ))}
-                </div>
+                Array.from({ length: 2 }).map((_, i) => <MemberRowSkeleton key={i} />)
               ) : memberRows.length === 0 ? (
-                <div className="px-4 py-12 text-center sm:px-6">
-                  <p className="text-muted-foreground">No members yet.</p>
-                </div>
+                <p className="px-5 py-12 text-center text-muted-foreground sm:px-6">
+                  No members yet.
+                </p>
               ) : (
-                <div className="divide-y divide-border">
-                  {memberRows.map((member) => {
-                    const memberUserId = String(member.user._id);
-                    const isCurrentUser = memberUserId === session?.user?.id;
+                memberRows.map((member) => {
+                  const memberUserId = String(member.user._id);
+                  const isCurrentUser = memberUserId === session?.user?.id;
 
-                    return (
-                      <div
-                        key={member._id}
-                        className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6"
-                      >
-                        <div className="flex min-w-0 flex-1 items-center gap-3">
-                          <Avatar
-                            name={member.user.username || 'user'}
-                            src={member.user.image}
-                            size="md"
-                          />
-                          <Link
-                            href={`/users/${member.user.username || ''}`}
-                            className="break-words font-medium text-foreground transition-colors hover:text-accent dark:hover:text-primary-400"
-                          >
-                            @{member.user.username || 'user'}
-                          </Link>
-                        </div>
-                        <div className="flex flex-shrink-0 items-center gap-2">
-                          {isCurrentUser && (
-                            <span className="whitespace-nowrap text-sm text-muted-foreground">
-                              You
-                            </span>
-                          )}
-                          {isOwner && !isCurrentUser && (
-                            <>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() =>
-                                  setPromoteConfirm({
-                                    userId: memberUserId,
-                                    username: member.user.username || 'this person',
-                                  })
-                                }
-                                className="whitespace-nowrap"
-                              >
-                                Make owner
-                              </Button>
-                              <Button
-                                variant="danger-ghost"
-                                size="sm"
-                                onClick={() =>
-                                  handleKickMember(member._id, member.user.username, false)
-                                }
-                                className="whitespace-nowrap"
-                              >
-                                Remove
-                              </Button>
-                            </>
-                          )}
-                        </div>
+                  return (
+                    <PanelRow
+                      key={member._id}
+                      className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <div className="flex min-w-0 flex-1 items-center gap-3">
+                        <Avatar
+                          name={member.user.username || 'user'}
+                          src={member.user.image}
+                          size="md"
+                        />
+                        <Link
+                          href={`/users/${member.user.username || ''}`}
+                          className="break-words font-medium text-foreground transition-colors hover:text-accent dark:hover:text-primary-400"
+                        >
+                          @{member.user.username || 'user'}
+                        </Link>
                       </div>
-                    );
-                  })}
-                </div>
+                      <div className="flex flex-shrink-0 items-center gap-2">
+                        {isCurrentUser && (
+                          <span className="whitespace-nowrap text-sm text-muted-foreground">
+                            You
+                          </span>
+                        )}
+                        {isOwner && !isCurrentUser && (
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() =>
+                                setPromoteConfirm({
+                                  userId: memberUserId,
+                                  username: member.user.username || 'this person',
+                                })
+                              }
+                              className="whitespace-nowrap"
+                            >
+                              Make owner
+                            </Button>
+                            <Button
+                              variant="danger-ghost"
+                              size="sm"
+                              onClick={() =>
+                                handleKickMember(member._id, member.user.username, false)
+                              }
+                              className="whitespace-nowrap"
+                            >
+                              Remove
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    </PanelRow>
+                  );
+                })
               )}
-            </div>
+            </Panel>
 
             {/* Pending invites */}
             {isOwner && pendingInvites.length > 0 && (
-              <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-sm">
-                <div className="border-b border-border px-4 py-4 sm:px-6">
-                  <h2 className="text-lg font-semibold text-foreground">Pending invites</h2>
-                </div>
-                <div className="divide-y divide-border">
-                  {pendingInvites.map((inv) => (
-                    <div
-                      key={inv._id}
-                      className="flex items-center justify-between gap-3 px-4 py-4 sm:px-6"
-                    >
-                      <div className="flex min-w-0 items-center gap-3">
-                        <Avatar name={inv.username || 'invite'} src={inv.image} size="md" />
-                        <div className="min-w-0">
-                          <p className="truncate font-medium text-foreground">
-                            {inv.username ? `@${inv.username}` : 'Invited user'}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            Invited as {inv.role} · awaiting response
-                          </p>
-                        </div>
+              <Panel variant="list" title="Pending invites">
+                {pendingInvites.map((inv) => (
+                  <PanelRow key={inv._id} className="flex items-center justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <Avatar name={inv.username || 'invite'} src={inv.image} size="md" />
+                      <div className="min-w-0">
+                        <p className="truncate font-medium text-foreground">
+                          {inv.username ? `@${inv.username}` : 'Invited user'}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Invited as {inv.role} · awaiting response
+                        </p>
                       </div>
-                      <Button
-                        variant="danger-ghost"
-                        size="sm"
-                        onClick={() => cancelInvite(inv._id)}
-                        className="whitespace-nowrap"
-                      >
-                        Cancel
-                      </Button>
                     </div>
-                  ))}
-                </div>
-              </div>
+                    <Button
+                      variant="danger-ghost"
+                      size="sm"
+                      onClick={() => cancelInvite(inv._id)}
+                      className="whitespace-nowrap"
+                    >
+                      Cancel
+                    </Button>
+                  </PanelRow>
+                ))}
+              </Panel>
             )}
           </div>
         )}
@@ -1947,9 +1939,7 @@ export default function WishlistDetail() {
         {/* Settings Tab */}
         {manageOpen && isOwner && (
           <div className="mt-6 space-y-6">
-            <div className="rounded-2xl border border-border bg-surface p-6 shadow-sm">
-              <h3 className="text-lg font-semibold text-foreground mb-4">Wishlist settings</h3>
-
+            <Panel title="Wishlist settings">
               <form
                 onSubmit={async (e) => {
                   e.preventDefault();
@@ -2085,40 +2075,20 @@ export default function WishlistDetail() {
                 </div>
 
                 <div>
-                  <label className={FIELD_LABEL}>Visibility</label>
-                  <p className="mb-2 text-xs text-muted-foreground">
+                  <span id="settings-visibility-label" className={FIELD_LABEL}>
+                    Visibility
+                  </span>
+                  <p id="settings-visibility-helper" className="mb-2 text-xs text-muted-foreground">
                     {visibilityMeta[settingsForm.visibility].helper}
                   </p>
-                  <div className="relative flex rounded-xl border border-border bg-surface-2 p-1">
-                    <span
-                      aria-hidden
-                      className="absolute bottom-1 top-1 rounded-lg bg-surface shadow-sm transition-[left] duration-300 ease-[cubic-bezier(0.2,0.7,0.2,1)]"
-                      style={{
-                        width: 'calc((100% - 0.5rem) / 3)',
-                        left: `calc(${['everyone', 'friends', 'private'].indexOf(settingsForm.visibility)} * ((100% - 0.5rem) / 3) + 0.25rem)`,
-                      }}
-                    />
-                    {(['everyone', 'friends', 'private'] as Visibility[]).map((v) => (
-                      <button
-                        key={v}
-                        type="button"
-                        onClick={() => editSettings({ visibility: v })}
-                        disabled={isSavingSettings}
-                        className={`relative z-10 flex min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-1 py-2 text-sm font-semibold transition-colors ${
-                          settingsForm.visibility === v
-                            ? 'text-foreground'
-                            : 'text-muted-foreground hover:text-foreground'
-                        }`}
-                      >
-                        <Icon
-                          name={visibilityMeta[v].icon}
-                          size={14}
-                          className="flex-shrink-0 max-[359px]:hidden"
-                        />
-                        {visibilityMeta[v].label}
-                      </button>
-                    ))}
-                  </div>
+                  <SegmentedControl
+                    ariaLabelledBy="settings-visibility-label"
+                    ariaDescribedBy="settings-visibility-helper"
+                    value={settingsForm.visibility}
+                    onChange={(visibility) => editSettings({ visibility })}
+                    disabled={isSavingSettings}
+                    options={VISIBILITY_OPTIONS}
+                  />
                 </div>
 
                 <div className="flex flex-col sm:flex-row gap-3 pt-4">
@@ -2129,15 +2099,14 @@ export default function WishlistDetail() {
               </form>
 
               {/* Archive Section */}
-              <div className="mt-6 border-t border-border pt-6 sm:mt-8 sm:pt-8">
-                <h3 className="mb-2 text-base font-semibold text-foreground">
-                  {wishlist.archived ? 'Unarchive wishlist' : 'Archive wishlist'}
-                </h3>
-                <p className="mb-4 text-xs text-muted-foreground sm:text-sm">
-                  {wishlist.archived
+              <PanelSection
+                title={wishlist.archived ? 'Unarchive wishlist' : 'Archive wishlist'}
+                description={
+                  wishlist.archived
                     ? 'This wishlist is archived: only owners can see it. Unarchive it to open it again to members, and to anyone its visibility allows.'
-                    : ARCHIVE_EXPLANATION}
-                </p>
+                    : ARCHIVE_EXPLANATION
+                }
+              >
                 <Button
                   variant="secondary"
                   onClick={() => (wishlist.archived ? setArchived(false) : setArchiveConfirm(true))}
@@ -2148,21 +2117,24 @@ export default function WishlistDetail() {
                   <Icon name="archive" size={16} />
                   {wishlist.archived ? 'Unarchive' : 'Archive'}
                 </Button>
-              </div>
+              </PanelSection>
 
               {/* Featured Section - owner only */}
               {isOwner && (
-                <div className="mt-6 border-t border-border pt-6 sm:mt-8 sm:pt-8">
-                  <h3 className="mb-2 text-base font-semibold text-foreground">
-                    {wishlist.featured ? 'Featured on your dashboard' : 'Feature on your dashboard'}
-                  </h3>
-                  <p className="mb-4 text-xs text-muted-foreground sm:text-sm">
-                    {wishlist.featured
-                      ? 'This list is pinned as the highlight at the top of your dashboard.'
-                      : 'Pin this list as the highlight at the top of your dashboard. Otherwise your list with the most items is featured automatically.'}
-                    {ownerCount > 1 &&
-                      ' Each owner pins their own highlight — this only affects yours.'}
-                  </p>
+                <PanelSection
+                  title={
+                    wishlist.featured ? 'Featured on your dashboard' : 'Feature on your dashboard'
+                  }
+                  description={
+                    <>
+                      {wishlist.featured
+                        ? 'This list is pinned as the highlight at the top of your dashboard.'
+                        : 'Pin this list as the highlight at the top of your dashboard. Otherwise your list with the most items is featured automatically.'}
+                      {ownerCount > 1 &&
+                        ' Each owner pins their own highlight — this only affects yours.'}
+                    </>
+                  }
+                >
                   <Button
                     variant="secondary"
                     onClick={async () => {
@@ -2196,16 +2168,12 @@ export default function WishlistDetail() {
                     <Icon name="sparkles" size={16} />
                     {wishlist.featured ? 'Unfeature' : 'Feature this list'}
                   </Button>
-                </div>
+                </PanelSection>
               )}
 
               {/* Danger zone: deleting the list, for any owner */}
               {isOwner && (
-                <div className="mt-6 sm:mt-8 pt-6 sm:pt-8 border-t border-border">
-                  <h3 className="mb-2 text-base font-semibold text-foreground">Danger zone</h3>
-                  <p className="text-xs sm:text-sm text-muted-foreground mb-4">
-                    {DELETE_LIST_WARNING}
-                  </p>
+                <PanelSection title="Danger zone" description={DELETE_LIST_WARNING}>
                   <Button
                     variant="danger"
                     onClick={handleDeleteWishlist}
@@ -2215,9 +2183,9 @@ export default function WishlistDetail() {
                   >
                     {isDeletingWishlist ? 'Deleting…' : 'Delete wishlist'}
                   </Button>
-                </div>
+                </PanelSection>
               )}
-            </div>
+            </Panel>
           </div>
         )}
       </main>

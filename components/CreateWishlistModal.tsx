@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useId } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { useToast } from './ToastProvider';
 import BaseModal from './BaseModal';
 import ConfirmDialog from './ConfirmDialog';
-import Icon from './Icon';
+import SegmentedControl from './SegmentedControl';
 import ImageUpload from './ImageUpload';
 import Select from './Select';
 import Button from './Button';
@@ -15,7 +15,7 @@ import Field from './Field';
 import Input from './Input';
 import Textarea from './Textarea';
 import { FIELD_HELPER, FIELD_LABEL } from './fieldStyles';
-import { visibilityMeta, type Visibility } from '@/lib/utils/visibility';
+import { visibilityMeta, VISIBILITY_OPTIONS, type Visibility } from '@/lib/utils/visibility';
 import { currencySelectOptions } from '@/lib/utils/currencies';
 
 /** The new list, as `POST /api/wishlists` answers it: the fields a caller of `onCreated` reads. */
@@ -57,6 +57,8 @@ export default function CreateWishlistModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showConfirmClose, setShowConfirmClose] = useState(false);
+  const visibilityLabelId = useId();
+  const visibilityHelperId = useId();
 
   // Reset form when modal closes
   useEffect(() => {
@@ -213,40 +215,20 @@ export default function CreateWishlistModal({
           </div>
 
           <div>
-            <label className={FIELD_LABEL}>Visibility</label>
-            <p className="mb-2 text-xs text-muted-foreground">
+            <span id={visibilityLabelId} className={FIELD_LABEL}>
+              Visibility
+            </span>
+            <p id={visibilityHelperId} className="mb-2 text-xs text-muted-foreground">
               {visibilityMeta[formData.visibility].helper}
             </p>
-            <div className="relative flex rounded-xl border border-border bg-surface-2 p-1">
-              <span
-                aria-hidden
-                className="absolute bottom-1 top-1 rounded-lg bg-surface shadow-sm transition-[left] duration-300 ease-[cubic-bezier(0.2,0.7,0.2,1)]"
-                style={{
-                  width: 'calc((100% - 0.5rem) / 3)',
-                  left: `calc(${['everyone', 'friends', 'private'].indexOf(formData.visibility)} * ((100% - 0.5rem) / 3) + 0.25rem)`,
-                }}
-              />
-              {(['everyone', 'friends', 'private'] as const).map((v) => (
-                <button
-                  key={v}
-                  type="button"
-                  onClick={() => setFormData({ ...formData, visibility: v })}
-                  disabled={isSubmitting}
-                  className={`relative z-10 flex min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-1 py-2 text-sm font-semibold transition-colors ${
-                    formData.visibility === v
-                      ? 'text-foreground'
-                      : 'text-muted-foreground hover:text-foreground'
-                  }`}
-                >
-                  <Icon
-                    name={visibilityMeta[v].icon}
-                    size={14}
-                    className="flex-shrink-0 max-[359px]:hidden"
-                  />
-                  {visibilityMeta[v].label}
-                </button>
-              ))}
-            </div>
+            <SegmentedControl
+              ariaLabelledBy={visibilityLabelId}
+              ariaDescribedBy={visibilityHelperId}
+              value={formData.visibility}
+              onChange={(visibility) => setFormData((f) => ({ ...f, visibility }))}
+              disabled={isSubmitting}
+              options={VISIBILITY_OPTIONS}
+            />
           </div>
         </div>
       </BaseModal>

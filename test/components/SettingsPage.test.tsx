@@ -161,9 +161,12 @@ async function openSettings() {
 const save = () => screen.getByRole('button', { name: /save changes|saving/i });
 const searchable = () => screen.getByRole('switch', { name: 'Searchable' });
 const visibilityOption = (name: string) =>
-  within(screen.getByRole('group', { name: 'Who can see your wishlists' })).getByRole('button', {
-    name,
-  });
+  within(screen.getByRole('radiogroup', { name: 'Who can see your wishlists' })).getByRole(
+    'radio',
+    {
+      name,
+    }
+  );
 
 describe('the account settings form', () => {
   // regression: the page sent the whole `privacy` object with every save, as
@@ -189,7 +192,7 @@ describe('the account settings form', () => {
 
   it("refills the form from the profile as saved, so the next save doesn't send the other tab's change back", async () => {
     const user = await openSettings();
-    expect(visibilityOption('Everyone')).toHaveAttribute('aria-pressed', 'true');
+    expect(visibilityOption('Everyone')).toHaveAttribute('aria-checked', 'true');
     server.privacy = { ...server.privacy, profileVisibility: 'friends' };
 
     await user.click(searchable());
@@ -198,7 +201,7 @@ describe('the account settings form', () => {
 
     // The form now shows the other tab's visibility, and has nothing left to send.
     await waitFor(() =>
-      expect(visibilityOption('Friends')).toHaveAttribute('aria-pressed', 'true')
+      expect(visibilityOption('Friends')).toHaveAttribute('aria-checked', 'true')
     );
     expect(save()).toBeDisabled();
 
@@ -217,8 +220,8 @@ describe('the account settings form', () => {
 
     await user.click(visibilityOption('Friends'));
     await user.click(
-      within(screen.getByRole('group', { name: 'Who can invite you to wishlists' })).getByRole(
-        'button',
+      within(screen.getByRole('radiogroup', { name: 'Who can invite you to wishlists' })).getByRole(
+        'radio',
         { name: 'No one' }
       )
     );
@@ -253,7 +256,7 @@ describe('the account settings form', () => {
     await waitFor(() =>
       expect(showToast).toHaveBeenCalledWith('Failed to update profile', 'error')
     );
-    expect(visibilityOption('Friends')).toHaveAttribute('aria-pressed', 'true');
+    expect(visibilityOption('Friends')).toHaveAttribute('aria-checked', 'true');
 
     await user.click(save());
     await waitFor(() => expect(patches).toHaveLength(2));

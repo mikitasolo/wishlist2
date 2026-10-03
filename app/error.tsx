@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import BrandLink from '@/components/BrandLink';
 import Button from '@/components/Button';
-import StatePanel from '@/components/StatePanel';
+import EmptyState from '@/components/EmptyState';
 import { buttonClassName } from '@/components/buttonStyles';
 
 /**
@@ -26,7 +26,8 @@ export default function ErrorPage({
         </div>
       </header>
       <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <StatePanel
+        <EmptyState
+          framed={false}
           icon="alert"
           tone="error"
           level={1}

@@ -1,10 +1,10 @@
 'use client';
 
 import { useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react';
-import Icon from './Icon';
 import Avatar from './Avatar';
 import Select from './Select';
-import { TONE_CLASSES } from '@/lib/utils/statusTones';
+import Callout from './Callout';
+import Panel from './Panel';
 import Button from './Button';
 import SearchField from './SearchField';
 import { POPOVER_NOTE, POPOVER_OPTION_ROW, POPOVER_SURFACE } from './popoverStyles';
@@ -37,7 +37,7 @@ export default function InviteMemberForm({ onInvite, isInviting, ref }: InviteMe
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [loadingSuggest, setLoadingSuggest] = useState(false);
   const fieldRef = useRef<HTMLDivElement>(null);
-  const cardRef = useRef<HTMLDivElement>(null);
+  const cardRef = useRef<HTMLElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useImperativeHandle(
@@ -110,24 +110,18 @@ export default function InviteMemberForm({ onInvite, isInviting, ref }: InviteMe
 
   return (
     // scroll-mt clears the sticky app header (h-14) when it's scrolled to.
-    <div
+    <Panel
       ref={cardRef}
-      className="scroll-mt-20 rounded-2xl border border-border bg-surface p-5 shadow-md sm:p-6"
+      title="Invite someone"
+      description="Search for someone by username. They’ll join this wishlist once they accept."
+      className="scroll-mt-20"
     >
-      <h2 className="mb-1 text-lg font-semibold text-foreground">Invite someone</h2>
-      <p className="mb-4 text-sm text-muted-foreground">
-        Search for someone by username. They’ll join this wishlist once they accept.
-      </p>
-
       {role === 'owner' && (
-        <p className={`mb-4 flex gap-2 rounded-xl p-3 text-sm ${TONE_CLASSES.warning.tint}`}>
-          <Icon name="alert" size={16} className="mt-0.5 flex-shrink-0" />
-          <span>
-            An owner gets the same full control you have, including deleting this wishlist, and it
-            appears on their profile as their own. Owners never see reservations, so anything
-            they’ve already reserved here is released when they accept.
-          </span>
-        </p>
+        <Callout tone="warning" className="mb-4">
+          An owner gets the same full control you have, including deleting this wishlist, and it
+          appears on their profile as their own. Owners never see reservations, so anything they’ve
+          already reserved here is released when they accept.
+        </Callout>
       )}
 
       <form
@@ -201,6 +195,6 @@ export default function InviteMemberForm({ onInvite, isInviting, ref }: InviteMe
           {isInviting ? 'Inviting…' : 'Invite'}
         </Button>
       </form>
-    </div>
+    </Panel>
   );
 }

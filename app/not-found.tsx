@@ -2,7 +2,7 @@ import Link from 'next/link';
 import AppHeader from '@/components/AppHeader';
 import AuthButton from '@/components/AuthButton';
 import GlobalSearch from '@/components/GlobalSearch';
-import StatePanel from '@/components/StatePanel';
+import EmptyState from '@/components/EmptyState';
 import { buttonClassName } from '@/components/buttonStyles';
 
 /**
@@ -16,7 +16,8 @@ export default function NotFound() {
     <div className="min-h-screen">
       <AppHeader actions={<AuthButton />} />
       <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <StatePanel
+        <EmptyState
+          framed={false}
           icon="link-off"
           level={1}
           title="This page doesn’t exist"
@@ -28,7 +29,7 @@ export default function NotFound() {
           }
         >
           <GlobalSearch variant="inline" />
-        </StatePanel>
+        </EmptyState>
       </main>
     </div>
   );

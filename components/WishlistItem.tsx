@@ -6,6 +6,7 @@ import { useSession } from 'next-auth/react';
 import { convertedPrice, formatApproxPrice, formatPrice } from '@/lib/utils/currency';
 import { useViewerLocale } from '@/lib/hooks/useViewerLocale';
 import Icon, { type IconName } from '@/components/Icon';
+import Badge from '@/components/Badge';
 import Cover from '@/components/Cover';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import Menu, { type MenuItem } from '@/components/Menu';
@@ -354,21 +355,13 @@ function WishlistItem({
       {/* Status badges - positioned absolutely at top-right corner of card */}
       <div className="absolute right-2 top-2 z-10 flex flex-col items-end gap-2 sm:right-3 sm:top-3">
         {item.mostWanted && (
-          <span className="flex items-center gap-1 rounded-full border border-border bg-surface/90 px-2.5 py-1 text-badge font-semibold text-foreground shadow-sm backdrop-blur">
+          <Badge className="shadow-sm">
             <Icon name="star" size={12} className="fill-amber-400 text-amber-500" />
             Most wanted
-          </span>
+          </Badge>
         )}
         {/* From the status map, so an owner never gets a booking badge. */}
-        {status.badge && (
-          <span
-            data-tone={status.tone}
-            className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-badge font-semibold shadow-sm ${status.classes.badge}`}
-          >
-            {status.icon && <Icon name={status.icon} size={12} className="flex-shrink-0" />}
-            {status.label}
-          </span>
-        )}
+        {status.badge && <Badge status={status} className="shadow-sm" />}
       </div>
 
       {/* Image / notes area — when notes are shown, the image stays visible

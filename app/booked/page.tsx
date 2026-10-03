@@ -7,7 +7,10 @@ import { useSession } from 'next-auth/react';
 import AppHeader from '@/components/AppHeader';
 import AuthButton from '@/components/AuthButton';
 import Icon from '@/components/Icon';
+import Badge from '@/components/Badge';
+import EmptyState from '@/components/EmptyState';
 import LoadError from '@/components/LoadError';
+import { Skeleton } from '@/components/Skeleton';
 import OccasionLabel from '@/components/OccasionLabel';
 import { useToast } from '@/components/ToastProvider';
 import SnapshotThumb from '@/components/SnapshotThumb';
@@ -416,7 +419,7 @@ export default function BookedPage() {
 
         {loading ? (
           <div className="mt-8">
-            <div className="skeleton mb-4 ml-1 h-6 w-24 rounded-md" />
+            <Skeleton className="mb-4 ml-1 h-6 w-24" />
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               {Array.from({ length: 6 }).map((_, i) => (
                 <div
@@ -424,16 +427,16 @@ export default function BookedPage() {
                   className="flex flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-sm"
                 >
                   <div className="flex gap-3 p-3">
-                    <div className="skeleton h-16 w-16 flex-shrink-0 rounded-xl" />
+                    <Skeleton className="h-16 w-16 flex-shrink-0 rounded-xl" />
                     <div className="flex flex-1 flex-col gap-2 pt-1">
-                      <div className="skeleton h-4 w-4/5 rounded-md" />
-                      <div className="skeleton h-3 w-1/3 rounded-md" />
-                      <div className="skeleton h-3 w-1/2 rounded-md" />
+                      <Skeleton className="h-4 w-4/5" />
+                      <Skeleton className="h-3 w-1/3" />
+                      <Skeleton className="h-3 w-1/2" />
                     </div>
                   </div>
                   <div className="flex gap-2 border-t border-border p-3">
-                    <div className="skeleton h-9 flex-1 rounded-xl" />
-                    <div className="skeleton h-9 w-20 rounded-xl" />
+                    <Skeleton className="h-9 flex-1 rounded-xl" />
+                    <Skeleton className="h-9 w-20 rounded-xl" />
                   </div>
                 </div>
               ))}
@@ -706,11 +709,10 @@ function ReservationCard({
             </p>
           )}
           {note && (
-            <p
-              className={`mt-1 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-badge font-semibold ${TONE_CLASSES.warning.tint}`}
-            >
-              <Icon name="info" size={11} />
-              {note}
+            <p className="mt-1">
+              <Badge tone="warning" size="sm" icon="info">
+                {note}
+              </Badge>
             </p>
           )}
         </div>
@@ -773,21 +775,7 @@ function SectionHeading({ title, count }: { title: string; count: number }) {
   return (
     <h2 className="mb-4 flex items-center gap-2 px-1 text-xl font-semibold tracking-tight text-foreground">
       {title}
-      <span className="rounded-full bg-surface-2 px-2 py-0.5 text-badge font-semibold text-muted-foreground">
-        {count}
-      </span>
+      <Badge size="sm">{count}</Badge>
     </h2>
-  );
-}
-
-function EmptyState({ icon, title, body }: { icon: 'gift'; title: string; body: string }) {
-  return (
-    <div className="flex flex-col items-center rounded-3xl border border-dashed border-border-strong py-16 text-center">
-      <span className="mb-5 inline-flex h-16 w-16 items-center justify-center rounded-3xl bg-primary-500/12 text-accent dark:text-primary-300">
-        <Icon name={icon} size={30} />
-      </span>
-      <h3 className="text-xl font-semibold text-foreground">{title}</h3>
-      <p className="mx-auto mt-2 max-w-sm px-4 text-body text-muted-foreground">{body}</p>
-    </div>
   );
 }
