@@ -357,7 +357,8 @@ export async function sendWishlistInvitationEmail(
   const inviter = details.inviterUsername ? `@${details.inviterUsername}` : details.inviterName;
   const invitedTo =
     role === 'owner' ? 'invited you to co-own their wishlist' : 'invited you to their wishlist';
-  // Straight to the invites page, where they can accept or decline. An invitee
+  // Straight to their invitations (`/invites`, which opens Activity with them
+  // pinned at the top), where they can accept or decline. An invitee
   // who's already signed in (the usual case on a phone) lands there at once; a
   // signed-out one is sent through sign-in and back to it.
   const invitesUrl = `${env.NEXTAUTH_URL}/invites`;
@@ -370,7 +371,7 @@ export async function sendWishlistInvitationEmail(
       role === 'owner' ? 'You’re invited to co-own a wishlist' : 'You’re invited to a wishlist',
     contentHtml: `
       <p><strong>${escapeHtml(inviter)}</strong> ${invitedTo} <strong>${escapeHtml(wishlistName)}</strong>.</p>
-      <p>Review the invitation on your Invitations page — you can accept or decline it.</p>
+      <p>Review the invitation on your Activity page — you can accept or decline it there.</p>
     `,
     buttonText: 'Review invitation',
     buttonUrl: invitesUrl,
@@ -384,7 +385,7 @@ export async function sendWishlistInvitationEmail(
     html,
     // The name stays inside a sentence that names the inviter, never a line of
     // its own that could pass for our own text.
-    text: `Wishlist invitation\n\n${inviter} ${invitedTo} “${wishlistName}”.\n\nAccept or decline it on your Invitations page: ${invitesUrl}`,
+    text: `Wishlist invitation\n\n${inviter} ${invitedTo} “${wishlistName}”.\n\nAccept or decline it on your Activity page: ${invitesUrl}`,
     link: invitesUrl,
   });
 }

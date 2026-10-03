@@ -5,6 +5,9 @@ import {
   notificationText,
   notificationLink,
   notificationIcon,
+  showsActor,
+  isGroupFollow,
+  followBackTarget,
   type NotificationView,
 } from '@/lib/utils/notifications';
 import { FOLLOWERS_PARAM, followersHref } from '@/lib/utils/profileLinks';
@@ -192,9 +195,10 @@ describe('notificationText — coalesced rows', () => {
 });
 
 describe('notificationLink', () => {
-  it('links follows to the actor profile, invites to /invites, wishlist events to the list', () => {
+  it('links follows to the actor profile, wishlist events to the list, and a pending invite nowhere', () => {
     expect(notificationLink(make({ type: 'follow', actorUsername: 'alice' }))).toBe('/users/alice');
-    expect(notificationLink(make({ type: 'wishlist_invite' }))).toBe('/invites');
+    // Answered on its card, pinned above the feed on the same page.
+    expect(notificationLink(make({ type: 'wishlist_invite' }))).toBeNull();
     expect(notificationLink(make({ type: 'invite_accepted', wishlistSlug: 'wedding' }))).toBe(
       '/wishlists/wedding'
     );
@@ -291,10 +295,10 @@ describe('an answered invite', () => {
       inviteAnswer,
     });
 
-  it('reads as an invite, linking to Invitations, while it is pending', () => {
+  it('reads as an invite while it is pending, linking nowhere: its card above answers it', () => {
     for (const pending of [null, undefined]) {
       expect(notificationText(invite(pending))).toBe('@ben invited you to Ben’s housewarming');
-      expect(notificationLink(invite(pending))).toBe('/invites');
+      expect(notificationLink(invite(pending))).toBeNull();
     }
   });
 
@@ -399,5 +403,52 @@ describe('notificationIcon', () => {
     expect(notificationIcon(make({ type: 'proposal' }))).toBe('sparkles');
     expect(notificationIcon(make({ type: 'role_changed' }))).toBe('users');
     expect(notificationIcon(make({ type: 'removed_from_wishlist' }))).toBe('logout');
+  });
+});
+
+describe('showsActor', () => {
+  it('shows who did it on a follow, an invite and an accepted invite only', () => {
+    expect(NOTIFICATION_TYPES.filter(showsActor)).toEqual([
+      'follow',
+      'wishlist_invite',
+      'invite_accepted',
+    ]);
+  });
+
+  // Proposals are anonymous to the owners; a demotion or a removal never says
+  // which owner made it; an approved proposal carries no actor.
+  it('never shows one on a proposal, a demotion, a removal or an approved proposal', () => {
+    for (const type of [
+      'proposal',
+      'role_changed',
+      'removed_from_wishlist',
+      'proposal_approved',
+    ] as const) {
+      expect(showsActor(type)).toBe(false);
+    }
+  });
+});
+
+describe('follow rows', () => {
+  const one = (overrides: Partial<NotificationView> = {}) =>
+    make({ type: 'follow', actorUsername: 'gus', actorId: 'u-gus', ...overrides });
+
+  it('tells a follow by several people (or one it can’t name) from a follow by one', () => {
+    expect(isGroupFollow(one())).toBe(false);
+    expect(isGroupFollow(one({ count: 3 }))).toBe(true);
+    expect(isGroupFollow(one({ actorUsername: null }))).toBe(true);
+    expect(isGroupFollow(make({ type: 'invite_accepted', count: 3 }))).toBe(false);
+  });
+
+  it('offers Follow back only to one follower you don’t follow yet', () => {
+    expect(followBackTarget(one({ followingActor: false }))).toBe('u-gus');
+    expect(followBackTarget(one({ followingActor: true }))).toBeNull();
+    // Not known (an older server's answer): no offer, rather than a wrong one.
+    expect(followBackTarget(one({ followingActor: undefined }))).toBeNull();
+    expect(followBackTarget(one({ followingActor: false, actorId: null }))).toBeNull();
+    expect(followBackTarget(one({ followingActor: false, count: 2 }))).toBeNull();
+    expect(
+      followBackTarget(make({ type: 'invite_accepted', actorId: 'u-gus', followingActor: false }))
+    ).toBeNull();
   });
 });

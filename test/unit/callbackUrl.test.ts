@@ -75,7 +75,7 @@ describe('safeCallbackPath', () => {
 
 describe('signInPath', () => {
   it('sends to the sign-in page with the path as its encoded callbackUrl', () => {
-    expect(signInPath('/invites')).toBe('/auth/signin?callbackUrl=%2Finvites');
+    expect(signInPath('/notifications')).toBe('/auth/signin?callbackUrl=%2Fnotifications');
     expect(signInPath('/wishlists/mine')).toBe('/auth/signin?callbackUrl=%2Fwishlists%2Fmine');
   });
 

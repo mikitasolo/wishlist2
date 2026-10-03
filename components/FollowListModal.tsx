@@ -21,8 +21,13 @@ interface FollowUser {
 interface FollowListModalProps {
   userId: string;
   initialTab: FollowTab;
-  followerCount: number;
-  followingCount: number;
+  /**
+   * The counts the tabs are labelled with ("3 followers"), from wherever the
+   * opener read them. Left out (Activity, which hasn't read them), the tabs
+   * are just "Followers" and "Following".
+   */
+  followerCount?: number;
+  followingCount?: number;
   onClose: () => void;
 }
 
@@ -90,8 +95,15 @@ export default function FollowListModal({
           value={tab}
           onChange={setTab}
           options={[
-            { value: 'followers', label: plural(followerCount, 'follower') },
-            { value: 'following', label: plural(followingCount, 'following') },
+            {
+              value: 'followers',
+              label: followerCount === undefined ? 'Followers' : plural(followerCount, 'follower'),
+            },
+            {
+              value: 'following',
+              label:
+                followingCount === undefined ? 'Following' : plural(followingCount, 'following'),
+            },
           ]}
         />
       }

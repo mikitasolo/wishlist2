@@ -146,8 +146,8 @@ interface RecordInviteAnswerArgs {
 /**
  * Record an invitee's answer on their own notification for that invite, and mark
  * it read, in one write. It then reads "You joined …" or "You declined the invite
- * to …" instead of an invite that's still waiting (and pointing at an Invitations
- * page that no longer has it), and the bell stops counting it. Call it only once
+ * to …" instead of an invite that is still waiting (when its card is gone from
+ * Activity), and the bell stops counting it. Call it only once
  * the answer has landed: for an accept, once the role is granted.
  *
  * Notifications carry no invite id, so the row is told apart by its time: the

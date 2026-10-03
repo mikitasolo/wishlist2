@@ -104,13 +104,13 @@ afterEach(() => {
 });
 
 describe('answering an invite updates its notification', () => {
-  it('reads as a pending invite, linking to Invitations, before it is answered', async () => {
+  it('reads as a pending invite, linking nowhere (its card in Activity answers it), before it is answered', async () => {
     await invite(anna);
 
     const { rows, unread } = await feedOf(anna);
 
     expect(rows.map((n) => shown(n))).toEqual([
-      { text: '@ben invited you to Ben’s housewarming', href: '/invites', read: false },
+      { text: '@ben invited you to Ben’s housewarming', href: null, read: false },
     ]);
     expect(rows[0].inviteAnswer).toBeNull();
     expect(unread).toBe(1);
@@ -118,7 +118,7 @@ describe('answering an invite updates its notification', () => {
 
   // regression: answering never touched the invitee's `wishlist_invite`
   // notification, so it went on saying "@ben invited you to …", linked to an
-  // Invitations page that no longer had the invite, and the bell kept counting it.
+  // Invitations page that no longer had the invite (Activity now), and the bell kept counting it.
   it('regression: accepting marks it read, and it reads "You joined …" linking to the list', async () => {
     const id = await invite(anna);
 
@@ -173,7 +173,7 @@ describe('answering an invite updates its notification', () => {
     // Cara's invite to the same list still waits for her.
     const cara_ = await feedOf(cara);
     expect(cara_.rows.map((n) => shown(n, 'cara'))).toEqual([
-      { text: '@ben invited you to Ben’s housewarming', href: '/invites', read: false },
+      { text: '@ben invited you to Ben’s housewarming', href: null, read: false },
     ]);
     // Ben hears about the accept, unread.
     const ben_ = await feedOf(ben);
@@ -187,7 +187,7 @@ describe('answering an invite updates its notification', () => {
     // Only the answered invite changed among Anna's own.
     const anna_ = await feedOf(anna);
     expect(anna_.rows.map((n) => shown(n)).sort((a, b) => a.text.localeCompare(b.text))).toEqual([
-      { text: '@ben invited you to Other list', href: '/invites', read: false },
+      { text: '@ben invited you to Other list', href: null, read: false },
       { text: '@cara followed you', href: '/users/cara', read: false },
       { text: 'You joined Ben’s housewarming', href: `/wishlists/${listId}`, read: true },
     ]);
@@ -241,7 +241,7 @@ describe('answering an invite updates its notification', () => {
     expect((await WishlistInvite.findById(reinvite))?.status).toBe('pending');
     const { rows, unread } = await feedOf(anna);
     expect(rows.map((n) => shown(n))).toEqual([
-      { text: '@ben invited you to Ben’s housewarming', href: '/invites', read: false },
+      { text: '@ben invited you to Ben’s housewarming', href: null, read: false },
       { text: 'You declined the invite to Ben’s housewarming', href: null, read: true },
     ]);
     expect(unread).toBe(1);
@@ -289,7 +289,7 @@ describe('answering an invite updates its notification', () => {
     expect((await WishlistInvite.findById(id))?.status).toBe('pending');
     const { rows, unread } = await feedOf(anna);
     expect(rows.map((n) => shown(n))).toEqual([
-      { text: '@ben invited you to Ben’s housewarming', href: '/invites', read: false },
+      { text: '@ben invited you to Ben’s housewarming', href: null, read: false },
     ]);
     expect(unread).toBe(1);
   });
@@ -302,7 +302,7 @@ describe('answering an invite updates its notification', () => {
     const [row] = (await feedOf(anna)).rows;
     expect(shown(row)).toEqual({
       text: '@ben invited you to Ben’s housewarming',
-      href: '/invites',
+      href: null,
       read: false,
     });
   });

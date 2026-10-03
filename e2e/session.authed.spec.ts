@@ -4,9 +4,17 @@ import { test, expect } from './fixtures';
 // session weren't accepted, the auth-gated pages would redirect to sign-in and these
 // would fail — so they double as a check that the session injection works.
 
-test('notifications page loads for a signed-in user (no redirect)', async ({ page }) => {
+test('Activity loads for a signed-in user (no redirect)', async ({ page }) => {
   await page.goto('/notifications');
-  await expect(page.getByRole('heading', { name: 'Notifications' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Activity', exact: true })).toBeVisible();
+});
+
+// Invitations moved into Activity (WIS-250); invite emails still link to
+// /invites, so it has to land there with whatever query it carries.
+test('the old Invitations address opens Activity, query and all', async ({ page }) => {
+  await page.goto('/invites?from=email');
+  await expect(page).toHaveURL('/notifications?from=email');
+  await expect(page.getByRole('heading', { name: 'Activity', exact: true })).toBeVisible();
 });
 
 test('header shows the notification bell when signed in', async ({ page }) => {
@@ -21,8 +29,8 @@ test('regression: opening sign-in while signed in goes straight to its callbackU
   page,
 }) => {
   await page.goto('/auth/signin?callbackUrl=%2Finvites');
-  await expect(page).toHaveURL('/invites');
-  await expect(page.getByRole('heading', { name: 'Invitations', exact: true })).toBeVisible();
+  await expect(page).toHaveURL('/notifications');
+  await expect(page.getByRole('heading', { name: 'Activity', exact: true })).toBeVisible();
 });
 
 test('opening sign-in while signed in never follows an off-site callbackUrl', async ({ page }) => {

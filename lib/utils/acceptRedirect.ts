@@ -1,5 +1,5 @@
 /**
- * Where the Invitations page lands when several accepts are in flight (WIS-121):
+ * Where answering invitations lands when several accepts are in flight (WIS-121):
  * **the last accept clicked wins**, among those still able to succeed.
  *
  * Accepting an invite opens its list, but each card is answered on its own, so

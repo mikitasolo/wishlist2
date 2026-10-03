@@ -13,7 +13,6 @@ vi.mock('@/components/AppHeader', () => ({ default: () => null }));
 vi.mock('@/components/AuthButton', () => ({ default: () => null }));
 vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast: vi.fn() }) }));
 
-import InvitesPage from '@/app/invites/page';
 import BookedPage from '@/app/booked/page';
 import SettingsPage from '@/app/settings/page';
 import ItemsPage from '@/app/items/page';
@@ -23,7 +22,6 @@ import SharedWishlistsPage from '@/app/wishlists/shared/page';
 import { AUTH_ONLY_PATHS } from '@/lib/utils/callbackUrl';
 
 const PAGES = [
-  ['/invites', InvitesPage],
   ['/booked', BookedPage],
   ['/settings', SettingsPage],
   ['/items', ItemsPage],
@@ -47,7 +45,8 @@ afterEach(() => {
 
 // regression: these pages sent a signed-out visitor to `/`, so where they were
 // going was lost: someone following a link to their invitations had to find
-// their way back after signing in.
+// their way back after signing in. (`/invites` is a server redirect to
+// Activity now, which `test/unit/invitesRedirect.test.ts` covers.)
 describe('a page that needs a session, opened signed out', () => {
   // Signing out on one of them goes home (AuthButton) only if it's on the list.
   it('covers exactly the pages on the auth-only list', () => {

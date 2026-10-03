@@ -214,7 +214,7 @@ describe('EMAIL_TRANSPORT=smtp', () => {
 
     const { html, text } = sentMessage();
     expect(html).toContain(`<a href="${INVITES_LINK}" class="email-button">Review invitation</a>`);
-    expect(text).toContain(`Accept or decline it on your Invitations page: ${INVITES_LINK}`);
+    expect(text).toContain(`Accept or decline it on your Activity page: ${INVITES_LINK}`);
     expect(html).not.toContain('/auth/signin');
     expect(text).not.toContain('/auth/signin');
   });

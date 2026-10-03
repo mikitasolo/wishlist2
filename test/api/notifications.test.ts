@@ -8,7 +8,9 @@ vi.mock('@/lib/auth', () => ({ auth: vi.fn() }));
 import { auth } from '@/lib/auth';
 import { GET, PATCH } from '@/app/api/notifications/route';
 import { POST as followUser } from '@/app/api/users/[id]/follow/route';
+import mongoose from 'mongoose';
 import User from '@/models/User';
+import Follow from '@/models/Follow';
 import Notification from '@/models/Notification';
 
 const session = vi.mocked(auth);
@@ -74,6 +76,90 @@ describe('GET /api/notifications', () => {
     expect(json.unreadCount).toBe(1);
     // Newest first.
     expect(json.data[0].actorUsername).toBe('cara');
+  });
+});
+
+describe('GET /api/notifications — who did it', () => {
+  const feedOf = async (userId: string) => {
+    asSession({ id: userId });
+    return (await (await GET()).json()).data as Record<string, unknown>[];
+  };
+  const byType = (rows: Record<string, unknown>[], type: string) =>
+    rows.find((r) => r.type === type)!;
+
+  it('gives a follow its follower as they are now, and whether you follow them back', async () => {
+    await User.updateOne({ _id: bob }, { $set: { image: 'https://blob.example/bob.jpg' } });
+    const cara = (await User.create({ email: 'cara@x.com', username: 'cara' }))._id.toString();
+    await Notification.create({ user: alice, type: 'follow', actorUsername: 'bob' });
+    await Notification.create({ user: alice, type: 'follow', actorUsername: 'cara' });
+    await Follow.create({ follower: alice, following: cara });
+
+    const rows = await feedOf(alice);
+    const fromBob = rows.find((r) => r.actorUsername === 'bob')!;
+    expect(fromBob).toMatchObject({
+      actorId: bob,
+      actorImage: 'https://blob.example/bob.jpg',
+      followingActor: false,
+    });
+    expect(rows.find((r) => r.actorUsername === 'cara')).toMatchObject({
+      actorId: cara,
+      actorImage: null,
+      followingActor: true,
+    });
+  });
+
+  it('says nothing of following on a follow by several people, or on any other type', async () => {
+    await Notification.create({
+      user: alice,
+      type: 'follow',
+      actorUsername: 'bob',
+      actorUsernames: ['cara', 'bob'],
+      count: 2,
+    });
+    await Notification.create({
+      user: alice,
+      type: 'invite_accepted',
+      actorUsername: 'bob',
+      wishlistName: 'Kitchen',
+    });
+
+    const rows = await feedOf(alice);
+    // The avatar is still the latest follower's.
+    expect(byType(rows, 'follow')).toMatchObject({ actorId: bob, followingActor: null });
+    expect(byType(rows, 'invite_accepted')).toMatchObject({ actorId: bob, followingActor: null });
+  });
+
+  it('leaves the actor out when no account has that username any more', async () => {
+    await Notification.create({ user: alice, type: 'follow', actorUsername: 'renamed' });
+    expect((await feedOf(alice))[0]).toMatchObject({
+      actorId: null,
+      actorImage: null,
+      followingActor: null,
+    });
+  });
+
+  // Proposals are anonymous to the owners, and a demotion or a removal never
+  // says which owner made it: whatever a row holds, none comes back with a face.
+  it('never looks up anyone on a proposal, a demotion or a removal', async () => {
+    await User.updateOne({ _id: bob }, { $set: { image: 'https://blob.example/bob.jpg' } });
+    for (const type of ['proposal', 'role_changed', 'removed_from_wishlist'] as const) {
+      // Written straight to the collection, past createNotification's stripping,
+      // as a row from before it would be.
+      await Notification.collection.insertOne({
+        user: new mongoose.Types.ObjectId(alice),
+        type,
+        actorUsername: 'bob',
+        wishlistName: 'Kitchen',
+        read: false,
+        createdAt: new Date(),
+      });
+    }
+
+    const rows = await feedOf(alice);
+    expect(rows).toHaveLength(3);
+    for (const row of rows) {
+      expect(row).toMatchObject({ actorId: null, actorImage: null, followingActor: null });
+    }
   });
 });
 

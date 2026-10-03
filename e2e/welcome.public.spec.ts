@@ -13,7 +13,7 @@ test.describe.configure({ retries: 0 });
 test('a new account is offered a username, and keeping the generated one continues on', async ({
   page,
 }) => {
-  // The invite email's sign-in continues to /invites.
+  // The invite email's sign-in continues to /invites, which opens Activity.
   await page.goto(magicLinkPath(MAGIC_LINKS.newcomerKeeps, '/invites'));
 
   await expect(page).toHaveURL(/\/welcome\?callbackUrl=/);
@@ -26,8 +26,8 @@ test('a new account is offered a username, and keeping the generated one continu
   await expect(page.getByLabel('Username', { exact: true })).toHaveValue(/^user_[a-z0-9]{8}$/);
 
   await keep.click();
-  await expect(page).toHaveURL('/invites');
-  await expect(page.getByRole('heading', { name: 'Invitations', exact: true })).toBeVisible();
+  await expect(page).toHaveURL('/notifications');
+  await expect(page.getByRole('heading', { name: 'Activity', exact: true })).toBeVisible();
 });
 
 test('a new account can pick its own username on the welcome page', async ({ page }) => {
@@ -48,8 +48,8 @@ test('a new account can pick its own username on the welcome page', async ({ pag
 test('an existing account signs straight in, without the welcome page', async ({ page }) => {
   await page.goto(magicLinkPath(MAGIC_LINKS.returning, '/invites'));
 
-  await expect(page).toHaveURL('/invites');
-  await expect(page.getByRole('heading', { name: 'Invitations', exact: true })).toBeVisible();
+  await expect(page).toHaveURL('/notifications');
+  await expect(page.getByRole('heading', { name: 'Activity', exact: true })).toBeVisible();
 });
 
 // regression: WIS-82 moved account creation from the magic-link request to the

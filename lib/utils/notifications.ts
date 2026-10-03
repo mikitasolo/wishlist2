@@ -40,8 +40,52 @@ export interface NotificationView {
   // pending, and on every other type. Optional, like `count`: a response from a
   // server older than it has none.
   inviteAnswer?: InviteAnswer | null;
+  // The actor as they are now, looked up by `actorUsername` when the feed is
+  // read, on the types that name one (`showsActor`): their id (for Follow back)
+  // and photo. Null when the type never shows an actor, or no account has that
+  // username any more. Optional, like `count`.
+  actorId?: string | null;
+  actorImage?: string | null;
+  // A `follow` row from one person: whether the recipient follows them now
+  // (null on every other row), so the row offers Follow back only when not.
+  followingActor?: boolean | null;
   read: boolean;
   createdAt: string;
+}
+
+/**
+ * The types whose row names who did it, so the feed shows that person's avatar
+ * and the API looks them up. Never a proposal (anonymous to the owners), a
+ * demotion or a removal (which never say which owner did it), or an approved
+ * proposal (which carries no actor): those show their type's icon instead.
+ */
+const ACTOR_TYPES: ReadonlySet<NotificationType> = new Set([
+  'follow',
+  'wishlist_invite',
+  'invite_accepted',
+]);
+
+/** Whether a notification of `type` may show its actor (see `ACTOR_TYPES`). */
+export function showsActor(type: NotificationType): boolean {
+  return ACTOR_TYPES.has(type);
+}
+
+/**
+ * A follow row that stands for several people (or one it can't name): the feed
+ * opens the recipient's followers list for it, rather than one profile.
+ */
+export function isGroupFollow(n: NotificationView): boolean {
+  return n.type === 'follow' && (countOf(n) > 1 || !n.actorUsername);
+}
+
+/**
+ * The person a follow row offers Follow back to: its one follower, when the
+ * recipient doesn't follow them yet. Null on every other row, and on one whose
+ * follower has no account under that username any more.
+ */
+export function followBackTarget(n: NotificationView): string | null {
+  if (n.type !== 'follow' || isGroupFollow(n) || !n.actorId) return null;
+  return n.followingActor === false ? n.actorId : null;
 }
 
 /**
@@ -131,7 +175,7 @@ const listLink = (n: NotificationView) =>
 /**
  * Where clicking a notification should take the user, or null when it shouldn't
  * link anywhere: after a removal, or a declined invite, the list may not be
- * visible to them.
+ * visible to them, and a pending invite is answered on Activity itself.
  *
  * `viewerUsername` is the recipient's own: a follow from several people links
  * to their followers, which live on their profile.
@@ -147,11 +191,11 @@ export function notificationLink(
       if (countOf(n) === 1 && n.actorUsername) return profileHref(n.actorUsername);
       return viewerUsername ? followersHref(viewerUsername) : '/notifications';
     case 'wishlist_invite':
-      // Pending: the Invitations page, where it's answered. Accepted: the list
-      // they joined.
+      // Accepted: the list they joined. Pending: no link, since it's answered
+      // on its card pinned above the feed (and the list may not be open to
+      // them yet). Declined: no link either.
       if (n.inviteAnswer === 'accepted') return listLink(n);
-      if (n.inviteAnswer === 'declined') return null;
-      return '/invites';
+      return null;
     case 'invite_accepted':
     case 'proposal':
     case 'proposal_approved':
