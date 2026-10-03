@@ -117,7 +117,7 @@ export default function SegmentedControl<T extends string>({
             }`}
           >
             {o.icon && (
-              <Icon name={o.icon} size={14} className="flex-shrink-0 max-[359px]:hidden" />
+              <Icon name={o.icon} size={16} className="flex-shrink-0 max-[359px]:hidden" />
             )}
             {o.label}
           </button>

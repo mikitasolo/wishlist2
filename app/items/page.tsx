@@ -258,7 +258,7 @@ export default function MyItemsPage() {
           <>
             {/* Stat cards row */}
             <div
-              className="mt-6 grid gap-3 sm:gap-4"
+              className="mt-8 grid gap-3 sm:gap-4"
               style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(8rem, 1fr))' }}
             >
               {Array.from({ length: 5 }).map((_, i) => (
@@ -266,7 +266,7 @@ export default function MyItemsPage() {
               ))}
             </div>
             {/* Item grid — square image + small body, matching the real cards */}
-            <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+            <div className="mt-6 grid grid-cols-2 gap-5 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
               {Array.from({ length: 10 }).map((_, i) => (
                 <div
                   key={i}
@@ -311,7 +311,7 @@ export default function MyItemsPage() {
           <>
             {/* Stat cards — full-width row; click to filter by status */}
             <div
-              className="mt-6 grid gap-3 sm:gap-4"
+              className="mt-8 grid gap-3 sm:gap-4"
               style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(8rem, 1fr))' }}
             >
               {STATUS_FILTER_OPTIONS.map((key) => {
@@ -398,7 +398,7 @@ export default function MyItemsPage() {
                 body="No items match these filters."
               />
             ) : (
-              <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+              <div className="mt-6 grid grid-cols-2 gap-5 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
                 {visibleItems.map((it) => {
                   // The owner's view: the API has already folded booked into available.
                   const badge = statusMeta(it.status, 'owner');

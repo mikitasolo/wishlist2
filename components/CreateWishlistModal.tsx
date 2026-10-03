@@ -218,7 +218,7 @@ export default function CreateWishlistModal({
             <span id={visibilityLabelId} className={FIELD_LABEL}>
               Visibility
             </span>
-            <p id={visibilityHelperId} className="mb-2 text-xs text-muted-foreground">
+            <p id={visibilityHelperId} className="mb-1.5 text-xs text-muted-foreground">
               {visibilityMeta[formData.visibility].helper}
             </p>
             <SegmentedControl

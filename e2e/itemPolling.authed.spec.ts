@@ -135,9 +135,9 @@ for (const flow of [
   {
     as: 'owner',
     list: 'e2e-birthday',
-    open: '+ Add item',
+    open: 'Add item',
     // e2e-birthday has an item, so the button stays once the list has loaded.
-    openOnceLoaded: '+ Add item',
+    openOnceLoaded: 'Add item',
     title: 'Add new item',
     submit: 'Add item',
     done: 'Item added successfully',
@@ -145,7 +145,7 @@ for (const flow of [
   {
     as: 'member',
     list: 'e2e-friend',
-    open: '+ Propose item',
+    open: 'Propose item',
     // e2e-friend has no items, so once it has loaded the proposal is offered by
     // its empty state instead.
     openOnceLoaded: 'Propose an item',
@@ -167,7 +167,7 @@ for (const flow of [
   }
 
   async function fillIn(page: Page, name: string, open = flow.open) {
-    await page.getByRole('button', { name: open }).click();
+    await page.getByRole('button', { name: open, exact: true }).click();
     const dialog = page.getByRole('dialog', { name: flow.title });
     await dialog.getByLabel('Item name').fill(name);
     return dialog.getByRole('button', { name: flow.submit, exact: true });
@@ -630,7 +630,7 @@ test("regression: a failed booking's reconcile read dropped behind a proposal is
   await expect(bookButton).toBeVisible();
   expect(await bookedByMe.count()).toBe(0);
 
-  await page.getByRole('button', { name: '+ Propose item' }).click();
+  await page.getByRole('button', { name: 'Propose item', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Propose new item' });
   await dialog.getByLabel('Item name').fill('E2E Proposed Meanwhile');
   await dialog.getByRole('button', { name: 'Propose item', exact: true }).click();

@@ -195,7 +195,7 @@ export default function UserProfile() {
     return (
       <div className="min-h-screen">
         <AppHeader actions={<AuthButton />} />
-        <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
+        <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
           <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-4">
               <Skeleton className="h-16 w-16 rounded-full" />
@@ -204,12 +204,12 @@ export default function UserProfile() {
                 <Skeleton className="h-4 w-40" />
               </div>
             </div>
-            <div className="flex flex-shrink-0 items-center gap-2">
+            <div className="flex flex-shrink-0 items-center gap-3">
               <Skeleton className="h-9 w-24 rounded-full" />
               <Skeleton className="h-9 w-28 rounded-full" />
             </div>
           </div>
-          <SkeletonGrid count={8} variant="wishlist" gapClassName="gap-4 sm:gap-6" />
+          <SkeletonGrid count={8} variant="wishlist" showOwner />
         </main>
       </div>
     );
@@ -250,7 +250,7 @@ export default function UserProfile() {
   return (
     <div className="min-h-screen">
       <AppHeader actions={<AuthButton />} />
-      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
+      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
         {/* Profile header */}
         <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-4">
@@ -292,7 +292,7 @@ export default function UserProfile() {
               </div>
             </div>
           </div>
-          <div className="flex flex-shrink-0 items-center gap-2">
+          <div className="flex flex-shrink-0 items-center gap-3">
             <ShareButton />
             {profile?.isSelf && (
               <Link
@@ -361,7 +361,7 @@ export default function UserProfile() {
                 })}
           />
         ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3 xl:grid-cols-4">
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {wishlists.map((wishlist) => (
               <WishlistCard key={wishlist._id.toString()} wishlist={wishlist} showOwner />
             ))}

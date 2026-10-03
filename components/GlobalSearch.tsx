@@ -173,7 +173,11 @@ export default function GlobalSearch({ variant = 'header' }: GlobalSearchProps) 
             : 'flex min-w-0 flex-1 items-center gap-2 rounded-full border border-border-strong bg-surface pl-3.5 pr-1.5 shadow-xs field-focus sm:w-72 sm:flex-none'
         }
       >
-        <Icon name="search" size={17} className="flex-shrink-0 text-muted-foreground" />
+        <Icon
+          name="search"
+          size={inline ? 18 : 16}
+          className="flex-shrink-0 text-muted-foreground"
+        />
         <input
           ref={inputRef}
           value={q}
@@ -244,7 +248,7 @@ export default function GlobalSearch({ variant = 'header' }: GlobalSearchProps) 
                   onClick={() => go(`/wishlists/${w.slug ?? w._id}`)}
                   className={`${POPOVER_OPTION_ROW} transition-colors hover:bg-muted`}
                 >
-                  <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-primary-500/12 text-accent dark:text-primary-300">
+                  <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-primary-500/12 text-accent">
                     <Icon name="gift" size={16} />
                   </span>
                   <span className="min-w-0">

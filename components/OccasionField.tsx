@@ -89,7 +89,7 @@ export default function OccasionField({
 
   return (
     <fieldset>
-      <legend className="mb-1 block text-sm font-medium text-foreground">
+      <legend className="mb-1.5 block text-sm font-medium text-foreground">
         Occasion <span className="text-muted-foreground">(optional)</span>
       </legend>
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
@@ -156,7 +156,7 @@ export default function OccasionField({
           </>
         )}
       </div>
-      <p className="mt-1 text-xs text-muted-foreground">
+      <p className="mt-1.5 text-xs text-muted-foreground">
         Shown next to the list&apos;s name, with a countdown, to everyone who can see the list.
       </p>
     </fieldset>

@@ -279,7 +279,7 @@ export default function SettingsPage() {
 
           <div className="mt-6">
             <p className="text-sm font-medium text-foreground">Who can invite you to wishlists</p>
-            <div className="mt-2">
+            <div className="mt-1.5">
               <SegmentedControl
                 size="sm"
                 className="max-w-sm"
@@ -301,7 +301,7 @@ export default function SettingsPage() {
               Controls who can see your bio and browse your wishlists. Your username and avatar stay
               visible so people can follow you. Each wishlist’s own visibility still applies.
             </p>
-            <div className="mt-2">
+            <div className="mt-1.5">
               <SegmentedControl
                 size="sm"
                 className="max-w-sm"
@@ -372,7 +372,7 @@ function SettingsSkeleton() {
         {[0, 1].map((i) => (
           <div key={i} className="mt-6">
             <Skeleton className="h-4 w-56 max-w-full" />
-            <Skeleton className="mt-2 h-[2.625rem] w-full max-w-sm rounded-xl" />
+            <Skeleton className="mt-1.5 h-[2.625rem] w-full max-w-sm rounded-xl" />
           </div>
         ))}
       </Panel>

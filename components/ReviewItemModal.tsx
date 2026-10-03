@@ -180,7 +180,7 @@ export default function ReviewItemModal({
               {onDelete && (
                 <Button
                   type="button"
-                  variant="destructive"
+                  variant="danger"
                   onClick={() => setShowDeleteConfirm(true)}
                   disabled={submitting}
                   fullWidth

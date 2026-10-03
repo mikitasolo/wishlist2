@@ -50,7 +50,7 @@ export default function SharedWishlistsPage() {
 
         {loading ? (
           <div className="mt-8">
-            <SkeletonGrid count={8} variant="wishlist" />
+            <SkeletonGrid count={8} variant="wishlist" showOwner />
           </div>
         ) : member.length === 0 ? (
           <EmptyState

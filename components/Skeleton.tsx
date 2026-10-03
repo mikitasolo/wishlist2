@@ -22,23 +22,39 @@ export function Skeleton({ className = '', as: Tag = 'div', children }: Skeleton
   return <Tag className={`skeleton ${radius} ${className}`}>{children}</Tag>;
 }
 
-/** Card skeleton matching WishlistCard (cover band on top, then body). */
-export function WishlistCardSkeleton() {
+/**
+ * Card skeleton matching WishlistCard line for line: the 16:9 cover, then the
+ * body's title, a one-line description and the footer (the owner, with
+ * `showOwner`, and the item count), each in a box of its line's height. So a
+ * card lands where its skeleton was, as tall as it unless its description
+ * runs to none or two lines.
+ */
+export function WishlistCardSkeleton({ showOwner = false }: { showOwner?: boolean }) {
   return (
     <div className="flex flex-col overflow-hidden rounded-3xl border border-border bg-surface shadow-md">
-      {/* Cover band (16:9) */}
       <Skeleton className="aspect-[16/9] w-full rounded-none" />
-      {/* Body */}
       <div className="flex flex-1 flex-col p-4 sm:p-5">
-        <Skeleton className="h-[18px] w-3/4" />
-        <Skeleton className="mt-2 h-3 w-full" />
-        <Skeleton className="mt-1.5 h-3 w-2/3" />
-        <div className="mt-4 flex items-center justify-between pt-3">
-          <div className="flex items-center gap-2">
-            <Skeleton className="h-6 w-6 rounded-full" />
-            <Skeleton className="h-3 w-20" />
+        {/* The title's line (text-title) */}
+        <div className="flex h-6 items-center">
+          <Skeleton className="h-4 w-3/4" />
+        </div>
+        {/* A description's line (text-sm) */}
+        <div className="mt-1 flex h-5 items-center">
+          <Skeleton className="h-3 w-full" />
+        </div>
+        <div className="mt-auto flex items-center justify-between gap-2 pt-3">
+          {showOwner ? (
+            <div className="flex items-center gap-2">
+              <Skeleton className="h-8 w-8 rounded-full" />
+              <Skeleton className="h-3 w-16" />
+            </div>
+          ) : (
+            <span />
+          )}
+          {/* The item count's line (text-meta) */}
+          <div className="flex h-[1.125rem] items-center">
+            <Skeleton className="h-3 w-12" />
           </div>
-          <Skeleton className="h-3 w-12" />
         </div>
       </div>
     </div>
@@ -47,14 +63,19 @@ export function WishlistCardSkeleton() {
 
 /**
  * Card skeleton matching WishlistItem (square image, title, price, and its one
- * row of actions: the primary action, the link button and the menu button).
+ * row of actions: the primary action, the link button and the menu button),
+ * each in a box of the real line's height and margins.
  */
 export function ItemCardSkeleton() {
   return (
     <div className="flex flex-col rounded-3xl border border-border bg-surface p-4 shadow-md sm:p-5">
       <Skeleton className="mb-4 aspect-square w-full rounded-2xl" />
-      <Skeleton className="mb-2 h-5 w-4/5" />
-      <Skeleton className="mb-3 h-6 w-24" />
+      <div className="mb-2 flex h-6 items-center sm:mb-3">
+        <Skeleton className="h-4 w-4/5" />
+      </div>
+      <div className="mb-2 flex min-h-[28px] items-center sm:mb-3 sm:min-h-[32px]">
+        <Skeleton className="h-5 w-24" />
+      </div>
       <div className="flex gap-2">
         <Skeleton className="h-10 flex-1 rounded-xl" />
         <Skeleton className="h-10 w-10 rounded-xl" />
@@ -78,26 +99,28 @@ export function MemberRowSkeleton() {
 }
 
 /**
- * A grid of card skeletons. Its gaps match the grid it stands in for: the
- * dashboard's, Mine's and Shared's lists are `gap-5`, a list's items and a
- * profile's lists `gap-4 sm:gap-6` (pass `gapClassName`).
+ * A grid of card skeletons, laid out as every grid of cards is (`gap-5`, one
+ * column on a phone up to four from `xl`), so nothing moves when the cards land.
+ * `showOwner` for a grid whose cards name their owner (Shared, a profile).
  */
 export function SkeletonGrid({
   count = 8,
   variant = 'wishlist',
-  gapClassName,
+  showOwner = false,
 }: {
   count?: number;
   variant?: 'wishlist' | 'item';
-  gapClassName?: string;
+  showOwner?: boolean;
 }) {
-  const Card = variant === 'item' ? ItemCardSkeleton : WishlistCardSkeleton;
-  const gap = gapClassName ?? (variant === 'item' ? 'gap-4 sm:gap-6' : 'gap-5');
   return (
-    <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 ${gap}`}>
-      {Array.from({ length: count }).map((_, i) => (
-        <Card key={i} />
-      ))}
+    <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      {Array.from({ length: count }).map((_, i) =>
+        variant === 'item' ? (
+          <ItemCardSkeleton key={i} />
+        ) : (
+          <WishlistCardSkeleton key={i} showOwner={showOwner} />
+        )
+      )}
     </div>
   );
 }

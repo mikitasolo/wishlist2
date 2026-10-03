@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, useCallback, ReactNode } from 'react';
 import Icon, { IconName } from '@/components/Icon';
+import IconButton from '@/components/IconButton';
 import { TONE_CLASSES } from '@/lib/utils/statusTones';
 
 type ToastType = 'success' | 'error' | 'info';
@@ -65,16 +66,16 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                 <Icon name={icon} size={18} />
               </span>
               <p className="flex-1 text-sm font-medium text-foreground">{toast.message}</p>
-              <button
+              {/* 32px to hit, drawn into the toast's padding so it's no taller. */}
+              <IconButton
+                icon="close"
+                label="Dismiss notification"
                 onClick={(e) => {
                   e.stopPropagation();
                   removeToast(toast.id);
                 }}
-                className="flex-shrink-0 rounded-md p-0.5 text-muted-foreground transition-colors hover:text-foreground"
-                aria-label="Dismiss notification"
-              >
-                <Icon name="close" size={16} />
-              </button>
+                className="-my-1 -mr-2"
+              />
             </div>
           );
         })}

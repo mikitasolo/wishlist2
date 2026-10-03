@@ -78,7 +78,7 @@ export default function EmptyState({
           compact ? 'mb-3 h-10 w-10 rounded-xl' : 'mb-5 h-14 w-14 rounded-2xl'
         } ${CHIP_TONES[tone]}`}
       >
-        <Icon name={icon} size={compact ? 20 : 28} />
+        <Icon name={icon} size={compact ? 18 : 28} />
       </span>
       <Heading
         className={`max-w-lg font-semibold tracking-tight text-foreground [overflow-wrap:anywhere] ${

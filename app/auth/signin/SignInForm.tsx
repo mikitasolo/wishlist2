@@ -98,7 +98,7 @@ export default function SignInForm({ turnstileSiteKey }: SignInFormProps) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background px-4">
         <div className="w-full max-w-md rounded-2xl border border-border bg-surface p-8 text-center shadow-lg">
-          <span className="mb-5 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-500/10 text-accent dark:text-primary-400">
+          <span className="mb-5 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-500/12 text-accent">
             <Icon name="mail" size={28} />
           </span>
           <h1 className="mb-3 text-3xl font-semibold tracking-tight text-foreground">

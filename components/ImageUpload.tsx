@@ -146,14 +146,14 @@ export default function ImageUpload({
               value
                 ? 'border border-border bg-surface-2'
                 : dragging
-                  ? 'border-2 border-dashed border-primary-500 bg-primary-500/8'
+                  ? 'border-2 border-dashed border-primary-500 bg-primary-500/12'
                   : 'border-2 border-dashed border-border-strong hover:bg-surface-hover'
             } disabled:opacity-60`}
           >
             {value ? (
               <BannerImage src={value} alt="Profile photo" sizes="96px" />
             ) : (
-              <Icon name="image" size={24} className="text-muted-foreground" />
+              <Icon name="image" size={28} className="text-muted-foreground" />
             )}
             {uploading && (
               <div className="absolute inset-0 flex items-center justify-center bg-black/40 text-white">
@@ -162,7 +162,7 @@ export default function ImageUpload({
             )}
           </button>
           <div className="min-w-0">
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-3">
               <Button
                 type="button"
                 variant="secondary"
@@ -184,7 +184,7 @@ export default function ImageUpload({
                 </Button>
               )}
             </div>
-            <p className="mt-2 text-xs text-muted-foreground">
+            <p className="mt-1.5 text-xs text-muted-foreground">
               Drag &amp; drop, paste, or click. PNG, JPG, WebP or GIF · up to 4MB.
             </p>
           </div>
@@ -244,7 +244,7 @@ export default function ImageUpload({
           style={{ aspectRatio: String(aspect), maxWidth: `${18 * aspect}rem` }}
           className={`mx-auto flex w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 text-center transition-colors ${
             dragging
-              ? 'border-primary-500 bg-primary-500/8'
+              ? 'border-primary-500 bg-primary-500/12'
               : 'border-border-strong hover:bg-surface-hover'
           } disabled:opacity-60`}
         >
@@ -256,7 +256,7 @@ export default function ImageUpload({
           ) : (
             <>
               <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-surface-2 text-muted-foreground">
-                <Icon name="image" size={22} />
+                <Icon name="image" size={18} />
               </span>
               <span className="text-sm font-medium text-foreground">
                 Drag &amp; drop, paste, or click to upload
@@ -269,7 +269,7 @@ export default function ImageUpload({
         </button>
       )}
 
-      {error && <p className="mt-1.5 text-xs text-red-600 dark:text-red-400">{error}</p>}
+      {error && <p className="mt-1.5 text-xs text-danger">{error}</p>}
 
       {pendingFile && (
         <ImageCropModal

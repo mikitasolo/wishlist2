@@ -28,7 +28,7 @@ const PRIMARY_TONES = {
   // Publishing, reviewing, opening the product page.
   primary: 'bg-primary-600 text-white shadow-sm hover:bg-primary-500',
   // Editing: always there for an owner, so it doesn't shout.
-  soft: 'bg-primary-500/12 text-accent hover:bg-primary-500/18 dark:text-primary-300',
+  soft: 'bg-primary-500/12 text-accent hover:bg-primary-500/18',
   // Undoing your own booking.
   neutral: 'bg-muted text-foreground hover:bg-surface-2',
   // A gift you've given: done, in the success tone of your booking.
@@ -332,7 +332,7 @@ function WishlistItem({
 
   return (
     <div
-      className={`group relative flex flex-col rounded-3xl border bg-surface p-4 shadow-md transition-all duration-200 hover:shadow-lg sm:p-5 ${status.classes.card}`}
+      className={`relative flex flex-col rounded-3xl border bg-surface p-4 shadow-md sm:p-5 ${status.classes.card}`}
       role="article"
       aria-label={`Item: ${item.name}`}
       data-status={status.status}
@@ -347,7 +347,7 @@ function WishlistItem({
           variant="glass"
           size="sm"
           shape="pill"
-          iconClassName={showNotes ? 'text-accent dark:text-primary-400' : undefined}
+          iconClassName={showNotes ? 'text-accent' : undefined}
           className="absolute left-2 top-2 z-10 sm:left-3 sm:top-3"
         />
       )}

@@ -99,8 +99,8 @@ export default function CurrencyPrompt() {
       className="mb-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between"
     >
       <div className="flex min-w-0 items-start gap-3">
-        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-500/12 text-accent dark:text-primary-300">
-          <Icon name="globe" size={20} />
+        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-500/12 text-accent">
+          <Icon name="globe" size={18} />
         </span>
         <div className="min-w-0">
           <h2 id={headingId} className="font-semibold text-foreground">
@@ -115,7 +115,7 @@ export default function CurrencyPrompt() {
       {/* Stacked and full width on a phone, side by side under the text from
           `sm`, and next to it from `md`. A label never wraps: the buttons have
           a fixed height, so a second line would spill out of them. */}
-      <div className="flex flex-col gap-2 sm:flex-row md:shrink-0">
+      <div className="flex flex-col gap-3 sm:flex-row md:shrink-0">
         <Button
           onClick={() => acceptSuggestion(code)}
           disabled={busy}
