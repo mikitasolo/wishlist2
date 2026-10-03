@@ -10,11 +10,11 @@
 /**
  * - `neutral`: nothing to say (available).
  * - `info`: proposed, and informational notices.
- * - `success`: booked by you, the Book button, success toasts.
- * - `warning`: booked by someone else, things that need the viewer's attention.
+ * - `success`: reserved by you, the Reserve button, success toasts.
+ * - `warning`: reserved by someone else, things that need the viewer's attention.
  * - `danger`: destructive actions and errors.
- * - `done`: completed. Neutral on purpose, so it can't be mistaken
- *   for "Booked by you", which is green.
+ * - `done`: received (`completed`). Neutral on purpose, so it can't be mistaken
+ *   for "Reserved by you", which is green.
  * - `draft`: not published yet.
  */
 export type StatusTone = 'neutral' | 'info' | 'success' | 'warning' | 'danger' | 'done' | 'draft';

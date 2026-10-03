@@ -32,7 +32,7 @@ const PRIMARY_TONES = {
   neutral: 'bg-muted text-foreground hover:bg-surface-2',
   // A gift you've given: done, in the success tone of your booking.
   given: TONE_CLASSES.success.tint,
-  // Booked by someone else: nothing to do.
+  // Reserved by someone else: nothing to do.
   off: 'bg-muted text-muted-foreground',
 } as const;
 
@@ -428,7 +428,7 @@ function WishlistItem({
               onClick={() => {
                 if (!(primary.changesStatus && isUpdating)) primary.onClick();
               }}
-              // Booked by someone else is really disabled. A status change
+              // Reserved by someone else is really disabled. A status change
               // held while this card's update runs only looks it, so focus on
               // it stays put.
               disabled={primary.unavailable}
