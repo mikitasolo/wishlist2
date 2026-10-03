@@ -20,6 +20,8 @@ vi.mock('next-auth/react', () => ({
 vi.mock('next/navigation', () => ({
   useRouter: () => router,
   useParams: () => ({ username: 'nobody_here' }),
+  usePathname: () => '/users/nobody_here',
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 // The header and the search have their own fetches and tests; here the search

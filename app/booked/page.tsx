@@ -669,10 +669,12 @@ function ReservationCard({
               {r.wishlistName}
             </Link>
           ) : (
-            // A link would only lead to "not available": say so here instead.
+            // A link would only lead to "not available": say so here instead,
+            // unless the note already does (still reserved to them, it's the one
+            // thing it says).
             <p className="mt-0.5 inline-flex items-center gap-1 text-xs font-medium text-muted-foreground">
               <Icon name="gift" size={12} />
-              {r.wishlistName} · no longer available to you
+              {r.stillReserved ? r.wishlistName : `${r.wishlistName} · no longer available to you`}
             </p>
           )}
           {note && (
