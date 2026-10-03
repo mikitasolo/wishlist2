@@ -12,6 +12,12 @@ import { readReservationWishlists } from '@/lib/utils/reservationWishlists';
 // may still open the list (`listOpen`), and, only while they may, its live slug
 // (for the card's link, which falls back to the id) and occasion (which the
 // page groups the gifts still to give by).
+//
+// A reservation on a list archived out of the gifter's reach (`listArchived`)
+// is frozen instead (WIS-124): an archived list is its owners' alone, so it
+// comes back as its snapshot only, with no live item status, no
+// `stillReserved` (both `null`), and no slug or occasion, until the list is
+// unarchived.
 export async function GET() {
   try {
     const session = await auth();
@@ -40,14 +46,19 @@ export async function GET() {
 
     const data = reservations.map((r) => {
       const it = itemMap.get(r.item.toString());
-      const itemStatus = it ? it.status : 'deleted';
-      const wishlist = wishlists.get(r.wishlist.toString());
-      const stillReserved =
-        !!it && it.status === 'booked' && it.bookedBy?.toString() === session.user.id;
+      const entry = wishlists.get(r.wishlist.toString());
+      const listArchived = !!entry?.archived;
+      const wishlist = entry && !entry.archived ? entry : null;
+      // Frozen on an archived list: nothing of what its owners have done to the
+      // item since reaches the gifter.
+      const itemStatus = listArchived ? null : it ? it.status : 'deleted';
+      const stillReserved = listArchived
+        ? null
+        : !!it && it.status === 'booked' && it.bookedBy?.toString() === session.user.id;
       // Whether the gifter may still open the list: `readReservationWishlists`
       // has it (`viewableWishlistsFilter`). Only their own access, never why
-      // they've lost it, as an archived list must look exactly like a missing
-      // one. A card is active (Release) only while it's still reserved on a list
+      // they've lost it, except that an archived list says so (`listArchived`).
+      // A card is active (Release) only while it's still reserved on a list
       // they can open, since the list's own unbook refuses anyone the list is
       // hidden from. A booking on a list they can't open (archived, say: leaving
       // or being removed frees it) can be released by an owner alone, so the
@@ -69,6 +80,7 @@ export async function GET() {
         itemStatus,
         stillReserved,
         listOpen,
+        listArchived,
       };
     });
 

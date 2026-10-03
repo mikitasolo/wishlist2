@@ -3,15 +3,20 @@ import Wishlist from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
 import { getFriendIds } from '@/lib/utils/friends';
 import type { Occasion } from '@/lib/utils/occasion';
-import { viewableWishlistsFilter } from '@/lib/utils/wishlistAccess';
+import { isHiddenByArchive, viewableWishlistsFilter } from '@/lib/utils/wishlistAccess';
 
 type Id = string | mongoose.Types.ObjectId;
 
 /**
  * What the Booked page gets of the live wishlist behind one of a gifter's
- * reservations, while the gifter may still open it.
+ * reservations: what it says now, while the gifter may still open it, or only
+ * that it's archived, while its archiving hides it from them.
  */
-export interface ReservationWishlist {
+export type ReservationWishlist = OpenReservationWishlist | { archived: true };
+
+/** A list the gifter may still open, as the Booked page reads it. */
+export interface OpenReservationWishlist {
+  archived: false;
   /** The list's current slug, which the card links it by (`null` if it has none). */
   slug: string | null;
   /**
@@ -29,6 +34,8 @@ interface StoredOccasion {
 
 interface StoredWishlist {
   _id: mongoose.Types.ObjectId;
+  owners: mongoose.Types.ObjectId[];
+  archived?: boolean;
   slug?: string | null;
   occasion?: StoredOccasion | null;
 }
@@ -40,15 +47,20 @@ interface StoredWishlist {
  *
  * A Reservation outlives the gifter's access to its list (leave, kick, the
  * list archived or made private: see `models/Reservation.ts`), so a list is
- * only returned while the gifter may still open it. That's decided by
+ * only returned in full while the gifter may still open it. That's decided by
  * `viewableWishlistsFilter`, the query form of `getWishlistViewAccess`, applied
- * inside that one query. A list they may no longer open has no entry, as a
- * deleted one has none, so nothing it says now reaches them: not its occasion,
- * and not its slug, which an owner can change, and which is made from its name.
- * Whether a list has an entry is all a reservation's `listOpen` says: whether
- * the gifter may open it, which is theirs to know. Without one the card names
- * the list as the reservation's snapshot has it, unlinked, as no longer
- * available to them.
+ * inside that one query. A list they may no longer open for any other reason
+ * has no entry, as a deleted one has none, so nothing it says now reaches them:
+ * not its occasion, and not its slug, which an owner can change, and which is
+ * made from its name. Without one the card names the list as the
+ * reservation's snapshot has it, unlinked, as no longer available to them.
+ *
+ * An archived list (owner-only: `isHiddenByArchive`) is the one exception
+ * (WIS-124): its entry says only that it's archived, and the reservation is
+ * shown frozen, as its snapshot alone, marked as on an archived list, with
+ * nothing live of the list or of its item. The same query finds it, and once
+ * the list is unarchived it's back to whatever the rules above give it. An
+ * owner is never hidden from their own list, archived or not.
  */
 export async function readReservationWishlists(
   gifterId: string,
@@ -65,13 +77,30 @@ export async function readReservationWishlists(
     getFriendIds(gifter),
   ]);
   const lists = await Wishlist.find({
-    $and: [{ _id: { $in: ids } }, viewableWishlistsFilter({ id: gifterId, memberOf, friendIds })],
+    $and: [
+      { _id: { $in: ids } },
+      {
+        $or: [
+          viewableWishlistsFilter({ id: gifterId, memberOf, friendIds }),
+          // Archived, whatever the gifter's access to it would be otherwise:
+          // only marked so (below), unless they own it.
+          { archived: true },
+        ],
+      },
+    ],
   })
-    .select('slug occasion')
+    .select('slug occasion archived owners')
     .lean<StoredWishlist[]>();
 
   return new Map(
-    lists.map((w) => [w._id.toString(), { slug: w.slug ?? null, occasion: toOccasion(w.occasion) }])
+    lists.map((w): [string, ReservationWishlist] => [
+      w._id.toString(),
+      // A list that isn't archived only matched as one they may open, and so
+      // did an archived one they own.
+      isHiddenByArchive(w, gifterId)
+        ? { archived: true }
+        : { archived: false, slug: w.slug ?? null, occasion: toOccasion(w.occasion) },
+    ])
   );
 }
 
