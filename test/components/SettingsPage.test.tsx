@@ -87,6 +87,8 @@ let failPatch: boolean;
 let holdGet: Promise<void> | null;
 /** How many GETs of the profile the page has sent. */
 let gets: number;
+/** Set to make every GET fail: the route answering 500, or the network. */
+let failGet: 'server' | 'network' | null;
 
 const fetchMock = vi.fn();
 
@@ -102,6 +104,7 @@ beforeEach(() => {
   failPatch = false;
   holdGet = null;
   gets = 0;
+  failGet = null;
   auth.set('authenticated');
   server = {
     _id: 'me',
@@ -116,6 +119,9 @@ beforeEach(() => {
     const method = init?.method ?? 'GET';
     if (url === '/api/users/me' && method === 'GET') {
       gets += 1;
+      if (failGet === 'network') throw new TypeError('Failed to fetch');
+      if (failGet === 'server')
+        return reply({ success: false, error: 'Failed to fetch user' }, 500);
       // Read now, answered once let go: a save can land in between.
       const read = { ...server, privacy: { ...server.privacy } };
       if (holdGet) await holdGet;
@@ -321,5 +327,59 @@ describe('the account settings form', () => {
     });
     expect(searchable()).toHaveAttribute('aria-checked', 'false');
     expect(save()).toBeDisabled();
+  });
+});
+
+describe('settings that couldn’t be loaded', () => {
+  // regression: a failed read of the profile left the form up, blank (no
+  // username, USD) and editable, as if the account had lost its settings, with
+  // a Save that could never turn on. A 500 didn't even toast.
+  it.each(['server', 'network'] as const)(
+    'regression: shows no form until the profile is read, and says so when that fails (%s)',
+    async (failure) => {
+      failGet = failure;
+      render(<SettingsPage />);
+
+      await screen.findByRole('heading', { name: 'Couldn’t load your settings' });
+      expect(screen.queryByRole('switch', { name: 'Searchable' })).toBeNull();
+      expect(screen.queryByRole('textbox')).toBeNull();
+      expect(screen.queryByRole('combobox', { name: 'Default currency' })).toBeNull();
+      expect(screen.queryByRole('button', { name: /save changes/i })).toBeNull();
+      expect(showToast).not.toHaveBeenCalled();
+
+      failGet = null;
+      await userEvent.setup().click(screen.getByRole('button', { name: 'Try again' }));
+
+      // The form, filled from the profile.
+      await screen.findByRole('switch', { name: 'Searchable' });
+      expect(screen.getByRole('textbox', { name: 'Bio' })).toHaveValue('I collect mugs.');
+      expect(screen.getByText('alice@example.com')).toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: 'Couldn’t load your settings' })).toBeNull();
+      expect(gets).toBe(2);
+      expect(showToast).not.toHaveBeenCalled();
+    }
+  );
+
+  it('keeps the form when a reload after a save fails', async () => {
+    const user = await openSettings();
+    update.mockImplementation(async () => {
+      auth.set('loading');
+      await Promise.resolve();
+      auth.set('authenticated');
+    });
+
+    // A photo change refreshes the session, which reads the profile again: that read fails.
+    await user.click(screen.getByRole('button', { name: 'Finish upload' }));
+    failGet = 'network';
+    await user.click(save());
+    await waitFor(() => expect(gets).toBe(2));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(screen.getByRole('switch', { name: 'Searchable' })).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Bio' })).toHaveValue('I collect mugs.');
+    expect(screen.queryByRole('heading', { name: 'Couldn’t load your settings' })).toBeNull();
+    expect(showToast).toHaveBeenCalledWith('Failed to load settings', 'error');
   });
 });

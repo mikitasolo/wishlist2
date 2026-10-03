@@ -4,6 +4,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import Link from 'next/link';
 import Icon from './Icon';
 import Avatar from './Avatar';
+import LoadError from './LoadError';
 import { useBodyScrollLock } from '@/lib/hooks/useBodyScrollLock';
 import { useFocusTrap } from '@/lib/hooks/useFocusTrap';
 import { plural } from '@/lib/utils/plural';
@@ -34,7 +35,13 @@ export default function FollowListModal({
   const [tab, setTab] = useState<FollowTab>(initialTab);
   // Cache each tab's list so switching back is instant.
   const [cache, setCache] = useState<Partial<Record<FollowTab, FollowUser[]>>>({});
-  const [loading, setLoading] = useState(false);
+  // From the start: the first tab's list is read as soon as the dialog opens,
+  // and until then it would show as empty.
+  const [loading, setLoading] = useState(true);
+  // The tab whose list couldn't be read: said in its place, with Try again
+  // (`attempt`), never as "No followers yet". Switching tabs reads it afresh.
+  const [failedTab, setFailedTab] = useState<FollowTab | null>(null);
+  const [attempt, setAttempt] = useState(0);
 
   useBodyScrollLock(true);
 
@@ -56,20 +63,24 @@ export default function FollowListModal({
     if (cache[tab]) return;
     let cancelled = false;
     setLoading(true);
+    setFailedTab(null);
     fetch(`/api/users/${userId}/${tab}`, { cache: 'no-store' })
       .then((r) => r.json())
       .then((res) => {
         if (cancelled) return;
-        if (res.success) setCache((c) => ({ ...c, [tab]: res.data as FollowUser[] }));
+        if (!res.success || !Array.isArray(res.data)) throw new Error();
+        setCache((c) => ({ ...c, [tab]: res.data as FollowUser[] }));
       })
-      .catch(() => {})
+      .catch(() => {
+        if (!cancelled) setFailedTab(tab);
+      })
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
     return () => {
       cancelled = true;
     };
-  }, [tab, userId, cache]);
+  }, [tab, userId, cache, attempt]);
 
   const list = cache[tab];
 
@@ -136,6 +147,18 @@ export default function FollowListModal({
                 </div>
               ))}
             </div>
+          ) : !list && failedTab === tab ? (
+            <LoadError
+              compact
+              level={3}
+              title={tab === 'followers' ? 'Couldn’t load followers' : 'Couldn’t load following'}
+              onRetry={() => {
+                // Its button goes with it while the list is read again: keep
+                // focus in the dialog rather than let it drop to <body>.
+                dialogRef.current?.focus();
+                setAttempt((n) => n + 1);
+              }}
+            />
           ) : list && list.length > 0 ? (
             list.map((u) => (
               <Link

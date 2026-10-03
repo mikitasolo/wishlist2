@@ -7,6 +7,7 @@ import { useSession } from 'next-auth/react';
 import AppHeader from '@/components/AppHeader';
 import AuthButton from '@/components/AuthButton';
 import Icon from '@/components/Icon';
+import LoadError from '@/components/LoadError';
 import OccasionLabel from '@/components/OccasionLabel';
 import { useToast } from '@/components/ToastProvider';
 import SnapshotThumb from '@/components/SnapshotThumb';
@@ -120,6 +121,11 @@ export default function BookedPage() {
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [gifts, setGifts] = useState<Gift[]>([]);
   const [loading, setLoading] = useState(true);
+  // The account's first load failed: said in place, with Try again, never as
+  // "Nothing reserved yet". Until its lists have been shown (`shown`), every
+  // read, a return to the tab's included, is a first load.
+  const [loadFailed, setLoadFailed] = useState(false);
+  const shown = useRef(false);
   // Reservations and gift-log entries whose action is still in flight, per id.
   const { busy, run, running } = useBusyIds();
   const [giftConfirm, setGiftConfirm] = useState<string | null>(null);
@@ -157,48 +163,59 @@ export default function BookedPage() {
     setReleaseConfirm(null);
     setDeleteGiftConfirm(null);
     setLoading(true);
+    setLoadFailed(false);
+    shown.current = false;
   }, [userId, changes]);
 
-  // Reads both lists. An account's first load (`quiet` false) shows the
-  // skeleton until it lands, and says so if it fails. A later read updates the
-  // cards in place, and one that fails keeps them, silently. Every read is
+  // Reads both lists. Until the account's lists have been shown, a read is
+  // their first load: the skeleton stands until it lands (`loading`), and it
+  // shows both lists or neither, since one on its own would claim the other is
+  // empty. If either fails, the page says so in their place, with Try again,
+  // and no toast. A later read updates the cards in place, and one that fails
+  // keeps them, silently (either list it did read still lands). Every read is
   // merged with what the page did while it was on its way (a gift, dismissal or
   // delete it may predate) and leaves a card whose action is in flight alone.
   // One outdated by a newer read, or by another account signing in, is ignored.
-  const load = useCallback(
-    (quiet: boolean) => {
-      const sentAt = changes.stamp();
-      readInFlight.current = sentAt;
-      void Promise.all([
-        readList<Reservation>('/api/users/me/reservations'),
-        readList<Gift>('/api/users/me/gifts'),
-      ]).then(([readReservations, readGifts]) => {
-        if (readInFlight.current === sentAt) readInFlight.current = null;
-        if (!readReservations && !readGifts) {
-          if (quiet || changes.outdated(sentAt)) return;
-          showToast('Failed to load your reservations', 'error');
-          setLoading(false);
-          return;
-        }
-        const since = changes.land(sentAt);
-        if (!since) return;
-        if (readReservations) {
-          setReservations((prev) =>
-            mergeRefreshedList(prev, readReservations, since, { held: running })
-          );
-        }
-        if (readGifts) {
-          setGifts((prev) =>
-            mergeRefreshedList(prev, readGifts, since, { held: running, compare: newestFirst })
-          );
-        }
-        if (quiet) return;
-        if (!readReservations || !readGifts) showToast('Failed to load some data', 'error');
+  const load = useCallback(() => {
+    const sentAt = changes.stamp();
+    readInFlight.current = sentAt;
+    void Promise.all([
+      readList<Reservation>('/api/users/me/reservations'),
+      readList<Gift>('/api/users/me/gifts'),
+    ]).then(([readReservations, readGifts]) => {
+      if (readInFlight.current === sentAt) readInFlight.current = null;
+      if (!shown.current && (!readReservations || !readGifts)) {
+        if (changes.outdated(sentAt)) return;
+        setLoadFailed(true);
         setLoading(false);
-      });
-    },
-    [changes, running, showToast]
-  );
+        return;
+      }
+      if (!readReservations && !readGifts) return;
+      const since = changes.land(sentAt);
+      if (!since) return;
+      if (readReservations) {
+        setReservations((prev) =>
+          mergeRefreshedList(prev, readReservations, since, { held: running })
+        );
+      }
+      if (readGifts) {
+        setGifts((prev) =>
+          mergeRefreshedList(prev, readGifts, since, { held: running, compare: newestFirst })
+        );
+      }
+      shown.current = true;
+      setLoadFailed(false);
+      setLoading(false);
+    });
+  }, [changes, running]);
+
+  // Try again, after the first load failed: the skeleton, then a fresh read,
+  // unless a return to the tab has just sent one, which then decides.
+  function retryLoad() {
+    setLoadFailed(false);
+    setLoading(true);
+    if (readInFlight.current === null) load();
+  }
 
   // Load, then read both lists again whenever the user comes back to the tab,
   // for reservations made, gifted or released, and gifts logged or deleted, in
@@ -208,12 +225,12 @@ export default function BookedPage() {
   useEffect(() => {
     if (status !== 'authenticated') return;
     const refresh = () => {
-      if (readInFlight.current === null) load(true);
+      if (readInFlight.current === null) load();
     };
     const onVisibilityChange = () => {
       if (document.visibilityState === 'visible') refresh();
     };
-    load(false);
+    load();
     window.addEventListener('focus', refresh);
     document.addEventListener('visibilitychange', onVisibilityChange);
     return () => {
@@ -255,13 +272,13 @@ export default function BookedPage() {
   function reservationGone(id: string) {
     dropReservation(id);
     showToast('This reservation no longer exists', 'info');
-    load(true);
+    load();
   }
 
   function giftGone(id: string) {
     dropGift(id);
     showToast('This gift is no longer in your history', 'info');
-    load(true);
+    load();
   }
 
   function markGifted(id: string) {
@@ -350,7 +367,7 @@ export default function BookedPage() {
           showToast('Released. Others on the list can reserve it now.', 'success');
         } else if (RELEASE_REFUSED.has(res.status)) {
           showToast(RELEASE_REFUSED_MESSAGE, 'info');
-          load(true);
+          load();
         } else {
           showToast(result.error || 'Something went wrong', 'error');
         }
@@ -418,6 +435,10 @@ export default function BookedPage() {
                 </div>
               ))}
             </div>
+          </div>
+        ) : loadFailed ? (
+          <div className="mt-8">
+            <LoadError title="Couldn’t load your reservations" onRetry={retryLoad} />
           </div>
         ) : (
           <div className="mt-8 space-y-12">

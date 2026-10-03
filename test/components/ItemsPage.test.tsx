@@ -213,3 +213,54 @@ describe('/items — counts and archived lists', () => {
     expect(screen.queryByRole('button', { name: 'Include archived lists' })).toBeNull();
   });
 });
+
+describe('/items — a first load that fails', () => {
+  // regression: a failed read toasted, then said "No items yet", which claims
+  // the lists are empty.
+  it.each([
+    [
+      'a 5xx',
+      async () => ({ ok: false, json: async () => ({ success: false, error: 'Something broke' }) }),
+    ],
+    [
+      'a network error',
+      async () => {
+        throw new TypeError('Failed to fetch');
+      },
+    ],
+  ])('regression: says so in place after %s, and Try again reads them afresh', async (_l, fail) => {
+    replies[BASE] = fail;
+    render(<MyItemsPage />);
+
+    expect(
+      await screen.findByRole('heading', { name: 'Couldn’t load your items' })
+    ).toBeInTheDocument();
+    expect(screen.queryByText('No items yet')).toBeNull();
+    expect(screen.queryByRole('button', { name: /^All \d+$/ })).toBeNull();
+    expect(showToast).not.toHaveBeenCalled();
+
+    replies[BASE] = reply(ACTIVE);
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+
+    expect(await screen.findByText('Bike', { selector: 'p' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Couldn’t load your items' })).toBeNull();
+    expect(requested()).toEqual([BASE, BASE]);
+    expect(showToast).not.toHaveBeenCalled();
+  });
+
+  it('restores the saved list filter from the read that succeeds, not the failed one', async () => {
+    localStorage.setItem('items-wishlist-filters', JSON.stringify(['flat']));
+    replies[BASE] = async () => {
+      throw new TypeError('Failed to fetch');
+    };
+    render(<MyItemsPage />);
+    await screen.findByRole('heading', { name: 'Couldn’t load your items' });
+
+    replies[BASE] = reply([...ACTIVE, item('Rug', 'available', 'flat')]);
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+
+    expect(await screen.findByText('Rug', { selector: 'p' })).toBeInTheDocument();
+    expect(shown('Bike')).toBeNull();
+    expect(JSON.parse(localStorage.getItem('items-wishlist-filters') ?? '[]')).toEqual(['flat']);
+  });
+});

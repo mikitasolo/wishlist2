@@ -8,6 +8,7 @@ import AuthButton from '@/components/AuthButton';
 import Button from '@/components/Button';
 import Icon from '@/components/Icon';
 import ImageUpload from '@/components/ImageUpload';
+import LoadError from '@/components/LoadError';
 import Select from '@/components/Select';
 import Toggle from '@/components/Toggle';
 import UsernameField from '@/components/UsernameField';
@@ -29,6 +30,13 @@ export default function SettingsPage() {
   const { showToast } = useToast();
 
   const [loading, setLoading] = useState(true);
+  // The profile couldn't be read the first time: said in place, with Try again
+  // (`attempt`), and no form. One filled with defaults (no username, USD)
+  // would look as if the account had lost its settings. Once the form has
+  // been filled (`filled`), a reload that fails keeps it.
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  const filled = useRef(false);
   const [saving, setSaving] = useState(false);
   const [email, setEmail] = useState('');
   // The form, and the profile as it was last filled from it (`saved`, null
@@ -73,19 +81,29 @@ export default function SettingsPage() {
       try {
         const res = await fetch('/api/users/me', { cache: 'no-store' });
         const result = await res.json();
-        if (result.success && !inFlight && saves.current.sent === sent) {
+        if (!result.success) {
+          if (!filled.current) setLoadFailed(true);
+        } else if (!inFlight && saves.current.sent === sent) {
           setEmail(result.data.email);
           // Edits not saved yet stay in the form.
           refill(profileSettings(result.data));
+          filled.current = true;
         }
       } catch {
-        showToast('Failed to load settings', 'error');
+        if (filled.current) showToast('Failed to load settings', 'error');
+        else setLoadFailed(true);
       } finally {
         setLoading(false);
       }
     }
     if (status === 'authenticated') load();
-  }, [status, showToast, refill]);
+  }, [status, showToast, refill, attempt]);
+
+  const retryLoad = useCallback(() => {
+    setLoadFailed(false);
+    setLoading(true);
+    setAttempt((n) => n + 1);
+  }, []);
 
   // The dashboard's currency prompt sends "Choose another currency" here: once the
   // form is in, focus the currency picker (which scrolls it into view).
@@ -155,12 +173,31 @@ export default function SettingsPage() {
     );
   }
 
+  const heading = (
+    <>
+      <h1 className="mb-1 text-3xl font-semibold tracking-tight text-foreground">Settings</h1>
+      <p className="mb-8 text-muted-foreground">Manage your identity and privacy.</p>
+    </>
+  );
+
+  // Never the form before the profile has been read into it.
+  if (loadFailed || !saved) {
+    return (
+      <div className="min-h-screen">
+        <AppHeader actions={<AuthButton />} />
+        <main className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
+          {heading}
+          <LoadError title="Couldn’t load your settings" onRetry={retryLoad} />
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen">
       <AppHeader actions={<AuthButton />} />
       <main className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
-        <h1 className="mb-1 text-3xl font-semibold tracking-tight text-foreground">Settings</h1>
-        <p className="mb-8 text-muted-foreground">Manage your identity and privacy.</p>
+        {heading}
 
         {/* Profile */}
         <section className="mb-6 rounded-2xl border border-border bg-surface p-6 shadow-md">

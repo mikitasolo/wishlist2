@@ -338,7 +338,7 @@ describe("an owner's confirmations", () => {
     items = null;
     const user = userEvent.setup();
     render(<WishlistDetail />);
-    await waitFor(() => expect(showToast).toHaveBeenCalledWith('Failed to load items', 'error'));
+    await screen.findByRole('heading', { name: 'Couldn’t load this list’s items' });
     await openManage(user);
 
     await user.click(screen.getByRole('button', { name: 'Delete wishlist' }));

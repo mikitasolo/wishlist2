@@ -7,6 +7,7 @@ import { useSession } from 'next-auth/react';
 import AppHeader from '@/components/AppHeader';
 import AuthButton from '@/components/AuthButton';
 import Icon from '@/components/Icon';
+import LoadError from '@/components/LoadError';
 import Select from '@/components/Select';
 import FilterDropdown, { type FilterOption } from '@/components/FilterDropdown';
 import MultiSelectDropdown from '@/components/MultiSelectDropdown';
@@ -83,6 +84,11 @@ export default function MyItemsPage() {
   const locale = useViewerLocale();
   const [items, setItems] = useState<MyItem[]>([]);
   const [loading, setLoading] = useState(true);
+  // The first read failed: said in place, with Try again, never as "No items
+  // yet". Only until a read succeeds: a later one that fails (Include
+  // archived) keeps the items shown and says so in a toast.
+  const [loadFailed, setLoadFailed] = useState(false);
+  const loadedOnce = useRef(false);
   const [wishlistFilters, setWishlistFilters] = useState<string[]>([]);
   const [statusFilters, setStatusFilters] = useState<FilterOption[]>([...STATUS_FILTER_OPTIONS]);
   const [sort, setSort] = useState<SortType>('date-desc');
@@ -113,13 +119,16 @@ export default function MyItemsPage() {
         );
         const body = await res.json();
         if (!isLatest()) return;
-        if (body.success) {
-          setItems(body.data as MyItem[]);
-          setArchivedItems(typeof body.archivedItems === 'number' ? body.archivedItems : 0);
-          setIncludeArchived(withArchived);
-        } else showToast('Failed to load items', 'error');
+        if (!body.success) throw new Error('Failed to load items');
+        setItems(body.data as MyItem[]);
+        setArchivedItems(typeof body.archivedItems === 'number' ? body.archivedItems : 0);
+        setIncludeArchived(withArchived);
+        setLoadFailed(false);
+        loadedOnce.current = true;
       } catch {
-        if (isLatest()) showToast('Failed to load items', 'error');
+        if (!isLatest()) return;
+        if (loadedOnce.current) showToast('Failed to load items', 'error');
+        else setLoadFailed(true);
       } finally {
         // A failed read leaves the box as the items shown were read.
         if (isLatest()) {
@@ -140,21 +149,31 @@ export default function MyItemsPage() {
     void loadItems(next);
   };
 
+  const retryLoad = () => {
+    setLoadFailed(false);
+    setLoading(true);
+    void loadItems(false);
+  };
+
+  // The filters wait for the first read that succeeds, so a failed one can't
+  // be taken for "no lists" when they're restored.
+  const ready = !loading && !loadFailed;
+
   // Restore the persisted sort once loaded (independent of items), and delete
   // a status filter an earlier version saved, so it can't come back.
   useEffect(() => {
-    if (loading) return;
+    if (!ready) return;
     forgetSavedStatusFilters(localStorage);
     const storedSort = localStorage.getItem(LS_SORT);
     if (isSortType(storedSort)) setSort(storedSort);
-  }, [loading]);
+  }, [ready]);
 
   // Restore the list filter once items (and therefore valid ids) are known;
   // fall back to "all lists". Stale ids from deleted (or archived) lists are
   // dropped. After that, each read Include archived makes selects the lists it
   // adds and drops the ones it takes away, back to all lists if that leaves none.
   useEffect(() => {
-    if (loading) return;
+    if (!ready) return;
     const ids = new Set(items.map((i) => i.wishlistId));
     const previous = loadedListIds.current;
     loadedListIds.current = ids;
@@ -181,13 +200,13 @@ export default function MyItemsPage() {
       }
     }
     setWishlistFilters(Array.from(ids));
-  }, [loading, items]);
+  }, [ready, items]);
 
   // Persist changes (skip empty selections so a transient state can't clobber).
   useEffect(() => {
-    if (loading || wishlistFilters.length === 0) return;
+    if (!ready || wishlistFilters.length === 0) return;
     localStorage.setItem(LS_LISTS, JSON.stringify(wishlistFilters));
-  }, [loading, wishlistFilters]);
+  }, [ready, wishlistFilters]);
 
   // Distinct lists the user owns (from the loaded items — no extra fetch).
   const wishlistOptions = useMemo(() => {
@@ -275,6 +294,10 @@ export default function MyItemsPage() {
               ))}
             </div>
           </>
+        ) : loadFailed ? (
+          <div className="mt-8">
+            <LoadError title="Couldn’t load your items" onRetry={retryLoad} />
+          </div>
         ) : items.length === 0 ? (
           <div className="mt-8 flex flex-col items-center rounded-3xl border border-dashed border-border-strong py-20 text-center">
             <span className="mb-5 inline-flex h-16 w-16 items-center justify-center rounded-3xl bg-primary-500/12 text-accent dark:text-primary-300">

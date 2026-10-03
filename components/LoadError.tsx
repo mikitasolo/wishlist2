@@ -12,6 +12,8 @@ interface LoadErrorProps {
   /** The title's heading level (see `StatePanel`). */
   level?: 1 | 2 | 3;
   body?: ReactNode;
+  /** Smaller, inside a dialog (see `StatePanel`). */
+  compact?: boolean;
 }
 
 /**
@@ -19,12 +21,17 @@ interface LoadErrorProps {
  * `readResource`), in place of what it would have shown, with Try again. Never
  * for a refusal (missing, or hidden from the viewer), which trying again won't
  * change.
+ *
+ * A page shows it when its first load fails, instead of its empty state (which
+ * would claim there's nothing there) and without a toast. A later read that
+ * fails (a poll, a refresh) keeps what the page already shows.
  */
 export default function LoadError({
   title,
   onRetry,
   level = 2,
   body = 'Check your connection and try again.',
+  compact = false,
 }: LoadErrorProps) {
   return (
     <StatePanel
@@ -33,7 +40,12 @@ export default function LoadError({
       title={title}
       level={level}
       body={body}
-      actions={<Button onClick={onRetry}>Try again</Button>}
+      compact={compact}
+      actions={
+        <Button size={compact ? 'sm' : 'md'} onClick={onRetry}>
+          Try again
+        </Button>
+      }
     />
   );
 }

@@ -131,7 +131,7 @@ const shown = () =>
 
 /** Whether the items have been read: the cards, or any of the page's answers for none. */
 const ANSWERS =
-  /^(Your list is empty|Nothing here yet|No items yet|No items found|Failed to load items)$/;
+  /^(Your list is empty|Nothing here yet|No items yet|No items found|Couldn’t load this list’s items)$/;
 
 /** Open the list and wait for its first read of the items to land. */
 async function open() {
@@ -285,9 +285,12 @@ describe('a list with no items at all', () => {
     itemsFail = true;
     await open();
 
-    expect(screen.getByRole('heading', { name: 'Failed to load items' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: 'Couldn’t load this list’s items' })
+    ).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Your list is empty' })).toBeNull();
-    expect(showToast).toHaveBeenCalledWith('Failed to load items', 'error');
+    expect(screen.queryByRole('button', { name: 'Add your first item' })).toBeNull();
+    expect(showToast).not.toHaveBeenCalled();
   });
 });
 

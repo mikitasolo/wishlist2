@@ -447,12 +447,18 @@ export default function WishlistDetail() {
   // off the polls for longer than that.
   const [mutations] = useState(createMutationTracker);
 
-  // Whether a read of the list has landed yet. Until one has, an empty `items`
-  // means the list couldn't be loaded, not that it has no items.
+  // Whether a read of the items has landed yet (`itemsShown` too, for
+  // `fetchItems` to read). Until one has, an empty `items` doesn't mean the
+  // list has no items, so the page shows no counts or controls for them: the
+  // skeleton while the first read is on its way, and if it failed
+  // (`itemsFailed`) a panel saying so, with Try again. A poll that lands
+  // meanwhile fills the list in.
   const [itemsLoaded, setItemsLoaded] = useState(false);
-  // Failed items reads the page showed the skeleton for (the first, or the one
-  // after leaving Manage), and how many of them have been answered (see the
-  // effect after `fetchItems`).
+  const itemsShown = useRef(false);
+  const [itemsFailed, setItemsFailed] = useState(false);
+  // Failed items reads the page showed the skeleton for once the items had
+  // been shown (the one after leaving Manage), and how many of them have been
+  // answered (see the effect after `fetchItems`).
   const [itemsReadFailures, setItemsReadFailures] = useState(0);
   const itemsReadFailuresSeen = useRef(0);
 
@@ -462,6 +468,8 @@ export default function WishlistDetail() {
 
       if (!silent) {
         setLoadingItems(true);
+        // The skeleton again, not the panel, while this read is on its way.
+        setItemsFailed(false);
       }
 
       // The number the request went out as (see `readsSent`). It stays 0 for a
@@ -487,6 +495,8 @@ export default function WishlistDetail() {
         }
         setItems(read.items);
         setItemsLoaded(true);
+        setItemsFailed(false);
+        itemsShown.current = true;
       } catch (error) {
         // The list was deleted, archived or made private, or the viewer taken
         // off it, since the page loaded (or it never was theirs to see): the
@@ -497,7 +507,9 @@ export default function WishlistDetail() {
         }
         console.error('Error fetching items:', error);
         if (!silent) {
-          setItemsReadFailures((n) => n + 1);
+          // Until the items have been shown, the panel in their place says so.
+          if (itemsShown.current) setItemsReadFailures((n) => n + 1);
+          else setItemsFailed(true);
         }
       } finally {
         if (!silent) {
@@ -508,9 +520,15 @@ export default function WishlistDetail() {
     [fetchItemsHook, wishlistId, mutations, readRefused]
   );
 
-  // A failed items read the page showed the skeleton for is toasted, but only
-  // about a list on screen. It can land before the list read, so it waits for
-  // that: a list that turns out unavailable, or couldn't be read, says so itself.
+  // Try again, after the first items read failed: the skeleton, then a fresh read.
+  const retryItems = useCallback(() => {
+    void fetchItems();
+  }, [fetchItems]);
+
+  // A failed items read the page showed the skeleton for, once the items had
+  // been shown, is toasted, but only about a list on screen. It waits for the
+  // list read to have landed: a list that turns out unavailable, or couldn't be
+  // read, says so itself.
   useEffect(() => {
     if (pageLoad === 'loading' || itemsReadFailures === itemsReadFailuresSeen.current) return;
     itemsReadFailuresSeen.current = itemsReadFailures;
@@ -1222,6 +1240,23 @@ export default function WishlistDetail() {
     return null;
   }, [selectedFilters, filterOptions]);
 
+  // Adding an item claims nothing about the ones there, so the button is there
+  // while the first read of them is on its way too.
+  const addItemButton = (
+    <div className="mb-6 sm:mb-8">
+      {isOwner && (
+        <Button onClick={() => setShowAddItemModal(true)} size="md">
+          + Add Item
+        </Button>
+      )}
+      {isMember && !isOwner && (
+        <Button onClick={() => setShowProposeItemModal(true)} size="md">
+          + Propose Item
+        </Button>
+      )}
+    </div>
+  );
+
   const cardMeta: Record<FilterOption, { label: string; value: number; valueClass: string }> = {
     // "All", not "Total Items": an owner's includes drafts and proposals, and
     // "N items" means published items only (lib/utils/itemCounts.ts).
@@ -1443,227 +1478,250 @@ export default function WishlistDetail() {
               )}
             </div>
 
-            {/* Stat cards, toolbar and Add Item: not on an empty list, where the
+            {!itemsLoaded ? (
+              // No read of the items has landed yet: no counts or controls,
+              // which would claim the list is empty (see `itemsLoaded`).
+              itemsFailed ? (
+                <LoadError title="Couldn’t load this list’s items" onRetry={retryItems} />
+              ) : (
+                <>
+                  {/* The stat cards, search and controls to come, as they'll be laid out */}
+                  <div
+                    className="mb-6 grid gap-3 sm:mb-8 sm:gap-4"
+                    style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(8rem, 1fr))' }}
+                  >
+                    {filterOptions.map((key) => (
+                      <div key={key} className="skeleton h-[70px] rounded-xl sm:h-[78px]" />
+                    ))}
+                  </div>
+                  <div className="mb-6 flex flex-col gap-3 sm:mb-8 sm:gap-4">
+                    <div className="skeleton h-10 rounded-xl" />
+                    <div className="flex flex-col gap-3 sm:flex-row sm:gap-4">
+                      {Array.from({ length: session?.user ? 3 : 2 }).map((_, i) => (
+                        <div key={i} className="flex flex-col gap-1.5 sm:flex-1">
+                          <div className="skeleton h-3 w-16 rounded" />
+                          <div className="skeleton h-10 rounded-xl" />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  {addItemButton}
+                  <SkeletonGrid count={8} variant="item" />
+                </>
+              )
+            ) : (
+              <>
+                {/* Stat cards, toolbar and Add Item: not on an empty list, where the
                 cards would all be zero, the filters would have nothing to filter,
                 and the empty state below offers the add (or the proposal) itself */}
-            {!listIsEmpty && (
-              <>
-                {/* Stat cards — full-width row; click to filter the list by that status */}
-                <div
-                  className="mb-6 grid gap-3 sm:mb-8 sm:gap-4"
-                  style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(8rem, 1fr))' }}
-                >
-                  {filterOptions.map((key) => {
-                    const meta = cardMeta[key];
-                    const active = activeCardKey === key;
-                    return (
-                      <button
-                        key={key}
-                        type="button"
-                        onClick={() => applyCardFilter(key)}
-                        aria-pressed={active}
-                        title={`Show ${meta.label.toLowerCase()}`}
-                        className={`rounded-xl border bg-surface p-3 text-left shadow-sm transition-all sm:p-4 ${
-                          active
-                            ? 'border-accent ring-1 ring-accent'
-                            : 'border-border hover:border-border-strong hover:bg-surface-hover'
-                        }`}
-                      >
-                        <p className="mb-1 truncate text-xs text-muted-foreground sm:text-sm">
-                          {meta.label}
-                        </p>
-                        <p className={`text-2xl font-bold sm:text-3xl ${meta.valueClass}`}>
-                          {meta.value}
-                        </p>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* Search + controls */}
-                <div className="mb-6 flex flex-col gap-3 sm:mb-8 sm:gap-4">
-                  {/* Search — its own full-width row */}
-                  <div className="flex h-10 items-center gap-2 rounded-xl border border-border-strong bg-surface px-3.5">
-                    <Icon name="search" size={18} className="flex-shrink-0 text-muted-foreground" />
-                    <input
-                      type="text"
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      placeholder="Search items by name…"
-                      aria-label="Search items by name"
-                      className="h-full min-w-0 flex-1 border-0 bg-transparent text-sm outline-none"
-                    />
-                    {searchQuery && (
-                      <button
-                        type="button"
-                        onClick={() => setSearchQuery('')}
-                        aria-label="Clear search"
-                        className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                      >
-                        <Icon name="close" size={15} />
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Status · Sort · Currency — equal labelled fields */}
-                  <div className="flex flex-col gap-3 sm:flex-row sm:gap-4">
-                    <div className="flex flex-col gap-1.5 sm:flex-1">
-                      <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                        Status
-                      </span>
-                      <FilterDropdown
-                        options={filterOptions}
-                        selectedFilters={selectedFilters}
-                        onChange={chooseStatusFilters}
-                        defaultFilters={defaultFilters}
-                        ariaLabel="Filter by status"
-                        className="w-full"
-                      />
-                    </div>
-
-                    <div className="flex flex-col gap-1.5 sm:flex-1">
-                      <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                        Sort
-                      </span>
-                      <Select
-                        value={sortBy}
-                        onChange={handleSortChange}
-                        ariaLabel="Sort items by"
-                        triggerClassName="w-full"
-                        options={SORT_OPTIONS}
-                      />
-                    </div>
-
-                    {session?.user && (
-                      <div className="flex flex-col gap-1.5 sm:flex-1">
-                        <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                          Show prices in
-                        </span>
-                        <Select
-                          value={priceCurrency}
-                          onChange={setPriceCurrency}
-                          options={priceOptions}
-                          ariaLabel="Show prices in"
-                          triggerClassName="w-full"
-                        />
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Add Item Button */}
-                <div className="mb-6 sm:mb-8">
-                  {isOwner && (
-                    <Button onClick={() => setShowAddItemModal(true)} size="md">
-                      + Add Item
-                    </Button>
-                  )}
-                  {isMember && !isOwner && (
-                    <Button onClick={() => setShowProposeItemModal(true)} size="md">
-                      + Propose Item
-                    </Button>
-                  )}
-                </div>
-              </>
-            )}
-
-            {/* Items Grid */}
-            {loadingItems ? (
-              <SkeletonGrid count={8} variant="item" />
-            ) : !itemsLoaded && items.length === 0 ? (
-              // No read has landed yet (the failed one toasted). Don't claim the
-              // list is empty: the poll keeps retrying, and fills it in if one lands.
-              <div className="flex flex-col items-center rounded-2xl border border-dashed border-border-strong py-16 text-center sm:py-20">
-                <span className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-red-500/12 text-red-600 dark:text-red-400">
-                  <Icon name="alert" size={28} />
-                </span>
-                <h3 className="text-lg font-semibold text-foreground sm:text-xl">
-                  Failed to load items
-                </h3>
-                <p className="mx-auto mt-1.5 max-w-sm px-4 text-sm text-muted-foreground">
-                  Try reloading the page.
-                </p>
-              </div>
-            ) : listIsEmpty ? (
-              // Nothing on the list (that this viewer can see), so it says so,
-              // with what each role can do about it, rather than blaming a filter.
-              <div className="flex flex-col items-center rounded-2xl border border-dashed border-border-strong px-4 py-16 text-center sm:py-20">
-                <span className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
-                  <Icon name="gift" size={28} />
-                </span>
-                <h3 className="text-lg font-semibold text-foreground sm:text-xl">
-                  {isOwner ? 'Your list is empty' : isMember ? 'Nothing here yet' : 'No items yet'}
-                </h3>
-                {isOwner && (
+                {!listIsEmpty && (
                   <>
-                    <p className="mx-auto mt-1.5 max-w-sm text-sm text-muted-foreground">
-                      Add the things you&apos;d love to get. You can keep them as drafts until
-                      you&apos;re ready to share.
-                    </p>
-                    <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
-                      <Button onClick={() => setShowAddItemModal(true)} size="md">
-                        Add your first item
-                      </Button>
-                      {/* Not on an archived list, as the header's Share isn't. */}
-                      {!wishlist.archived && <ShareButton variant="button" />}
+                    {/* Stat cards — full-width row; click to filter the list by that status */}
+                    <div
+                      className="mb-6 grid gap-3 sm:mb-8 sm:gap-4"
+                      style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(8rem, 1fr))' }}
+                    >
+                      {filterOptions.map((key) => {
+                        const meta = cardMeta[key];
+                        const active = activeCardKey === key;
+                        return (
+                          <button
+                            key={key}
+                            type="button"
+                            onClick={() => applyCardFilter(key)}
+                            aria-pressed={active}
+                            title={`Show ${meta.label.toLowerCase()}`}
+                            className={`rounded-xl border bg-surface p-3 text-left shadow-sm transition-all sm:p-4 ${
+                              active
+                                ? 'border-accent ring-1 ring-accent'
+                                : 'border-border hover:border-border-strong hover:bg-surface-hover'
+                            }`}
+                          >
+                            <p className="mb-1 truncate text-xs text-muted-foreground sm:text-sm">
+                              {meta.label}
+                            </p>
+                            <p className={`text-2xl font-bold sm:text-3xl ${meta.valueClass}`}>
+                              {meta.value}
+                            </p>
+                          </button>
+                        );
+                      })}
                     </div>
+
+                    {/* Search + controls */}
+                    <div className="mb-6 flex flex-col gap-3 sm:mb-8 sm:gap-4">
+                      {/* Search — its own full-width row */}
+                      <div className="flex h-10 items-center gap-2 rounded-xl border border-border-strong bg-surface px-3.5">
+                        <Icon
+                          name="search"
+                          size={18}
+                          className="flex-shrink-0 text-muted-foreground"
+                        />
+                        <input
+                          type="text"
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          placeholder="Search items by name…"
+                          aria-label="Search items by name"
+                          className="h-full min-w-0 flex-1 border-0 bg-transparent text-sm outline-none"
+                        />
+                        {searchQuery && (
+                          <button
+                            type="button"
+                            onClick={() => setSearchQuery('')}
+                            aria-label="Clear search"
+                            className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                          >
+                            <Icon name="close" size={15} />
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Status · Sort · Currency — equal labelled fields */}
+                      <div className="flex flex-col gap-3 sm:flex-row sm:gap-4">
+                        <div className="flex flex-col gap-1.5 sm:flex-1">
+                          <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                            Status
+                          </span>
+                          <FilterDropdown
+                            options={filterOptions}
+                            selectedFilters={selectedFilters}
+                            onChange={chooseStatusFilters}
+                            defaultFilters={defaultFilters}
+                            ariaLabel="Filter by status"
+                            className="w-full"
+                          />
+                        </div>
+
+                        <div className="flex flex-col gap-1.5 sm:flex-1">
+                          <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                            Sort
+                          </span>
+                          <Select
+                            value={sortBy}
+                            onChange={handleSortChange}
+                            ariaLabel="Sort items by"
+                            triggerClassName="w-full"
+                            options={SORT_OPTIONS}
+                          />
+                        </div>
+
+                        {session?.user && (
+                          <div className="flex flex-col gap-1.5 sm:flex-1">
+                            <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                              Show prices in
+                            </span>
+                            <Select
+                              value={priceCurrency}
+                              onChange={setPriceCurrency}
+                              options={priceOptions}
+                              ariaLabel="Show prices in"
+                              triggerClassName="w-full"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {addItemButton}
                   </>
                 )}
-                {isMember && !isOwner && (
-                  <Button onClick={() => setShowProposeItemModal(true)} size="md" className="mt-6">
-                    Propose an item
-                  </Button>
+
+                {/* Items Grid */}
+                {loadingItems ? (
+                  <SkeletonGrid count={8} variant="item" />
+                ) : listIsEmpty ? (
+                  // Nothing on the list (that this viewer can see), so it says so,
+                  // with what each role can do about it, rather than blaming a filter.
+                  <div className="flex flex-col items-center rounded-2xl border border-dashed border-border-strong px-4 py-16 text-center sm:py-20">
+                    <span className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
+                      <Icon name="gift" size={28} />
+                    </span>
+                    <h3 className="text-lg font-semibold text-foreground sm:text-xl">
+                      {isOwner
+                        ? 'Your list is empty'
+                        : isMember
+                          ? 'Nothing here yet'
+                          : 'No items yet'}
+                    </h3>
+                    {isOwner && (
+                      <>
+                        <p className="mx-auto mt-1.5 max-w-sm text-sm text-muted-foreground">
+                          Add the things you&apos;d love to get. You can keep them as drafts until
+                          you&apos;re ready to share.
+                        </p>
+                        <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+                          <Button onClick={() => setShowAddItemModal(true)} size="md">
+                            Add your first item
+                          </Button>
+                          {/* Not on an archived list, as the header's Share isn't. */}
+                          {!wishlist.archived && <ShareButton variant="button" />}
+                        </div>
+                      </>
+                    )}
+                    {isMember && !isOwner && (
+                      <Button
+                        onClick={() => setShowProposeItemModal(true)}
+                        size="md"
+                        className="mt-6"
+                      >
+                        Propose an item
+                      </Button>
+                    )}
+                  </div>
+                ) : sortedItems.length === 0 ? (
+                  // There are items, but the search or the status filter hides every one.
+                  <div className="flex flex-col items-center rounded-2xl border border-dashed border-border-strong px-4 py-16 text-center sm:py-20">
+                    <span className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
+                      <Icon name="package" size={28} />
+                    </span>
+                    <h3 className="text-lg font-semibold text-foreground sm:text-xl">
+                      No items found
+                    </h3>
+                    <p className="mx-auto mt-1.5 max-w-sm text-sm text-muted-foreground">
+                      {searchQuery.trim()
+                        ? `No items match “${searchQuery.trim()}”.`
+                        : 'No items match the selected filters.'}
+                    </p>
+                    <Button onClick={showAllItems} variant="secondary" size="md" className="mt-6">
+                      Show all
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
+                    {sortedItems.map((item) => (
+                      <WishlistItem
+                        key={item._id}
+                        item={item}
+                        onUpdate={handleUpdateItem}
+                        onEdit={
+                          // Owners can edit non-proposed items
+                          // Proposers can edit their own proposed items
+                          (isOwner && item.status !== 'proposed') ||
+                          (item.status === 'proposed' &&
+                            item.proposedBy?.toString() === session?.user?.id)
+                            ? handleEditItem
+                            : undefined
+                        }
+                        onReview={
+                          isOwner && item.status === 'proposed'
+                            ? () => setItemToReview(item)
+                            : undefined
+                        }
+                        onSaveToList={
+                          // Any signed-in viewer, owners too (to copy between their lists)
+                          canCopyItem(item, session?.user?.id) ? setItemToSave : undefined
+                        }
+                        isAuthenticated={!!session?.user}
+                        isOwner={isOwner}
+                        isMember={isMember}
+                        priceCurrency={priceCurrency}
+                        rates={rates}
+                      />
+                    ))}
+                  </div>
                 )}
-              </div>
-            ) : sortedItems.length === 0 ? (
-              // There are items, but the search or the status filter hides every one.
-              <div className="flex flex-col items-center rounded-2xl border border-dashed border-border-strong px-4 py-16 text-center sm:py-20">
-                <span className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
-                  <Icon name="package" size={28} />
-                </span>
-                <h3 className="text-lg font-semibold text-foreground sm:text-xl">No items found</h3>
-                <p className="mx-auto mt-1.5 max-w-sm text-sm text-muted-foreground">
-                  {searchQuery.trim()
-                    ? `No items match “${searchQuery.trim()}”.`
-                    : 'No items match the selected filters.'}
-                </p>
-                <Button onClick={showAllItems} variant="secondary" size="md" className="mt-6">
-                  Show all
-                </Button>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
-                {sortedItems.map((item) => (
-                  <WishlistItem
-                    key={item._id}
-                    item={item}
-                    onUpdate={handleUpdateItem}
-                    onEdit={
-                      // Owners can edit non-proposed items
-                      // Proposers can edit their own proposed items
-                      (isOwner && item.status !== 'proposed') ||
-                      (item.status === 'proposed' &&
-                        item.proposedBy?.toString() === session?.user?.id)
-                        ? handleEditItem
-                        : undefined
-                    }
-                    onReview={
-                      isOwner && item.status === 'proposed'
-                        ? () => setItemToReview(item)
-                        : undefined
-                    }
-                    onSaveToList={
-                      // Any signed-in viewer, owners too (to copy between their lists)
-                      canCopyItem(item, session?.user?.id) ? setItemToSave : undefined
-                    }
-                    isAuthenticated={!!session?.user}
-                    isOwner={isOwner}
-                    isMember={isMember}
-                    priceCurrency={priceCurrency}
-                    rates={rates}
-                  />
-                ))}
-              </div>
+              </>
             )}
           </>
         )}

@@ -58,6 +58,9 @@ export default function UserProfile() {
   const [profileLoad, setProfileLoad] = useState<'shown' | 'missing' | 'failed'>('shown');
   const [attempt, setAttempt] = useState(0);
   const [restricted, setRestricted] = useState(false);
+  // The profile is shown, but its wishlists couldn't be read: said in their
+  // place, with Try again, never as "No wishlists to show".
+  const [listsFailed, setListsFailed] = useState(false);
   const [followBusy, setFollowBusy] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const viewerId = session?.user?.id ?? null;
@@ -99,6 +102,7 @@ export default function UserProfile() {
       try {
         setLoading(true);
         setRestricted(false);
+        setListsFailed(false);
         setProfileLoad('shown');
 
         const read = await readResource<Profile>(
@@ -126,12 +130,13 @@ export default function UserProfile() {
         if (!wishlistsResponse.ok) throw new Error('Failed to fetch wishlists');
         const wishlistsResult = await wishlistsResponse.json();
         if (!current) return;
-        if (wishlistsResult.success) setWishlists(wishlistsResult.data || []);
-        else showToast('Failed to load wishlists', 'error');
+        if (!wishlistsResult.success) throw new Error('Failed to fetch wishlists');
+        setWishlists(wishlistsResult.data || []);
       } catch (error) {
         if (!current) return;
         console.error('Error fetching profile:', error);
-        showToast('Failed to load profile', 'error');
+        setWishlists([]);
+        setListsFailed(true);
       } finally {
         if (current) setLoading(false);
       }
@@ -140,7 +145,7 @@ export default function UserProfile() {
     return () => {
       current = false;
     };
-  }, [username, status, viewerId, showToast, attempt]);
+  }, [username, status, viewerId, attempt]);
 
   async function toggleFollow() {
     if (!profile || followBusy) return;
@@ -341,6 +346,15 @@ export default function UserProfile() {
               connect.
             </p>
           </div>
+        ) : listsFailed ? (
+          <LoadError
+            title={
+              profile?.isSelf
+                ? 'Couldn’t load your wishlists'
+                : `Couldn’t load @${profile?.username}’s wishlists`
+            }
+            onRetry={() => setAttempt((n) => n + 1)}
+          />
         ) : wishlists.length === 0 ? (
           <div className="flex flex-col items-center rounded-3xl border border-dashed border-border-strong py-16 text-center sm:py-20">
             <span className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
