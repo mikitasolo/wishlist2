@@ -180,8 +180,10 @@ export function SkeletonGrid({
 }) {
   return (
     <div
-      {...(variant === 'wishlist' ? { 'data-wishlist-cards': '' } : {})}
-      className={`${variant === 'item' ? ITEM_GRID_CLASSES : WISHLIST_GRID_CLASSES} ${className}`}
+      data-wishlist-cards={variant === 'wishlist' ? '' : undefined}
+      className={[variant === 'item' ? ITEM_GRID_CLASSES : WISHLIST_GRID_CLASSES, className]
+        .filter(Boolean)
+        .join(' ')}
     >
       {Array.from({ length: count }).map((_, i) =>
         variant === 'item' ? (

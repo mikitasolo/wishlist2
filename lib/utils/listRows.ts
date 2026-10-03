@@ -11,7 +11,7 @@ import { formatItemCount, formatOwnerItemSummary } from '@/lib/utils/itemCounts'
 
 /** What a row's meta line is made from: the fields `GET /api/wishlists` sends. */
 export interface RowMetaList {
-  /** Every owner's id. Only its length is read: how many owners the list has. */
+  /** Every owner's id, in the list's owner order (the primary first). */
   owners?: readonly unknown[] | null;
   /** The primary owner's username (null when they have none). */
   ownerUsername?: string | null;
@@ -35,15 +35,21 @@ function ownerCount(list: RowMetaList): number {
 }
 
 /**
- * Who the row names. On someone else's list (`shared`), its primary owner,
- * plus how many co-owners it has ("@dan_w +1"). On your own list, only the
- * co-owners you share it with ("with @ben_carter"), and nothing on a list
+ * Who a row (or a card) names. On someone else's list (`shared`), its primary
+ * owner, plus how many co-owners it has ("@dan_w +1"). On your own list, only
+ * the co-owners you share it with ("with @ben_carter"), and nothing on a list
  * that's yours alone. Never an email: a user without a username is named by
  * `publicDisplayName`.
+ *
+ * Your co-owners are told from you by id (`viewerId` against `owners`), never
+ * by username, which can change under a page that's open. A co-owner's
+ * username is matched to their id only when every owner has one, since
+ * `ownerUsernames` leaves out those who don't; otherwise the first co-owner is
+ * named "Someone".
  */
 export function rowOwnerLabel(
   list: RowMetaList,
-  { shared, viewerUsername }: { shared: boolean; viewerUsername?: string | null }
+  { shared, viewerId }: { shared: boolean; viewerId?: string | null }
 ): string | null {
   const others = ownerCount(list) - 1;
   if (shared) {
@@ -51,7 +57,10 @@ export function rowOwnerLabel(
     return others > 0 ? `${primary} +${others}` : primary;
   }
   if (others === 0) return null;
-  const coOwner = (list.ownerUsernames ?? []).find((u) => u !== viewerUsername);
+  const ids = (list.owners ?? []).map(String);
+  const usernames = list.ownerUsernames ?? [];
+  const at = ids.findIndex((id) => id !== viewerId);
+  const coOwner = usernames.length === ids.length && at >= 0 ? usernames[at] : null;
   const rest = others - 1;
   return `with ${shownName(coOwner)}${rest > 0 ? ` +${rest}` : ''}`;
 }
@@ -63,7 +72,7 @@ export function rowOwnerLabel(
  */
 export function rowMeta(
   list: RowMetaList,
-  options: { shared: boolean; viewerUsername?: string | null }
+  options: { shared: boolean; viewerId?: string | null }
 ): string {
   const items = options.shared
     ? formatItemCount(list.itemCount ?? 0)

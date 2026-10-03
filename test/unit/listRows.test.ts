@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { rowMeta, rowOwnerLabel } from '@/lib/utils/listRows';
 
 describe('rowOwnerLabel — a list shared with you', () => {
-  const shared = { shared: true, viewerUsername: 'me' };
+  const shared = { shared: true, viewerId: 'me-id' };
 
   it('names the owner by username', () => {
     expect(rowOwnerLabel({ owners: ['o1'], ownerUsername: 'ben' }, shared)).toBe('@ben');
@@ -29,7 +29,7 @@ describe('rowOwnerLabel — a list shared with you', () => {
 });
 
 describe('rowOwnerLabel — your own list', () => {
-  const own = { shared: false, viewerUsername: 'me' };
+  const own = { shared: false, viewerId: 'me-id' };
 
   it('says nothing on a list that is yours alone', () => {
     expect(rowOwnerLabel({ owners: ['me-id'], ownerUsername: 'me' }, own)).toBeNull();
@@ -60,6 +60,16 @@ describe('rowOwnerLabel — your own list', () => {
       'with Someone'
     );
   });
+
+  // The usernames could be stale (a rename in another tab): the viewer is told
+  // apart by id, so they're never named as their own co-owner.
+  it('tells you apart by id, whatever your username', () => {
+    const list = { owners: ['me-id', 'b-id'], ownerUsernames: ['old-me', 'ben'] };
+    expect(rowOwnerLabel(list, own)).toBe('with @ben');
+    expect(
+      rowOwnerLabel({ ...list, owners: ['b-id', 'me-id'], ownerUsernames: ['ben', 'old-me'] }, own)
+    ).toBe('with @ben');
+  });
 });
 
 describe('rowMeta', () => {
@@ -77,7 +87,7 @@ describe('rowMeta', () => {
     expect(
       rowMeta(
         { owners: ['me-id'], itemCount: 11, draftCount: 2, proposalCount: 1 },
-        { shared: false, viewerUsername: 'me' }
+        { shared: false, viewerId: 'me-id' }
       )
     ).toBe('11 items · 2 drafts · 1 to review');
     expect(rowMeta({ owners: ['me-id'], itemCount: 1 }, { shared: false })).toBe('1 item');
@@ -87,7 +97,7 @@ describe('rowMeta', () => {
     expect(
       rowMeta(
         { owners: ['me-id', 'b-id'], ownerUsernames: ['me', 'ben'], itemCount: 12 },
-        { shared: false, viewerUsername: 'me' }
+        { shared: false, viewerId: 'me-id' }
       )
     ).toBe('with @ben · 12 items');
   });

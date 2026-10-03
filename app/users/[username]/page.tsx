@@ -18,7 +18,7 @@ import Badge from '@/components/Badge';
 import LoadError from '@/components/LoadError';
 import EmptyState from '@/components/EmptyState';
 import { buttonClassName, CONTROL_ICON_SIZE } from '@/components/buttonStyles';
-import { Skeleton, SkeletonGrid } from '@/components/Skeleton';
+import { Skeleton, SkeletonGrid, WISHLIST_GRID_CLASSES } from '@/components/Skeleton';
 import { useToast } from '@/components/ToastProvider';
 import { pluralNoun } from '@/lib/utils/plural';
 import { readResource } from '@/lib/utils/resourceRead';
@@ -364,7 +364,7 @@ export default function UserProfile() {
                 })}
           />
         ) : (
-          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className={WISHLIST_GRID_CLASSES}>
             {wishlists.map((wishlist) => (
               <WishlistCard key={wishlist._id.toString()} wishlist={wishlist} showOwner />
             ))}

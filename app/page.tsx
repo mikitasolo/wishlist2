@@ -536,7 +536,7 @@ export default function Home() {
                     New list
                   </Button>
                 </div>
-                <WishlistList wishlists={ownedByOccasion} viewerUsername={profileUsername} />
+                <WishlistList wishlists={ownedByOccasion} viewerId={session.user.id} />
               </section>
             )}
 
@@ -551,8 +551,12 @@ export default function Home() {
               </section>
             )}
 
-            {/* Archived, folded away at the end */}
-            <ArchivedLists wishlists={archivedOwned} viewerUsername={profileUsername} />
+            {/* Archived, folded away at the end: open when there's nothing above it. */}
+            <ArchivedLists
+              wishlists={archivedOwned}
+              viewerId={session.user.id}
+              defaultOpen={activeOwned.length === 0 && member.length === 0}
+            />
           </div>
         )}
       </main>
@@ -575,8 +579,9 @@ export default function Home() {
  * land, so nothing moves when it does: the Featured picker's row, the bento
  * (the featured card over two rows at `lg`, and four stat tiles, the Items
  * tile a line taller for its drafts line), then a section heading over a row
- * of lists (rows on a phone, cards from `sm`). The picker only shows for someone who owns a list, which is
- * nearly everyone who gets this far with lists to show.
+ * of lists (rows on a phone, cards from `sm`). The picker only shows for
+ * someone who owns a list, which is nearly everyone who gets this far with
+ * lists to show.
  */
 function DashboardSkeleton() {
   return (

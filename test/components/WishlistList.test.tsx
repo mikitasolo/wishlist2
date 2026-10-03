@@ -119,7 +119,7 @@ describe('WishlistRow — content', () => {
             draftCount: 2,
           }),
         ]}
-        viewerUsername="me"
+        viewerId="me-id"
       />
     );
     const [row] = rows();
@@ -183,7 +183,7 @@ describe('WishlistRow — content', () => {
   it('names the co-owners of a list of yours, not you', () => {
     render(
       <WishlistList
-        viewerUsername="me"
+        viewerId="me-id"
         wishlists={[
           list('Books', {
             owners: ['me-id', 'ben-id'],
@@ -211,6 +211,31 @@ describe('WishlistRow — content', () => {
     expect(carla).not.toHaveTextContent('reserved by you');
     // No Member badge on a row either.
     expect(ben).not.toHaveTextContent(/member/i);
+  });
+
+  it('shows your own list’s visibility beside its name, and not on a shared or archived row', () => {
+    render(
+      <WishlistList
+        wishlists={[
+          list('Birthday', { visibility: 'private' }),
+          list('Old', { visibility: 'everyone', archived: true }),
+        ]}
+      />
+    );
+    const [birthday, old] = rows();
+    expect(birthday).toHaveAccessibleName(expect.stringContaining('Invite only'));
+    expect(within(birthday).getByTitle('Invite only')).toBeInTheDocument();
+    expect(old).not.toHaveTextContent('Public');
+  });
+
+  it('shows no visibility on a list shared with you', () => {
+    render(
+      <WishlistList
+        shared
+        wishlists={[list('Ben’s list', { owners: ['b'], ownerUsername: 'ben' })]}
+      />
+    );
+    expect(rows()[0]).not.toHaveTextContent('Public');
   });
 
   it('never shows a reservation count on a row of your own list', () => {
@@ -269,6 +294,16 @@ describe('ArchivedLists — the disclosure', () => {
       'Last year',
       'Old notes',
     ]);
+  });
+
+  it('starts open where it is all the page has to show', () => {
+    atWidth(390);
+    render(<ArchivedLists wishlists={archived} defaultOpen />);
+    expect(screen.getByRole('button', { name: 'Archived (2)' })).toHaveAttribute(
+      'aria-expanded',
+      'true'
+    );
+    expect(screen.getAllByRole('link')).toHaveLength(2);
   });
 
   it('renders nothing without an archived list', () => {

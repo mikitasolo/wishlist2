@@ -24,7 +24,7 @@ type Wishlist = IWishlist & {
 
 export default function MyWishlistsPage() {
   const { data: session, status } = useSession();
-  const viewerUsername = (session?.user as { username?: string } | undefined)?.username ?? null;
+  const viewerId = session?.user?.id ?? null;
   const router = useRouter();
   const { showToast } = useToast();
   const [owned, setOwned] = useState<Wishlist[]>([]);
@@ -104,11 +104,13 @@ export default function MyWishlistsPage() {
           />
         ) : (
           <div className="mt-8 space-y-12">
-            {active.length > 0 && (
-              <WishlistList wishlists={active} viewerUsername={viewerUsername} />
-            )}
-            {/* Archived, folded away at the end */}
-            <ArchivedLists wishlists={archived} viewerUsername={viewerUsername} />
+            {active.length > 0 && <WishlistList wishlists={active} viewerId={viewerId} />}
+            {/* Archived, folded away at the end: open when it's all there is. */}
+            <ArchivedLists
+              wishlists={archived}
+              viewerId={viewerId}
+              defaultOpen={active.length === 0}
+            />
           </div>
         )}
       </main>

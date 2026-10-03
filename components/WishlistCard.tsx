@@ -9,6 +9,8 @@ import ReservedByYouChip from '@/components/ReservedByYouChip';
 import OccasionLabel, { OCCASION_ON_COVER } from '@/components/OccasionLabel';
 import { coverBadge } from '@/lib/utils/visibility';
 import { formatOwnerItemSummary } from '@/lib/utils/itemCounts';
+import { publicDisplayName } from '@/lib/utils/displayName';
+import { rowOwnerLabel } from '@/lib/utils/listRows';
 
 /** A list as the list screens get it from `GET /api/wishlists`: a card's or a row's data. */
 export type WishlistSummary = IWishlist & {
@@ -58,8 +60,10 @@ export default function WishlistCard({
   showOwner = false,
   showRole = true,
 }: WishlistCardProps) {
-  const ownerName = wishlist.ownerUsername || 'unknown';
-  const coOwnerCount = Math.max(0, (wishlist.ownerUsernames?.length ?? 1) - 1);
+  // The primary owner and how many co-owners, named as the list's phone row
+  // names them (`rowOwnerLabel`): "@dan_w +1", or "Someone" with no username.
+  const ownerName = publicDisplayName({ username: wishlist.ownerUsername });
+  const ownerLabel = rowOwnerLabel(wishlist, { shared: true });
   // "N items", plus the drafts and proposals to review on a list you own.
   const itemSummary = formatOwnerItemSummary({
     items: wishlist.itemCount ?? 0,
@@ -125,10 +129,7 @@ export default function WishlistCard({
           {showOwner ? (
             <span className="flex min-w-0 items-center gap-2">
               <Avatar name={ownerName} src={wishlist.ownerImage} size="sm" />
-              <span className="truncate text-meta text-muted-foreground">
-                @{ownerName}
-                {coOwnerCount > 0 && ` +${coOwnerCount}`}
-              </span>
+              <span className="truncate text-meta text-muted-foreground">{ownerLabel}</span>
             </span>
           ) : (
             <span />

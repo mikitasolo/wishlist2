@@ -10,6 +10,7 @@ import ReservedByYouChip from '@/components/ReservedByYouChip';
 import WishlistCard, { type WishlistSummary } from '@/components/WishlistCard';
 import { SM_UP_QUERY, useMediaQuery } from '@/lib/hooks/useMediaQuery';
 import { rowMeta } from '@/lib/utils/listRows';
+import { getVisibility, visibilityMeta } from '@/lib/utils/visibility';
 import { WISHLIST_GRID_CLASSES, WISHLIST_ROWS_CLASSES } from '@/components/Skeleton';
 
 /**
@@ -27,7 +28,7 @@ import { WISHLIST_GRID_CLASSES, WISHLIST_ROWS_CLASSES } from '@/components/Skele
 export default function WishlistList({
   wishlists,
   shared = false,
-  viewerUsername,
+  viewerId,
 }: {
   wishlists: WishlistSummary[];
   /**
@@ -35,8 +36,8 @@ export default function WishlistList({
    * many you've reserved there, and no Member badge (the section says so).
    */
   shared?: boolean;
-  /** The viewer's username, so a row of a co-owned list of theirs names the others. */
-  viewerUsername?: string | null;
+  /** The viewer's user id, so a row of a co-owned list of theirs names the others. */
+  viewerId?: string | null;
 }) {
   // true from `sm` up, false below it, null until known (the server render and
   // the one that hydrates it), when both are rendered and CSS picks.
@@ -47,11 +48,7 @@ export default function WishlistList({
         <ul data-wishlist-rows className={`${WISHLIST_ROWS_CLASSES} sm:hidden`}>
           {wishlists.map((w) => (
             <li key={w._id.toString()}>
-              <WishlistRow
-                wishlist={w}
-                meta={rowMeta(w, { shared, viewerUsername })}
-                shared={shared}
-              />
+              <WishlistRow wishlist={w} shared={shared} viewerId={viewerId} />
             </li>
           ))}
         </ul>
@@ -73,25 +70,30 @@ export default function WishlistList({
 }
 
 /**
- * A list as one compact row, about 72px tall, that links to it: a 56px square
- * of its cover, its name, then its meta line ("@owner · 9 items", see
- * `rowMeta`) and its occasion. The occasion counts down from the viewer's
- * local date (`OccasionLabel`), and a yearly one never shows its stored year.
- * The meta line and the occasion share a line, and the occasion goes under it
- * when both don't fit. On a list shared with you, "N reserved by you" follows
- * (`ReservedByYouChip`, nothing at 0); your own list's row says nothing about
- * reservations. An archived list's row is greyed, as its card is.
+ * A list as one compact row that links to it: a 56px square of its cover, its
+ * name, then its meta line ("@owner · 9 items", see `rowMeta`) and its
+ * occasion. 72px tall when they fit on one line under the name, as the row's
+ * skeleton is; the occasion (and a chip) wraps under the meta line when they
+ * don't, rather than cutting the count off. The occasion counts down from the
+ * viewer's local date (`OccasionLabel`), and a yearly one never shows its
+ * stored year. Your own list's row shows its visibility as an icon beside the
+ * name (an archived one is greyed instead, as its card is) and says nothing
+ * about reservations; on a list shared with you, "N reserved by you" follows
+ * (`ReservedByYouChip`, nothing at 0).
  */
 export function WishlistRow({
   wishlist,
-  meta,
   shared = false,
+  viewerId,
 }: {
   wishlist: WishlistSummary;
-  meta: string;
-  /** A list shared with you, which may carry your own reservations' count. */
+  /** A list shared with you: its owner is named, with your own reservations' count. */
   shared?: boolean;
+  /** The viewer's user id, so a co-owned list of theirs names the other owners. */
+  viewerId?: string | null;
 }) {
+  const meta = rowMeta(wishlist, { shared, viewerId });
+  const visibility = shared || wishlist.archived ? null : visibilityMeta[getVisibility(wishlist)];
   return (
     <Link
       href={`/wishlists/${wishlist.slug ?? wishlist._id}`}
@@ -108,8 +110,16 @@ export function WishlistRow({
         }`}
       />
       <span className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate text-body font-semibold text-foreground transition-colors group-hover:text-accent">
-          {wishlist.name}
+        <span className="flex min-w-0 items-center gap-1.5">
+          <span className="truncate text-body font-semibold text-foreground transition-colors group-hover:text-accent">
+            {wishlist.name}
+          </span>
+          {visibility ? (
+            <span title={visibility.label} className="flex-shrink-0 text-muted-foreground">
+              <Icon name={visibility.icon} size={16} />
+              <span className="sr-only">, {visibility.label}</span>
+            </span>
+          ) : null}
         </span>
         <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1">
           <span className="min-w-0 truncate text-meta text-muted-foreground">{meta}</span>
@@ -133,16 +143,20 @@ export function WishlistRow({
  * A disclosure (`aria-expanded`) inside the section's heading, so the heading
  * is still there to jump to. Open, it shows them as every section does: rows
  * on a phone, cards from `sm` up. Only owners have archived lists, and only
- * their own pages pass any; nothing renders without one.
+ * their own pages pass any; nothing renders without one. A page with nothing
+ * else of yours to show (every list you own is archived) opens it to begin
+ * with (`defaultOpen`), so it isn't one closed row on an otherwise empty page.
  */
 export function ArchivedLists({
   wishlists,
-  viewerUsername,
+  viewerId,
+  defaultOpen = false,
 }: {
   wishlists: WishlistSummary[];
-  viewerUsername?: string | null;
+  viewerId?: string | null;
+  defaultOpen?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   const regionId = useId();
   if (wishlists.length === 0) return null;
   return (
@@ -171,7 +185,7 @@ export function ArchivedLists({
       <div id={regionId}>
         {open && (
           <div className="mt-5">
-            <WishlistList wishlists={wishlists} viewerUsername={viewerUsername} />
+            <WishlistList wishlists={wishlists} viewerId={viewerId} />
           </div>
         )}
       </div>

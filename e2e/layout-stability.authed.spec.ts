@@ -74,7 +74,8 @@ for (const width of [390, 1280]) {
 
       // Where the cards start, and how wide each one is. A card's height
       // depends on its description, so it isn't held to its skeleton's; a
-      // phone's row is always as tall as its skeleton.
+      // phone's row is as tall as its skeleton while its meta line fits on one
+      // line, as the seeded lists' do.
       expectSameBox(await box(grid), before.grid, ['x', 'y', 'width'], 'grid');
       expectSameBox(
         await box(grid.locator('> *').first()),
