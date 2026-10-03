@@ -92,6 +92,23 @@ describe('AuthButton — signing out', () => {
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Sign out' }));
   }
 
+  // regression (WIS-251 review): signOut reloads the page before the session
+  // reads as signed out, so the hint was never cleared and the next load held
+  // the signed-in header's shape, then jumped to Sign in.
+  it('regression: forgets the session hint before signing out', async () => {
+    localStorage.setItem('session-hint', '1');
+    document.documentElement.setAttribute('data-session-hint', '');
+    let hintWhenSignedOut: string | null = 'unread';
+    vi.mocked(signOut).mockImplementationOnce(async () => {
+      hintWhenSignedOut = localStorage.getItem('session-hint');
+      return undefined as never;
+    });
+    await signOutFrom('/');
+    expect(signOut).toHaveBeenCalledTimes(1);
+    expect(hintWhenSignedOut).toBeNull();
+    expect(document.documentElement).not.toHaveAttribute('data-session-hint');
+  });
+
   // A page that needs an account sends a signed-out visitor to sign in, so
   // reloading it once signed out would land on the sign-in form.
   it.each([...AUTH_ONLY_PATHS])('goes home from %s, a page that needs an account', async (path) => {
@@ -136,7 +153,6 @@ describe('AuthButton — the account menu from the keyboard', () => {
     expect(menu()).not.toContainElement(screen.getByText('me@example.com'));
     expect(screen.getAllByRole('menuitem').map((el) => el.textContent)).toEqual([
       'Your profile',
-      'Reserved by you',
       'Settings',
       'Sign out',
     ]);
@@ -145,8 +161,8 @@ describe('AuthButton — the account menu from the keyboard', () => {
   it('moves with the arrow keys, Home and End, through the theme choice too', async () => {
     const user = await openFromKeyboard();
     await user.keyboard('{ArrowDown}');
-    expect(item('Reserved by you')).toHaveFocus();
-    await user.keyboard('{ArrowDown}{ArrowDown}');
+    expect(item('Settings')).toHaveFocus();
+    await user.keyboard('{ArrowDown}');
     expect(radio('Light')).toHaveFocus();
     await user.keyboard('{ArrowDown}');
     expect(radio('Dark')).toHaveFocus();
@@ -203,7 +219,6 @@ describe('AuthButton — the account menu from the keyboard', () => {
   it('links each page item to its page', async () => {
     await openFromKeyboard();
     expect(item('Your profile')).toHaveAttribute('href', '/users/mikita');
-    expect(item('Reserved by you')).toHaveAttribute('href', '/booked');
     expect(item('Settings')).toHaveAttribute('href', '/settings');
   });
 
@@ -211,5 +226,66 @@ describe('AuthButton — the account menu from the keyboard', () => {
     const user = await openFromKeyboard();
     await user.keyboard('{End}{Enter}');
     expect(signOut).toHaveBeenCalledTimes(1);
+  });
+});
+
+// WIS-251: pages you go to are in the navigation (Home, Reserved, Activity,
+// Me), so the account menu keeps only the account's own things (D3).
+describe('AuthButton — what the account menu holds', () => {
+  const accountButton = () => screen.getByRole('button', { name: /^account menu/i });
+
+  it('has exactly your profile, Settings, the theme and Sign out', async () => {
+    render(<AuthButton />);
+    fireEvent.click(accountButton());
+    const menu = await screen.findByRole('menu', { name: 'Account' });
+
+    const entries = [...menu.querySelectorAll('[role="menuitem"], [role="group"]')].map((el) =>
+      el.getAttribute('role') === 'group' ? el.getAttribute('aria-label') : el.textContent
+    );
+    expect(entries).toEqual(['Your profile', 'Settings', 'Theme', 'Sign out']);
+    expect(screen.queryByRole('menuitem', { name: /reserved/i })).toBeNull();
+    expect(document.querySelector('a[href="/booked"]')).toBeNull();
+    expect(document.querySelector('a[href="/notifications"]')).toBeNull();
+  });
+
+  it("shows its owner's own email in its header, and the avatar alone on the button", async () => {
+    render(<AuthButton />);
+    expect(accountButton()).not.toHaveTextContent('mikita');
+    fireEvent.click(accountButton());
+    expect(await screen.findByText('@mikita')).toBeInTheDocument();
+    expect(screen.getByText('me@example.com')).toBeInTheDocument();
+  });
+
+  it('has no profile item for an account with no username yet', async () => {
+    signedIn.user = { ...me, username: '' };
+    render(<AuthButton />);
+    fireEvent.click(accountButton());
+    await screen.findByRole('menuitem', { name: 'Settings' });
+    expect(screen.getAllByRole('menuitem').map((el) => el.textContent)).toEqual([
+      'Settings',
+      'Sign out',
+    ]);
+  });
+
+  // regression (WIS-209): while the session loaded the button was a bare 40px
+  // circle, and the account button that replaced it was wider, so the header's
+  // buttons jumped sideways on every page load.
+  it('regression: holds both shapes, hidden from assistive tech, while the session loads', () => {
+    signedIn.user = null;
+    signedIn.loading = true;
+    const { container } = render(<AuthButton />);
+
+    expect(screen.queryByRole('button')).toBeNull();
+    const placeholder = container.firstElementChild!;
+    expect(placeholder).toHaveAttribute('aria-hidden', 'true');
+    // The account button's shape under the session hint, Sign in's otherwise.
+    expect(placeholder.querySelector('.session-hint\\:flex')).not.toBeNull();
+    expect(placeholder.querySelector('.session-hint\\:hidden')).toHaveTextContent('Sign in');
+  });
+
+  it('keeps the menu up while a known session is updated', () => {
+    signedIn.loading = true;
+    render(<AuthButton />);
+    expect(accountButton()).toBeInTheDocument();
   });
 });

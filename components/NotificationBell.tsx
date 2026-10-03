@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
 import Icon from '@/components/Icon';
+import { Skeleton } from '@/components/Skeleton';
 import { iconButtonClassName, ICON_BUTTON_ICON_SIZE } from '@/components/buttonStyles';
 
 /**
@@ -12,7 +13,8 @@ import { iconButtonClassName, ICON_BUTTON_ICON_SIZE } from '@/components/buttonS
  * dispatches a `notifications-changed` event (e.g. after marking all read).
  */
 export default function NotificationBell() {
-  const { status } = useSession();
+  // An `update()` puts a known session back through loading: the bell stays.
+  const { data: session, status } = useSession();
   const [unread, setUnread] = useState(0);
 
   const refresh = useCallback(async () => {
@@ -26,6 +28,8 @@ export default function NotificationBell() {
   }, []);
 
   useEffect(() => {
+    // Through an `update()` the count it has stays up until the next read.
+    if (status === 'loading') return;
     if (status !== 'authenticated') {
       setUnread(0);
       return;
@@ -40,7 +44,13 @@ export default function NotificationBell() {
     };
   }, [status, refresh]);
 
-  if (status !== 'authenticated') return null;
+  if (!session?.user) {
+    // While the session loads, its place in the header, where this browser
+    // was signed in last time (the session hint, see AppHeader).
+    return status === 'loading' ? (
+      <Skeleton className="hidden h-10 w-10 flex-shrink-0 rounded-full session-hint:block" />
+    ) : null;
+  }
 
   return (
     <Link

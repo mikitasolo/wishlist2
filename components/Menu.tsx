@@ -110,6 +110,16 @@ const GAP = 8;
 /** px the menu keeps clear of the viewport's edges when it picks a side. */
 const MARGIN = 8;
 
+/**
+ * Where the screen's free space ends: the top of the phone's tab bar while one
+ * is shown (`TabBar`, components/AppNav.tsx), so a menu doesn't open down
+ * behind it, and the bottom of the viewport otherwise.
+ */
+function screenBottom(): number {
+  const bar = document.querySelector('[data-tab-bar]')?.getBoundingClientRect();
+  return bar && bar.height > 0 ? Math.min(window.innerHeight, bar.top) : window.innerHeight;
+}
+
 /** Focus has nowhere to be: it dropped to <body> with whatever held it. */
 const focusIsLost = () => !document.activeElement || document.activeElement === document.body;
 
@@ -221,7 +231,7 @@ export default function Menu({
     const menu = menuRef.current;
     if (!open || !triggerEl || !popover || !menu) return;
     const t = triggerEl.getBoundingClientRect();
-    const roomBelow = window.innerHeight - t.bottom - GAP - MARGIN;
+    const roomBelow = screenBottom() - t.bottom - GAP - MARGIN;
     const roomAbove = t.top - GAP - MARGIN;
     const width = popover.offsetWidth;
     const viewportWidth = document.documentElement.clientWidth || window.innerWidth;

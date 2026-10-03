@@ -38,6 +38,13 @@ type Wishlist = IWishlist & {
   isMember?: boolean;
 };
 
+/**
+ * How many lists a section of Home shows. One with more ends in "See all (n)",
+ * to the section's own page (Your wishlists, Shared with you), which shows them
+ * all: two rows of cards at the widest grid, a screen of rows on a phone.
+ */
+const HOME_SECTION_LIMIT = 8;
+
 /** A count on the dashboard: read, still being read, or couldn't be read. */
 type Count = number | 'loading' | 'failed';
 
@@ -522,9 +529,20 @@ export default function Home() {
                 {/* The heading's line keeps its height: the 36px button
                     reaches into the margin under it. */}
                 <div className="mb-5 flex items-center justify-between gap-3">
-                  <h2 className="px-1 text-xl font-semibold tracking-tight text-foreground">
-                    Your wishlists
-                  </h2>
+                  {/* All items: every item across your lists (`/items`). On
+                      the narrowest phones it goes under the heading rather
+                      than break it. */}
+                  <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 px-1">
+                    <h2 className="whitespace-nowrap text-xl font-semibold tracking-tight text-foreground">
+                      Your wishlists
+                    </h2>
+                    <Link
+                      href="/items"
+                      className="whitespace-nowrap text-sm font-medium text-accent hover:underline"
+                    >
+                      All items
+                    </Link>
+                  </div>
                   <Button
                     variant="secondary"
                     size="sm"
@@ -536,7 +554,11 @@ export default function Home() {
                     New list
                   </Button>
                 </div>
-                <WishlistList wishlists={ownedByOccasion} viewerId={session.user.id} />
+                <WishlistList
+                  wishlists={ownedByOccasion.slice(0, HOME_SECTION_LIMIT)}
+                  viewerId={session.user.id}
+                />
+                <SeeAll href="/wishlists/mine" count={ownedByOccasion.length} />
               </section>
             )}
 
@@ -547,7 +569,8 @@ export default function Home() {
                   Shared with you
                 </h2>
                 {/* The section says you're a member: no badge to repeat it. */}
-                <WishlistList wishlists={sharedByOccasion} shared />
+                <WishlistList wishlists={sharedByOccasion.slice(0, HOME_SECTION_LIMIT)} shared />
+                <SeeAll href="/wishlists/shared" count={sharedByOccasion.length} />
               </section>
             )}
 
@@ -606,9 +629,12 @@ function DashboardSkeleton() {
         </div>
       </div>
       <div>
-        {/* The section heading's line (text-xl), and its New list */}
+        {/* The section heading's line (text-xl) with All items, and its New list */}
         <div className="mb-5 flex h-7 items-center justify-between">
-          <Skeleton className="ml-1 h-5 w-40" />
+          <div className="flex items-center gap-3 px-1">
+            <Skeleton className="h-5 w-36" />
+            <Skeleton className="h-3.5 w-14" />
+          </div>
           <Skeleton className="-my-1 h-9 w-[6.5rem] rounded-full" />
         </div>
         <WishlistListSkeleton count={4} />
@@ -634,6 +660,26 @@ function StatTileSkeleton({ detail = false }: { detail?: boolean }) {
         <Skeleton className="h-8 w-10 rounded-lg" />
         <Skeleton className="h-9 w-[4.5rem] rounded-full" />
       </div>
+    </div>
+  );
+}
+
+/**
+ * "See all (n)" under a section of Home that shows only its first
+ * `HOME_SECTION_LIMIT` lists, to the page with all `count` of them. Nothing
+ * when they all fit.
+ */
+function SeeAll({ href, count }: { href: string; count: number }) {
+  if (count <= HOME_SECTION_LIMIT) return null;
+  return (
+    <div className="mt-4 flex justify-end">
+      <Link
+        href={href}
+        className={buttonClassName({ variant: 'ghost', size: 'sm', shape: 'pill' })}
+      >
+        See all ({count})
+        <Icon name="arrow-right" size={CONTROL_ICON_SIZE.sm} />
+      </Link>
     </div>
   );
 }

@@ -18,7 +18,10 @@ const { showToast, session } = vi.hoisted(() => ({
 }));
 
 vi.mock('next-auth/react', () => ({ useSession: () => session.current, signIn: vi.fn() }));
-vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }) }));
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+  usePathname: () => '/',
+}));
 vi.mock('next/link', () => ({
   default: ({ href, children, ...rest }: { href: string; children: ReactNode }) => (
     <a href={href} {...rest}>
@@ -110,8 +113,15 @@ describe('the header’s New list', () => {
   });
 });
 
-/** The heading's row: the heading and what sits beside it. */
-const headingRow = (heading: HTMLElement) => heading.parentElement as HTMLElement;
+/**
+ * The heading's row: the heading and what sits beside it (on the dashboard the
+ * heading shares a group with All items, so the row is the group's parent).
+ */
+const headingRow = (heading: HTMLElement) => {
+  let row = heading.parentElement as HTMLElement;
+  while (!row.querySelector('button') && row.parentElement) row = row.parentElement;
+  return row;
+};
 
 describe('the dashboard’s New list', () => {
   it('sits beside the Your wishlists heading and opens the create dialog in place', async () => {

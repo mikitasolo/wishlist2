@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Icon from '@/components/Icon';
 import IconButton from '@/components/IconButton';
@@ -31,6 +31,8 @@ interface GlobalSearchProps {
    * signed-out landing page's "find someone's wishlist" entry point.
    */
   variant?: 'header' | 'inline';
+  /** Told whenever the header search opens into its field or folds back (the header makes room). */
+  onOpenChange?: (open: boolean) => void;
 }
 
 /**
@@ -40,10 +42,14 @@ interface GlobalSearchProps {
  * list names as typed. (The invite form's username suggestions call
  * `/api/search` on their own.)
  */
-export default function GlobalSearch({ variant = 'header' }: GlobalSearchProps) {
+export default function GlobalSearch({ variant = 'header', onOpenChange }: GlobalSearchProps) {
   const inline = variant === 'inline';
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  // Before paint, so the header makes room in the same frame the field opens.
+  useLayoutEffect(() => {
+    onOpenChange?.(open);
+  }, [open, onOpenChange]);
   const [q, setQ] = useState('');
   const [users, setUsers] = useState<UserResult[]>([]);
   const [wishlists, setWishlists] = useState<WishlistResult[]>([]);

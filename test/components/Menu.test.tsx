@@ -385,6 +385,38 @@ describe('Menu — placement', () => {
     expect(menu()!.parentElement!.className).toMatch(/\bbottom-full\b/);
   });
 
+  // WIS-251: on a phone the bottom 64px (and the safe area) are the tab bar's,
+  // so a menu that only fits below by reaching under the bar opens above.
+  it('counts the room below only down to the phone tab bar', async () => {
+    const triggerBox = { top: H - 240, bottom: H - 200, left: W - 60, right: W - 20 };
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
+      this: HTMLElement
+    ) {
+      return (
+        this.hasAttribute('data-tab-bar')
+          ? { top: H - 64, bottom: H, height: 64, left: 0, right: W }
+          : triggerBox
+      ) as DOMRect;
+    });
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(150);
+    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(200);
+    const user = userEvent.setup();
+    const { rerender } = render(<Page />);
+    await user.click(trigger());
+    // 200px below the trigger: room for the 150px menu with no bar.
+    expect(menu()!.parentElement!.className).toMatch(/\btop-full\b/);
+    await user.keyboard('{Escape}');
+
+    rerender(
+      <>
+        <Page />
+        <nav data-tab-bar="shown" />
+      </>
+    );
+    await user.click(trigger());
+    expect(menu()!.parentElement!.className).toMatch(/\bbottom-full\b/);
+  });
+
   it('aligns with the left edge of the trigger when right-aligned would run off the screen', async () => {
     fakeLayout({ top: 100, bottom: 140, left: 10, right: 50 }, { width: 200, height: 150 });
     const user = userEvent.setup();
