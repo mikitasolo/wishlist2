@@ -22,7 +22,8 @@ import WishlistMember from '@/models/WishlistMember';
 /**
  * What the Booked page reads of the live list behind each of a gifter's
  * records. `GET /api/users/me/reservations` returns its slug, which the card
- * links it by, and its occasion, which "To give" is grouped by.
+ * links it by, its occasion, which "To give" is grouped by, and `listOpen`,
+ * whether the gifter may open it at all (the card links it only if so).
  * `GET /api/users/me/gifts`, and the gift route's answer (which the page adds
  * to its history as is), return its slug. A Reservation and a GiftLog outlive
  * the gifter's access to their list, so each is only returned while the gifter
@@ -149,6 +150,7 @@ interface Row {
   wishlistId: string | null;
   wishlistSlug: string | null;
   wishlistOccasion?: unknown;
+  listOpen?: boolean;
 }
 
 /** The gifter's reservations, as the Booked page reads them. */
@@ -171,13 +173,24 @@ async function readGifts(): Promise<Row[]> {
 async function shown() {
   const rows = await read();
   expect(rows).toHaveLength(1);
-  return { slug: rows[0].wishlistSlug, occasion: rows[0].wishlistOccasion };
+  return of(rows[0]);
 }
 
+/** What a reservation's row says of its live list. */
+const of = (row: Row) => ({
+  slug: row.wishlistSlug,
+  occasion: row.wishlistOccasion,
+  listOpen: row.listOpen,
+});
+
 /** The list's slug and its (default) occasion, as a gifter who may open it reads them. */
-const visible = (wishlistId: string) => ({ slug: slugs.get(wishlistId), occasion: BIRTHDAY });
-/** Nothing of the live list: the card links it by its id, under "No date". */
-const HIDDEN = { slug: null, occasion: null };
+const visible = (wishlistId: string) => ({
+  slug: slugs.get(wishlistId),
+  occasion: BIRTHDAY,
+  listOpen: true,
+});
+/** Nothing of the live list: the card names it, unlinked, under "No date". */
+const HIDDEN = { slug: null, occasion: null, listOpen: false };
 
 /** The slug the gifter's one gift-history entry comes back with. */
 async function giftSlugShown() {
@@ -304,7 +317,24 @@ describe('GET /api/users/me/reservations — the live list’s slug and occasion
     await Wishlist.deleteOne({ _id: id });
 
     const [row] = await read();
-    expect(row).toMatchObject({ wishlistId: id, wishlistSlug: null, wishlistOccasion: null });
+    expect(row).toMatchObject({
+      wishlistId: id,
+      listOpen: false,
+      wishlistSlug: null,
+      wishlistOccasion: null,
+    });
+  });
+
+  // A list made before slugs existed, which no viewer has opened since (the
+  // list read backfills one): open to the gifter, so the card links it by id.
+  it('says a list with no slug yet is open, so the card links it by its id', async () => {
+    const id = await list();
+    await Wishlist.collection.updateOne(
+      { _id: new mongoose.Types.ObjectId(id) },
+      { $unset: { slug: '' } }
+    );
+    await book(id);
+    expect(await shown()).toEqual({ slug: null, occasion: BIRTHDAY, listOpen: true });
   });
 
   it('reads them live: a rename, or a changed or cleared date, shows on the next read', async () => {
@@ -313,13 +343,13 @@ describe('GET /api/users/me/reservations — the live list’s slug and occasion
     expect(await shown()).toEqual(visible(id));
 
     await rename(id);
-    expect(await shown()).toEqual({ slug: 'annas-30th', occasion: BIRTHDAY });
+    expect(await shown()).toEqual({ slug: 'annas-30th', occasion: BIRTHDAY, listOpen: true });
 
     await ownerEdits(id, { occasion: WEDDING });
-    expect(await shown()).toEqual({ slug: 'annas-30th', occasion: WEDDING });
+    expect(await shown()).toEqual({ slug: 'annas-30th', occasion: WEDDING, listOpen: true });
 
     await ownerEdits(id, { occasion: null });
-    expect(await shown()).toEqual({ slug: 'annas-30th', occasion: null });
+    expect(await shown()).toEqual({ slug: 'annas-30th', occasion: null, listOpen: true });
 
     // Nothing was copied into the Reservation.
     const stored = await Reservation.findOne({ gifter }).lean();
@@ -517,7 +547,7 @@ describe('GET /api/users/me/reservations — query count', () => {
     // The single query still told the lists apart.
     const byItem = (f: (r: Row) => unknown) =>
       Object.fromEntries(many.rows.map((r) => [r.itemName, f(r)]));
-    expect(byItem((r) => ({ slug: r.wishlistSlug, occasion: r.wishlistOccasion }))).toEqual(
+    expect(byItem(of)).toEqual(
       byItem((r) => (HIDDEN_FROM_GIFTER.includes(r.itemName) ? HIDDEN : visible(r.wishlistId!)))
     );
   });

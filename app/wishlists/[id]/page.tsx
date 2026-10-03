@@ -24,6 +24,9 @@ import OccasionField from '@/components/OccasionField';
 import OccasionLabel from '@/components/OccasionLabel';
 import { SkeletonGrid, MemberRowSkeleton } from '@/components/Skeleton';
 import Avatar from '@/components/Avatar';
+import LoadError from '@/components/LoadError';
+import WishlistUnavailable from '@/components/WishlistUnavailable';
+import { readResource, ReadRefusedError } from '@/lib/utils/resourceRead';
 import { coverBadge, visibilityMeta, type Visibility } from '@/lib/utils/visibility';
 import { currencySelectOptions } from '@/lib/utils/currencies';
 import { missingFromDraft } from '@/lib/utils/occasion';
@@ -101,6 +104,8 @@ interface PendingInvite {
 const ARCHIVE_EXPLANATION =
   "Only owners can open it. Members and anyone with the link will see that it isn't available. Items and reservations are kept, and you can unarchive anytime.";
 
+type PageLoad = 'loading' | 'ready' | 'unavailable' | 'failed';
+
 export default function WishlistDetail() {
   const { data: session, status } = useSession();
   const router = useRouter();
@@ -121,7 +126,31 @@ export default function WishlistDetail() {
   const [items, setItems] = useState<ApiItem[]>([]);
   const [members, setMembers] = useState<WishlistMember[]>([]);
   const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Where the page stands with the list. `unavailable`: a read of the list or
+  // its items was refused (the list is missing, or hidden from this viewer),
+  // which the page shows in place. `failed`: the first read of the list failed
+  // for some other reason (a 5xx, the network), with a Try again that reads it
+  // afresh (`attempt`). The items are polled only while the list is loading or
+  // on screen.
+  const [pageLoad, setPageLoad] = useState<PageLoad>('loading');
+  const [attempt, setAttempt] = useState(0);
+  const loading = pageLoad === 'loading';
+  const refused = pageLoad === 'unavailable';
+  const polling = pageLoad === 'loading' || pageLoad === 'ready';
+  // Reads of the list and its items, numbered as they're sent, and the numbers
+  // of the latest refused one and the latest list read that loaded. Whichever
+  // was sent later decides: a read sent before the list was refused can't bring
+  // it back (it may predate what hid it), and one sent before it loaded can't
+  // take it away (the viewer signed in elsewhere since, say).
+  const readsSent = useRef(0);
+  const refusedAt = useRef(0);
+  const loadedAt = useRef(0);
+  // The id of the list on screen, once read. The page's reads go by its URL,
+  // which an owner can change (a new slug), so a refusal is checked by id.
+  const listId = useRef<string | null>(null);
+  // Set while this page leaves or deletes the list itself: what a poll says
+  // about it then, before the page moves on, doesn't matter any more.
+  const departed = useRef(false);
   const [loadingItems, setLoadingItems] = useState(true);
   const [loadingMembers, setLoadingMembers] = useState(false);
   const [isOwner, setIsOwner] = useState(false);
@@ -303,68 +332,125 @@ export default function WishlistDetail() {
     localStorage.setItem(WISHLIST_SORT_STORAGE_KEY, next);
   }, []);
 
-  // Fetch wishlist and determine role
+  // The list is missing, or hidden from this viewer: say so, and stop polling.
+  // `sentNo` is the refused read's number (see `readsSent`).
+  const markRefused = useCallback((sentNo: number) => {
+    if (departed.current || sentNo < loadedAt.current) return;
+    refusedAt.current = Math.max(refusedAt.current, sentNo);
+    setPageLoad('unavailable');
+  }, []);
+
+  // Read through a ref, so the reads that use it don't change with it.
+  const routerRef = useRef(router);
   useEffect(() => {
-    async function fetchWishlist() {
-      if (!wishlistId) return;
+    routerRef.current = router;
+  }, [router]);
+  const recheckingRefusal = useRef(false);
 
-      try {
-        const sentAt = ownerRemovals.stamp();
-        const response = await fetch(`/api/wishlists/${wishlistId}`, { cache: 'no-store' });
-        const result = await response.json();
-
-        if (result.success && result.data) {
-          const w = result.data;
-          // Type guard to check if data has extended properties
-          if (typeof w === 'object' && w !== null && 'name' in w && 'owners' in w) {
-            // Type guard function to check if it's an IWishlist
-            const wishlistData = w as IWishlist;
-            setWishlist(wishlistData);
-
-            // Without an owner this page took off since the read was sent.
-            const readOwners = ownerRemovals.land(sentAt, shownOwnersOf(w));
-            if (readOwners) setOwners(readOwners);
-
-            // Check for extended properties
-            const hasExtendedProps = 'userRole' in w || 'ownerUsernames' in w;
-            if (hasExtendedProps) {
-              const extendedWishlist = w as IWishlist & {
-                userRole?: 'owner' | 'member' | null;
-              };
-              // Check user role from API response
-              const userRole = 'userRole' in extendedWishlist ? extendedWishlist.userRole : null;
-              setIsOwner(userRole === 'owner');
-              setIsMember(userRole === 'member');
-            }
-
-            // Edits the owner hasn't saved yet stay in the form.
-            refillSettings(wishlistSettings(wishlistData));
-
-            // Only set loading to false after successfully setting the wishlist
-            // This prevents the "wishlist not found" flash
-            setLoading(false);
-          } else {
-            setLoading(false);
-            showToast('Failed to load wishlist', 'error');
-            router.push('/');
-          }
-        } else {
-          setLoading(false);
-          showToast('Failed to load wishlist', 'error');
-          router.push('/');
-        }
-      } catch (error) {
-        console.error('Error fetching wishlist:', error);
-        setLoading(false);
-        showToast('Failed to load wishlist', 'error');
-        router.push('/');
+  // A read of the list or its items, by this page's URL, was refused. That's
+  // the list's answer (both follow the same rules), unless the URL has gone
+  // stale: a co-owner gave the list a new slug since it loaded, and the old one
+  // leads nowhere. So a page with the list on screen, opened by a slug, asks
+  // again by the list's id. Refused again: not available. Still open: it
+  // follows the list to its new URL, as the owner's own save does. Anything
+  // else: it keeps the list, and the polls carry on.
+  const readRefused = useCallback(
+    async (sentNo: number) => {
+      const id = listId.current;
+      if (!id || id === wishlistId) {
+        markRefused(sentNo);
+        return;
       }
+      if (sentNo < loadedAt.current || recheckingRefusal.current) return;
+      recheckingRefusal.current = true;
+      try {
+        const recheckNo = ++readsSent.current;
+        const read = await readResource<{ slug?: string | null }>(`/api/wishlists/${id}`);
+        if (read.outcome === 'refused') {
+          markRefused(recheckNo);
+        } else if (read.outcome === 'loaded' && !departed.current) {
+          const url = read.data.slug || id;
+          if (url !== wishlistId) routerRef.current.replace(`/wishlists/${url}`);
+        }
+      } finally {
+        recheckingRefusal.current = false;
+      }
+    },
+    [wishlistId, markRefused]
+  );
+
+  // Fetch wishlist and determine role. Whatever the answer, the page stays at
+  // this URL and says where things stand (see `pageLoad`), with no toast.
+  useEffect(() => {
+    if (!wishlistId || status === 'loading') return;
+    // A read outdated by another (the session changed, Try again) is dropped.
+    let current = true;
+
+    async function fetchWishlist(id: string) {
+      const sentAt = ownerRemovals.stamp();
+      const sentNo = ++readsSent.current;
+      const read = await readResource<unknown>(`/api/wishlists/${id}`);
+      if (!current) return;
+
+      // Missing, private, friends-only or archived: all the same to the page,
+      // whichever status and wording the route refused it with.
+      if (read.outcome === 'refused') {
+        void readRefused(sentNo);
+        return;
+      }
+      // Sent before a read was refused, so it may predate what hid the list.
+      if (sentNo < refusedAt.current) return;
+      const w = read.outcome === 'loaded' ? read.data : null;
+      if (typeof w !== 'object' || w === null || !('name' in w) || !('owners' in w)) {
+        console.error(
+          'Error fetching wishlist:',
+          read.outcome === 'failed' ? read.error : 'unexpected answer'
+        );
+        // Only a first load (or Try again) has nothing better to show. A later
+        // read (the session changed) keeps what's on screen.
+        setPageLoad((prev) => (prev === 'loading' ? 'failed' : prev));
+        return;
+      }
+
+      const wishlistData = w as IWishlist & {
+        userRole?: 'owner' | 'member' | null;
+        ownerUsernames?: string[];
+      };
+      listId.current = String(wishlistData._id);
+      loadedAt.current = Math.max(loadedAt.current, sentNo);
+      setWishlist(wishlistData);
+
+      // Without an owner this page took off since the read was sent.
+      const readOwners = ownerRemovals.land(sentAt, shownOwnersOf(wishlistData));
+      if (readOwners) setOwners(readOwners);
+
+      // Check for extended properties
+      if ('userRole' in wishlistData || 'ownerUsernames' in wishlistData) {
+        // Check user role from API response
+        const userRole = wishlistData.userRole ?? null;
+        setIsOwner(userRole === 'owner');
+        setIsMember(userRole === 'member');
+      }
+
+      // Edits the owner hasn't saved yet stay in the form.
+      refillSettings(wishlistSettings(wishlistData));
+
+      // Only once the wishlist is set, so the page never renders without it.
+      setPageLoad('ready');
     }
 
-    if (status !== 'loading') {
-      fetchWishlist();
-    }
-  }, [wishlistId, status, router, showToast, refillSettings, ownerRemovals]);
+    fetchWishlist(wishlistId);
+    return () => {
+      current = false;
+    };
+  }, [wishlistId, status, refillSettings, ownerRemovals, readRefused, attempt]);
+
+  // Try again, after the list couldn't be read: the skeleton, then a fresh
+  // read of the list and its items.
+  const retryLoad = useCallback(() => {
+    setPageLoad('loading');
+    setAttempt((n) => n + 1);
+  }, []);
 
   // Refresh the pending-invites list (owners only).
   const refreshInvites = useCallback(async () => {
@@ -416,6 +502,11 @@ export default function WishlistDetail() {
   // Whether a read of the list has landed yet. Until one has, an empty `items`
   // means the list couldn't be loaded, not that it has no items.
   const [itemsLoaded, setItemsLoaded] = useState(false);
+  // Failed items reads the page showed the skeleton for (the first, or the one
+  // after leaving Manage), and how many of them have been answered (see the
+  // effect after `fetchItems`).
+  const [itemsReadFailures, setItemsReadFailures] = useState(0);
+  const itemsReadFailuresSeen = useRef(0);
 
   const fetchItems = useCallback(
     async (silent = false) => {
@@ -425,11 +516,18 @@ export default function WishlistDetail() {
         setLoadingItems(true);
       }
 
+      // The number the request went out as (see `readsSent`). It stays 0 for a
+      // call that joins a read already on its way, whose own caller answers
+      // for that read's refusal.
+      let sentNo = 0;
       try {
         // Rejects when the read fails, so a failed poll or reconcile keeps the
         // list on screen: only a successful read replaces it. A call that joins
         // a read already in flight gets that read's `sentAt`, not a later one.
-        const read = await fetchItemsHook(wishlistId, mutations.stamp);
+        const read = await fetchItemsHook(wishlistId, () => {
+          sentNo = ++readsSent.current;
+          return mutations.stamp();
+        });
         // A read that raced with a mutation (landed while one was in flight, or
         // was sent before one settled) may predate fresher local state, so the
         // list is read again once no mutation is in flight. A background read's
@@ -442,9 +540,16 @@ export default function WishlistDetail() {
         setItems(read.items);
         setItemsLoaded(true);
       } catch (error) {
+        // The list was deleted, archived or made private, or the viewer taken
+        // off it, since the page loaded (or it never was theirs to see): the
+        // list read's own answer, so the same state, and no more polls.
+        if (error instanceof ReadRefusedError) {
+          if (sentNo) void readRefused(sentNo);
+          return;
+        }
         console.error('Error fetching items:', error);
         if (!silent) {
-          showToast('Failed to load items', 'error');
+          setItemsReadFailures((n) => n + 1);
         }
       } finally {
         if (!silent) {
@@ -452,10 +557,22 @@ export default function WishlistDetail() {
         }
       }
     },
-    [fetchItemsHook, wishlistId, showToast, mutations]
+    [fetchItemsHook, wishlistId, mutations, readRefused]
   );
 
+  // A failed items read the page showed the skeleton for is toasted, but only
+  // about a list on screen. It can land before the list read, so it waits for
+  // that: a list that turns out unavailable, or couldn't be read, says so itself.
   useEffect(() => {
+    if (pageLoad === 'loading' || itemsReadFailures === itemsReadFailuresSeen.current) return;
+    itemsReadFailuresSeen.current = itemsReadFailures;
+    if (pageLoad === 'ready') showToast('Failed to load items', 'error');
+  }, [pageLoad, itemsReadFailures, showToast]);
+
+  useEffect(() => {
+    // Not while the list is unavailable (every read would be refused again) or
+    // couldn't be read: Try again starts it over.
+    if (!polling) return;
     if (wishlistId && !manageOpen) {
       // Reset loading state when switching to items tab
       setLoadingItems(true);
@@ -489,7 +606,7 @@ export default function WishlistDetail() {
       // Reset loading state when switching away from items tab
       setLoadingItems(false);
     }
-  }, [wishlistId, manageOpen, fetchItems, mutations]);
+  }, [wishlistId, manageOpen, fetchItems, mutations, polling]);
 
   const createItemHook = useCreateItem(
     (newItem) => {
@@ -951,6 +1068,10 @@ export default function WishlistDetail() {
   const confirmLeaveWishlist = useCallback(async () => {
     if (!wishlistId || !deleteConfirm || deleteConfirm.type !== 'leave') return;
 
+    // From the moment the leave may land: a poll refused because of it must
+    // not show "not available" before the page moves on.
+    departed.current = true;
+    let left = false;
     try {
       const response = await fetch(`/api/wishlists/${wishlistId}/members/me`, {
         method: 'DELETE',
@@ -959,6 +1080,7 @@ export default function WishlistDetail() {
       const result = await response.json();
 
       if (result.success) {
+        left = true;
         // The count goes back to the gifter who left, and only to them.
         showToast(leftListToast(wishlist?.name, result.data?.unbookedItemsCount), 'success');
         router.push('/');
@@ -969,6 +1091,7 @@ export default function WishlistDetail() {
       console.error('Error leaving wishlist:', error);
       showToast('Failed to leave wishlist', 'error');
     } finally {
+      if (!left) departed.current = false;
       setDeleteConfirm(null);
     }
   }, [wishlistId, deleteConfirm, wishlist?.name, router, showToast]);
@@ -983,6 +1106,9 @@ export default function WishlistDetail() {
     if (!wishlistId || !deleteConfirm || deleteConfirm.type !== 'wishlist') return;
 
     setIsDeletingWishlist(true);
+    // As for leaving: the delete may land before its answer does.
+    departed.current = true;
+    let deleted = false;
     try {
       const response = await fetch(`/api/wishlists/${wishlistId}`, {
         method: 'DELETE',
@@ -991,6 +1117,7 @@ export default function WishlistDetail() {
       const result = await response.json();
 
       if (result.success) {
+        deleted = true;
         showToast('Wishlist deleted successfully', 'success');
         router.push('/');
       } else {
@@ -1000,6 +1127,7 @@ export default function WishlistDetail() {
       console.error('Error deleting wishlist:', error);
       showToast('Failed to delete wishlist', 'error');
     } finally {
+      if (!deleted) departed.current = false;
       setDeleteConfirm(null);
       setIsDeletingWishlist(false);
     }
@@ -1149,7 +1277,25 @@ export default function WishlistDetail() {
     completed: { label: 'Completed', value: stats.completed, valueClass: 'text-emerald-500' },
   };
 
-  if (loading) {
+  // Not available, or not loaded: said in place, at this URL. Which way to put
+  // "not available" depends only on whether the viewer is signed in, so it
+  // waits for the session to be known.
+  if ((refused && status !== 'loading') || pageLoad === 'failed') {
+    return (
+      <div className="min-h-screen">
+        <AppHeader actions={<AuthButton />} />
+        <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          {refused ? (
+            <WishlistUnavailable signedIn={status === 'authenticated'} />
+          ) : (
+            <LoadError level={1} title="Couldn’t load this wishlist" onRetry={retryLoad} />
+          )}
+        </main>
+      </div>
+    );
+  }
+
+  if (pageLoad !== 'ready' || !wishlist) {
     return (
       <div className="min-h-screen">
         <AppHeader actions={<AuthButton />} />
@@ -1180,31 +1326,6 @@ export default function WishlistDetail() {
             ))}
           </div>
           <SkeletonGrid count={8} variant="item" />
-        </main>
-      </div>
-    );
-  }
-
-  if (!wishlist) {
-    return (
-      <div className="min-h-screen">
-        <AppHeader actions={<AuthButton />} />
-        <main className="flex min-h-[60vh] items-center justify-center px-4">
-          <div className="text-center">
-            <span className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
-              <Icon name="package" size={28} />
-            </span>
-            <h2 className="mb-2 text-xl font-semibold text-foreground">Wishlist not found</h2>
-            <p className="mb-6 text-sm text-muted-foreground">
-              It may have been deleted or you don&apos;t have access.
-            </p>
-            <Link
-              href="/"
-              className="inline-flex h-10 items-center rounded-xl bg-primary-600 px-4 text-sm font-medium text-white shadow-sm transition-colors hover:bg-primary-700"
-            >
-              Back to wishlists
-            </Link>
-          </div>
         </main>
       </div>
     );

@@ -1027,9 +1027,8 @@ describe('BookedPage — reading both lists again while the page is open', () =>
     expect(showToast).not.toHaveBeenCalled();
   });
 
-  // The reservations route returns a list's slug only while the gifter may
-  // still open the list: once they've left it, say, a read has none for it.
-  it("links a card's list by its slug, and by its id once a read has no slug for it", async () => {
+  // A list made before slugs existed may have none yet: the card links it by id.
+  it("links a card's list by its slug, and by its id while the list has none", async () => {
     const { answerRead } = await renderLoaded();
     expect(listLink('Lego set')).toHaveAttribute('href', '/wishlists/birthday');
 
@@ -1039,6 +1038,39 @@ describe('BookedPage — reading both lists again while the page is open', () =>
     });
     expect(listLink('Lego set')).toHaveAttribute('href', '/wishlists/w1');
     expect(listLink('Scarf')).toHaveAttribute('href', '/wishlists/w1');
+  });
+
+  // regression: once the gifter could no longer open a card's list (they left
+  // it, or it was archived or made private), its chip still linked the list by
+  // id, and that page sent them home with two error toasts. The reservations
+  // read says whether they may still open it (`listOpen`), and the chip names
+  // the list without a link. It says the list is no longer available to them,
+  // unless the card's note already does: one still reserved to them.
+  it('regression: names a list the gifter can no longer open, with no link to it', async () => {
+    const { answerRead } = await renderLoaded();
+    expect(listLink('Lego set')).toHaveAttribute('href', '/wishlists/birthday');
+
+    comeBack('focus');
+    await answerRead(1, {
+      reservations: listed(
+        reservations.map((r) => ({ ...r, listOpen: false, wishlistSlug: null }))
+      ),
+    });
+    expect(screen.queryByRole('link', { name: /Birthday/ })).toBeNull();
+    // Detached from its item: the note says why, the chip that the list is gone.
+    expect(noteOn('Scarf')).toMatch(/removed/i);
+    expect(screen.getAllByText('Birthday · no longer available to you')).toHaveLength(1);
+    // Still reserved to them: the note says it, once.
+    expect(noteOn('Lego set')).toBe('This list is no longer available to you');
+    expect(screen.getAllByText(/no longer available to you/)).toHaveLength(2);
+    // The rest of the card is as it was.
+    expect(reservationButtons('Lego set').gift).toBeEnabled();
+
+    // Let back in (say, the list is unarchived): the link is back.
+    comeBack('focus');
+    await answerRead(2);
+    expect(listLink('Lego set')).toHaveAttribute('href', '/wishlists/birthday');
+    expect(screen.queryByText(/no longer available to you/)).toBeNull();
   });
 
   it('the first load failing says so, and a later read fills the lists in', async () => {

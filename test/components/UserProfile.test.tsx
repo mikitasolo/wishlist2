@@ -117,7 +117,9 @@ describe('UserProfile — loading', () => {
     expect(reads(fetchMock, '/api/users/friend-id/wishlists')).toBe(1);
   });
 
-  it('regression: says a failed load once, with one toast', async () => {
+  // A failed load is said in place (with Try again), not toasted: it's still
+  // read, and said, once.
+  it('regression: says a failed load once', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const fetchMock = vi.fn().mockRejectedValue(new Error('offline'));
     vi.stubGlobal('fetch', fetchMock);
@@ -126,8 +128,9 @@ describe('UserProfile — loading', () => {
     session.current = signedIn('me');
     rerender(<UserProfile />);
 
-    await waitFor(() => expect(showToast).toHaveBeenCalledWith('Failed to load profile', 'error'));
-    expect(showToast).toHaveBeenCalledTimes(1);
+    await screen.findByRole('heading', { level: 1, name: 'Couldn’t load this profile' });
+    expect(screen.getAllByRole('button', { name: 'Try again' })).toHaveLength(1);
+    expect(showToast).not.toHaveBeenCalled();
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
