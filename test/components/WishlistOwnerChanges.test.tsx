@@ -28,6 +28,7 @@ vi.mock('@/components/AuthButton', () => ({ default: () => null }));
 vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }));
 
 import WishlistDetail from '@/app/wishlists/[id]/page';
+import { pickLeave } from './listMenu';
 
 // User ids double as usernames here.
 interface Server {
@@ -172,22 +173,27 @@ async function openManage() {
 
 /** The title row, whose byline credits every owner ("by you & @bob"). */
 const byline = () => screen.getByRole('heading', { level: 1, name: 'Birthday' }).parentElement!;
-/** The header's Leave and the one on Alice's own owner row. */
-const leaveButtons = () => screen.queryAllByRole('button', { name: 'Leave' });
-/** The header's Leave alone: only an owner who may leave (one with a co-owner) gets it. */
-const headerLeave = () => within(byline().parentElement!).queryByRole('button', { name: 'Leave' });
 const credited = (username: string) =>
   within(byline()).queryByRole('link', { name: `@${username}` });
 
+/** Pick Leave list… and expect the dialog `name`, then cancel it. */
+async function expectLeaveDialog(user: ReturnType<typeof userEvent.setup>, name: string) {
+  await pickLeave(user);
+  const dialog = await screen.findByRole('alertdialog', { name });
+  await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+  await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+}
+
 /**
  * Alice is the only owner left, so nothing offers to take her off the list (the
- * server would refuse it): the header's Leave is gone, and the one on her own
- * row only explains why.
+ * server would refuse it): her Leave list… only explains why.
  */
-function expectSoleOwner() {
-  expect(headerLeave()).toBeNull();
-  expect(leaveButtons()).toHaveLength(1);
-}
+const expectSoleOwner = (user: ReturnType<typeof userEvent.setup>) =>
+  expectLeaveDialog(user, "You're the only owner");
+
+/** Alice has a co-owner, so her Leave list… asks her to confirm stepping down. */
+const expectCanLeave = (user: ReturnType<typeof userEvent.setup>) =>
+  expectLeaveDialog(user, 'Leave “Birthday”?');
 
 /** Make member's dialog, which asks before `username` is made a member. */
 const demoteDialog = (username: string) =>
@@ -230,27 +236,20 @@ describe('the wishlist page after an owner is demoted or removed', () => {
   // owner"), and the byline still credited him.
   it('regression: after demoting the only other co-owner, Leave no longer leaves and the byline drops them', async () => {
     const user = await openManage();
-    expect(leaveButtons()).toHaveLength(2);
-    expect(headerLeave()).toBeInTheDocument();
+    await expectCanLeave(user);
     expect(credited('bob')).toBeInTheDocument();
 
     await demoteFirst(user, 'bob');
 
-    expectSoleOwner();
     expect(credited('bob')).not.toBeInTheDocument();
     expect(within(byline()).getByText('you')).toBeInTheDocument();
-    // Her row's Leave explains instead of asking to confirm a leave.
-    await user.click(leaveButtons()[0]);
-    expect(
-      await screen.findByRole('alertdialog', { name: "You're the only owner" })
-    ).toBeInTheDocument();
-    expect(screen.queryByRole('alertdialog', { name: 'Leave “Birthday”?' })).toBeNull();
+    // Her Leave list… explains instead of asking to confirm a leave.
+    await expectSoleOwner(user);
   });
 
   // regression: Remove on an owner row had the same gap as Make member.
   it('regression: after removing the only other co-owner, Leave no longer leaves and the byline drops them', async () => {
     const user = await openManage();
-    expect(leaveButtons()).toHaveLength(2);
 
     await user.click(screen.getByRole('button', { name: 'Remove' }));
     const dialog = await screen.findByRole('alertdialog');
@@ -259,8 +258,8 @@ describe('the wishlist page after an owner is demoted or removed', () => {
     await waitFor(() => expect(showToast).toHaveBeenCalledWith('Owner removed', 'success'));
     await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
 
-    expectSoleOwner();
     expect(credited('bob')).not.toBeInTheDocument();
+    await expectSoleOwner(user);
     expect(screen.queryByRole('link', { name: '@bob' })).not.toBeInTheDocument();
   });
 
@@ -270,10 +269,9 @@ describe('the wishlist page after an owner is demoted or removed', () => {
 
     await demoteFirst(user, 'bob');
 
-    expect(leaveButtons()).toHaveLength(2);
-    expect(headerLeave()).toBeInTheDocument();
     expect(credited('bob')).not.toBeInTheDocument();
     expect(credited('carol')).toBeInTheDocument();
+    await expectCanLeave(user);
     // Carol can still be stepped down: there are two owners left.
     expect(screen.getByRole('button', { name: 'Make member' })).toBeInTheDocument();
   });
@@ -287,7 +285,7 @@ describe('the wishlist page after an owner is demoted or removed', () => {
 
     await waitFor(() => expect(credited('dave')).toBeInTheDocument());
     expect(credited('bob')).not.toBeInTheDocument();
-    expect(leaveButtons()).toHaveLength(2);
+    await expectCanLeave(user);
   });
 
   it('keeps the owners as they were when the demotion fails', async () => {
@@ -306,8 +304,8 @@ describe('the wishlist page after an owner is demoted or removed', () => {
     await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
     await waitFor(() => expect(screen.getByRole('button', { name: 'Make member' })).toBeEnabled());
 
-    expect(leaveButtons()).toHaveLength(2);
     expect(credited('bob')).toBeInTheDocument();
+    await expectCanLeave(user);
   });
 
   // The save's write landed before the demotion's, so its answer still lists Bob.
@@ -320,14 +318,14 @@ describe('the wishlist page after an owner is demoted or removed', () => {
     await user.click(screen.getByRole('button', { name: 'Save changes' }));
     await screen.findByRole('button', { name: 'Saving…' });
     await demoteFirst(user, 'bob');
-    expectSoleOwner();
+    expect(credited('bob')).not.toBeInTheDocument();
 
     save.release();
     await waitFor(() =>
       expect(showToast).toHaveBeenCalledWith('Wishlist updated successfully', 'success')
     );
-    expectSoleOwner();
     expect(credited('bob')).not.toBeInTheDocument();
+    await expectSoleOwner(user);
   });
 
   // Opening Manage reads the owners again. That read was answered before the
@@ -349,14 +347,15 @@ describe('the wishlist page after an owner is demoted or removed', () => {
     await demoteFirst(user, 'carol');
     await waitFor(() => expect(listReads).toBe(3));
     await settle();
-    expectSoleOwner();
+    expect(credited('bob')).not.toBeInTheDocument();
+    expect(credited('carol')).not.toBeInTheDocument();
 
     manageRead.release();
     await waitFor(() => expect(listReads).toBe(4));
     await settle();
-    expectSoleOwner();
     expect(credited('bob')).not.toBeInTheDocument();
     expect(credited('carol')).not.toBeInTheDocument();
+    await expectSoleOwner(user);
   });
 });
 
@@ -380,7 +379,7 @@ describe('Make member', () => {
     expect(demotions()).toHaveLength(0);
     expect(showToast).not.toHaveBeenCalled();
     expect(credited('bob')).toBeInTheDocument();
-    expect(leaveButtons()).toHaveLength(2);
+    await expectCanLeave(user);
 
     // The demotion is held, so it's still in flight when the second click lands.
     const demotion = gate();
@@ -406,6 +405,6 @@ describe('Make member', () => {
     expect(demotions()).toHaveLength(1);
     expect(showToast).toHaveBeenCalledTimes(1);
     expect(server.members).toEqual(['bob']);
-    expectSoleOwner();
+    await expectSoleOwner(user);
   });
 });

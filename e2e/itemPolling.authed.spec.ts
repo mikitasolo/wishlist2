@@ -145,9 +145,9 @@ for (const flow of [
   {
     as: 'member',
     list: 'e2e-friend',
-    open: 'Propose item',
-    // e2e-friend has no items, so once it has loaded the proposal is offered by
-    // its empty state instead.
+    open: 'Propose',
+    // e2e-friend has no items, so once it has loaded its empty state offers
+    // the proposal too, and the spec takes that way.
     openOnceLoaded: 'Propose an item',
     title: 'Propose new item',
     submit: 'Propose item',
@@ -630,7 +630,7 @@ test("regression: a failed booking's reconcile read dropped behind a proposal is
   await expect(bookButton).toBeVisible();
   expect(await bookedByMe.count()).toBe(0);
 
-  await page.getByRole('button', { name: 'Propose item', exact: true }).click();
+  await page.getByRole('button', { name: 'Propose', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Propose new item' });
   await dialog.getByLabel('Item name').fill('E2E Proposed Meanwhile');
   await dialog.getByRole('button', { name: 'Propose item', exact: true }).click();

@@ -265,9 +265,86 @@ export function formatOccasionLabel(occasion: Occasion, today: string, locale?: 
     if (occasion.recurrence === 'yearly') return kind;
     return `${kind} · ${formatCalendarDate(occasion.date, locale)}`;
   }
-  if (days === 0) return `${kind} · today`;
-  if (days === 1) return `${kind} · tomorrow`;
-  return `${kind} · in ${days} days`;
+  return `${kind} · ${formatCountdown(days)}`;
+}
+
+/** Days until an occasion, as its countdown reads: "today", "tomorrow", "in 12 days". */
+export function formatCountdown(days: number): string {
+  if (days === 0) return 'today';
+  if (days === 1) return 'tomorrow';
+  return `in ${days} days`;
+}
+
+/**
+ * A day an occasion falls on, with its weekday: "Sat 17 Oct" (in `locale`,
+ * default: the viewer's; en-US gives "Sat, Oct 17"), and the year too when
+ * `withYear`. Formatted in UTC, so it's never shifted by a day. Give it a real
+ * date (a one-off's, or a next occurrence), never a yearly occasion's stored
+ * one. An unparseable value comes back as it is.
+ */
+export function formatOccasionDay(
+  date: string,
+  { withYear = false, locale }: { withYear?: boolean; locale?: string } = {}
+): string {
+  const parsed = parseCalendarDate(date);
+  if (!parsed) return date;
+  return new Intl.DateTimeFormat(locale, {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    ...(withYear ? { year: 'numeric' as const } : {}),
+    timeZone: 'UTC',
+  }).format(utcMidnight(parsed));
+}
+
+/** What a list's header says about its occasion (`occasionDetails`). */
+export interface OccasionDetails {
+  /** "Birthday"; "Occasion" for `other`. */
+  kind: string;
+  /** The day it next falls on ("Sat 17 Oct"), or the day a passed one-off fell on. */
+  date: string | null;
+  /** That day as `YYYY-MM-DD`, for a `<time>`: never a yearly occasion's stored date. */
+  dateTime: string | null;
+  /** "in 14 days", "tomorrow" or "today"; `null` once a one-off has passed. */
+  countdown: string | null;
+}
+
+/**
+ * An occasion as a list's header shows it: its kind, the day it next falls on,
+ * and the countdown to it ("Birthday", "Sat 17 Oct", "in 14 days"). A yearly
+ * occasion is shown by its next occurrence (`nextOccurrence`), so its stored
+ * placeholder year never shows. A one-off that has passed shows the day it fell
+ * on, with its year, and no countdown. An upcoming day in another year than
+ * `today` carries its year too (a January birthday read in December). `today`
+ * is the viewer's local date (`useLocalToday`), so call this in the browser.
+ */
+export function occasionDetails(
+  occasion: Occasion,
+  today: string,
+  locale?: string
+): OccasionDetails {
+  const kind = occasionKindLabel(occasion.kind);
+  const next = nextOccurrence(occasion.date, occasion.recurrence, today);
+  const days = daysUntil(occasion.date, occasion.recurrence, today);
+  if (next !== null && days !== null) {
+    const withYear = next.slice(0, 4) !== today.slice(0, 4);
+    return {
+      kind,
+      date: formatOccasionDay(next, { withYear, locale }),
+      dateTime: next,
+      countdown: formatCountdown(days),
+    };
+  }
+  // A malformed date, a yearly one above all: the kind alone, never its stored year.
+  if (occasion.recurrence === 'yearly' || !parseCalendarDate(occasion.date)) {
+    return { kind, date: null, dateTime: null, countdown: null };
+  }
+  return {
+    kind,
+    date: formatOccasionDay(occasion.date, { withYear: true, locale }),
+    dateTime: occasion.date,
+    countdown: null,
+  };
 }
 
 /** Whether two occasions are the same, `null` / `undefined` (none) included. */

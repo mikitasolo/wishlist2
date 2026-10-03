@@ -150,8 +150,8 @@ const emptyState = (heading: string) =>
   screen.getByRole('heading', { name: heading }).parentElement as HTMLElement;
 
 /**
- * None of the stat cards, nothing in the toolbar, and not the Add item or
- * Propose item above the list (the empty state offers its own), is on the page.
+ * None of the stat cards and nothing in the toolbar is on the page. (Add item
+ * and Propose stay in the header's actions, beside the list's name.)
  */
 function expectNoCardsOrToolbar() {
   expect(screen.queryByRole('button', { name: /^(Total Items|All)\s*\d+$/ })).toBeNull();
@@ -160,9 +160,13 @@ function expectNoCardsOrToolbar() {
   expect(screen.queryByRole('button', { name: 'Filter by status' })).toBeNull();
   expect(screen.queryByRole('combobox', { name: 'Sort items by' })).toBeNull();
   expect(screen.queryByRole('combobox', { name: 'Show prices in' })).toBeNull();
-  expect(screen.queryByRole('button', { name: 'Add item' })).toBeNull();
-  expect(screen.queryByRole('button', { name: 'Propose item' })).toBeNull();
 }
+
+/** The header's actions, by name. */
+const headerActions = () =>
+  within(screen.getByRole('group', { name: 'List actions' }))
+    .getAllByRole('button')
+    .map((b) => b.getAttribute('aria-label') ?? b.textContent);
 
 /** Owner Carol adds an item through the empty state's Add your first item. */
 async function addFirstItem(user: ReturnType<typeof userEvent.setup>, name: string) {
@@ -187,6 +191,7 @@ describe('a list with no items at all', () => {
     expect(screen.queryByText(/match the selected filters/)).toBeNull();
     expect(screen.queryByRole('heading', { name: 'No items found' })).toBeNull();
     expectNoCardsOrToolbar();
+    expect(headerActions()).toEqual(['Add item', 'Share', 'Manage wishlist', 'More list actions']);
 
     // Share tells the owner who the link opens for, and Copy link copies the list's link.
     await user.click(within(box).getByRole('button', { name: 'Share' }));
@@ -234,6 +239,7 @@ describe('a list with no items at all', () => {
     expect(within(box).queryByRole('button', { name: 'Add your first item' })).toBeNull();
     expect(within(box).queryByRole('button', { name: 'Share' })).toBeNull();
     expectNoCardsOrToolbar();
+    expect(headerActions()).toEqual(['Propose', 'Share', 'More list actions']);
 
     await user.click(within(box).getByRole('button', { name: 'Propose an item' }));
     expect(await screen.findByRole('dialog', { name: 'Propose new item' })).toBeInTheDocument();
