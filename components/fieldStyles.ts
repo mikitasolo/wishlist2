@@ -13,7 +13,7 @@
 export type FieldSize = 'sm' | 'lg';
 
 const BORDER =
-  'rounded-xl border border-border-strong bg-surface text-foreground outline-hidden field-focus transition-colors disabled:cursor-not-allowed';
+  'rounded-xl border border-border-strong bg-surface text-foreground outline-hidden field-focus disabled:cursor-not-allowed';
 
 const inputSizeStyles: Record<FieldSize, string> = {
   sm: 'h-9 px-3 text-sm',
