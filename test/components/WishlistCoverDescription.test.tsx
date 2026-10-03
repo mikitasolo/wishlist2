@@ -110,6 +110,18 @@ describe('WishlistDescription', () => {
     expect(toggle('Show more')).toHaveAttribute('aria-expanded', 'false');
   });
 
+  // A paragraph break as the clamp's third line would show as a lone "…"
+  // under two lines of text.
+  it('closes up blank lines while clamped, and puts them back when expanded', async () => {
+    const user = userEvent.setup();
+    render(<WishlistDescription text={LONG} />);
+    expect(text().textContent).not.toMatch(/\n\s*\n/);
+    expect(text().textContent).toContain('lake house.\nShe loves');
+
+    await user.click(toggle('Show more'));
+    expect(text().textContent).toBe(LONG);
+  });
+
   // Whether it overflows is only known once it's laid out, so the server
   // render (and the render that hydrates it) has no toggle: one there would
   // mismatch on a client whose width doesn't overflow it.

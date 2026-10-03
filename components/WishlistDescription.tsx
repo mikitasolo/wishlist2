@@ -13,6 +13,9 @@ import { useCallback, useId, useLayoutEffect, useRef, useState } from 'react';
  * (a phone turned sideways), and a new text (the 5s poll) is measured too.
  * Only the clamped text can be measured, so while it's expanded the toggle
  * stays as it was.
+ *
+ * Clamped, its blank lines close up (its line breaks stay): a paragraph break
+ * as the third line would otherwise show as a lone "…".
  */
 export default function WishlistDescription({ text }: { text: string }) {
   const [expanded, setExpanded] = useState(false);
@@ -39,6 +42,8 @@ export default function WishlistDescription({ text }: { text: string }) {
     return () => observer.disconnect();
   }, [measure]);
 
+  const shown = expanded ? text : text.replace(/\n\s*\n/g, '\n');
+
   return (
     <div className="mb-6 max-w-3xl">
       <p
@@ -48,7 +53,7 @@ export default function WishlistDescription({ text }: { text: string }) {
           expanded ? '' : 'line-clamp-3'
         }`}
       >
-        {text}
+        {shown}
       </p>
       {overflows && (
         <button
