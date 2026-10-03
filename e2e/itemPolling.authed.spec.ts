@@ -167,7 +167,8 @@ for (const flow of [
   }
 
   async function fillIn(page: Page, name: string, open = flow.open) {
-    await page.getByRole('button', { name: open, exact: true }).click();
+    // The header's Add item comes before the grid's tile of the same name.
+    await page.getByRole('button', { name: open, exact: true }).first().click();
     const dialog = page.getByRole('dialog', { name: flow.title });
     await dialog.getByLabel('Item name').fill(name);
     return dialog.getByRole('button', { name: flow.submit, exact: true });

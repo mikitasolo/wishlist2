@@ -115,7 +115,8 @@ test("regression: a menu marks its active item with the background alone, as Sel
 
 test('regression: a dialog shows focus on every field and control, in shape', async ({ page }) => {
   await page.goto('/wishlists/e2e-birthday');
-  await page.getByRole('button', { name: 'Add item', exact: true }).click();
+  // The header's (the grid's tile is the second).
+  await page.getByRole('button', { name: 'Add item', exact: true }).first().click();
   await expect(page.getByRole('dialog')).toBeVisible();
   await recordRadii(page);
   // Its fields, the photo's controls, Cancel and Add, and its close button,

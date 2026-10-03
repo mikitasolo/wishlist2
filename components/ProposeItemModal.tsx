@@ -36,6 +36,9 @@ export default function ProposeItemModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showConfirmClose, setShowConfirmClose] = useState(false);
+  // Keep adding: a save clears the form for the next proposal instead of
+  // closing. Off each time the modal opens.
+  const [keepAdding, setKeepAdding] = useState(false);
 
   // Reset submitting state when modal closes
   useEffect(() => {
@@ -43,6 +46,7 @@ export default function ProposeItemModal({
       setIsSubmitting(false);
       setHasUnsavedChanges(false);
       setShowConfirmClose(false);
+      setKeepAdding(false);
     }
   }, [isOpen]);
 
@@ -67,7 +71,8 @@ export default function ProposeItemModal({
         status: 'proposed',
       });
       setHasUnsavedChanges(false);
-      onClose();
+      // With Keep adding on, the form clears itself and stays (see ItemForm).
+      if (!keepAdding) onClose();
     } finally {
       setIsSubmitting(false);
     }
@@ -107,6 +112,7 @@ export default function ProposeItemModal({
           mode="propose"
           onFormChange={setHasUnsavedChanges}
           defaultCurrency={defaultItemCurrency(wishlistCurrency, userCurrency)}
+          keepAdding={{ checked: keepAdding, onChange: setKeepAdding }}
         />
       </BaseModal>
 

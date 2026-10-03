@@ -59,6 +59,10 @@ export default function AddItemModal({
   // Where to go once the user confirms discarding their changes: closing the
   // modal, or the step back. Null while no confirmation is open.
   const [confirmLeave, setConfirmLeave] = useState<'close' | 'back' | null>(null);
+  // Keep adding: a save clears the form for the next item instead of closing.
+  // Off each time the modal opens. Not offered for a copy of an item, which is
+  // one item by nature.
+  const [keepAdding, setKeepAdding] = useState(false);
 
   const defaultCurrency = defaultItemCurrency(wishlistCurrency, userCurrency);
   // A copied price is filled in the format the item's card shows it in.
@@ -89,6 +93,7 @@ export default function AddItemModal({
       setIsSubmitting(false);
       setHasUnsavedChanges(false);
       setConfirmLeave(null);
+      setKeepAdding(false);
     }
   }, [isOpen]);
 
@@ -119,7 +124,8 @@ export default function AddItemModal({
         status: data.status,
       });
       setHasUnsavedChanges(false);
-      onClose();
+      // With Keep adding on, the form clears itself and stays (see ItemForm).
+      if (!keepAdding) onClose();
     } finally {
       setIsSubmitting(false);
     }
@@ -167,6 +173,7 @@ export default function AddItemModal({
           isSubmitting={isSubmitting}
           onFormChange={setHasUnsavedChanges}
           defaultCurrency={defaultCurrency}
+          keepAdding={initialItem ? undefined : { checked: keepAdding, onChange: setKeepAdding }}
         />
       </BaseModal>
 

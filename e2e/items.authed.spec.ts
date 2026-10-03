@@ -42,7 +42,9 @@ for (const flow of [
     );
     await failItemCreate(page);
     await page.goto(`/wishlists/${flow.list}`);
-    await page.getByRole('button', { name: flow.open }).click();
+    // The header's Add item (the grid's tile is the second), or the empty
+    // state's Propose an item.
+    await page.getByRole('button', { name: flow.open, exact: true }).first().click();
 
     const dialog = page.getByRole('dialog', { name: flow.title });
     await dialog.getByLabel('Item name').fill('E2E Bike');

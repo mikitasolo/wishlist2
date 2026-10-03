@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo, useCallback, useRef, useId, type FormEven
 import { useSession } from 'next-auth/react';
 import { useRouter, useParams } from 'next/navigation';
 import WishlistItem from '@/components/WishlistItem';
+import AddItemTile from '@/components/AddItemTile';
 import EditItemModal from '@/components/EditItemModal';
 import AddItemModal from '@/components/AddItemModal';
 import ProposeItemModal from '@/components/ProposeItemModal';
@@ -88,6 +89,7 @@ import {
 import FilterChips from '@/components/FilterChips';
 import type { ViewerRole } from '@/lib/utils/itemStatus';
 import {
+  addTileFor,
   countListChips,
   isDimmedInAll,
   listChips,
@@ -1370,6 +1372,10 @@ export default function WishlistDetail() {
     items,
   });
 
+  // The grid's first cell: an owner's Add item or a member's Propose an item,
+  // under All (and a member's Your proposals), never while a search is on.
+  const addTile = addTileFor(viewerRole, activeChip, searchQuery.trim() !== '');
+
   const chips = listChips(viewerRole).map((chip) => ({
     value: chip,
     label: LIST_CHIP_LABELS[chip],
@@ -1658,13 +1664,32 @@ export default function WishlistDetail() {
                         : 'No items match this filter.'
                     }
                     actions={
-                      <Button onClick={showAllItems} variant="secondary">
-                        Show all
-                      </Button>
+                      <>
+                        {/* A member's Your proposals with none yet: the tile's
+                            way to make one, since there's no grid to hold it. */}
+                        {addTile === 'propose' && (
+                          <Button onClick={() => setShowProposeItemModal(true)}>
+                            Propose an item
+                          </Button>
+                        )}
+                        <Button onClick={showAllItems} variant="secondary">
+                          Show all
+                        </Button>
+                      </>
                     }
                   />
                 ) : (
                   <div className={ITEM_GRID_CLASSES}>
+                    {addTile && (
+                      <AddItemTile
+                        label={addTile === 'add' ? 'Add item' : 'Propose an item'}
+                        onClick={() =>
+                          addTile === 'add'
+                            ? setShowAddItemModal(true)
+                            : setShowProposeItemModal(true)
+                        }
+                      />
+                    )}
                     {sortedItems.map((item) => (
                       <WishlistItem
                         key={item._id}

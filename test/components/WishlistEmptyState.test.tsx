@@ -278,7 +278,9 @@ describe('a list with no items at all', () => {
     expect(screen.getByRole('textbox', { name: 'Search items by name' })).toBeInTheDocument();
     expect(chip('All')).toHaveAccessibleName('All 1');
     expect(chip('All')).toBeChecked();
-    expect(screen.getByRole('button', { name: 'Add item' })).toBeInTheDocument();
+    // Add item in the header, and the grid's tile in front of the new card.
+    expect(headerActions()).toContain('Add item');
+    expect(screen.getAllByRole('button', { name: 'Add item' })).toHaveLength(2);
   });
 
   // The toolbar goes with the last item, so a chip or search left in force

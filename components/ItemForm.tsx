@@ -76,6 +76,10 @@ interface ItemFormProps {
   // Read once on mount so it never overwrites what the user picked; ignored when
   // initialData is given, which carries its own currency (see itemToFormData).
   defaultCurrency?: string;
+  // A new item's form only: the "Keep adding" checkbox beside the submit button.
+  // The modal reads it to stay open after a save; the form clears itself either
+  // way (see handleSubmit). Not drawn with `renderButtons`.
+  keepAdding?: { checked: boolean; onChange: (checked: boolean) => void };
 }
 
 export default function ItemForm({
@@ -91,6 +95,7 @@ export default function ItemForm({
   itemId,
   onFormChange,
   defaultCurrency,
+  keepAdding,
 }: ItemFormProps) {
   // The blank form a new item starts from — a stable snapshot, so effects can
   // depend on it. It is also the "unsaved changes" baseline, so a prefilled
@@ -116,6 +121,21 @@ export default function ItemForm({
   const statusLabelId = useId();
   const statusHelperId = useId();
   const submitting = externalIsSubmitting !== undefined ? externalIsSubmitting : isSubmitting;
+  // A new item's form that stays open after a save (Keep adding) starts the
+  // next item from Name. Set by the save, acted on once the form is enabled
+  // again: the name field can't take focus while the save has it disabled.
+  const [focusNameNext, setFocusNameNext] = useState(false);
+  // Which item the form is for: bumped each time it clears for the next one.
+  // A photo still uploading when an item is saved lands after that, and must
+  // not end up on the next item: an upload's onChange is the one from the
+  // render that started it, so it carries the generation it was started in.
+  const [generation, setGeneration] = useState(0);
+  const generationRef = useRef(0);
+  useEffect(() => {
+    if (!focusNameNext || submitting) return;
+    setFocusNameNext(false);
+    firstInputRef.current?.focus();
+  }, [focusNameNext, submitting, firstInputRef]);
 
   // Track initial data for comparison
   const initialDataRef = useRef<ItemFormData>(initialData || blankFormData);
@@ -244,12 +264,27 @@ export default function ItemForm({
         itemChanges(formData, initialDataRef.current, locale)
       );
 
-      // Reset form only if not using external state
+      // A new item's form clears for the next one (it only stays open with
+      // Keep adding). The currency and the status stay as they were picked:
+      // the next item is most likely priced in it and meant to be published
+      // (or kept as a draft) like this one, and the cleared form is the new
+      // "unsaved changes" baseline, so neither alone is an edit.
       if (!initialData) {
-        setFormData(blankFormData);
+        // The status stays too: a batch of drafts stays drafts.
+        const next = {
+          ...blankFormData,
+          currency: formData.currency,
+          isDraft: formData.isDraft,
+        };
+        generationRef.current += 1;
+        setGeneration(generationRef.current);
+        setFormData(next);
         setShowPriceError(false);
-        initialDataRef.current = blankFormData;
+        setIsCurrencyOpen(false);
+        setCurrencySearch('');
+        initialDataRef.current = next;
         lastInitializedItemIdRef.current = undefined;
+        setFocusNameNext(true);
       } else {
         // Update initial data ref to reflect successful submission
         initialDataRef.current = formData;
@@ -318,7 +353,10 @@ export default function ItemForm({
         {/* An upload lands after the render that started it: update the form as it is by then. */}
         <ImageUpload
           value={formData.imageUrl || null}
-          onChange={(url) => setFormData((f) => ({ ...f, imageUrl: url ?? '' }))}
+          onChange={(url) => {
+            if (generation !== generationRef.current) return;
+            setFormData((f) => ({ ...f, imageUrl: url ?? '' }));
+          }}
           disabled={submitting}
           aspect={1}
         />
@@ -448,7 +486,21 @@ export default function ItemForm({
           submittingLabel,
         })
       ) : (
-        <div className="flex gap-3 pt-4">
+        <div className={`flex gap-3 pt-4 ${keepAdding ? 'flex-wrap items-center' : ''}`}>
+          {keepAdding && (
+            // Its own line on a phone, where the two buttons need the width;
+            // beside them from sm up.
+            <label className="flex h-11 basis-full cursor-pointer items-center gap-2 text-sm font-medium text-foreground sm:mr-1 sm:basis-auto">
+              <input
+                type="checkbox"
+                checked={keepAdding.checked}
+                onChange={(e) => keepAdding.onChange(e.target.checked)}
+                disabled={submitting}
+                className="h-4 w-4 cursor-pointer rounded border-border-strong accent-primary-600 disabled:cursor-not-allowed"
+              />
+              Keep adding
+            </label>
+          )}
           <Button
             type="button"
             variant="secondary"

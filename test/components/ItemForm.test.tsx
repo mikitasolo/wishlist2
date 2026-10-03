@@ -160,9 +160,20 @@ describe('ItemForm — default currency', () => {
     expect(currencyButton('USD')).toBeInTheDocument();
   });
 
-  it('resets to the default currency (not USD) after a successful create', async () => {
+  // Keep adding (WIS-242): the next item is most likely priced in the same
+  // currency, so a cleared form keeps the one picked, not the default or USD.
+  it('keeps the picked currency when it clears after a successful create', async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
-    render(<ItemForm onSubmit={onSubmit} onCancel={vi.fn()} mode="create" defaultCurrency="PLN" />);
+    const onFormChange = vi.fn();
+    render(
+      <ItemForm
+        onSubmit={onSubmit}
+        onCancel={vi.fn()}
+        mode="create"
+        defaultCurrency="PLN"
+        onFormChange={onFormChange}
+      />
+    );
 
     fireEvent.change(screen.getByLabelText(/item name/i), { target: { value: 'Gift' } });
     pickCurrency('PLN', /EUR\s*Euro/);
@@ -170,7 +181,10 @@ describe('ItemForm — default currency', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /^submit$/i }));
     await waitFor(() => expect(onSubmit).toHaveBeenCalled());
-    await waitFor(() => expect(currencyButton('PLN')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByLabelText(/item name/i)).toHaveValue(''));
+    expect(currencyButton('EUR')).toBeInTheDocument();
+    // The kept currency is where the next item starts, not an unsaved change.
+    expect(onFormChange).toHaveBeenLastCalledWith(false);
   });
 
   it('does not count the prefilled currency as an unsaved change', () => {
