@@ -43,6 +43,7 @@ import Home from '@/app/page';
 import MyWishlistsPage from '@/app/wishlists/mine/page';
 import SharedWishlistsPage from '@/app/wishlists/shared/page';
 import UserProfile from '@/app/users/[username]/page';
+import { atWidth } from './viewport';
 
 // Today is Oct 2, 2026. Yearly occasions are stored on the placeholder year.
 const yearly = (date: string, kind: OccasionKind = 'birthday'): Occasion => ({
@@ -106,6 +107,8 @@ function json(body: unknown) {
 
 let fetchMock: ReturnType<typeof vi.fn>;
 beforeEach(() => {
+  // Desktop width: the lists are cards (a phone gets rows, `WishlistList.test.tsx`).
+  atWidth(1280);
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(new Date(2026, 9, 2, 12)); // local noon, Oct 2
   fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
@@ -144,14 +147,19 @@ const cardNames = (container: HTMLElement) =>
 const section = (name: string) =>
   screen.getByRole('heading', { level: 2, name }).closest('section') as HTMLElement;
 
+/** Opens the archived lists, folded away at the end of the page (WIS-254). */
+const openArchived = () =>
+  userEvent.setup().click(screen.getByRole('button', { name: 'Archived (2)' }));
+
 describe('wishlists/mine — order', () => {
   it('puts the lists with an occasion coming up first, nearest first, and the rest as before', async () => {
     render(<MyWishlistsPage />);
     await screen.findByText('Birthday · in 12 days');
+    await openArchived();
 
     // The active grid, then the archived section, sorted the same way.
     expect(cardNames(document.body)).toEqual([...BY_OCCASION, ...ARCHIVED_BY_OCCASION]);
-    expect(cardNames(section('Archived'))).toEqual(ARCHIVED_BY_OCCASION);
+    expect(cardNames(section('Archived (2)'))).toEqual(ARCHIVED_BY_OCCASION);
   });
 
   it('sorts again when the date moves on, e.g. the tab shown again the next day', async () => {
@@ -180,9 +188,10 @@ describe('dashboard — order', () => {
   it('sorts your own lists and the ones shared with you by the nearest occasion', async () => {
     render(<Home />);
     await screen.findByText('Birthday · in 12 days');
+    await openArchived();
 
     expect(cardNames(section('Your wishlists'))).toEqual(BY_OCCASION);
-    expect(cardNames(section('Archived'))).toEqual(ARCHIVED_BY_OCCASION);
+    expect(cardNames(section('Archived (2)'))).toEqual(ARCHIVED_BY_OCCASION);
     expect(cardNames(section('Shared with you'))).toEqual(SHARED_BY_OCCASION);
   });
 
@@ -210,6 +219,24 @@ describe('dashboard — order', () => {
       .closest('a') as HTMLElement;
     expect(within(card).getByText('Featured')).toBeInTheDocument();
     expect(cardNames(section('Your wishlists'))).toEqual(BY_OCCASION);
+  });
+});
+
+describe('dashboard — order on a phone', () => {
+  it('lists the same order as rows (WIS-254)', async () => {
+    atWidth(390);
+    render(<Home />);
+    await screen.findByText('Birthday · in 12 days');
+
+    /** The names of a section's rows, top to bottom: each row's first line. */
+    const rowNames = (name: string) =>
+      within(section(name))
+        .getAllByRole('link')
+        .map((a) => a.querySelector('.text-body')?.textContent);
+    expect(rowNames('Your wishlists')).toEqual(BY_OCCASION);
+    expect(rowNames('Shared with you')).toEqual(SHARED_BY_OCCASION);
+    // No cards anywhere: the lists' only headings are the sections'.
+    expect(screen.queryAllByRole('heading', { level: 3 })).toHaveLength(0);
   });
 });
 
@@ -277,6 +304,20 @@ describe('Shared with you — badges', () => {
     ).toBeInTheDocument();
     expect(card(shared, 'Friend’s wedding')).not.toHaveTextContent('reserved by you');
     // Your own lists carry no count, so no chip.
+    expect(section('Your wishlists')).not.toHaveTextContent('reserved by you');
+  });
+
+  it('shows the same chips on the rows of a phone, with no Member badge (WIS-254)', async () => {
+    atWidth(390);
+    render(<Home />);
+    await screen.findByText('Birthday · in 12 days');
+
+    const shared = section('Shared with you');
+    const row = (name: string) => within(shared).getByRole('link', { name: new RegExp(name) });
+    expect(within(row('Friend’s birthday')).getByText('2 reserved by you')).toBeInTheDocument();
+    expect(within(row('Friend’s books')).getByText('1 reserved by you')).toBeInTheDocument();
+    expect(row('Friend’s wedding')).not.toHaveTextContent('reserved by you');
+    expect(within(shared).queryByText(/^member$/i)).toBeNull();
     expect(section('Your wishlists')).not.toHaveTextContent('reserved by you');
   });
 

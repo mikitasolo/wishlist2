@@ -34,17 +34,24 @@ async function holdWishlists(page: Page) {
   return release;
 }
 
-/** The page's grids: the grid itself and its first card. */
+/** The page's grids (the dashboard's bento is its first). */
 const grids = (page: Page) => page.locator('main .grid');
+
+/**
+ * The page's sections of lists as shown at this width: compact rows on a phone,
+ * card grids from `sm` up (WIS-254), each one in its skeleton too.
+ */
+const listSections = (page: Page, width: number) =>
+  page.locator(width < 640 ? 'main [data-wishlist-rows]' : 'main [data-wishlist-cards]');
 
 // regression: the loading grid was `gap-4 sm:gap-6` where the cards' is
 // `gap-5`, and the dashboard's skeleton had no Featured row and tiles of its
 // own heights, so the page jumped when the lists landed (DS-13).
 for (const width of [390, 1280]) {
-  for (const { name, url, cardGrid } of [
-    { name: 'Mine', url: '/wishlists/mine', cardGrid: 0 },
-    { name: 'Shared', url: '/wishlists/shared', cardGrid: 0 },
-    { name: 'the dashboard', url: '/', cardGrid: 1 },
+  for (const { name, url, bento } of [
+    { name: 'Mine', url: '/wishlists/mine', bento: false },
+    { name: 'Shared', url: '/wishlists/shared', bento: false },
+    { name: 'the dashboard', url: '/', bento: true },
   ]) {
     test(`${name} doesn't move when its skeleton is replaced, at ${width}px`, async ({ page }) => {
       await page.setViewportSize({ width, height: 900 });
@@ -54,24 +61,25 @@ for (const width of [390, 1280]) {
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
       await expect(page.locator('main .skeleton').first()).toBeVisible();
 
-      const grid = grids(page).nth(cardGrid);
+      const grid = listSections(page, width).first();
       const before = {
         grid: await box(grid),
         card: await box(grid.locator('> *').first()),
-        bento: cardGrid === 1 ? await box(grids(page).first()) : null,
+        bento: bento ? await box(grids(page).first()) : null,
       };
 
       release();
-      await expect(grid.locator('> a').first()).toBeVisible();
+      await expect(grid.locator('a').first()).toBeVisible();
       await expect(page.locator('main .skeleton')).toHaveCount(0);
 
       // Where the cards start, and how wide each one is. A card's height
-      // depends on its description, so it isn't held to its skeleton's.
+      // depends on its description, so it isn't held to its skeleton's; a
+      // phone's row is always as tall as its skeleton.
       expectSameBox(await box(grid), before.grid, ['x', 'y', 'width'], 'grid');
       expectSameBox(
         await box(grid.locator('> *').first()),
         before.card,
-        ['x', 'y', 'width'],
+        width < 640 ? ['x', 'y', 'width', 'height'] : ['x', 'y', 'width'],
         'first card'
       );
       // The dashboard's bento is the same size too, box for box.

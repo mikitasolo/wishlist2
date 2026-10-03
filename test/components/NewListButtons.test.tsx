@@ -42,6 +42,7 @@ vi.mock('@/components/CreateWishlistModal', () => ({
 import AppHeader from '@/components/AppHeader';
 import Home from '@/app/page';
 import MyWishlistsPage from '@/app/wishlists/mine/page';
+import { atWidth } from './viewport';
 
 function list(id: string, fields: Record<string, unknown> = {}) {
   return {
@@ -62,6 +63,8 @@ let owned: unknown[];
 const json = (body: unknown) => ({ ok: true, status: 200, json: async () => body });
 
 beforeEach(() => {
+  // Desktop width: the lists are cards (a phone gets rows, `WishlistList.test.tsx`).
+  atWidth(1280);
   session.current = { data: { user: { id: 'me', username: 'me' } }, status: 'authenticated' };
   owned = [list('birthday')];
   vi.stubGlobal(

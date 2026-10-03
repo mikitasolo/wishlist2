@@ -10,27 +10,30 @@ import OccasionLabel, { OCCASION_ON_COVER } from '@/components/OccasionLabel';
 import { coverBadge } from '@/lib/utils/visibility';
 import { formatOwnerItemSummary } from '@/lib/utils/itemCounts';
 
+/** A list as the list screens get it from `GET /api/wishlists`: a card's or a row's data. */
+export type WishlistSummary = IWishlist & {
+  ownerUsername?: string | null;
+  ownerImage?: string | null;
+  /** Every owner of a co-owned list; the card shows the first plus a count. */
+  ownerUsernames?: string[] | null;
+  /** The viewer's own relationship to this list (null when they have none). */
+  userRole?: 'owner' | 'member' | null;
+  /** Published items: the "N items" every screen shows (`lib/utils/itemCounts.ts`). */
+  itemCount?: number;
+  /** Drafts and proposals to review: only on a list the viewer owns, from `/api/wishlists`. */
+  draftCount?: number;
+  proposalCount?: number;
+  /**
+   * Items the viewer has reserved here: only on a list shared with them,
+   * from `/api/wishlists`, never on one they own. "N reserved by you".
+   */
+  reservedByYou?: number;
+  archived?: boolean;
+  bannerUrl?: string | null;
+};
+
 interface WishlistCardProps {
-  wishlist: IWishlist & {
-    ownerUsername?: string | null;
-    ownerImage?: string | null;
-    /** Every owner of a co-owned list; the card shows the first plus a count. */
-    ownerUsernames?: string[] | null;
-    /** The viewer's own relationship to this list (null when they have none). */
-    userRole?: 'owner' | 'member' | null;
-    /** Published items: the "N items" every screen shows (`lib/utils/itemCounts.ts`). */
-    itemCount?: number;
-    /** Drafts and proposals to review: only on a list the viewer owns, from `/api/wishlists`. */
-    draftCount?: number;
-    proposalCount?: number;
-    /**
-     * Items the viewer has reserved here: only on a list shared with them,
-     * from `/api/wishlists`, never on one they own. "N reserved by you".
-     */
-    reservedByYou?: number;
-    archived?: boolean;
-    bannerUrl?: string | null;
-  };
+  wishlist: WishlistSummary;
   showOwner?: boolean;
   /**
    * Whether the viewer's role ("Member", "Owner") shows over the cover. Off

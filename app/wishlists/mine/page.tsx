@@ -7,10 +7,9 @@ import AppHeader from '@/components/AppHeader';
 import AuthButton from '@/components/AuthButton';
 import Button from '@/components/Button';
 import CreateWishlistModal from '@/components/CreateWishlistModal';
-import WishlistCard from '@/components/WishlistCard';
+import WishlistList, { ArchivedLists } from '@/components/WishlistList';
 import EmptyState from '@/components/EmptyState';
-import Icon from '@/components/Icon';
-import { SkeletonGrid } from '@/components/Skeleton';
+import { WishlistListSkeleton } from '@/components/Skeleton';
 import { useToast } from '@/components/ToastProvider';
 import { useLocalToday } from '@/lib/hooks/useLocalToday';
 import { signInPath } from '@/lib/utils/callbackUrl';
@@ -24,7 +23,8 @@ type Wishlist = IWishlist & {
 };
 
 export default function MyWishlistsPage() {
-  const { status } = useSession();
+  const { data: session, status } = useSession();
+  const viewerUsername = (session?.user as { username?: string } | undefined)?.username ?? null;
   const router = useRouter();
   const { showToast } = useToast();
   const [owned, setOwned] = useState<Wishlist[]>([]);
@@ -88,7 +88,7 @@ export default function MyWishlistsPage() {
 
         {loading ? (
           <div className="mt-8">
-            <SkeletonGrid count={8} variant="wishlist" />
+            <WishlistListSkeleton count={8} />
           </div>
         ) : owned.length === 0 ? (
           <EmptyState
@@ -105,25 +105,10 @@ export default function MyWishlistsPage() {
         ) : (
           <div className="mt-8 space-y-12">
             {active.length > 0 && (
-              <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {active.map((w) => (
-                  <WishlistCard key={w._id.toString()} wishlist={w} />
-                ))}
-              </div>
+              <WishlistList wishlists={active} viewerUsername={viewerUsername} />
             )}
-            {archived.length > 0 && (
-              <section>
-                <h2 className="mb-5 flex items-center gap-2 px-1 text-xl font-semibold tracking-tight text-muted-foreground">
-                  <Icon name="package" size={18} />
-                  Archived
-                </h2>
-                <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                  {archived.map((w) => (
-                    <WishlistCard key={w._id.toString()} wishlist={w} />
-                  ))}
-                </div>
-              </section>
-            )}
+            {/* Archived, folded away at the end */}
+            <ArchivedLists wishlists={archived} viewerUsername={viewerUsername} />
           </div>
         )}
       </main>
