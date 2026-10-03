@@ -133,7 +133,7 @@ export default function InviteMemberForm({ onInvite, isInviting, ref }: InviteMe
       >
         {/* Field + suggestions */}
         <div ref={fieldRef} className="relative flex-1">
-          <div className="flex h-11 items-center gap-2 rounded-xl border border-border-strong bg-surface px-3.5">
+          <div className="flex h-11 items-center gap-2 rounded-xl border border-border-strong bg-surface px-3.5 field-focus">
             <Icon name="search" size={16} className="flex-shrink-0 text-muted-foreground" />
             <input
               ref={inputRef}

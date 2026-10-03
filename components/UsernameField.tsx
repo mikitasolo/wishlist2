@@ -32,13 +32,13 @@ export default function UsernameField({
       <label htmlFor={id} className="mb-1.5 block text-sm font-medium text-foreground">
         Username
       </label>
-      <div className="flex items-center gap-2 rounded-xl border border-border-strong bg-surface px-3 focus-within:border-border-strong">
+      <div className="flex items-center gap-2 rounded-xl border border-border-strong bg-surface px-3 field-focus">
         <span className="text-muted-foreground">@</span>
         <input
           id={id}
           value={value}
           onChange={(e) => onChange(e.target.value.toLowerCase())}
-          className="h-11 min-w-0 flex-1 border-0 bg-transparent text-[15px] outline-none focus-visible:outline-none"
+          className="h-11 min-w-0 flex-1 border-0 bg-transparent text-[15px] outline-none"
           autoCapitalize="none"
           autoComplete="off"
           spellCheck={false}

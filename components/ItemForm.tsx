@@ -340,7 +340,7 @@ export default function ItemForm({
           ref={firstInputRef}
           value={formData.name}
           onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-          className="w-full px-4 py-2 border border-border-strong rounded-lg outline-none"
+          className="w-full px-4 py-2 border border-border-strong rounded-lg outline-none field-focus"
           placeholder="Enter item name"
           disabled={submitting}
           aria-required="true"
@@ -368,7 +368,7 @@ export default function ItemForm({
         <div className="flex gap-2">
           {/* Text, not a number field: that one shows the browser's decimal
               format whatever the cards use, and refuses the other separator. */}
-          <div className="flex flex-1 min-w-0 items-center gap-1.5 px-4 border border-border-strong rounded-lg bg-surface">
+          <div className="flex flex-1 min-w-0 items-center gap-1.5 px-4 border border-border-strong rounded-lg bg-surface field-focus">
             <span className="flex-shrink-0 text-muted-foreground" aria-hidden="true">
               {priceHints.symbol}
             </span>
@@ -396,7 +396,7 @@ export default function ItemForm({
               type="button"
               onClick={() => !submitting && setIsCurrencyOpen(!isCurrencyOpen)}
               disabled={submitting}
-              className="px-4 py-2 border border-border-strong rounded-lg outline-none bg-surface text-left w-full flex items-center justify-between"
+              className="px-4 py-2 border border-border-strong rounded-lg outline-none field-focus bg-surface text-left w-full flex items-center justify-between"
             >
               <span>{formData.currency}</span>
               <svg
@@ -423,7 +423,7 @@ export default function ItemForm({
                     placeholder="Search currency..."
                     value={currencySearch}
                     onChange={(e) => setCurrencySearch(e.target.value)}
-                    className="w-full px-3 py-2 border border-border-strong rounded-md outline-none text-sm"
+                    className="w-full px-3 py-2 border border-border-strong rounded-md outline-none field-focus text-sm"
                     autoFocus
                     autoComplete="off"
                   />
@@ -474,7 +474,7 @@ export default function ItemForm({
           id="link"
           value={formData.link}
           onChange={(e) => setFormData({ ...formData, link: e.target.value })}
-          className="w-full px-4 py-2 border border-border-strong rounded-lg outline-none"
+          className="w-full px-4 py-2 border border-border-strong rounded-lg outline-none field-focus"
           placeholder="https://example.com/product"
           disabled={submitting}
           autoComplete="off"
@@ -490,7 +490,7 @@ export default function ItemForm({
           id="notes"
           value={formData.notes}
           onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-          className="w-full px-4 py-2 border border-border-strong rounded-lg outline-none resize-none"
+          className="w-full px-4 py-2 border border-border-strong rounded-lg outline-none field-focus resize-none"
           placeholder="Add any additional notes about this item like size, color, etc..."
           rows={3}
           maxLength={100}

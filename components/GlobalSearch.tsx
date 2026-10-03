@@ -161,8 +161,8 @@ export default function GlobalSearch({ variant = 'header' }: GlobalSearchProps) 
       <div
         className={
           inline
-            ? 'flex w-full items-center gap-2 rounded-full border border-border-strong bg-surface pl-4 pr-1.5 shadow-xs'
-            : 'flex min-w-0 flex-1 items-center gap-2 rounded-full border border-border-strong bg-surface pl-3.5 pr-1.5 shadow-xs sm:w-72 sm:flex-none'
+            ? 'flex w-full items-center gap-2 rounded-full border border-border-strong bg-surface pl-4 pr-1.5 shadow-xs field-focus'
+            : 'flex min-w-0 flex-1 items-center gap-2 rounded-full border border-border-strong bg-surface pl-3.5 pr-1.5 shadow-xs field-focus sm:w-72 sm:flex-none'
         }
       >
         <Icon name="search" size={17} className="flex-shrink-0 text-muted-foreground" />

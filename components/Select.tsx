@@ -272,7 +272,7 @@ export default function Select({
           if (e.key === ' ' && !e.altKey && !e.ctrlKey && !e.metaKey) e.preventDefault();
         }}
         onBlur={() => setOpen(false)}
-        className={`flex items-center justify-between gap-2 rounded-xl border border-border-strong bg-surface px-3.5 font-medium text-foreground outline-none transition-colors hover:bg-surface-hover disabled:opacity-50 ${sizeStyles[size]} ${triggerClassName}`}
+        className={`flex items-center justify-between gap-2 rounded-xl border border-border-strong bg-surface px-3.5 font-medium text-foreground outline-none field-focus transition-colors hover:bg-surface-hover disabled:opacity-50 ${sizeStyles[size]} ${triggerClassName}`}
       >
         {selected ? (
           <span className="truncate">{selected.label}</span>

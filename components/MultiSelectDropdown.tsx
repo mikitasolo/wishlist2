@@ -73,7 +73,7 @@ export default function MultiSelectDropdown({
       <button
         type="button"
         onClick={() => setIsOpen((v) => !v)}
-        className="flex h-9 w-full min-w-[200px] items-center justify-between gap-2 rounded-xl border border-border-strong bg-surface px-3.5 text-sm font-medium text-foreground outline-none transition-colors hover:bg-surface-hover sm:w-auto"
+        className="flex h-9 w-full min-w-[200px] items-center justify-between gap-2 rounded-xl border border-border-strong bg-surface px-3.5 text-sm font-medium text-foreground outline-none field-focus transition-colors hover:bg-surface-hover sm:w-auto"
       >
         <span className="truncate">{displayText}</span>
         <Icon

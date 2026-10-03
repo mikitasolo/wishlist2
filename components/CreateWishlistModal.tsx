@@ -219,7 +219,7 @@ export default function CreateWishlistModal({
               ref={firstInputRef}
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              className="w-full px-4 py-2 border border-border-strong rounded-xl outline-none"
+              className="w-full px-4 py-2 border border-border-strong rounded-xl outline-none field-focus"
               placeholder="My Wishlist"
               disabled={isSubmitting}
               aria-required="true"
@@ -235,7 +235,7 @@ export default function CreateWishlistModal({
               id="description"
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              className="w-full px-4 py-2 border border-border-strong rounded-xl outline-none"
+              className="w-full px-4 py-2 border border-border-strong rounded-xl outline-none field-focus"
               placeholder="Optional description"
               rows={3}
               disabled={isSubmitting}

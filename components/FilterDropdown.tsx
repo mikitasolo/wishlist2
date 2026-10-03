@@ -83,7 +83,7 @@ export default function FilterDropdown({
         type="button"
         aria-label={ariaLabel}
         onClick={() => setIsOpen(!isOpen)}
-        className="flex h-9 w-full items-center justify-between gap-2 rounded-xl border border-border-strong bg-surface px-3.5 text-sm font-medium text-foreground outline-none transition-colors hover:bg-surface-hover"
+        className="flex h-9 w-full items-center justify-between gap-2 rounded-xl border border-border-strong bg-surface px-3.5 text-sm font-medium text-foreground outline-none field-focus transition-colors hover:bg-surface-hover"
       >
         <span className="truncate">{displayText}</span>
         <Icon

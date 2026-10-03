@@ -1551,7 +1551,7 @@ export default function WishlistDetail() {
                     {/* Search + controls */}
                     <div className="mb-6 flex flex-col gap-3 sm:mb-8 sm:gap-4">
                       {/* Search — its own full-width row */}
-                      <div className="flex h-10 items-center gap-2 rounded-xl border border-border-strong bg-surface px-3.5">
+                      <div className="flex h-10 items-center gap-2 rounded-xl border border-border-strong bg-surface px-3.5 field-focus">
                         <Icon
                           name="search"
                           size={18}
@@ -2027,7 +2027,7 @@ export default function WishlistDetail() {
                     required
                     value={settingsForm.name}
                     onChange={(e) => editSettings({ name: e.target.value })}
-                    className="w-full px-4 py-2 border border-border-strong rounded-xl outline-none"
+                    className="w-full px-4 py-2 border border-border-strong rounded-xl outline-none field-focus"
                     disabled={isSavingSettings}
                     autoComplete="off"
                   />
@@ -2040,7 +2040,7 @@ export default function WishlistDetail() {
                   >
                     Link
                   </label>
-                  <div className="flex items-center gap-1.5 rounded-xl border border-border-strong bg-surface px-3.5 focus-within:border-border-strong">
+                  <div className="flex items-center gap-1.5 rounded-xl border border-border-strong bg-surface px-3.5 field-focus">
                     <span className="flex-shrink-0 text-sm text-muted-foreground">/wishlists/</span>
                     <input
                       type="text"
@@ -2074,7 +2074,7 @@ export default function WishlistDetail() {
                     id="settings-description"
                     value={settingsForm.description}
                     onChange={(e) => editSettings({ description: e.target.value })}
-                    className="w-full px-4 py-2 border border-border-strong rounded-xl outline-none"
+                    className="w-full px-4 py-2 border border-border-strong rounded-xl outline-none field-focus"
                     rows={3}
                     disabled={isSavingSettings}
                     autoComplete="off"
