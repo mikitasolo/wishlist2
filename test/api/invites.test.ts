@@ -711,7 +711,10 @@ describe('DELETE /api/wishlists/[id]/invites/[inviteId]', () => {
       expect((await res.json()).success).toBe(true);
 
       expect(await WishlistInvite.findById(inviteId)).toBeNull();
-      expect(log).toHaveBeenCalledWith(expect.stringContaining(inviteId), expect.any(Error));
+      expect(log).toHaveBeenCalledWith(expect.stringContaining(inviteId), {
+        name: 'Error',
+        code: undefined,
+      });
     } finally {
       failing.mockRestore();
       log.mockRestore();

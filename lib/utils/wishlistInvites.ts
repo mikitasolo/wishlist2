@@ -6,6 +6,7 @@ import { sendWishlistInvitationEmail } from '@/lib/email';
 import { createNotification } from '@/lib/notifications';
 import { isDuplicateKeyError } from '@/lib/utils/mongoErrors';
 import { errorKind } from '@/lib/utils/errorKind';
+import { isWishlistOwner } from '@/lib/utils/wishlistOwners';
 
 type Id = string | mongoose.Types.ObjectId;
 
@@ -149,7 +150,8 @@ export async function pausedInviteWishlistIds(userId: Id): Promise<mongoose.Type
 /**
  * Cancel the invites a user still has pending on a wishlist they've just left or
  * lost a role on (leave, kick, owner removal, demotion), along with the
- * `wishlist_invite` notifications that point them at those invites.
+ * `wishlist_invite` notifications that point them at those invites. (The invites
+ * a removed or demoted owner *sent* go through `cancelInvitesSentBy`.)
  *
  * Accepting an invite grants the role it names, so a leftover one lets the person
  * who was removed undo it: an `owner` invite brings a kicked member back as a
@@ -191,6 +193,116 @@ export async function cancelPendingInvites(wishlistId: Id, userId: Id): Promise<
     status: 'pending',
   });
   if (deletedCount) await clearInviteNotifications(wishlistId, userId);
+}
+
+/**
+ * Cancel the invites an owner sent for a list, once they've lost ownership of it
+ * against their will: another owner removed or demoted them. An owner who was
+ * taken off the owners shouldn't still be bringing people onto the list (as
+ * co-owners, even) after the fact. An owner who leaves of their own accord keeps
+ * theirs: those stay the list's, and any owner can still cancel them from the
+ * Pending invites panel.
+ *
+ * Call it only once the removal or demotion has landed (`removeWishlistOwner`
+ * returned `'removed'`), never before it, and never for a refused one.
+ *
+ * Each invite goes in its own conditional delete on the pending row, the one an
+ * owner's cancel uses, so it races accept and decline the same way: exactly one
+ * of them lands. An invite the invitee has already claimed isn't pending, so it
+ * isn't touched, and that accept completes. Answered rows are kept.
+ *
+ * An invite issued after the read below, by a request that checked its caller's
+ * ownership before the removal landed, is taken back by that request itself: the
+ * invite routes re-check the inviter's ownership once the invite exists
+ * (`withdrawUnlessInviterOwns`).
+ *
+ * As in `cancelPendingInvites`, the invite delete is the fix, so its failure
+ * propagates, and the notification cleanup is best-effort.
+ */
+export async function cancelInvitesSentBy(wishlistId: Id, inviterId: Id): Promise<void> {
+  const sent = await WishlistInvite.find({
+    wishlist: wishlistId,
+    invitedBy: inviterId,
+    status: 'pending',
+  })
+    .select('_id')
+    .lean();
+  // Each invite is its own, so they go side by side.
+  await Promise.all(
+    sent.map(async ({ _id }) => {
+      // Before the delete, so a re-invite landing after it keeps its notification.
+      const cancelledAt = new Date();
+      const invite = await WishlistInvite.findOneAndDelete({
+        _id,
+        wishlist: wishlistId,
+        status: 'pending',
+      });
+      if (invite) await clearCancelledInviteNotifications(invite, cancelledAt);
+    })
+  );
+}
+
+/**
+ * Take back an invite its request has just issued if the inviter stopped owning
+ * the list meanwhile: a co-owner removed or demoted them (or they left) after the
+ * request last checked. That removal's `cancelInvitesSentBy` may have read the
+ * pending invites before this one existed, so this request has to do it. Of the
+ * two, at least one sees the other: the removal's write lands before its read of
+ * the invites, and this check runs after the invite is written.
+ *
+ * Returns whether the invite was withdrawn, and then the request answers as it
+ * would any non-owner. `false` when the inviter still owns the list, and also when
+ * the invitee has already answered the invite (`withdrawInvite`): an accept that
+ * claimed it first completes, as one that beats a removal's cleanup does.
+ */
+export async function withdrawUnlessInviterOwns(
+  invite: Pick<IWishlistInvite, '_id' | 'wishlist' | 'invitedUser' | 'invitedBy'>
+): Promise<boolean> {
+  const list = await Wishlist.findById(invite.wishlist).select('owners').lean();
+  if (list && isWishlistOwner(list, invite.invitedBy.toString())) return false;
+  return withdrawInvite(invite, 'pending');
+}
+
+/**
+ * Clear the `wishlist_invite` notification of an invite that an owner cancelled
+ * (by hand, or by removing or demoting whoever sent it). It links to /invites and
+ * looks actionable, but there's nothing left there to accept. Notifications carry
+ * no invite id, which bounds what may go:
+ *  - only while no other pending invite for this person and list remains: the
+ *    unique pending index allows one at most, but only once it's built;
+ *  - only notifications from before `cancelledAt`, taken before the invite was
+ *    deleted, so a re-invite landing in between keeps its own.
+ * An invite that was already accepted or declined is never cancelled, so its
+ * notification, which is history by then, is never reached.
+ *
+ * Best-effort: the invite is already gone, so a failure is logged and swallowed:
+ * the invite's id, which is all a repair by hand needs and names nobody (the row
+ * is deleted), and the error by its kind only, since a driver error can quote
+ * the filter, the invitee's id included.
+ */
+export async function clearCancelledInviteNotifications(
+  invite: Pick<IWishlistInvite, '_id' | 'wishlist' | 'invitedUser'>,
+  cancelledAt: Date
+): Promise<void> {
+  try {
+    const stillPending = await WishlistInvite.exists({
+      wishlist: invite.wishlist,
+      invitedUser: invite.invitedUser,
+      status: 'pending',
+    });
+    if (stillPending) return;
+    await Notification.deleteMany({
+      user: invite.invitedUser,
+      wishlist: invite.wishlist,
+      type: 'wishlist_invite',
+      createdAt: { $lt: cancelledAt },
+    });
+  } catch (err) {
+    console.error(
+      `Notification cleanup failed for cancelled invite ${invite._id}:`,
+      errorKind(err)
+    );
+  }
 }
 
 /**

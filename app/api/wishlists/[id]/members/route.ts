@@ -10,7 +10,11 @@ import { areFriends } from '@/lib/utils/friends';
 import { resolveWishlistId } from '@/lib/utils/wishlistSlug';
 import { getOwnerAccess } from '@/lib/utils/wishlistAccess';
 import { isWishlistOwner, ownerIds } from '@/lib/utils/wishlistOwners';
-import { isInvitePaused, issueWishlistInvite } from '@/lib/utils/wishlistInvites';
+import {
+  isInvitePaused,
+  issueWishlistInvite,
+  withdrawUnlessInviterOwns,
+} from '@/lib/utils/wishlistInvites';
 import { publicDisplayName } from '@/lib/utils/displayName';
 
 const notOwnerError = () =>
@@ -255,6 +259,19 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         { success: false, error: 'This person already has a pending invite' },
         { status: 400 }
       );
+    }
+
+    // The re-read above only narrows the race with a co-owner removing or
+    // demoting the caller: that removal's `cancelInvitesSentBy` may have read
+    // their pending invites before this one existed. So check again now that it
+    // does, and take it back if they've lost the list. Answered then as any
+    // non-owner is. The email has gone out by now; the invite is what counts.
+    if (await withdrawUnlessInviterOwns(invite)) {
+      const after = await getOwnerAccess(id, session.user.id);
+      if (!after.wishlist) {
+        return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
+      }
+      return notOwnerError();
     }
 
     return NextResponse.json(

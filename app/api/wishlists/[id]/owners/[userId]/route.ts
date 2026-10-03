@@ -15,9 +15,11 @@ import {
   removeWishlistOwner,
 } from '@/lib/utils/wishlistOwnership';
 import {
+  cancelInvitesSentBy,
   cancelPendingInvites,
   issueWishlistInvite,
   withdrawInvite,
+  withdrawUnlessInviterOwns,
 } from '@/lib/utils/wishlistInvites';
 import { publicDisplayName } from '@/lib/utils/displayName';
 import { isObjectIdParam } from '@/lib/utils/objectId';
@@ -103,6 +105,11 @@ async function removalRefused(
   result: Exclude<OwnerRemoval, 'removed'>
 ): Promise<NextResponse> {
   if (result === 'last-owner') return lastOwnerError();
+  return lostOwnership(wishlistId, callerId);
+}
+
+/** The answer to a caller who stopped owning the list mid-request: any non-owner's. */
+async function lostOwnership(wishlistId: string, callerId: string): Promise<NextResponse> {
   if (!(await getOwnerAccess(wishlistId, callerId)).wishlist) {
     return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
   }
@@ -212,6 +219,12 @@ export async function POST(
     ) {
       return notAMember();
     }
+    // Likewise for the caller: a co-owner who removed or demoted them since the
+    // re-read above may have cancelled their sent invites before this one existed
+    // (see `cancelInvitesSentBy`).
+    if (await withdrawUnlessInviterOwns(invite)) {
+      return await lostOwnership(id, session.user.id);
+    }
 
     return NextResponse.json(
       { success: true, data: { pending: true, role: 'owner', inviteId: invite._id } },
@@ -269,6 +282,9 @@ export async function PATCH(
 
     // Nothing left for them to accept: a pending invite would undo the demotion.
     await cancelPendingInvites(authorized.id, userId);
+    // Nor the invites they sent as an owner: a demotion takes away their say over
+    // who joins, as a removal does.
+    await cancelInvitesSentBy(authorized.id, userId);
 
     // Only now that it has landed. Just to them, and without naming who did it.
     // Links to the list, which they can still open as a member (unless it's
@@ -334,6 +350,9 @@ export async function DELETE(
     await releaseUserBookings(authorized.id, userId);
     // Otherwise accepting a leftover invite would bring them straight back.
     await cancelPendingInvites(authorized.id, userId);
+    // And the people they invited aren't brought on by an owner who's been taken
+    // off. (An owner who leaves keeps theirs: see `cancelInvitesSentBy`.)
+    await cancelInvitesSentBy(authorized.id, userId);
 
     // Just to them, without naming who did it. No slug: the notification doesn't
     // link to a list they may no longer be able to see.
