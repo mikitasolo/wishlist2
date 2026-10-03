@@ -64,7 +64,7 @@ npm run dev
 
 You don't need an SMTP account to run locally: set `EMAIL_TRANSPORT=console` in `.env.local` (the `SMTP_*` variables can then stay empty) and every email the app would send, the magic link included, is printed to the terminal running `npm run dev` instead. Nothing is sent.
 
-Open [http://localhost:3000](http://localhost:3000). Sign in from `/auth/signin` with your email, then click the magic link in the email, or, in console mode, copy the link from the terminal into your browser. On first sign-in an account is created with a random username (`user_…`), and you land on `/welcome`, which offers to pick your own — there is no separate admin/seed step. Each wishlist has owners (any number, all equal) and members.
+Open [http://localhost:3000](http://localhost:3000) (in an agent workspace, a git worktree, `npm run dev` prints the workspace's own port instead: see `scripts/dev-port.mjs`). Sign in from `/auth/signin` with your email, then click the magic link in the email, or, in console mode, copy the link from the terminal into your browser. On first sign-in an account is created with a random username (`user_…`), and you land on `/welcome`, which offers to pick your own — there is no separate admin/seed step. Each wishlist has owners (any number, all equal) and members.
 
 ## 🔑 Environment variables
 
@@ -120,7 +120,7 @@ npm run release          # fast-forward remote main to remote staging (operator 
 
 ## 🗂️ Development workflow
 
-Tasks live in [Linear](https://linear.app/mikitasolo) (team **Wishlist**, issue keys `WIS-…`). Each issue is worked in its own [Conductor](https://conductor.build) workspace — a git worktree and branch cut from `staging` — usually by an AI agent, and lands as a pull request into `staging` that gets squash-merged. `main` is production and only ever fast-forwards to `staging` via `npm run release`. The full lifecycle, status meanings, and PR conventions are in [AGENTS.md](AGENTS.md).
+Tasks live in [Linear](https://linear.app/mikitasolo) (team **Wishlist**, issue keys `WIS-…`). Each issue is worked in its own **Orca** workspace — a git worktree and branch cut from `staging`, prepared by `scripts/workspace-setup.sh` — usually by an AI agent, and lands as a pull request into `staging` that gets squash-merged. `main` is production and only ever fast-forwards to `staging` via `npm run release`. The full lifecycle, status meanings, and PR conventions are in [AGENTS.md](AGENTS.md).
 
 ## 🧪 Testing
 
@@ -174,7 +174,6 @@ test/           # Vitest unit / component / api suites + helpers
 e2e/            # Playwright smoke tests + global setup/teardown
 types/          # shared TS types
 docs/           # brand assets and their generators
-.conductor/     # Conductor workspace setup/run scripts and agent prompts
 ```
 
 ## 🔐 Security & privacy notes
