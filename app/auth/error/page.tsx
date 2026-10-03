@@ -4,6 +4,7 @@ import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Suspense } from 'react';
 import Icon from '@/components/Icon';
+import { buttonClassName } from '@/components/buttonStyles';
 
 function AuthErrorContent() {
   const searchParams = useSearchParams();
@@ -30,10 +31,7 @@ function AuthErrorContent() {
           Authentication error
         </h1>
         <p className="mb-6 text-muted-foreground">{errorMessage}</p>
-        <Link
-          href="/auth/signin"
-          className="inline-flex h-11 items-center rounded-lg bg-primary-600 px-6 font-medium text-white shadow-sm transition-colors hover:bg-primary-700"
-        >
+        <Link href="/auth/signin" className={buttonClassName()}>
           Try again
         </Link>
       </div>

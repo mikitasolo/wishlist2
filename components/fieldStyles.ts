@@ -53,4 +53,5 @@ export const FIELD_HELPER = 'mt-1.5 text-xs text-muted-foreground';
 export const FIELD_ERROR = 'mt-1.5 text-xs text-red-600 dark:text-red-400';
 
 /** A toolbar control's label (a list's Status, Sort and currency filters). */
-export const TOOLBAR_LABEL = 'text-[11px] font-semibold uppercase tracking-wide text-muted-foreground';
+export const TOOLBAR_LABEL =
+  'text-[11px] font-semibold uppercase tracking-wide text-muted-foreground';

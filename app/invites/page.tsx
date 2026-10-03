@@ -15,6 +15,7 @@ import { signInPath } from '@/lib/utils/callbackUrl';
 import { createMutationTracker } from '@/lib/utils/itemListMerge';
 import { acceptedInviteToast } from '@/lib/utils/confirmationCopy';
 import { TONE_CLASSES } from '@/lib/utils/statusTones';
+import Button from '@/components/Button';
 
 interface Invite {
   _id: string;
@@ -249,20 +250,21 @@ export default function InvitesPage() {
                   </div>
                 </div>
                 <div className="flex flex-shrink-0 items-center gap-2">
-                  <button
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     onClick={() => respond(invite, 'decline')}
                     disabled={busy(invite._id)}
-                    className="inline-flex h-9 items-center rounded-xl px-4 text-sm font-semibold text-foreground transition-colors hover:bg-muted disabled:opacity-50"
                   >
                     Decline
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    size="sm"
                     onClick={() => respond(invite, 'accept')}
                     disabled={busy(invite._id)}
-                    className="inline-flex h-9 items-center rounded-xl bg-primary-600 px-4 text-sm font-semibold text-white shadow-[0_8px_22px_-10px_rgba(94,92,230,0.9)] transition-colors hover:bg-primary-500 disabled:opacity-50"
                   >
                     Accept
-                  </button>
+                  </Button>
                 </div>
               </li>
             ))}

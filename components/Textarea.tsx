@@ -12,7 +12,5 @@ interface TextareaProps extends ComponentPropsWithRef<'textarea'> {
 /** A multi-line text field. Inside a `Field` it takes the field's id and descriptions. */
 export default function Textarea({ size = 'lg', className = '', ...props }: TextareaProps) {
   const control = useFieldControl(props);
-  return (
-    <textarea {...props} {...control} className={`${textareaClassName(size)} ${className}`} />
-  );
+  return <textarea {...props} {...control} className={`${textareaClassName(size)} ${className}`} />;
 }

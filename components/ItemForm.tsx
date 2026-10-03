@@ -362,11 +362,7 @@ export default function ItemForm({
       </div>
 
       {/* Price */}
-      <Field
-        label="Price"
-        id="price"
-        error={showPriceError && priceError ? priceError : undefined}
-      >
+      <Field label="Price" id="price" error={showPriceError && priceError ? priceError : undefined}>
         <div className="flex gap-2">
           {/* Text, not a number field: that one shows the browser's decimal
               format whatever the cards use, and refuses the other separator. */}

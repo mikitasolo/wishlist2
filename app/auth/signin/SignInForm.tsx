@@ -6,6 +6,9 @@ import Link from 'next/link';
 import Icon from '@/components/Icon';
 import TurnstileWidget, { type TurnstileHandle } from '@/components/TurnstileWidget';
 import { requestMagicLink } from './actions';
+import Button from '@/components/Button';
+import Field from '@/components/Field';
+import Input from '@/components/Input';
 
 // Auth.js deliberately returns a generic error code (not the server-side
 // reason), so we can't tell a rate-limit from an SMTP failure here — this
@@ -136,22 +139,17 @@ export default function SignInForm({ turnstileSiteKey }: SignInFormProps) {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-6" autoComplete="off">
-          <div>
-            <label htmlFor="email" className="block text-sm font-medium text-foreground mb-2">
-              Email address
-            </label>
-            <input
-              id="email"
+          <Field label="Email address" id="email">
+            <Input
               type="email"
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-4 py-3 border border-border-strong rounded-lg outline-hidden field-focus"
               placeholder="you@example.com"
               disabled={isLoading}
               autoComplete="email"
             />
-          </div>
+          </Field>
 
           {turnstileSiteKey && (
             <TurnstileWidget
@@ -165,13 +163,9 @@ export default function SignInForm({ turnstileSiteKey }: SignInFormProps) {
             />
           )}
 
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="w-full bg-primary-600 text-white py-3 rounded-lg font-medium hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-          >
+          <Button type="submit" disabled={isLoading} fullWidth>
             {isLoading ? 'Sending link...' : 'Send magic link'}
-          </button>
+          </Button>
         </form>
 
         <p className="mt-6 text-center text-sm text-muted-foreground">

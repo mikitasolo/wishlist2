@@ -110,7 +110,8 @@ const iconVariantStyles: Record<IconButtonVariant, string> = {
   chrome:
     'border border-border bg-surface text-muted-foreground shadow-xs hover:bg-surface-hover hover:text-foreground',
   /** Over a photo or cover. */
-  glass: 'border border-border bg-surface/90 text-muted-foreground shadow-sm backdrop-blur hover:bg-surface',
+  glass:
+    'border border-border bg-surface/90 text-muted-foreground shadow-sm backdrop-blur hover:bg-surface',
   'danger-ghost':
     'text-muted-foreground hover:bg-red-500/10 hover:text-red-600 dark:hover:text-red-400 disabled:hover:bg-transparent',
 };

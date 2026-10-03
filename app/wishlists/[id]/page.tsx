@@ -14,6 +14,12 @@ import AuthButton from '@/components/AuthButton';
 import AppHeader from '@/components/AppHeader';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import Button from '@/components/Button';
+import IconButton from '@/components/IconButton';
+import Field from '@/components/Field';
+import Input from '@/components/Input';
+import Textarea from '@/components/Textarea';
+import SearchField from '@/components/SearchField';
+import { FIELD_HELPER, FIELD_LABEL } from '@/components/fieldStyles';
 import Icon from '@/components/Icon';
 import InviteMemberForm, { type InviteMemberFormHandle } from '@/components/InviteMemberForm';
 import Cover from '@/components/Cover';
@@ -1246,15 +1252,9 @@ export default function WishlistDetail() {
   // while the first read of them is on its way too.
   const addItemButton = (
     <div className="mb-6 sm:mb-8">
-      {isOwner && (
-        <Button onClick={() => setShowAddItemModal(true)} size="md">
-          + Add Item
-        </Button>
-      )}
+      {isOwner && <Button onClick={() => setShowAddItemModal(true)}>+ Add Item</Button>}
       {isMember && !isOwner && (
-        <Button onClick={() => setShowProposeItemModal(true)} size="md">
-          + Propose Item
-        </Button>
+        <Button onClick={() => setShowProposeItemModal(true)}>+ Propose Item</Button>
       )}
     </div>
   );
@@ -1374,23 +1374,27 @@ export default function WishlistDetail() {
                 share it with gets the answer a missing list gets. */}
             {!wishlist.archived && <ShareButton />}
             {canLeave && (
-              <button
+              <Button
+                variant="secondary"
+                size="sm"
+                shape="pill"
+                icon="logout"
                 onClick={handleLeaveWishlist}
-                className="inline-flex h-9 items-center gap-1.5 rounded-full border border-border bg-surface px-3.5 text-[13px] font-semibold text-foreground shadow-xs transition-colors hover:bg-surface-hover"
               >
-                <Icon name="logout" size={15} />
                 Leave
-              </button>
+              </Button>
             )}
             {isOwner && (
-              <button
+              <Button
+                variant="secondary"
+                size="sm"
+                shape="pill"
+                icon={manageOpen ? 'close' : 'settings'}
                 onClick={() => setManageOpen((v) => !v)}
                 aria-label={manageOpen ? 'Back to items' : 'Manage wishlist'}
-                className="inline-flex h-9 items-center gap-1.5 rounded-full border border-border bg-surface px-3.5 text-[13px] font-semibold text-foreground shadow-xs transition-colors hover:bg-surface-hover"
               >
-                <Icon name={manageOpen ? 'close' : 'settings'} size={15} />
                 {manageOpen ? 'Done' : 'Manage'}
-              </button>
+              </Button>
             )}
           </div>
         </div>
@@ -1398,13 +1402,14 @@ export default function WishlistDetail() {
         {/* Manage header (owners only) */}
         {manageOpen && isOwner && (
           <div className="mb-6 flex items-center gap-3">
-            <button
+            <IconButton
+              icon="chevron-left"
+              label="Back to items"
               onClick={() => setManageOpen(false)}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border bg-surface text-muted-foreground shadow-xs transition-colors hover:bg-surface-hover hover:text-foreground"
-              aria-label="Back to items"
-            >
-              <Icon name="chevron-down" size={18} className="rotate-90" />
-            </button>
+              variant="secondary"
+              size="sm"
+              shape="pill"
+            />
             <h2 className="text-xl font-semibold tracking-tight text-foreground">
               Manage wishlist
             </h2>
@@ -1546,31 +1551,14 @@ export default function WishlistDetail() {
                     {/* Search + controls */}
                     <div className="mb-6 flex flex-col gap-3 sm:mb-8 sm:gap-4">
                       {/* Search — its own full-width row */}
-                      <div className="flex h-10 items-center gap-2 rounded-xl border border-border-strong bg-surface px-3.5 field-focus">
-                        <Icon
-                          name="search"
-                          size={18}
-                          className="flex-shrink-0 text-muted-foreground"
-                        />
-                        <input
-                          type="text"
-                          value={searchQuery}
-                          onChange={(e) => setSearchQuery(e.target.value)}
-                          placeholder="Search items by name…"
-                          aria-label="Search items by name"
-                          className="h-full min-w-0 flex-1 border-0 bg-transparent text-sm outline-hidden"
-                        />
-                        {searchQuery && (
-                          <button
-                            type="button"
-                            onClick={() => setSearchQuery('')}
-                            aria-label="Clear search"
-                            className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                          >
-                            <Icon name="close" size={15} />
-                          </button>
-                        )}
-                      </div>
+                      <SearchField
+                        size="sm"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        onClear={() => setSearchQuery('')}
+                        placeholder="Search items by name…"
+                        aria-label="Search items by name"
+                      />
 
                       {/* Status · Sort · Currency — equal labelled fields */}
                       <div className="flex flex-col gap-3 sm:flex-row sm:gap-4">
@@ -1646,7 +1634,7 @@ export default function WishlistDetail() {
                           you&apos;re ready to share.
                         </p>
                         <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
-                          <Button onClick={() => setShowAddItemModal(true)} size="md">
+                          <Button onClick={() => setShowAddItemModal(true)}>
                             Add your first item
                           </Button>
                           {/* Not on an archived list, as the header's Share isn't. */}
@@ -1655,11 +1643,7 @@ export default function WishlistDetail() {
                       </>
                     )}
                     {isMember && !isOwner && (
-                      <Button
-                        onClick={() => setShowProposeItemModal(true)}
-                        size="md"
-                        className="mt-6"
-                      >
+                      <Button onClick={() => setShowProposeItemModal(true)} className="mt-6">
                         Propose an item
                       </Button>
                     )}
@@ -1678,7 +1662,7 @@ export default function WishlistDetail() {
                         ? `No items match “${searchQuery.trim()}”.`
                         : 'No items match the selected filters.'}
                     </p>
-                    <Button onClick={showAllItems} variant="secondary" size="md" className="mt-6">
+                    <Button onClick={showAllItems} variant="secondary" className="mt-6">
                       Show all
                     </Button>
                   </div>
@@ -1784,7 +1768,9 @@ export default function WishlistDetail() {
                           )}
                           {canEditRow && (
                             <>
-                              <button
+                              <Button
+                                variant="ghost"
+                                size="sm"
                                 onClick={() =>
                                   setDemoteConfirm({
                                     userId: memberUserId,
@@ -1792,32 +1778,36 @@ export default function WishlistDetail() {
                                   })
                                 }
                                 disabled={demotingIds.has(memberUserId)}
-                                className="cursor-pointer whitespace-nowrap rounded-xl px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 sm:px-4"
+                                className="whitespace-nowrap"
                               >
                                 Make member
-                              </button>
-                              <button
+                              </Button>
+                              <Button
+                                variant="danger-ghost"
+                                size="sm"
                                 onClick={() =>
                                   handleKickMember(memberUserId, member.user.username, true)
                                 }
                                 disabled={demotingIds.has(memberUserId)}
-                                className="cursor-pointer whitespace-nowrap rounded-xl px-3 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-red-400 dark:hover:bg-red-500/10 sm:px-4"
+                                className="whitespace-nowrap"
                               >
                                 Remove
-                              </button>
+                              </Button>
                             </>
                           )}
                           {/* The sole owner can't leave (a list keeps an owner), so
                               theirs explains how to instead of asking to confirm. */}
                           {isCurrentUser && isOwner && (
-                            <button
+                            <Button
+                              variant="danger-ghost"
+                              size="sm"
                               onClick={
                                 canLeave ? handleLeaveWishlist : () => setSoleOwnerNotice(true)
                               }
-                              className="cursor-pointer whitespace-nowrap rounded-xl px-3 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10 sm:px-4"
+                              className="whitespace-nowrap"
                             >
                               Leave
-                            </button>
+                            </Button>
                           )}
                         </div>
                       </div>
@@ -1878,25 +1868,29 @@ export default function WishlistDetail() {
                           )}
                           {isOwner && !isCurrentUser && (
                             <>
-                              <button
+                              <Button
+                                variant="ghost"
+                                size="sm"
                                 onClick={() =>
                                   setPromoteConfirm({
                                     userId: memberUserId,
                                     username: member.user.username || 'this person',
                                   })
                                 }
-                                className="cursor-pointer whitespace-nowrap rounded-xl px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted sm:px-4"
+                                className="whitespace-nowrap"
                               >
                                 Make owner
-                              </button>
-                              <button
+                              </Button>
+                              <Button
+                                variant="danger-ghost"
+                                size="sm"
                                 onClick={() =>
                                   handleKickMember(member._id, member.user.username, false)
                                 }
-                                className="cursor-pointer whitespace-nowrap rounded-xl px-3 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10 sm:px-4"
+                                className="whitespace-nowrap"
                               >
                                 Remove
-                              </button>
+                              </Button>
                             </>
                           )}
                         </div>
@@ -1930,12 +1924,14 @@ export default function WishlistDetail() {
                           </p>
                         </div>
                       </div>
-                      <button
+                      <Button
+                        variant="danger-ghost"
+                        size="sm"
                         onClick={() => cancelInvite(inv._id)}
-                        className="flex-shrink-0 whitespace-nowrap rounded-xl px-3 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10 sm:px-4"
+                        className="whitespace-nowrap"
                       >
                         Cancel
-                      </button>
+                      </Button>
                     </div>
                   ))}
                 </div>
@@ -2009,72 +2005,45 @@ export default function WishlistDetail() {
                 className="space-y-4"
                 autoComplete="off"
               >
-                <div>
-                  <label
-                    htmlFor="settings-name"
-                    className="block text-sm font-medium text-foreground mb-1"
-                  >
-                    Wishlist Name *
-                  </label>
-                  <input
-                    type="text"
-                    id="settings-name"
+                <Field label="Wishlist Name *" id="settings-name">
+                  <Input
                     required
                     value={settingsForm.name}
                     onChange={(e) => editSettings({ name: e.target.value })}
-                    className="w-full px-4 py-2 border border-border-strong rounded-xl outline-hidden field-focus"
                     disabled={isSavingSettings}
                     autoComplete="off"
                   />
-                </div>
+                </Field>
 
-                <div>
-                  <label
-                    htmlFor="settings-slug"
-                    className="block text-sm font-medium text-foreground mb-1"
-                  >
-                    Link
-                  </label>
-                  <div className="flex items-center gap-1.5 rounded-xl border border-border-strong bg-surface px-3.5 field-focus">
-                    <span className="flex-shrink-0 text-sm text-muted-foreground">/wishlists/</span>
-                    <input
-                      type="text"
-                      id="settings-slug"
-                      value={settingsForm.slug}
-                      onChange={(e) =>
-                        editSettings({
-                          slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''),
-                        })
-                      }
-                      className="h-11 min-w-0 flex-1 border-0 bg-transparent text-[15px] outline-hidden"
-                      disabled={isSavingSettings}
-                      autoComplete="off"
-                      autoCapitalize="none"
-                      spellCheck={false}
-                    />
-                  </div>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    The wishlist&apos;s web address. Lowercase letters, numbers, and hyphens.
-                  </p>
-                </div>
+                <Field
+                  label="Link"
+                  id="settings-slug"
+                  helper="The wishlist's web address. Lowercase letters, numbers, and hyphens."
+                >
+                  <Input
+                    leading={<span className="text-sm">/wishlists/</span>}
+                    value={settingsForm.slug}
+                    onChange={(e) =>
+                      editSettings({
+                        slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''),
+                      })
+                    }
+                    disabled={isSavingSettings}
+                    autoComplete="off"
+                    autoCapitalize="none"
+                    spellCheck={false}
+                  />
+                </Field>
 
-                <div>
-                  <label
-                    htmlFor="settings-description"
-                    className="block text-sm font-medium text-foreground mb-1"
-                  >
-                    Description
-                  </label>
-                  <textarea
-                    id="settings-description"
+                <Field label="Description" id="settings-description">
+                  <Textarea
                     value={settingsForm.description}
                     onChange={(e) => editSettings({ description: e.target.value })}
-                    className="w-full px-4 py-2 border border-border-strong rounded-xl outline-hidden field-focus"
                     rows={3}
                     disabled={isSavingSettings}
                     autoComplete="off"
                   />
-                </div>
+                </Field>
 
                 <OccasionField
                   value={settingsForm.occasion}
@@ -2084,7 +2053,7 @@ export default function WishlistDetail() {
                 />
 
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-foreground">Currency</label>
+                  <label className={FIELD_LABEL}>Currency</label>
                   <Select
                     value={settingsForm.currency}
                     onChange={(v) => editSettings({ currency: v })}
@@ -2094,13 +2063,11 @@ export default function WishlistDetail() {
                     triggerClassName="w-full"
                     disabled={isSavingSettings}
                   />
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Default currency for prices in this wishlist.
-                  </p>
+                  <p className={FIELD_HELPER}>Default currency for prices in this wishlist.</p>
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-foreground">
+                  <label className={FIELD_LABEL}>
                     Banner image <span className="text-muted-foreground">(optional)</span>
                   </label>
                   <ImageUpload
@@ -2108,15 +2075,13 @@ export default function WishlistDetail() {
                     onChange={(url) => editSettings({ bannerUrl: url ?? '' })}
                     disabled={isSavingSettings}
                   />
-                  <p className="mt-1 text-xs text-muted-foreground">
+                  <p className={FIELD_HELPER}>
                     Used as the cover instead of the gradient. Remove it to use the gradient.
                   </p>
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-foreground">
-                    Visibility
-                  </label>
+                  <label className={FIELD_LABEL}>Visibility</label>
                   <p className="mb-2 text-xs text-muted-foreground">
                     {settingsForm.visibility === 'everyone'
                       ? 'Anyone can find and view this wishlist.'

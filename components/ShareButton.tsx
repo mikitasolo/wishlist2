@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import Button from './Button';
-import Icon from './Icon';
 import { useToast } from './ToastProvider';
 
 interface ShareButtonProps {
@@ -10,7 +9,7 @@ interface ShareButtonProps {
   url?: string;
   label?: string;
   /**
-   * `pill` (the default) is the small rounded button of a page's header;
+   * `pill` (the default) is the `sm` pill of a page's header;
    * `button` is a secondary `Button`, to sit beside other buttons (an empty
    * list's Add your first item).
    */
@@ -44,35 +43,19 @@ export default function ShareButton({
     }
   }
 
-  const content = (
-    <>
-      <Icon name={copied ? 'check' : 'link'} size={15} />
-      {copied ? 'Copied' : label}
-    </>
-  );
-
-  if (variant === 'button') {
-    return (
-      <Button
-        type="button"
-        variant="secondary"
-        onClick={copy}
-        aria-label="Copy link to share"
-        className={className}
-      >
-        {content}
-      </Button>
-    );
-  }
-
+  // A page header's `sm` pill, or a full-size secondary button.
   return (
-    <button
+    <Button
       type="button"
+      variant="secondary"
+      size={variant === 'pill' ? 'sm' : 'lg'}
+      shape={variant === 'pill' ? 'pill' : 'rounded'}
+      icon={copied ? 'check' : 'link'}
       onClick={copy}
       aria-label="Copy link to share"
-      className={`inline-flex h-9 items-center gap-1.5 rounded-full border border-border bg-surface px-3.5 text-[13px] font-semibold text-foreground shadow-xs transition-colors hover:bg-surface-hover ${className}`}
+      className={className}
     >
-      {content}
-    </button>
+      {copied ? 'Copied' : label}
+    </Button>
   );
 }

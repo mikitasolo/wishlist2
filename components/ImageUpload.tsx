@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import Icon from './Icon';
 import BannerImage from './BannerImage';
 import ImageCropModal from './ImageCropModal';
+import Button from './Button';
 
 interface ImageUploadProps {
   value: string | null;
@@ -161,23 +162,25 @@ export default function ImageUpload({
           </button>
           <div className="min-w-0">
             <div className="flex flex-wrap gap-2">
-              <button
+              <Button
                 type="button"
+                variant="secondary"
+                size="sm"
                 onClick={openPicker}
                 disabled={disabled || uploading}
-                className="inline-flex h-9 items-center rounded-xl border border-border-strong bg-surface px-3.5 text-sm font-semibold text-foreground shadow-xs transition-colors hover:bg-surface-hover disabled:opacity-50"
               >
                 {value ? 'Replace' : 'Upload'}
-              </button>
+              </Button>
               {value && (
-                <button
+                <Button
                   type="button"
+                  variant="danger-ghost"
+                  size="sm"
                   onClick={() => onChange(null)}
                   disabled={disabled || uploading}
-                  className="inline-flex h-9 items-center rounded-xl px-3.5 text-sm font-semibold text-red-600 transition-colors hover:bg-red-500/10 disabled:opacity-50 dark:text-red-400"
                 >
                   Remove
-                </button>
+                </Button>
               )}
             </div>
             <p className="mt-2 text-xs text-muted-foreground">

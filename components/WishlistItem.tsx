@@ -11,6 +11,8 @@ import ConfirmDialog from '@/components/ConfirmDialog';
 import Menu, { type MenuItem } from '@/components/Menu';
 import { statusMeta } from '@/lib/utils/itemStatus';
 import { TONE_CLASSES } from '@/lib/utils/statusTones';
+import IconButton from '@/components/IconButton';
+import { iconButtonClassName } from '@/components/buttonStyles';
 
 // The card's actions are one row, the same height on every card: one labelled
 // primary action, then the product link as a square icon button (unless the
@@ -34,9 +36,10 @@ const PRIMARY_TONES = {
   off: 'bg-muted text-muted-foreground',
 } as const;
 
+// The squares beside it: `md` icon buttons, the row's height.
 const SQUARE = 'inline-flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl';
 
-const ICON_BUTTON = `${SQUARE} border border-border-strong bg-surface text-muted-foreground transition-colors hover:bg-surface-hover hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground aria-disabled:cursor-not-allowed aria-disabled:opacity-60`;
+const ICON_BUTTON = `${iconButtonClassName({ variant: 'secondary', size: 'md' })} aria-expanded:bg-muted aria-expanded:text-foreground aria-disabled:cursor-not-allowed aria-disabled:opacity-60`;
 
 interface PrimaryAction {
   label: string;
@@ -335,18 +338,17 @@ function WishlistItem({
     >
       {/* Notes icon button - positioned absolutely at top-left corner of card */}
       {item.notes && (
-        <button
-          onClick={() => setShowNotes(!showNotes)}
-          className="absolute left-2 top-2 z-10 flex h-9 w-9 items-center justify-center rounded-full border border-border bg-surface/90 shadow-sm backdrop-blur transition-all hover:bg-surface sm:left-3 sm:top-3"
-          aria-label={showNotes ? 'Show image' : 'Show notes'}
+        <IconButton
+          icon={showNotes ? 'image' : 'info'}
+          label={showNotes ? 'Show image' : 'Show notes'}
           title={showNotes ? 'Show image' : 'Show notes'}
-        >
-          <Icon
-            name={showNotes ? 'image' : 'info'}
-            size={18}
-            className={showNotes ? 'text-accent dark:text-primary-400' : 'text-muted-foreground'}
-          />
-        </button>
+          onClick={() => setShowNotes(!showNotes)}
+          variant="glass"
+          size="sm"
+          shape="pill"
+          iconClassName={showNotes ? 'text-accent dark:text-primary-400' : undefined}
+          className="absolute left-2 top-2 z-10 sm:left-3 sm:top-3"
+        />
       )}
 
       {/* Status badges - positioned absolutely at top-right corner of card */}

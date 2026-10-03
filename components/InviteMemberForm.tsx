@@ -5,6 +5,8 @@ import Icon from './Icon';
 import Avatar from './Avatar';
 import Select from './Select';
 import { TONE_CLASSES } from '@/lib/utils/statusTones';
+import Button from './Button';
+import SearchField from './SearchField';
 
 type Role = 'owner' | 'member';
 
@@ -134,26 +136,21 @@ export default function InviteMemberForm({ onInvite, isInviting, ref }: InviteMe
       >
         {/* Field + suggestions */}
         <div ref={fieldRef} className="relative flex-1">
-          <div className="flex h-11 items-center gap-2 rounded-xl border border-border-strong bg-surface px-3.5 field-focus">
-            <Icon name="search" size={16} className="flex-shrink-0 text-muted-foreground" />
-            <input
-              ref={inputRef}
-              type="text"
-              value={value}
-              onChange={(e) => {
-                setValue(e.target.value);
-                setShowSuggestions(true);
-              }}
-              onFocus={() => setShowSuggestions(true)}
-              placeholder="Search by username"
-              required
-              className="h-full min-w-0 flex-1 border-0 bg-transparent text-[15px] outline-hidden"
-              disabled={isInviting}
-              autoComplete="off"
-              autoCapitalize="none"
-              spellCheck={false}
-            />
-          </div>
+          <SearchField
+            ref={inputRef}
+            value={value}
+            onChange={(e) => {
+              setValue(e.target.value);
+              setShowSuggestions(true);
+            }}
+            onFocus={() => setShowSuggestions(true)}
+            placeholder="Search by username"
+            required
+            disabled={isInviting}
+            autoComplete="off"
+            autoCapitalize="none"
+            spellCheck={false}
+          />
 
           {showSuggestions && term.length >= 3 && (
             <div className="animate-fade-in absolute left-0 right-0 z-20 mt-2 overflow-hidden rounded-2xl border border-border bg-surface py-1.5 shadow-lg">
@@ -196,13 +193,9 @@ export default function InviteMemberForm({ onInvite, isInviting, ref }: InviteMe
           ]}
         />
 
-        <button
-          type="submit"
-          disabled={isInviting}
-          className="inline-flex h-11 items-center justify-center rounded-xl bg-primary-600 px-6 text-[15px] font-semibold text-white shadow-[0_8px_22px_-10px_rgba(94,92,230,0.9)] transition-all hover:bg-primary-500 active:scale-[0.98] disabled:opacity-45 whitespace-nowrap"
-        >
+        <Button type="submit" disabled={isInviting} className="whitespace-nowrap">
           {isInviting ? 'Inviting…' : 'Invite'}
-        </button>
+        </Button>
       </form>
     </div>
   );

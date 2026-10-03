@@ -28,6 +28,8 @@ import {
   reservationNote,
   type OccasionGroup,
 } from '@/lib/utils/reservations';
+import Button from '@/components/Button';
+import IconButton from '@/components/IconButton';
 
 interface Price {
   value: number;
@@ -559,15 +561,14 @@ export default function BookedPage() {
                               .join(' · ')}
                           </p>
                         </div>
-                        <button
+                        <IconButton
+                          icon="trash"
+                          label="Delete from gift history"
+                          title="Delete from gift history"
+                          variant="danger-ghost"
                           disabled={busy(g._id)}
                           onClick={() => setDeleteGiftConfirm(g._id)}
-                          className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-red-600 disabled:opacity-50"
-                          aria-label="Delete from gift history"
-                          title="Delete from gift history"
-                        >
-                          <Icon name="trash" size={16} />
-                        </button>
+                        />
                       </li>
                     ))}
                   </ul>
@@ -715,22 +716,18 @@ function ReservationCard({
         </div>
       </div>
       <div className="flex gap-2 border-t border-border p-3">
-        <button
-          disabled={busy}
-          onClick={onGift}
-          className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-xl bg-primary-600 text-[13px] font-semibold text-white transition-colors hover:bg-primary-500 disabled:opacity-50"
-        >
-          <Icon name="check" size={15} />
+        <Button size="sm" icon="check" disabled={busy} onClick={onGift} className="flex-1">
           Mark as gifted
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="cancel"
+          size="sm"
           disabled={busy}
           onClick={secondary.onClick}
-          className="flex h-9 items-center justify-center gap-1.5 rounded-xl bg-surface-2 px-3 text-[13px] font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
           title={secondary.title}
         >
           {secondary.label}
-        </button>
+        </Button>
       </div>
     </div>
   );

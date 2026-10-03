@@ -23,6 +23,8 @@ import {
   type ProfileSettings,
 } from '@/lib/utils/profileSettings';
 import type { InvitePolicy, ProfileVisibility } from '@/models/User';
+import Field from '@/components/Field';
+import Textarea from '@/components/Textarea';
 
 export default function SettingsPage() {
   const { status, update } = useSession();
@@ -223,19 +225,17 @@ export default function SettingsPage() {
           />
 
           <div className="mt-5">
-            <label htmlFor="bio" className="mb-1.5 block text-sm font-medium text-foreground">
-              Bio
-            </label>
-            <textarea
-              id="bio"
-              value={form.bio}
-              onChange={(e) => edit({ bio: e.target.value.slice(0, 300) })}
-              rows={3}
-              maxLength={300}
-              placeholder="Tell people about your hobbies, interests, and passions…"
-              className="w-full resize-none rounded-xl border border-border-strong bg-surface px-4 py-2.5 text-[15px] outline-hidden field-focus"
-            />
-            <p className="mt-1 text-right text-xs text-muted-foreground">{form.bio.length}/300</p>
+            <Field label="Bio" id="bio">
+              <Textarea
+                value={form.bio}
+                onChange={(e) => edit({ bio: e.target.value.slice(0, 300) })}
+                rows={3}
+                maxLength={300}
+                placeholder="Tell people about your hobbies, interests, and passions…"
+                className="resize-none"
+              />
+            </Field>
+            <p className="mt-1.5 text-right text-xs text-muted-foreground">{form.bio.length}/300</p>
           </div>
 
           <div id={SETTINGS_CURRENCY_FIELD_ID} ref={currencyField} className="mt-5">

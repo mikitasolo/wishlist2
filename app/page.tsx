@@ -14,6 +14,7 @@ import OccasionLabel, { OCCASION_ON_COVER } from '@/components/OccasionLabel';
 import Select from '@/components/Select';
 import FollowListModal, { type FollowTab } from '@/components/FollowListModal';
 import Button from '@/components/Button';
+import { buttonClassName } from '@/components/buttonStyles';
 import Icon, { IconName } from '@/components/Icon';
 import LoadError from '@/components/LoadError';
 import { SkeletonGrid } from '@/components/Skeleton';
@@ -280,8 +281,7 @@ export default function Home() {
               effortless.
             </p>
             <div className="mt-9 flex justify-center">
-              <Button size="lg" onClick={() => signIn()}>
-                <Icon name="sparkles" size={18} />
+              <Button size="xl" icon="sparkles" onClick={() => signIn()}>
                 Get started — it’s free
               </Button>
             </div>
@@ -422,8 +422,7 @@ export default function Home() {
               friends and family.
             </p>
             <div className="mt-7">
-              <Button onClick={() => setShowCreateModal(true)}>
-                <Icon name="plus" size={18} />
+              <Button icon="plus" onClick={() => setShowCreateModal(true)}>
                 Create wishlist
               </Button>
             </div>
@@ -482,7 +481,10 @@ export default function Home() {
                         {visibilityMeta[getVisibility(featured)].label} ·{' '}
                         {formatItemCount(featured.itemCount ?? 0)}
                       </span>
-                      <span className="inline-flex h-9 items-center rounded-full bg-primary-600 px-4 text-[13px] font-semibold text-white transition-transform group-hover:-translate-y-px">
+                      {/* The card is the link: this only looks like its button. */}
+                      <span
+                        className={`${buttonClassName({ size: 'sm', shape: 'pill' })} group-hover:-translate-y-px`}
+                      >
                         Open
                       </span>
                     </div>
@@ -661,7 +663,8 @@ function StatTile({
             className="text-3xl font-semibold tracking-tight text-foreground"
             placeholderClassName="h-8 w-10 rounded-lg"
           />
-          <span className="inline-flex items-center gap-1 rounded-full bg-primary-600 px-3.5 py-1.5 text-[13px] font-semibold text-white shadow-[0_8px_22px_-10px_rgba(94,92,230,0.9)]">
+          {/* The tile is the link: this only looks like its button. */}
+          <span className={buttonClassName({ size: 'sm', shape: 'pill' })}>
             View
             <span className="transition-transform group-hover:translate-x-0.5">→</span>
           </span>
