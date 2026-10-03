@@ -242,7 +242,7 @@ export default function BookedPage() {
     };
   }, [status, userId, load]);
 
-  // Adds the entry "Mark as gifted" got back, in the history's newest-first
+  // Adds the entry "Mark as given" got back, in the history's newest-first
   // order. A read on its way meanwhile may predate it, so it's recorded for
   // that read to keep (see `load`).
   function addGift(entry: Gift) {
@@ -270,7 +270,7 @@ export default function BookedPage() {
   //
   // The page is out of date, so both lists are read again too. A reservation
   // gone this way was most likely gifted, in another tab or by this tab's own
-  // earlier "Mark as gifted" whose answer was lost, and its gift-history entry
+  // earlier "Mark as given" whose answer was lost, and its gift-history entry
   // should show, not look lost until a reload.
   function reservationGone(id: string) {
     dropReservation(id);
@@ -337,7 +337,7 @@ export default function BookedPage() {
   }
 
   // Release, on a reservation still active: the list's own unbook
-  // (`PATCH /api/items/[itemId]`), as Unbook on the list sends it, so the item is
+  // (`PATCH /api/items/[itemId]`), as Release on the list sends it, so the item is
   // freed for others and the route ends the Reservation exactly as an unbook
   // from the list does (`cancelUnbookedReservation`). The page has no way of
   // its own to free an item. A refusal means the card is out of date: it isn't
@@ -410,7 +410,7 @@ export default function BookedPage() {
       <main className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
         <h1 className="text-3xl font-semibold tracking-tight text-foreground">Reserved by you</h1>
         <p className="mt-1 text-muted-foreground">
-          Gifts you’ve claimed across everyone’s wishlists. When you’ve given one, mark it as gifted
+          Gifts you’ve reserved across everyone’s wishlists. When you’ve given one, mark it as given
           to keep it in your gift history.
         </p>
 
@@ -582,9 +582,9 @@ export default function BookedPage() {
       {giftConfirm && (
         <ConfirmDialog
           isOpen
-          title="Mark as gifted?"
+          title="Mark as given?"
           message="This adds the item to your gift history. It won’t change the owner’s list — they’ll mark it received themselves. You can remove it from your history later."
-          confirmText="Mark as gifted"
+          confirmText="Mark as given"
           cancelText="Cancel"
           type="info"
           onConfirm={() => {
@@ -717,7 +717,7 @@ function ReservationCard({
       </div>
       <div className="flex gap-2 border-t border-border p-3">
         <Button size="sm" icon="check" disabled={busy} onClick={onGift} className="flex-1">
-          Mark as gifted
+          Mark as given
         </Button>
         <Button
           variant="cancel"

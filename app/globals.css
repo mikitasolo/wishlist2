@@ -82,8 +82,8 @@
      - `text-<tone>` is coloured text on a surface, and `bg-<tone>/10` (or /15)
        its tint: text-<tone> on its own tint stays at AA too. It's a step darker
        than the fill in light mode for that reason, and lighter in dark mode.
-     "Done" (Completed) has no colour of its own: it's `bg-foreground
-     text-background`, so it can't be mistaken for success, "Booked by you". */
+     "Done" (Received) has no colour of its own: it's `bg-foreground
+     text-background`, so it can't be mistaken for success, "Reserved by you". */
   --color-info: var(--info);
   --color-info-fill: var(--info-fill);
   --color-info-fill-hover: var(--info-fill-hover);

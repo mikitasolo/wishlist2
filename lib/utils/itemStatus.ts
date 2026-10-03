@@ -11,7 +11,12 @@
  * (`emerald-*`, `amber-*`, `green-*`, `blue-*`, `yellow-*`).
  *
  * Owners never see booking status: for an owner, `booked` is `available`, and
- * nothing here gives them a booked label or tone.
+ * nothing here gives them a reserved label or tone.
+ *
+ * The labels are the product's words (WIS-237), not the stored statuses: a
+ * member reserves an item ("Reserved by you", or "Reserved" when someone else
+ * has), and an owner marks it as received ("Received", the `completed`
+ * status). The internal names (`booked`, `completed`) don't change.
  */
 import type { IconName } from '@/components/Icon';
 import type { ApiItem } from '@/types/api';
@@ -56,9 +61,9 @@ export const STATUS_META: Record<DisplayStatus, StatusMeta> = {
   draft: meta('draft', 'Draft', 'Draft', 'draft', 'note'),
   proposed: meta('proposed', 'Proposed', 'Proposed', 'info', 'sparkles'),
   available: meta('available', 'Available', 'Available', 'neutral', null, false),
-  bookedByMe: meta('bookedByMe', 'Booked by you', 'Booked by You', 'success', 'gift'),
-  bookedByOthers: meta('bookedByOthers', 'Booked', 'Booked by Others', 'warning', 'lock'),
-  completed: meta('completed', 'Completed', 'Completed', 'done', 'check'),
+  bookedByMe: meta('bookedByMe', 'Reserved by you', 'Reserved by you', 'success', 'gift'),
+  bookedByOthers: meta('bookedByOthers', 'Reserved', 'Reserved by others', 'warning', 'lock'),
+  completed: meta('completed', 'Received', 'Received', 'done', 'check'),
 };
 
 /**
@@ -103,6 +108,6 @@ export const FILTER_META: Record<FilterOption, FilterMeta> = {
   available: fromStatus('available'),
   bookedByMe: fromStatus('bookedByMe'),
   bookedByOthers: fromStatus('bookedByOthers'),
-  proposedByMe: { label: 'Proposed by You', tone: STATUS_META.proposed.tone },
+  proposedByMe: { label: 'Proposed by you', tone: STATUS_META.proposed.tone },
   completed: fromStatus('completed'),
 };

@@ -1183,7 +1183,7 @@ export default function WishlistDetail() {
   const sortedItems = useMemo(() => sortItems(searchedItems, sortBy), [searchedItems, sortBy]);
 
   // The list has no items at all, as far as this viewer can see: no filter is
-  // hiding anything, so the stat cards, the toolbar and + Add Item step aside
+  // hiding anything, so the stat cards, the toolbar and + Add item step aside
   // for an empty state that says so and offers the add itself. Only once a
   // read has landed: before that, no items means it hasn't loaded.
   const listIsEmpty = itemsLoaded && items.length === 0;
@@ -1257,9 +1257,9 @@ export default function WishlistDetail() {
   // while the first read of them is on its way too.
   const addItemButton = (
     <div className="mb-6 sm:mb-8">
-      {isOwner && <Button onClick={() => setShowAddItemModal(true)}>+ Add Item</Button>}
+      {isOwner && <Button onClick={() => setShowAddItemModal(true)}>+ Add item</Button>}
       {isMember && !isOwner && (
-        <Button onClick={() => setShowProposeItemModal(true)}>+ Propose Item</Button>
+        <Button onClick={() => setShowProposeItemModal(true)}>+ Propose item</Button>
       )}
     </div>
   );
@@ -1514,7 +1514,7 @@ export default function WishlistDetail() {
               )
             ) : (
               <>
-                {/* Stat cards, toolbar and Add Item: not on an empty list, where the
+                {/* Stat cards, toolbar and Add item: not on an empty list, where the
                 cards would all be zero, the filters would have nothing to filter,
                 and the empty state below offers the add (or the proposal) itself */}
                 {!listIsEmpty && (
@@ -1728,7 +1728,7 @@ export default function WishlistDetail() {
                 <h2 className="text-lg font-semibold text-foreground">Owners</h2>
                 <p className="mt-1 text-sm text-muted-foreground">
                   Full control of this list, and it shows on each of their profiles. Owners never
-                  see what&apos;s been booked.
+                  see what&apos;s been reserved.
                 </p>
               </div>
               {loadingMembers ? (
@@ -1827,7 +1827,7 @@ export default function WishlistDetail() {
                 <p className="mt-1 text-sm text-muted-foreground">
                   They can browse the list, propose items, and reserve gifts. Making someone an
                   owner releases whatever they&apos;ve reserved here, since owners can&apos;t see
-                  bookings.
+                  reservations.
                 </p>
               </div>
               {loadingMembers ? (
@@ -1948,7 +1948,7 @@ export default function WishlistDetail() {
         {manageOpen && isOwner && (
           <div className="mt-6 space-y-6">
             <div className="rounded-2xl border border-border bg-surface p-6 shadow-sm">
-              <h3 className="text-lg font-semibold text-foreground mb-4">Wishlist Settings</h3>
+              <h3 className="text-lg font-semibold text-foreground mb-4">Wishlist settings</h3>
 
               <form
                 onSubmit={async (e) => {
@@ -2009,7 +2009,7 @@ export default function WishlistDetail() {
                 className="space-y-4"
                 autoComplete="off"
               >
-                <Field label="Wishlist Name *" id="settings-name">
+                <Field label="Wishlist name *" id="settings-name">
                   <Input
                     required
                     value={settingsForm.name}
@@ -2087,11 +2087,7 @@ export default function WishlistDetail() {
                 <div>
                   <label className={FIELD_LABEL}>Visibility</label>
                   <p className="mb-2 text-xs text-muted-foreground">
-                    {settingsForm.visibility === 'everyone'
-                      ? 'Anyone can find and view this wishlist.'
-                      : settingsForm.visibility === 'friends'
-                        ? 'Only your friends (mutual follows) and members can view it.'
-                        : 'Only you and people you invite can view it.'}
+                    {visibilityMeta[settingsForm.visibility].helper}
                   </p>
                   <div className="relative flex rounded-xl border border-border bg-surface-2 p-1">
                     <span
@@ -2115,7 +2111,7 @@ export default function WishlistDetail() {
                         }`}
                       >
                         <Icon name={visibilityMeta[v].icon} size={14} />
-                        {v === 'private' ? 'Only me' : visibilityMeta[v].label}
+                        {visibilityMeta[v].label}
                       </button>
                     ))}
                   </div>
@@ -2123,7 +2119,7 @@ export default function WishlistDetail() {
 
                 <div className="flex flex-col sm:flex-row gap-3 pt-4">
                   <Button type="submit" disabled={isSavingSettings} fullWidth className="sm:w-auto">
-                    {isSavingSettings ? 'Saving...' : 'Save Changes'}
+                    {isSavingSettings ? 'Saving…' : 'Save changes'}
                   </Button>
                 </div>
               </form>
@@ -2213,7 +2209,7 @@ export default function WishlistDetail() {
                     fullWidth
                     className="sm:w-auto"
                   >
-                    {isDeletingWishlist ? 'Deleting...' : 'Delete wishlist'}
+                    {isDeletingWishlist ? 'Deleting…' : 'Delete wishlist'}
                   </Button>
                 </div>
               )}
@@ -2288,7 +2284,7 @@ export default function WishlistDetail() {
             onConfirm={confirmKickMember}
             onCancel={() => setDeleteConfirm(null)}
             confirmText="Remove"
-            pendingText="Removing..."
+            pendingText="Removing…"
             cancelText="Cancel"
             type="danger"
             icon="user-minus"
@@ -2305,7 +2301,7 @@ export default function WishlistDetail() {
           onConfirm={confirmLeaveWishlist}
           onCancel={() => setDeleteConfirm(null)}
           confirmText="Leave"
-          pendingText="Leaving..."
+          pendingText="Leaving…"
           cancelText="Cancel"
           type="danger"
           icon="logout"
@@ -2335,11 +2331,11 @@ export default function WishlistDetail() {
         <ConfirmDialog
           isOpen={!!promoteConfirm}
           title="Make owner?"
-          message={`@${promoteConfirm.username} will get the same full control you have — including deleting this wishlist — and it will appear on their profile as their own. Because owners can never see booking status, any items they've booked here will be released and their reservations cancelled. They have to accept the invitation first, and only another owner can undo it.`}
+          message={`@${promoteConfirm.username} will get the same full control you have — including deleting this wishlist — and it will appear on their profile as their own. Because owners can never see reservations, anything they've reserved here will be released and their reservations cancelled. They have to accept the invitation first, and only another owner can undo it.`}
           onConfirm={confirmPromoteToOwner}
           onCancel={() => setPromoteConfirm(null)}
           confirmText="Send owner invite"
-          pendingText="Sending..."
+          pendingText="Sending…"
           cancelText="Cancel"
           type="warning"
         />
@@ -2353,7 +2349,7 @@ export default function WishlistDetail() {
           onConfirm={confirmDemoteOwner}
           onCancel={() => setDemoteConfirm(null)}
           confirmText="Make member"
-          pendingText="Making member..."
+          pendingText="Making member…"
           cancelText="Cancel"
           type="warning"
         />
@@ -2367,7 +2363,7 @@ export default function WishlistDetail() {
           onConfirm={confirmArchive}
           onCancel={() => setArchiveConfirm(false)}
           confirmText="Archive"
-          pendingText="Archiving..."
+          pendingText="Archiving…"
           cancelText="Cancel"
           type="warning"
         />
@@ -2382,7 +2378,7 @@ export default function WishlistDetail() {
           onConfirm={confirmDeleteWishlist}
           onCancel={() => setDeleteConfirm(null)}
           confirmText="Delete"
-          pendingText="Deleting..."
+          pendingText="Deleting…"
           cancelText="Cancel"
           type="danger"
         />

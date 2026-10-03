@@ -71,7 +71,7 @@ const gifts = [
   { ...gift, _id: 'gift-mug', itemName: 'Mug' },
 ];
 
-/** The gift-history entries "Mark as gifted" writes for each reservation. */
+/** The gift-history entries "Mark as given" writes for each reservation. */
 const legoGift = {
   ...gift,
   _id: 'gift-lego',
@@ -278,7 +278,7 @@ const releaseKey = (itemId: string) => `PATCH /api/items/${itemId}`;
 const deleteGiftKey = (id: string) => `DELETE /api/gifts/${id}`;
 
 /**
- * The buttons on the reservation card for `itemName`: "Mark as gifted", then
+ * The buttons on the reservation card for `itemName`: "Mark as given", then
  * Release on an active card or Dismiss on one that needs confirmation (each
  * null where the card doesn't have it), and `second`, whichever of the two it
  * has.
@@ -287,7 +287,7 @@ function reservationButtons(itemName: string) {
   // The card is the nearest ancestor of its name that holds its buttons.
   let card: HTMLElement | null = cardName(itemName);
   if (!card) throw new Error(`no reservation card for ${itemName}`);
-  while (card && !within(card).queryByRole('button', { name: 'Mark as gifted' })) {
+  while (card && !within(card).queryByRole('button', { name: 'Mark as given' })) {
     card = card.parentElement;
   }
   const scope = within(card!);
@@ -296,7 +296,7 @@ function reservationButtons(itemName: string) {
   const second = release ?? dismiss;
   if (!second) throw new Error(`no Release or Dismiss on the card for ${itemName}`);
   return {
-    gift: scope.getByRole('button', { name: 'Mark as gifted' }),
+    gift: scope.getByRole('button', { name: 'Mark as given' }),
     release,
     dismiss,
     second,
@@ -313,7 +313,7 @@ const cardName = (itemName: string) =>
 /** The note on the reservation card for `itemName` (why it needs confirmation), or null. */
 function noteOn(itemName: string) {
   let card: HTMLElement | null = cardName(itemName);
-  while (card && !within(card).queryByRole('button', { name: 'Mark as gifted' })) {
+  while (card && !within(card).queryByRole('button', { name: 'Mark as given' })) {
     card = card.parentElement;
   }
   if (!card) throw new Error(`no reservation card for ${itemName}`);
@@ -351,7 +351,7 @@ function clickAndConfirm(button: HTMLElement, confirmText: string) {
 }
 
 const markGifted = (itemName: string) =>
-  clickAndConfirm(reservationButtons(itemName).gift, 'Mark as gifted');
+  clickAndConfirm(reservationButtons(itemName).gift, 'Mark as given');
 function dismiss(itemName: string) {
   const { dismiss } = reservationButtons(itemName);
   if (!dismiss) throw new Error(`no Dismiss on the card for ${itemName}`);
@@ -512,7 +512,7 @@ describe('BookedPage — acting on several cards at once', () => {
         })
       );
 
-    confirm('Mark as gifted?', 'Mark as gifted');
+    confirm('Mark as given?', 'Mark as given');
     expectReservationDisabled('Lego set');
     confirm('Release this gift?', 'Release');
     expect(screen.queryByRole('alertdialog')).toBeNull();
@@ -606,7 +606,7 @@ describe('BookedPage — Release on an active card, Dismiss on a changed one', (
     },
     {
       refusal: 'someone else holds it now (403)',
-      reply: refused(403, 'You can only unbook items you have booked'),
+      reply: refused(403, 'You can only release items you have reserved'),
       itemStatus: 'booked',
     },
     {
@@ -616,7 +616,7 @@ describe('BookedPage — Release on an active card, Dismiss on a changed one', (
     },
     {
       refusal: 'it changed while the unbook was on its way (409)',
-      reply: refused(409, 'This item is no longer booked by you'),
+      reply: refused(409, 'This item is no longer reserved by you'),
       itemStatus: 'draft',
     },
     {
@@ -716,13 +716,13 @@ describe('BookedPage — Release on an active card, Dismiss on a changed one', (
 });
 
 describe('BookedPage — gift history while actions settle', () => {
-  // regression: a successful "Mark as gifted" re-read the whole gift history
+  // regression: a successful "Mark as given" re-read the whole gift history
   // and replaced the page's copy with the answer, unordered against anything
   // else settling on the list. A re-read the server answered before a
   // concurrent delete was saved, landing after that delete's success (here,
   // the history as the page loaded it), put the deleted entry back, and
   // deleting it again answered "Gift entry not found".
-  it('regression: an entry deleted while "Mark as gifted" is in flight stays deleted', async () => {
+  it('regression: an entry deleted while "Mark as given" is in flight stays deleted', async () => {
     const { answer } = await renderHeld();
 
     markGifted('Lego set');
@@ -743,7 +743,7 @@ describe('BookedPage — gift history while actions settle', () => {
   // gifted" requests, let the one answering last overwrite the other's: a
   // re-read built before the newer gift was logged dropped it from the history,
   // though its toast had said "Added to your gift history".
-  it('regression: keeps both gifts, newest first, when two "Mark as gifted" answers arrive out of order', async () => {
+  it('regression: keeps both gifts, newest first, when two "Mark as given" answers arrive out of order', async () => {
     const { answer } = await renderHeld();
 
     markGifted('Lego set');
@@ -764,7 +764,7 @@ describe('BookedPage — gift history while actions settle', () => {
 /** Each card action, with the route's 404 for it and what the page says then. */
 const cardActions = [
   {
-    action: 'Mark as gifted',
+    action: 'Mark as given',
     run: () => markGifted('Lego set'),
     key: markGiftedKey('res-lego'),
     itemName: 'Lego set',
@@ -818,7 +818,7 @@ describe('BookedPage — a reservation or gift that no longer exists', () => {
   );
 
   // regression: the page read its gift history once, so a reservation gifted
-  // elsewhere left the history as it was. "Mark as gifted" 404'd, the card
+  // elsewhere left the history as it was. "Mark as given" 404'd, the card
   // went with "This reservation no longer exists", and the gift wasn't listed
   // until a reload, so it looked lost.
   it.each([
@@ -840,7 +840,7 @@ describe('BookedPage — a reservation or gift that no longer exists', () => {
       },
     },
   ])(
-    'regression: shows the gift-history entry of a reservation gifted $how once "Mark as gifted" 404s',
+    'regression: shows the gift-history entry of a reservation gifted $how once "Mark as given" 404s',
     async ({ giftElsewhere }) => {
       const held = await renderHeld();
       const { answer, reads } = held;
@@ -1206,7 +1206,7 @@ describe('BookedPage — reading both lists again while the page is open', () =>
     expect(historyNames()).toEqual(['Lego set', 'Mug']);
   });
 
-  // regression: the same read, answered before another "Mark as gifted" was
+  // regression: the same read, answered before another "Mark as given" was
   // saved and landing after it, dropped that gift's new entry from the history
   // and brought its card back.
   it('regression: a reservation gifted while a read is on its way stays gifted', async () => {
@@ -1332,7 +1332,7 @@ describe('BookedPage — reading both lists again while the page is open', () =>
   });
 
   it.each([
-    { dialog: 'Mark as gifted?', open: () => reservationButtons('Lego set').gift },
+    { dialog: 'Mark as given?', open: () => reservationButtons('Lego set').gift },
     { dialog: 'Remove from reservations?', open: () => reservationButtons('Scarf').second },
     { dialog: 'Release this gift?', open: () => reservationButtons('Lego set').second },
     { dialog: 'Delete from gift history?', open: () => deleteGiftButton('Cookbook') },
@@ -1499,7 +1499,7 @@ describe('BookedPage — keyboard focus in a confirmation', () => {
 
     await user.click(lego.gift);
     await user.click(
-      within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Mark as gifted' })
+      within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Mark as given' })
     );
     // The confirmation is gone and the card's buttons are disabled while its
     // request runs, so focus has nowhere to go yet.

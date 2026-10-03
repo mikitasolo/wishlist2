@@ -54,7 +54,7 @@ beforeEach(() => {
   };
 });
 
-const itemModal = () => screen.getByRole('dialog', { name: 'Add New Item' });
+const itemModal = () => screen.getByRole('dialog', { name: 'Add new item' });
 const cropDialog = () => screen.getByRole('dialog', { name: 'Crop image' });
 const inCrop = () => within(cropDialog());
 const dropZone = () => screen.getByRole('button', { name: /click to upload/i });
@@ -68,7 +68,7 @@ function pickImage(root: HTMLElement, name = 'gift.png') {
 }
 
 /**
- * Opens the Add Item modal and picks an image in its form, as a click on the
+ * Opens the Add item modal and picks an image in its form, as a click on the
  * drop zone and a choice in the file picker would.
  */
 async function openCropOverItemModal({
@@ -160,7 +160,7 @@ describe('ImageCropModal — keyboard focus over an item modal', () => {
     expect(dropZone()).toHaveFocus();
 
     const closeItemModal = screen.getByRole('button', { name: 'Close modal' });
-    const addItem = screen.getByRole('button', { name: 'Add Item' });
+    const addItem = screen.getByRole('button', { name: 'Add item' });
     act(() => addItem.focus());
     await user.tab();
     expect(closeItemModal).toHaveFocus();
@@ -186,7 +186,7 @@ describe('ImageCropModal — keyboard focus over an item modal', () => {
 
     // The next Escape is the item modal's again.
     await user.keyboard('{Escape}');
-    expect(screen.getByRole('alertdialog', { name: 'Discard Changes?' })).toBeInTheDocument();
+    expect(screen.getByRole('alertdialog', { name: 'Discard changes?' })).toBeInTheDocument();
   });
 
   // regression: the crop dialog's close button had no type, so inside the
@@ -344,7 +344,7 @@ describe('ImageCropModal — cancelling while it crops', () => {
       expect(dropZone()).toBeEnabled();
       expect(screen.queryByAltText('Uploaded image')).toBeNull();
 
-      await user.click(screen.getByRole('button', { name: 'Add Item' }));
+      await user.click(screen.getByRole('button', { name: 'Add item' }));
       await waitFor(() => expect(onAdd).toHaveBeenCalledTimes(1));
       expect(onAdd.mock.calls[0][0]).toMatchObject({ name: 'Bike' });
       expect(onAdd.mock.calls[0][0].imageUrl).toBeUndefined();
@@ -414,7 +414,7 @@ describe('ImageCropModal — cancelling while it crops', () => {
     expect(upload).toHaveBeenCalledTimes(1);
     expect(await uploadedText(upload)).toBe('picked again');
 
-    await user.click(screen.getByRole('button', { name: 'Add Item' }));
+    await user.click(screen.getByRole('button', { name: 'Add item' }));
     await waitFor(() => expect(onAdd).toHaveBeenCalledTimes(1));
     expect(onAdd.mock.calls[0][0].imageUrl).toBe(UPLOADED);
   });
@@ -487,7 +487,7 @@ describe('ImageCropModal — cancelling while it crops', () => {
     expect(upload).toHaveBeenCalledWith('/api/upload', expect.objectContaining({ method: 'POST' }));
     expect(await uploadedText(upload)).toBe('cropped');
 
-    await user.click(screen.getByRole('button', { name: 'Add Item' }));
+    await user.click(screen.getByRole('button', { name: 'Add item' }));
     await waitFor(() => expect(onAdd).toHaveBeenCalledTimes(1));
     expect(onAdd.mock.calls[0][0].imageUrl).toBe(UPLOADED);
   });

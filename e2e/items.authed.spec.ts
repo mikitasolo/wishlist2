@@ -17,17 +17,17 @@ for (const flow of [
   {
     as: 'owner',
     list: 'e2e-birthday',
-    open: '+ Add Item',
-    title: 'Add New Item',
-    submit: 'Add Item',
+    open: '+ Add item',
+    title: 'Add new item',
+    submit: 'Add item',
   },
   {
     as: 'member',
     list: 'e2e-friend',
     // e2e-friend has no items, so its empty state offers the proposal.
     open: 'Propose an item',
-    title: 'Propose New Item',
-    submit: 'Propose Item',
+    title: 'Propose new item',
+    submit: 'Propose item',
   },
 ]) {
   test(`regression: the ${flow.as}'s "${flow.title}" modal keeps the input when the request fails`, async ({
@@ -45,13 +45,13 @@ for (const flow of [
     await page.getByRole('button', { name: flow.open }).click();
 
     const dialog = page.getByRole('dialog', { name: flow.title });
-    await dialog.getByLabel('Item Name').fill('E2E Bike');
+    await dialog.getByLabel('Item name').fill('E2E Bike');
     await dialog.getByLabel('Price').fill('120');
     await dialog.getByRole('button', { name: flow.submit, exact: true }).click();
 
     await expect(page.getByRole('status').getByText('Something went wrong')).toBeVisible();
     await expect(dialog).toBeVisible();
-    await expect(dialog.getByLabel('Item Name')).toHaveValue('E2E Bike');
+    await expect(dialog.getByLabel('Item name')).toHaveValue('E2E Bike');
     // Leaving the field put the amount in the cards' format.
     await expect(dialog.getByLabel('Price')).toHaveValue('120.00');
     await expect(dialog.getByRole('button', { name: flow.submit, exact: true })).toBeEnabled();

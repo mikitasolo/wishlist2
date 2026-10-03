@@ -122,7 +122,7 @@ async function reservationFor(itemName: string) {
   return row;
 }
 
-/** "Mark as gifted" on the Reserved page. */
+/** "Mark as given" on the Reserved page. */
 async function markGiven(reservationId: string) {
   signIn(gifter);
   const res = await GIFT(
@@ -312,7 +312,7 @@ describe('"Given by you" on the items read (givenByMe)', () => {
     return id;
   }
 
-  // regression: after "Mark as gifted" the list still offered the gifter
+  // regression: after "Mark as given" the list still offered the gifter
   // Unbook, and pressing it put a gift already given back up for someone else
   // to buy. The gifter's read now says which of their bookings they've given.
   it("regression: flags the gifter's own given booking, and nothing else", async () => {
@@ -467,7 +467,7 @@ describe('"Given by you" on the items read (givenByMe)', () => {
     }
   });
 
-  // Deleting the entry from the gift history (a mistaken "Mark as gifted")
+  // Deleting the entry from the gift history (a mistaken "Mark as given")
   // takes the flag with it, so the card offers Unbook again.
   it('goes once the gifter deletes the gift-history entry', async () => {
     await bookAndGive('Lego set');

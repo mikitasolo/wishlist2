@@ -44,7 +44,7 @@ for (const flow of [
       await page.getByRole('button', { name: 'Remove', exact: true }).click();
     },
     confirm: 'Remove',
-    pending: 'Removing...',
+    pending: 'Removing…',
     method: 'DELETE',
     url: `**/api/wishlists/*/members/${member._id}`,
     success: 'Member removed successfully',
@@ -59,7 +59,7 @@ for (const flow of [
       await page.getByRole('button', { name: 'Make owner' }).click();
     },
     confirm: 'Send owner invite',
-    pending: 'Sending...',
+    pending: 'Sending…',
     method: 'POST',
     url: `**/api/wishlists/*/owners/${member.user._id}`,
     success: 'Invitation sent',
@@ -72,7 +72,7 @@ for (const flow of [
       await page.getByRole('button', { name: 'Leave', exact: true }).click();
     },
     confirm: 'Leave',
-    pending: 'Leaving...',
+    pending: 'Leaving…',
     method: 'DELETE',
     url: '**/api/wishlists/*/members/me',
     success: 'You left “E2E Friend List”',
@@ -86,7 +86,7 @@ for (const flow of [
       await page.getByRole('button', { name: 'Delete wishlist' }).click();
     },
     confirm: 'Delete',
-    pending: 'Deleting...',
+    pending: 'Deleting…',
     method: 'DELETE',
     url: '**/api/wishlists/*',
     success: 'Wishlist deleted successfully',

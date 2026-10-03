@@ -12,8 +12,8 @@ test('regression: a new list tells its owner it is empty, and Add your first ite
   await page.goto('/');
   await page.getByRole('button', { name: 'New wishlist' }).click();
   const create = page.getByRole('dialog', { name: 'Create new wishlist' });
-  await create.getByLabel('Wishlist Name').fill('E2E New List');
-  await create.getByRole('button', { name: 'Create Wishlist' }).click();
+  await create.getByLabel('Wishlist name').fill('E2E New List');
+  await create.getByRole('button', { name: 'Create wishlist' }).click();
   await page.waitForURL(/\/wishlists\/[^/?#]+$/);
   const list = new URL(page.url()).pathname;
 
@@ -25,9 +25,9 @@ test('regression: a new list tells its owner it is empty, and Add your first ite
     await expect(page.getByRole('button', { name: 'Filter by status' })).toHaveCount(0);
 
     await page.getByRole('button', { name: 'Add your first item' }).click();
-    const dialog = page.getByRole('dialog', { name: 'Add New Item' });
-    await dialog.getByLabel('Item Name').fill('E2E First Item');
-    await dialog.getByRole('button', { name: 'Add Item', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Add new item' });
+    await dialog.getByLabel('Item name').fill('E2E First Item');
+    await dialog.getByRole('button', { name: 'Add item', exact: true }).click();
 
     await expect(page.getByRole('article', { name: 'Item: E2E First Item' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Your list is empty' })).toHaveCount(0);

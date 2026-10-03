@@ -201,7 +201,7 @@ describe('CreateWishlistModal — editing while its banner uploads', () => {
     expect(description).toHaveValue('Turning 30');
     expect(screen.getByText(/only your friends/i)).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Create Wishlist' }));
+    await user.click(screen.getByRole('button', { name: 'Create wishlist' }));
     await waitFor(() => expect(push).toHaveBeenCalledWith('/wishlists/birthday'));
     const create = fetchMock.mock.calls.find(([url]) => url === '/api/wishlists')!;
     expect(JSON.parse(create[1]!.body as string)).toMatchObject({

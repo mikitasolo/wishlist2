@@ -317,8 +317,8 @@ describe('the wishlist page after an owner is demoted or removed', () => {
     held.save = save.promise;
 
     await user.type(screen.getByLabelText('Description'), '!');
-    await user.click(screen.getByRole('button', { name: 'Save Changes' }));
-    await screen.findByRole('button', { name: 'Saving...' });
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+    await screen.findByRole('button', { name: 'Saving…' });
     await demoteFirst(user, 'bob');
     expectSoleOwner();
 
@@ -394,7 +394,7 @@ describe('Make member', () => {
       confirm.click();
       confirm.click();
     });
-    expect(within(dialog).getByRole('button', { name: 'Making member...' })).toBeDisabled();
+    expect(within(dialog).getByRole('button', { name: 'Making member…' })).toBeDisabled();
     expect(within(dialog).getByRole('button', { name: 'Cancel' })).toBeDisabled();
     // The row takes no more clicks meanwhile either.
     expect(makeMember).toBeDisabled();

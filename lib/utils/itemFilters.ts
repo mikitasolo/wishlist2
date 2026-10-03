@@ -241,13 +241,13 @@ export type SortType =
 
 // The sort choices both item grids offer (the wishlist page and /items).
 export const SORT_OPTIONS: { value: SortType; label: string }[] = [
-  { value: 'priority', label: 'Most Wanted First' },
+  { value: 'priority', label: 'Most wanted first' },
   { value: 'name-asc', label: 'Name (A-Z)' },
   { value: 'name-desc', label: 'Name (Z-A)' },
-  { value: 'price-asc', label: 'Price (Low to High)' },
-  { value: 'price-desc', label: 'Price (High to Low)' },
-  { value: 'date-asc', label: 'Date Created (Oldest First)' },
-  { value: 'date-desc', label: 'Date Created (Newest First)' },
+  { value: 'price-asc', label: 'Price (low to high)' },
+  { value: 'price-desc', label: 'Price (high to low)' },
+  { value: 'date-asc', label: 'Date created (oldest first)' },
+  { value: 'date-desc', label: 'Date created (newest first)' },
 ];
 
 export function isSortType(value: unknown): value is SortType {

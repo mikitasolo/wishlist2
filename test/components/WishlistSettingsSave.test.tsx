@@ -93,12 +93,12 @@ async function openSettings() {
   const user = userEvent.setup();
   render(<WishlistDetail />);
   await user.click(await screen.findByRole('button', { name: 'Manage wishlist' }));
-  await screen.findByText('Wishlist Settings');
+  await screen.findByText('Wishlist settings');
   return user;
 }
 
 const description = () => screen.getByLabelText('Description');
-const save = () => screen.getByRole('button', { name: 'Save Changes' });
+const save = () => screen.getByRole('button', { name: 'Save changes' });
 
 describe('the wishlist settings form', () => {
   // regression: the form sent every setting on each save, as filled when the
@@ -131,10 +131,10 @@ describe('the wishlist settings form', () => {
 
     // The form now shows Bob's visibility, not the one it loaded.
     expect(
-      await screen.findByText('Only you and people you invite can view it.')
+      await screen.findByText('Only owners and people you invite can open it.')
     ).toBeInTheDocument();
 
-    const name = screen.getByLabelText('Wishlist Name *');
+    const name = screen.getByLabelText('Wishlist name *');
     await user.clear(name);
     await user.type(name, 'Turning 37');
     await user.click(save());

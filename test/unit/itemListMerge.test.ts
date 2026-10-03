@@ -412,7 +412,7 @@ describe('updateItemOptimistically', () => {
   // regression: only an approve put the item back when its request failed;
   // every other update (a booking, an edit, ...) was undone by the reconcile
   // read alone. A failed read keeps the list, so when the network was down the
-  // failed booking stayed on screen as "Booked by you" until a later read got
+  // failed booking stayed on screen as "Reserved by you" until a later read got
   // through.
   it('regression: puts a failed booking back at once, even when the reconcile read fails too', async () => {
     const state = itemsState([gift, other]);
@@ -749,7 +749,7 @@ describe('a read that turns out stale', () => {
   });
 
   // regression: only background reads were checked, so the initial load, sent
-  // before an add (the "+ Add Item" button shows before the items have loaded)
+  // before an add (the "+ Add item" button shows before the items have loaded)
   // and landing after it, replaced the list without the new item, and nothing
   // read it again until the next poll.
   it('regression: the initial load that read before an add still lands, then a fresh read lists the new item', async () => {

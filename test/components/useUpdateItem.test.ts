@@ -31,8 +31,8 @@ describe('useUpdateItem', () => {
   // page relies on the hook resolving null (it then re-reads the list, undoing
   // the optimistic booking) and toasting the server's message.
   it.each([
-    ['a booking', { status: 'booked' }, 'This item is no longer available to book'],
-    ['an unbook', { status: 'available' }, 'This item is no longer booked by you'],
+    ['a booking', { status: 'booked' }, 'This item is no longer available to reserve'],
+    ['an unbook', { status: 'available' }, 'This item is no longer reserved by you'],
   ] as const)('reports %s refused with a 409 and resolves null', async (_, updates, error) => {
     fetchMock.mockResolvedValue(reply(409, { success: false, error }));
     const onSuccess = vi.fn();

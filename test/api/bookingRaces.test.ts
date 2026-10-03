@@ -117,7 +117,7 @@ describe('PATCH /api/items/[id] — a book or unbook racing another change', () 
     expect(alices.status).toBe(409);
     expect(await alices.json()).toEqual({
       success: false,
-      error: 'This item is no longer available to book',
+      error: 'This item is no longer available to reserve',
     });
 
     const item = await Item.findById(itemId);
@@ -144,7 +144,7 @@ describe('PATCH /api/items/[id] — a book or unbook racing another change', () 
       expect(race.held()).toBe(true);
       expect(race.outcome()?.status).toBe(200);
       expect(booking.status).toBe(409);
-      expect((await booking.json()).error).toBe('This item is no longer available to book');
+      expect((await booking.json()).error).toBe('This item is no longer available to reserve');
 
       const item = await Item.findById(itemId);
       expect(item?.status).toBe(status);
@@ -175,7 +175,7 @@ describe('PATCH /api/items/[id] — a book or unbook racing another change', () 
       expect(unbook.status).toBe(409);
       expect(await unbook.json()).toEqual({
         success: false,
-        error: 'This item is no longer booked by you',
+        error: 'This item is no longer reserved by you',
       });
 
       const item = await Item.findById(itemId);
@@ -273,7 +273,7 @@ describe('PATCH /api/items/[id] — a book or unbook already refused on the firs
 
     const res = await patchAs(alice, { status: 'available' });
     expect(res.status).toBe(403);
-    expect((await res.json()).error).toBe('You can only unbook items you have booked');
+    expect((await res.json()).error).toBe('You can only release items you have reserved');
     expect((await Item.findById(itemId))?.bookedBy?.toString()).toBe(bob);
     expect(await Reservation.countDocuments({ gifter: bob })).toBe(1);
   });

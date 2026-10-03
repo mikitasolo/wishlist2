@@ -82,7 +82,7 @@ export default function ItemForm({
   onSubmit,
   onCancel,
   submitLabel = 'Submit',
-  submittingLabel = 'Submitting...',
+  submittingLabel = 'Submitting…',
   isSubmitting: externalIsSubmitting,
   firstInputRef: externalFirstInputRef,
   renderButtons,
@@ -335,8 +335,8 @@ export default function ItemForm({
         </div>
       )}
 
-      {/* Item Name */}
-      <Field label="Item Name *" id="name">
+      {/* Item name */}
+      <Field label="Item name *" id="name">
         <Input
           required
           ref={firstInputRef}
@@ -402,7 +402,7 @@ export default function ItemForm({
                 <div className="p-2 border-b border-border">
                   <input
                     type="text"
-                    placeholder="Search currency..."
+                    placeholder="Search currency…"
                     value={currencySearch}
                     onChange={(e) => setCurrencySearch(e.target.value)}
                     className={inputClassName('sm')}
@@ -441,8 +441,8 @@ export default function ItemForm({
         </div>
       </Field>
 
-      {/* Product Link */}
-      <Field label="Product Link" id="link">
+      {/* Product link */}
+      <Field label="Product link" id="link">
         <Input
           type="url"
           value={formData.link}
@@ -459,7 +459,7 @@ export default function ItemForm({
           value={formData.notes}
           onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
           className="resize-none"
-          placeholder="Add any additional notes about this item like size, color, etc..."
+          placeholder="Add any additional notes about this item like size, color, etc."
           rows={3}
           maxLength={100}
           disabled={submitting}

@@ -92,7 +92,7 @@ export default function ProposeItemModal({
       <BaseModal
         isOpen={isOpen}
         onClose={handleClose}
-        title="Propose New Item"
+        title="Propose new item"
         titleId="propose-item-title"
         isSubmitting={isSubmitting}
         shouldInterceptClose={() => hasUnsavedChanges}
@@ -101,8 +101,8 @@ export default function ProposeItemModal({
         <ItemForm
           onSubmit={handleSubmit}
           onCancel={handleClose}
-          submitLabel="Propose Item"
-          submittingLabel="Proposing..."
+          submitLabel="Propose item"
+          submittingLabel="Proposing…"
           isSubmitting={isSubmitting}
           mode="propose"
           onFormChange={setHasUnsavedChanges}
@@ -112,7 +112,7 @@ export default function ProposeItemModal({
 
       <ConfirmDialog
         isOpen={showConfirmClose}
-        title="Discard Changes?"
+        title="Discard changes?"
         message="You have unsaved changes. Are you sure you want to close? All progress will be lost."
         onConfirm={handleConfirmClose}
         onCancel={() => setShowConfirmClose(false)}

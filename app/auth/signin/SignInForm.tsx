@@ -166,7 +166,7 @@ export default function SignInForm({ turnstileSiteKey }: SignInFormProps) {
           )}
 
           <Button type="submit" disabled={isLoading} fullWidth>
-            {isLoading ? 'Sending link...' : 'Send magic link'}
+            {isLoading ? 'Sending link…' : 'Send magic link'}
           </Button>
         </form>
 

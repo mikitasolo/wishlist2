@@ -22,7 +22,7 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 const actions: MenuItem[] = [
-  { label: 'Mark as completed', icon: 'check-circle', onSelect: () => picked('complete') },
+  { label: 'Mark as received', icon: 'check-circle', onSelect: () => picked('complete') },
   { label: 'Move to draft', icon: 'note', onSelect: () => picked('draft') },
   { label: 'Save to my list', icon: 'plus', onSelect: () => picked('save'), separated: true },
 ];
@@ -62,7 +62,7 @@ describe('Menu — the trigger', () => {
     expect(menu()).toHaveAccessibleName('More actions');
     expect(trigger()).toHaveAttribute('aria-expanded', 'true');
     expect(trigger()).toHaveAttribute('aria-controls', menu()!.id);
-    expect(labels()).toEqual(['Mark as completed', 'Move to draft', 'Save to my list']);
+    expect(labels()).toEqual(['Mark as received', 'Move to draft', 'Save to my list']);
     // Nothing looks picked until the pointer or a key moves onto an item.
     expect(menu()).toHaveFocus();
     // The items are no Tab stops: the arrow keys move between them.
@@ -70,7 +70,7 @@ describe('Menu — the trigger', () => {
     expect(screen.getByRole('separator')).toBeInTheDocument();
 
     await user.keyboard('{ArrowDown}');
-    expect(item('Mark as completed')).toHaveFocus();
+    expect(item('Mark as received')).toHaveFocus();
   });
 
   it('closes on a second click, with focus on the trigger', async () => {
@@ -92,10 +92,10 @@ describe('Menu — the trigger', () => {
     render(<Page />);
     act(() => trigger().focus());
     await user.keyboard('{ArrowDown}');
-    expect(item('Mark as completed')).toHaveFocus();
+    expect(item('Mark as received')).toHaveFocus();
 
     expect(fireEvent.mouseDown(trigger())).toBe(false);
-    expect(item('Mark as completed')).toHaveFocus();
+    expect(item('Mark as received')).toHaveFocus();
     expect(menu()).toBeInTheDocument();
     fireEvent.click(trigger());
     expect(menu()).toBeNull();
@@ -115,14 +115,14 @@ describe('Menu — the trigger', () => {
     fireEvent.keyDown(trigger(), { key: ' ' });
     expect(menu()).toBeNull();
     fireEvent.keyUp(trigger(), { key: ' ' });
-    expect(item('Mark as completed')).toHaveFocus();
+    expect(item('Mark as received')).toHaveFocus();
     expect(picked).not.toHaveBeenCalled();
   });
 
   it.each([
-    ['{Enter}', 'Mark as completed'],
-    [' ', 'Mark as completed'],
-    ['{ArrowDown}', 'Mark as completed'],
+    ['{Enter}', 'Mark as received'],
+    [' ', 'Mark as received'],
+    ['{ArrowDown}', 'Mark as received'],
     ['{ArrowUp}', 'Save to my list'],
   ])('opens with %s on the trigger, focused on "%s"', async (key, focused) => {
     const user = userEvent.setup();
@@ -158,11 +158,11 @@ describe('Menu — keys in the menu', () => {
     await user.keyboard('{ArrowDown}');
     expect(item('Move to draft')).toHaveFocus();
     await user.keyboard('{ArrowDown}{ArrowDown}');
-    expect(item('Mark as completed')).toHaveFocus();
+    expect(item('Mark as received')).toHaveFocus();
     await user.keyboard('{ArrowUp}');
     expect(item('Save to my list')).toHaveFocus();
     await user.keyboard('{Home}');
-    expect(item('Mark as completed')).toHaveFocus();
+    expect(item('Mark as received')).toHaveFocus();
     await user.keyboard('{End}');
     expect(item('Save to my list')).toHaveFocus();
   });
@@ -172,7 +172,7 @@ describe('Menu — keys in the menu', () => {
     await user.keyboard('s');
     expect(item('Save to my list')).toHaveFocus();
     await user.keyboard('M');
-    expect(item('Mark as completed')).toHaveFocus();
+    expect(item('Mark as received')).toHaveFocus();
     await user.keyboard('m');
     expect(item('Move to draft')).toHaveFocus();
     // No match: focus stays put.
@@ -297,7 +297,7 @@ describe('Menu — the pointer', () => {
 
 describe('Menu — disabled items', () => {
   const held: MenuItem[] = [
-    { label: 'Mark as completed', onSelect: () => picked('complete'), disabled: true },
+    { label: 'Mark as received', onSelect: () => picked('complete'), disabled: true },
     { label: 'Save to my list', onSelect: () => picked('save') },
   ];
 
@@ -306,12 +306,12 @@ describe('Menu — disabled items', () => {
     render(<Page items={held} />);
     act(() => trigger().focus());
     await user.keyboard('{ArrowDown}');
-    expect(item('Mark as completed')).toHaveFocus();
-    expect(item('Mark as completed')).toHaveAttribute('aria-disabled', 'true');
+    expect(item('Mark as received')).toHaveFocus();
+    expect(item('Mark as received')).toHaveAttribute('aria-disabled', 'true');
     expect(item('Save to my list')).not.toHaveAttribute('aria-disabled');
 
     await user.keyboard('{Enter}');
-    await user.click(item('Mark as completed'));
+    await user.click(item('Mark as received'));
     expect(picked).not.toHaveBeenCalled();
     // The menu stays open on it.
     expect(menu()).toBeInTheDocument();
@@ -335,7 +335,7 @@ describe('Menu — focus when its items change', () => {
     rerender(<Page items={[actions[0], actions[2]]} />);
     expect(menu()).toHaveFocus();
     await user.keyboard('{ArrowDown}');
-    expect(item('Mark as completed')).toHaveFocus();
+    expect(item('Mark as received')).toHaveFocus();
     await user.keyboard('{Escape}');
     expect(trigger()).toHaveFocus();
   });

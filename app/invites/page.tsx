@@ -246,7 +246,7 @@ export default function InvitesPage() {
                     {invite.role === 'owner' && (
                       <p className={`mt-1 text-xs ${TONE_CLASSES.warning.text}`}>
                         You’ll get full control and the list will show on your profile. Owners never
-                        see booking status, so anything you’ve booked here will be released.
+                        see reservations, so anything you’ve reserved here will be released.
                       </p>
                     )}
                   </div>

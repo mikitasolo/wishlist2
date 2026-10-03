@@ -52,7 +52,7 @@ const features: { icon: IconName; title: string; body: string }[] = [
   {
     icon: 'sparkles',
     title: 'Keep it a surprise',
-    body: 'Friends quietly reserve gifts — you never see what’s been claimed on your own list.',
+    body: 'Friends quietly reserve gifts — you never see what’s been reserved on your own list.',
   },
 ];
 

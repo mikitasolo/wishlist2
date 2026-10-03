@@ -79,10 +79,10 @@ describe('WishlistItem — booking visibility', () => {
         isOwner
       />
     );
-    expect(screen.queryByText(/booked/i)).toBeNull();
+    expect(screen.queryByText(/booked|reserved/i)).toBeNull();
   });
 
-  it('shows "Booked by you" to the member who booked it', () => {
+  it('shows "Reserved by you" to the member who booked it', () => {
     render(
       <WishlistItem
         item={item({ status: 'booked', bookedBy: ME })}
@@ -91,7 +91,7 @@ describe('WishlistItem — booking visibility', () => {
         isMember
       />
     );
-    expect(screen.getByText(/booked by you/i)).toBeInTheDocument();
+    expect(screen.getByText(/reserved by you/i)).toBeInTheDocument();
   });
 });
 
@@ -158,9 +158,9 @@ describe('WishlistItem — status badges and borders', () => {
     expect(screen.getByRole('article')).toHaveAttribute('data-status', 'available');
   });
 
-  // regression: "Completed" and "Booked by you" were both emerald badges on
+  // regression: "Received" and "Reserved by you" were both emerald badges on
   // emerald-bordered cards, so a member couldn't tell them apart on one grid.
-  it('regression: "Completed" and "Booked by you" look different', () => {
+  it('regression: "Received" and "Reserved by you" look different', () => {
     const { unmount } = render(
       <WishlistItem
         item={item({ status: 'booked', bookedBy: ME })}
@@ -182,7 +182,7 @@ describe('WishlistItem — status badges and borders', () => {
       />
     );
     const done = badgeOf()!;
-    expect(done).toHaveTextContent('Completed');
+    expect(done).toHaveTextContent('Received');
     expect(done).toHaveClass('bg-foreground', 'text-background');
     expect(done).not.toHaveClass('bg-success-fill');
     expect(done.className).not.toBe(mine.badge);
@@ -209,7 +209,7 @@ describe('WishlistItem — status badges and borders', () => {
 
   it('fills the Book button with the success tone', () => {
     render(<WishlistItem item={item({})} onUpdate={vi.fn()} isAuthenticated isMember />);
-    expect(screen.getByRole('button', { name: 'Book this item' })).toHaveClass(
+    expect(screen.getByRole('button', { name: 'Reserve this item' })).toHaveClass(
       'bg-success-fill',
       'text-white'
     );
@@ -310,10 +310,10 @@ describe('WishlistItem — owner status actions', () => {
         isOwner
       />
     );
-    pick('Mark as completed');
+    pick('Mark as received');
     expect(onUpdate).not.toHaveBeenCalled();
-    expect(screen.getByRole('dialog')).toHaveTextContent('Mark as completed?');
-    fireEvent.click(screen.getByRole('button', { name: 'Complete' }));
+    expect(screen.getByRole('dialog')).toHaveTextContent('Mark as received?');
+    fireEvent.click(screen.getByRole('button', { name: 'Mark as received' }));
     expect(onUpdate).toHaveBeenCalledWith('item-1', { status: 'completed' });
     await act(async () => {});
   });
@@ -331,7 +331,7 @@ describe('WishlistItem — owner status actions', () => {
     openMenu();
     expect(screen.queryByRole('menuitem', { name: 'Move to draft' })).toBeNull();
     // Reversible, so no confirmation.
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Mark as available' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Mark as not received' }));
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(onUpdate).toHaveBeenCalledWith('item-1', { status: 'available' });
     await act(async () => {});
@@ -366,7 +366,7 @@ describe('WishlistItem — the action row, by role and state', () => {
       offer: {
         primary: { button: 'Edit item', text: 'Edit' },
         linkButton: 'link',
-        menu: ['Mark as completed', 'Move to draft', 'Save to my list'],
+        menu: ['Mark as received', 'Move to draft', 'Save to my list'],
       },
     },
     {
@@ -377,7 +377,7 @@ describe('WishlistItem — the action row, by role and state', () => {
       offer: {
         primary: { button: 'Edit item', text: 'Edit' },
         linkButton: 'link',
-        menu: ['Mark as completed', 'Move to draft', 'Save to my list'],
+        menu: ['Mark as received', 'Move to draft', 'Save to my list'],
       },
     },
     {
@@ -387,7 +387,7 @@ describe('WishlistItem — the action row, by role and state', () => {
       offer: {
         primary: { button: 'Edit item', text: 'Edit' },
         linkButton: 'link',
-        menu: ['Mark as available', 'Save to my list'],
+        menu: ['Mark as not received', 'Save to my list'],
       },
     },
     {
@@ -419,7 +419,7 @@ describe('WishlistItem — the action row, by role and state', () => {
       offer: {
         primary: { button: 'Edit item', text: 'Edit' },
         linkButton: 'none-provided',
-        menu: ['Mark as completed', 'Move to draft', 'Save to my list'],
+        menu: ['Mark as received', 'Move to draft', 'Save to my list'],
       },
     },
     {
@@ -437,7 +437,7 @@ describe('WishlistItem — the action row, by role and state', () => {
       item: { link: LINK },
       props: { isMember: true, onSaveToList: vi.fn() },
       offer: {
-        primary: { button: 'Book this item', text: 'Book' },
+        primary: { button: 'Reserve this item', text: 'Reserve' },
         linkButton: 'link',
         menu: ['Save to my list'],
       },
@@ -447,7 +447,7 @@ describe('WishlistItem — the action row, by role and state', () => {
       item: { link: LINK, status: 'booked', bookedBy: ME },
       props: { isMember: true, onSaveToList: vi.fn() },
       offer: {
-        primary: { button: 'Unbook this item', text: 'Unbook' },
+        primary: { button: 'Release this item', text: 'Release' },
         linkButton: 'link',
         menu: ['Save to my list'],
       },
@@ -470,7 +470,7 @@ describe('WishlistItem — the action row, by role and state', () => {
       item: { link: LINK, status: 'booked' },
       props: { isMember: true, onSaveToList: vi.fn() },
       offer: {
-        primary: { button: 'This item is already booked', text: 'Booked', disabled: true },
+        primary: { button: 'This item is already reserved', text: 'Reserved', disabled: true },
         linkButton: 'link',
         menu: ['Save to my list'],
       },
@@ -487,7 +487,7 @@ describe('WishlistItem — the action row, by role and state', () => {
       item: {},
       props: { isMember: true, onSaveToList: vi.fn() },
       offer: {
-        primary: { button: 'Book this item', text: 'Book' },
+        primary: { button: 'Reserve this item', text: 'Reserve' },
         linkButton: 'none-provided',
         menu: ['Save to my list'],
       },
@@ -565,21 +565,21 @@ describe('WishlistItem — the action row, by role and state', () => {
     }
 
     // Owners never see booking status, whatever the item's.
-    if (props.isOwner) expect(within(card).queryByText(/book/i)).toBeNull();
+    if (props.isOwner) expect(within(card).queryByText(/book|reserv/i)).toBeNull();
   });
 });
 
 describe('WishlistItem — a gift the member has marked as given', () => {
   const given = item({ link: LINK, status: 'booked', bookedBy: ME, givenByMe: true });
 
-  // regression: after "Mark as gifted" on the Reserved page, the card still
+  // regression: after "Mark as given" on the Reserved page, the card still
   // offered Unbook, and pressing it to tidy up put a gift already given back up
   // for someone else on the list to buy.
   it('regression: shows "Given by you" in place of Unbook', () => {
     render(<WishlistItem item={given} onUpdate={vi.fn()} isAuthenticated isMember />);
 
     expect(screen.getByRole('button', { name: 'Given by you' })).toBeDisabled();
-    expect(screen.queryByRole('button', { name: 'Unbook this item' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Release this item' })).toBeNull();
   });
 
   it('warns before Release… in the menu unbooks it', async () => {
@@ -653,7 +653,7 @@ describe('WishlistItem — a gift the member has marked as given', () => {
         isMember
       />
     );
-    expect(screen.getByRole('button', { name: 'Unbook this item' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Release this item' })).toBeEnabled();
     expect(screen.queryByText('Given by you')).toBeNull();
     expect(screen.queryByRole('button', { name: 'More actions' })).toBeNull();
   });
@@ -665,7 +665,7 @@ describe('WishlistItem — a gift the member has marked as given', () => {
       <WishlistItem item={given} onUpdate={vi.fn()} onEdit={vi.fn()} isAuthenticated isOwner />
     );
     expect(screen.queryByText(/given/i)).toBeNull();
-    expect(screen.queryByText(/book/i)).toBeNull();
+    expect(screen.queryByText(/book|reserv/i)).toBeNull();
     openMenu();
     expect(screen.queryByRole('menuitem', { name: 'Release…' })).toBeNull();
   });
@@ -686,7 +686,7 @@ describe('WishlistItem — while an update runs', () => {
         isMember
       />
     );
-    const book = screen.getByRole('button', { name: 'Book this item' });
+    const book = screen.getByRole('button', { name: 'Reserve this item' });
     fireEvent.click(book);
     expect(onUpdate).toHaveBeenCalledTimes(1);
 
@@ -718,11 +718,11 @@ describe('WishlistItem — while an update runs', () => {
         isOwner
       />
     );
-    pick('Mark as available');
+    pick('Mark as not received');
     expect(onUpdate).toHaveBeenCalledTimes(1);
 
     openMenu();
-    const markAvailable = screen.getByRole('menuitem', { name: 'Mark as available' });
+    const markAvailable = screen.getByRole('menuitem', { name: 'Mark as not received' });
     expect(markAvailable).toHaveAttribute('aria-disabled', 'true');
     expect(screen.getByRole('menuitem', { name: 'Save to my list' })).not.toHaveAttribute(
       'aria-disabled'

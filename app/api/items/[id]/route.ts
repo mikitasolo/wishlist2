@@ -322,14 +322,14 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
           reservationAction = 'create';
           bookingGuard = {
             filter: { status: 'available' },
-            conflict: 'This item is no longer available to book',
+            conflict: 'This item is no longer available to reserve',
           };
         }
         // Allow unbooking only items booked by the current user
         else if (validatedData.status === 'available' && currentItem.status === 'booked') {
           if (currentItem.bookedBy?.toString() !== session.user.id) {
             return NextResponse.json(
-              { success: false, error: 'You can only unbook items you have booked' },
+              { success: false, error: 'You can only release items you have reserved' },
               { status: 403 }
             );
           }
@@ -338,7 +338,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
           reservationAction = 'delete';
           bookingGuard = {
             filter: { status: 'booked', bookedBy: session.user.id },
-            conflict: 'This item is no longer booked by you',
+            conflict: 'This item is no longer reserved by you',
           };
         }
         // Don't allow other status changes

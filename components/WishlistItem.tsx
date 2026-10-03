@@ -22,7 +22,7 @@ const ROW_CONTROL = 'h-10 rounded-xl text-sm font-semibold';
 const PRIMARY_BASE = `${ROW_CONTROL} inline-flex min-w-0 flex-1 items-center justify-center gap-1.5 px-3 transition-all duration-200 cursor-pointer active:scale-[0.98] disabled:cursor-not-allowed disabled:active:scale-100 aria-disabled:cursor-not-allowed aria-disabled:opacity-60 aria-disabled:active:scale-100`;
 
 const PRIMARY_TONES = {
-  // Booking: the success fill of the "Booked by you" badge.
+  // Reserve: the success fill of the "Reserved by you" badge.
   book: 'bg-success-fill text-white shadow-sm hover:bg-success-fill-hover',
   // Publishing, reviewing, opening the product page.
   primary: 'bg-primary-600 text-white shadow-sm hover:bg-primary-500',
@@ -49,7 +49,7 @@ interface PrimaryAction {
   tone: keyof typeof PRIMARY_TONES;
   onClick: () => void;
   /**
-   * Changes the item's status (Book, Unbook, Publish), so it's held while
+   * Changes the item's status (Reserve, Release, Publish), so it's held while
    * the card's update runs. Edit and Review aren't, as they never were.
    */
   changesStatus?: boolean;
@@ -108,7 +108,7 @@ function WishlistItem({
 
   // A gift the member booked and has since marked as given (only a member's own
   // read of the list carries `givenByMe`). It stays booked by them, but isn't
-  // offered back up with Unbook: releasing it is in the menu, behind a warning.
+  // offered back up with Release: releasing it is in the menu, behind a warning.
   const isGivenByCurrentUser =
     !isOwner && item.status === 'booked' && !!isBookedByCurrentUser && item.givenByMe === true;
 
@@ -241,8 +241,8 @@ function WishlistItem({
     };
   } else if (isAuthenticated && isMember && item.status === 'available') {
     primary = {
-      label: 'Book',
-      ariaLabel: 'Book this item',
+      label: 'Reserve',
+      ariaLabel: 'Reserve this item',
       icon: 'gift',
       tone: 'book',
       onClick: handleToggleBooked,
@@ -261,16 +261,16 @@ function WishlistItem({
         }
       : isBookedByCurrentUser
         ? {
-            label: 'Unbook',
-            ariaLabel: 'Unbook this item',
+            label: 'Release',
+            ariaLabel: 'Release this item',
             icon: 'undo',
             tone: 'neutral',
             onClick: handleToggleBooked,
             changesStatus: true,
           }
         : {
-            label: 'Booked',
-            ariaLabel: 'This item is already booked',
+            label: 'Reserved',
+            ariaLabel: 'This item is already reserved',
             icon: 'lock',
             tone: 'off',
             onClick: () => {},
@@ -285,7 +285,7 @@ function WishlistItem({
   const menuItems: MenuItem[] = [];
   if (isAuthenticated && isOwner && isPublished) {
     menuItems.push({
-      label: isCompleted ? 'Mark as available' : 'Mark as completed',
+      label: isCompleted ? 'Mark as not received' : 'Mark as received',
       icon: isCompleted ? 'undo' : 'check-circle',
       onSelect: handleToggleCompleted,
       disabled: isUpdating,
@@ -478,9 +478,9 @@ function WishlistItem({
       {showCompleteConfirm && (
         <ConfirmDialog
           isOpen
-          title="Mark as completed?"
-          message="This marks the item as completed on this wishlist."
-          confirmText="Complete"
+          title="Mark as received?"
+          message="This marks the item as received on this wishlist."
+          confirmText="Mark as received"
           cancelText="Cancel"
           type="info"
           onConfirm={() => {

@@ -92,11 +92,11 @@ describe('CreateWishlistModal — keyboard focus', () => {
   it('regression: keeps Tab and Shift+Tab inside, wrapping at both ends', async () => {
     const user = await openModal();
 
-    act(() => button('Create Wishlist').focus());
+    act(() => button('Create wishlist').focus());
     await user.tab();
     expect(button('Close modal')).toHaveFocus();
     await user.tab({ shift: true });
-    expect(button('Create Wishlist')).toHaveFocus();
+    expect(button('Create wishlist')).toHaveFocus();
     expect(modal()).toBeInTheDocument();
   });
 
@@ -128,7 +128,7 @@ describe('CreateWishlistModal — keyboard focus', () => {
     expect(description).toHaveFocus();
 
     await user.keyboard('{Escape}');
-    const confirmation = within(screen.getByRole('alertdialog', { name: 'Discard Changes?' }));
+    const confirmation = within(screen.getByRole('alertdialog', { name: 'Discard changes?' }));
     expect(confirmation.getByRole('button', { name: 'Cancel' })).toHaveFocus();
     await user.tab();
     expect(confirmation.getByRole('button', { name: 'Discard' })).toHaveFocus();
@@ -142,7 +142,7 @@ describe('CreateWishlistModal — keyboard focus', () => {
     expect(description).toHaveFocus();
     act(() => button('Close modal').focus());
     await user.tab({ shift: true });
-    expect(button('Create Wishlist')).toHaveFocus();
+    expect(button('Create wishlist')).toHaveFocus();
 
     // Discard: both close, and focus goes back to the page.
     await user.keyboard('{Escape}');
@@ -275,7 +275,7 @@ describe('CreateWishlistModal — the currency Select by keyboard', () => {
 
     // The next Escape is the modal's, which asks first.
     await user.keyboard('{Escape}');
-    expect(screen.getByRole('alertdialog', { name: 'Discard Changes?' })).toBeInTheDocument();
+    expect(screen.getByRole('alertdialog', { name: 'Discard changes?' })).toBeInTheDocument();
   });
 
   it('chooses an option with the mouse and leaves focus on the trigger, so Tab carries on from there', async () => {
