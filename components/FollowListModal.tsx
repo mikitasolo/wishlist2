@@ -6,6 +6,7 @@ import Icon from './Icon';
 import Avatar from './Avatar';
 import { useBodyScrollLock } from '@/lib/hooks/useBodyScrollLock';
 import { useFocusTrap } from '@/lib/hooks/useFocusTrap';
+import { plural } from '@/lib/utils/plural';
 
 export type FollowTab = 'followers' | 'following';
 
@@ -117,7 +118,9 @@ export default function FollowListModal({
                 tab === t ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
               }`}
             >
-              {t === 'followers' ? `${followerCount} followers` : `${followingCount} following`}
+              {t === 'followers'
+                ? plural(followerCount, 'follower')
+                : plural(followingCount, 'following')}
             </button>
           ))}
         </div>

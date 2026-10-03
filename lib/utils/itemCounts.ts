@@ -14,6 +14,8 @@
  * counts (`countWishlistItems`, `lib/utils/wishlistItemCounts.ts`).
  */
 
+import { plural } from '@/lib/utils/plural';
+
 /** The statuses an "N items" count includes. */
 export const PUBLISHED_ITEM_STATUSES = ['available', 'booked', 'completed'] as const;
 
@@ -56,13 +58,9 @@ export function sumItemCounts(all: Iterable<Partial<ItemCounts> | null | undefin
   return total;
 }
 
-function plural(n: number, one: string, many: string): string {
-  return `${n} ${n === 1 ? one : many}`;
-}
-
 /** "1 item", "12 items". */
 export function formatItemCount(n: number): string {
-  return plural(n, 'item', 'items');
+  return plural(n, 'item');
 }
 
 /**
@@ -75,7 +73,7 @@ export function formatOwnerExtras(
   const drafts = counts.drafts ?? 0;
   const proposals = counts.proposals ?? 0;
   const parts = [
-    drafts > 0 ? plural(drafts, 'draft', 'drafts') : null,
+    drafts > 0 ? plural(drafts, 'draft') : null,
     proposals > 0 ? `${proposals} to review` : null,
   ].filter((p): p is string => p !== null);
   return parts.length > 0 ? parts.join(' · ') : null;

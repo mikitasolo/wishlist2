@@ -37,6 +37,10 @@ interface AddItemModalProps {
   // start fresh. Read when the modal mounts.
   initialItem?: ItemPrefill;
   title?: string;
+  // A step back in the flow this form is part of ("‹ Change list" in Save to my
+  // list), shown in the header. Like closing, it asks first if there are
+  // unsaved changes, since the form and its edits go.
+  back?: { label: string; onBack: () => void };
 }
 
 export default function AddItemModal({
@@ -47,10 +51,13 @@ export default function AddItemModal({
   userCurrency,
   initialItem,
   title = 'Add New Item',
+  back,
 }: AddItemModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  const [showConfirmClose, setShowConfirmClose] = useState(false);
+  // Where to go once the user confirms discarding their changes: closing the
+  // modal, or the step back. Null while no confirmation is open.
+  const [confirmLeave, setConfirmLeave] = useState<'close' | 'back' | null>(null);
 
   const defaultCurrency = defaultItemCurrency(wishlistCurrency, userCurrency);
   // Only the copied fields come across; the rest is a new item's. A stable
@@ -77,7 +84,7 @@ export default function AddItemModal({
     if (!isOpen) {
       setIsSubmitting(false);
       setHasUnsavedChanges(false);
-      setShowConfirmClose(false);
+      setConfirmLeave(null);
     }
   }, [isOpen]);
 
@@ -116,16 +123,23 @@ export default function AddItemModal({
 
   const handleClose = () => {
     if (hasUnsavedChanges) {
-      setShowConfirmClose(true);
+      setConfirmLeave('close');
     } else {
       onClose();
     }
   };
 
-  const handleConfirmClose = () => {
-    setShowConfirmClose(false);
+  const handleBack = () => {
+    if (hasUnsavedChanges) setConfirmLeave('back');
+    else back?.onBack();
+  };
+
+  const handleConfirmLeave = () => {
+    const leave = confirmLeave;
+    setConfirmLeave(null);
     setHasUnsavedChanges(false);
-    onClose();
+    if (leave === 'back') back?.onBack();
+    else onClose();
   };
 
   return (
@@ -137,7 +151,8 @@ export default function AddItemModal({
         titleId="add-item-title"
         isSubmitting={isSubmitting}
         shouldInterceptClose={() => hasUnsavedChanges}
-        onInterceptClose={() => setShowConfirmClose(true)}
+        onInterceptClose={() => setConfirmLeave('close')}
+        back={back && { label: back.label, onClick: handleBack }}
       >
         <ItemForm
           initialData={initialData}
@@ -152,11 +167,15 @@ export default function AddItemModal({
       </BaseModal>
 
       <ConfirmDialog
-        isOpen={showConfirmClose}
+        isOpen={confirmLeave !== null}
         title="Discard Changes?"
-        message="You have unsaved changes. Are you sure you want to close? All progress will be lost."
-        onConfirm={handleConfirmClose}
-        onCancel={() => setShowConfirmClose(false)}
+        message={
+          confirmLeave === 'back'
+            ? 'You have unsaved changes. Are you sure you want to go back? All progress will be lost.'
+            : 'You have unsaved changes. Are you sure you want to close? All progress will be lost.'
+        }
+        onConfirm={handleConfirmLeave}
+        onCancel={() => setConfirmLeave(null)}
         confirmText="Discard"
         cancelText="Cancel"
         type="warning"

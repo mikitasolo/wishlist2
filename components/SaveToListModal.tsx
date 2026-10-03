@@ -1,9 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import Link from 'next/link';
 import BaseModal from './BaseModal';
 import AddItemModal, { type NewItemData } from './AddItemModal';
+import CreateWishlistModal, { type CreatedWishlist } from './CreateWishlistModal';
 import Icon from './Icon';
 import { Skeleton } from './Skeleton';
 import { useToast } from './ToastProvider';
@@ -11,6 +11,9 @@ import type { ApiItem, ApiResponse } from '@/types/api';
 import type { MutationTracker } from '@/lib/utils/itemListMerge';
 import { RequestTimeoutError, withRequestTimeout } from '@/lib/utils/requestTimeout';
 import { formatItemCount } from '@/lib/utils/itemCounts';
+
+// `cameFrom` for the picker's "Create a wishlist" (a list's is its id).
+const CREATE = 'create';
 
 /** The fields of one of the viewer's lists (`GET /api/wishlists` → `owned`) the picker uses. */
 interface OwnList {
@@ -32,12 +35,15 @@ interface SaveToListModalProps {
 
 /**
  * "Save to my list": pick one of your own lists, then add a copy of `item` to
- * it through `AddItemModal`, prefilled and editable before saving.
+ * it through `AddItemModal`, prefilled and editable before saving. The form's
+ * "‹ Change list" goes back to the picker.
  *
  * The picker offers the lists you own (co-own included) that aren't archived,
- * apart from the item's own list. The copy is created with `sourceItemId`, so
- * the server checks you can see the source and gives the copy its own image
- * blob (see `POST /api/wishlists/[id]/items`).
+ * apart from the item's own list. With none, it offers to create one, in
+ * `CreateWishlistModal` in its place, and goes on to the form with the new list
+ * (cancelling that goes back to the picker). The copy is created with
+ * `sourceItemId`, so the server checks you can see the source and gives the
+ * copy its own image blob (see `POST /api/wishlists/[id]/items`).
  */
 export default function SaveToListModal({
   item,
@@ -52,6 +58,12 @@ export default function SaveToListModal({
   // Bumped by "Try again" to load the lists once more.
   const [attempt, setAttempt] = useState(0);
   const [target, setTarget] = useState<OwnList | null>(null);
+  // The create dialog is open, in the picker's place.
+  const [creating, setCreating] = useState(false);
+  // What took the flow on from the picker, a list's button (its id) or "Create
+  // a wishlist", to put focus back on when the picker comes back ("Change list",
+  // or cancelling the create dialog), as a dialog gives focus back to its opener.
+  const [cameFrom, setCameFrom] = useState<string | null>(null);
 
   // Focus goes back to what opened the flow (the card's Save button) when it
   // closes. Each dialog returns focus to its own opener, but the form's is the
@@ -98,6 +110,25 @@ export default function SaveToListModal({
     setLoadFailed(false);
     setLists(null);
     setAttempt((n) => n + 1);
+  };
+
+  // The new list joins the picker (newest first, as the API sorts them), so
+  // "Change list" finds it there, and the form opens on it.
+  const handleCreated = useCallback((created: CreatedWishlist) => {
+    const list: OwnList = {
+      _id: created._id,
+      name: created.name,
+      currency: created.currency,
+      itemCount: 0,
+    };
+    setLists((current) => [list, ...(current ?? [])]);
+    setTarget(list);
+    setCameFrom(list._id);
+  }, []);
+
+  const pick = (list: OwnList) => {
+    setTarget(list);
+    setCameFrom(list._id);
   };
 
   // Rejects on failure, after its toast, so AddItemModal stays open with the
@@ -147,7 +178,14 @@ export default function SaveToListModal({
         userCurrency={userCurrency}
         initialItem={item}
         title={`Save to ${target.name}`}
+        back={{ label: 'Change list', onBack: () => setTarget(null) }}
       />
+    );
+  }
+
+  if (creating) {
+    return (
+      <CreateWishlistModal isOpen onClose={() => setCreating(false)} onCreated={handleCreated} />
     );
   }
 
@@ -175,13 +213,18 @@ export default function SaveToListModal({
           <p className="text-sm text-muted-foreground">
             You don&apos;t have another wishlist to save this to.
           </p>
-          <Link
-            href="/wishlists/new"
+          <button
+            type="button"
+            onClick={() => {
+              setCreating(true);
+              setCameFrom(CREATE);
+            }}
+            autoFocus={cameFrom === CREATE}
             className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-accent hover:underline"
           >
             <Icon name="plus" size={16} />
             Create a wishlist
-          </Link>
+          </button>
         </div>
       ) : (
         <>
@@ -193,7 +236,8 @@ export default function SaveToListModal({
               <li key={list._id}>
                 <button
                   type="button"
-                  onClick={() => setTarget(list)}
+                  onClick={() => pick(list)}
+                  autoFocus={cameFrom === list._id}
                   className="flex w-full items-center justify-between gap-3 rounded-xl border border-border px-4 py-3 text-left transition-colors hover:bg-muted"
                 >
                   <span className="truncate font-medium text-foreground">{list.name}</span>

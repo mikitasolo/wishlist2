@@ -519,15 +519,19 @@ export default function BookedPage() {
                             {g.itemName}
                           </p>
                           <p className="truncate text-xs text-muted-foreground">
-                            {g.itemPrice && <>{formatPriceFromObject(g.itemPrice)} · </>}
-                            {g.recipientUsername ? `to @${g.recipientUsername}` : 'gift'}
-                            {g.wishlistName ? ` · ${g.wishlistName}` : ''}
-                            {' · '}
-                            {new Date(g.giftedAt).toLocaleDateString(undefined, {
-                              year: 'numeric',
-                              month: 'short',
-                              day: 'numeric',
-                            })}
+                            {/* What isn't known (a recipient, say) is left out, not stood in for. */}
+                            {[
+                              g.itemPrice ? formatPriceFromObject(g.itemPrice) : null,
+                              g.recipientUsername ? `to @${g.recipientUsername}` : null,
+                              g.wishlistName,
+                              new Date(g.giftedAt).toLocaleDateString(undefined, {
+                                year: 'numeric',
+                                month: 'short',
+                                day: 'numeric',
+                              }),
+                            ]
+                              .filter(Boolean)
+                              .join(' · ')}
                           </p>
                         </div>
                         <button

@@ -14,9 +14,23 @@ import { currencySelectOptions } from '@/lib/utils/currencies';
 import { useBodyScrollLock } from '@/lib/hooks/useBodyScrollLock';
 import { useFocusTrap } from '@/lib/hooks/useFocusTrap';
 
+/** The new list, as `POST /api/wishlists` answers it: the fields a caller of `onCreated` reads. */
+export interface CreatedWishlist {
+  _id: string;
+  name: string;
+  slug?: string | null;
+  currency?: string | null;
+}
+
 interface CreateWishlistModalProps {
   isOpen: boolean;
   onClose: () => void;
+  /**
+   * Called with the new list once it's created, after `onClose`, instead of
+   * going to its page: for a flow that carries on with it where it is ("Save
+   * to my list" saves the item to it).
+   */
+  onCreated?: (wishlist: CreatedWishlist) => void;
 }
 
 const defaultFormData = {
@@ -27,7 +41,11 @@ const defaultFormData = {
   currency: 'USD',
 };
 
-export default function CreateWishlistModal({ isOpen, onClose }: CreateWishlistModalProps) {
+export default function CreateWishlistModal({
+  isOpen,
+  onClose,
+  onCreated,
+}: CreateWishlistModalProps) {
   const router = useRouter();
   const { data: session } = useSession();
   const { showToast } = useToast();
@@ -92,7 +110,9 @@ export default function CreateWishlistModal({ isOpen, onClose }: CreateWishlistM
         showToast('Wishlist created successfully', 'success');
         setHasUnsavedChanges(false);
         onClose();
-        router.push(`/wishlists/${result.data.slug ?? result.data._id}`);
+        const created = result.data as CreatedWishlist;
+        if (onCreated) onCreated(created);
+        else router.push(`/wishlists/${created.slug ?? created._id}`);
       } else {
         showToast(result.error || 'Failed to create wishlist', 'error');
       }

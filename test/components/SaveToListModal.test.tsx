@@ -4,9 +4,14 @@ import { useState } from 'react';
 import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react';
 import type { ApiItem } from '@/types/api';
 
-const { showToast } = vi.hoisted(() => ({ showToast: vi.fn() }));
+const { showToast, push } = vi.hoisted(() => ({ showToast: vi.fn(), push: vi.fn() }));
 
 vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }));
+// For CreateWishlistModal, which the picker opens when there's no list to pick.
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push }) }));
+vi.mock('next-auth/react', () => ({
+  useSession: () => ({ data: { user: { id: 'me', defaultCurrency: 'USD' } } }),
+}));
 // ImageUpload pulls in react-easy-crop: stand in with its value and a remove button.
 vi.mock('@/components/ImageUpload', () => ({
   default: ({ value, onChange }: { value: string | null; onChange: (v: null) => void }) => (
@@ -72,13 +77,21 @@ const mutations = {
   },
 };
 
-/** Serves the viewer's lists, and answers the copy's POST with `post`. */
+/** What `POST /api/wishlists` answers for a list created from the picker. */
+const CREATED = { _id: 'w-new', name: 'Gift ideas', slug: 'gift-ideas-ab12c', currency: 'EUR' };
+
+/**
+ * Serves the viewer's lists, answers the copy's POST with `post`, and a new
+ * list's (`POST /api/wishlists`) with `create`.
+ */
 function stubFetch({
   owned = OWNED,
   post = async (): Promise<Reply> => ({ success: true, data: { _id: 'copy-1' } }),
-}: { owned?: unknown[]; post?: () => Promise<Reply> } = {}) {
+  create = async (): Promise<Reply> => ({ success: true, data: CREATED }),
+}: { owned?: unknown[]; post?: () => Promise<Reply>; create?: () => Promise<Reply> } = {}) {
   const postedWhileTracked: number[] = [];
   const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+    if (init?.method === 'POST' && url === '/api/wishlists') return { json: create };
     if (init?.method === 'POST') {
       postedWhileTracked.push(tracked);
       return { json: post };
@@ -106,9 +119,13 @@ async function pick(name: string) {
   return screen.getByRole('dialog', { name: `Save to ${name}` });
 }
 
+/** Whether this fetch call is the copy's POST. */
+const isCopyPost = ([url, init]: [string, RequestInit?]) =>
+  init?.method === 'POST' && url.endsWith('/items');
+
 /** The JSON body of the copy's POST. */
 function postedBody(fetchMock: ReturnType<typeof stubFetch>) {
-  const call = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST');
+  const call = fetchMock.mock.calls.find(isCopyPost);
   if (!call) throw new Error('no POST');
   return { url: call[0], body: JSON.parse(String(call[1]?.body)) };
 }
@@ -121,6 +138,7 @@ afterAll(() => vi.restoreAllMocks());
 beforeEach(() => {
   cleanup();
   showToast.mockReset();
+  push.mockReset();
   trackCalls.mockClear();
   tracked = 0;
 });
@@ -146,15 +164,12 @@ describe('SaveToListModal — the list picker', () => {
     expect(within(dialog).queryByText('Where the item is')).toBeNull();
   });
 
-  it('says so, and links to creating one, when there is no list to save to', async () => {
+  it('says so, and offers to create one, when there is no list to save to', async () => {
     stubFetch({ owned: [OWNED[0], OWNED[3]] });
     open();
 
     expect(await screen.findByText(/don.t have another wishlist/i)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /create a wishlist/i })).toHaveAttribute(
-      'href',
-      '/wishlists/new'
-    );
+    expect(screen.getByRole('button', { name: /create a wishlist/i })).toBeInTheDocument();
   });
 
   it('says so when the lists fail to load, and loads them again on "Try again"', async () => {
@@ -210,6 +225,159 @@ describe('SaveToListModal — the list picker', () => {
   });
 });
 
+describe('SaveToListModal — creating a list to save to', () => {
+  const createDialog = () => screen.getByRole('dialog', { name: 'Create new wishlist' });
+
+  async function startCreating() {
+    fireEvent.click(await screen.findByRole('button', { name: /create a wishlist/i }));
+    return createDialog();
+  }
+
+  async function createList(name: string) {
+    const create = await startCreating();
+    fireEvent.change(within(create).getByLabelText(/wishlist name/i), {
+      target: { value: name },
+    });
+    fireEvent.click(within(create).getByRole('button', { name: /^create wishlist$/i }));
+    return create;
+  }
+
+  // regression: with no other list, "Create a wishlist" linked to /wishlists/new,
+  // which only redirected home without opening the create dialog, and the item
+  // the user was saving was lost on the way.
+  it('regression: creates the list in place, then saves the copy to it', async () => {
+    const fetchMock = stubFetch({ owned: [OWNED[0], OWNED[3]] });
+    const { onClose } = open();
+
+    const create = await startCreating();
+    // In the picker's place, not over it.
+    expect(screen.queryByRole('dialog', { name: 'Save to my list' })).toBeNull();
+    fireEvent.change(within(create).getByLabelText(/wishlist name/i), {
+      target: { value: 'Gift ideas' },
+    });
+    fireEvent.click(within(create).getByRole('button', { name: /^create wishlist$/i }));
+
+    // Straight on to the form, for the new list, without leaving the page.
+    const form = await screen.findByRole('dialog', { name: 'Save to Gift ideas' });
+    expect(push).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog', { name: 'Create new wishlist' })).toBeNull();
+    expect(within(form).getByLabelText(/item name/i)).toHaveValue('Blue Mug');
+    expect(form.contains(document.activeElement)).toBe(true);
+
+    fireEvent.click(within(form).getByRole('button', { name: /^add item$/i }));
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(postedBody(fetchMock).url).toBe('/api/wishlists/w-new/items');
+    expect(showToast).toHaveBeenCalledWith('Saved to Gift ideas', 'success');
+  });
+
+  it('offers the new list in the picker on "Change list"', async () => {
+    stubFetch({ owned: [OWNED[0], OWNED[3]] });
+    open();
+
+    await createList('Gift ideas');
+    const form = await screen.findByRole('dialog', { name: 'Save to Gift ideas' });
+
+    fireEvent.click(within(form).getByRole('button', { name: 'Change list' }));
+    const created = within(picker()).getByRole('button', { name: /Gift ideas/ });
+    expect(created).toHaveTextContent('Gift ideas0 items');
+    await waitFor(() => expect(created).toHaveFocus());
+    expect(screen.queryByText(/don.t have another wishlist/i)).toBeNull();
+  });
+
+  it('goes back to the picker when the create dialog is cancelled', async () => {
+    const fetchMock = stubFetch({ owned: [OWNED[0], OWNED[3]] });
+    const { onClose } = open();
+
+    const create = await startCreating();
+    fireEvent.click(within(create).getByRole('button', { name: /^cancel$/i }));
+
+    expect(await screen.findByText(/don.t have another wishlist/i)).toBeInTheDocument();
+    expect(picker()).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /create a wishlist/i })).toHaveFocus()
+    );
+    expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false);
+  });
+
+  it('keeps the create dialog open, with the error, when creating the list fails', async () => {
+    stubFetch({
+      owned: [OWNED[0], OWNED[3]],
+      create: async () => ({ success: false, error: 'Too many requests' }),
+    });
+    open();
+
+    await createList('Gift ideas');
+
+    await waitFor(() => expect(showToast).toHaveBeenCalledWith('Too many requests', 'error'));
+    expect(createDialog()).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: /^Save to / })).toBeNull();
+  });
+});
+
+describe('SaveToListModal — changing the list', () => {
+  // regression: once a list was picked, the form's only ways out closed the
+  // whole flow, so picking another list meant starting again from the item.
+  it('regression: "Change list" goes back to the picker, and saves to the list picked next', async () => {
+    const fetchMock = stubFetch();
+    const { onClose } = open();
+
+    const form = await pick('Birthday');
+    fireEvent.click(within(form).getByRole('button', { name: 'Change list' }));
+
+    expect(screen.queryByRole('dialog', { name: 'Save to Birthday' })).toBeNull();
+    expect(within(picker()).getByRole('button', { name: /Birthday/ })).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+    // Back on the list it was picked with, rather than dropping to the page with the form.
+    await waitFor(() =>
+      expect(within(picker()).getByRole('button', { name: /Birthday/ })).toHaveFocus()
+    );
+
+    const home = await pick('Home');
+    fireEvent.click(within(home).getByRole('button', { name: /^add item$/i }));
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(postedBody(fetchMock).url).toBe('/api/wishlists/w-home/items');
+  });
+
+  it('asks before going back over unsaved edits, and stays on the form if told to', async () => {
+    stubFetch();
+    open();
+    const form = await pick('Birthday');
+    fireEvent.change(within(form).getByLabelText(/item name/i), { target: { value: 'Edited' } });
+
+    fireEvent.click(within(form).getByRole('button', { name: 'Change list' }));
+    const confirm = screen.getByRole('alertdialog');
+    expect(confirm).toHaveTextContent(/go back/i);
+    fireEvent.click(within(confirm).getByRole('button', { name: 'Cancel' }));
+
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(within(form).getByLabelText(/item name/i)).toHaveValue('Edited');
+
+    fireEvent.click(within(form).getByRole('button', { name: 'Change list' }));
+    fireEvent.click(
+      within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Discard' })
+    );
+    expect(within(picker()).getByRole('button', { name: /Birthday/ })).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'Save to Birthday' })).toBeNull();
+  });
+
+  it("can't go back while the copy is saving", async () => {
+    let answer: (reply: Reply) => void = () => {};
+    stubFetch({ post: () => new Promise<Reply>((resolve) => (answer = resolve)) });
+    open();
+    const form = await pick('Birthday');
+
+    fireEvent.click(within(form).getByRole('button', { name: /^add item$/i }));
+    await waitFor(() =>
+      expect(within(form).getByRole('button', { name: 'Change list' })).toBeDisabled()
+    );
+    answer({ success: false, error: 'Item not found' });
+    await waitFor(() =>
+      expect(within(form).getByRole('button', { name: 'Change list' })).toBeEnabled()
+    );
+  });
+});
+
 describe('SaveToListModal — the prefilled form', () => {
   it('starts on the name, price and currency, link and image, but not the notes or flag', async () => {
     stubFetch();
@@ -256,7 +424,7 @@ describe('SaveToListModal — the prefilled form', () => {
     // every other item request on the page.
     expect(trackCalls).toHaveBeenCalledTimes(1);
     expect(fetchMock.postedWhileTracked).toEqual([1]);
-    const post = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST');
+    const post = fetchMock.mock.calls.find(isCopyPost);
     expect(post?.[1]?.signal).toBeInstanceOf(AbortSignal);
   });
 
