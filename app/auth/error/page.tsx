@@ -6,6 +6,7 @@ import { Suspense } from 'react';
 import Icon from '@/components/Icon';
 import { buttonClassName } from '@/components/buttonStyles';
 import Spinner from '@/components/Spinner';
+import { TONE_CLASSES } from '@/lib/utils/statusTones';
 
 function AuthErrorContent() {
   const searchParams = useSearchParams();
@@ -25,7 +26,9 @@ function AuthErrorContent() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
       <div className="w-full max-w-md rounded-2xl border border-border bg-surface p-8 text-center shadow-lg">
-        <span className="mb-5 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-red-500/12 text-red-600 dark:text-red-400">
+        <span
+          className={`mb-5 inline-flex h-14 w-14 items-center justify-center rounded-2xl ${TONE_CLASSES.danger.tint}`}
+        >
           <Icon name="alert" size={28} />
         </span>
         <h1 className="mb-3 text-3xl font-semibold tracking-tight text-foreground">

@@ -272,7 +272,7 @@ export default function ItemForm({
           <span id={statusLabelId} className={FIELD_LABEL}>
             Status
           </span>
-          <p id={statusHelperId} className="mb-2 text-xs text-muted-foreground">
+          <p id={statusHelperId} className="mb-1.5 text-xs text-muted-foreground">
             {mode === 'review'
               ? 'Select the status for this item after review'
               : 'Draft items are not visible to others'}
@@ -388,9 +388,7 @@ export default function ItemForm({
                         setCurrencySearch('');
                       }}
                       className={`w-full text-left px-4 py-2 hover:bg-muted transition-colors ${
-                        formData.currency === curr.code
-                          ? 'bg-primary-500/12 text-primary-700 dark:text-primary-300'
-                          : ''
+                        formData.currency === curr.code ? 'bg-primary-500/12 text-accent' : ''
                       } ${POPULAR_CURRENCIES.includes(curr.code) ? 'font-medium' : ''}`}
                     >
                       <span className="font-mono">{curr.code}</span>

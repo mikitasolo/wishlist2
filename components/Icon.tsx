@@ -2,7 +2,16 @@ import { SVGProps } from 'react';
 
 /**
  * Lightweight inline icon set (stroke-based, 24×24) used across the app
- * in place of emoji. Icons inherit `currentColor` and accept any SVG props.
+ * in place of emoji and text glyphs ("+", "→"). Icons inherit `currentColor`
+ * and accept any SVG props.
+ *
+ * Every icon is one of four sizes (`test/unit/iconSizes.test.ts` holds them):
+ * - 12: in a badge or pill, or beside a line of `text-xs` / `text-meta`;
+ * - 16: in an `sm` or `md` control (`CONTROL_ICON_SIZE`), and beside `text-sm`;
+ * - 18: in an `lg` control, an icon button, a menu's rows, and a chip up to
+ *   48px (a stat tile's, a toast's, a dialog's);
+ * - 28: in a large chip (an empty state's, a sign-in card's, the landing
+ *   page's).
  */
 
 export type IconName =
@@ -19,6 +28,7 @@ export type IconName =
   | 'info'
   | 'chevron-down'
   | 'chevron-left'
+  | 'arrow-right'
   | 'image'
   | 'note'
   | 'sparkles'
@@ -103,6 +113,7 @@ const paths: Record<IconName, React.ReactNode> = {
   ),
   'chevron-down': <path d="m6 9 6 6 6-6" />,
   'chevron-left': <path d="m15 18-6-6 6-6" />,
+  'arrow-right': <path d="M5 12h14M13 6l6 6-6 6" />,
   image: (
     <>
       <rect x="3" y="3" width="18" height="18" rx="2" />
@@ -239,7 +250,7 @@ interface IconProps extends Omit<SVGProps<SVGSVGElement>, 'name'> {
   size?: number;
 }
 
-export default function Icon({ name, size = 20, className, ...props }: IconProps) {
+export default function Icon({ name, size = 16, className, ...props }: IconProps) {
   return (
     <svg
       width={size}

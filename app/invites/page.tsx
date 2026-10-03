@@ -245,7 +245,7 @@ export default function InvitesPage() {
                     <Skeleton className="h-3.5 w-32 max-w-full" />
                   </div>
                 </div>
-                <div className="flex flex-shrink-0 items-center gap-2">
+                <div className="flex flex-shrink-0 items-center gap-3">
                   <Skeleton className="h-9 w-20 rounded-xl" />
                   <Skeleton className="h-9 w-20 rounded-xl" />
                 </div>
@@ -296,7 +296,7 @@ export default function InvitesPage() {
                     )}
                   </div>
                 </div>
-                <div className="flex flex-shrink-0 items-center gap-2">
+                <div className="flex flex-shrink-0 items-center gap-3">
                   <Button
                     variant="ghost"
                     size="sm"

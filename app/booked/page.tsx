@@ -418,7 +418,7 @@ export default function BookedPage() {
         {loading ? (
           <div className="mt-8">
             <Skeleton className="mb-4 ml-1 h-6 w-24" />
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
               {Array.from({ length: 6 }).map((_, i) => (
                 <div
                   key={i}
@@ -476,7 +476,7 @@ export default function BookedPage() {
                           it’s saved to your history — otherwise dismiss it. Either way, the owner’s
                           list isn’t affected.
                         </p>
-                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
                           {needsConfirm.map((r) => (
                             <ReservationCard
                               key={r._id}
@@ -764,7 +764,7 @@ function ReservationGroup({
           )}
         </h3>
       )}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">{children}</div>
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">{children}</div>
     </section>
   );
 }

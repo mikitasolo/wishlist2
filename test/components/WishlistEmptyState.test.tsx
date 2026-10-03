@@ -150,8 +150,8 @@ const emptyState = (heading: string) =>
   screen.getByRole('heading', { name: heading }).parentElement as HTMLElement;
 
 /**
- * None of the stat cards, nothing in the toolbar, and not the + Add item or
- * + Propose item above the list (the empty state offers its own), is on the page.
+ * None of the stat cards, nothing in the toolbar, and not the Add item or
+ * Propose item above the list (the empty state offers its own), is on the page.
  */
 function expectNoCardsOrToolbar() {
   expect(screen.queryByRole('button', { name: /^(Total Items|All)\s*\d+$/ })).toBeNull();
@@ -160,8 +160,8 @@ function expectNoCardsOrToolbar() {
   expect(screen.queryByRole('button', { name: 'Filter by status' })).toBeNull();
   expect(screen.queryByRole('combobox', { name: 'Sort items by' })).toBeNull();
   expect(screen.queryByRole('combobox', { name: 'Show prices in' })).toBeNull();
-  expect(screen.queryByRole('button', { name: '+ Add item' })).toBeNull();
-  expect(screen.queryByRole('button', { name: '+ Propose item' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Add item' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Propose item' })).toBeNull();
 }
 
 /** Owner Carol adds an item through the empty state's Add your first item. */
@@ -251,7 +251,7 @@ describe('a list with no items at all', () => {
     expect(screen.queryByRole('heading', { name: 'Your list is empty' })).toBeNull();
     expect(screen.getByRole('textbox', { name: 'Search items by name' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Filter by status' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '+ Add item' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add item' })).toBeInTheDocument();
   });
 
   // The toolbar goes with the last item, so a filter or search left in force

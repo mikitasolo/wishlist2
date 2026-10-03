@@ -17,7 +17,7 @@ for (const flow of [
   {
     as: 'owner',
     list: 'e2e-birthday',
-    open: '+ Add item',
+    open: 'Add item',
     title: 'Add new item',
     submit: 'Add item',
   },

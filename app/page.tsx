@@ -14,7 +14,7 @@ import OccasionLabel, { OCCASION_ON_COVER } from '@/components/OccasionLabel';
 import Select from '@/components/Select';
 import FollowListModal, { type FollowTab } from '@/components/FollowListModal';
 import Button from '@/components/Button';
-import { buttonClassName } from '@/components/buttonStyles';
+import { buttonClassName, CONTROL_ICON_SIZE } from '@/components/buttonStyles';
 import Icon, { IconName } from '@/components/Icon';
 import EmptyState from '@/components/EmptyState';
 import LoadError from '@/components/LoadError';
@@ -278,7 +278,7 @@ export default function Home() {
         <main className="mx-auto max-w-5xl px-4 py-14 sm:px-6 sm:py-20 lg:px-8">
           <div className="mb-16 text-center sm:mb-24">
             <span className="mb-7 inline-flex h-16 w-16 items-center justify-center rounded-[20px] bg-gradient-to-br from-primary-500 via-primary-600 to-primary-700 text-white shadow-[0_12px_30px_-8px_rgba(94,92,230,0.7)]">
-              <Icon name="gift" size={34} />
+              <Icon name="gift" size={28} />
             </span>
             <h1 className="mx-auto max-w-3xl text-4xl font-semibold tracking-tight text-foreground sm:text-6xl">
               Everything you wish for, in one place.
@@ -298,10 +298,10 @@ export default function Home() {
             {features.map((f) => (
               <div
                 key={f.title}
-                className="rounded-3xl border border-border bg-surface p-7 shadow-md transition-all hover:shadow-lg"
+                className="rounded-3xl border border-border bg-surface p-7 shadow-md"
               >
-                <span className="mb-5 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-primary-500/12 text-accent dark:text-primary-300">
-                  <Icon name={f.icon} size={24} />
+                <span className="mb-5 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-primary-500/12 text-accent">
+                  <Icon name={f.icon} size={18} />
                 </span>
                 <h3 className="mb-2 text-lg font-semibold text-foreground">{f.title}</h3>
                 <p className="text-body leading-relaxed text-muted-foreground">{f.body}</p>
@@ -417,9 +417,9 @@ export default function Home() {
             }
           />
         ) : (
-          <>
+          <div className="space-y-12">
             {/* Bento overview */}
-            <section aria-label="Overview" className="mb-12">
+            <section aria-label="Overview">
               {activeOwned.length > 0 && (
                 <div className="mb-4 flex items-center justify-end gap-2">
                   <span className="text-meta font-medium text-muted-foreground">Featured</span>
@@ -437,7 +437,7 @@ export default function Home() {
                   />
                 </div>
               )}
-              <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+              <div className="grid grid-cols-2 gap-5 lg:grid-cols-4">
                 {featured && (
                   <Link
                     href={`/wishlists/${featured.slug ?? featured._id}`}
@@ -466,7 +466,7 @@ export default function Home() {
                     </Cover>
                     <div className="flex items-center justify-between p-5">
                       <span className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Icon name={visibilityMeta[getVisibility(featured)].icon} size={15} />
+                        <Icon name={visibilityMeta[getVisibility(featured)].icon} size={16} />
                         {visibilityMeta[getVisibility(featured)].label} ·{' '}
                         {formatItemCount(featured.itemCount ?? 0)}
                       </span>
@@ -492,7 +492,7 @@ export default function Home() {
                   value={totalItems}
                   detail={formatOwnerExtras(ownCounts)}
                   href="/items"
-                  iconWrapClassName="bg-primary-500/12 text-accent dark:text-primary-300"
+                  iconWrapClassName="bg-primary-500/12 text-accent"
                 />
                 <StatTile
                   icon="users"
@@ -516,7 +516,7 @@ export default function Home() {
 
             {/* Your wishlists */}
             {activeOwned.length > 0 && (
-              <section className="mb-12">
+              <section>
                 <h2 className="mb-5 px-1 text-xl font-semibold tracking-tight text-foreground">
                   Your wishlists
                 </h2>
@@ -530,7 +530,7 @@ export default function Home() {
 
             {/* Shared with you */}
             {member.length > 0 && (
-              <section className="mb-12">
+              <section>
                 <h2 className="mb-5 px-1 text-xl font-semibold tracking-tight text-foreground">
                   Shared with you
                 </h2>
@@ -544,7 +544,7 @@ export default function Home() {
 
             {/* Archived */}
             {archivedOwned.length > 0 && (
-              <section className="mb-4">
+              <section>
                 <h2 className="mb-5 flex items-center gap-2 px-1 text-xl font-semibold tracking-tight text-muted-foreground">
                   <Icon name="package" size={18} />
                   Archived
@@ -556,7 +556,7 @@ export default function Home() {
                 </div>
               </section>
             )}
-          </>
+          </div>
         )}
       </main>
 
@@ -574,23 +574,64 @@ export default function Home() {
 }
 
 /**
- * The dashboard's content while its lists are read: the bento (the featured
- * card over two rows, and four stat tiles, the first row a line taller for the
- * Items tile's drafts line), then a section heading over a row of cards.
+ * The dashboard's content while its lists are read, box for box as it will
+ * land, so nothing moves when it does: the Featured picker's row, the bento
+ * (the featured card over two rows at `lg`, and four stat tiles, the Items
+ * tile a line taller for its drafts line), then a section heading over a row
+ * of cards. The picker only shows for someone who owns a list, which is
+ * nearly everyone who gets this far with lists to show.
  */
 function DashboardSkeleton() {
   return (
-    <>
-      <div className="mb-12 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <Skeleton className="col-span-2 min-h-[260px] rounded-3xl lg:row-span-2 lg:min-h-[300px]" />
-        <Skeleton className="h-[181px] rounded-3xl" />
-        <Skeleton className="h-[181px] rounded-3xl" />
-        <Skeleton className="h-[160px] rounded-3xl" />
-        <Skeleton className="h-[160px] rounded-3xl" />
+    <div className="space-y-12">
+      <div>
+        <div className="mb-4 flex items-center justify-end gap-2">
+          <Skeleton className="h-3 w-14" />
+          <Skeleton className="h-9 w-52 rounded-xl" />
+        </div>
+        <div className="grid grid-cols-2 gap-5 lg:grid-cols-4">
+          <div className="col-span-2 flex flex-col overflow-hidden rounded-3xl border border-border bg-surface shadow-md lg:row-span-2">
+            <Skeleton className="aspect-[16/9] w-full rounded-none" />
+            <div className="flex items-center justify-between p-5">
+              <Skeleton className="h-3.5 w-32" />
+              <Skeleton className="h-9 w-16 rounded-full" />
+            </div>
+          </div>
+          <StatTileSkeleton />
+          <StatTileSkeleton detail />
+          <StatTileSkeleton />
+          <StatTileSkeleton />
+        </div>
       </div>
-      <Skeleton className="mb-5 h-6 w-40" />
-      <SkeletonGrid count={4} variant="wishlist" />
-    </>
+      <div>
+        {/* The section heading's line (text-xl) */}
+        <div className="mb-5 flex h-7 items-center px-1">
+          <Skeleton className="h-5 w-40" />
+        </div>
+        <SkeletonGrid count={4} variant="wishlist" />
+      </div>
+    </div>
+  );
+}
+
+/** A `StatTile` while it's read: each of its lines in a box of that line's height. */
+function StatTileSkeleton({ detail = false }: { detail?: boolean }) {
+  return (
+    <div className="flex flex-col rounded-3xl border border-border bg-surface p-5 shadow-md">
+      <Skeleton className="mb-3.5 h-9 w-9 rounded-xl" />
+      <div className="flex h-[1.125rem] items-center">
+        <Skeleton className="h-3 w-24 max-w-full" />
+      </div>
+      {detail && (
+        <div className="mt-0.5 flex h-[1.125rem] items-center">
+          <Skeleton className="h-3 w-20 max-w-full" />
+        </div>
+      )}
+      <div className="mt-auto flex items-center justify-between gap-2 pt-3">
+        <Skeleton className="h-8 w-10 rounded-lg" />
+        <Skeleton className="h-9 w-[4.5rem] rounded-full" />
+      </div>
+    </div>
   );
 }
 
@@ -660,7 +701,7 @@ function StatTile({
         className={`mb-3.5 inline-flex h-9 w-9 items-center justify-center rounded-xl ${iconWrapClassName}`}
         style={iconStyle}
       >
-        <Icon name={icon} size={19} />
+        <Icon name={icon} size={18} />
       </span>
       <span className="text-meta font-semibold text-muted-foreground">{label}</span>
       {detail !== undefined && (
@@ -676,7 +717,11 @@ function StatTile({
           {/* The tile is the link: this only looks like its button. */}
           <span className={buttonClassName({ size: 'sm', shape: 'pill' })}>
             View
-            <span className="transition-transform group-hover:translate-x-0.5">→</span>
+            <Icon
+              name="arrow-right"
+              size={CONTROL_ICON_SIZE.sm}
+              className="transition-transform group-hover:translate-x-0.5"
+            />
           </span>
         </div>
       </div>

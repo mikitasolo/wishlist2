@@ -169,7 +169,7 @@ export default function EditItemModal({
               {onDelete && (
                 <Button
                   type="button"
-                  variant="destructive"
+                  variant="danger"
                   onClick={() => setShowDeleteConfirm(true)}
                   disabled={submitting}
                   fullWidth

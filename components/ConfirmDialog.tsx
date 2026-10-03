@@ -149,7 +149,7 @@ export default function ConfirmDialog({
             data-icon={icon}
             className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl ${chip}`}
           >
-            <Icon name={icon} size={22} />
+            <Icon name={icon} size={18} />
           </span>
           <div className="min-w-0 flex-1">
             {/* A title may carry a list's name, which can be one long word. */}
@@ -165,7 +165,7 @@ export default function ConfirmDialog({
           </div>
         </div>
 
-        <div className="mt-6 flex flex-col justify-end gap-2 sm:flex-row sm:gap-3">
+        <div className="mt-6 flex flex-col justify-end gap-3 sm:flex-row">
           <Button
             ref={cancelRef}
             variant="cancel"

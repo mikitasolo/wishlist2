@@ -93,7 +93,7 @@ export default function AuthButton() {
         icon: 'inbox',
         href: '/invites',
         trailing: hasInvites && (
-          <span className="ml-auto h-2 w-2 rounded-full bg-red-500" aria-hidden />
+          <span className="ml-auto h-2 w-2 rounded-full bg-danger-fill" aria-hidden />
         ),
       },
       { label: 'Settings', icon: 'settings', href: '/settings' },
@@ -138,7 +138,7 @@ export default function AuthButton() {
               <Avatar name={displayName} src={image} size="sm" />
               {hasInvites && (
                 <span
-                  className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-surface"
+                  className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-danger-fill ring-2 ring-surface"
                   aria-hidden
                 />
               )}
@@ -146,7 +146,7 @@ export default function AuthButton() {
             <span className="hidden max-w-[10rem] truncate sm:block">{displayName}</span>
             <Icon
               name="chevron-down"
-              size={15}
+              size={16}
               className={`hidden text-muted-foreground transition-transform sm:block ${menuOpen ? 'rotate-180' : ''}`}
             />
           </>

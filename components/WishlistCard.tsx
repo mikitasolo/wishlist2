@@ -94,7 +94,7 @@ export default function WishlistCard({ wishlist, showOwner = false }: WishlistCa
 
       {/* Body */}
       <div className="flex flex-1 flex-col p-4 sm:p-5">
-        <h3 className="truncate text-title font-semibold text-foreground transition-colors group-hover:text-accent dark:group-hover:text-primary-300">
+        <h3 className="truncate text-title font-semibold text-foreground transition-colors group-hover:text-accent">
           {wishlist.name}
         </h3>
         {wishlist.description ? (

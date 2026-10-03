@@ -83,7 +83,7 @@ export default function MyWishlistsPage() {
             body="Create a wishlist from the header to start collecting things you love."
           />
         ) : (
-          <div className="mt-8 space-y-10">
+          <div className="mt-8 space-y-12">
             {active.length > 0 && (
               <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {active.map((w) => (

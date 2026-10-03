@@ -1192,7 +1192,7 @@ export default function WishlistDetail() {
   const sortedItems = useMemo(() => sortItems(searchedItems, sortBy), [searchedItems, sortBy]);
 
   // The list has no items at all, as far as this viewer can see: no filter is
-  // hiding anything, so the stat cards, the toolbar and + Add item step aside
+  // hiding anything, so the stat cards, the toolbar and Add item step aside
   // for an empty state that says so and offers the add itself. Only once a
   // read has landed: before that, no items means it hasn't loaded.
   const listIsEmpty = itemsLoaded && items.length === 0;
@@ -1266,9 +1266,15 @@ export default function WishlistDetail() {
   // while the first read of them is on its way too.
   const addItemButton = (
     <div className="mb-6 sm:mb-8">
-      {isOwner && <Button onClick={() => setShowAddItemModal(true)}>+ Add item</Button>}
+      {isOwner && (
+        <Button icon="plus" onClick={() => setShowAddItemModal(true)}>
+          Add item
+        </Button>
+      )}
       {isMember && !isOwner && (
-        <Button onClick={() => setShowProposeItemModal(true)}>+ Propose item</Button>
+        <Button icon="plus" onClick={() => setShowProposeItemModal(true)}>
+          Propose item
+        </Button>
       )}
     </div>
   );
@@ -1309,14 +1315,14 @@ export default function WishlistDetail() {
     return (
       <div className="min-h-screen">
         <AppHeader actions={<AuthButton />} />
-        <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
+        <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
           {/* Header: title + author on the left, actions on the right */}
           <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
             <div className="flex min-w-0 flex-1 items-baseline gap-3">
               <Skeleton className="h-9 w-56 sm:h-10" />
               <Skeleton className="h-4 w-20" />
             </div>
-            <div className="flex flex-shrink-0 items-center gap-2">
+            <div className="flex flex-shrink-0 items-center gap-3">
               <Skeleton className="h-9 w-24 rounded-full" />
               <Skeleton className="h-9 w-24 rounded-full" />
             </div>
@@ -1344,7 +1350,7 @@ export default function WishlistDetail() {
   return (
     <div className="min-h-screen">
       <AppHeader actions={<AuthButton />} />
-      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
+      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
         {/* Header: title + meta on the left, wishlist-scoped actions on the right.
             The title used to sit on the banner; it moved here so the banner can shrink
             into a side panel next to the stat cards below. */}
@@ -1383,7 +1389,7 @@ export default function WishlistDetail() {
             )}
             <OccasionLabel occasion={wishlist.occasion} />
           </div>
-          <div className="flex flex-shrink-0 items-center gap-2">
+          <div className="flex flex-shrink-0 items-center gap-3">
             {/* An archived list's link opens for its owners only: anyone they'd
                 share it with gets the answer a missing list gets. */}
             {!wishlist.archived && <ShareButton />}
@@ -1681,7 +1687,7 @@ export default function WishlistDetail() {
                     }
                   />
                 ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
+                  <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                     {sortedItems.map((item) => (
                       <WishlistItem
                         key={item._id}
@@ -1765,12 +1771,12 @@ export default function WishlistDetail() {
                           />
                           <Link
                             href={`/users/${member.user.username || ''}`}
-                            className="break-words font-medium text-foreground transition-colors hover:text-accent dark:hover:text-primary-400"
+                            className="break-words font-medium text-foreground transition-colors hover:text-accent"
                           >
                             @{member.user.username || 'user'}
                           </Link>
                         </div>
-                        <div className="flex flex-shrink-0 items-center gap-2">
+                        <div className="flex flex-shrink-0 items-center gap-3">
                           {isCurrentUser && (
                             <span className="whitespace-nowrap text-sm text-muted-foreground">
                               You
@@ -1860,12 +1866,12 @@ export default function WishlistDetail() {
                         />
                         <Link
                           href={`/users/${member.user.username || ''}`}
-                          className="break-words font-medium text-foreground transition-colors hover:text-accent dark:hover:text-primary-400"
+                          className="break-words font-medium text-foreground transition-colors hover:text-accent"
                         >
                           @{member.user.username || 'user'}
                         </Link>
                       </div>
-                      <div className="flex flex-shrink-0 items-center gap-2">
+                      <div className="flex flex-shrink-0 items-center gap-3">
                         {isCurrentUser && (
                           <span className="whitespace-nowrap text-sm text-muted-foreground">
                             You
@@ -2078,7 +2084,10 @@ export default function WishlistDetail() {
                   <span id="settings-visibility-label" className={FIELD_LABEL}>
                     Visibility
                   </span>
-                  <p id="settings-visibility-helper" className="mb-2 text-xs text-muted-foreground">
+                  <p
+                    id="settings-visibility-helper"
+                    className="mb-1.5 text-xs text-muted-foreground"
+                  >
                     {visibilityMeta[settingsForm.visibility].helper}
                   </p>
                   <SegmentedControl

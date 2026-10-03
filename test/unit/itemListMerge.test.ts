@@ -749,7 +749,7 @@ describe('a read that turns out stale', () => {
   });
 
   // regression: only background reads were checked, so the initial load, sent
-  // before an add (the "+ Add item" button shows before the items have loaded)
+  // before an add (the "Add item" button shows before the items have loaded)
   // and landing after it, replaced the list without the new item, and nothing
   // read it again until the next poll.
   it('regression: the initial load that read before an add still lands, then a fresh read lists the new item', async () => {

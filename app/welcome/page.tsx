@@ -20,7 +20,7 @@ function Loading() {
   return (
     <div className="min-h-screen">
       <AppHeader actions={<AuthButton />} />
-      <main aria-hidden="true" className="mx-auto max-w-xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
+      <main aria-hidden="true" className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
         <Skeleton className="mb-2 h-9 w-72 max-w-full" />
         <Skeleton className="mb-8 h-5 w-96 max-w-full" />
         <Panel>
@@ -116,7 +116,7 @@ function Welcome() {
   return (
     <div className="min-h-screen">
       <AppHeader actions={<AuthButton />} />
-      <main className="mx-auto max-w-xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
+      <main className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
         <h1 className="mb-1 text-3xl font-semibold tracking-tight text-foreground">
           Welcome to Wishlist
         </h1>
