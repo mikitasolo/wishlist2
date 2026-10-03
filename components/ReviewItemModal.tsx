@@ -6,6 +6,7 @@ import BaseModal from './BaseModal';
 import ItemForm, { itemToFormData } from './ItemForm';
 import ConfirmDialog from './ConfirmDialog';
 import { defaultItemCurrency } from '@/lib/utils/currencies';
+import { useViewerLocale } from '@/lib/hooks/useViewerLocale';
 
 interface ReviewItemModalProps {
   isOpen: boolean;
@@ -36,6 +37,7 @@ export default function ReviewItemModal({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showConfirmClose, setShowConfirmClose] = useState(false);
+  const locale = useViewerLocale();
 
   // Reset states when modal closes
   useEffect(() => {
@@ -122,7 +124,12 @@ export default function ReviewItemModal({
   };
 
   // Convert proposed item to form data (status will be set to available by default)
-  const formData = itemToFormData(item, defaultItemCurrency(wishlistCurrency, userCurrency));
+  // The price field is filled in the format the item's card shows it in.
+  const formData = itemToFormData(
+    item,
+    defaultItemCurrency(wishlistCurrency, userCurrency),
+    locale
+  );
   formData.isDraft = false; // Default to published when reviewing
 
   return (

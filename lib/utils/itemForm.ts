@@ -1,5 +1,6 @@
 import type { ApiItem } from '@/types/api';
 import { defaultItemCurrency } from '@/lib/utils/currencies';
+import { PRICE_FALLBACK_LOCALE, formatPriceInput, parsePriceInput } from '@/lib/utils/currency';
 
 /**
  * The item form (`components/ItemForm.tsx`, behind the add, edit, propose and
@@ -16,8 +17,10 @@ import { defaultItemCurrency } from '@/lib/utils/currencies';
  */
 
 /**
- * The form's fields as typed: the price is the amount in units, as text (`''`
- * for none), and the currency the uppercase code the picker shows.
+ * The form's fields as typed: the price is the amount as text, the way the
+ * viewer typed it or the field formatted it ("349,00", "1,234.50"; `''` for
+ * none), read with `parsePriceInput`; the currency is the uppercase code the
+ * picker shows.
  */
 export interface ItemFormData {
   name: string;
@@ -52,19 +55,25 @@ export type ItemContentChanges = Partial<ItemContent>;
  * priceless one starts on `defaultCurrency` (see defaultItemCurrency), so a
  * price added while editing or reviewing it lands in the wishlist's currency
  * rather than USD. Being part of the form's initial data, that prefill never
- * reads as an unsaved change.
+ * reads as an unsaved change. The amount is formatted in `locale`, the one the
+ * item's card shows it in (see `useViewerLocale`), so the field reads "349,00"
+ * where the card reads "349,00 €".
  */
 export function itemToFormData(
   item: Pick<ApiItem, 'name' | 'imageUrl' | 'price' | 'link' | 'notes' | 'mostWanted' | 'status'>,
-  defaultCurrency: string
+  defaultCurrency: string,
+  locale: string = PRICE_FALLBACK_LOCALE
 ): ItemFormData {
-  // Convert cents to dollars for display. A price of 0 is a real price ("0.00"),
-  // not a missing one: an empty field would submit `price: null` and clear it.
-  const priceInDollars = item.price?.value != null ? (item.price.value / 100).toFixed(2) : '';
+  // A price of 0 is a real price ("0.00"), not a missing one: an empty field
+  // would submit `price: null` and clear it.
+  const price =
+    item.price?.value != null
+      ? formatPriceInput(item.price.value, item.price.currency, locale)
+      : '';
   return {
     name: item.name,
     imageUrl: item.imageUrl || '',
-    price: priceInDollars,
+    price,
     // Display uppercase in UI
     currency: item.price?.currency?.toUpperCase() || defaultItemCurrency(defaultCurrency),
     link: item.link || '',
@@ -76,15 +85,14 @@ export function itemToFormData(
 
 /**
  * The price the form holds, in cents. An empty amount is no price, whatever
- * currency is picked, and so is one that isn't a number of zero or more (the
- * field's own `min` stops that in a browser).
+ * currency is picked, and so is one that `parsePriceInput` can't read, which
+ * the form refuses to submit (`ItemForm`) rather than save a typo as no price.
  */
 function formPrice(form: ItemFormData): ItemContent['price'] {
-  if (!form.price) return null;
-  const units = parseFloat(form.price);
-  if (isNaN(units) || units < 0) return null;
+  const amount = parsePriceInput(form.price);
+  if (!amount.ok || amount.cents === null) return null;
   return {
-    value: Math.round(units * 100),
+    value: amount.cents,
     currency: (form.currency || 'USD').toLowerCase(),
   };
 }
@@ -116,7 +124,7 @@ function copyField<K extends keyof ItemContent>(to: ItemContentChanges, from: It
  * The content the form changed from `filledFrom`, the form as it was last
  * filled (from the item, or with what a save of it stored). Both are read the
  * way an edit sends them, so a field that would be sent as it already was (a
- * trailing space, `10` for `10.00`, another currency on no price) isn't a
+ * trailing space, `10` or `10,00` for `10.00`, another currency on no price) isn't a
  * change. The price is one field, its amount and currency together. An
  * unchanged field is left out, so the write doesn't touch it, and so is the
  * status (`isDraft`): editing an item never changes it. Empty (`{}`) when

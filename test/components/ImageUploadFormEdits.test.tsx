@@ -158,7 +158,7 @@ describe('ItemForm — editing while its image uploads', () => {
         encodeURIComponent(UPLOADED)
       );
       expect(name).toHaveValue('Bike');
-      expect(price).toHaveValue(120);
+      expect(price).toHaveValue('120.00');
       expect(link).toHaveValue('https://example.com/bike');
       expect(notes).toHaveValue('Blue, please');
 

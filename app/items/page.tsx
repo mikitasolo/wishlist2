@@ -13,7 +13,8 @@ import MultiSelectDropdown from '@/components/MultiSelectDropdown';
 import Cover from '@/components/Cover';
 import { useToast } from '@/components/ToastProvider';
 import { signInPath } from '@/lib/utils/callbackUrl';
-import { formatPriceFromObject } from '@/lib/utils/currency';
+import { formatPrice } from '@/lib/utils/currency';
+import { useViewerLocale } from '@/lib/hooks/useViewerLocale';
 import { isSortType, sortItems, SORT_OPTIONS, type SortType } from '@/lib/utils/itemFilters';
 import { formatOwnerItemSummary, tallyItems } from '@/lib/utils/itemCounts';
 
@@ -71,6 +72,7 @@ export default function MyItemsPage() {
   const { status } = useSession();
   const router = useRouter();
   const { showToast } = useToast();
+  const locale = useViewerLocale();
   const [items, setItems] = useState<MyItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [wishlistFilters, setWishlistFilters] = useState<string[]>([]);
@@ -422,7 +424,7 @@ export default function MyItemsPage() {
                         <p className="truncate text-sm font-semibold text-foreground">{it.name}</p>
                         {it.price && (
                           <p className="text-sm text-muted-foreground">
-                            {formatPriceFromObject(it.price)}
+                            {formatPrice(it.price, locale)}
                           </p>
                         )}
                         <Link

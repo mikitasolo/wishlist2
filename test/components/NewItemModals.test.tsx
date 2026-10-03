@@ -137,7 +137,7 @@ describe.each(modals)('$name — submit outcome', ({ renderModal, submitLabel })
     expect(onSubmit).toHaveBeenCalledTimes(1);
     expect(onClose).not.toHaveBeenCalled();
     expect(nameInput()).toHaveValue('Bike');
-    expect(priceInput()).toHaveValue(120.5);
+    expect(priceInput()).toHaveValue('120.50');
     expect(currencyButton('PLN')).toBeInTheDocument();
   });
 

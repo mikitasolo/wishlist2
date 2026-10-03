@@ -385,7 +385,7 @@ describe('SaveToListModal — the prefilled form', () => {
     const form = await pick('Birthday');
 
     expect(within(form).getByLabelText(/item name/i)).toHaveValue('Blue Mug');
-    expect(within(form).getByLabelText(/^price$/i)).toHaveValue(25);
+    expect(within(form).getByLabelText(/^price$/i)).toHaveValue('25.00');
     // The item's own currency, not the target list's (PLN).
     expect(within(form).getByRole('button', { name: 'EUR' })).toBeInTheDocument();
     expect(within(form).getByLabelText(/product link/i)).toHaveValue(source.link);

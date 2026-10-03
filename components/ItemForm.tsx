@@ -14,6 +14,8 @@ import {
   type ItemContentChanges,
   type ItemFormData,
 } from '@/lib/utils/itemForm';
+import { currencySymbol, formatPriceInput, parsePriceInput } from '@/lib/utils/currency';
+import { useViewerLocale } from '@/lib/hooks/useViewerLocale';
 
 export { itemToFormData, type ItemFormData } from '@/lib/utils/itemForm';
 
@@ -92,6 +94,11 @@ export default function ItemForm({
   }));
   const [formData, setFormData] = useState<ItemFormData>(initialData || blankFormData);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Whether to say what's wrong with the price: once the field has been left
+  // (or a save tried) with an amount that can't be read, not while it's typed.
+  const [showPriceError, setShowPriceError] = useState(false);
+  const priceInputRef = useRef<HTMLInputElement>(null);
+  const locale = useViewerLocale();
   const [isCurrencyOpen, setIsCurrencyOpen] = useState(false);
   const [currencySearch, setCurrencySearch] = useState('');
   const currencyRef = useRef<HTMLDivElement>(null);
@@ -141,6 +148,32 @@ export default function ItemForm({
     }
   }, [initialData, itemId, blankFormData]);
 
+  // An amount that can't be read is refused, not saved as "no price": the
+  // browser won't submit the form while the field says why, as it does for a
+  // missing name, and handleSubmit checks again.
+  const priceReadable = parsePriceInput(formData.price).ok;
+  const priceError = priceReadable
+    ? null
+    : `Enter a price like ${formatPriceInput(34900, formData.currency || 'USD', locale)}`;
+  useEffect(() => {
+    priceInputRef.current?.setCustomValidity(priceError ?? '');
+  }, [priceError]);
+
+  // Leaving the field puts the amount in the same format as the cards ("349"
+  // becomes "349.00", or "349,00" where that's how prices are written).
+  const handlePriceBlur = () => {
+    const amount = parsePriceInput(formData.price);
+    if (!amount.ok) {
+      setShowPriceError(true);
+      return;
+    }
+    setFormData((f) => ({
+      ...f,
+      price:
+        amount.cents === null ? '' : formatPriceInput(amount.cents, f.currency || 'USD', locale),
+    }));
+  };
+
   // Check if form has changes and notify parent
   useEffect(() => {
     if (!onFormChange) return;
@@ -154,6 +187,11 @@ export default function ItemForm({
     const currentSubmitting =
       externalIsSubmitting !== undefined ? externalIsSubmitting : isSubmitting;
     if (currentSubmitting) return;
+    if (!priceReadable) {
+      setShowPriceError(true);
+      priceInputRef.current?.focus();
+      return;
+    }
 
     if (externalIsSubmitting === undefined) {
       setIsSubmitting(true);
@@ -193,6 +231,7 @@ export default function ItemForm({
       // Reset form only if not using external state
       if (!initialData) {
         setFormData(blankFormData);
+        setShowPriceError(false);
         initialDataRef.current = blankFormData;
         lastInitializedItemIdRef.current = undefined;
       } else {
@@ -321,20 +360,28 @@ export default function ItemForm({
           Price
         </label>
         <div className="flex gap-2">
-          <input
-            type="number"
-            id="price"
-            step="0.01"
-            min="0"
-            value={formData.price}
-            onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-            // Prevent the mouse wheel from silently changing the value while scrolling.
-            onWheel={(e) => e.currentTarget.blur()}
-            className="flex-1 px-4 py-2 border border-border-strong rounded-lg outline-none"
-            placeholder="99.99"
-            disabled={submitting}
-            autoComplete="off"
-          />
+          {/* Text, not a number field: that one shows the browser's decimal
+              format whatever the cards use, and refuses the other separator. */}
+          <div className="flex flex-1 min-w-0 items-center gap-1.5 px-4 border border-border-strong rounded-lg bg-surface">
+            <span className="flex-shrink-0 text-muted-foreground" aria-hidden="true">
+              {currencySymbol(formData.currency || 'USD', locale)}
+            </span>
+            <input
+              ref={priceInputRef}
+              type="text"
+              inputMode="decimal"
+              id="price"
+              value={formData.price}
+              onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+              onBlur={handlePriceBlur}
+              className="min-w-0 flex-1 border-0 bg-transparent py-2 outline-none"
+              placeholder={formatPriceInput(9999, formData.currency || 'USD', locale)}
+              disabled={submitting}
+              autoComplete="off"
+              aria-invalid={showPriceError && priceError ? true : undefined}
+              aria-describedby={showPriceError && priceError ? 'price-error' : undefined}
+            />
+          </div>
           <div ref={currencyRef} className="relative flex-1">
             <button
               type="button"
@@ -401,6 +448,11 @@ export default function ItemForm({
             )}
           </div>
         </div>
+        {showPriceError && priceError && (
+          <p id="price-error" className="mt-1 text-xs text-red-600 dark:text-red-400">
+            {priceError}
+          </p>
+        )}
       </div>
 
       {/* Product Link */}

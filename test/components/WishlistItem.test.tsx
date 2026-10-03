@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup, act, within } from '@testing-library/react';
 import type { ComponentProps } from 'react';
 import type { ApiItem } from '@/types/api';
@@ -776,7 +776,70 @@ describe('WishlistItem — price conversion', () => {
         rates={rates}
       />
     );
-    expect(screen.getByText('USD 1.00')).toBeInTheDocument();
+    expect(screen.getByText('≈ $1')).toBeInTheDocument();
+  });
+
+  // regression: a converted price looked exact ("EUR 246.54" from USD 279),
+  // with no sign it was converted and no trace of the original.
+  it('regression: marks a converted price with ≈ and shows the original under it', () => {
+    const rates = { eur: 0.88366 }; // 1 USD = 0.88366 EUR
+    render(
+      <WishlistItem
+        item={item({ price: { value: 27900, currency: 'usd' } })}
+        onUpdate={vi.fn()}
+        isAuthenticated
+        priceCurrency="EUR"
+        rates={rates}
+      />
+    );
+    const converted = screen.getByText('≈ €247');
+    const original = screen.getByText('$279.00');
+    // The original sits on its own, muted, line under the converted price.
+    expect(converted).not.toBe(original);
+    expect(original).toHaveClass('text-muted-foreground');
+  });
+
+  it('shows a price already in the picked currency, or with no rate yet, exactly', () => {
+    const priced = item({ price: { value: 34900, currency: 'eur' } });
+    const { rerender } = render(
+      <WishlistItem
+        item={priced}
+        onUpdate={vi.fn()}
+        isAuthenticated
+        priceCurrency="EUR"
+        rates={{ eur: 0.9 }}
+      />
+    );
+    expect(screen.getByText('€349.00')).toBeInTheDocument();
+    expect(screen.queryByText(/≈/)).toBeNull();
+
+    rerender(
+      <WishlistItem
+        item={priced}
+        onUpdate={vi.fn()}
+        isAuthenticated
+        priceCurrency="PLN"
+        rates={null}
+      />
+    );
+    expect(screen.getByText('€349.00')).toBeInTheDocument();
+    expect(screen.queryByText(/≈/)).toBeNull();
+  });
+});
+
+describe('WishlistItem — price format', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('formats the price in the viewer’s locale', () => {
+    vi.spyOn(navigator, 'language', 'get').mockReturnValue('de-DE');
+    render(
+      <WishlistItem
+        item={item({ price: { value: 1234550, currency: 'eur' } })}
+        onUpdate={vi.fn()}
+        isAuthenticated
+      />
+    );
+    expect(screen.getByText('12.345,50 €')).toBeInTheDocument();
   });
 });
 

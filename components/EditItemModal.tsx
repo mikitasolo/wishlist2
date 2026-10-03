@@ -7,6 +7,7 @@ import ItemForm, { itemToFormData } from './ItemForm';
 import ConfirmDialog from './ConfirmDialog';
 import { defaultItemCurrency } from '@/lib/utils/currencies';
 import type { ItemContentChanges } from '@/lib/utils/itemForm';
+import { useViewerLocale } from '@/lib/hooks/useViewerLocale';
 
 interface EditItemModalProps {
   isOpen: boolean;
@@ -38,6 +39,8 @@ export default function EditItemModal({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showConfirmClose, setShowConfirmClose] = useState(false);
+  // The price field is filled in the format the item's card shows it in.
+  const locale = useViewerLocale();
 
   // Reset states when modal closes
   useEffect(() => {
@@ -132,7 +135,11 @@ export default function EditItemModal({
       >
         <ItemForm
           key={itemFormKey}
-          initialData={itemToFormData(item, defaultItemCurrency(wishlistCurrency, userCurrency))}
+          initialData={itemToFormData(
+            item,
+            defaultItemCurrency(wishlistCurrency, userCurrency),
+            locale
+          )}
           onSubmit={handleSubmit}
           onCancel={handleClose}
           submitLabel="Save Changes"

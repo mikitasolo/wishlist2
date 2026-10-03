@@ -28,7 +28,7 @@ import { ITEM_REQUEST_TIMEOUT_MS } from '@/lib/utils/requestTimeout';
 
 const reservation = {
   itemImage: null,
-  itemPrice: null,
+  itemPrice: null as { value: number; currency: string } | null,
   wishlistName: 'Birthday',
   wishlistId: 'w1',
   wishlistSlug: 'birthday',
@@ -1577,5 +1577,25 @@ describe('BookedPage — "To give" grouped by the list’s upcoming occasion', (
     await answer(releaseKey('item-res-vase'), ok);
     await waitFor(() => expect(cardName('Vase')).toBeNull());
     expect(headings()).toEqual([HOLIDAY_GROUP, 'No date']);
+  });
+});
+
+describe('BookedPage — prices', () => {
+  // regression: the page printed `${CODE} ${toFixed(2)}` ("EUR 1234.50"), with
+  // no locale and no thousands separator, unlike the rest of the app.
+  it('regression: shows reservation and gift prices in the viewer’s locale', async () => {
+    const language = vi.spyOn(navigator, 'language', 'get').mockReturnValue('de-DE');
+    try {
+      const priced = { ...reservations[0], itemPrice: { value: 123450, currency: 'eur' } };
+      mockHeldFetch({ initial: [priced] });
+      render(<BookedPage />);
+      await screen.findByText('Lego set');
+
+      // The price is the gifter's own snapshot, shown exactly: never converted.
+      expect(screen.getByText('1.234,50 €')).toBeInTheDocument();
+      expect(screen.queryByText(/≈/)).toBeNull();
+    } finally {
+      language.mockRestore();
+    }
   });
 });
