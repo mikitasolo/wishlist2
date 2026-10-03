@@ -321,8 +321,8 @@ describe('a list that couldn’t be loaded', () => {
     expectStayedHere();
   });
 
-  // regression: a failed first items read showed the stat tiles at 0 and the
-  // toolbar, with "Failed to load items" below them (no way to retry but a
+  // regression: a failed first items read showed the stat tiles at 0 (now the
+  // status chips) and the toolbar, with "Failed to load items" below them (no way to retry but a
   // reload) and in a toast.
   it.each([
     ['a 5xx', () => serverError],
@@ -344,8 +344,8 @@ describe('a list that couldn’t be loaded', () => {
         await screen.findByRole('heading', { name: 'Couldn’t load this list’s items' })
       ).toBeInTheDocument();
       // No counts or controls that would say the list is empty, and no toast.
-      expect(screen.queryByTitle('Show all')).toBeNull();
-      expect(screen.queryByPlaceholderText('Search items by name…')).toBeNull();
+      expect(screen.queryByRole('combobox', { name: 'Sort items by' })).toBeNull();
+      expect(screen.queryByRole('textbox', { name: 'Search items by name' })).toBeNull();
       expect(screen.queryByText('No items found')).toBeNull();
       await settle();
       expectStayedHere();
@@ -358,8 +358,8 @@ describe('a list that couldn’t be loaded', () => {
       expect(itemReads()).toBe(reads + 1);
       expect(screen.queryByRole('heading', { name: 'Couldn’t load this list’s items' })).toBeNull();
       // The counts and controls are back with the items.
-      expect(screen.getByTitle('Show all')).toBeInTheDocument();
-      expect(screen.getByPlaceholderText('Search items by name…')).toBeInTheDocument();
+      expect(screen.getByRole('combobox', { name: 'Sort items by' })).toBeInTheDocument();
+      expect(screen.getByRole('textbox', { name: 'Search items by name' })).toBeInTheDocument();
       expectStayedHere();
     }
   );

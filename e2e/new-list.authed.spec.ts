@@ -20,9 +20,9 @@ test('regression: a new list tells its owner it is empty, and Add your first ite
   try {
     await expect(page.getByRole('heading', { level: 1, name: 'E2E New List' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Your list is empty' })).toBeVisible();
-    await expect(page.getByText('No items match the selected filters.')).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'No items found' })).toHaveCount(0);
     await expect(page.getByRole('textbox', { name: 'Search items by name' })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'Filter by status' })).toHaveCount(0);
+    await expect(page.getByRole('radiogroup', { name: 'Show items' })).toHaveCount(0);
 
     await page.getByRole('button', { name: 'Add your first item' }).click();
     const dialog = page.getByRole('dialog', { name: 'Add new item' });
@@ -31,7 +31,7 @@ test('regression: a new list tells its owner it is empty, and Add your first ite
 
     await expect(page.getByRole('article', { name: 'Item: E2E First Item' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Your list is empty' })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'Filter by status' })).toBeVisible();
+    await expect(page.getByRole('radio', { name: 'All 1' })).toBeChecked();
   } finally {
     await page.request.delete(`/api${list}`);
   }

@@ -29,7 +29,12 @@ import ImageUpload from '@/components/ImageUpload';
 import Select from '@/components/Select';
 import OccasionField from '@/components/OccasionField';
 import WishlistHeader, { WishlistHeaderSkeleton } from '@/components/WishlistHeader';
-import { Skeleton, SkeletonGrid, MemberRowSkeleton } from '@/components/Skeleton';
+import {
+  ListControlsSkeleton,
+  Skeleton,
+  SkeletonGrid,
+  MemberRowSkeleton,
+} from '@/components/Skeleton';
 import EmptyState from '@/components/EmptyState';
 import Panel, { PanelRow, PanelSection } from '@/components/Panel';
 import SegmentedControl from '@/components/SegmentedControl';
@@ -74,25 +79,26 @@ import { useToast } from '@/components/ToastProvider';
 import { ApiItem, ApiResponse } from '@/types/api';
 import { IWishlist } from '@/models/Wishlist';
 import {
-  sortItems,
-  calculateStats,
-  filterItemsMulti,
   searchItemsByName,
   savedWishlistSort,
-  statusFilterOptions,
-  defaultStatusFilters,
-  statusFilterPicker,
   forgetSavedStatusFilters,
-  isEveryStatusSelected,
   DEFAULT_WISHLIST_SORT,
   SORT_OPTIONS,
+  SORT_SHORT_LABELS,
   WISHLIST_SORT_STORAGE_KEY,
-  type FilterOption,
-  type FilterRole,
   type SortType,
 } from '@/lib/utils/itemFilters';
-import MultiSelectDropdown from '@/components/MultiSelectDropdown';
-import { FILTER_META } from '@/lib/utils/itemStatus';
+import FilterChips from '@/components/FilterChips';
+import type { ViewerRole } from '@/lib/utils/itemStatus';
+import {
+  countListChips,
+  isDimmedInAll,
+  listChips,
+  LIST_CHIP_LABELS,
+  orderListItems,
+} from '@/lib/utils/listChips';
+import { useListChip } from '@/lib/hooks/useListChip';
+import { useListPrices } from '@/lib/hooks/useListPrices';
 import { TONE_CLASSES } from '@/lib/utils/statusTones';
 import { useFetchItems, useUpdateItem, useCreateItem, useDeleteItem } from '@/lib/hooks/useItems';
 
@@ -176,9 +182,6 @@ export default function WishlistDetail() {
   const [manageOpen, setManageOpen] = useState(false);
   const [sortBy, setSortBy] = useState<SortType>(DEFAULT_WISHLIST_SORT);
   const [searchQuery, setSearchQuery] = useState('');
-  // 'original' shows each item's own currency; any code converts all prices to it.
-  const [priceCurrency, setPriceCurrency] = useState<string>('original');
-  const [rates, setRates] = useState<Record<string, number> | null>(null);
   const [itemToEdit, setItemToEdit] = useState<ApiItem | null>(null);
   const [itemToReview, setItemToReview] = useState<ApiItem | null>(null);
   // "Save to my list": the item being copied to one of the viewer's own lists.
@@ -258,32 +261,16 @@ export default function WishlistDetail() {
 
   const fetchItemsHook = useFetchItems();
 
-  // The viewer's role decides which statuses the filter offers and starts on.
-  const filterRole: FilterRole = isOwner ? 'owner' : isMember ? 'member' : 'visitor';
-  const filterOptions = useMemo(() => statusFilterOptions(filterRole), [filterRole]);
-  const defaultFilters = useMemo(() => defaultStatusFilters(filterRole), [filterRole]);
-  const statusPicker = useMemo(
-    () => statusFilterPicker(filterOptions, defaultFilters),
-    [filterOptions, defaultFilters]
-  );
+  // The viewer's role decides which status chips they get (none for a visitor).
+  const viewerRole: ViewerRole = isOwner ? 'owner' : isMember ? 'member' : 'visitor';
+  const viewerId = session?.user?.id ?? null;
 
-  // The status filter picked on this list in this visit, with the list (by id,
-  // whether the URL has its id or its slug) and the role it was picked for.
-  // Anywhere else (another list, or this one once the viewer's role on it has
-  // changed) the filter is the role's defaults. It's never saved: a filter is
-  // a question about one list, and a saved one (a stat card's click included)
-  // used to follow the viewer to every other list. The cards and the dropdown
-  // never pick an empty selection (`toggleStatusFilter`).
-  const [statusChoice, setStatusChoice] = useState<{
-    scope: string;
-    filters: FilterOption[];
-  } | null>(null);
-  const filterScope = `${wishlist ? String(wishlist._id) : ''}:${filterRole}`;
-  const selectedFilters =
-    statusChoice?.scope === filterScope ? statusChoice.filters : defaultFilters;
-  const chooseStatusFilters = useCallback(
-    (filters: FilterOption[]) => setStatusChoice({ scope: filterScope, filters }),
-    [filterScope]
+  // The status chip the list is shown on: All on every list the page opens
+  // (or the URL's ?show=), kept only for this list and role, and never saved.
+  const [activeChip, chooseChip] = useListChip(
+    wishlist ? { id: String(wishlist._id), slug: wishlist.slug } : null,
+    wishlistId,
+    viewerRole
   );
 
   // Restore the visitor's saved sort, else the default. It's one setting for
@@ -1249,110 +1236,62 @@ export default function WishlistDetail() {
     [owners.usernames, memberRows, pendingInvites]
   );
 
-  const stats = useMemo(() => calculateStats(items, session?.user?.id), [items, session?.user?.id]);
-
-  const filteredItems = useMemo(
-    () =>
-      filterItemsMulti(
-        items,
-        selectedFilters,
-        session?.user?.id,
-        isOwner || (!isOwner && !isMember) // Include booked in "available" for owner and non-member
-      ),
-    [items, selectedFilters, session?.user?.id, isOwner, isMember]
+  // Each chip's count, by the rules the chips filter with (lib/utils/listChips.ts).
+  const chipCounts = useMemo(
+    () => countListChips(items, viewerRole, viewerId),
+    [items, viewerRole, viewerId]
   );
 
-  const searchedItems = useMemo(
-    () => searchItemsByName(filteredItems, searchQuery),
-    [filteredItems, searchQuery]
+  // The items under the chip, actionable ones first under All, in the
+  // viewer's sort within each group.
+  const chipItems = useMemo(
+    () => orderListItems(items, activeChip, viewerRole, viewerId, sortBy),
+    [items, activeChip, viewerRole, viewerId, sortBy]
   );
 
-  const sortedItems = useMemo(() => sortItems(searchedItems, sortBy), [searchedItems, sortBy]);
+  const sortedItems = useMemo(
+    () => searchItemsByName(chipItems, searchQuery),
+    [chipItems, searchQuery]
+  );
 
   // The list has no items at all, as far as this viewer can see: no filter is
-  // hiding anything, so the stat cards and the toolbar step aside for an
-  // empty state that says so and offers the add itself. Only once a
-  // read has landed: before that, no items means it hasn't loaded.
+  // hiding anything, so the chips and the toolbar step aside for an empty
+  // state that says so and offers the add itself. Only once a read has
+  // landed: before that, no items means it hasn't loaded.
   const listIsEmpty = itemsLoaded && items.length === 0;
 
-  // With the toolbar gone, a status filter or search still in force couldn't be
-  // seen, and could hide the next item added (a Completed filter, a search for
-  // the item just deleted), so a list that empties goes back to the defaults.
+  // With the toolbar gone, a chip or search still in force couldn't be seen,
+  // and could hide the next item added (Received, a search for the item just
+  // deleted), so a list that empties goes back to All.
   useEffect(() => {
     if (!listIsEmpty) return;
-    setStatusChoice(null);
+    chooseChip('all');
     setSearchQuery('');
-  }, [listIsEmpty]);
+  }, [listIsEmpty, chooseChip]);
 
-  // The way out of a search or status filter that hides every item: every
-  // status, and no search. Not the role's defaults, which can hide them all
-  // themselves (an owner's whose items are all completed).
+  // The way out of a search or chip that hides every item: All, and no search.
   const showAllItems = useCallback(() => {
-    chooseStatusFilters([...filterOptions]);
+    chooseChip('all');
     setSearchQuery('');
-  }, [chooseStatusFilters, filterOptions]);
+  }, [chooseChip]);
 
   // Clear the item search when switching to a different wishlist.
   useEffect(() => setSearchQuery(''), [wishlistId]);
 
-  // The viewer's preferred currency, offered near the top of the price selector.
-  const viewerCurrency = session?.user?.defaultCurrency || 'USD';
+  // Prices (D9): someone else's list starts in the viewer's currency, their
+  // own on each item's; offered only when some price is in another currency.
+  const prices = useListPrices({
+    viewerId,
+    defaultCurrency: session?.user?.defaultCurrency,
+    ownList: isOwner,
+    items,
+  });
 
-  // Exchange rates for the "show prices in…" selector (fetched once).
-  useEffect(() => {
-    let cancelled = false;
-    fetch('/api/currency-rates', { cache: 'no-store' })
-      .then((r) => r.json())
-      .then((res) => {
-        if (!cancelled && res.success) setRates(res.data.rates as Record<string, number>);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  // Price-currency options: Original, then the viewer's default, then the rest.
-  const priceOptions = useMemo(() => {
-    const opts = [{ value: 'original', label: 'Each item’s currency' }];
-    const def = currencySelectOptions.find((o) => o.value === viewerCurrency);
-    if (def) opts.push({ value: def.value, label: `${def.label} · your default` });
-    else opts.push({ value: viewerCurrency, label: `${viewerCurrency} · your default` });
-    for (const o of currencySelectOptions) {
-      if (o.value !== viewerCurrency) opts.push(o);
-    }
-    return opts;
-  }, [viewerCurrency]);
-
-  // Clicking a stat card narrows the list to that one status ('all' selects
-  // every option). The dropdown and the cards share filterOptions' order.
-  const applyCardFilter = useCallback(
-    (key: FilterOption) => {
-      chooseStatusFilters(key === 'all' ? [...filterOptions] : [key]);
-    },
-    [chooseStatusFilters, filterOptions]
-  );
-
-  // Which card (if any) reflects the current filter selection, for highlighting.
-  const activeCardKey = useMemo<FilterOption | null>(() => {
-    if (isEveryStatusSelected(selectedFilters, filterOptions)) return 'all';
-    if (selectedFilters.length === 1) return selectedFilters[0];
-    return null;
-  }, [selectedFilters, filterOptions]);
-
-  // Each card's count. Its label and colour come from the status map
-  // (FILTER_META). "All", not "Total Items": an owner's includes drafts and
-  // proposals, and "N items" means published items only (lib/utils/itemCounts.ts).
-  const cardCounts: Record<FilterOption, number> = {
-    all: stats.total,
-    draft: stats.draft,
-    proposed: stats.proposed,
-    available: stats.available,
-    bookedByMe: stats.bookedByYou,
-    bookedByOthers: Math.max(0, stats.booked - stats.bookedByYou),
-    proposedByMe: stats.proposedByYou,
-    completed: stats.completed,
-  };
+  const chips = listChips(viewerRole).map((chip) => ({
+    value: chip,
+    label: LIST_CHIP_LABELS[chip],
+    count: chipCounts[chip],
+  }));
 
   // Not available, or not loaded: said in place, at this URL. Which way to put
   // "not available" depends only on whether the viewer is signed in, so it
@@ -1384,15 +1323,9 @@ export default function WishlistDetail() {
             <Skeleton className="aspect-[16/9] rounded-3xl" />
             <Skeleton className="hidden h-full min-h-[8rem] rounded-2xl sm:block" />
           </div>
-          {/* Stat cards (full-width auto-fit row) */}
-          <div
-            className="mb-6 grid gap-3 sm:mb-8 sm:gap-4"
-            style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(8rem, 1fr))' }}
-          >
-            {Array.from({ length: 5 }).map((_, i) => (
-              <Skeleton key={i} className="h-[70px] rounded-xl sm:h-[78px]" />
-            ))}
-          </div>
+          {/* The status chips and toolbar. The role isn't known yet: signed out,
+              it's a visitor's, with no chips; otherwise a member's four. */}
+          <ListControlsSkeleton chips={status === 'unauthenticated' ? 0 : 4} />
           <SkeletonGrid count={8} variant="item" />
         </main>
       </div>
@@ -1409,7 +1342,7 @@ export default function WishlistDetail() {
           name={wishlist.name}
           ownerUsernames={ownerUsernames}
           viewerUsername={session?.user?.username}
-          role={filterRole}
+          role={viewerRole}
           occasion={wishlist.occasion}
           visibility={wishlist.visibility}
           archived={wishlist.archived}
@@ -1521,125 +1454,61 @@ export default function WishlistDetail() {
                 <LoadError title="Couldn’t load this list’s items" onRetry={retryItems} />
               ) : (
                 <>
-                  {/* The stat cards, search and controls to come, as they'll be laid out */}
-                  <div
-                    className="mb-6 grid gap-3 sm:mb-8 sm:gap-4"
-                    style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(8rem, 1fr))' }}
-                  >
-                    {filterOptions.map((key) => (
-                      <Skeleton key={key} className="h-[70px] rounded-xl sm:h-[78px]" />
-                    ))}
-                  </div>
-                  <div className="mb-6 flex flex-col gap-3 sm:mb-8 sm:gap-4">
-                    <Skeleton className="h-9 rounded-xl" />
-                    <div className="flex flex-col gap-3 sm:flex-row sm:gap-4">
-                      {Array.from({ length: session?.user ? 3 : 2 }).map((_, i) => (
-                        <div key={i} className="flex flex-col gap-1.5 sm:flex-1">
-                          <Skeleton className="h-3 w-16 rounded" />
-                          <Skeleton className="h-9 rounded-xl" />
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+                  {/* The chips and toolbar to come, as they'll be laid out */}
+                  <ListControlsSkeleton chips={listChips(viewerRole).length} />
                   <SkeletonGrid count={8} variant="item" />
                 </>
               )
             ) : (
               <>
-                {/* Stat cards and toolbar: not on an empty list, where the cards
+                {/* Chips and toolbar: not on an empty list, where the chips
                 would all be zero, the filters would have nothing to filter, and
                 the empty state below offers the add (or the proposal) itself */}
                 {!listIsEmpty && (
                   <>
-                    {/* Stat cards — full-width row; click to filter the list by that status */}
-                    <div
-                      className="mb-6 grid gap-3 sm:mb-8 sm:gap-4"
-                      style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(8rem, 1fr))' }}
-                    >
-                      {filterOptions.map((key) => {
-                        const meta = FILTER_META[key];
-                        const active = activeCardKey === key;
-                        return (
-                          <button
-                            key={key}
-                            type="button"
-                            onClick={() => applyCardFilter(key)}
-                            aria-pressed={active}
-                            title={`Show ${meta.label.toLowerCase()}`}
-                            className={`rounded-xl border bg-surface p-3 text-left shadow-sm transition-all sm:p-4 ${
-                              active
-                                ? 'border-accent ring-1 ring-accent'
-                                : 'border-border hover:border-border-strong hover:bg-surface-hover'
-                            }`}
-                          >
-                            <p className="mb-1 truncate text-xs text-muted-foreground sm:text-sm">
-                              {meta.label}
-                            </p>
-                            <p
-                              className={`text-2xl font-bold sm:text-3xl ${TONE_CLASSES[meta.tone].text}`}
-                            >
-                              {cardCounts[key]}
-                            </p>
-                          </button>
-                        );
-                      })}
-                    </div>
+                    {/* The status chips (none for a visitor): one row, one choice */}
+                    {chips.length > 0 && (
+                      <FilterChips
+                        chips={chips}
+                        value={activeChip}
+                        onChange={chooseChip}
+                        ariaLabel="Show items"
+                        className="mb-4"
+                      />
+                    )}
 
-                    {/* Search + controls */}
-                    <div className="mb-6 flex flex-col gap-3 sm:mb-8 sm:gap-4">
-                      {/* Search — its own full-width row */}
+                    {/* Toolbar: search, Sort, and Prices when it changes anything. One
+                        row from sm up; on a phone, search gets a row of its own. */}
+                    <div className="mb-6 flex flex-wrap items-center gap-2 sm:mb-8 sm:flex-nowrap sm:gap-3">
                       <SearchField
                         size="sm"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         onClear={() => setSearchQuery('')}
-                        placeholder="Search items by name…"
+                        placeholder="Search items…"
                         aria-label="Search items by name"
+                        className="w-full sm:w-auto sm:min-w-0 sm:flex-1"
                       />
-
-                      {/* Status · Sort · Currency — equal labelled fields */}
-                      <div className="flex flex-col gap-3 sm:flex-row sm:gap-4">
-                        <div className="flex flex-col gap-1.5 sm:flex-1">
-                          <span className="text-badge font-semibold uppercase tracking-wide text-muted-foreground">
-                            Status
-                          </span>
-                          <MultiSelectDropdown
-                            {...statusPicker}
-                            selected={selectedFilters}
-                            onChange={chooseStatusFilters}
-                            ariaLabel="Filter by status"
-                            className="w-full"
-                          />
-                        </div>
-
-                        <div className="flex flex-col gap-1.5 sm:flex-1">
-                          <span className="text-badge font-semibold uppercase tracking-wide text-muted-foreground">
-                            Sort
-                          </span>
-                          <Select
-                            value={sortBy}
-                            onChange={handleSortChange}
-                            ariaLabel="Sort items by"
-                            triggerClassName="w-full"
-                            options={SORT_OPTIONS}
-                          />
-                        </div>
-
-                        {session?.user && (
-                          <div className="flex flex-col gap-1.5 sm:flex-1">
-                            <span className="text-badge font-semibold uppercase tracking-wide text-muted-foreground">
-                              Show prices in
-                            </span>
-                            <Select
-                              value={priceCurrency}
-                              onChange={setPriceCurrency}
-                              options={priceOptions}
-                              ariaLabel="Show prices in"
-                              triggerClassName="w-full"
-                            />
-                          </div>
-                        )}
-                      </div>
+                      <Select
+                        value={sortBy}
+                        onChange={handleSortChange}
+                        ariaLabel="Sort items by"
+                        options={SORT_OPTIONS}
+                        valueLabel={SORT_SHORT_LABELS[sortBy]}
+                        menuAlign="right"
+                        triggerClassName="min-w-0 flex-1 sm:flex-none sm:flex-shrink-0"
+                      />
+                      {prices.shown && (
+                        <Select
+                          value={prices.value}
+                          onChange={prices.choose}
+                          options={prices.options}
+                          valueLabel={prices.valueLabel}
+                          ariaLabel="Show prices in"
+                          menuAlign="right"
+                          triggerClassName="flex-shrink-0"
+                        />
+                      )}
                     </div>
                   </>
                 )}
@@ -1693,7 +1562,7 @@ export default function WishlistDetail() {
                     }
                   />
                 ) : sortedItems.length === 0 ? (
-                  // There are items, but the search or the status filter hides every one.
+                  // There are items, but the search or the chip hides every one.
                   <EmptyState
                     tone="muted"
                     icon="package"
@@ -1701,7 +1570,7 @@ export default function WishlistDetail() {
                     body={
                       searchQuery.trim()
                         ? `No items match “${searchQuery.trim()}”.`
-                        : 'No items match the selected filters.'
+                        : 'No items match this filter.'
                     }
                     actions={
                       <Button onClick={showAllItems} variant="secondary">
@@ -1737,8 +1606,9 @@ export default function WishlistDetail() {
                         isAuthenticated={!!session?.user}
                         isOwner={isOwner}
                         isMember={isMember}
-                        priceCurrency={priceCurrency}
-                        rates={rates}
+                        priceCurrency={prices.value}
+                        rates={prices.rates}
+                        dimmed={activeChip === 'all' && isDimmedInAll(item, viewerRole, viewerId)}
                       />
                     ))}
                   </div>
@@ -2249,7 +2119,7 @@ export default function WishlistDetail() {
           {...(isOwner
             ? ownerLeaveCopy(wishlist.name)
             : // Their own reservations, from the items already on the page.
-              memberLeaveCopy(wishlist.name, itemsLoaded ? stats.bookedByYou : null))}
+              memberLeaveCopy(wishlist.name, itemsLoaded ? chipCounts['reserved-by-you'] : null))}
           onConfirm={confirmLeaveWishlist}
           onCancel={() => setDeleteConfirm(null)}
           confirmText="Leave"
@@ -2326,7 +2196,7 @@ export default function WishlistDetail() {
           isOpen={!!deleteConfirm}
           // Every item goes, drafts and proposals too. Reservations stay (they're
           // the gifters'), and an owner is told nothing about them.
-          {...deleteListCopy(wishlist.name, itemsLoaded ? stats.total : null)}
+          {...deleteListCopy(wishlist.name, itemsLoaded ? items.length : null)}
           onConfirm={confirmDeleteWishlist}
           onCancel={() => setDeleteConfirm(null)}
           confirmText="Delete"

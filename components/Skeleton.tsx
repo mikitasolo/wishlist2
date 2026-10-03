@@ -124,3 +124,33 @@ export function SkeletonGrid({
     </div>
   );
 }
+
+/**
+ * A list's item controls while its items load, as `FilterChips` and the
+ * toolbar under them lay out: the row of status chips (`chips` of them; none
+ * for a visitor, who gets no chips), then the search field and the Sort
+ * trigger: one row from `sm` up, and on a phone the search on a row of its own
+ * with Sort under it. Prices isn't drawn: whether it shows depends on the items'
+ * currencies, and it only ever narrows the search field when it does. Each
+ * block is the 36px height of what replaces it.
+ */
+export function ListControlsSkeleton({ chips }: { chips: number }) {
+  return (
+    <>
+      {chips > 0 && (
+        <div className="-mx-4 mb-4 flex gap-2 overflow-hidden px-4 py-1 sm:mx-0 sm:px-0">
+          {Array.from({ length: chips }).map((_, i) => (
+            <Skeleton
+              key={i}
+              className={`h-9 flex-shrink-0 rounded-full ${i === 0 ? 'w-16' : 'w-28'}`}
+            />
+          ))}
+        </div>
+      )}
+      <div className="mb-6 flex flex-wrap items-center gap-2 sm:mb-8 sm:flex-nowrap sm:gap-3">
+        <Skeleton className="h-9 w-full rounded-xl sm:w-auto sm:min-w-0 sm:flex-1" />
+        <Skeleton className="h-9 flex-1 rounded-xl sm:w-40 sm:flex-none" />
+      </div>
+    </>
+  );
+}

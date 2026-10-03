@@ -76,6 +76,12 @@ interface WishlistItemProps {
   priceCurrency?: string;
   /** Exchange rates (code → units per USD) for converting when a currency is picked. */
   rates?: Record<string, number> | null;
+  /**
+   * Shown faded, as an item nobody can act on any more is under All (received,
+   * or reserved by someone else: `isDimmedInAll`). Full strength again under
+   * the pointer or with focus inside, so it's still readable and usable.
+   */
+  dimmed?: boolean;
 }
 
 function WishlistItem({
@@ -89,6 +95,7 @@ function WishlistItem({
   isMember = false,
   priceCurrency = 'original',
   rates = null,
+  dimmed = false,
 }: WishlistItemProps) {
   const { data: session } = useSession();
   const [showNotes, setShowNotes] = useState(false);
@@ -332,10 +339,13 @@ function WishlistItem({
 
   return (
     <div
-      className={`relative flex flex-col rounded-3xl border bg-surface p-4 shadow-md sm:p-5 ${status.classes.card}`}
+      className={`relative flex flex-col rounded-3xl border bg-surface p-4 shadow-md transition-opacity sm:p-5 ${status.classes.card} ${
+        dimmed ? 'opacity-60 focus-within:opacity-100 hover:opacity-100' : ''
+      }`}
       role="article"
       aria-label={`Item: ${item.name}`}
       data-status={status.status}
+      data-dimmed={dimmed || undefined}
     >
       {/* Notes icon button - positioned absolutely at top-left corner of card */}
       {item.notes && (
