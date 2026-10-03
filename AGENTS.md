@@ -9,8 +9,8 @@ A wishlist app: **Next.js 16 (App Router), React 19, TypeScript, MongoDB/Mongoos
 ## Commands
 
 ```bash
-npm ci               # install deps (Conductor's setup script runs this for you)
-npm run dev          # local dev server — in Conductor: npm run dev -- --port $CONDUCTOR_PORT
+npm ci               # install deps (scripts/workspace-setup.sh runs this for you)
+npm run dev          # local dev server — in a workspace: npm run dev -- --port $DEV_PORT
 npm run lint         # eslint — must pass before done
 npm run format:check # prettier --check — must pass before done (npm run format fixes it)
 npx tsc --noEmit     # typecheck — must pass before done
@@ -28,7 +28,7 @@ npm run release          # promote: fast-forward remote main to remote staging �
 
 ## How work flows
 
-Tasks live in **Linear** — workspace `mikitasolo`, team **Wishlist**, issue keys `WIS-<n>`. Each issue is worked in its own **Conductor** workspace (a git worktree + branch cut from `staging`), usually by an AI agent. The human is the **operator**: they write and clarify requirements, review, merge, and release.
+Tasks live in **Linear** — workspace `mikitasolo`, team **Wishlist**, issue keys `WIS-<n>`. Each issue is worked in its own **Orca** workspace (a git worktree + branch cut from `staging`, under `~/orca/workspaces/wishlist2/`), usually by an AI agent. The human is the **operator**: they write and clarify requirements, review, merge, and release.
 
 ### Branches
 
@@ -54,7 +54,7 @@ Labels: one **Type** (Feature / Bug / Improvement / Tech debt — maps to the co
 
 1. **Read the issue** (`WIS-<n>`) through the Linear MCP server — description, comments, and the parent project's description if it has one. If the acceptance criteria are missing or ambiguous, especially anywhere near the domain invariants below, **ask the operator before writing code**. Don't guess at product decisions.
 2. **Move the issue to In Progress.**
-3. **Stay in your workspace branch.** Conductor created it from `staging`; don't rename it, and never check out, commit to, or push `staging` or `main`.
+3. **Stay in your workspace branch.** Orca created it from `staging`; don't rename it, and never check out, commit to, or push `staging` or `main`.
 4. **Implement with tests** (see Testing policy). Stay in scope: an unrelated bug or idea you notice becomes a **new Linear issue in Backlog** (link it from the PR), not part of this change.
 5. **Verify**: everything marked "must pass before done" under Commands passes locally, plus `npm run test:e2e` if you touched a flow the E2E smoke tests cover.
 6. **Review your own diff** (`git diff origin/staging...`) as a skeptical reviewer would — correctness, the domain invariants, missing tests, leftover debug code, docs the change makes stale — and fix what you find.
@@ -78,10 +78,10 @@ Labels: one **Type** (Feature / Bug / Improvement / Tech debt — maps to the co
 
 Several agents run at once, each in its own worktree. Don't assume anything is exclusive to you:
 
-- **Ports**: dev runs on `$CONDUCTOR_PORT` (the Conductor run script passes it); E2E derives its port from `CONDUCTOR_PORT` too (`playwright.config.ts`). Never hard-code 3000/3100.
+- **Ports**: give each workspace its own `DEV_PORT` (a shell variable, not read from `.env`) and run dev on it; E2E derives its port from it too (`DEV_PORT + 1`, else 3100, or `E2E_PORT` to override; `playwright.config.ts`). Never hard-code 3000/3100.
 - **`next dev` leaves `AGENTS.md` alone**: Next 16.3 appends a managed "nextjs-agent-rules" block to it whenever it detects an AI coding agent, which left every workspace with an uncommitted change. `agentRules: false` in `next.config.js` turns that off; keep it.
 - **Conflicts**: other PRs touch `README.md` / `AGENTS.md` too. When yours conflicts, rebase onto `origin/staging` and force-push **your own branch** with `--force-with-lease`; don't merge `staging` into it.
-- **Local dev data**: workspaces get the repo root's `.env` / `.env.local` copied in (`.conductor/settings.toml`); `.env.prod` / `.env.staging` deliberately aren't. The dev MongoDB is shared by every workspace — don't wipe or bulk-edit it. Prefer the test suites (in-memory Mongo, mocked email) over poking the dev server. When you do run it, use `EMAIL_TRANSPORT=console`: every email (the magic link included) is printed to the dev-server log instead of sent, so no SMTP credentials are needed and no real mail goes out. Only that transport ever prints an email's recipient or link; the `smtp` path in `lib/email.ts` must never log them, not even in a send error. A printed magic link is a working sign-in credential, so `lib/env.ts` allows `console` only where `VERCEL_ENV` is unset (local dev, CI, E2E) or `development`, and refuses it on Vercel Preview and Production.
+- **Local dev data**: workspaces get the repo root's `.env` / `.env.local` copied in, and nothing else: `.env.prod` / `.env.staging` deliberately aren't. A new workspace then runs `scripts/workspace-setup.sh` (`npm ci` with a shared MongoDB binary cache, Playwright's Chromium, and `NEXTAUTH_URL` pointed at `DEV_PORT` when it's set). The dev MongoDB is shared by every workspace — don't wipe or bulk-edit it. Prefer the test suites (in-memory Mongo, mocked email) over poking the dev server. When you do run it, use `EMAIL_TRANSPORT=console`: every email (the magic link included) is printed to the dev-server log instead of sent, so no SMTP credentials are needed and no real mail goes out. Only that transport ever prints an email's recipient or link; the `smtp` path in `lib/email.ts` must never log them, not even in a send error. A printed magic link is a working sign-in credential, so `lib/env.ts` allows `console` only where `VERCEL_ENV` is unset (local dev, CI, E2E) or `development`, and refuses it on Vercel Preview and Production.
 
 ## Testing policy (required)
 

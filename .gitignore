@@ -46,7 +46,7 @@ yarn-error.log*
 # vercel
 .vercel
 
-# conductor — per-workspace scratch space for agents (notes, plans, screenshots)
+# per-workspace scratch space for agents (notes, plans, screenshots)
 /.context/
 
 # editor

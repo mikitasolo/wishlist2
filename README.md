@@ -120,7 +120,7 @@ npm run release          # fast-forward remote main to remote staging (operator 
 
 ## 🗂️ Development workflow
 
-Tasks live in [Linear](https://linear.app/mikitasolo) (team **Wishlist**, issue keys `WIS-…`). Each issue is worked in its own [Conductor](https://conductor.build) workspace — a git worktree and branch cut from `staging` — usually by an AI agent, and lands as a pull request into `staging` that gets squash-merged. `main` is production and only ever fast-forwards to `staging` via `npm run release`. The full lifecycle, status meanings, and PR conventions are in [AGENTS.md](AGENTS.md).
+Tasks live in [Linear](https://linear.app/mikitasolo) (team **Wishlist**, issue keys `WIS-…`). Each issue is worked in its own **Orca** workspace — a git worktree and branch cut from `staging`, prepared by `scripts/workspace-setup.sh` — usually by an AI agent, and lands as a pull request into `staging` that gets squash-merged. `main` is production and only ever fast-forwards to `staging` via `npm run release`. The full lifecycle, status meanings, and PR conventions are in [AGENTS.md](AGENTS.md).
 
 ## 🧪 Testing
 
@@ -174,7 +174,6 @@ test/           # Vitest unit / component / api suites + helpers
 e2e/            # Playwright smoke tests + global setup/teardown
 types/          # shared TS types
 docs/           # brand assets and their generators
-.conductor/     # Conductor workspace setup/run scripts and agent prompts
 ```
 
 ## 🔐 Security & privacy notes
