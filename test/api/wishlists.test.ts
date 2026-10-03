@@ -358,6 +358,71 @@ describe('POST /api/wishlists and PATCH /api/wishlists/[id] — name validation'
     expect((await Wishlist.findById(id))?.name).toBe('Birthday');
   });
 
+  // regression: a bidi override passed the name schema, and goes raw into the
+  // invite email's subject and plain-text part, where U+202E reverses the text
+  // after it.
+  it('regression: refuses to create a list whose name has a bidi override, and stores nothing', async () => {
+    const res = await CREATE(
+      send('http://localhost/api/wishlists', 'POST', { name: 'Birthday \u202Emoc.elpmaxe' })
+    );
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe(
+      "Validation error: name: Name can't contain hidden text-direction characters"
+    );
+    expect(await Wishlist.countDocuments()).toBe(0);
+  });
+
+  it('regression: refuses to rename a list to a name with a bidi isolate, and keeps the old name', async () => {
+    const wl = await Wishlist.create({ name: 'Birthday', owners: [ownerId], slug: 'birthday' });
+    const id = wl._id.toString();
+
+    const res = await PATCH(
+      send(`http://localhost/api/wishlists/${id}`, 'PATCH', { name: 'Birthday \u2067List' }),
+      { params: Promise.resolve({ id }) }
+    );
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe(
+      "Validation error: name: Name can't contain hidden text-direction characters"
+    );
+    expect((await Wishlist.findById(id))?.name).toBe('Birthday');
+  });
+
+  // regression: a name of zero-width spaces passed, since `.trim()` keeps them,
+  // and showed as a blank name.
+  it('regression: refuses to create a list whose name is only zero-width spaces (400)', async () => {
+    const res = await CREATE(
+      send('http://localhost/api/wishlists', 'POST', { name: '\u200B\u200B' })
+    );
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe('Validation error: name: Wishlist name is required');
+    expect(await Wishlist.countDocuments()).toBe(0);
+  });
+
+  // Names stored before the bidi rule aren't migrated. The settings form sends
+  // only the fields the owner changed, so such a list's other settings still save.
+  it('still saves other settings of a list whose stored name has a bidi override', async () => {
+    const legacyName = 'Birthday \u202Etsil';
+    const wl = await Wishlist.create({ name: legacyName, owners: [ownerId], slug: 'birthday' });
+    const id = wl._id.toString();
+
+    const res = await PATCH(
+      send(`http://localhost/api/wishlists/${id}`, 'PATCH', {
+        visibility: 'private',
+        description: 'Gift ideas',
+      }),
+      { params: Promise.resolve({ id }) }
+    );
+
+    expect(res.status).toBe(200);
+    const stored = await Wishlist.findById(id);
+    expect(stored?.visibility).toBe('private');
+    expect(stored?.description).toBe('Gift ideas');
+    expect(stored?.name).toBe(legacyName);
+  });
+
   it('still creates a list whose name only has a line break at the end, trimmed', async () => {
     const res = await CREATE(
       send('http://localhost/api/wishlists', 'POST', { name: 'Birthday\n' })

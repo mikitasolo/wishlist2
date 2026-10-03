@@ -102,6 +102,95 @@ describe('wishlist name on createWishlistSchema and updateWishlistSchema', () =>
       expect(res.success && res.data.name).toBe(name);
     }
   });
+
+  const BIDI_ERROR = "Name can't contain hidden text-direction characters";
+
+  // regression: WIS-101 refused control characters but left Unicode format
+  // characters (Cf) alone, bidi overrides and isolates among them. A name holding
+  // U+202E RIGHT-TO-LEFT OVERRIDE goes raw into the invite email's subject and
+  // plain-text part, where it reverses the text after it (a domain read
+  // backwards, say) in a mail sent from our domain.
+  it.each(schemas)(
+    'regression: %s rejects every bidi embedding, override and isolate',
+    (_, schema) => {
+      for (const char of [
+        '\u202A', // LEFT-TO-RIGHT EMBEDDING
+        '\u202B', // RIGHT-TO-LEFT EMBEDDING
+        '\u202C', // POP DIRECTIONAL FORMATTING
+        '\u202D', // LEFT-TO-RIGHT OVERRIDE
+        '\u202E', // RIGHT-TO-LEFT OVERRIDE
+        '\u2066', // LEFT-TO-RIGHT ISOLATE
+        '\u2067', // RIGHT-TO-LEFT ISOLATE
+        '\u2068', // FIRST STRONG ISOLATE
+        '\u2069', // POP DIRECTIONAL ISOLATE
+      ]) {
+        expect(nameIssues(schema, `Birthday ${char}moc.elpmaxe`)).toEqual([
+          { path: ['name'], message: BIDI_ERROR },
+        ]);
+        // At either end too: `.trim()` doesn't take these off.
+        expect(nameIssues(schema, `${char}Birthday`)).toEqual([
+          { path: ['name'], message: BIDI_ERROR },
+        ]);
+      }
+    }
+  );
+
+  it.each(schemas)('%s still accepts the characters next to the bidi ranges', (_, schema) => {
+    // U+2029 (before the range) is a paragraph separator and refused as one.
+    for (const char of [' ', '⁥', '⁪']) {
+      const name = `Birthday${char}List`;
+      expect(nameIssues(schema, name)).toEqual([]);
+    }
+  });
+
+  // regression: a name made only of zero-width characters passed every check,
+  // since `.trim()` doesn't remove them, and showed as a blank list name (and a
+  // blank name in the invite email).
+  it.each(schemas)(
+    'regression: %s rejects a name that shows nothing once zero-width characters are removed',
+    (_, schema) => {
+      for (const name of [
+        '\u200B', // ZERO WIDTH SPACE
+        '\u200B\u200B\u200B',
+        '\u200C\u200D', // ZWNJ + ZWJ on their own
+        '\u2060', // WORD JOINER
+        '\u200B \u200B', // the space between them is left once they're gone
+        '\u3164', // HANGUL FILLER
+        '\u00AD', // SOFT HYPHEN
+        '\u200E\u200F', // LRM + RLM
+      ]) {
+        expect(nameIssues(schema, name)).toEqual([
+          { path: ['name'], message: 'Wishlist name is required' },
+        ]);
+      }
+    }
+  );
+
+  it.each(schemas)('%s reports a blank name with only the one error', (_, schema) => {
+    for (const name of ['\u202E', '\u200B'.repeat(101), '\u2066\t\u2069']) {
+      expect(nameIssues(schema, name)).toEqual([
+        { path: ['name'], message: 'Wishlist name is required' },
+      ]);
+    }
+  });
+
+  it.each(schemas)(
+    '%s keeps zero-width joiners and non-joiners in visible text, and right-to-left text',
+    (_, schema) => {
+      for (const name of [
+        '👨‍👩‍👧', // ZWJ emoji sequence, nothing else
+        '🏳️‍🌈 Pride', // ZWJ + variation selector
+        'می\u200Cخواهم', // Persian with a ZWNJ, escaped since it is invisible
+        'هدايا عيد الميلاد', // Arabic
+        'רשימת משאלות', // Hebrew
+        'Birthday \u200F(2026)', // an RLM mark between words
+        'Birth\u200Bday', // a zero-width space inside a visible name
+      ]) {
+        const res = schema.safeParse({ name });
+        expect(res.success && res.data.name).toBe(name);
+      }
+    }
+  );
 });
 
 describe('item name on createItemSchema and updateItemSchema', () => {

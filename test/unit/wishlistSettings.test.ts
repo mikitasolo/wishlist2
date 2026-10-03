@@ -101,6 +101,15 @@ describe('settingsChanges', () => {
     });
   });
 
+  // A name stored before the schema refused bidi overrides (WIS-119) isn't
+  // migrated. Left alone, it stays out of the save, so the server never
+  // re-checks it and the list's other settings still save.
+  it("leaves out a stored name the schema would now refuse, when it isn't edited", () => {
+    const legacy = { ...saved, name: 'Birthday \u202Etsil' };
+    const form = { ...settingsFormFor(legacy), visibility: 'private' as const };
+    expect(settingsChanges(form, legacy)).toEqual({ visibility: 'private' });
+  });
+
   it('sends each changed setting, and only those', () => {
     expect(settingsChanges(edited({ name: 'Turning 37' }), saved)).toEqual({ name: 'Turning 37' });
     expect(settingsChanges(edited({ slug: 'turning-37' }), saved)).toEqual({ slug: 'turning-37' });
