@@ -33,7 +33,6 @@ import {
   type OccasionGroup,
 } from '@/lib/utils/reservations';
 import Button from '@/components/Button';
-import IconButton from '@/components/IconButton';
 
 interface Price {
   value: number;
@@ -119,7 +118,6 @@ export default function BookedPage() {
   // The viewer's local date, which "To give" is grouped by: `null` until it's
   // known (see `useLocalToday`), and until then the cards aren't grouped.
   const today = useLocalToday();
-  const locale = useViewerLocale();
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [gifts, setGifts] = useState<Gift[]>([]);
   const [loading, setLoading] = useState(true);
