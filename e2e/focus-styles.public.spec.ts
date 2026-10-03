@@ -67,6 +67,18 @@ for (const theme of ['light', 'dark'] as const) {
       expect(await style(email, 'box-shadow')).toMatch(/0px 0px 0px 2px/);
     });
 
+    // Forced colors drop the border colour and the halo `field-focus` draws, so
+    // a field turns the base outline off with `outline-hidden`, whose
+    // transparent outline that mode still shows, never with `outline-none`.
+    test('the sign-in email field still shows focus in forced-colors mode', async ({ page }) => {
+      await page.emulateMedia({ forcedColors: 'active' });
+      await page.goto('/auth/signin');
+      const email = page.getByLabel('Email address');
+      await tabTo(page, email);
+      expect(await style(email, 'outline-style')).toBe('solid');
+      expect(parseFloat(await style(email, 'outline-width'))).toBeGreaterThan(0);
+    });
+
     test('regression: a rounded-full button keeps its radius under keyboard focus', async ({
       page,
     }) => {

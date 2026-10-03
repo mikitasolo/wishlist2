@@ -136,7 +136,7 @@ export default function OccasionField({
                 max={`${MAX_OCCASION_YEAR}-12-31`}
                 value={value.date}
                 onChange={(e) => onChange({ ...value, date: e.target.value })}
-                className="h-11 w-full rounded-xl border border-border-strong bg-surface px-3.5 text-[15px] outline-none field-focus sm:w-48"
+                className="h-11 w-full rounded-xl border border-border-strong bg-surface px-3.5 text-[15px] outline-hidden field-focus sm:w-48"
                 disabled={disabled}
               />
             )}

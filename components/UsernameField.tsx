@@ -38,7 +38,7 @@ export default function UsernameField({
           id={id}
           value={value}
           onChange={(e) => onChange(e.target.value.toLowerCase())}
-          className="h-11 min-w-0 flex-1 border-0 bg-transparent text-[15px] outline-none"
+          className="h-11 min-w-0 flex-1 border-0 bg-transparent text-[15px] outline-hidden"
           autoCapitalize="none"
           autoComplete="off"
           spellCheck={false}

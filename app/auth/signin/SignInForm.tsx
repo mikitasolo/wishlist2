@@ -146,7 +146,7 @@ export default function SignInForm({ turnstileSiteKey }: SignInFormProps) {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-4 py-3 border border-border-strong rounded-lg outline-none field-focus"
+              className="w-full px-4 py-3 border border-border-strong rounded-lg outline-hidden field-focus"
               placeholder="you@example.com"
               disabled={isLoading}
               autoComplete="email"

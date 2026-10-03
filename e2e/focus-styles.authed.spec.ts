@@ -15,16 +15,23 @@ interface Stop {
   radiusKept: boolean;
 }
 
-type TabState = { __radii: Map<Element, string>; __seen: Set<Element> };
+type TabState = {
+  __radii: Map<Element, string>;
+  __shadows: Map<Element, string>;
+  __seen: Set<Element>;
+};
 
-/** Records every element's resting radius, before anything has focus. */
+/** Records every element's resting radius and shadow, before anything has focus. */
 async function recordRadii(page: Page) {
   await page.evaluate(() => {
     const radii = new Map<Element, string>();
+    const shadows = new Map<Element, string>();
     for (const el of document.querySelectorAll('*')) {
-      radii.set(el, getComputedStyle(el).borderRadius);
+      const css = getComputedStyle(el);
+      radii.set(el, css.borderRadius);
+      shadows.set(el, css.boxShadow);
     }
-    Object.assign(window, { __radii: radii, __seen: new Set<Element>() });
+    Object.assign(window, { __radii: radii, __shadows: shadows, __seen: new Set<Element>() });
   });
 }
 
@@ -39,10 +46,11 @@ async function tab(page: Page): Promise<Stop> {
     const css = getComputedStyle(el);
     const outlined = css.outlineStyle !== 'none' && parseFloat(css.outlineWidth) > 0;
     // A text field shows focus with `field-focus`: a 2px ring on itself, or on
-    // the wrapper that draws its border.
+    // the wrapper that draws its border, that it didn't have at rest.
     let ringed = false;
     for (let node: Element | null = el, i = 0; node && i < 3; node = node.parentElement, i++) {
-      if (/0px 0px 0px 2px/.test(getComputedStyle(node).boxShadow)) ringed = true;
+      const shadow = getComputedStyle(node).boxShadow;
+      if (/0px 0px 0px 2px/.test(shadow) && shadow !== state.__shadows.get(node)) ringed = true;
     }
     const before = state.__radii.get(el);
     return {

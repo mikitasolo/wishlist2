@@ -146,7 +146,7 @@ export default function InviteMemberForm({ onInvite, isInviting, ref }: InviteMe
               onFocus={() => setShowSuggestions(true)}
               placeholder="Search by username"
               required
-              className="h-full min-w-0 flex-1 border-0 bg-transparent text-[15px] outline-none"
+              className="h-full min-w-0 flex-1 border-0 bg-transparent text-[15px] outline-hidden"
               disabled={isInviting}
               autoComplete="off"
               autoCapitalize="none"

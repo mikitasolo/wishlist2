@@ -121,7 +121,12 @@
    `bg-*` / `text-*` on fields, `cursor-*` on buttons, `rounded-*` under focus).
    A rule here is a default, and a utility on the element always wins. */
 @layer base {
-  * {
+  /* The pseudo-elements too: preflight resets their borders to currentColor. */
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
     border-color: var(--border);
   }
 
@@ -181,8 +186,11 @@
      control's own radius. A dialog panel isn't a control: only script
      focuses it (useFocusTrap, e.g. while its buttons are disabled), so it
      gets no ring, not even the browser's own. A text field draws its focus
-     with `field-focus` instead (below), and `outline-none` on it turns this
-     one off; a menu row marks the active option with its background alone. */
+     with `field-focus` instead (below), and a `Menu` row marks the active item
+     with its background alone, as a `Select` option does; `outline-hidden` on
+     them turns this one off. (Not `outline-none`: `outline-hidden` keeps a
+     transparent outline that forced-colors mode still draws, where borders
+     and box-shadows give way to the system colours.) */
   *:focus-visible:not(:where([role='dialog'], [role='alertdialog'])) {
     outline: 2px solid var(--ring);
     outline-offset: 2px;
@@ -193,7 +201,8 @@
 }
 
 /* The focus style of a text field (and of a field-like trigger, such as
-   Select's): its border takes the ring colour, with a soft 2px halo. Put it on
+   Select's), with `outline-hidden` beside it: its border takes the ring
+   colour, with a soft 2px halo. Put it on
    the element that draws the field's border: the field itself, or the wrapper
    around a borderless input (a prefix, an icon, a clear button), which shows
    it while the input inside has focus, but not while its clear button does. */

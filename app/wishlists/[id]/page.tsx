@@ -1563,7 +1563,7 @@ export default function WishlistDetail() {
                           onChange={(e) => setSearchQuery(e.target.value)}
                           placeholder="Search items by name…"
                           aria-label="Search items by name"
-                          className="h-full min-w-0 flex-1 border-0 bg-transparent text-sm outline-none"
+                          className="h-full min-w-0 flex-1 border-0 bg-transparent text-sm outline-hidden"
                         />
                         {searchQuery && (
                           <button
@@ -2027,7 +2027,7 @@ export default function WishlistDetail() {
                     required
                     value={settingsForm.name}
                     onChange={(e) => editSettings({ name: e.target.value })}
-                    className="w-full px-4 py-2 border border-border-strong rounded-xl outline-none field-focus"
+                    className="w-full px-4 py-2 border border-border-strong rounded-xl outline-hidden field-focus"
                     disabled={isSavingSettings}
                     autoComplete="off"
                   />
@@ -2051,7 +2051,7 @@ export default function WishlistDetail() {
                           slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''),
                         })
                       }
-                      className="h-11 min-w-0 flex-1 border-0 bg-transparent text-[15px] outline-none"
+                      className="h-11 min-w-0 flex-1 border-0 bg-transparent text-[15px] outline-hidden"
                       disabled={isSavingSettings}
                       autoComplete="off"
                       autoCapitalize="none"
@@ -2074,7 +2074,7 @@ export default function WishlistDetail() {
                     id="settings-description"
                     value={settingsForm.description}
                     onChange={(e) => editSettings({ description: e.target.value })}
-                    className="w-full px-4 py-2 border border-border-strong rounded-xl outline-none field-focus"
+                    className="w-full px-4 py-2 border border-border-strong rounded-xl outline-hidden field-focus"
                     rows={3}
                     disabled={isSavingSettings}
                     autoComplete="off"

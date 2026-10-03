@@ -287,7 +287,7 @@ export default function Menu({ label, items, triggerClassName = '', icon = 'more
                     e.currentTarget.focus({ preventScroll: true });
                   }
                 }}
-                className="flex w-full cursor-pointer items-center gap-2.5 whitespace-nowrap rounded-lg px-3 py-2.5 text-left text-sm font-medium text-foreground outline-none transition-colors focus:bg-muted aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
+                className="flex w-full cursor-pointer items-center gap-2.5 whitespace-nowrap rounded-lg px-3 py-2.5 text-left text-sm font-medium text-foreground outline-hidden transition-colors focus:bg-muted aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
               >
                 {item.icon && (
                   <Icon

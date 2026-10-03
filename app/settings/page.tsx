@@ -233,7 +233,7 @@ export default function SettingsPage() {
               rows={3}
               maxLength={300}
               placeholder="Tell people about your hobbies, interests, and passions…"
-              className="w-full resize-none rounded-xl border border-border-strong bg-surface px-4 py-2.5 text-[15px] outline-none field-focus"
+              className="w-full resize-none rounded-xl border border-border-strong bg-surface px-4 py-2.5 text-[15px] outline-hidden field-focus"
             />
             <p className="mt-1 text-right text-xs text-muted-foreground">{form.bio.length}/300</p>
           </div>
