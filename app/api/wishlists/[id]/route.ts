@@ -30,6 +30,7 @@ import {
   serializeWishlist,
 } from '@/lib/utils/wishlistOwners';
 import { purgeShareCards } from '@/lib/og/purge';
+import { enforce, userKey } from '@/lib/rateLimit';
 
 /**
  * The settings a list's share card depends on: its name, banner and owner, and
@@ -189,6 +190,13 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     // Slug: validate reserved + uniqueness before applying.
     if (validatedData.slug !== undefined && validatedData.slug !== wishlist.slug) {
+      // Slugs are unique across every list, so the 409 below confirms that some
+      // list holds a slug, even an archived one, which every other answer hides.
+      // That's accepted (an owner-chosen slug is a public URL), but trying one
+      // costs a token, and only here: the caller is known to own this list, and
+      // an edit that leaves the URL alone never spends one.
+      const limited = await enforce('wishlistSlug', userKey(session.user.id));
+      if (limited) return limited;
       const slug = validatedData.slug;
       if (isReservedWishlistSlug(slug)) {
         return NextResponse.json(
