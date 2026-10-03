@@ -1,9 +1,8 @@
 'use client';
 
-import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
+import { useEffect, useState, useMemo, useCallback, useRef, useId, type FormEvent } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter, useParams } from 'next/navigation';
-import Link from 'next/link';
 import WishlistItem from '@/components/WishlistItem';
 import EditItemModal from '@/components/EditItemModal';
 import AddItemModal from '@/components/AddItemModal';
@@ -14,40 +13,36 @@ import AuthButton from '@/components/AuthButton';
 import AppHeader from '@/components/AppHeader';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import Button from '@/components/Button';
-import IconButton from '@/components/IconButton';
-import Field from '@/components/Field';
-import Input from '@/components/Input';
-import Textarea from '@/components/Textarea';
 import SearchField from '@/components/SearchField';
-import { FIELD_HELPER, FIELD_LABEL } from '@/components/fieldStyles';
 import Icon from '@/components/Icon';
 import InviteMemberForm, { type InviteMemberFormHandle } from '@/components/InviteMemberForm';
 import { listStatusByUsername } from '@/lib/utils/inviteSuggestions';
 import ShareButton from '@/components/ShareButton';
-import ImageUpload from '@/components/ImageUpload';
 import Select from '@/components/Select';
-import OccasionField from '@/components/OccasionField';
 import WishlistHeader, { WishlistHeaderSkeleton } from '@/components/WishlistHeader';
 import JoinListCallout from '@/components/JoinListCallout';
 import WishlistCover from '@/components/WishlistCover';
 import WishlistDescription from '@/components/WishlistDescription';
+import WishlistTabs, { listTabId, listTabPanelId } from '@/components/WishlistTabs';
+import WishlistPeopleTab, {
+  type PendingInvite,
+  type WishlistPerson,
+} from '@/components/WishlistPeopleTab';
+import WishlistSettingsTab, { ARCHIVE_EXPLANATION } from '@/components/WishlistSettingsTab';
 import {
   ListControlsSkeleton,
   Skeleton,
   SkeletonGrid,
-  MemberRowSkeleton,
   ITEM_GRID_CLASSES,
 } from '@/components/Skeleton';
 import EmptyState from '@/components/EmptyState';
-import Panel, { PanelRow, PanelSection } from '@/components/Panel';
-import SegmentedControl from '@/components/SegmentedControl';
-import Avatar from '@/components/Avatar';
 import LoadError from '@/components/LoadError';
 import WishlistUnavailable from '@/components/WishlistUnavailable';
 import { readResource, ReadRefusedError } from '@/lib/utils/resourceRead';
-import { visibilityMeta, VISIBILITY_OPTIONS, type Visibility } from '@/lib/utils/visibility';
-import { currencySelectOptions } from '@/lib/utils/currencies';
 import { missingFromDraft } from '@/lib/utils/occasion';
+import { getVisibility } from '@/lib/utils/visibility';
+import { onCurrentListTab, useListTab, type ListTab } from '@/lib/hooks/useListTab';
+import { useBusyIds } from '@/lib/hooks/useBusyIds';
 import {
   rebaseSettingsForm,
   settingsChanges,
@@ -64,7 +59,6 @@ import {
 import { RequestTimeoutError, withRequestTimeout } from '@/lib/utils/requestTimeout';
 import { canCopyItem } from '@/lib/utils/itemCopy';
 import {
-  DELETE_LIST_WARNING,
   deleteListCopy,
   leftListToast,
   memberLeaveCopy,
@@ -105,32 +99,6 @@ import { useListPrices } from '@/lib/hooks/useListPrices';
 import { TONE_CLASSES } from '@/lib/utils/statusTones';
 import { useFetchItems, useUpdateItem, useCreateItem, useDeleteItem } from '@/lib/hooks/useItems';
 
-interface WishlistMember {
-  _id: string;
-  user: {
-    _id: string;
-    username?: string;
-    image?: string | null;
-  };
-  // Owners have no membership row — their `_id` is their *user* id, which is what
-  // the /owners/[userId] endpoints take.
-  role: 'owner' | 'member';
-  createdAt: string;
-}
-
-interface PendingInvite {
-  _id: string;
-  role: 'owner' | 'member';
-  username: string | null;
-  image: string | null;
-}
-
-// What archiving does, where it's offered and again when it's confirmed. An
-// archived list is owner-only: everyone else gets the answer a missing list
-// gets, so a link already shared stops working for them.
-const ARCHIVE_EXPLANATION =
-  "Only owners can open it. Members and anyone with the link will see that it isn't available. Items and reservations are kept, and you can unarchive anytime.";
-
 type PageLoad = 'loading' | 'ready' | 'unavailable' | 'failed';
 
 export default function WishlistDetail() {
@@ -151,7 +119,8 @@ export default function WishlistDetail() {
   const [ownerRemovals] = useState(createOwnerRemovalLog);
   const ownerUsernames = owners.usernames;
   const [items, setItems] = useState<ApiItem[]>([]);
-  const [members, setMembers] = useState<WishlistMember[]>([]);
+  // Everyone on the list, owners and members (owners only ever read it).
+  const [members, setMembers] = useState<WishlistPerson[]>([]);
   const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
   // Where the page stands with the list. `unavailable`: a read of the list or
   // its items was refused (the list is missing, or hidden from this viewer),
@@ -179,10 +148,18 @@ export default function WishlistDetail() {
   // about it then, before the page moves on, doesn't matter any more.
   const departed = useRef(false);
   const [loadingItems, setLoadingItems] = useState(true);
-  const [loadingMembers, setLoadingMembers] = useState(false);
+  // Where the first read of the people on the list stands (owners only):
+  // until it has landed there's no count on People and no rows in it, and if
+  // it failed, People says so, with Try again.
+  const [membersRead, setMembersRead] = useState<'loading' | 'loaded' | 'failed'>('loading');
   const [isOwner, setIsOwner] = useState(false);
   const [isMember, setIsMember] = useState(false);
-  const [manageOpen, setManageOpen] = useState(false);
+  // The tab the URL is on (`?tab=`). Only an owner has tabs: anyone else is
+  // shown Items whatever the URL says, and their URL is left as it is.
+  const [urlTab, chooseTab] = useListTab();
+  const tab: ListTab = isOwner ? urlTab : 'items';
+  const onItems = tab === 'items';
+  const tabsId = useId();
   const [sortBy, setSortBy] = useState<SortType>(DEFAULT_WISHLIST_SORT);
   const [searchQuery, setSearchQuery] = useState('');
   const [itemToEdit, setItemToEdit] = useState<ApiItem | null>(null);
@@ -222,7 +199,10 @@ export default function WishlistDetail() {
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<{
     type: 'member' | 'owner' | 'leave' | 'wishlist';
+    /** What the removal's route takes: an owner's user id, a member's membership id. */
     memberId?: string;
+    /** Their user id, which their row's actions are held by. */
+    memberUserId?: string;
     memberUsername?: string | null;
   } | null>(null);
   // Promoting someone to co-owner is destructive for them (it cancels the
@@ -252,7 +232,7 @@ export default function WishlistDetail() {
   // or deletes anything.
   const [soleOwnerNotice, setSoleOwnerNotice] = useState(false);
   const inviteFormRef = useRef<InviteMemberFormHandle>(null);
-  // Set by the notice's "Invite a co-owner", so the invite form (in Manage,
+  // Set by the notice's "Invite a co-owner", so the invite form (in People,
   // opened for it if need be) is set up once the notice has closed: by then its
   // scroll lock is gone (it puts the page back where it was) and focus can stay
   // on the form.
@@ -330,7 +310,7 @@ export default function WishlistDetail() {
           markRefused(recheckNo);
         } else if (read.outcome === 'loaded' && !departed.current) {
           const url = read.data.slug || id;
-          if (url !== wishlistId) routerRef.current.replace(`/wishlists/${url}`);
+          if (url !== wishlistId) routerRef.current.replace(onCurrentListTab(`/wishlists/${url}`));
         }
       } finally {
         recheckingRefusal.current = false;
@@ -413,42 +393,69 @@ export default function WishlistDetail() {
   }, []);
 
   // Refresh the pending-invites list (owners only).
+  // Reads of the invites and of the people, numbered as they're sent, and the
+  // number of the latest one whose answer the page took. Each is read again
+  // after every change the page makes (an invite, a demotion, a removal), and
+  // opening People reads them too, so an older read that answers late (say,
+  // the one opening People, after a demotion's) would put back what the
+  // change took away: an answer sent before the one on screen is dropped.
+  const invitesReads = useRef({ sent: 0, landed: 0 });
+  const membersReads = useRef({ sent: 0, landed: 0 });
+
   const refreshInvites = useCallback(async () => {
     if (!wishlistId) return;
+    const sentNo = ++invitesReads.current.sent;
     try {
       const res = await fetch(`/api/wishlists/${wishlistId}/invites`, { cache: 'no-store' });
       const result = await res.json();
-      if (result.success) setPendingInvites(result.data || []);
+      if (!result.success || sentNo < invitesReads.current.landed) return;
+      invitesReads.current.landed = sentNo;
+      setPendingInvites(result.data || []);
     } catch {
       /* ignore */
     }
   }, [wishlistId]);
 
-  // Fetch members + pending invites (owners only)
-  useEffect(() => {
-    async function fetchMembers() {
-      if (!wishlistId || !isOwner) return;
-
-      setLoadingMembers(true);
-      try {
-        const response = await fetch(`/api/wishlists/${wishlistId}/members`, { cache: 'no-store' });
-        const result = await response.json();
-
-        if (result.success) {
-          setMembers(result.data || []);
-        }
-      } catch (error) {
-        console.error('Error fetching members:', error);
-      } finally {
-        setLoadingMembers(false);
+  // Read the people on the list again (owners only). Only the first read
+  // failing is shown (People says so): a later one keeps the rows it has.
+  const refreshMembers = useCallback(async () => {
+    if (!wishlistId) return;
+    const sentNo = ++membersReads.current.sent;
+    let read = false;
+    try {
+      const res = await fetch(`/api/wishlists/${wishlistId}/members`, { cache: 'no-store' });
+      const result = await res.json();
+      if (result.success) {
+        read = true;
+        if (sentNo < membersReads.current.landed) return;
+        membersReads.current.landed = sentNo;
+        setMembers(result.data || []);
       }
+    } catch (error) {
+      console.error('Error fetching members:', error);
+    } finally {
+      setMembersRead((prev) => (read ? 'loaded' : prev === 'loaded' ? prev : 'failed'));
     }
+  }, [wishlistId]);
 
-    if (isOwner && manageOpen) {
-      fetchMembers();
-      refreshInvites();
-    }
-  }, [wishlistId, isOwner, manageOpen, refreshInvites]);
+  // For an owner: the people, read once when the page knows it's an owner's
+  // (People's count), and with the pending invites whenever People opens.
+  const peopleOpen = tab === 'people';
+  const membersReadFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!isOwner || !wishlistId) return;
+    if (peopleOpen) void refreshInvites();
+    if (!peopleOpen && membersReadFor.current === wishlistId) return;
+    membersReadFor.current = wishlistId;
+    void refreshMembers();
+  }, [wishlistId, isOwner, peopleOpen, refreshMembers, refreshInvites]);
+
+  // Try again, after the first read of the people failed.
+  const retryMembers = useCallback(() => {
+    setMembersRead('loading');
+    void refreshMembers();
+    void refreshInvites();
+  }, [refreshMembers, refreshInvites]);
 
   // The page's item mutations. A background poll that lands while one is in
   // flight, or whose read was in flight across one, is stale and must be
@@ -469,7 +476,7 @@ export default function WishlistDetail() {
   const itemsShown = useRef(false);
   const [itemsFailed, setItemsFailed] = useState(false);
   // Failed items reads the page showed the skeleton for once the items had
-  // been shown (the one after leaving Manage), and how many of them have been
+  // been shown (the one after coming back to Items), and how many of them have been
   // answered (see the effect after `fetchItems`).
   const [itemsReadFailures, setItemsReadFailures] = useState(0);
   const itemsReadFailuresSeen = useRef(0);
@@ -500,7 +507,7 @@ export default function WishlistDetail() {
         // was sent before one settled) may predate fresher local state, so the
         // list is read again once no mutation is in flight. A background read's
         // result is dropped; a non-silent one (the first load, or the one after
-        // leaving Manage) still lands, so the list isn't left empty.
+        // coming back to Items) still lands, so the list isn't left empty.
         if (mutations.isStale(read.sentAt)) {
           mutations.rereadWhenIdle();
           if (silent) return;
@@ -551,7 +558,7 @@ export default function WishlistDetail() {
     // Not while the list is unavailable (every read would be refused again) or
     // couldn't be read: Try again starts it over.
     if (!polling) return;
-    if (wishlistId && !manageOpen) {
+    if (wishlistId && onItems) {
       // Reset loading state when switching to items tab
       setLoadingItems(true);
       // While this tab polls, a read that turns out stale is followed by a
@@ -580,11 +587,11 @@ export default function WishlistDetail() {
         // in flight from here mustn't send another.
         mutations.setReread(null);
       };
-    } else if (manageOpen) {
+    } else if (!onItems) {
       // Reset loading state when switching away from items tab
       setLoadingItems(false);
     }
-  }, [wishlistId, manageOpen, fetchItems, mutations, polling]);
+  }, [wishlistId, onItems, fetchItems, mutations, polling]);
 
   const createItemHook = useCreateItem(
     (newItem) => {
@@ -802,48 +809,46 @@ export default function WishlistDetail() {
     [wishlistId, showToast, refreshInvites]
   );
 
+  // The People rows with an action in flight: by user id for an owner's or a
+  // member's row, by invite id for an invite's. A row's actions are held until
+  // its own request settles, and a second one for it is turned away, whatever
+  // sent it (a double click on a dialog's confirm included).
+  const { busy: rowBusy, run: runRowAction } = useBusyIds();
+
+  /** Cancel a pending invite: an invite's row, or a member's owner invite (`busyId`: its row). */
   const cancelInvite = useCallback(
-    async (inviteId: string) => {
-      if (!wishlistId) return;
-      // Optimistic removal.
-      setPendingInvites((prev) => prev.filter((i) => i._id !== inviteId));
-      try {
-        const res = await fetch(`/api/wishlists/${wishlistId}/invites/${inviteId}`, {
-          method: 'DELETE',
-        });
-        const result = await res.json();
-        if (result.success) {
-          showToast('Invitation cancelled', 'success');
-        } else {
-          showToast(result.error || 'Failed to cancel invitation', 'error');
-          refreshInvites();
+    (inviteId: string, busyId: string) =>
+      runRowAction(busyId, async () => {
+        if (!wishlistId) return;
+        // Optimistic removal.
+        setPendingInvites((prev) => prev.filter((i) => i._id !== inviteId));
+        try {
+          const res = await fetch(`/api/wishlists/${wishlistId}/invites/${inviteId}`, {
+            method: 'DELETE',
+          });
+          const result = await res.json();
+          if (result.success) {
+            showToast('Invitation cancelled', 'success');
+          } else {
+            showToast(result.error || 'Failed to cancel invitation', 'error');
+            await refreshInvites();
+          }
+        } catch {
+          showToast('Failed to cancel invitation', 'error');
+          await refreshInvites();
         }
-      } catch {
-        showToast('Failed to cancel invitation', 'error');
-        refreshInvites();
-      }
-    },
-    [wishlistId, showToast, refreshInvites]
+      }),
+    [wishlistId, showToast, refreshInvites, runRowAction]
   );
 
-  const refreshMembers = useCallback(async () => {
-    if (!wishlistId) return;
-    try {
-      const res = await fetch(`/api/wishlists/${wishlistId}/members`, { cache: 'no-store' });
-      const result = await res.json();
-      if (result.success) setMembers(result.data || []);
-    } catch {
-      /* ignore */
-    }
-  }, [wishlistId]);
-
   const handleKickMember = useCallback(
-    (memberId: string, username: string | undefined, isOwnerRow: boolean) => {
+    (person: { id: string; userId: string; username: string | null; role: 'owner' | 'member' }) => {
       setDeleteConfirm({
         // Owners aren't memberships — they're removed through the owners endpoint.
-        type: isOwnerRow ? 'owner' : 'member',
-        memberId,
-        memberUsername: username || null,
+        type: person.role,
+        memberId: person.id,
+        memberUserId: person.userId,
+        memberUsername: person.username,
       });
     },
     []
@@ -881,13 +886,13 @@ export default function WishlistDetail() {
     }
   }, [wishlistId, ownerRemovals]);
 
-  // Opening Manage reads the owners again too, as it does the members: a
+  // Opening People reads the owners again too, as it does the members: a
   // co-owner who accepted an invite since the page loaded then counts, so a
   // sole owner who invited one (as their Leave's notice says to) can leave
   // without reloading the page.
   useEffect(() => {
-    if (isOwner && manageOpen) refreshOwners();
-  }, [isOwner, manageOpen, refreshOwners]);
+    if (isOwner && peopleOpen) refreshOwners();
+  }, [isOwner, peopleOpen, refreshOwners]);
 
   const confirmKickMember = useCallback(async () => {
     if (
@@ -898,33 +903,38 @@ export default function WishlistDetail() {
     )
       return;
 
+    const { type, memberId, memberUsername } = deleteConfirm;
     const path =
-      deleteConfirm.type === 'owner'
-        ? `/api/wishlists/${wishlistId}/owners/${deleteConfirm.memberId}`
-        : `/api/wishlists/${wishlistId}/members/${deleteConfirm.memberId}`;
+      type === 'owner'
+        ? `/api/wishlists/${wishlistId}/owners/${memberId}`
+        : `/api/wishlists/${wishlistId}/members/${memberId}`;
 
     try {
-      const response = await fetch(path, { method: 'DELETE' });
-      const result = await response.json();
+      await runRowAction(deleteConfirm.memberUserId ?? memberId, async () => {
+        try {
+          const response = await fetch(path, { method: 'DELETE' });
+          const result = await response.json();
 
-      if (result.success) {
-        showToast(
-          deleteConfirm.type === 'owner' ? 'Owner removed' : 'Member removed successfully',
-          'success'
-        );
-        // Removing someone also cancels any invite they still had pending here.
-        if (deleteConfirm.type === 'owner') {
-          dropOwner({ id: deleteConfirm.memberId, username: deleteConfirm.memberUsername ?? null });
-          await Promise.all([refreshMembers(), refreshInvites(), refreshOwners()]);
-        } else {
-          await Promise.all([refreshMembers(), refreshInvites()]);
+          if (result.success) {
+            showToast(
+              type === 'owner' ? 'Owner removed' : 'Member removed successfully',
+              'success'
+            );
+            // Removing someone also cancels any invite they still had pending here.
+            if (type === 'owner') {
+              dropOwner({ id: memberId, username: memberUsername ?? null });
+              await Promise.all([refreshMembers(), refreshInvites(), refreshOwners()]);
+            } else {
+              await Promise.all([refreshMembers(), refreshInvites()]);
+            }
+          } else {
+            showToast(result.error || 'Failed to remove member', 'error');
+          }
+        } catch (error) {
+          console.error('Error removing member:', error);
+          showToast('Failed to remove member', 'error');
         }
-      } else {
-        showToast(result.error || 'Failed to remove member', 'error');
-      }
-    } catch (error) {
-      console.error('Error removing member:', error);
-      showToast('Failed to remove member', 'error');
+      });
     } finally {
       setDeleteConfirm(null);
     }
@@ -936,6 +946,7 @@ export default function WishlistDetail() {
     refreshInvites,
     dropOwner,
     refreshOwners,
+    runRowAction,
   ]);
 
   /**
@@ -945,65 +956,59 @@ export default function WishlistDetail() {
    * row is a *user* id — that's what the owners endpoints take.
    */
   const inviteAsOwner = useCallback(
-    async (userId: string, username: string) => {
-      if (!wishlistId) return;
-      try {
-        const res = await fetch(`/api/wishlists/${wishlistId}/owners/${userId}`, {
-          method: 'POST',
-        });
-        const result = await res.json();
-        if (result.success) {
-          showToast(`Invitation sent — @${username} becomes an owner once they accept`, 'success');
-          await refreshInvites();
-        } else {
-          showToast(result.error || 'Failed to send owner invitation', 'error');
+    (userId: string, username: string) =>
+      runRowAction(userId, async () => {
+        if (!wishlistId) return;
+        try {
+          const res = await fetch(`/api/wishlists/${wishlistId}/owners/${userId}`, {
+            method: 'POST',
+          });
+          const result = await res.json();
+          if (result.success) {
+            showToast(
+              `Invitation sent — @${username} becomes an owner once they accept`,
+              'success'
+            );
+            await refreshInvites();
+          } else {
+            showToast(result.error || 'Failed to send owner invitation', 'error');
+          }
+        } catch (error) {
+          console.error('Error inviting owner:', error);
+          showToast('Failed to send owner invitation', 'error');
         }
-      } catch (error) {
-        console.error('Error inviting owner:', error);
-        showToast('Failed to send owner invitation', 'error');
-      }
-    },
-    [wishlistId, showToast, refreshInvites]
+      }),
+    [wishlistId, showToast, refreshInvites, runRowAction]
   );
 
-  // Owners whose demotion is still in flight. Tracked per row, so demoting one
-  // owner doesn't lock or unlock another's buttons. The ref turns a second
-  // demotion of the same owner away, whatever sent it: it's set before the
-  // disabled state has rendered.
-  const demotingRef = useRef<Set<string>>(new Set());
-  const [demotingIds, setDemotingIds] = useState<ReadonlySet<string>>(() => new Set());
-
-  /** Step an owner down to a plain member, once their row's dialog is confirmed. */
+  /**
+   * Step an owner down to a plain member, once their row's dialog is confirmed.
+   * Held on their row while it runs, so a second demotion of the same owner is
+   * turned away, whatever sent it, and a failed one gives the row back.
+   */
   const demoteOwner = useCallback(
-    async (userId: string, username: string | null) => {
-      if (!wishlistId || demotingRef.current.has(userId)) return;
-      demotingRef.current.add(userId);
-      setDemotingIds(new Set(demotingRef.current));
-      try {
-        const res = await fetch(`/api/wishlists/${wishlistId}/owners/${userId}`, {
-          method: 'PATCH',
-        });
-        const result = await res.json();
-        if (result.success) {
-          showToast(`@${username || 'user'} is now a member`, 'success');
-          dropOwner({ id: userId, username });
-          // Demoting also cancels any invite they still had pending here.
-          await Promise.all([refreshMembers(), refreshInvites(), refreshOwners()]);
-        } else {
-          showToast(result.error || 'Failed to update owner', 'error');
+    (userId: string, username: string | null) =>
+      runRowAction(userId, async () => {
+        if (!wishlistId) return;
+        try {
+          const res = await fetch(`/api/wishlists/${wishlistId}/owners/${userId}`, {
+            method: 'PATCH',
+          });
+          const result = await res.json();
+          if (result.success) {
+            showToast(`@${username || 'user'} is now a member`, 'success');
+            dropOwner({ id: userId, username });
+            // Demoting also cancels any invite they still had pending here.
+            await Promise.all([refreshMembers(), refreshInvites(), refreshOwners()]);
+          } else {
+            showToast(result.error || 'Failed to update owner', 'error');
+          }
+        } catch (error) {
+          console.error('Error demoting owner:', error);
+          showToast('Failed to update owner', 'error');
         }
-      } catch (error) {
-        console.error('Error demoting owner:', error);
-        showToast('Failed to update owner', 'error');
-      } finally {
-        // After a success the refresh above has usually moved the row to
-        // Members by now. After a failure this gives the buttons back, so the
-        // owner can try again.
-        demotingRef.current.delete(userId);
-        setDemotingIds(new Set(demotingRef.current));
-      }
-    },
-    [wishlistId, showToast, refreshMembers, refreshInvites, dropOwner, refreshOwners]
+      }),
+    [wishlistId, showToast, refreshMembers, refreshInvites, dropOwner, refreshOwners, runRowAction]
   );
 
   const confirmPromoteToOwner = useCallback(async () => {
@@ -1037,10 +1042,10 @@ export default function WishlistDetail() {
 
   const inviteCoOwnerInstead = useCallback(() => {
     inviteOwnerOnClose.current = true;
-    // The invite form is in Manage, which renders it as the notice closes.
-    setManageOpen(true);
+    // The invite form is on People, which renders it as the notice closes.
+    chooseTab('people');
     setSoleOwnerNotice(false);
-  }, []);
+  }, [chooseTab]);
 
   useEffect(() => {
     if (soleOwnerNotice || !inviteOwnerOnClose.current) return;
@@ -1116,8 +1121,8 @@ export default function WishlistDetail() {
     }
   }, [wishlistId, deleteConfirm, router, showToast]);
 
-  // Archive or unarchive the list: from Manage, from the confirmation, or from
-  // the archived banner's Unarchive.
+  // Archive or unarchive the list: from Settings, from the confirmation, or
+  // from the archived banner's Unarchive.
   const setArchived = useCallback(
     async (archived: boolean) => {
       if (!wishlistId || archivingRef.current) return;
@@ -1166,8 +1171,8 @@ export default function WishlistDetail() {
   // a co-owner accepting the invite the notice pointed the sole owner to, so
   // their owners are read again first: once that co-owner counts, they're asked
   // to confirm instead of being told they can't. Its members are read too
-  // (Manage may never have been opened), since the notice points to Make owner
-  // only when there's a member to make one, and Manage opens behind the notice,
+  // (People may never have been opened), since the notice points to Make owner
+  // only when there's a member to make one, and People opens behind the notice,
   // so the members' Make owner it points to is there once it closes. A read
   // that fails leaves them the sole owner, as the page counted. The ref turns
   // a second pick away while the reads are out.
@@ -1184,13 +1189,13 @@ export default function WishlistDetail() {
       if (fresh && fresh.ids.length > 1) {
         handleLeaveWishlist();
       } else {
-        setManageOpen(true);
+        chooseTab('people');
         setSoleOwnerNotice(true);
       }
     } finally {
       checkingLeaveRef.current = false;
     }
-  }, [canLeave, isOwner, handleLeaveWishlist, refreshOwners, refreshMembers]);
+  }, [canLeave, isOwner, handleLeaveWishlist, refreshOwners, refreshMembers, chooseTab]);
 
   // Pin to my dashboard: the caller's own pin only (`featuredBy`), so a
   // co-owner's dashboard is untouched. The answer to `featured` is the
@@ -1223,8 +1228,83 @@ export default function WishlistDetail() {
 
   // The members endpoint returns one list; the UI shows the two relationships
   // separately, because they aren't rungs on a ladder.
-  const ownerRows = useMemo(() => members.filter((m) => m.role === 'owner'), [members]);
   const memberRows = useMemo(() => members.filter((m) => m.role !== 'owner'), [members]);
+  // People's count: everyone on the list, owners and members, once read.
+  const peopleCount = membersRead === 'loaded' ? members.length : null;
+
+  // Whether a save would send anything: the form as `settingsChanges` sees it,
+  // so a field typed and put back, or changed only in case or spaces, isn't.
+  const settingsDirty = useMemo(
+    () => Object.keys(settingsChanges(settingsForm, settingsBaseline)).length > 0,
+    [settingsForm, settingsBaseline]
+  );
+
+  // Discard: the form as it was last filled from the list.
+  const discardSettings = useCallback(() => {
+    setSettings((s) => ({ ...s, form: settingsFormFor(s.saved) }));
+  }, []);
+
+  const saveSettings = useCallback(
+    async (e: FormEvent<HTMLFormElement>) => {
+      e.preventDefault();
+      // A one-off's date input is `required`; a yearly one's day and month
+      // pickers can't be, so they're checked here.
+      const missing = missingFromDraft(settingsForm.occasion);
+      if (missing) {
+        showToast(missing, 'error');
+        return;
+      }
+      // Only the settings changed here go, so a co-owner's change to any other
+      // one since the form was filled stays. With nothing changed there's
+      // nothing to write (and the API refuses an empty edit): the save bar
+      // isn't there then, but Enter in a field still submits.
+      const sent = settingsForm;
+      const changes = settingsChanges(sent, settingsBaseline);
+      if (Object.keys(changes).length === 0) return;
+      setIsSavingSettings(true);
+
+      try {
+        const response = await fetch(`/api/wishlists/${wishlistId}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(changes),
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+          // The caller's pin isn't a setting: a save never changes it, and its
+          // answer can predate a Pin to my dashboard picked from the header
+          // while it was out.
+          setWishlist((prev) => ({
+            ...result.data,
+            featured: prev ? prev.featured : result.data.featured,
+          }));
+          // Refill the form from the list as saved: what was sent, and a
+          // co-owner's change to anything that wasn't. The next save then
+          // diffs against that, not the first load.
+          refillSettings(wishlistSettings(result.data), sent);
+          showToast('Wishlist updated successfully', 'success');
+          // Keep the URL in sync when the slug changes (or upgrade an id-based
+          // URL to the slug), on the tab it's on.
+          const newSlug = result.data?.slug as string | undefined;
+          if (newSlug && newSlug !== wishlistId) {
+            router.replace(onCurrentListTab(`/wishlists/${newSlug}`));
+          }
+        } else {
+          showToast(result.error || 'Failed to update wishlist', 'error');
+        }
+      } catch (error) {
+        console.error('Error updating wishlist:', error);
+        showToast('Failed to update wishlist', 'error');
+      } finally {
+        setIsSavingSettings(false);
+      }
+    },
+    [settingsForm, settingsBaseline, wishlistId, refillSettings, router, showToast]
+  );
   // Who each username suggestion in the invite form already is on the list.
   const inviteStatuses = useMemo(
     () =>
@@ -1296,6 +1376,16 @@ export default function WishlistDetail() {
     count: chipCounts[chip],
   }));
 
+  // The tab on screen is the panel an owner's tab bar controls. Nobody else
+  // has tabs, so their items are just the page.
+  const tabPanel = isOwner
+    ? {
+        role: 'tabpanel',
+        id: listTabPanelId(tabsId),
+        'aria-labelledby': listTabId(tabsId, tab),
+      }
+    : {};
+
   // Not available, or not loaded: said in place, at this URL. Which way to put
   // "not available" depends only on whether the viewer is signed in, so it
   // waits for the session to be known.
@@ -1323,6 +1413,10 @@ export default function WishlistDetail() {
               description: a list may have neither, so the skeleton doesn't
               promise them. */}
           <WishlistHeaderSkeleton />
+          {/* Always the Items layout, whatever ?tab= says: until the list has
+              loaded, the viewer's role isn't known, and only an owner may see
+              anything that hints at the tabs. An owner's tab replaces it once
+              the list lands. */}
           {/* Signed out, the viewer is a visitor, who gets the note on getting
               invited (its text wraps to three lines on a phone, two at sm, one
               at lg, over Sign in). Signed in, the role isn't known yet. */}
@@ -1345,7 +1439,7 @@ export default function WishlistDetail() {
         {/* The banner, as a short strip across the top (none without one), then
             the name, the meta line (owners, occasion, visibility) and the
             viewer's actions, with Leave list… and Pin in the ⋯ menu, then the
-            description. The same in Manage, so opening it doesn't move them. */}
+            description. The same on every tab, so moving between them doesn't move them. */}
         <WishlistCover bannerUrl={wishlist.bannerUrl} seed={wishlist._id.toString()} />
         <WishlistHeader
           name={wishlist.name}
@@ -1357,10 +1451,12 @@ export default function WishlistDetail() {
           archived={wishlist.archived}
           pinned={!!wishlist.featured}
           pinning={isPinning}
-          manageOpen={manageOpen}
-          onAddItem={() => setShowAddItemModal(true)}
+          // From People or Settings too, back on Items, where the item lands.
+          onAddItem={() => {
+            chooseTab('items');
+            setShowAddItemModal(true);
+          }}
           onPropose={() => setShowProposeItemModal(true)}
-          onToggleManage={() => setManageOpen((v) => !v)}
           onTogglePin={togglePinned}
           onLeave={startLeave}
           // An archived list's link opens for its owners only: anyone they'd
@@ -1370,14 +1466,13 @@ export default function WishlistDetail() {
               <ShareButton
                 url={`/wishlists/${wishlist.slug || wishlist._id}`}
                 title={wishlist.name}
-                // Inviting happens in Manage until the People tab (WIS-243)
-                // lands; then this links to `?tab=people`.
+                // Inviting happens on People, with its invite form on top.
                 owner={
                   isOwner
                     ? {
                         visibility: wishlist.visibility,
                         archived: wishlist.archived,
-                        onInvite: () => setManageOpen(true),
+                        onInvite: () => chooseTab('people'),
                       }
                     : undefined
                 }
@@ -1398,26 +1493,19 @@ export default function WishlistDetail() {
           />
         )}
 
-        {/* Manage header (owners only) */}
-        {manageOpen && isOwner && (
-          <div className="mb-6 flex items-center gap-3">
-            <IconButton
-              icon="chevron-left"
-              label="Back to items"
-              onClick={() => setManageOpen(false)}
-              variant="secondary"
-              size="sm"
-              shape="pill"
-            />
-            <h2 className="text-xl font-semibold tracking-tight text-foreground">
-              Manage wishlist
-            </h2>
-          </div>
+        {/* An owner's tabs: Items · People (n) · Settings, in the URL (`?tab=`). */}
+        {isOwner && (
+          <WishlistTabs
+            value={tab}
+            onChange={chooseTab}
+            peopleCount={peopleCount}
+            idBase={tabsId}
+          />
         )}
 
         {/* Items Tab */}
-        {!manageOpen && (
-          <>
+        {onItems && (
+          <div {...tabPanel}>
             {/* Archived: say so before anything else, with the way back. Only an
                 owner ever gets an archived list, but the banner checks anyway. */}
             {isOwner && wishlist.archived && (
@@ -1546,7 +1634,7 @@ export default function WishlistDetail() {
                               owner={{
                                 visibility: wishlist.visibility,
                                 archived: wishlist.archived,
-                                onInvite: () => setManageOpen(true),
+                                onInvite: () => chooseTab('people'),
                               }}
                             />
                           )}
@@ -1612,425 +1700,57 @@ export default function WishlistDetail() {
                 )}
               </>
             )}
-          </>
-        )}
-
-        {/* Users Tab */}
-        {manageOpen && (
-          <div className="space-y-6">
-            {isOwner && (
-              <InviteMemberForm
-                ref={inviteFormRef}
-                onInvite={handleInvite}
-                isInviting={isInviting}
-                statuses={inviteStatuses}
-                // A member's suggestion makes them a co-owner through the same
-                // confirmation and promotion invite as their Make owner.
-                onPromote={setPromoteConfirm}
-              />
-            )}
-
-            {/* Owners and members are two different relationships to the list, not
-                two points on a scale — so they get their own blocks with their own
-                actions, rather than one list behind a role dropdown. */}
-            <Panel
-              variant="list"
-              title="Owners"
-              description={
-                <>
-                  Full control of this list, and it shows on each of their profiles. Owners never
-                  see what&apos;s been reserved.
-                </>
-              }
-            >
-              {loadingMembers
-                ? Array.from({ length: 2 }).map((_, i) => <MemberRowSkeleton key={i} />)
-                : ownerRows.map((member) => {
-                    const memberUserId = String(member.user._id);
-                    const isCurrentUser = memberUserId === session?.user?.id;
-                    // Owner changes are owners-only, never on yourself, and never on
-                    // the last owner (a list must always keep one).
-                    const canEditRow = isOwner && !isCurrentUser && ownerCount > 1;
-
-                    return (
-                      <PanelRow
-                        key={memberUserId}
-                        className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
-                      >
-                        <div className="flex min-w-0 flex-1 items-center gap-3">
-                          <Avatar
-                            name={member.user.username || 'user'}
-                            src={member.user.image}
-                            size="md"
-                          />
-                          <Link
-                            href={`/users/${member.user.username || ''}`}
-                            className="break-words font-medium text-foreground transition-colors hover:text-accent"
-                          >
-                            @{member.user.username || 'user'}
-                          </Link>
-                        </div>
-                        <div className="flex flex-shrink-0 items-center gap-3">
-                          {isCurrentUser && (
-                            <span className="whitespace-nowrap text-sm text-muted-foreground">
-                              You
-                            </span>
-                          )}
-                          {canEditRow && (
-                            <>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() =>
-                                  setDemoteConfirm({
-                                    userId: memberUserId,
-                                    username: member.user.username || null,
-                                  })
-                                }
-                                disabled={demotingIds.has(memberUserId)}
-                                className="whitespace-nowrap"
-                              >
-                                Make member
-                              </Button>
-                              <Button
-                                variant="danger-ghost"
-                                size="sm"
-                                onClick={() =>
-                                  handleKickMember(memberUserId, member.user.username, true)
-                                }
-                                disabled={demotingIds.has(memberUserId)}
-                                className="whitespace-nowrap"
-                              >
-                                Remove
-                              </Button>
-                            </>
-                          )}
-                          {/* Their own Leave is the title's Leave list…, not one here too. */}
-                        </div>
-                      </PanelRow>
-                    );
-                  })}
-            </Panel>
-
-            <Panel
-              variant="list"
-              title="Members"
-              description={
-                <>
-                  They can browse the list, propose items, and reserve gifts. Making someone an
-                  owner releases whatever they&apos;ve reserved here, since owners can&apos;t see
-                  reservations.
-                </>
-              }
-            >
-              {loadingMembers ? (
-                Array.from({ length: 2 }).map((_, i) => <MemberRowSkeleton key={i} />)
-              ) : memberRows.length === 0 ? (
-                <p className="px-5 py-12 text-center text-muted-foreground sm:px-6">
-                  No members yet.
-                </p>
-              ) : (
-                memberRows.map((member) => {
-                  const memberUserId = String(member.user._id);
-                  const isCurrentUser = memberUserId === session?.user?.id;
-
-                  return (
-                    <PanelRow
-                      key={member._id}
-                      className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
-                    >
-                      <div className="flex min-w-0 flex-1 items-center gap-3">
-                        <Avatar
-                          name={member.user.username || 'user'}
-                          src={member.user.image}
-                          size="md"
-                        />
-                        <Link
-                          href={`/users/${member.user.username || ''}`}
-                          className="break-words font-medium text-foreground transition-colors hover:text-accent"
-                        >
-                          @{member.user.username || 'user'}
-                        </Link>
-                      </div>
-                      <div className="flex flex-shrink-0 items-center gap-3">
-                        {isCurrentUser && (
-                          <span className="whitespace-nowrap text-sm text-muted-foreground">
-                            You
-                          </span>
-                        )}
-                        {isOwner && !isCurrentUser && (
-                          <>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() =>
-                                setPromoteConfirm({
-                                  userId: memberUserId,
-                                  username: member.user.username || 'this person',
-                                })
-                              }
-                              className="whitespace-nowrap"
-                            >
-                              Make owner
-                            </Button>
-                            <Button
-                              variant="danger-ghost"
-                              size="sm"
-                              onClick={() =>
-                                handleKickMember(member._id, member.user.username, false)
-                              }
-                              className="whitespace-nowrap"
-                            >
-                              Remove
-                            </Button>
-                          </>
-                        )}
-                      </div>
-                    </PanelRow>
-                  );
-                })
-              )}
-            </Panel>
-
-            {/* Pending invites */}
-            {isOwner && pendingInvites.length > 0 && (
-              <Panel variant="list" title="Pending invites">
-                {pendingInvites.map((inv) => (
-                  <PanelRow key={inv._id} className="flex items-center justify-between gap-3">
-                    <div className="flex min-w-0 items-center gap-3">
-                      <Avatar name={inv.username || 'invite'} src={inv.image} size="md" />
-                      <div className="min-w-0">
-                        <p className="truncate font-medium text-foreground">
-                          {inv.username ? `@${inv.username}` : 'Invited user'}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          Invited as {inv.role} · awaiting response
-                        </p>
-                      </div>
-                    </div>
-                    <Button
-                      variant="danger-ghost"
-                      size="sm"
-                      onClick={() => cancelInvite(inv._id)}
-                      className="whitespace-nowrap"
-                    >
-                      Cancel
-                    </Button>
-                  </PanelRow>
-                ))}
-              </Panel>
-            )}
           </div>
         )}
 
-        {/* Settings Tab */}
-        {manageOpen && isOwner && (
-          <div className="mt-6 space-y-6">
-            <Panel title="Wishlist settings">
-              <form
-                onSubmit={async (e) => {
-                  e.preventDefault();
-                  // A one-off's date input is `required`; a yearly one's day
-                  // and month pickers can't be, so they're checked here.
-                  const missing = missingFromDraft(settingsForm.occasion);
-                  if (missing) {
-                    showToast(missing, 'error');
-                    return;
-                  }
-                  // Only the settings changed here go, so a co-owner's change
-                  // to any other one since the form was filled stays. With
-                  // nothing changed there's nothing to write (and the API
-                  // refuses an empty edit).
-                  const sent = settingsForm;
-                  const changes = settingsChanges(sent, settingsBaseline);
-                  if (Object.keys(changes).length === 0) {
-                    showToast('No changes to save', 'info');
-                    return;
-                  }
-                  setIsSavingSettings(true);
-
-                  try {
-                    const response = await fetch(`/api/wishlists/${wishlistId}`, {
-                      method: 'PATCH',
-                      headers: {
-                        'Content-Type': 'application/json',
-                      },
-                      body: JSON.stringify(changes),
-                    });
-
-                    const result = await response.json();
-
-                    if (result.success) {
-                      // The caller's pin isn't a setting: a save never changes
-                      // it, and its answer can predate a Pin to my dashboard
-                      // picked from the header while it was out.
-                      setWishlist((prev) => ({
-                        ...result.data,
-                        featured: prev ? prev.featured : result.data.featured,
-                      }));
-                      // Refill the form from the list as saved: what was sent,
-                      // and a co-owner's change to anything that wasn't. The
-                      // next save then diffs against that, not the first load.
-                      refillSettings(wishlistSettings(result.data), sent);
-                      showToast('Wishlist updated successfully', 'success');
-                      // Keep the URL in sync when the slug changes (or upgrade
-                      // an id-based URL to the slug).
-                      const newSlug = result.data?.slug as string | undefined;
-                      if (newSlug && newSlug !== wishlistId) {
-                        router.replace(`/wishlists/${newSlug}`);
-                      }
-                    } else {
-                      showToast(result.error || 'Failed to update wishlist', 'error');
-                    }
-                  } catch (error) {
-                    console.error('Error updating wishlist:', error);
-                    showToast('Failed to update wishlist', 'error');
-                  } finally {
-                    setIsSavingSettings(false);
-                  }
-                }}
-                className="space-y-4"
-                autoComplete="off"
-              >
-                <Field label="Wishlist name *" id="settings-name">
-                  <Input
-                    required
-                    value={settingsForm.name}
-                    onChange={(e) => editSettings({ name: e.target.value })}
-                    disabled={isSavingSettings}
-                    autoComplete="off"
-                  />
-                </Field>
-
-                <Field
-                  label="Link"
-                  id="settings-slug"
-                  helper="The wishlist's web address. Lowercase letters, numbers, and hyphens."
-                >
-                  <Input
-                    leading={<span className="text-sm">/wishlists/</span>}
-                    value={settingsForm.slug}
-                    onChange={(e) =>
-                      editSettings({
-                        slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''),
-                      })
-                    }
-                    disabled={isSavingSettings}
-                    autoComplete="off"
-                    autoCapitalize="none"
-                    spellCheck={false}
-                  />
-                </Field>
-
-                <Field label="Description" id="settings-description">
-                  <Textarea
-                    value={settingsForm.description}
-                    onChange={(e) => editSettings({ description: e.target.value })}
-                    rows={3}
-                    disabled={isSavingSettings}
-                    autoComplete="off"
-                  />
-                </Field>
-
-                <OccasionField
-                  value={settingsForm.occasion}
-                  saved={settingsBaseline.occasion}
-                  onChange={(occasion) => editSettings({ occasion })}
-                  disabled={isSavingSettings}
+        {tab === 'people' && (
+          <div {...tabPanel}>
+            <WishlistPeopleTab
+              inviteForm={
+                <InviteMemberForm
+                  ref={inviteFormRef}
+                  onInvite={handleInvite}
+                  isInviting={isInviting}
+                  statuses={inviteStatuses}
+                  // A member's suggestion makes them a co-owner through the same
+                  // confirmation and promotion invite as their Make owner….
+                  onPromote={setPromoteConfirm}
                 />
+              }
+              people={members}
+              invites={pendingInvites}
+              viewerId={viewerId}
+              linkOpensForOthers={!wishlist.archived && getVisibility(wishlist) !== 'private'}
+              ownerCount={ownerCount}
+              loading={membersRead === 'loading'}
+              failed={membersRead === 'failed'}
+              onRetry={retryMembers}
+              busy={rowBusy}
+              onDemote={setDemoteConfirm}
+              onPromote={setPromoteConfirm}
+              onRemove={handleKickMember}
+              onCancelInvite={cancelInvite}
+            />
+          </div>
+        )}
 
-                <div>
-                  <label className={FIELD_LABEL}>Currency</label>
-                  <Select
-                    value={settingsForm.currency}
-                    onChange={(v) => editSettings({ currency: v })}
-                    options={currencySelectOptions}
-                    ariaLabel="Wishlist currency"
-                    size="md"
-                    triggerClassName="w-full"
-                    disabled={isSavingSettings}
-                  />
-                  <p className={FIELD_HELPER}>Default currency for prices in this wishlist.</p>
-                </div>
-
-                <div>
-                  <label className={FIELD_LABEL}>
-                    Banner image <span className="text-muted-foreground">(optional)</span>
-                  </label>
-                  <ImageUpload
-                    value={settingsForm.bannerUrl || null}
-                    onChange={(url) => editSettings({ bannerUrl: url ?? '' })}
-                    disabled={isSavingSettings}
-                  />
-                  <p className={FIELD_HELPER}>Shown across the top of the list, and on its card.</p>
-                </div>
-
-                <div>
-                  <span id="settings-visibility-label" className={FIELD_LABEL}>
-                    Visibility
-                  </span>
-                  <p
-                    id="settings-visibility-helper"
-                    className="mb-1.5 text-xs text-muted-foreground"
-                  >
-                    {visibilityMeta[settingsForm.visibility].helper}
-                  </p>
-                  <SegmentedControl
-                    ariaLabelledBy="settings-visibility-label"
-                    ariaDescribedBy="settings-visibility-helper"
-                    value={settingsForm.visibility}
-                    onChange={(visibility) => editSettings({ visibility })}
-                    disabled={isSavingSettings}
-                    options={VISIBILITY_OPTIONS}
-                  />
-                </div>
-
-                <div className="flex flex-col sm:flex-row gap-3 pt-4">
-                  <Button type="submit" disabled={isSavingSettings} fullWidth className="sm:w-auto">
-                    {isSavingSettings ? 'Saving…' : 'Save changes'}
-                  </Button>
-                </div>
-              </form>
-
-              {/* Archive Section */}
-              <PanelSection
-                title={wishlist.archived ? 'Unarchive wishlist' : 'Archive wishlist'}
-                description={
-                  wishlist.archived
-                    ? 'This wishlist is archived: only owners can see it. Unarchive it to open it again to members, and to anyone its visibility allows.'
-                    : ARCHIVE_EXPLANATION
-                }
-              >
-                <Button
-                  variant="secondary"
-                  onClick={() => (wishlist.archived ? setArchived(false) : setArchiveConfirm(true))}
-                  disabled={isArchiving}
-                  className="sm:w-auto"
-                  fullWidth
-                >
-                  <Icon name="archive" size={16} />
-                  {wishlist.archived ? 'Unarchive' : 'Archive'}
-                </Button>
-              </PanelSection>
-
-              {/* Pinning the list to the owner's dashboard is per-owner, not a
-                  setting of the list: it's Pin to my dashboard, in the title's ⋯ menu. */}
-
-              {/* Danger zone: deleting the list, for any owner */}
-              {isOwner && (
-                <PanelSection title="Danger zone" description={DELETE_LIST_WARNING}>
-                  <Button
-                    variant="danger"
-                    onClick={handleDeleteWishlist}
-                    disabled={isDeletingWishlist}
-                    fullWidth
-                    className="sm:w-auto"
-                  >
-                    {isDeletingWishlist ? 'Deleting…' : 'Delete wishlist'}
-                  </Button>
-                </PanelSection>
-              )}
-            </Panel>
+        {tab === 'settings' && (
+          <div {...tabPanel}>
+            <WishlistSettingsTab
+              form={settingsForm}
+              saved={settingsBaseline}
+              dirty={settingsDirty}
+              saving={isSavingSettings}
+              onEdit={editSettings}
+              onSubmit={saveSettings}
+              onDiscard={discardSettings}
+              archived={!!wishlist.archived}
+              archiving={isArchiving}
+              onArchive={() => setArchiveConfirm(true)}
+              onUnarchive={() => setArchived(false)}
+              deleting={isDeletingWishlist}
+              onDelete={handleDeleteWishlist}
+            />
           </div>
         )}
       </main>
@@ -2133,7 +1853,7 @@ export default function WishlistDetail() {
           // ("promote them from the members list"), so the way to them comes first.
           message={
             memberRows.length > 0
-              ? 'A wishlist needs at least one owner. To leave, make someone else an owner first: use Make owner next to one of your members, or invite a co-owner. Once they accept, you can leave. Or delete the wishlist instead.'
+              ? 'A wishlist needs at least one owner. To leave, make someone else an owner first: pick Make owner… in one of your members’ menus on People, or invite a co-owner. Once they accept, you can leave. Or delete the wishlist instead.'
               : 'A wishlist needs at least one owner. To leave, invite a co-owner first; once they accept, you can leave. Or delete the wishlist instead.'
           }
           onConfirm={inviteCoOwnerInstead}

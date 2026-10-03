@@ -34,6 +34,7 @@ vi.mock('@/components/AuthButton', () => ({ default: () => null }));
 vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }));
 
 import WishlistDetail from '@/app/wishlists/[id]/page';
+import { listTab } from './listMenu';
 
 // What Carol is on the list (null: a visitor), and its items as the items API
 // gives them to her. `itemsFail` makes every read of the items fail.
@@ -194,7 +195,7 @@ describe('a list with no items at all', () => {
     expect(screen.queryByText(/match the selected filters/)).toBeNull();
     expect(screen.queryByRole('heading', { name: 'No items found' })).toBeNull();
     expectNoCardsOrToolbar();
-    expect(headerActions()).toEqual(['Add item', 'Share', 'Manage wishlist', 'More list actions']);
+    expect(headerActions()).toEqual(['Add item', 'Share', 'More list actions']);
 
     // Share tells the owner who the link opens for, and Copy link copies the list's link.
     await user.click(within(box).getByRole('button', { name: 'Share' }));
@@ -209,8 +210,7 @@ describe('a list with no items at all', () => {
     expect(await screen.findByRole('dialog', { name: 'Add new item' })).toBeInTheDocument();
   });
 
-  // Until the People tab (WIS-243) lands, inviting from Share opens Manage.
-  it("takes the owner from Share's invite to Manage's invite form", async () => {
+  it("takes the owner from Share's invite to People's invite form", async () => {
     const user = userEvent.setup();
     await open();
 
@@ -218,7 +218,8 @@ describe('a list with no items at all', () => {
     await user.click(screen.getByRole('menuitem', { name: 'Invite people to reserve gifts' }));
     // The invite form's username field is a combobox (its suggestions' list).
     expect(await screen.findByRole('combobox', { name: 'Search by username' })).toBeVisible();
-    expect(screen.getAllByRole('button', { name: 'Back to items' })).not.toHaveLength(0);
+    expect(await listTab('People')).toHaveAttribute('aria-selected', 'true');
+    expect(window.location.search).toBe('?tab=people');
   });
 
   // regression: the empty state's Share showed on an archived list, whose link

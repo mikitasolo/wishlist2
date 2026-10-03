@@ -25,6 +25,7 @@ vi.mock('@/components/AuthButton', () => ({ default: () => null }));
 vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }));
 
 import WishlistDetail from '@/app/wishlists/[id]/page';
+import { openListTab } from './listMenu';
 
 // User ids double as usernames. Alice (signed in) and Bob own the list, Carol
 // is a member, and Dave has an invite pending.
@@ -102,10 +103,10 @@ afterEach(() => {
 });
 
 async function searchFor(user: ReturnType<typeof userEvent.setup>, text: string) {
-  await user.click(await screen.findByRole('button', { name: 'Manage wishlist' }));
+  await openListTab(user, 'People');
   // The page has the people on the list before anyone searches.
   await screen.findByRole('link', { name: '@carol' });
-  await screen.findByText('@dave');
+  await screen.findByRole('link', { name: '@dave' });
   const field = screen.getByRole('combobox', { name: 'Search by username' });
   await user.click(field);
   await user.keyboard(text);

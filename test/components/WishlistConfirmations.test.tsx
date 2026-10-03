@@ -28,7 +28,7 @@ vi.mock('@/components/AuthButton', () => ({ default: () => null }));
 vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }));
 
 import WishlistDetail from '@/app/wishlists/[id]/page';
-import { pickLeave } from './listMenu';
+import { pickLeave, openListTab, pickRowAction } from './listMenu';
 
 // User ids double as usernames here. Alice is signed in.
 let owners: string[];
@@ -137,9 +137,14 @@ const itemsShown = async () => {
   if (items?.length) await screen.findByText(`Item ${items[0]._id}`);
 };
 
-async function openManage(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(await screen.findByRole('button', { name: 'Manage wishlist' }));
+async function openPeople(user: ReturnType<typeof userEvent.setup>) {
+  await openListTab(user, 'People');
   await screen.findByRole('link', { name: '@alice' });
+}
+
+async function openSettings(user: ReturnType<typeof userEvent.setup>) {
+  await openListTab(user, 'Settings');
+  await screen.findByRole('heading', { name: 'Danger zone' });
 }
 
 describe("a member's Leave", () => {
@@ -239,25 +244,16 @@ describe("an owner's confirmations", () => {
     ];
   });
 
-  /** The Remove on `username`'s row in Manage (the byline credits co-owners too). */
-  const removeOn = (username: string) => {
-    const row = screen
-      .getAllByRole('link', { name: `@${username}` })
-      .map((link) => link.parentElement!.parentElement!)
-      .find((r) => within(r).queryByRole('button', { name: 'Remove' }));
-    return within(row!).getByRole('button', { name: 'Remove' });
-  };
-
   // regression: it read "remove carol" (no @) and said nothing of what removing
   // does, under a trash can.
   it("regression: removing a member says what they lose and what they're told, with no count of their reservations", async () => {
     const user = userEvent.setup();
     render(<WishlistDetail />);
     await itemsShown();
-    await openManage(user);
+    await openPeople(user);
     await screen.findByRole('link', { name: '@carol' });
 
-    await user.click(removeOn('carol'));
+    await pickRowAction(user, 'carol', 'Remove…');
 
     const dialog = await screen.findByRole('alertdialog', { name: 'Remove @carol?' });
     expect(dialog).toHaveAccessibleDescription(
@@ -277,10 +273,10 @@ describe("an owner's confirmations", () => {
     const user = userEvent.setup();
     render(<WishlistDetail />);
     await itemsShown();
-    await openManage(user);
+    await openPeople(user);
     await waitFor(() => expect(screen.getAllByRole('link', { name: '@bob' })).toHaveLength(2));
 
-    await user.click(removeOn('bob'));
+    await pickRowAction(user, 'bob', 'Remove…');
 
     const dialog = await screen.findByRole('alertdialog', { name: 'Remove @bob as an owner?' });
     expect(dialog).toHaveAccessibleDescription(
@@ -312,13 +308,13 @@ describe("an owner's confirmations", () => {
     const user = userEvent.setup();
     render(<WishlistDetail />);
     await itemsShown();
-    await openManage(user);
+    await openSettings(user);
 
-    const zone = screen.getByRole('heading', { name: 'Danger zone' }).parentElement!;
+    const zone = screen.getByRole('heading', { name: 'Danger zone' }).closest('section')!;
     expect(zone).toHaveTextContent(
       "Deleting this wishlist takes its items and everyone's access with it. This can't be undone."
     );
-    await user.click(within(zone).getByRole('button', { name: 'Delete wishlist' }));
+    await user.click(within(zone).getByRole('button', { name: 'Delete…' }));
 
     const dialog = await screen.findByRole('alertdialog', { name: 'Delete “Birthday”?' });
     // Every item goes, the draft and the proposal included.
@@ -334,9 +330,9 @@ describe("an owner's confirmations", () => {
     const user = userEvent.setup();
     render(<WishlistDetail />);
     await screen.findByRole('heading', { name: 'Couldn’t load this list’s items' });
-    await openManage(user);
+    await openSettings(user);
 
-    await user.click(screen.getByRole('button', { name: 'Delete wishlist' }));
+    await user.click(screen.getByRole('button', { name: 'Delete…' }));
 
     const dialog = await screen.findByRole('alertdialog', { name: 'Delete “Birthday”?' });
     expect(dialog).toHaveAccessibleDescription(

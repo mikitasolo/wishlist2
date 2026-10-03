@@ -21,8 +21,15 @@ async function addMember(page: Page) {
   });
 }
 
-async function openManage(page: Page) {
-  await page.getByRole('button', { name: 'Manage wishlist' }).click();
+async function openTab(page: Page, name: 'People' | 'Settings') {
+  await page.getByRole('tab', { name: new RegExp(`^${name}`) }).click();
+}
+
+/** Pick `name` from the added member's row menu, on People. */
+async function pickMemberAction(page: Page, name: string) {
+  await openTab(page, 'People');
+  await page.getByRole('button', { name: `Actions for @${member.user.username}` }).click();
+  await page.getByRole('menuitem', { name }).click();
 }
 
 const toast = (page: Page, text: string) => page.getByRole('status').filter({ hasText: text });
@@ -40,8 +47,7 @@ for (const flow of [
     path: '/wishlists/e2e-birthday',
     open: async (page: Page) => {
       await addMember(page);
-      await openManage(page);
-      await page.getByRole('button', { name: 'Remove', exact: true }).click();
+      await pickMemberAction(page, 'Remove…');
     },
     confirm: 'Remove',
     pending: 'Removing…',
@@ -55,8 +61,7 @@ for (const flow of [
     path: '/wishlists/e2e-birthday',
     open: async (page: Page) => {
       await addMember(page);
-      await openManage(page);
-      await page.getByRole('button', { name: 'Make owner' }).click();
+      await pickMemberAction(page, 'Make owner…');
     },
     confirm: 'Send owner invite',
     pending: 'Sending…',
@@ -83,8 +88,8 @@ for (const flow of [
     title: 'Delete “E2E Birthday List”?',
     path: '/wishlists/e2e-birthday',
     open: async (page: Page) => {
-      await openManage(page);
-      await page.getByRole('button', { name: 'Delete wishlist' }).click();
+      await openTab(page, 'Settings');
+      await page.getByRole('button', { name: 'Delete…' }).click();
     },
     confirm: 'Delete',
     pending: 'Deleting…',

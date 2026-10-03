@@ -39,14 +39,19 @@ async function addCoOwner(page: Page, isDemoted: () => boolean) {
 }
 
 async function openOwners(page: Page) {
-  await page.goto('/wishlists/e2e-birthday');
-  await page.getByRole('button', { name: 'Manage wishlist' }).click();
-  await expect(page.getByRole('link', { name: `@${coOwner.username}` })).toBeVisible();
+  await page.goto('/wishlists/e2e-birthday?tab=people');
+  await expect(rowMenu(page)).toBeVisible();
 }
 
-/** Make member on the co-owner's row, in Manage. Its dialog's confirm has the same name. */
-const rowMakeMember = (page: Page) =>
-  page.getByRole('main').getByRole('button', { name: 'Make member' });
+/** The ⋯ menu on the co-owner's row, on People. */
+const rowMenu = (page: Page) =>
+  page.getByRole('button', { name: `Actions for @${coOwner.username}` });
+
+/** Open the co-owner's row menu and return its item `name`. */
+async function rowItem(page: Page, name: string) {
+  await rowMenu(page).click();
+  return page.getByRole('menuitem', { name });
+}
 /** The dialog Make member asks in before anything is sent. */
 const demoteDialog = (page: Page) =>
   page.getByRole('alertdialog', { name: `Make @${coOwner.username} a member?` });
@@ -60,8 +65,16 @@ async function pickLeave(page: Page) {
 
 /** Open the co-owner's Make member dialog and confirm it. */
 async function demote(page: Page) {
-  await rowMakeMember(page).click();
+  await (await rowItem(page, 'Make member…')).click();
   await demoteDialog(page).getByRole('button', { name: 'Make member' }).click();
+}
+
+/** Their row's menu offers `name`, and can act on it; closed again after. */
+async function expectRowOffers(page: Page, name: string) {
+  const item = await rowItem(page, name);
+  await expect(item).toBeVisible();
+  await expect(item).not.toHaveAttribute('aria-disabled', 'true');
+  await page.keyboard.press('Escape');
 }
 
 // regression: "Make member" had no confirmation and no in-flight guard, so a
@@ -109,19 +122,16 @@ for (const variant of [
     const leaveDialog = page.getByRole('alertdialog', { name: 'Leave “E2E Birthday List”?' });
     await leaveDialog.getByRole('button', { name: 'Cancel' }).click();
     await expect(leaveDialog).toBeHidden();
-    const makeMember = rowMakeMember(page);
-    await makeMember.click();
+    await (await rowItem(page, 'Make member…')).click();
     const dialog = demoteDialog(page);
     await expect(dialog).toContainText('Making them an owner again needs their acceptance.');
     await variant.click(dialog.getByRole('button', { name: 'Make member' }));
 
-    // While the demotion runs, the dialog says so, and neither it nor the row
-    // takes more clicks. Soft, so the request count below is checked either way.
+    // While the demotion runs, the dialog says so, and takes no more clicks.
+    // Soft, so the request count below is checked either way.
     await expect.poll(() => requests).toBeGreaterThan(0);
     await expect.soft(dialog.getByRole('button', { name: 'Making member…' })).toBeDisabled();
     await expect.soft(dialog.getByRole('button', { name: 'Cancel' })).toBeDisabled();
-    await expect.soft(makeMember).toBeDisabled();
-    await expect.soft(page.getByRole('button', { name: 'Remove', exact: true })).toBeDisabled();
 
     answer();
     await expect(toast(page, DEMOTED)).toBeVisible();
@@ -129,9 +139,8 @@ for (const variant of [
     // Counted the moment the success shows: toasts dismiss themselves after 4s.
     expect(await toast(page, SECOND_ANSWER).count()).toBe(0);
     await expect(dialog).toBeHidden();
-    // The refresh moved them to Members, where the row offers "Make owner".
-    await expect(makeMember).toBeHidden();
-    await expect(page.getByRole('button', { name: 'Make owner' })).toBeVisible();
+    // The refresh moved them to Members, where the row offers "Make owner…".
+    await expectRowOffers(page, 'Make owner…');
     // The signed-in user is the only owner left, so they can't leave: their
     // Leave list… explains why instead.
     await pickLeave(page);
@@ -163,15 +172,13 @@ test('a failed demotion gives the buttons back, so it can be retried', async ({
 
   await expect(toast(page, 'Try again later')).toBeVisible();
   await expect(demoteDialog(page)).toBeHidden();
-  await expect(rowMakeMember(page)).toBeEnabled();
-  await expect(page.getByRole('button', { name: 'Remove', exact: true })).toBeEnabled();
+  await expectRowOffers(page, 'Make member…');
+  await expectRowOffers(page, 'Remove…');
 
   await demote(page);
   await expect(toast(page, DEMOTED)).toBeVisible();
   expect(requests).toBe(2);
-  await expect(rowMakeMember(page)).toBeHidden();
-  // Make member goes as soon as the page counts one owner, before the members
-  // refresh lands: wait for that to move them to Members, so the test doesn't
+  // Wait for the members refresh to move them to Members, so the test doesn't
   // end with the refresh still in the route above.
-  await expect(page.getByRole('button', { name: 'Make owner' })).toBeVisible();
+  await expectRowOffers(page, 'Make owner…');
 });

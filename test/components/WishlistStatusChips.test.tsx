@@ -345,6 +345,23 @@ describe('the URL keeps the chip, for back and refresh', () => {
     await user.click(chip('All'));
     expect(window.location.search).toBe('?x=1');
   });
+
+  // An owner's tabs push history entries (?tab=), so back can land on an
+  // entry of this list whose URL names another chip, or none.
+  it('takes the chip from the URL again on back and forward', async () => {
+    const user = userEvent.setup();
+    await open('birthday');
+    window.history.pushState(null, '', '/wishlists/birthday?tab=people');
+    window.history.pushState(null, '', '/wishlists/birthday');
+    await user.click(chip('Available'));
+    expect(window.location.search).toBe('?show=available');
+
+    act(() => window.history.back());
+    await waitFor(() => expect(chip('All')).toBeChecked());
+    expect(window.location.search).toBe('?tab=people');
+    act(() => window.history.forward());
+    await waitFor(() => expect(chip('Available')).toBeChecked());
+  });
 });
 
 describe('the URL keeps the chip when the list moves to a new URL', () => {

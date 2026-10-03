@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup, waitFor } from '@testing-library/react';
+import { render, screen, cleanup, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 const { push, replace, showToast } = vi.hoisted(() => ({
@@ -28,6 +28,7 @@ vi.mock('@/components/AuthButton', () => ({ default: () => null }));
 vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }));
 
 import WishlistDetail from '@/app/wishlists/[id]/page';
+import { openListTab } from './listMenu';
 
 // The list as Alice's page loads it: she and Bob own it.
 const loaded = {
@@ -92,13 +93,15 @@ afterEach(() => {
 async function openSettings() {
   const user = userEvent.setup();
   render(<WishlistDetail />);
-  await user.click(await screen.findByRole('button', { name: 'Manage wishlist' }));
-  await screen.findByText('Wishlist settings');
+  await openListTab(user, 'Settings');
+  await screen.findByRole('heading', { name: 'About' });
   return user;
 }
 
 const description = () => screen.getByLabelText('Description');
-const save = () => screen.getByRole('button', { name: 'Save changes' });
+const save = () => screen.getByRole('button', { name: 'Save' });
+/** The bar that says there's something to save, with Discard and Save. */
+const saveBar = () => screen.queryByText('Unsaved changes')?.parentElement ?? null;
 
 describe('the wishlist settings form', () => {
   // regression: the form sent every setting on each save, as filled when the
@@ -155,15 +158,23 @@ describe('the wishlist settings form', () => {
     expect(patches[0]).toEqual({ description: '', visibility: 'friends' });
   });
 
-  it('sends nothing when nothing was changed, and says so', async () => {
+  // regression: Save was always there, and pressing it with nothing changed
+  // toasted "No changes to save".
+  it('regression: offers no Save while nothing was changed, and Enter sends nothing', async () => {
     const user = await openSettings();
+    expect(saveBar()).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
 
-    // Typed and put back: the form is as it was loaded.
+    // Typed and put back: the form is as it was loaded, so the bar goes again.
     await user.type(description(), '!');
+    expect(saveBar()).not.toBeNull();
     await user.type(description(), '{Backspace}');
-    await user.click(save());
+    expect(saveBar()).toBeNull();
+    // A change only in case or spaces isn't one either: the server stores it as it is.
+    await user.type(screen.getByLabelText('Wishlist name *'), ' {Enter}');
+    expect(saveBar()).toBeNull();
 
-    expect(showToast).toHaveBeenCalledWith('No changes to save', 'info');
+    expect(showToast).not.toHaveBeenCalled();
     expect(patches).toEqual([]);
     expect(fetchMock).not.toHaveBeenCalledWith(
       '/api/wishlists/birthday',
@@ -191,5 +202,44 @@ describe('the wishlist settings form', () => {
     fetchMock.mockImplementation(succeed);
     await user.click(save());
     await waitFor(() => expect(patches).toEqual([{ description: 'Updated' }]));
+  });
+
+  it('shows the save bar only while the form differs from the list, and Discard puts the form back', async () => {
+    const user = await openSettings();
+    expect(saveBar()).toBeNull();
+
+    await user.clear(description());
+    await user.type(description(), 'Something else');
+    await user.click(screen.getByRole('radio', { name: /Friends/ }));
+    const bar = saveBar()!;
+    expect(bar).not.toBeNull();
+    expect(
+      within(bar)
+        .getAllByRole('button')
+        .map((b) => b.textContent)
+    ).toEqual(['Discard', 'Save']);
+
+    await user.click(within(bar).getByRole('button', { name: 'Discard' }));
+    expect(saveBar()).toBeNull();
+    expect(description()).toHaveValue('Things I would like');
+    expect(screen.getByRole('radio', { name: /Public/ })).toBeChecked();
+    expect(patches).toEqual([]);
+  });
+
+  it('hides the bar once a save lands, and warns while the link is changed', async () => {
+    const user = await openSettings();
+    const link = screen.getByLabelText('Link');
+    expect(screen.queryByText("Changing it breaks links you've already shared.")).toBeNull();
+
+    await user.clear(link);
+    await user.type(link, 'turning-37');
+    expect(screen.getByText("Changing it breaks links you've already shared.")).toBeInTheDocument();
+    await user.click(save());
+
+    await waitFor(() => expect(patches).toEqual([{ slug: 'turning-37' }]));
+    await waitFor(() => expect(saveBar()).toBeNull());
+    expect(screen.queryByText("Changing it breaks links you've already shared.")).toBeNull();
+    // The page follows the list to its new link, on the tab it's on.
+    await waitFor(() => expect(replace).toHaveBeenCalledWith('/wishlists/turning-37?tab=settings'));
   });
 });

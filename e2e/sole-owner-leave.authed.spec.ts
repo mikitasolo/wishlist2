@@ -2,7 +2,7 @@ import { test, expect } from './fixtures';
 
 // The seeded user is the only owner of e2e-birthday. Nothing here writes: the
 // explanation leaves nothing, and no invite is sent. A phone-sized window, so
-// the invite form, in Manage, has to be opened and scrolled to.
+// the invite form, on People, has to be opened and scrolled to.
 test.use({ viewport: { width: 390, height: 640 } });
 
 test("the sole owner's Leave list… explains, and takes them to an owner invite", async ({
@@ -30,7 +30,9 @@ test("the sole owner's Leave list… explains, and takes them to an owner invite
   await expect(field).toBeFocused();
   await expect(field).toBeInViewport();
   await expect(page.getByRole('radio', { name: 'Co-owner' })).toBeChecked();
-  // Manage opened for the form: its own row has no second Leave.
+  // People opened for the form, in the URL: its own row has no second Leave.
+  await expect(page).toHaveURL(/\/wishlists\/e2e-birthday\?tab=people$/);
+  await expect(page.getByRole('tab', { name: /^People/ })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByRole('button', { name: /^Leave/ })).toHaveCount(0);
   expect(leaves).toEqual([]);
 });

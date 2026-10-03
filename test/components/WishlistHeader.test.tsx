@@ -25,7 +25,6 @@ const base = {
   visibility: 'everyone' as const,
   onAddItem: noop,
   onPropose: noop,
-  onToggleManage: noop,
   onTogglePin: noop,
   onLeave: noop,
 };
@@ -154,10 +153,11 @@ describe('WishlistHeader: the meta line', () => {
   });
 });
 
-describe('WishlistHeader: Manage', () => {
-  it('turns into Done while Manage is open, and offers no Add item there', () => {
-    render(<WishlistHeader {...base} manageOpen />);
-    expect(screen.getByRole('button', { name: 'Back to items' })).toHaveTextContent('Done');
-    expect(screen.queryByRole('button', { name: 'Add item' })).toBeNull();
+describe('WishlistHeader: no Manage', () => {
+  // The list's tabs (Items · People · Settings) replaced Manage and its Done.
+  it('offers an owner no Manage or Done: the tabs under the header are the way there', () => {
+    render(<WishlistHeader {...base} />);
+    expect(screen.queryByRole('button', { name: /Manage|Back to items/ })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Add item' })).toBeInTheDocument();
   });
 });

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useLayoutEffect, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useState } from 'react';
 import type { ViewerRole } from '@/lib/utils/itemStatus';
 import { LIST_CHIP_PARAM, listChipFor, type ListChip } from '@/lib/utils/listChips';
 
@@ -63,6 +63,20 @@ export function useListChip(
       writeChipToUrl(choice.chip);
     }
   }, [scope, path, role, urlIsList, choice]);
+
+  // Back or forward to another of this list's history entries (an owner's
+  // tabs push one each, `useListTab`): the chip is whatever that entry's URL
+  // says, as it would be on a refresh, so the two never disagree.
+  useEffect(() => {
+    if (!scope) return;
+    const onPopState = () => {
+      if (!urlIsList || !path || !onPage(path)) return;
+      const fromUrl = new URLSearchParams(window.location.search).get(LIST_CHIP_PARAM);
+      setChoice({ scope, chip: listChipFor(fromUrl, role) });
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, [scope, path, role, urlIsList]);
 
   const chip = choice?.scope === scope ? choice.chip : 'all';
 
