@@ -1,0 +1,266 @@
+'use client';
+
+import type { FormEvent, ReactNode } from 'react';
+import Button from '@/components/Button';
+import Callout from '@/components/Callout';
+import Field from '@/components/Field';
+import ImageUpload from '@/components/ImageUpload';
+import Input from '@/components/Input';
+import OccasionField from '@/components/OccasionField';
+import Panel, { PanelRow } from '@/components/Panel';
+import SegmentedControl from '@/components/SegmentedControl';
+import Select from '@/components/Select';
+import { Skeleton } from '@/components/Skeleton';
+import Textarea from '@/components/Textarea';
+import { FIELD_HELPER, FIELD_LABEL } from '@/components/fieldStyles';
+import { currencySelectOptions } from '@/lib/utils/currencies';
+import { DELETE_LIST_WARNING } from '@/lib/utils/confirmationCopy';
+import { VISIBILITY_OPTIONS, visibilityMeta } from '@/lib/utils/visibility';
+import type { WishlistSettings, WishlistSettingsForm } from '@/lib/utils/wishlistSettings';
+
+/**
+ * What archiving does, where it's offered and again when it's confirmed. An
+ * archived list is owner-only: everyone else gets the answer a missing list
+ * gets, so a link already shared stops working for them.
+ */
+export const ARCHIVE_EXPLANATION =
+  "Only owners can open it. Members and anyone with the link will see that it isn't available. Items and reservations are kept, and you can unarchive anytime.";
+
+/** Under the link while it's been changed. */
+export const SLUG_CHANGE_WARNING = "Changing it breaks links you've already shared.";
+
+interface WishlistSettingsTabProps {
+  form: WishlistSettingsForm;
+  /** The list's settings as the form was last filled from them. */
+  saved: WishlistSettings;
+  /** The form differs from `saved`: a save would send something. */
+  dirty: boolean;
+  saving: boolean;
+  onEdit: (change: Partial<WishlistSettingsForm>) => void;
+  onSubmit: (e: FormEvent<HTMLFormElement>) => void;
+  /** Puts the form back as it was last filled. */
+  onDiscard: () => void;
+  archived: boolean;
+  archiving: boolean;
+  /** Archive…: asks first. */
+  onArchive: () => void;
+  /** Unarchive: only gives back the access people had, so it isn't asked about. */
+  onUnarchive: () => void;
+  deleting: boolean;
+  /** Delete…: asks first. */
+  onDelete: () => void;
+}
+
+/**
+ * The Settings tab of a list's page (owners only), in four sections:
+ *
+ * 1. About: name, description, occasion, cover photo.
+ * 2. Who can see it: the visibility, its helper under the control.
+ * 3. Advanced: the currency, and the link, which warns once it's changed.
+ * 4. Danger zone: Archive… and Delete…, which act at once (each confirmed),
+ *    apart from the form.
+ *
+ * The first three are one form. While it differs from the list as last filled
+ * (`dirty`), a bar sticks to the bottom of the screen with Discard and Save;
+ * otherwise there's nothing to save, and no Save. What a save sends is the
+ * page's business (`settingsChanges`). Pin to my dashboard isn't a setting of
+ * the list: it's in the title's ⋯ menu.
+ */
+export default function WishlistSettingsTab({
+  form,
+  saved,
+  dirty,
+  saving,
+  onEdit,
+  onSubmit,
+  onDiscard,
+  archived,
+  archiving,
+  onArchive,
+  onUnarchive,
+  deleting,
+  onDelete,
+}: WishlistSettingsTabProps) {
+  const slugChanged = form.slug.trim().toLowerCase() !== saved.slug.trim().toLowerCase();
+  return (
+    <div className="max-w-3xl space-y-6">
+      <form onSubmit={onSubmit} className="space-y-6" autoComplete="off">
+        <Panel title="About">
+          <div className="space-y-4">
+            <Field label="Wishlist name *" id="settings-name">
+              <Input
+                required
+                value={form.name}
+                onChange={(e) => onEdit({ name: e.target.value })}
+                disabled={saving}
+                autoComplete="off"
+              />
+            </Field>
+
+            <Field label="Description" id="settings-description">
+              <Textarea
+                value={form.description}
+                onChange={(e) => onEdit({ description: e.target.value })}
+                rows={3}
+                disabled={saving}
+                autoComplete="off"
+              />
+            </Field>
+
+            <OccasionField
+              value={form.occasion}
+              saved={saved.occasion}
+              onChange={(occasion) => onEdit({ occasion })}
+              disabled={saving}
+            />
+
+            <div>
+              <label className={FIELD_LABEL}>
+                Cover photo <span className="text-muted-foreground">(optional)</span>
+              </label>
+              <ImageUpload
+                value={form.bannerUrl || null}
+                onChange={(url) => onEdit({ bannerUrl: url ?? '' })}
+                disabled={saving}
+              />
+              <p className={FIELD_HELPER}>Shown across the top of the list, and on its card.</p>
+            </div>
+          </div>
+        </Panel>
+
+        <Panel title="Who can see it" titleId="settings-visibility-label">
+          <SegmentedControl
+            ariaLabelledBy="settings-visibility-label"
+            ariaDescribedBy="settings-visibility-helper"
+            value={form.visibility}
+            onChange={(visibility) => onEdit({ visibility })}
+            disabled={saving}
+            options={VISIBILITY_OPTIONS}
+          />
+          <p id="settings-visibility-helper" className={FIELD_HELPER}>
+            {visibilityMeta[form.visibility].helper}
+          </p>
+        </Panel>
+
+        <Panel title="Advanced">
+          <div className="space-y-4">
+            <div>
+              <label className={FIELD_LABEL}>Currency</label>
+              <Select
+                value={form.currency}
+                onChange={(v) => onEdit({ currency: v })}
+                options={currencySelectOptions}
+                ariaLabel="Wishlist currency"
+                size="md"
+                triggerClassName="w-full"
+                disabled={saving}
+              />
+              <p className={FIELD_HELPER}>Default currency for prices in this wishlist.</p>
+            </div>
+
+            <Field
+              label="Link"
+              id="settings-slug"
+              helper="The wishlist's web address. Lowercase letters, numbers, and hyphens."
+            >
+              <Input
+                leading={<span className="text-sm">/wishlists/</span>}
+                value={form.slug}
+                onChange={(e) =>
+                  onEdit({ slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '') })
+                }
+                disabled={saving}
+                autoComplete="off"
+                autoCapitalize="none"
+                spellCheck={false}
+              />
+            </Field>
+            {slugChanged && <Callout tone="warning">{SLUG_CHANGE_WARNING}</Callout>}
+          </div>
+        </Panel>
+
+        {/* Only while there's something to save. Sticks to the bottom of the
+            screen while the form runs past it, and rests under the form. */}
+        {dirty && (
+          <div className="sticky bottom-4 z-20 flex items-center gap-3 rounded-2xl border border-border bg-surface py-3 pl-4 pr-3 shadow-lg sm:pl-5">
+            <p className="min-w-0 flex-1 text-sm font-medium text-foreground">Unsaved changes</p>
+            <Button variant="secondary" onClick={onDiscard} disabled={saving}>
+              Discard
+            </Button>
+            <Button type="submit" disabled={saving}>
+              {saving ? 'Saving…' : 'Save'}
+            </Button>
+          </div>
+        )}
+      </form>
+
+      <Panel variant="list" title="Danger zone">
+        <DangerRow
+          title={archived ? 'Unarchive wishlist' : 'Archive wishlist'}
+          description={
+            archived
+              ? 'This wishlist is archived: only owners can see it. Unarchive it to open it again to members, and to anyone its visibility allows.'
+              : ARCHIVE_EXPLANATION
+          }
+        >
+          <Button
+            variant="secondary"
+            size="sm"
+            icon="archive"
+            onClick={archived ? onUnarchive : onArchive}
+            disabled={archiving}
+          >
+            {archived ? 'Unarchive' : 'Archive…'}
+          </Button>
+        </DangerRow>
+        <DangerRow title="Delete wishlist" description={DELETE_LIST_WARNING}>
+          <Button variant="danger" size="sm" onClick={onDelete} disabled={deleting}>
+            {deleting ? 'Deleting…' : 'Delete…'}
+          </Button>
+        </DangerRow>
+      </Panel>
+    </div>
+  );
+}
+
+/** One act in the Danger zone: what it is and does, and its button. */
+function DangerRow({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: string;
+  children: ReactNode;
+}) {
+  return (
+    <PanelRow className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
+      <div className="min-w-0">
+        <h3 className="text-base font-semibold text-foreground">{title}</h3>
+        <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+      </div>
+      <div className="flex-shrink-0">{children}</div>
+    </PanelRow>
+  );
+}
+
+/** The Settings tab while the list loads: its section panels, box for box. */
+export function WishlistSettingsSkeleton() {
+  return (
+    <div className="max-w-3xl space-y-6">
+      {[3, 1, 2].map((fields, i) => (
+        <div key={i} className="rounded-2xl border border-border bg-surface p-5 shadow-sm sm:p-6">
+          <Skeleton className="h-5 w-32" />
+          <div className="mt-5 space-y-4">
+            {Array.from({ length: fields }).map((_, j) => (
+              <div key={j}>
+                <Skeleton className="mb-1.5 h-4 w-24" />
+                <Skeleton className="h-11 w-full rounded-xl" />
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}

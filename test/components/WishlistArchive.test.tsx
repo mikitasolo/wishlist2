@@ -28,6 +28,7 @@ vi.mock('@/components/AuthButton', () => ({ default: () => null }));
 vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }));
 
 import WishlistDetail from '@/app/wishlists/[id]/page';
+import { openListTab } from './listMenu';
 
 const ARCHIVE_EXPLANATION =
   "Only owners can open it. Members and anyone with the link will see that it isn't available. Items and reservations are kept, and you can unarchive anytime.";
@@ -113,21 +114,25 @@ const banner = () => screen.queryByText(BANNER_TEXT)?.parentElement ?? null;
 /** The pill on the list's cover. */
 const coverPill = (label: string) => screen.queryByText(label, { selector: 'span' });
 
-/** Open Manage and wait for its Archive section. Returns that section's button. */
-async function openManage(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(await screen.findByRole('button', { name: 'Manage wishlist' }));
-  const heading = await screen.findByRole('heading', { name: /^(Archive|Unarchive) wishlist$/ });
-  return within(heading.parentElement!).getByRole('button');
+/** Its Danger zone row, under Settings: what archiving does, and its button. */
+const archiveRow = async () =>
+  (await screen.findByRole('heading', { name: /^(Archive|Unarchive) wishlist$/ })).parentElement!
+    .parentElement!;
+
+/** Open Settings and wait for its Archive row. Returns that row's button. */
+async function openSettings(user: ReturnType<typeof userEvent.setup>) {
+  await openListTab(user, 'Settings');
+  return within(await archiveRow()).getByRole('button');
 }
 
 describe('Archiving a list', () => {
   it('explains what archiving does where it is offered', async () => {
     const user = userEvent.setup();
     render(<WishlistDetail />);
-    const archive = await openManage(user);
+    const archive = await openSettings(user);
 
-    expect(archive).toHaveTextContent('Archive');
-    expect(archive.parentElement).toHaveTextContent(ARCHIVE_EXPLANATION);
+    expect(archive).toHaveTextContent('Archive…');
+    expect(await archiveRow()).toHaveTextContent(ARCHIVE_EXPLANATION);
     // Not the old copy, which made it sound like tidying the dashboard.
     expect(document.body).not.toHaveTextContent(/top of your dashboard without deleting/);
   });
@@ -137,7 +142,7 @@ describe('Archiving a list', () => {
   it('regression: asks for confirmation first, and archives nothing on Cancel', async () => {
     const user = userEvent.setup();
     render(<WishlistDetail />);
-    const archive = await openManage(user);
+    const archive = await openSettings(user);
 
     await user.click(archive);
 
@@ -161,7 +166,7 @@ describe('Archiving a list', () => {
   it('archives once confirmed, and then shows the list as archived', async () => {
     const user = userEvent.setup();
     render(<WishlistDetail />);
-    const archive = await openManage(user);
+    const archive = await openSettings(user);
 
     await user.click(archive);
     const dialog = await screen.findByRole('alertdialog', { name: 'Archive wishlist?' });
@@ -173,7 +178,7 @@ describe('Archiving a list', () => {
     expect(await screen.findByRole('heading', { name: 'Unarchive wishlist' })).toBeInTheDocument();
 
     // Back on the items: the banner, the Archived pill, and no Share.
-    await user.click(screen.getAllByRole('button', { name: 'Back to items' })[0]);
+    await openListTab(user, 'Items');
     expect(await screen.findByText(BANNER_TEXT)).toBeInTheDocument();
     expect(coverPill('Archived')).toBeInTheDocument();
     expect(coverPill('Public')).toBeNull();
@@ -184,7 +189,7 @@ describe('Archiving a list', () => {
     refuse = true;
     const user = userEvent.setup();
     render(<WishlistDetail />);
-    await user.click(await openManage(user));
+    await user.click(await openSettings(user));
     const dialog = await screen.findByRole('alertdialog', { name: 'Archive wishlist?' });
     await user.click(within(dialog).getByRole('button', { name: 'Archive' }));
 
@@ -192,7 +197,7 @@ describe('Archiving a list', () => {
     expect(showToast).toHaveBeenCalledWith('Failed to update wishlist', 'error');
     expect(screen.getByRole('heading', { name: 'Archive wishlist' })).toBeInTheDocument();
 
-    await user.click(screen.getAllByRole('button', { name: 'Back to items' })[0]);
+    await openListTab(user, 'Items');
     expect(await screen.findAllByRole('button', { name: 'Share' })).not.toHaveLength(0);
     expect(banner()).toBeNull();
     expect(coverPill('Public')).toBeInTheDocument();
@@ -217,7 +222,7 @@ describe('An archived list, for its owner', () => {
     expect(shareButtons()).toEqual([]);
   });
 
-  // regression: the only way back was the Unarchive buried in Manage.
+  // regression: the only way back was the Unarchive buried in Manage (now Settings).
   it('regression: unarchives from the banner, without asking first', async () => {
     const user = userEvent.setup();
     render(<WishlistDetail />);
@@ -250,12 +255,12 @@ describe('An archived list, for its owner', () => {
     expect(coverPill('Archived')).toBeInTheDocument();
   });
 
-  it('unarchives from Manage too, without asking first', async () => {
+  it('unarchives from Settings too, without asking first', async () => {
     const user = userEvent.setup();
     render(<WishlistDetail />);
-    const unarchive = await openManage(user);
+    const unarchive = await openSettings(user);
     expect(unarchive).toHaveTextContent('Unarchive');
-    expect(unarchive.parentElement).toHaveTextContent(
+    expect(await archiveRow()).toHaveTextContent(
       'This wishlist is archived: only owners can see it.'
     );
 

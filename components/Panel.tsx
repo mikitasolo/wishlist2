@@ -25,8 +25,8 @@ const SURFACE = 'rounded-2xl border border-border bg-surface shadow-sm';
 const INSET = 'px-5 sm:px-6';
 
 /**
- * A titled block of a page: the Settings and Welcome forms, the Manage view's
- * Owners, Members, Pending invites, Invite someone and settings, the
+ * A titled block of a page: the Settings and Welcome forms, a list's People tab's
+ * people and Invite someone, its Settings tab's sections, the
  * dashboard's currency prompt. `rounded-2xl border bg-surface shadow-sm`,
  * padded `p-5 sm:p-6`, with a `text-lg` title, a muted description under it and
  * the content at `mt-5`. A `list` panel has a bordered header and divided rows

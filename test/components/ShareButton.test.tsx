@@ -228,8 +228,8 @@ describe('ShareButton — the owner popover', () => {
     expect(showToast).not.toHaveBeenCalled();
   });
 
-  // Until the People tab (WIS-243) lands, the page's onInvite opens Manage,
-  // where the invite form is (see WishlistEmptyState.test.tsx).
+  // The page's onInvite opens People, where the invite form is (see
+  // WishlistEmptyState.test.tsx).
   it('takes the owner to invite people, to let them reserve gifts', async () => {
     device({ touch: false, webShare: false });
     const user = renderOwner({ visibility: 'private' });

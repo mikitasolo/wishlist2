@@ -47,7 +47,7 @@ export function withoutOwner(owners: ShownOwners, removed: RemovedOwner): ShownO
 /**
  * The owners the page has taken off the list, stamped, so a read of the list
  * the server answered before one of those landed can't put them back: say the
- * read that opening Manage sent is still out when a co-owner is made a member,
+ * read that opening People sent is still out when a co-owner is made a member,
  * and comes back after the demotion has landed, still listing them.
  */
 export interface OwnerRemovalLog {

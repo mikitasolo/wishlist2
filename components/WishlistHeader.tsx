@@ -35,11 +35,8 @@ interface WishlistHeaderProps {
   pinned?: boolean;
   /** A pin or unpin is on its way: the item is held until it settles. */
   pinning?: boolean;
-  /** Whether Manage (owners) is open, which turns its button into Done. */
-  manageOpen?: boolean;
   onAddItem: () => void;
   onPropose: () => void;
-  onToggleManage: () => void;
   onTogglePin: () => void;
   /** Leave list…: the page asks to confirm, or tells a sole owner why they can't. */
   onLeave: () => void;
@@ -57,7 +54,8 @@ interface WishlistHeaderProps {
  * to up to three lines, never truncated to one), a meta line (its owners, its
  * occasion with the date it falls on, its visibility), and one row of actions
  * for the viewer's role:
- * - an owner: Add item, Share, Manage and ⋯ (Pin to my dashboard, Leave list…);
+ * - an owner: Add item, Share and ⋯ (Pin to my dashboard, Leave list…), with
+ *   the list's tabs (Items · People · Settings) under the header, not here;
  * - a member: Propose, Share and ⋯ (Leave list…);
  * - anyone else: Share.
  *
@@ -73,10 +71,8 @@ export default function WishlistHeader({
   archived,
   pinned = false,
   pinning = false,
-  manageOpen = false,
   onAddItem,
   onPropose,
-  onToggleManage,
   onTogglePin,
   onLeave,
   share,
@@ -118,8 +114,8 @@ export default function WishlistHeader({
         className="flex flex-wrap items-center gap-3 lg:flex-shrink-0 lg:pt-0.5"
       >
         {/* Adding claims nothing about the items already there, so it's offered
-            while they load too. Not in Manage, which has no items to add to. */}
-        {isOwner && !manageOpen && (
+            while they load too, and from every tab (it goes back to Items). */}
+        {isOwner && (
           <Button size="sm" shape="pill" icon="plus" onClick={onAddItem}>
             Add item
           </Button>
@@ -130,22 +126,6 @@ export default function WishlistHeader({
           </Button>
         )}
         {share}
-        {/* Its icon alone on a phone, square like ⋯, so an owner's four
-            actions fit one row at 390px. */}
-        {isOwner && (
-          <Button
-            variant="secondary"
-            size="sm"
-            shape="pill"
-            icon={manageOpen ? 'close' : 'settings'}
-            onClick={onToggleManage}
-            aria-label={manageOpen ? 'Back to items' : 'Manage wishlist'}
-            title={manageOpen ? 'Back to items' : 'Manage wishlist'}
-            className="max-sm:w-9 max-sm:px-0"
-          >
-            <span className="max-sm:sr-only">{manageOpen ? 'Done' : 'Manage'}</span>
-          </Button>
-        )}
         {menuItems.length > 0 && (
           <Menu label={LIST_MENU_LABEL} items={menuItems} triggerClassName={MORE_TRIGGER} />
         )}

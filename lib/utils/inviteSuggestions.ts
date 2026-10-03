@@ -1,6 +1,6 @@
 /**
  * Who a username suggestion in the invite form already is on this list, worked
- * out in the browser from what the owner's Manage view has loaded (its owners,
+ * out in the browser from what the list page has loaded for its owner (its owners,
  * members and pending invites), so the form needs no API of its own for it.
  *
  * Someone already on the list can't be invited again (the server refuses it),

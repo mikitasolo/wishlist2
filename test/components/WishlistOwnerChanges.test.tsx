@@ -28,7 +28,7 @@ vi.mock('@/components/AuthButton', () => ({ default: () => null }));
 vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }));
 
 import WishlistDetail from '@/app/wishlists/[id]/page';
-import { pickLeave } from './listMenu';
+import { listTab, openListTab, pickLeave, pickRowAction } from './listMenu';
 
 // User ids double as usernames here.
 interface Server {
@@ -160,16 +160,23 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-async function openManage() {
+async function openPeople() {
   const user = userEvent.setup();
   render(<WishlistDetail />);
-  await user.click(await screen.findByRole('button', { name: 'Manage wishlist' }));
-  await screen.findAllByRole('button', { name: 'Make member' });
-  // The page's first read of the list, and the one opening Manage takes.
+  await openListTab(user, 'People');
+  await screen.findByRole('button', { name: `Actions for @${server.owners[1]}` });
+  // The page's first read of the list, and the one opening People takes.
   await waitFor(() => expect(listReads).toBe(2));
   await settle();
   return user;
 }
+
+/** The panel of people on People (the byline links owners too). */
+const peoplePanel = () => screen.getByRole('region', { name: 'People on this list' });
+
+/** The caption under `username` on their People row: Owner, Member, You… */
+const captionOf = (username: string) =>
+  within(peoplePanel()).getByRole('link', { name: `@${username}` }).nextElementSibling?.textContent;
 
 /** The title row, whose byline credits every owner ("by you & @bob"). */
 const byline = () => screen.getByRole('heading', { level: 1, name: 'Birthday' }).parentElement!;
@@ -212,16 +219,13 @@ const demotions = () =>
  * dialog, and wait for the members to move them.
  */
 async function demoteFirst(user: ReturnType<typeof userEvent.setup>, username: string) {
-  const demoted = screen.queryAllByRole('button', { name: 'Make owner' }).length;
   const calls = showToast.mock.calls.length;
-  await user.click(screen.getAllByRole('button', { name: 'Make member' })[0]);
+  await pickRowAction(user, username, 'Make member…');
   const dialog = await demoteDialog(username);
   await user.click(within(dialog).getByRole('button', { name: 'Make member' }));
   await waitFor(() => expect(showToast).toHaveBeenCalledTimes(calls + 1));
   expect(showToast).toHaveBeenLastCalledWith(`@${username} is now a member`, 'success');
-  await waitFor(() =>
-    expect(screen.getAllByRole('button', { name: 'Make owner' })).toHaveLength(demoted + 1)
-  );
+  await waitFor(() => expect(captionOf(username)).toBe('Member'));
   // It closes once the reads after the demotion have landed.
   await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
 }
@@ -235,7 +239,7 @@ describe('the wishlist page after an owner is demoted or removed', () => {
   // was still offered Leave, which the server refuses ("You are the only
   // owner"), and the byline still credited him.
   it('regression: after demoting the only other co-owner, Leave no longer leaves and the byline drops them', async () => {
-    const user = await openManage();
+    const user = await openPeople();
     await expectCanLeave(user);
     expect(credited('bob')).toBeInTheDocument();
 
@@ -249,9 +253,9 @@ describe('the wishlist page after an owner is demoted or removed', () => {
 
   // regression: Remove on an owner row had the same gap as Make member.
   it('regression: after removing the only other co-owner, Leave no longer leaves and the byline drops them', async () => {
-    const user = await openManage();
+    const user = await openPeople();
 
-    await user.click(screen.getByRole('button', { name: 'Remove' }));
+    await pickRowAction(user, 'bob', 'Remove…');
     const dialog = await screen.findByRole('alertdialog');
     expect(dialog).toHaveTextContent('Remove @bob as an owner?');
     await user.click(within(dialog).getByRole('button', { name: 'Remove' }));
@@ -265,7 +269,7 @@ describe('the wishlist page after an owner is demoted or removed', () => {
 
   it('still offers Leave while another co-owner remains, and drops only the demoted one', async () => {
     server.owners = ['alice', 'bob', 'carol'];
-    const user = await openManage();
+    const user = await openPeople();
 
     await demoteFirst(user, 'bob');
 
@@ -273,11 +277,12 @@ describe('the wishlist page after an owner is demoted or removed', () => {
     expect(credited('carol')).toBeInTheDocument();
     await expectCanLeave(user);
     // Carol can still be stepped down: there are two owners left.
-    expect(screen.getByRole('button', { name: 'Make member' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Actions for @carol' })).toBeInTheDocument();
+    expect(captionOf('carol')).toBe('Owner');
   });
 
   it('takes the owners from the server after the change, a co-owner who joined meanwhile included', async () => {
-    const user = await openManage();
+    const user = await openPeople();
     // Dave accepted an owner invite while Alice's page was open.
     server.owners = [...server.owners, 'dave'];
 
@@ -289,7 +294,7 @@ describe('the wishlist page after an owner is demoted or removed', () => {
   });
 
   it('keeps the owners as they were when the demotion fails', async () => {
-    const user = await openManage();
+    const user = await openPeople();
     const succeed = fetchMock.getMockImplementation()!;
     fetchMock.mockImplementation(async (url: string, init?: RequestInit) =>
       init?.method === 'PATCH'
@@ -297,12 +302,18 @@ describe('the wishlist page after an owner is demoted or removed', () => {
         : succeed(url, init)
     );
 
-    await user.click(screen.getByRole('button', { name: 'Make member' }));
+    await pickRowAction(user, 'bob', 'Make member…');
     const dialog = await demoteDialog('bob');
     await user.click(within(dialog).getByRole('button', { name: 'Make member' }));
     await waitFor(() => expect(showToast).toHaveBeenCalledWith('Failed to update owner', 'error'));
     await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Make member' })).toBeEnabled());
+    // The row is given back, so it can be tried again.
+    await user.click(screen.getByRole('button', { name: 'Actions for @bob' }));
+    expect(await screen.findByRole('menuitem', { name: 'Make member…' })).not.toHaveAttribute(
+      'aria-disabled'
+    );
+    await user.keyboard('{Escape}');
+    expect(captionOf('bob')).toBe('Owner');
 
     expect(credited('bob')).toBeInTheDocument();
     await expectCanLeave(user);
@@ -310,13 +321,16 @@ describe('the wishlist page after an owner is demoted or removed', () => {
 
   // The save's write landed before the demotion's, so its answer still lists Bob.
   it("doesn't bring the demoted owner back when a settings save started before it is answered after it", async () => {
-    const user = await openManage();
+    const user = await openPeople();
     const save = gate();
     held.save = save.promise;
 
+    await openListTab(user, 'Settings');
     await user.type(screen.getByLabelText('Description'), '!');
-    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+    await user.click(screen.getByRole('button', { name: 'Save' }));
     await screen.findByRole('button', { name: 'Saving…' });
+    await openListTab(user, 'People');
+    await screen.findByRole('button', { name: 'Actions for @bob' });
     await demoteFirst(user, 'bob');
     expect(credited('bob')).not.toBeInTheDocument();
 
@@ -328,7 +342,7 @@ describe('the wishlist page after an owner is demoted or removed', () => {
     await expectSoleOwner(user);
   });
 
-  // Opening Manage reads the owners again. That read was answered before the
+  // Opening People reads the owners again. That read was answered before the
   // demotions landed, so it still lists Bob and Carol, and it gets back only
   // after the reads that follow them have. (A demotion's own read can't be the
   // late one: its dialog stays open until that read has landed.)
@@ -336,12 +350,12 @@ describe('the wishlist page after an owner is demoted or removed', () => {
     server.owners = ['alice', 'bob', 'carol'];
     const user = userEvent.setup();
     render(<WishlistDetail />);
-    const manage = await screen.findByRole('button', { name: 'Manage wishlist' });
+    const people = await listTab('People');
     await waitFor(() => expect(listReads).toBe(1));
     const manageRead = gate();
     held.read = manageRead.promise;
-    await user.click(manage);
-    await screen.findAllByRole('button', { name: 'Make member' });
+    await user.click(people);
+    await screen.findByRole('button', { name: 'Actions for @bob' });
 
     await demoteFirst(user, 'bob');
     await demoteFirst(user, 'carol');
@@ -365,10 +379,9 @@ describe('Make member', () => {
   // Remove, and only they can undo it (making them an owner again is an invite
   // they have to accept). One mis-tap cost a co-owner their ownership.
   it('regression: asks first, sends nothing on Cancel, and sends one demotion once confirmed', async () => {
-    const user = await openManage();
-    const makeMember = screen.getByRole('button', { name: 'Make member' });
+    const user = await openPeople();
 
-    await user.click(makeMember);
+    await pickRowAction(user, 'bob', 'Make member…');
     let dialog = await demoteDialog('bob');
     expect(dialog).toHaveTextContent(
       "They keep access and can reserve gifts, but can no longer edit or manage the list. They'll be notified. Making them an owner again needs their acceptance."
@@ -384,7 +397,7 @@ describe('Make member', () => {
     // The demotion is held, so it's still in flight when the second click lands.
     const demotion = gate();
     held.demote = demotion.promise;
-    await user.click(makeMember);
+    await pickRowAction(user, 'bob', 'Make member…');
     dialog = await demoteDialog('bob');
     const confirm = within(dialog).getByRole('button', { name: 'Make member' });
     // Twice before the page re-renders, so only the handlers' own guards can
@@ -395,9 +408,6 @@ describe('Make member', () => {
     });
     expect(within(dialog).getByRole('button', { name: 'Making member…' })).toBeDisabled();
     expect(within(dialog).getByRole('button', { name: 'Cancel' })).toBeDisabled();
-    // The row takes no more clicks meanwhile either.
-    expect(makeMember).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Remove' })).toBeDisabled();
 
     demotion.release();
     await waitFor(() => expect(showToast).toHaveBeenCalledWith('@bob is now a member', 'success'));

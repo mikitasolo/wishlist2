@@ -4,7 +4,7 @@
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { listMenuItems, pickFromListMenu } from './listMenu';
+import { listMenuItems, openListTab, pickFromListMenu } from './listMenu';
 
 const { router, showToast, auth } = vi.hoisted(() => ({
   // One object, as Next's own router is: the page's read of the list depends on it.
@@ -126,7 +126,7 @@ describe('the header’s actions for each viewer', () => {
       viewer: 'alice',
       owners: ['alice'],
       role: 'owner' as const,
-      row: ['Add item', 'Share', 'Manage wishlist', 'More list actions'],
+      row: ['Add item', 'Share', 'More list actions'],
       menu: ['Pin to my dashboard', 'Leave list…'],
     },
     {
@@ -134,7 +134,7 @@ describe('the header’s actions for each viewer', () => {
       viewer: 'alice',
       owners: ['bob', 'alice'],
       role: 'owner' as const,
-      row: ['Add item', 'Share', 'Manage wishlist', 'More list actions'],
+      row: ['Add item', 'Share', 'More list actions'],
       menu: ['Pin to my dashboard', 'Leave list…'],
     },
     {
@@ -239,8 +239,8 @@ describe('Pin to my dashboard', () => {
   it('is no longer a section of the settings form', async () => {
     const user = userEvent.setup();
     render(<WishlistDetail />);
-    await user.click(await screen.findByRole('button', { name: 'Manage wishlist' }));
-    await screen.findByRole('heading', { name: 'Wishlist settings' });
+    await openListTab(user, 'Settings');
+    await screen.findByRole('heading', { name: 'About' });
     expect(screen.queryByText(/Feature/)).toBeNull();
     expect(screen.queryByRole('button', { name: /feature/i })).toBeNull();
   });
