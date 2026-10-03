@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { inviteSearchTerm, listStatusByUsername } from '@/lib/utils/inviteSuggestions';
+import { listStatusByUsername } from '@/lib/utils/inviteSuggestions';
 
 describe('listStatusByUsername', () => {
   it('maps owners, members and invitees by lower-cased username', () => {
@@ -41,13 +41,5 @@ describe('listStatusByUsername', () => {
       invited: [null],
     });
     expect(map.size).toBe(0);
-  });
-});
-
-describe('inviteSearchTerm', () => {
-  it('trims and drops one leading @', () => {
-    expect(inviteSearchTerm('  @alice ')).toBe('alice');
-    expect(inviteSearchTerm('@@a')).toBe('@a');
-    expect(inviteSearchTerm('bob')).toBe('bob');
   });
 });

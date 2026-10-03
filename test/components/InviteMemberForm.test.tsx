@@ -210,6 +210,45 @@ describe('InviteMemberForm — username suggestions', () => {
     );
   });
 
+  it('forgets the active suggestion once the list closes, so Enter then sends what was typed', async () => {
+    stubSearch(people('alice'));
+    const onInvite = vi.fn().mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    render(
+      <>
+        <InviteMemberForm onInvite={onInvite} isInviting={false} />
+        <button type="button">elsewhere</button>
+      </>
+    );
+
+    await user.click(field());
+    await user.keyboard('ali');
+    await screen.findByRole('option', { name: '@alice' });
+    await user.keyboard('{ArrowDown}');
+    expect(field()).toHaveAttribute('aria-activedescendant');
+
+    await user.click(screen.getByRole('button', { name: 'elsewhere' }));
+    await user.click(field());
+    expect(await screen.findByRole('option', { name: '@alice' })).toHaveAttribute(
+      'aria-selected',
+      'false'
+    );
+    expect(field()).not.toHaveAttribute('aria-activedescendant');
+    await user.keyboard('{Enter}');
+
+    await waitFor(() => expect(onInvite).toHaveBeenCalledWith({ username: 'ali', role: 'member' }));
+  });
+
+  it('sends the username the way the search reads it', async () => {
+    const onInvite = vi.fn().mockResolvedValue(undefined);
+    render(<InviteMemberForm onInvite={onInvite} isInviting={false} />);
+
+    type(' @ Bob ');
+    fireEvent.click(screen.getByRole('button', { name: /^invite$/i }));
+
+    await waitFor(() => expect(onInvite).toHaveBeenCalledWith({ username: 'bob', role: 'member' }));
+  });
+
   it('fills the field with a clicked suggestion', async () => {
     stubSearch(people('alice'));
     const user = userEvent.setup();
@@ -406,6 +445,17 @@ describe('InviteMemberForm — a stale or failed search (WIS-186)', () => {
     await waitFor(() =>
       expect(onInvite).toHaveBeenCalledWith({ username: 'bobby', role: 'member' })
     );
+  });
+
+  it('says nobody matches only once that term has been searched', async () => {
+    render(<InviteMemberForm onInvite={vi.fn()} isInviting={false} />);
+    type('abc');
+    await screen.findByText('No people match “abc”.');
+
+    fetchMock.mockImplementation(() => new Promise(() => {}));
+    type('abcd');
+    expect(screen.queryByText(/No people match/)).toBeNull();
+    expect(screen.getByText('Searching…')).toBeInTheDocument();
   });
 
   it("doesn't keep an earlier term's people after a failed search", async () => {

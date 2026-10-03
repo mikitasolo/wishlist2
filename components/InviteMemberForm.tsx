@@ -20,9 +20,9 @@ import { POPOVER_NOTE, POPOVER_OPTION_ROW, POPOVER_SURFACE } from './popoverStyl
 import {
   INVITE_SEARCH_MIN_CHARS,
   LIST_STATUS_LABEL,
-  inviteSearchTerm,
   type ListPerson,
 } from '@/lib/utils/inviteSuggestions';
+import { usernameQuery } from '@/lib/utils/searchQuery';
 
 type Role = 'owner' | 'member';
 
@@ -76,7 +76,8 @@ type SuggestionOption =
   | { kind: 'person'; user: SuggestedUser; person?: ListPerson }
   | { kind: 'promote'; user: SuggestedUser; userId: string };
 
-type SearchState = 'idle' | 'loading' | 'done' | 'failed';
+/** The last search answered, and for which term: until it's the current one, it's still searching. */
+type SearchAnswer = { term: string; failed: boolean };
 
 /**
  * Invite form. You can only invite people who already have an account, so it
@@ -102,7 +103,7 @@ export default function InviteMemberForm({
   const [value, setValue] = useState('');
   const [role, setRole] = useState<Role>('member');
   const [suggestions, setSuggestions] = useState<SuggestedUser[]>([]);
-  const [searchState, setSearchState] = useState<SearchState>('idle');
+  const [answer, setAnswer] = useState<SearchAnswer | null>(null);
   const [open, setOpen] = useState(false);
   // The highlighted option while the list is open; -1 for none.
   const [active, setActive] = useState(-1);
@@ -117,7 +118,8 @@ export default function InviteMemberForm({
   const helperId = `${id}-role-helper`;
   const optionId = (i: number) => `${id}-option-${i}`;
 
-  const term = inviteSearchTerm(value);
+  // What the search and the invite both take: trimmed, lower-cased, no `@`.
+  const term = usernameQuery(value);
 
   useImperativeHandle(
     ref,
@@ -146,10 +148,8 @@ export default function InviteMemberForm({
   useEffect(() => {
     if (term.length < INVITE_SEARCH_MIN_CHARS) {
       setSuggestions([]);
-      setSearchState('idle');
       return;
     }
-    setSearchState('loading');
     let current = true;
     const t = setTimeout(async () => {
       try {
@@ -159,15 +159,15 @@ export default function InviteMemberForm({
         if (!current) return;
         if (result?.success) {
           setSuggestions((result.data?.users || []).slice(0, MAX_SUGGESTIONS));
-          setSearchState('done');
+          setAnswer({ term, failed: false });
         } else {
           setSuggestions([]);
-          setSearchState('failed');
+          setAnswer({ term, failed: true });
         }
       } catch {
         if (!current) return;
         setSuggestions([]);
-        setSearchState('failed');
+        setAnswer({ term, failed: true });
       }
     }, 250);
     return () => {
@@ -196,7 +196,9 @@ export default function InviteMemberForm({
   if (isInviting && open) setOpen(false);
 
   const popoverShown = open && term.length > 0;
-  const listShown = popoverShown && term.length >= INVITE_SEARCH_MIN_CHARS && options.length > 0;
+  // Options to show, open or not: the list has a term long enough to search.
+  const hasOptions = term.length >= INVITE_SEARCH_MIN_CHARS && options.length > 0;
+  const listShown = popoverShown && hasOptions;
   const activeOption = listShown ? options[active] : undefined;
 
   // Scroll the list (never the page) to the option the keyboard moved to.
@@ -214,13 +216,27 @@ export default function InviteMemberForm({
 
   const moveTo = (i: number) => {
     setActive(i);
-    scrollToActive.current = true;
+    // Only when it moves: a flag left set would scroll the list under the
+    // pointer on its next hover.
+    scrollToActive.current = i !== active;
+  };
+
+  /** The pointer moves the active option, and never scrolls the list under it. */
+  const hover = (i: number) => {
+    scrollToActive.current = false;
+    if (i !== active) setActive(i);
+  };
+
+  // Closed, the list keeps no active option: reopened, Enter would pick it
+  // instead of sending the invite as typed.
+  const close = () => {
+    setOpen(false);
+    setActive(-1);
   };
 
   function choose(o: SuggestionOption) {
     if (isDisabled(o)) return;
-    setOpen(false);
-    setActive(-1);
+    close();
     if (o.kind === 'promote') {
       onPromote?.({ userId: o.userId, username: o.user.username });
       return;
@@ -233,17 +249,17 @@ export default function InviteMemberForm({
     const last = options.length - 1;
     let handled = true;
     if (e.key === 'Tab') {
-      if (open) setOpen(false);
+      if (open) close();
       return;
     } else if (e.key === 'ArrowDown') {
       if (!listShown) {
         setOpen(true);
-        if (term.length >= INVITE_SEARCH_MIN_CHARS && options.length > 0) moveTo(0);
+        if (hasOptions) moveTo(0);
       } else moveTo(active === -1 ? 0 : Math.min(active + 1, last));
     } else if (e.key === 'ArrowUp') {
       if (!listShown) {
         setOpen(true);
-        if (term.length >= INVITE_SEARCH_MIN_CHARS && options.length > 0) moveTo(last);
+        if (hasOptions) moveTo(last);
       } else moveTo(active === -1 ? last : Math.max(active - 1, 0));
     } else if (e.key === 'Enter') {
       // With no active option, Enter sends the invite as typed.
@@ -251,8 +267,7 @@ export default function InviteMemberForm({
       choose(activeOption);
     } else if (e.key === 'Escape') {
       if (!popoverShown) return;
-      setOpen(false);
-      setActive(-1);
+      close();
     } else handled = false;
 
     if (!handled) return;
@@ -267,21 +282,22 @@ export default function InviteMemberForm({
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    const raw = value.trim();
-    if (!raw) return;
-    await onInvite({ username: raw.replace(/^@/, '').toLowerCase(), role });
+    if (!term) return;
+    await onInvite({ username: term, role });
     setValue('');
     setRole('member');
     setSuggestions([]);
-    setOpen(false);
+    close();
   }
 
+  // Nothing is said about a term until its own search has answered.
+  const answered = answer?.term === term ? answer : null;
   let note: string | null = null;
-  if (term.length < INVITE_SEARCH_MIN_CHARS) note = 'Type at least 3 letters of their username';
-  else if (searchState === 'failed')
+  if (term.length < INVITE_SEARCH_MIN_CHARS)
+    note = `Type at least ${INVITE_SEARCH_MIN_CHARS} letters of their username`;
+  else if (answered?.failed)
     note = 'Suggestions aren’t available right now. You can still invite them by username.';
-  else if (suggestions.length === 0)
-    note = searchState === 'done' ? `No people match “${term}”.` : 'Searching…';
+  else if (suggestions.length === 0) note = answered ? `No people match “${term}”.` : 'Searching…';
 
   return (
     // scroll-mt clears the sticky app header (h-14) when it's scrolled to.
@@ -314,7 +330,7 @@ export default function InviteMemberForm({
             // On a click, not on focus: focus coming back from the promotion's
             // dialog, or from "Invite a co-owner", shouldn't pop the list open.
             onClick={() => setOpen(true)}
-            onBlur={() => setOpen(false)}
+            onBlur={close}
             onKeyDown={onKeyDown}
             placeholder="Search by username"
             aria-label="Search by username"
@@ -349,7 +365,7 @@ export default function InviteMemberForm({
                         optionId={optionId(i)}
                         isActive={i === active}
                         onPick={() => choose(o)}
-                        onHover={() => setActive(i)}
+                        onHover={() => hover(i)}
                         promote={
                           promote === -1
                             ? undefined
@@ -357,7 +373,7 @@ export default function InviteMemberForm({
                                 optionId: optionId(promote),
                                 isActive: promote === active,
                                 onPick: () => choose(options[promote]),
-                                onHover: () => setActive(promote),
+                                onHover: () => hover(promote),
                               }
                         }
                       />
@@ -435,9 +451,7 @@ function SuggestionRow({
         onClick={onPick}
         // Not on mouseenter, which also fires when the keyboard scrolls the
         // list under a still pointer.
-        onMouseMove={() => {
-          if (!isActive) onHover();
-        }}
+        onMouseMove={onHover}
         className={`${POPOVER_OPTION_ROW} min-w-0 flex-1 transition-colors ${
           isActive ? 'bg-row-active' : disabled ? '' : 'hover:bg-muted'
         } ${disabled ? 'cursor-default' : 'cursor-pointer'}`}
@@ -473,9 +487,7 @@ function SuggestionRow({
           // The visible words first, then whose row it's on.
           aria-label={`Make co-owner instead, @${user.username}`}
           onClick={promote.onPick}
-          onMouseMove={() => {
-            if (!promote.isActive) promote.onHover();
-          }}
+          onMouseMove={promote.onHover}
           className={`flex flex-shrink-0 cursor-pointer items-center self-start whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold text-accent transition-colors max-sm:ml-10.5 sm:self-auto ${
             promote.isActive ? 'bg-row-active' : 'hover:bg-muted'
           }`}

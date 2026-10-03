@@ -1175,14 +1175,14 @@ export default function WishlistDetail() {
   const inviteStatuses = useMemo(
     () =>
       listStatusByUsername({
-        owners: [...owners.usernames, ...ownerRows.map((m) => m.user.username)],
+        owners: owners.usernames,
         members: memberRows.map((m) => ({
           userId: String(m.user._id),
           username: m.user.username,
         })),
         invited: pendingInvites.map((i) => i.username),
       }),
-    [owners.usernames, ownerRows, memberRows, pendingInvites]
+    [owners.usernames, memberRows, pendingInvites]
   );
 
   const stats = useMemo(() => calculateStats(items, session?.user?.id), [items, session?.user?.id]);

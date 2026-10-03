@@ -34,11 +34,6 @@ export interface ListPeople {
   invited: readonly Username[];
 }
 
-/** What the field holds, as the search and the invite take it: trimmed, without a leading `@`. */
-export function inviteSearchTerm(value: string): string {
-  return value.trim().replace(/^@/, '');
-}
-
 const key = (username: string) => username.toLowerCase();
 
 /**
