@@ -1,5 +1,6 @@
 import type { Locator, Page } from '@playwright/test';
 import { test, expect } from './fixtures';
+import { FRIEND_API_SESSION_TOKEN } from './magicLinks';
 
 // The app's navigation (WIS-251, D3): Home, Reserved, Activity and Me, in a
 // tab bar at the bottom of a phone's screen, and as header links from `sm` up.
@@ -102,6 +103,47 @@ test('from sm up the header links Home · Reserved · Activity, and there is no 
   await nav.getByRole('link', { name: 'Activity' }).click();
   await expect(page).toHaveURL('/notifications');
   await expect(nav.getByRole('link', { name: 'Activity' })).toHaveAttribute('aria-current', 'page');
+});
+
+// WIS-302: the header's bell duplicated Activity, so it's gone, and Activity
+// carries the unread count: on the tab's icon, and beside the header's link.
+test('Activity badges what’s unread on the tab and the header link, and clears once visited', async ({
+  page,
+  playwright,
+  baseURL,
+}) => {
+  const me = (await (await page.request.get('/api/auth/session')).json()).user.id;
+  // The friend follows the E2E user: a real unread notification.
+  const friend = await playwright.request.newContext({
+    baseURL,
+    extraHTTPHeaders: { cookie: `authjs.session-token=${FRIEND_API_SESSION_TOKEN}` },
+  });
+  try {
+    expect((await friend.post(`/api/users/${me}/follow`)).ok()).toBe(true);
+    const unreadName = /^Activity, \d+ unread$/;
+
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto('/booked');
+    const header = page.getByRole('banner');
+    const link = header.getByRole('navigation', { name: 'Main' }).getByRole('link', {
+      name: unreadName,
+    });
+    await expect(link.locator('[data-badge]')).toHaveText(/^([1-9]|9\+)$/);
+    await expect(header.getByRole('link', { name: /notification/i })).toHaveCount(0);
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    const activityTab = tabBar(page).getByRole('link', { name: unreadName });
+    await expect(activityTab.locator('[data-badge]')).toBeInViewport({ ratio: 1 });
+
+    // Visiting Activity marks everything read, and the badge follows.
+    await activityTab.click();
+    await expect(page).toHaveURL('/notifications');
+    await expect(tab(page, 'Activity')).toHaveAttribute('aria-current', 'page');
+    await expect(page.locator('[data-badge]')).toHaveCount(0);
+  } finally {
+    await friend.delete(`/api/users/${me}/follow`);
+    await friend.dispose();
+  }
 });
 
 /**

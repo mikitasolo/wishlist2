@@ -10,7 +10,12 @@ import User from '../models/User';
 import Wishlist from '../models/Wishlist';
 import Item from '../models/Item';
 import WishlistMember from '../models/WishlistMember';
-import { E2E_AUTH_SECRET, FRIEND_SESSION_TOKEN, MAGIC_LINKS } from './magicLinks';
+import {
+  E2E_AUTH_SECRET,
+  FRIEND_API_SESSION_TOKEN,
+  FRIEND_SESSION_TOKEN,
+  MAGIC_LINKS,
+} from './magicLinks';
 
 const BASE_URL = `http://localhost:${E2E_PORT}`;
 
@@ -87,6 +92,8 @@ export default async function globalSetup(_config: FullConfig) {
     { sessionToken, userId: user._id, expires },
     // For the spec that signs up while signed in as someone else (magicLinks.ts).
     { sessionToken: FRIEND_SESSION_TOKEN, userId: friend._id, expires },
+    // For a spec that acts as the friend through the API (magicLinks.ts).
+    { sessionToken: FRIEND_API_SESSION_TOKEN, userId: friend._id, expires },
   ]);
 
   // Unused magic links (see magicLinks.ts), stored the way Auth.js stores the

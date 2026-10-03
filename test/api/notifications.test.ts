@@ -167,7 +167,7 @@ describe('GET /api/notifications — who did it', () => {
     expect((await feedOf(alice))[0]).toMatchObject({ actorId: null, followingActor: null });
   });
 
-  // The bell reads this on every page and focus for its count alone.
+  // Activity's unread badge reads this on every page and focus for its count alone.
   it('looks no one up unless asked to', async () => {
     await followAs({ id: bob, username: 'bob' }, alice);
     const find = vi.spyOn(User, 'find');
