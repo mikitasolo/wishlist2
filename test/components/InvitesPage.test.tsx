@@ -514,6 +514,103 @@ describe('InvitesPage — answering several invites at once', () => {
       expect(push).toHaveBeenCalledTimes(1);
     });
   });
+
+  // WIS-121: every accept that succeeded redirected, so accepting A and then B
+  // took the user to A's list and, seconds later, pulled them over to B's. Now
+  // only the last accept clicked, among those still able to succeed, opens its
+  // list; any other accept that succeeds only says it joined.
+  describe('accepting A, then B, before either is back', () => {
+    async function acceptBoth() {
+      const held = await renderHeld();
+      fireEvent.click(cardButtons('Birthday').accept);
+      fireEvent.click(cardButtons('Housewarming').accept);
+      return held;
+    }
+
+    it("A landing first only says it joined, and B's landing opens B's list", async () => {
+      const { answer } = await acceptBoth();
+
+      await answer('inv-birthday', joined('birthday', 'w1'));
+      await waitFor(() => expect(screen.queryByText('Birthday')).toBeNull());
+      expect(showToast).toHaveBeenCalledWith('Joined “Birthday”', 'success');
+      expect(push).not.toHaveBeenCalled();
+
+      await answer('inv-housewarming', joined('housewarming', 'w2'));
+      await waitFor(() => expect(push).toHaveBeenCalledWith('/wishlists/housewarming'));
+      expect(showToast).toHaveBeenCalledWith('Joined “Housewarming”', 'success');
+      expect(push).toHaveBeenCalledTimes(1);
+    });
+
+    it("B landing first opens B's list, and A's landing afterwards only says it joined", async () => {
+      const { answer } = await acceptBoth();
+
+      await answer('inv-housewarming', joined('housewarming', 'w2'));
+      await waitFor(() => expect(push).toHaveBeenCalledWith('/wishlists/housewarming'));
+
+      await answer('inv-birthday', joined('birthday', 'w1'));
+      await waitFor(() => expect(screen.queryByText('Birthday')).toBeNull());
+      expect(showToast).toHaveBeenCalledWith('Joined “Birthday”', 'success');
+      expect(push).toHaveBeenCalledTimes(1);
+    });
+
+    // B not succeeding leaves A as the last accept that could, so A's list
+    // opens once B is back, even though A landed first.
+    it.each([
+      ['fails', failed, 'Failed to update invite'],
+      ['is gone', gone, 'This invitation is no longer available'],
+      ['hits a network error', new Error('offline'), 'Something went wrong'],
+    ] as const)("A landing first, then B %s, opens A's list", async (_, reply, message) => {
+      const { answer } = await acceptBoth();
+
+      await answer('inv-birthday', joined('birthday', 'w1'));
+      await waitFor(() => expect(screen.queryByText('Birthday')).toBeNull());
+      expect(push).not.toHaveBeenCalled();
+
+      await answer('inv-housewarming', reply);
+      await waitFor(() => expect(push).toHaveBeenCalledWith('/wishlists/birthday'));
+      expect(showToast).toHaveBeenCalledWith(message, expect.any(String));
+      expect(push).toHaveBeenCalledTimes(1);
+    });
+
+    it("B failing first lets A's landing open A's list", async () => {
+      const { answer } = await acceptBoth();
+
+      await answer('inv-housewarming', failed);
+      await waitFor(() => expectEnabled('Housewarming'));
+      expect(push).not.toHaveBeenCalled();
+
+      await answer('inv-birthday', joined('birthday', 'w1'));
+      await waitFor(() => expect(push).toHaveBeenCalledWith('/wishlists/birthday'));
+      expect(push).toHaveBeenCalledTimes(1);
+    });
+
+    // A's redirect, held for B, mustn't fire once the user has gone elsewhere.
+    it.each([
+      ['fails', failed],
+      ['lands', joined('housewarming', 'w2')],
+    ] as const)('B that %s after the user left the page redirects nowhere', async (_, reply) => {
+      const { answer } = await acceptBoth();
+
+      await answer('inv-birthday', joined('birthday', 'w1'));
+      await waitFor(() => expect(screen.queryByText('Birthday')).toBeNull());
+      cleanup();
+
+      await answer('inv-housewarming', reply);
+      expect(push).not.toHaveBeenCalled();
+    });
+
+    it('A failing changes nothing for B, which still opens its list', async () => {
+      const { answer } = await acceptBoth();
+
+      await answer('inv-birthday', failed);
+      await waitFor(() => expectEnabled('Birthday'));
+      expect(push).not.toHaveBeenCalled();
+
+      await answer('inv-housewarming', joined('housewarming', 'w2'));
+      await waitFor(() => expect(push).toHaveBeenCalledWith('/wishlists/housewarming'));
+      expect(push).toHaveBeenCalledTimes(1);
+    });
+  });
 });
 
 describe('InvitesPage — keeping the list fresh while it is open', () => {

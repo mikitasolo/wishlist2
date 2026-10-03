@@ -11,6 +11,7 @@ import Icon from '@/components/Icon';
 import LoadError from '@/components/LoadError';
 import { useToast } from '@/components/ToastProvider';
 import { useBusyIds } from '@/lib/hooks/useBusyIds';
+import { createAcceptRedirect } from '@/lib/utils/acceptRedirect';
 import { signInPath } from '@/lib/utils/callbackUrl';
 import { createMutationTracker } from '@/lib/utils/itemListMerge';
 import { acceptedInviteToast } from '@/lib/utils/confirmationCopy';
@@ -52,6 +53,9 @@ export default function InvitesPage() {
   const outdatedUpTo = useRef(0);
   // The account whose invites the page shows.
   const account = useRef(userId);
+  // Which accept gets to open its list when several are in flight: the last one
+  // clicked, among those still able to succeed.
+  const acceptRedirect = useRef(createAcceptRedirect());
 
   useEffect(() => {
     if (status === 'unauthenticated') router.replace(signInPath('/invites'));
@@ -66,6 +70,7 @@ export default function InvitesPage() {
   useLayoutEffect(() => {
     account.current = userId;
     answerTracker.current = createMutationTracker();
+    acceptRedirect.current.reset();
     outdatedUpTo.current = answerTracker.current.stamp();
     setInvites((prev) => (prev.length ? [] : prev));
     setLoading(true);
@@ -126,6 +131,13 @@ export default function InvitesPage() {
     };
   }, [status, userId, load]);
 
+  // Leaving the page forgets the accepts still in flight, so one landing (or
+  // failing) after the user went elsewhere never pulls them onto a list.
+  useEffect(() => {
+    const landings = acceptRedirect.current;
+    return () => landings.reset();
+  }, []);
+
   // Take an invite off the page and let the header's invitation dot (and this
   // page's list) re-check immediately.
   function dropInvite(inviteId: string) {
@@ -136,6 +148,16 @@ export default function InvitesPage() {
   function respond(invite: Invite, action: 'accept' | 'decline') {
     return run(invite._id, async () => {
       const answeredFor = account.current;
+      const landings = acceptRedirect.current;
+      if (action === 'accept') landings.clicked(invite._id);
+      // An accept that didn't succeed leaves the redirect to the last accept
+      // clicked before it, which may already have succeeded and been waiting on
+      // this one.
+      const notJoined = () => {
+        if (action !== 'accept') return;
+        const path = landings.failed(invite._id);
+        if (path) router.push(path);
+      };
       try {
         const { res, result } = await answerTracker.current.track(async () => {
           const res = await fetch(`/api/invites/${invite._id}`, {
@@ -159,6 +181,7 @@ export default function InvitesPage() {
         if (res.status === 404) {
           dropInvite(invite._id);
           showToast('This invitation is no longer available', 'info');
+          notJoined();
           return;
         }
         if (result.success) {
@@ -177,15 +200,24 @@ export default function InvitesPage() {
               ),
               'success'
             );
-            router.push(`/wishlists/${result.data.wishlistSlug ?? result.data.wishlistId}`);
+            // Only the last accept clicked opens its list: one clicked earlier
+            // just says it joined.
+            const path = landings.joined(
+              invite._id,
+              `/wishlists/${result.data.wishlistSlug ?? result.data.wishlistId}`
+            );
+            if (path) router.push(path);
           } else {
             showToast('Invitation declined', 'info');
           }
         } else {
           showToast(result.error || 'Something went wrong', 'error');
+          notJoined();
         }
       } catch {
-        if (account.current === answeredFor) showToast('Something went wrong', 'error');
+        if (account.current !== answeredFor) return;
+        showToast('Something went wrong', 'error');
+        notJoined();
       }
     });
   }
