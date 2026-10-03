@@ -10,7 +10,6 @@ import OccasionField from '@/components/OccasionField';
 import Panel, { PanelRow } from '@/components/Panel';
 import SegmentedControl from '@/components/SegmentedControl';
 import Select from '@/components/Select';
-import { Skeleton } from '@/components/Skeleton';
 import Textarea from '@/components/Textarea';
 import { FIELD_HELPER, FIELD_LABEL } from '@/components/fieldStyles';
 import { currencySelectOptions } from '@/lib/utils/currencies';
@@ -241,89 +240,5 @@ function DangerRow({
       </div>
       <div className="flex-shrink-0">{children}</div>
     </PanelRow>
-  );
-}
-
-/** A panel's frame and title while the tab loads (`Panel`'s padding, a `text-lg` line). */
-function PanelSkeleton({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <div className="rounded-2xl border border-border bg-surface p-5 shadow-sm sm:p-6">
-      <div className="flex h-7 items-center">
-        <Skeleton className={`h-5 ${title}`} />
-      </div>
-      <div className="mt-5">{children}</div>
-    </div>
-  );
-}
-
-/** A labelled field: its label's line, then the control at `control`'s height. */
-function FieldSkeleton({
-  control = 'h-11',
-  helper = false,
-}: {
-  control?: string;
-  helper?: boolean;
-}) {
-  return (
-    <div>
-      <div className="mb-1.5 flex h-5 items-center">
-        <Skeleton className="h-3.5 w-24" />
-      </div>
-      <Skeleton className={`w-full rounded-xl ${control}`} />
-      {helper && <Skeleton className="mt-2.5 h-3 w-64 max-w-full" />}
-    </div>
-  );
-}
-
-/**
- * The Settings tab while the list loads, box for box: About (name,
- * description, occasion, the cover's drop zone), Who can see it, Advanced and
- * the Danger zone's two rows.
- */
-export function WishlistSettingsSkeleton() {
-  return (
-    <div className="max-w-3xl space-y-6">
-      <PanelSkeleton title="w-20">
-        <div className="space-y-4">
-          <FieldSkeleton />
-          <FieldSkeleton control="h-[5.75rem]" />
-          <FieldSkeleton helper />
-          <div>
-            <div className="mb-1.5 flex h-5 items-center">
-              <Skeleton className="h-3.5 w-24" />
-            </div>
-            <Skeleton className="mx-auto aspect-[16/9] w-full max-w-[32rem] rounded-xl" />
-            <Skeleton className="mt-2.5 h-3 w-64 max-w-full" />
-          </div>
-        </div>
-      </PanelSkeleton>
-      <PanelSkeleton title="w-32">
-        <Skeleton className="h-11 w-full rounded-xl" />
-        <Skeleton className="mt-2.5 h-3 w-28" />
-      </PanelSkeleton>
-      <PanelSkeleton title="w-24">
-        <div className="space-y-4">
-          <FieldSkeleton helper />
-          <FieldSkeleton helper />
-        </div>
-      </PanelSkeleton>
-      <div className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-surface shadow-sm">
-        <div className="flex h-[3.75rem] items-center px-5 sm:px-6">
-          <Skeleton className="h-5 w-28" />
-        </div>
-        {[0, 1].map((i) => (
-          <div
-            key={i}
-            className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6 sm:px-6"
-          >
-            <div className="min-w-0 flex-1 space-y-2">
-              <Skeleton className="h-4 w-36" />
-              <Skeleton className="h-3 w-full max-w-md" />
-            </div>
-            <Skeleton className="h-9 w-28 rounded-xl" />
-          </div>
-        ))}
-      </div>
-    </div>
   );
 }

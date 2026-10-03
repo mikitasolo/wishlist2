@@ -7,7 +7,7 @@ import Button from '@/components/Button';
 import LoadError from '@/components/LoadError';
 import Menu, { type MenuItem } from '@/components/Menu';
 import Panel, { PanelRow } from '@/components/Panel';
-import { MemberRowSkeleton, Skeleton } from '@/components/Skeleton';
+import { MemberRowSkeleton } from '@/components/Skeleton';
 import { iconButtonClassName } from '@/components/buttonStyles';
 
 /**
@@ -330,35 +330,5 @@ function RowMenu({ username, items }: { username?: string | null; items: MenuIte
       items={items}
       triggerClassName={ROW_MENU_TRIGGER}
     />
-  );
-}
-
-/**
- * The People tab while the list loads, box for box: the invite form's panel,
- * then the people panel with its Owners and Members groups.
- */
-export function WishlistPeopleSkeleton() {
-  return (
-    <div className="max-w-3xl space-y-6">
-      <div className="rounded-2xl border border-border bg-surface p-5 shadow-sm sm:p-6">
-        <Skeleton className="h-5 w-36" />
-        <Skeleton className="mt-2 h-4 w-72 max-w-full" />
-        <div className="mt-5 flex flex-col gap-3 sm:flex-row">
-          <Skeleton className="h-11 flex-1 rounded-xl" />
-          <Skeleton className="h-11 w-full rounded-xl sm:w-56" />
-        </div>
-      </div>
-      <div className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-surface shadow-sm">
-        <div className="bg-surface-2 px-5 py-2 sm:px-6">
-          <Skeleton className="h-3 w-14" />
-        </div>
-        <MemberRowSkeleton />
-        <div className="bg-surface-2 px-5 py-2 sm:px-6">
-          <Skeleton className="h-3 w-16" />
-        </div>
-        <MemberRowSkeleton />
-        <MemberRowSkeleton />
-      </div>
-    </div>
   );
 }

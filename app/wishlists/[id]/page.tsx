@@ -23,20 +23,12 @@ import WishlistHeader, { WishlistHeaderSkeleton } from '@/components/WishlistHea
 import JoinListCallout from '@/components/JoinListCallout';
 import WishlistCover from '@/components/WishlistCover';
 import WishlistDescription from '@/components/WishlistDescription';
-import WishlistTabs, {
-  WishlistTabsSkeleton,
-  listTabId,
-  listTabPanelId,
-} from '@/components/WishlistTabs';
+import WishlistTabs, { listTabId, listTabPanelId } from '@/components/WishlistTabs';
 import WishlistPeopleTab, {
-  WishlistPeopleSkeleton,
   type PendingInvite,
   type WishlistPerson,
 } from '@/components/WishlistPeopleTab';
-import WishlistSettingsTab, {
-  ARCHIVE_EXPLANATION,
-  WishlistSettingsSkeleton,
-} from '@/components/WishlistSettingsTab';
+import WishlistSettingsTab, { ARCHIVE_EXPLANATION } from '@/components/WishlistSettingsTab';
 import {
   ListControlsSkeleton,
   Skeleton,
@@ -1421,28 +1413,20 @@ export default function WishlistDetail() {
               description: a list may have neither, so the skeleton doesn't
               promise them. */}
           <WishlistHeaderSkeleton />
-          {/* Opened at People or Settings, signed in: an owner's tab, as it'll
-              be laid out (anyone else is shown Items once the list lands). */}
-          {status === 'authenticated' && urlTab !== 'items' ? (
-            <>
-              <WishlistTabsSkeleton />
-              {urlTab === 'people' ? <WishlistPeopleSkeleton /> : <WishlistSettingsSkeleton />}
-            </>
-          ) : (
-            <>
-              {/* Signed out, the viewer is a visitor, who gets the note on
-                  getting invited (its text wraps to three lines on a phone, two
-                  at sm, one at lg, over Sign in). Signed in, the role isn't
-                  known yet. */}
-              {status === 'unauthenticated' && (
-                <Skeleton className="mb-6 h-[8.625rem] rounded-xl sm:mb-8 sm:h-[7.25rem] lg:h-[6.125rem]" />
-              )}
-              {/* The status chips and toolbar. The role isn't known yet: signed
-                  out, it's a visitor's, with no chips; otherwise a member's four. */}
-              <ListControlsSkeleton chips={status === 'unauthenticated' ? 0 : 4} />
-              <SkeletonGrid count={8} variant="item" />
-            </>
+          {/* Always the Items layout, whatever ?tab= says: until the list has
+              loaded, the viewer's role isn't known, and only an owner may see
+              anything that hints at the tabs. An owner's tab replaces it once
+              the list lands. */}
+          {/* Signed out, the viewer is a visitor, who gets the note on getting
+              invited (its text wraps to three lines on a phone, two at sm, one
+              at lg, over Sign in). Signed in, the role isn't known yet. */}
+          {status === 'unauthenticated' && (
+            <Skeleton className="mb-6 h-[8.625rem] rounded-xl sm:mb-8 sm:h-[7.25rem] lg:h-[6.125rem]" />
           )}
+          {/* The status chips and toolbar. The role isn't known yet: signed out,
+              it's a visitor's, with no chips; otherwise a member's four. */}
+          <ListControlsSkeleton chips={status === 'unauthenticated' ? 0 : 4} />
+          <SkeletonGrid count={8} variant="item" />
         </main>
       </div>
     );

@@ -40,6 +40,8 @@ let invites: { _id: string; role: 'owner' | 'member'; username: string; image: n
 let membersFail: boolean;
 /** Holds the next invite cancel until it's released. */
 let heldCancel: Promise<void> | undefined;
+/** Holds every read of the list until it's released. */
+let heldList: Promise<void> | undefined;
 
 const reply = (body: unknown, status = 200) => ({
   ok: status < 400,
@@ -73,9 +75,11 @@ beforeEach(() => {
   ];
   membersFail = false;
   heldCancel = undefined;
+  heldList = undefined;
   fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
     const method = init?.method ?? 'GET';
     if (url === '/api/wishlists/birthday' && method === 'GET') {
+      await heldList;
       return reply({
         success: true,
         data: {
@@ -249,6 +253,31 @@ describe('the tabs for anyone but an owner', () => {
       // Members never read the people on the list.
       expect(requests('/api/wishlists/birthday/members', 'GET')).toHaveLength(0);
       expect(requests('/api/wishlists/birthday/invites', 'GET')).toHaveLength(0);
+    }
+  );
+
+  // The role is only known once the list has loaded, so until then the page
+  // can't show a tab's skeleton without hinting at the tabs to a non-owner.
+  it.each(['?tab=people', '?tab=settings'])(
+    'shows the Items skeleton while the list loads at %s, exactly as with no ?tab=',
+    async (search) => {
+      userRole = 'member';
+      owners = ['bob'];
+      let release!: () => void;
+      heldList = new Promise<void>((resolve) => (release = resolve));
+
+      openAt();
+      const plain = screen.getByRole('main').innerHTML;
+      cleanup();
+      openAt(search);
+      expect(screen.getByRole('main').innerHTML).toBe(plain);
+      expect(screen.queryByRole('tablist')).toBeNull();
+
+      act(() => release());
+      await screen.findByRole('button', { name: 'Propose' });
+      expect(screen.queryByRole('tablist')).toBeNull();
+      expect(screen.queryByRole('heading', { name: 'Invite someone' })).toBeNull();
+      expect(screen.queryByRole('heading', { name: 'About' })).toBeNull();
     }
   );
 

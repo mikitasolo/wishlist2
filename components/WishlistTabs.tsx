@@ -2,7 +2,6 @@
 
 import { useRef, type KeyboardEvent } from 'react';
 import Badge from '@/components/Badge';
-import { Skeleton } from '@/components/Skeleton';
 import type { ListTab } from '@/lib/hooks/useListTab';
 
 const TABS: { value: ListTab; label: string }[] = [
@@ -89,17 +88,6 @@ export default function WishlistTabs({
           </button>
         );
       })}
-    </div>
-  );
-}
-
-/** `WishlistTabs` while the list loads: the bar's line and three labels, box for box. */
-export function WishlistTabsSkeleton() {
-  return (
-    <div className="mb-6 flex h-11 items-center gap-6 border-b border-border sm:mb-8">
-      <Skeleton className="h-4 w-12" />
-      <Skeleton className="h-4 w-20" />
-      <Skeleton className="h-4 w-16" />
     </div>
   );
 }
