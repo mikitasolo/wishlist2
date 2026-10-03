@@ -194,7 +194,7 @@ describe('AppHeader — navigation', () => {
     expect(screen.getByRole('banner')).not.toContainElement(tabBar());
   });
 
-  it('shows no tab bar and no links to a signed-out visitor, and no New list', () => {
+  it('shows no tab bar and no links to a signed-out visitor', () => {
     state.user = null;
     render(<AppHeader />);
     expect(tabBar()).toBeNull();
@@ -203,31 +203,32 @@ describe('AppHeader — navigation', () => {
     expect(screen.queryByRole('button', { name: 'New list' })).toBeNull();
   });
 
-  it('keeps New list in the header for someone signed in', () => {
+  // WIS-302: New list lives on Home and My wishlists, not in the header.
+  it('has no New list in the header for someone signed in', () => {
     render(<AppHeader />);
-    expect(screen.getByRole('button', { name: 'New list' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'New list' })).toBeNull();
   });
 
   // WIS-209: the signed-in row's shape is held while the session loads, so
   // nothing in it moves when the session lands. Placeholders are hidden from
   // assistive tech; CSS shows them only under the session hint.
-  it('while the session loads, holds the places of the links, New list and the tab bar', () => {
+  it('while the session loads, holds the places of the links and the tab bar, and nothing else', () => {
     state.user = null;
     state.loading = true;
     render(<AppHeader />);
 
     expect(tabBar()).toHaveAttribute('data-tab-bar', 'pending');
     expect(headerNav()).toHaveClass('hidden', 'sm:session-hint:flex');
-    const newList = screen.getByRole('banner').querySelector('[aria-hidden="true"] .skeleton');
-    expect(newList).toHaveTextContent('New list');
-    expect(screen.queryByRole('button', { name: 'New list' })).toBeNull();
+    // No New list and no bell to hold a place for (WIS-302): the account
+    // button's placeholder is AuthButton's own, not rendered here.
+    expect(screen.getByRole('banner').querySelector('.skeleton')).toBeNull();
   });
 
   it('keeps the navigation up while a known session is updated', () => {
     state.loading = true;
     render(<AppHeader />);
     expect(tabBar()).toHaveAttribute('data-tab-bar', 'shown');
-    expect(screen.getByRole('button', { name: 'New list' })).toBeInTheDocument();
+    expect(headerNav()).toHaveClass('flex');
   });
 });
 

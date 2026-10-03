@@ -39,10 +39,10 @@ for (const width of [320, 360]) {
 
 // regression: from `sm` up the open search field sits in the header row, and
 // the account button couldn't shrink to make room for it, so at 640px it was
-// pushed past the right edge and the page scrolled sideways. At 768px New list
-// gets its label (WIS-242), which has to fit beside the open search too. The
-// header's Home · Reserved · Activity links (WIS-251) step aside for it below
-// `lg`, and from there there's room for both.
+// pushed past the right edge and the page scrolled sideways. The header's
+// Home · Reserved · Activity links (WIS-251) step aside for it below `lg`, and
+// from there there's room for both. (The header had New list too, until
+// WIS-302 left it to Home and My wishlists.)
 for (const width of [640, 768, 1024]) {
   test(`regression: at ${width}px the open search leaves the account button on screen`, async ({
     page,
@@ -63,7 +63,7 @@ for (const width of [640, 768, 1024]) {
 
     expect(await sidewaysScroll(page)).toBe(0);
     await expect(accountButton(page)).toBeInViewport({ ratio: 1 });
-    await expect(page.getByRole('button', { name: 'New list' })).toBeInViewport({ ratio: 1 });
+    await expect(page.getByRole('banner').getByRole('button', { name: 'New list' })).toHaveCount(0);
   });
 }
 

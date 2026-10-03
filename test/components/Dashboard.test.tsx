@@ -248,25 +248,33 @@ describe('dashboard — Pin to top', () => {
 
     const card = (name: string) =>
       screen.getByRole('heading', { level: 3, name }).closest('a')!.parentElement!;
-    expect(within(card('Garden')).getByRole('button', { name: 'Unpin' })).toBeInTheDocument();
+    expect(
+      within(card('Garden')).getByRole('button', { name: 'Pin to top', pressed: true })
+    ).toBeInTheDocument();
     await userEvent
       .setup()
-      .click(within(card('Kitchen')).getByRole('button', { name: 'Pin to top' }));
+      .click(within(card('Kitchen')).getByRole('button', { name: 'Pin to top', pressed: false }));
 
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/wishlists/w3',
       expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ featured: true }) })
     );
     expect(order()).toEqual(['Kitchen', 'Books', 'Garden']);
-    expect(within(card('Garden')).getByRole('button', { name: 'Pin to top' })).toBeInTheDocument();
-    expect(within(card('Kitchen')).getByRole('button', { name: 'Unpin' })).toBeInTheDocument();
+    expect(
+      within(card('Garden')).getByRole('button', { name: 'Pin to top', pressed: false })
+    ).toBeInTheDocument();
+    expect(
+      within(card('Kitchen')).getByRole('button', { name: 'Pin to top', pressed: true })
+    ).toBeInTheDocument();
   });
 
   it('Unpin puts the list back in its place', async () => {
     answers.lists = () => json({ success: true, data: { owned: three(), member: [] } });
     render(<Home />);
     await screen.findByRole('heading', { level: 2, name: 'Your wishlists' });
-    await userEvent.setup().click(screen.getByRole('button', { name: 'Unpin' }));
+    await userEvent
+      .setup()
+      .click(screen.getByRole('button', { name: 'Pin to top', pressed: true }));
 
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/wishlists/w2',
@@ -280,7 +288,9 @@ describe('dashboard — Pin to top', () => {
     answers.pin = () => json({ success: false, error: 'Nope' }, 403);
     render(<Home />);
     await screen.findByRole('heading', { level: 2, name: 'Your wishlists' });
-    await userEvent.setup().click(screen.getAllByRole('button', { name: 'Pin to top' })[0]);
+    await userEvent
+      .setup()
+      .click(screen.getAllByRole('button', { name: 'Pin to top', pressed: false })[0]);
 
     expect(showToast).toHaveBeenCalledWith('Nope', 'error');
     expect(order()).toEqual(['Garden', 'Books', 'Kitchen']);

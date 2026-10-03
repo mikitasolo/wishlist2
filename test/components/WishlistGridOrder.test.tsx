@@ -197,19 +197,23 @@ describe('dashboard — order', () => {
     const card = (name: string) =>
       within(section('Your wishlists')).getByRole('heading', { level: 3, name }).closest('a')!
         .parentElement as HTMLElement;
-    await user.click(within(card('Christmas')).getByRole('button', { name: 'Pin to top' }));
+    await user.click(
+      within(card('Christmas')).getByRole('button', { name: 'Pin to top', pressed: false })
+    );
 
     await waitFor(() => expect(cardNames(section('Your wishlists'))[0]).toBe('Christmas'));
     expect(fetchMock).toHaveBeenCalledWith(
       `/api/wishlists/${christmas._id}`,
       expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ featured: true }) })
     );
-    // The rest keep their order, and Pinned is on its card.
+    // The rest keep their order, and its pin is pressed.
     expect(cardNames(section('Your wishlists'))).toEqual([
       'Christmas',
       ...BY_OCCASION.filter((name) => name !== 'Christmas'),
     ]);
-    expect(within(card('Christmas')).getByText('Pinned')).toBeInTheDocument();
+    expect(
+      within(card('Christmas')).getByRole('button', { name: 'Pin to top', pressed: true })
+    ).toBeInTheDocument();
   });
 });
 

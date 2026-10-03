@@ -105,7 +105,6 @@ describe('WishlistCard — occasion', () => {
     expect(label.tagName).toBe('TIME');
     expect(label).toHaveAttribute('dateTime', '2026-10-14');
     expect(coverOf(container)).toContainElement(label);
-    expect(screen.getByText('Pinned')).toBeInTheDocument();
     expect(screen.getByText('Public')).toBeInTheDocument();
     // Not the placeholder year, anywhere on the card.
     expect(container.innerHTML).not.toContain('2000');
@@ -234,15 +233,21 @@ describe('WishlistCard — shared with you', () => {
     expect(screen.getByText('member')).toBeInTheDocument();
   });
 
-  it('still shows Pinned with the role left off', () => {
-    render(
+  // WIS-302: the pin button is the one sign that a list is pinned.
+  it('never says Pinned on the cover, with or without the role', () => {
+    const { unmount } = render(
       <WishlistCard
         wishlist={wishlist({ userRole: 'member', featured: true })}
         showOwner
         showRole={false}
       />
     );
-    expect(screen.getByText('Pinned')).toBeInTheDocument();
+    expect(screen.queryByText('Pinned')).toBeNull();
+    unmount();
+
+    render(<WishlistCard wishlist={wishlist({ userRole: 'owner', featured: true })} />);
+    expect(screen.queryByText('Pinned')).toBeNull();
+    expect(screen.getByText('owner')).toBeInTheDocument();
   });
 });
 
@@ -252,17 +257,23 @@ describe('WishlistCard — Pin to top', () => {
   it('offers Pin to top over the cover, outside the card’s link, and toggles it', () => {
     const control = pin(false);
     const { container } = render(<WishlistCard wishlist={wishlist()} pin={control} />);
-    const button = screen.getByRole('button', { name: 'Pin to top' });
+    const button = screen.getByRole('button', { name: 'Pin to top', pressed: false });
+    expect(button).toHaveAttribute('title', 'Pin to top');
     expect(container.querySelector('a')).not.toContainElement(button);
     fireEvent.click(button);
     expect(control.onToggle).toHaveBeenCalledTimes(1);
     expect(screen.queryByText('Pinned')).toBeNull();
   });
 
-  it('says Unpin, beside Pinned, on the pinned list', () => {
+  // WIS-302: the pin button alone says the list is pinned, as a toggle: its
+  // name stays Pin to top (a name that flipped to Unpin would read "Unpin,
+  // pressed"), aria-pressed says it's on, and the tooltip says Unpin.
+  it('is pressed and filled on the pinned list, with Unpin as its tooltip and no Pinned badge', () => {
     render(<WishlistCard wishlist={wishlist({ featured: true })} pin={pin(true)} />);
-    expect(screen.getByRole('button', { name: 'Unpin' })).toBeInTheDocument();
-    expect(screen.getByText('Pinned')).toBeInTheDocument();
+    const button = screen.getByRole('button', { name: 'Pin to top', pressed: true });
+    expect(button).toHaveAttribute('title', 'Unpin');
+    expect(button.querySelector('svg')).toHaveClass('fill-current');
+    expect(screen.queryByText('Pinned')).toBeNull();
   });
 
   it('holds the button while a pin is on its way', () => {
