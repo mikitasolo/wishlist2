@@ -2,8 +2,8 @@
 
 import { ReactNode, useState } from 'react';
 import { useSession } from 'next-auth/react';
-import Icon from '@/components/Icon';
 import BrandLink from '@/components/BrandLink';
+import IconButton from '@/components/IconButton';
 import GlobalSearch from '@/components/GlobalSearch';
 import CreateWishlistModal from '@/components/CreateWishlistModal';
 import NotificationBell from '@/components/NotificationBell';
@@ -36,14 +36,15 @@ export default function AppHeader({ actions, search = true }: AppHeaderProps) {
         <div className="flex min-w-0 items-center gap-2 sm:gap-3">
           {search && <GlobalSearch />}
           {session?.user && (
-            <button
-              onClick={() => setShowCreate(true)}
-              aria-label="New wishlist"
+            <IconButton
+              icon="plus"
+              label="New wishlist"
               title="New wishlist"
-              className="flex h-10 w-10 items-center justify-center rounded-full border border-border bg-surface text-muted-foreground shadow-xs transition-colors hover:bg-surface-hover hover:text-foreground"
-            >
-              <Icon name="plus" size={18} />
-            </button>
+              onClick={() => setShowCreate(true)}
+              variant="chrome"
+              size="md"
+              shape="pill"
+            />
           )}
           <NotificationBell />
           {actions}

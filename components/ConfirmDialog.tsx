@@ -2,6 +2,8 @@
 
 import { useEffect, useId, useRef, useState } from 'react';
 import Icon, { IconName } from '@/components/Icon';
+import Button from '@/components/Button';
+import type { ButtonVariant } from '@/components/buttonStyles';
 import { useBodyScrollLock } from '@/lib/hooks/useBodyScrollLock';
 import { useFocusTrap } from '@/lib/hooks/useFocusTrap';
 import { TONE_CLASSES } from '@/lib/utils/statusTones';
@@ -106,22 +108,22 @@ export default function ConfirmDialog({
 
   const accent: Record<
     NonNullable<ConfirmDialogProps['type']>,
-    { icon: IconName; chip: string; button: string }
+    { icon: IconName; chip: string; button: ButtonVariant }
   > = {
     danger: {
       icon: 'trash',
       chip: TONE_CLASSES.danger.tint,
-      button: 'bg-danger-fill hover:bg-danger-fill-hover active:brightness-90',
+      button: 'destructive',
     },
     warning: {
       icon: 'alert',
       chip: TONE_CLASSES.warning.tint,
-      button: 'bg-warning-fill hover:bg-warning-fill-hover active:brightness-90',
+      button: 'warning',
     },
     info: {
       icon: 'info',
       chip: TONE_CLASSES.info.tint,
-      button: 'bg-info-fill hover:bg-info-fill-hover active:brightness-90',
+      button: 'primary',
     },
   };
   const { chip, button } = accent[type];
@@ -164,21 +166,25 @@ export default function ConfirmDialog({
         </div>
 
         <div className="mt-6 flex flex-col justify-end gap-2 sm:flex-row sm:gap-3">
-          <button
+          <Button
             ref={cancelRef}
+            variant="cancel"
+            size="md"
             onClick={onCancel}
             disabled={isPending}
-            className="order-2 h-10 rounded-xl bg-muted px-4 text-sm font-medium text-foreground transition-colors hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50 sm:order-1"
+            className="order-2 sm:order-1"
           >
             {cancelText}
-          </button>
-          <button
+          </Button>
+          <Button
+            variant={button}
+            size="md"
             onClick={handleConfirm}
             disabled={isPending}
-            className={`order-1 h-10 rounded-xl px-4 text-sm font-medium text-white shadow-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50 sm:order-2 ${button}`}
+            className="order-1 sm:order-2"
           >
             {isPending ? pendingText : confirmText}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

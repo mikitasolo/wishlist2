@@ -2,8 +2,8 @@
 
 import { useEffect, useId, useRef, useState } from 'react';
 import Link from 'next/link';
-import Icon from './Icon';
 import Avatar from './Avatar';
+import IconButton from './IconButton';
 import LoadError from './LoadError';
 import { useBodyScrollLock } from '@/lib/hooks/useBodyScrollLock';
 import { useFocusTrap } from '@/lib/hooks/useFocusTrap';
@@ -104,13 +104,7 @@ export default function FollowListModal({
           <h2 id={titleId} className="text-base font-semibold text-foreground">
             Connections
           </h2>
-          <button
-            onClick={onClose}
-            aria-label="Close"
-            className="flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          >
-            <Icon name="close" size={18} />
-          </button>
+          <IconButton icon="close" label="Close" onClick={onClose} shape="pill" />
         </div>
         <div className="relative mx-4 mt-3 mb-1 flex rounded-xl border border-border bg-surface-2 p-1">
           <span

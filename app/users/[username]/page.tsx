@@ -16,7 +16,7 @@ import Button from '@/components/Button';
 import GlobalSearch from '@/components/GlobalSearch';
 import LoadError from '@/components/LoadError';
 import StatePanel from '@/components/StatePanel';
-import { buttonClassName } from '@/components/buttonStyles';
+import { buttonClassName, CONTROL_ICON_SIZE } from '@/components/buttonStyles';
 import { SkeletonGrid } from '@/components/Skeleton';
 import { useToast } from '@/components/ToastProvider';
 import { pluralNoun } from '@/lib/utils/plural';
@@ -204,8 +204,8 @@ export default function UserProfile() {
               </div>
             </div>
             <div className="flex flex-shrink-0 items-center gap-2">
-              <div className="skeleton h-10 w-24 rounded-full" />
-              <div className="skeleton h-10 w-28 rounded-full" />
+              <div className="skeleton h-9 w-24 rounded-full" />
+              <div className="skeleton h-9 w-28 rounded-full" />
             </div>
           </div>
           <SkeletonGrid count={8} variant="wishlist" />
@@ -292,35 +292,27 @@ export default function UserProfile() {
             </div>
           </div>
           <div className="flex flex-shrink-0 items-center gap-2">
-            <ShareButton className="h-10 rounded-full px-4" />
+            <ShareButton />
             {profile?.isSelf && (
               <Link
                 href="/settings"
-                className="inline-flex h-10 items-center justify-center gap-1.5 rounded-full border border-border-strong bg-surface px-5 text-sm font-semibold text-foreground shadow-xs transition-colors hover:bg-surface-hover"
+                className={buttonClassName({ variant: 'secondary', size: 'sm', shape: 'pill' })}
               >
-                <Icon name="settings" size={16} />
+                <Icon name="settings" size={CONTROL_ICON_SIZE.sm} />
                 Edit profile
               </Link>
             )}
             {profile && !profile.isSelf && (
-              <button
+              <Button
+                variant={profile.isFollowing ? 'secondary' : 'primary'}
+                size="sm"
+                shape="pill"
+                icon={profile.isFollowing ? undefined : 'plus'}
                 onClick={toggleFollow}
                 disabled={followBusy}
-                className={`inline-flex h-10 items-center justify-center gap-1.5 rounded-full px-5 text-sm font-semibold transition-all active:scale-[0.98] disabled:opacity-50 ${
-                  profile.isFollowing
-                    ? 'border border-border-strong bg-surface text-foreground hover:bg-surface-hover'
-                    : 'bg-primary-600 text-white shadow-[0_8px_22px_-10px_rgba(94,92,230,0.9)] hover:bg-primary-500'
-                }`}
               >
-                {profile.isFollowing ? (
-                  'Following'
-                ) : (
-                  <>
-                    <Icon name="plus" size={16} />
-                    {profile.followsYou ? 'Follow back' : 'Follow'}
-                  </>
-                )}
-              </button>
+                {profile.isFollowing ? 'Following' : profile.followsYou ? 'Follow back' : 'Follow'}
+              </Button>
             )}
           </div>
         </div>

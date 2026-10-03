@@ -1,5 +1,7 @@
 'use client';
 
+import Field from '@/components/Field';
+import Input from '@/components/Input';
 import type { UsernameAvailability } from '@/lib/hooks/useUsernameAvailability';
 import { TONE_CLASSES } from '@/lib/utils/statusTones';
 
@@ -29,34 +31,34 @@ export default function UsernameField({
   autoFocus = false,
 }: UsernameFieldProps) {
   return (
-    <>
-      <label htmlFor={id} className="mb-1.5 block text-sm font-medium text-foreground">
-        Username
-      </label>
-      <div className="flex items-center gap-2 rounded-xl border border-border-strong bg-surface px-3 field-focus">
-        <span className="text-muted-foreground">@</span>
-        <input
-          id={id}
-          value={value}
-          onChange={(e) => onChange(e.target.value.toLowerCase())}
-          className="h-11 min-w-0 flex-1 border-0 bg-transparent text-[15px] outline-hidden"
-          autoCapitalize="none"
-          autoComplete="off"
-          spellCheck={false}
-          maxLength={20}
-          disabled={disabled}
-          autoFocus={autoFocus}
-        />
-        <span className="flex-shrink-0 text-sm" aria-live="polite">
-          {availability === 'checking' && <span className="text-muted-foreground">Checking…</span>}
-          {availability === 'ok' && <span className={TONE_CLASSES.success.text}>Available</span>}
-          {availability === 'taken' && <span className={TONE_CLASSES.danger.text}>Taken</span>}
-          {availability === 'invalid' && <span className={TONE_CLASSES.danger.text}>Invalid</span>}
-        </span>
-      </div>
-      <p className="mt-2 text-xs text-muted-foreground">
-        3–20 characters, starting with a letter. Letters, numbers, and underscores only.
-      </p>
-    </>
+    <Field
+      label="Username"
+      id={id}
+      helper="3–20 characters, starting with a letter. Letters, numbers, and underscores only."
+    >
+      <Input
+        leading="@"
+        trailing={
+          <span className="text-sm" aria-live="polite">
+            {availability === 'checking' && (
+              <span className="text-muted-foreground">Checking…</span>
+            )}
+            {availability === 'ok' && <span className={TONE_CLASSES.success.text}>Available</span>}
+            {availability === 'taken' && <span className={TONE_CLASSES.danger.text}>Taken</span>}
+            {availability === 'invalid' && (
+              <span className={TONE_CLASSES.danger.text}>Invalid</span>
+            )}
+          </span>
+        }
+        value={value}
+        onChange={(e) => onChange(e.target.value.toLowerCase())}
+        autoCapitalize="none"
+        autoComplete="off"
+        spellCheck={false}
+        maxLength={20}
+        disabled={disabled}
+        autoFocus={autoFocus}
+      />
+    </Field>
   );
 }

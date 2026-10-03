@@ -3,6 +3,7 @@
 import { useEffect, useCallback, useRef, ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import Icon from '@/components/Icon';
+import IconButton from '@/components/IconButton';
 import { useBodyScrollLock } from '@/lib/hooks/useBodyScrollLock';
 import { useFocusTrap } from '@/lib/hooks/useFocusTrap';
 
@@ -122,15 +123,14 @@ export default function BaseModal({
               {title}
             </h2>
           </div>
-          <button
+          <IconButton
             ref={closeButtonRef}
+            icon="close"
+            label="Close modal"
             onClick={handleClose}
-            className="-mr-1 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed"
             disabled={isSubmitting}
-            aria-label="Close modal"
-          >
-            <Icon name="close" size={20} />
-          </button>
+            className="-mr-1"
+          />
         </div>
         {/* Scrollable body */}
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 sm:px-6">

@@ -14,6 +14,7 @@ import {
   type OccasionDraft,
   type OccasionKind,
 } from '@/lib/utils/occasion';
+import { inputClassName } from './fieldStyles';
 
 // In the picker `other` reads as "Other"; next to the list's name, "Occasion".
 const KIND_OPTIONS: { value: OccasionDraft['kind']; label: string }[] = [
@@ -136,7 +137,7 @@ export default function OccasionField({
                 max={`${MAX_OCCASION_YEAR}-12-31`}
                 value={value.date}
                 onChange={(e) => onChange({ ...value, date: e.target.value })}
-                className="h-11 w-full rounded-xl border border-border-strong bg-surface px-3.5 text-[15px] outline-hidden field-focus sm:w-48"
+                className={`${inputClassName()} sm:w-48`}
                 disabled={disabled}
               />
             )}

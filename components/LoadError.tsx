@@ -42,7 +42,7 @@ export default function LoadError({
       body={body}
       compact={compact}
       actions={
-        <Button size={compact ? 'sm' : 'md'} onClick={onRetry}>
+        <Button size={compact ? 'sm' : 'lg'} onClick={onRetry}>
           Try again
         </Button>
       }

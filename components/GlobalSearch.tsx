@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Icon from '@/components/Icon';
+import IconButton from '@/components/IconButton';
 import Avatar from '@/components/Avatar';
 import { usernameQuery } from '@/lib/utils/searchQuery';
 
@@ -130,16 +131,17 @@ export default function GlobalSearch({ variant = 'header' }: GlobalSearchProps) 
 
   if (!inline && !open) {
     return (
-      <button
+      <IconButton
+        icon="search"
+        label="Search"
         onClick={() => {
           setOpen(true);
           setTimeout(() => inputRef.current?.focus(), 0);
         }}
-        aria-label="Search"
-        className="flex h-10 w-10 items-center justify-center rounded-full border border-border bg-surface text-muted-foreground shadow-xs transition-colors hover:bg-surface-hover hover:text-foreground"
-      >
-        <Icon name="search" size={18} />
-      </button>
+        variant="chrome"
+        size="md"
+        shape="pill"
+      />
     );
   }
 
@@ -185,23 +187,16 @@ export default function GlobalSearch({ variant = 'header' }: GlobalSearchProps) 
         />
         {inline ? (
           q && (
-            <button
+            <IconButton
               type="button"
+              icon="close"
+              label="Clear search"
               onClick={clear}
-              aria-label="Clear search"
-              className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            >
-              <Icon name="close" size={16} />
-            </button>
+              shape="pill"
+            />
           )
         ) : (
-          <button
-            onClick={collapse}
-            aria-label="Close search"
-            className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          >
-            <Icon name="close" size={16} />
-          </button>
+          <IconButton icon="close" label="Close search" onClick={collapse} shape="pill" />
         )}
       </div>
 

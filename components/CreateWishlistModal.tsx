@@ -9,6 +9,12 @@ import ConfirmDialog from './ConfirmDialog';
 import Icon from './Icon';
 import ImageUpload from './ImageUpload';
 import Select from './Select';
+import Button from './Button';
+import IconButton from './IconButton';
+import Field from './Field';
+import Input from './Input';
+import Textarea from './Textarea';
+import { FIELD_HELPER, FIELD_LABEL } from './fieldStyles';
 import { visibilityMeta, type Visibility } from '@/lib/utils/visibility';
 import { currencySelectOptions } from '@/lib/utils/currencies';
 import { useBodyScrollLock } from '@/lib/hooks/useBodyScrollLock';
@@ -192,14 +198,13 @@ export default function CreateWishlistModal({
           >
             Create new wishlist
           </h2>
-          <button
+          <IconButton
+            icon="close"
+            label="Close modal"
             onClick={handleClose}
-            className="-mr-1 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed"
             disabled={isSubmitting}
-            aria-label="Close modal"
-          >
-            <Icon name="close" size={20} />
-          </button>
+            className="-mr-1"
+          />
         </div>
 
         {/* Scrollable body */}
@@ -208,43 +213,32 @@ export default function CreateWishlistModal({
           className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-5 py-5 sm:px-6"
           autoComplete="off"
         >
-          <div>
-            <label htmlFor="name" className="block text-sm font-medium text-foreground mb-1">
-              Wishlist Name *
-            </label>
-            <input
-              type="text"
-              id="name"
+          <Field label="Wishlist Name *" id="name">
+            <Input
               required
               ref={firstInputRef}
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              className="w-full px-4 py-2 border border-border-strong rounded-xl outline-hidden field-focus"
               placeholder="My Wishlist"
               disabled={isSubmitting}
               aria-required="true"
               autoComplete="off"
             />
-          </div>
+          </Field>
 
-          <div>
-            <label htmlFor="description" className="block text-sm font-medium text-foreground mb-1">
-              Description
-            </label>
-            <textarea
-              id="description"
+          <Field label="Description" id="description">
+            <Textarea
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              className="w-full px-4 py-2 border border-border-strong rounded-xl outline-hidden field-focus"
               placeholder="Optional description"
               rows={3}
               disabled={isSubmitting}
               autoComplete="off"
             />
-          </div>
+          </Field>
 
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">Currency</label>
+            <label className={FIELD_LABEL}>Currency</label>
             <Select
               value={formData.currency}
               onChange={(v) => setFormData({ ...formData, currency: v })}
@@ -254,13 +248,11 @@ export default function CreateWishlistModal({
               triggerClassName="w-full"
               disabled={isSubmitting}
             />
-            <p className="mt-1 text-xs text-muted-foreground">
-              Default currency for prices in this wishlist.
-            </p>
+            <p className={FIELD_HELPER}>Default currency for prices in this wishlist.</p>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">
+            <label className={FIELD_LABEL}>
               Banner image <span className="text-muted-foreground">(optional)</span>
             </label>
             {/* An upload lands after the render that started it: update the form as it is by then. */}
@@ -269,13 +261,11 @@ export default function CreateWishlistModal({
               onChange={(url) => setFormData((f) => ({ ...f, bannerUrl: url ?? '' }))}
               disabled={isSubmitting}
             />
-            <p className="mt-1 text-xs text-muted-foreground">
-              Used as the cover instead of the gradient.
-            </p>
+            <p className={FIELD_HELPER}>Used as the cover instead of the gradient.</p>
           </div>
 
           <div>
-            <label className="mb-1 block text-sm font-medium text-foreground">Visibility</label>
+            <label className={FIELD_LABEL}>Visibility</label>
             <p className="mb-2 text-xs text-muted-foreground">
               {formData.visibility === 'everyone'
                 ? 'Anyone can find and view this wishlist.'
@@ -312,21 +302,18 @@ export default function CreateWishlistModal({
           </div>
 
           <div className="flex gap-3 pt-4">
-            <button
+            <Button
               type="button"
+              variant="secondary"
               onClick={handleClose}
-              className="flex-1 px-4 py-2 border border-border-strong text-foreground rounded-xl hover:bg-surface-hover transition-colors font-medium cursor-pointer"
               disabled={isSubmitting}
+              className="flex-1"
             >
               Cancel
-            </button>
-            <button
-              type="submit"
-              className="flex-1 px-4 py-2 border border-transparent bg-primary-600 text-white rounded-xl hover:bg-primary-700 transition-colors font-medium disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
-              disabled={isSubmitting}
-            >
+            </Button>
+            <Button type="submit" disabled={isSubmitting} className="flex-1">
               {isSubmitting ? 'Creating...' : 'Create Wishlist'}
-            </button>
+            </Button>
           </div>
         </form>
       </div>

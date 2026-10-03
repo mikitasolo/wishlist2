@@ -2,6 +2,7 @@
 
 import React, { Component, ReactNode } from 'react';
 import Icon from '@/components/Icon';
+import Button from './Button';
 
 interface ErrorBoundaryState {
   hasError: boolean;
@@ -47,15 +48,14 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
             <p className="mb-6 text-muted-foreground">
               {this.state.error?.message || 'An unexpected error occurred'}
             </p>
-            <button
+            <Button
               onClick={() => {
                 this.setState({ hasError: false, error: null });
                 window.location.reload();
               }}
-              className="inline-flex h-11 cursor-pointer items-center rounded-lg bg-primary-600 px-6 font-medium text-white shadow-sm transition-colors hover:bg-primary-700"
             >
               Reload page
-            </button>
+            </Button>
           </div>
         </div>
       );

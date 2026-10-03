@@ -23,6 +23,9 @@ import {
   type ProfileSettings,
 } from '@/lib/utils/profileSettings';
 import type { InvitePolicy, ProfileVisibility } from '@/models/User';
+import Field from '@/components/Field';
+import Textarea from '@/components/Textarea';
+import { FIELD_HELPER, FIELD_LABEL } from '@/components/fieldStyles';
 
 export default function SettingsPage() {
   const { status, update } = useSession();
@@ -207,7 +210,7 @@ export default function SettingsPage() {
           </p>
 
           <div className="mb-5">
-            <span className="mb-1.5 block text-sm font-medium text-foreground">Profile photo</span>
+            <span className={FIELD_LABEL}>Profile photo</span>
             <ImageUpload
               value={form.image}
               onChange={(image) => edit({ image })}
@@ -223,25 +226,25 @@ export default function SettingsPage() {
           />
 
           <div className="mt-5">
-            <label htmlFor="bio" className="mb-1.5 block text-sm font-medium text-foreground">
-              Bio
-            </label>
-            <textarea
+            {/* The count is read with the field, as the item form's notes count is. */}
+            <Field
+              label="Bio"
               id="bio"
-              value={form.bio}
-              onChange={(e) => edit({ bio: e.target.value.slice(0, 300) })}
-              rows={3}
-              maxLength={300}
-              placeholder="Tell people about your hobbies, interests, and passions…"
-              className="w-full resize-none rounded-xl border border-border-strong bg-surface px-4 py-2.5 text-[15px] outline-hidden field-focus"
-            />
-            <p className="mt-1 text-right text-xs text-muted-foreground">{form.bio.length}/300</p>
+              helper={<span className="block text-right">{form.bio.length}/300</span>}
+            >
+              <Textarea
+                value={form.bio}
+                onChange={(e) => edit({ bio: e.target.value.slice(0, 300) })}
+                rows={3}
+                maxLength={300}
+                placeholder="Tell people about your hobbies, interests, and passions…"
+                className="resize-none"
+              />
+            </Field>
           </div>
 
           <div id={SETTINGS_CURRENCY_FIELD_ID} ref={currencyField} className="mt-5">
-            <label className="mb-1.5 block text-sm font-medium text-foreground">
-              Default currency
-            </label>
+            <label className={FIELD_LABEL}>Default currency</label>
             <Select
               value={form.defaultCurrency}
               onChange={(defaultCurrency) => edit({ defaultCurrency })}
@@ -250,7 +253,7 @@ export default function SettingsPage() {
               size="md"
               triggerClassName="w-full sm:w-80"
             />
-            <p className="mt-1 text-xs text-muted-foreground">
+            <p className={FIELD_HELPER}>
               Used as the default for new wishlists and to show others&apos; prices in your
               currency.
             </p>
