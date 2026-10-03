@@ -48,6 +48,7 @@ import LoadError from '@/components/LoadError';
 import WishlistUnavailable from '@/components/WishlistUnavailable';
 import { readResource, ReadRefusedError } from '@/lib/utils/resourceRead';
 import { missingFromDraft } from '@/lib/utils/occasion';
+import { getVisibility } from '@/lib/utils/visibility';
 import { onCurrentListTab, useListTab, type ListTab } from '@/lib/hooks/useListTab';
 import { useBusyIds } from '@/lib/hooks/useBusyIds';
 import {
@@ -400,12 +401,24 @@ export default function WishlistDetail() {
   }, []);
 
   // Refresh the pending-invites list (owners only).
+  // Reads of the invites and of the people, numbered as they're sent, and the
+  // number of the latest one whose answer the page took. Each is read again
+  // after every change the page makes (an invite, a demotion, a removal), and
+  // opening People reads them too, so an older read that answers late (say,
+  // the one opening People, after a demotion's) would put back what the
+  // change took away: an answer sent before the one on screen is dropped.
+  const invitesReads = useRef({ sent: 0, landed: 0 });
+  const membersReads = useRef({ sent: 0, landed: 0 });
+
   const refreshInvites = useCallback(async () => {
     if (!wishlistId) return;
+    const sentNo = ++invitesReads.current.sent;
     try {
       const res = await fetch(`/api/wishlists/${wishlistId}/invites`, { cache: 'no-store' });
       const result = await res.json();
-      if (result.success) setPendingInvites(result.data || []);
+      if (!result.success || sentNo < invitesReads.current.landed) return;
+      invitesReads.current.landed = sentNo;
+      setPendingInvites(result.data || []);
     } catch {
       /* ignore */
     }
@@ -415,30 +428,34 @@ export default function WishlistDetail() {
   // failing is shown (People says so): a later one keeps the rows it has.
   const refreshMembers = useCallback(async () => {
     if (!wishlistId) return;
+    const sentNo = ++membersReads.current.sent;
     let read = false;
     try {
       const res = await fetch(`/api/wishlists/${wishlistId}/members`, { cache: 'no-store' });
       const result = await res.json();
       if (result.success) {
-        setMembers(result.data || []);
         read = true;
+        if (sentNo < membersReads.current.landed) return;
+        membersReads.current.landed = sentNo;
+        setMembers(result.data || []);
       }
     } catch (error) {
       console.error('Error fetching members:', error);
+    } finally {
+      setMembersRead((prev) => (read ? 'loaded' : prev === 'loaded' ? prev : 'failed'));
     }
-    setMembersRead((prev) => (read ? 'loaded' : prev === 'loaded' ? prev : 'failed'));
   }, [wishlistId]);
 
-  // The people and pending invites, for an owner: read once when the page
-  // knows it's an owner's (People's count), and again whenever People opens.
+  // For an owner: the people, read once when the page knows it's an owner's
+  // (People's count), and with the pending invites whenever People opens.
   const peopleOpen = tab === 'people';
   const membersReadFor = useRef<string | null>(null);
   useEffect(() => {
     if (!isOwner || !wishlistId) return;
+    if (peopleOpen) void refreshInvites();
     if (!peopleOpen && membersReadFor.current === wishlistId) return;
     membersReadFor.current = wishlistId;
     void refreshMembers();
-    void refreshInvites();
   }, [wishlistId, isOwner, peopleOpen, refreshMembers, refreshInvites]);
 
   // Try again, after the first read of the people failed.
@@ -804,12 +821,12 @@ export default function WishlistDetail() {
   // member's row, by invite id for an invite's. A row's actions are held until
   // its own request settles, and a second one for it is turned away, whatever
   // sent it (a double click on a dialog's confirm included).
-  const rowActions = useBusyIds();
+  const { busy: rowBusy, run: runRowAction } = useBusyIds();
 
   /** Cancel a pending invite: an invite's row, or a member's owner invite (`busyId`: its row). */
   const cancelInvite = useCallback(
     (inviteId: string, busyId: string) =>
-      rowActions.run(busyId, async () => {
+      runRowAction(busyId, async () => {
         if (!wishlistId) return;
         // Optimistic removal.
         setPendingInvites((prev) => prev.filter((i) => i._id !== inviteId));
@@ -829,7 +846,7 @@ export default function WishlistDetail() {
           await refreshInvites();
         }
       }),
-    [wishlistId, showToast, refreshInvites, rowActions]
+    [wishlistId, showToast, refreshInvites, runRowAction]
   );
 
   const handleKickMember = useCallback(
@@ -901,7 +918,7 @@ export default function WishlistDetail() {
         : `/api/wishlists/${wishlistId}/members/${memberId}`;
 
     try {
-      await rowActions.run(deleteConfirm.memberUserId ?? memberId, async () => {
+      await runRowAction(deleteConfirm.memberUserId ?? memberId, async () => {
         try {
           const response = await fetch(path, { method: 'DELETE' });
           const result = await response.json();
@@ -937,7 +954,7 @@ export default function WishlistDetail() {
     refreshInvites,
     dropOwner,
     refreshOwners,
-    rowActions,
+    runRowAction,
   ]);
 
   /**
@@ -948,7 +965,7 @@ export default function WishlistDetail() {
    */
   const inviteAsOwner = useCallback(
     (userId: string, username: string) =>
-      rowActions.run(userId, async () => {
+      runRowAction(userId, async () => {
         if (!wishlistId) return;
         try {
           const res = await fetch(`/api/wishlists/${wishlistId}/owners/${userId}`, {
@@ -969,7 +986,7 @@ export default function WishlistDetail() {
           showToast('Failed to send owner invitation', 'error');
         }
       }),
-    [wishlistId, showToast, refreshInvites, rowActions]
+    [wishlistId, showToast, refreshInvites, runRowAction]
   );
 
   /**
@@ -979,7 +996,7 @@ export default function WishlistDetail() {
    */
   const demoteOwner = useCallback(
     (userId: string, username: string | null) =>
-      rowActions.run(userId, async () => {
+      runRowAction(userId, async () => {
         if (!wishlistId) return;
         try {
           const res = await fetch(`/api/wishlists/${wishlistId}/owners/${userId}`, {
@@ -999,7 +1016,7 @@ export default function WishlistDetail() {
           showToast('Failed to update owner', 'error');
         }
       }),
-    [wishlistId, showToast, refreshMembers, refreshInvites, dropOwner, refreshOwners, rowActions]
+    [wishlistId, showToast, refreshMembers, refreshInvites, dropOwner, refreshOwners, runRowAction]
   );
 
   const confirmPromoteToOwner = useCallback(async () => {
@@ -1719,11 +1736,12 @@ export default function WishlistDetail() {
               people={members}
               invites={pendingInvites}
               viewerId={viewerId}
+              linkOpensForOthers={!wishlist.archived && getVisibility(wishlist) !== 'private'}
               ownerCount={ownerCount}
               loading={membersRead === 'loading'}
               failed={membersRead === 'failed'}
               onRetry={retryMembers}
-              busy={rowActions.busy}
+              busy={rowBusy}
               onDemote={setDemoteConfirm}
               onPromote={setPromoteConfirm}
               onRemove={handleKickMember}

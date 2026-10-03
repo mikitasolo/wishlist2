@@ -34,9 +34,12 @@ export interface PendingInvite {
   image: string | null;
 }
 
-/** The empty Members group's line. */
+/** The empty Members group's line, on a list whose link opens for people who aren't on it. */
 export const NO_MEMBERS_TEXT =
   'No members yet. Members can reserve gifts. Invite people above, or share the link so they can view it.';
+/** The same on an invite-only or archived list, whose link opens for nobody who isn't on it. */
+export const NO_MEMBERS_INVITE_ONLY_TEXT =
+  'No members yet. Members can reserve gifts. Invite people above.';
 
 /** A row's ⋯ trigger: square at an `sm` row action's height. */
 const ROW_MENU_TRIGGER = iconButtonClassName({ variant: 'ghost', size: 'sm' });
@@ -57,6 +60,12 @@ interface WishlistPeopleTabProps {
   invites: readonly PendingInvite[];
   /** The signed-in owner, whose own row says "You" and has no menu. */
   viewerId: string | null;
+  /**
+   * Whether the list's link opens for anyone who isn't on it (it's public or
+   * friends-only, and not archived), so the empty Members group can suggest
+   * sharing it.
+   */
+  linkOpensForOthers: boolean;
   /**
    * How many owners the page counts. With one, there's no owner row to change:
    * a list always keeps one owner.
@@ -106,6 +115,7 @@ export default function WishlistPeopleTab({
   people,
   invites,
   viewerId,
+  linkOpensForOthers,
   ownerCount,
   loading,
   failed,
@@ -184,12 +194,14 @@ export default function WishlistPeopleTab({
             <MemberRowSkeleton />
           ) : members.length === 0 ? (
             <PanelRow>
-              <p className="text-sm text-muted-foreground">{NO_MEMBERS_TEXT}</p>
+              <p className="text-sm text-muted-foreground">
+                {linkOpensForOthers ? NO_MEMBERS_TEXT : NO_MEMBERS_INVITE_ONLY_TEXT}
+              </p>
             </PanelRow>
           ) : (
             members.map((member) => {
+              // Never you: only an owner sees People, and an owner has no member row.
               const userId = String(member.user._id);
-              const isYou = userId === viewerId;
               const ownerInvite = ownerInviteFor(invites, member.user.username);
               const items: MenuItem[] = [
                 ownerInvite
@@ -225,8 +237,8 @@ export default function WishlistPeopleTab({
                   key={member._id}
                   username={member.user.username}
                   image={member.user.image}
-                  caption={isYou ? 'You' : ownerInvite ? 'Owner invite pending' : 'Member'}
-                  action={!isYou && <RowMenu username={member.user.username} items={items} />}
+                  caption={ownerInvite ? 'Owner invite pending' : 'Member'}
+                  action={<RowMenu username={member.user.username} items={items} />}
                 />
               );
             })

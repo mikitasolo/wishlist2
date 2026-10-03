@@ -43,7 +43,12 @@ let server: Server;
  * Holds the next read of the list (GET), settings save (PATCH) or demotion
  * (PATCH on an owner) until it's released.
  */
-let held: { read?: Promise<void>; save?: Promise<void>; demote?: Promise<void> };
+let held: {
+  read?: Promise<void>;
+  save?: Promise<void>;
+  demote?: Promise<void>;
+  members?: Promise<void>;
+};
 /** How many reads of the list the page has taken the answer of. */
 let listReads: number;
 
@@ -121,13 +126,18 @@ beforeEach(() => {
       return reply({ success: true, data: written });
     }
     if (url === '/api/wishlists/birthday/members') {
-      return reply({
+      // Answered with the people as they are when the request arrives.
+      const body = {
         success: true,
         data: [
           ...server.owners.map((id) => ({ _id: id, user: person(id), role: 'owner' })),
           ...server.members.map((id) => ({ _id: `m-${id}`, user: person(id), role: 'member' })),
         ],
-      });
+      };
+      const wait = held.members;
+      held.members = undefined;
+      await wait;
+      return reply(body);
     }
     const owner = /^\/api\/wishlists\/birthday\/owners\/([^/]+)$/.exec(url)?.[1];
     if (owner && (method === 'PATCH' || method === 'DELETE')) {
@@ -370,6 +380,30 @@ describe('the wishlist page after an owner is demoted or removed', () => {
     expect(credited('bob')).not.toBeInTheDocument();
     expect(credited('carol')).not.toBeInTheDocument();
     await expectSoleOwner(user);
+  });
+});
+
+describe('the people on People', () => {
+  // regression: the page took every read of the people as it landed, so one
+  // sent before a demotion and answered after the read that follows it put the
+  // demoted owner back under Owners (only the owners' count was guarded).
+  it("doesn't bring back an owner demoted while an earlier read of the people was in flight", async () => {
+    const user = await openPeople();
+    // The next read of the people (opening People again) is held.
+    const peopleRead = gate();
+    held.members = peopleRead.promise;
+    await openListTab(user, 'Items');
+    await openListTab(user, 'People');
+    await screen.findByRole('button', { name: 'Actions for @bob' });
+
+    await demoteFirst(user, 'bob');
+    expect(captionOf('bob')).toBe('Member');
+
+    peopleRead.release();
+    await settle();
+    await settle();
+    expect(captionOf('bob')).toBe('Member');
+    expect(screen.getAllByRole('tab')[1]).toHaveTextContent('People2');
   });
 });
 
