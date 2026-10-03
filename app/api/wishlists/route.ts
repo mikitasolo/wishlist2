@@ -9,7 +9,7 @@ import { generateUniqueWishlistSlug } from '@/lib/utils/wishlistSlug';
 import { createWishlistSchema, validateRequestBody } from '@/lib/validations';
 import { ownedByFilter, ownerIds, serializeWishlist } from '@/lib/utils/wishlistOwners';
 import { canAttachImage, FOREIGN_IMAGE_ERROR } from '@/lib/utils/blob';
-import { countWishlistItems, countsFor } from '@/lib/utils/wishlistItemCounts';
+import { countReservedBy, countWishlistItems, countsFor } from '@/lib/utils/wishlistItemCounts';
 
 // GET /api/wishlists - Get all wishlists user has access to
 export async function GET(request: NextRequest) {
@@ -76,9 +76,21 @@ export async function GET(request: NextRequest) {
     // folded in, so no owner learns what has been reserved. Your own lists add
     // their drafts and proposals to review; a list you're a member of carries
     // neither, so a member never learns of hidden drafts or of anyone's proposal.
-    const counts = await countWishlistItems([
-      ...ownedWishlists.map((w) => w._id),
-      ...memberOnlyWishlists.map((w) => w._id),
+    //
+    // And on each list you're a member of, how many of its items you've
+    // reserved yourself ("2 reserved by you"). Counted only on those lists and
+    // only your own bookings: your own lists never carry the field, not even as
+    // 0, since an owner never learns what has been reserved, and nobody learns
+    // what anyone else has.
+    const [counts, reservedByYou] = await Promise.all([
+      countWishlistItems([
+        ...ownedWishlists.map((w) => w._id),
+        ...memberOnlyWishlists.map((w) => w._id),
+      ]),
+      countReservedBy(
+        memberOnlyWishlists.map((w) => w._id),
+        user._id
+      ),
     ]);
 
     // Add owner identities + safe item count to wishlists. `featured` is folded
@@ -100,6 +112,7 @@ export async function GET(request: NextRequest) {
       ...serializeWishlist(w, viewerId),
       ...ownerFields(w),
       itemCount: countsFor(counts, w._id).items,
+      reservedByYou: reservedByYou.get(w._id.toString()) ?? 0,
       isMember: true,
       userRole: 'member' as const,
     }));

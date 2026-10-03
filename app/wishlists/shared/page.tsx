@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import AppHeader from '@/components/AppHeader';
@@ -9,12 +9,16 @@ import WishlistCard from '@/components/WishlistCard';
 import EmptyState from '@/components/EmptyState';
 import { SkeletonGrid } from '@/components/Skeleton';
 import { useToast } from '@/components/ToastProvider';
+import { useLocalToday } from '@/lib/hooks/useLocalToday';
 import { signInPath } from '@/lib/utils/callbackUrl';
+import { sortByUpcomingOccasion } from '@/lib/utils/occasion';
 import { IWishlist } from '@/models/Wishlist';
 
 type Wishlist = IWishlist & {
   ownerUsername?: string | null;
   itemCount?: number;
+  /** The items you've reserved on it (`/api/wishlists`). */
+  reservedByYou?: number;
   isMember?: boolean;
 };
 
@@ -41,6 +45,12 @@ export default function SharedWishlistsPage() {
       .finally(() => setLoading(false));
   }, [status, showToast]);
 
+  // The lists with an occasion coming up go first, nearest first, by your own
+  // local date; the rest keep the API's order (newest first), which is also
+  // the order until that date is known.
+  const today = useLocalToday();
+  const byOccasion = useMemo(() => sortByUpcomingOccasion(member, today), [member, today]);
+
   return (
     <div className="min-h-screen">
       <AppHeader actions={<AuthButton />} />
@@ -62,8 +72,9 @@ export default function SharedWishlistsPage() {
           />
         ) : (
           <div className="mt-8 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {member.map((w) => (
-              <WishlistCard key={w._id.toString()} wishlist={w} showOwner />
+            {byOccasion.map((w) => (
+              // Every list here is one you're a member of: the page says so.
+              <WishlistCard key={w._id.toString()} wishlist={w} showOwner showRole={false} />
             ))}
           </div>
         )}

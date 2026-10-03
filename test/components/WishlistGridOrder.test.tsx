@@ -80,14 +80,25 @@ const owned = [
   list('Books', null),
 ];
 const christmas = owned[2];
+// As /api/wishlists sends them: each with the items you've reserved on it.
 const shared = [
-  list('Friend’s books', null, { userRole: 'member', ownerUsername: 'friend' }),
-  list('Friend’s birthday', yearly('2000-10-03'), { userRole: 'member', ownerUsername: 'friend' }),
+  list('Friend’s wedding', once('2026-11-01'), {
+    userRole: 'member',
+    ownerUsername: 'friend',
+    reservedByYou: 0,
+  }), // in 30 days
+  list('Friend’s books', null, { userRole: 'member', ownerUsername: 'friend', reservedByYou: 1 }),
+  list('Friend’s birthday', yearly('2000-10-03'), {
+    userRole: 'member',
+    ownerUsername: 'friend',
+    reservedByYou: 2,
+  }), // tomorrow
 ];
 
 const BY_OCCASION = ['Birthday', 'Anniversary', 'Christmas', 'Housewarming', 'Wedding', 'Books'];
 const ARCHIVED_BY_OCCASION = ['Last year', 'Old notes'];
-const SHARED_AS_SENT = ['Friend’s books', 'Friend’s birthday'];
+const SHARED_AS_SENT = ['Friend’s wedding', 'Friend’s books', 'Friend’s birthday'];
+const SHARED_BY_OCCASION = ['Friend’s birthday', 'Friend’s wedding', 'Friend’s books'];
 
 function json(body: unknown) {
   return { ok: true, status: 200, json: async () => body };
@@ -166,13 +177,13 @@ describe('wishlists/mine — order', () => {
 });
 
 describe('dashboard — order', () => {
-  it('sorts your own lists by the nearest occasion, and leaves the shared lists as they are', async () => {
+  it('sorts your own lists and the ones shared with you by the nearest occasion', async () => {
     render(<Home />);
     await screen.findByText('Birthday · in 12 days');
 
     expect(cardNames(section('Your wishlists'))).toEqual(BY_OCCASION);
     expect(cardNames(section('Archived'))).toEqual(ARCHIVED_BY_OCCASION);
-    expect(cardNames(section('Shared with you'))).toEqual(SHARED_AS_SENT);
+    expect(cardNames(section('Shared with you'))).toEqual(SHARED_BY_OCCASION);
   });
 
   it('keeps that order when a list is pinned as Featured, and shows its occasion on the highlight', async () => {
@@ -203,15 +214,75 @@ describe('dashboard — order', () => {
 });
 
 describe("other people's lists — order", () => {
-  it('keeps the API’s order on wishlists/shared, occasion or not', async () => {
+  it('sorts wishlists/shared by the nearest occasion, by your local date', async () => {
     render(<SharedWishlistsPage />);
     await screen.findByText('Birthday · tomorrow');
-    expect(cardNames(document.body)).toEqual(SHARED_AS_SENT);
+    expect(cardNames(document.body)).toEqual(SHARED_BY_OCCASION);
+  });
+
+  it('sorts wishlists/shared again when the date moves on', async () => {
+    render(<SharedWishlistsPage />);
+    await screen.findByText('Birthday · tomorrow');
+
+    // Oct 5: the birthday was yesterday, so it's next on Oct 3, 2027.
+    vi.setSystemTime(new Date(2026, 9, 5, 12));
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+
+    await screen.findByText('Birthday · in 363 days');
+    expect(cardNames(document.body)).toEqual([
+      'Friend’s wedding',
+      'Friend’s birthday',
+      'Friend’s books',
+    ]);
   });
 
   it('keeps the API’s order on a profile, occasion or not', async () => {
     render(<UserProfile />);
     await screen.findByText('Birthday · tomorrow');
     expect(cardNames(document.body)).toEqual(SHARED_AS_SENT);
+  });
+});
+
+/** The card of the list with this name. */
+const card = (container: HTMLElement, name: string) =>
+  within(container).getByRole('heading', { level: 3, name }).closest('a') as HTMLElement;
+
+describe('Shared with you — badges', () => {
+  it('drops the Member badge on wishlists/shared, and shows what you have reserved', async () => {
+    render(<SharedWishlistsPage />);
+    await screen.findByText('Birthday · tomorrow');
+
+    // Every list here is one you're a member of: the page's title says so.
+    expect(screen.queryByText(/^member$/i)).toBeNull();
+    expect(
+      within(card(document.body, 'Friend’s birthday')).getByText('2 reserved by you')
+    ).toBeInTheDocument();
+    expect(
+      within(card(document.body, 'Friend’s books')).getByText('1 reserved by you')
+    ).toBeInTheDocument();
+    // None where you hold none.
+    expect(card(document.body, 'Friend’s wedding')).not.toHaveTextContent('reserved by you');
+  });
+
+  it("drops it in the dashboard's Shared with you too, with the same chips", async () => {
+    render(<Home />);
+    await screen.findByText('Birthday · in 12 days');
+
+    const shared = section('Shared with you');
+    expect(within(shared).queryByText(/^member$/i)).toBeNull();
+    expect(
+      within(card(shared, 'Friend’s birthday')).getByText('2 reserved by you')
+    ).toBeInTheDocument();
+    expect(card(shared, 'Friend’s wedding')).not.toHaveTextContent('reserved by you');
+    // Your own lists carry no count, so no chip.
+    expect(section('Your wishlists')).not.toHaveTextContent('reserved by you');
+  });
+
+  it('keeps the role on a profile, which says nothing about it', async () => {
+    render(<UserProfile />);
+    await screen.findByText('Birthday · tomorrow');
+    expect(screen.getAllByText('member')).toHaveLength(shared.length);
   });
 });

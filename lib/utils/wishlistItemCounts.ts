@@ -44,3 +44,26 @@ export function countsFor(
 ): ItemCounts {
   return counts.get(wishlistId.toString()) ?? { ...NO_ITEMS };
 }
+
+/**
+ * How many items `gifterId` has reserved on each of these lists (status
+ * `booked`, `bookedBy` them), in one aggregation: the "2 reserved by you" on
+ * the card of a list shared with them. A list where they hold none is absent
+ * from the map.
+ *
+ * Their own bookings only, and for the gifter alone: never ask it for a list
+ * the caller owns (owners never see booking status, and no count of
+ * reservations ever goes to an owner), and never count anyone else's.
+ */
+export async function countReservedBy(
+  wishlistIds: mongoose.Types.ObjectId[],
+  // An ObjectId, as above: the aggregation doesn't cast a string.
+  gifterId: mongoose.Types.ObjectId
+): Promise<Map<string, number>> {
+  if (wishlistIds.length === 0) return new Map();
+  const rows = await Item.aggregate<{ _id: mongoose.Types.ObjectId; count: number }>([
+    { $match: { wishlist: { $in: wishlistIds }, status: 'booked', bookedBy: gifterId } },
+    { $group: { _id: '$wishlist', count: { $sum: 1 } } },
+  ]);
+  return new Map(rows.map((r) => [r._id.toString(), r.count]));
+}
