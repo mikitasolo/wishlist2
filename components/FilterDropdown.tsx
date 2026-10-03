@@ -2,21 +2,21 @@
 
 import { useState, useRef, useEffect } from 'react';
 import Icon from './Icon';
+import {
+  isEveryStatusSelected,
+  toggleStatusFilter,
+  type FilterOption,
+} from '@/lib/utils/itemFilters';
 
-export type FilterOption =
-  | 'all'
-  | 'draft'
-  | 'available'
-  | 'bookedByMe'
-  | 'bookedByOthers'
-  | 'completed'
-  | 'proposed'
-  | 'proposedByMe';
+export type { FilterOption };
 
 interface FilterDropdownProps {
   options: FilterOption[];
   selectedFilters: FilterOption[];
+  /** Never called with an empty selection: unticking the last option, or All, gives `defaultFilters`. */
   onChange: (filters: FilterOption[]) => void;
+  /** What the page shows when nothing narrower is picked. */
+  defaultFilters: FilterOption[];
   ariaLabel?: string;
   /** Width/layout classes for the root; the trigger always fills it. */
   className?: string;
@@ -26,6 +26,7 @@ export default function FilterDropdown({
   options,
   selectedFilters,
   onChange,
+  defaultFilters,
   ariaLabel,
   className,
 }: FilterDropdownProps) {
@@ -46,33 +47,10 @@ export default function FilterDropdown({
     };
   }, []);
 
-  const nonAllOptions = options.filter((o) => o !== 'all');
-  const isAllSelected =
-    selectedFilters.includes('all') ||
-    (selectedFilters.length === nonAllOptions.length &&
-      nonAllOptions.every((opt) => selectedFilters.includes(opt)));
+  const isAllSelected = isEveryStatusSelected(selectedFilters, options);
 
   const handleToggleFilter = (option: FilterOption) => {
-    if (option === 'all') {
-      // If "all" is clicked, select all options or deselect all
-      if (isAllSelected) {
-        onChange([]);
-      } else {
-        onChange([...options]);
-      }
-    } else {
-      // Toggle individual filter
-      const newFilters = selectedFilters.includes(option)
-        ? selectedFilters.filter((f) => f !== option && f !== 'all')
-        : [...selectedFilters.filter((f) => f !== 'all'), option];
-
-      // If all non-"all" options are selected, also select "all"
-      if (nonAllOptions.every((opt) => newFilters.includes(opt))) {
-        onChange([...options]);
-      } else {
-        onChange(newFilters);
-      }
-    }
+    onChange(toggleStatusFilter(selectedFilters, option, options, defaultFilters));
   };
 
   const getDisplayLabel = (option: FilterOption): string => {
@@ -89,14 +67,12 @@ export default function FilterDropdown({
     return labels[option];
   };
 
-  const displayText =
-    selectedFilters.length === 0
-      ? 'None selected'
-      : isAllSelected
-        ? 'All'
-        : selectedFilters.length === 1
-          ? getDisplayLabel(selectedFilters[0])
-          : `${selectedFilters.length} selected`;
+  // Says what the list shows, so never "None selected": no selection shows everything.
+  const displayText = isAllSelected
+    ? 'All'
+    : selectedFilters.length === 1
+      ? getDisplayLabel(selectedFilters[0])
+      : `${selectedFilters.length} selected`;
 
   return (
     <div

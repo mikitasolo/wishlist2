@@ -15,7 +15,14 @@ import { useToast } from '@/components/ToastProvider';
 import { signInPath } from '@/lib/utils/callbackUrl';
 import { formatPrice } from '@/lib/utils/currency';
 import { useViewerLocale } from '@/lib/hooks/useViewerLocale';
-import { isSortType, sortItems, SORT_OPTIONS, type SortType } from '@/lib/utils/itemFilters';
+import {
+  forgetSavedStatusFilters,
+  isEveryStatusSelected,
+  isSortType,
+  sortItems,
+  SORT_OPTIONS,
+  type SortType,
+} from '@/lib/utils/itemFilters';
 import { formatOwnerItemSummary, tallyItems } from '@/lib/utils/itemCounts';
 
 interface MyItem {
@@ -50,8 +57,9 @@ const STATUS_FILTER_OPTIONS: FilterOption[] = [
   'completed',
 ];
 
-// localStorage keys — kept separate from the per-wishlist page's keys.
-const LS_STATUS = 'items-status-filters';
+// localStorage keys — kept separate from the per-wishlist page's keys. The
+// status filter isn't saved: like the wishlist page's, it starts on All each
+// visit, so a stat card clicked once doesn't narrow the page for good.
 const LS_LISTS = 'items-wishlist-filters';
 const LS_SORT = 'items-sort';
 
@@ -132,19 +140,11 @@ export default function MyItemsPage() {
     void loadItems(next);
   };
 
-  // Restore persisted status filter + sort once loaded (independent of items).
+  // Restore the persisted sort once loaded (independent of items), and delete
+  // a status filter an earlier version saved, so it can't come back.
   useEffect(() => {
     if (loading) return;
-    const storedStatus = localStorage.getItem(LS_STATUS);
-    if (storedStatus) {
-      try {
-        const parsed = JSON.parse(storedStatus) as FilterOption[];
-        const valid = parsed.filter((f) => STATUS_FILTER_OPTIONS.includes(f));
-        if (valid.length > 0) setStatusFilters(valid);
-      } catch {
-        /* ignore malformed */
-      }
-    }
+    forgetSavedStatusFilters(localStorage);
     const storedSort = localStorage.getItem(LS_SORT);
     if (isSortType(storedSort)) setSort(storedSort);
   }, [loading]);
@@ -185,11 +185,6 @@ export default function MyItemsPage() {
 
   // Persist changes (skip empty selections so a transient state can't clobber).
   useEffect(() => {
-    if (loading || statusFilters.length === 0) return;
-    localStorage.setItem(LS_STATUS, JSON.stringify(statusFilters));
-  }, [loading, statusFilters]);
-
-  useEffect(() => {
     if (loading || wishlistFilters.length === 0) return;
     localStorage.setItem(LS_LISTS, JSON.stringify(wishlistFilters));
   }, [loading, wishlistFilters]);
@@ -220,8 +215,7 @@ export default function MyItemsPage() {
 
   // Which status card reflects the current selection (for highlighting).
   const activeStatusCard = useMemo<FilterOption | null>(() => {
-    const nonAll = STATUS_FILTER_OPTIONS.filter((o) => o !== 'all');
-    if (nonAll.every((o) => statusFilters.includes(o))) return 'all';
+    if (isEveryStatusSelected(statusFilters, STATUS_FILTER_OPTIONS)) return 'all';
     if (statusFilters.length === 1) return statusFilters[0];
     return null;
   }, [statusFilters]);
@@ -231,10 +225,11 @@ export default function MyItemsPage() {
   };
 
   const visibleItems = useMemo(() => {
+    const everyStatus = isEveryStatusSelected(statusFilters, STATUS_FILTER_OPTIONS);
     const list = items.filter(
       (i) =>
         wishlistFilters.includes(i.wishlistId) &&
-        (statusFilters.includes('all') || statusFilters.includes(i.status))
+        (everyStatus || statusFilters.includes(i.status))
     );
     // The wishlist page's sorter, so the two grids order items the same way.
     return sortItems(list, sort);
@@ -347,6 +342,7 @@ export default function MyItemsPage() {
                   options={STATUS_FILTER_OPTIONS}
                   selectedFilters={statusFilters}
                   onChange={setStatusFilters}
+                  defaultFilters={STATUS_FILTER_OPTIONS}
                   ariaLabel="Filter by status"
                   className="w-full sm:w-auto sm:min-w-[200px]"
                 />

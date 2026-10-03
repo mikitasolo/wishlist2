@@ -69,10 +69,15 @@ import {
   filterItemsMulti,
   searchItemsByName,
   savedWishlistSort,
+  statusFilterOptions,
+  defaultStatusFilters,
+  forgetSavedStatusFilters,
+  isEveryStatusSelected,
   DEFAULT_WISHLIST_SORT,
   SORT_OPTIONS,
   WISHLIST_SORT_STORAGE_KEY,
   type FilterOption,
+  type FilterRole,
   type SortType,
 } from '@/lib/utils/itemFilters';
 import FilterDropdown from '@/components/FilterDropdown';
@@ -156,7 +161,6 @@ export default function WishlistDetail() {
   const [isOwner, setIsOwner] = useState(false);
   const [isMember, setIsMember] = useState(false);
   const [manageOpen, setManageOpen] = useState(false);
-  const [selectedFilters, setSelectedFilters] = useState<FilterOption[]>([]);
   const [sortBy, setSortBy] = useState<SortType>(DEFAULT_WISHLIST_SORT);
   const [searchQuery, setSearchQuery] = useState('');
   // 'original' shows each item's own currency; any code converts all prices to it.
@@ -236,92 +240,39 @@ export default function WishlistDetail() {
 
   const fetchItemsHook = useFetchItems();
 
-  // Get filter options based on user role
-  // Order matches the stat-card order rendered above the list, so the filter
-  // dropdown and the clickable cards line up one-to-one.
-  const getFilterOptions = useCallback((): FilterOption[] => {
-    if (isOwner) {
-      return ['all', 'draft', 'proposed', 'available', 'completed'];
-    } else if (isMember) {
-      return ['all', 'available', 'bookedByMe', 'bookedByOthers', 'proposedByMe', 'completed'];
-    } else {
-      return ['all', 'available', 'completed'];
-    }
-  }, [isOwner, isMember]);
+  // The viewer's role decides which statuses the filter offers and starts on.
+  const filterRole: FilterRole = isOwner ? 'owner' : isMember ? 'member' : 'visitor';
+  const filterOptions = useMemo(() => statusFilterOptions(filterRole), [filterRole]);
+  const defaultFilters = useMemo(() => defaultStatusFilters(filterRole), [filterRole]);
 
-  // Get default filter values based on user role
-  const getDefaultFilters = useCallback((): FilterOption[] => {
-    if (isOwner) {
-      return ['draft', 'available', 'proposed'];
-    } else if (isMember) {
-      return ['available', 'bookedByMe', 'proposedByMe'];
-    } else {
-      return ['available'];
-    }
-  }, [isOwner, isMember]);
-
-  // Get localStorage key based on user role
-  const getFilterStorageKey = useCallback((): string => {
-    if (isOwner) {
-      return 'wishlist-filters-owner';
-    } else if (isMember) {
-      return 'wishlist-filters-member';
-    } else {
-      return 'wishlist-filters-nonmember';
-    }
-  }, [isOwner, isMember]);
-
-  // Load filters from localStorage or use defaults
-  // Only run after we've loaded the wishlist and determined the role
-  useEffect(() => {
-    // Wait until loading is complete and we have a wishlist
-    if (!wishlistId || loading || !wishlist) return;
-
-    const storageKey = getFilterStorageKey();
-    const stored = localStorage.getItem(storageKey);
-
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored) as FilterOption[];
-        const validOptions = getFilterOptions();
-        // Validate stored filters are still valid for current role
-        const validFilters = parsed.filter((f) => validOptions.includes(f));
-        if (validFilters.length > 0) {
-          setSelectedFilters(validFilters);
-          return;
-        }
-      } catch (e) {
-        // Invalid stored data, use defaults
-      }
-    }
-
-    // Use defaults if no stored value or invalid
-    setSelectedFilters(getDefaultFilters());
-  }, [
-    wishlistId,
-    loading,
-    wishlist,
-    isOwner,
-    isMember,
-    getFilterOptions,
-    getDefaultFilters,
-    getFilterStorageKey,
-  ]);
-
-  // Save filters to localStorage when they change
-  // Only save after initial load is complete to avoid overwriting with defaults
-  useEffect(() => {
-    // Don't save during initial load
-    if (!wishlistId || loading || !wishlist || selectedFilters.length === 0) return;
-
-    const storageKey = getFilterStorageKey();
-    localStorage.setItem(storageKey, JSON.stringify(selectedFilters));
-  }, [wishlistId, loading, wishlist, selectedFilters, getFilterStorageKey]);
+  // The status filter picked on this list in this visit, with the list and role
+  // it was picked for. Anywhere else (another list, or this one once the
+  // viewer's role on it has changed) the filter is the role's defaults. It's
+  // never saved: a filter is a question about one list, and a saved one (a
+  // stat card's click included) used to follow the viewer to every other list.
+  const [statusChoice, setStatusChoice] = useState<{
+    scope: string;
+    filters: FilterOption[];
+  } | null>(null);
+  const filterScope = `${wishlistId}:${filterRole}`;
+  const selectedFilters =
+    statusChoice?.scope === filterScope ? statusChoice.filters : defaultFilters;
+  // An empty selection would show every item, so it's the defaults instead.
+  const chooseStatusFilters = useCallback(
+    (filters: FilterOption[]) =>
+      setStatusChoice({
+        scope: filterScope,
+        filters: filters.length > 0 ? filters : defaultFilters,
+      }),
+    [filterScope, defaultFilters]
+  );
 
   // Restore the visitor's saved sort, else the default. It's one setting for
-  // every list, so it's read once rather than per wishlist.
+  // every list, so it's read once rather than per wishlist. A status filter an
+  // earlier version saved is deleted, so it can't come back.
   useEffect(() => {
     setSortBy(savedWishlistSort(localStorage));
+    forgetSavedStatusFilters(localStorage);
   }, []);
 
   // Save only a sort the visitor picks, so the default can change for everyone
@@ -1236,21 +1187,20 @@ export default function WishlistDetail() {
   }, [viewerCurrency]);
 
   // Clicking a stat card narrows the list to that one status ('all' selects
-  // every option). The dropdown and the cards share getFilterOptions()' order.
+  // every option). The dropdown and the cards share filterOptions' order.
   const applyCardFilter = useCallback(
     (key: FilterOption) => {
-      setSelectedFilters(key === 'all' ? [...getFilterOptions()] : [key]);
+      chooseStatusFilters(key === 'all' ? [...filterOptions] : [key]);
     },
-    [getFilterOptions]
+    [chooseStatusFilters, filterOptions]
   );
 
   // Which card (if any) reflects the current filter selection, for highlighting.
   const activeCardKey = useMemo<FilterOption | null>(() => {
-    const nonAll = getFilterOptions().filter((o) => o !== 'all');
-    if (nonAll.length > 0 && nonAll.every((o) => selectedFilters.includes(o))) return 'all';
+    if (isEveryStatusSelected(selectedFilters, filterOptions)) return 'all';
     if (selectedFilters.length === 1) return selectedFilters[0];
     return null;
-  }, [selectedFilters, getFilterOptions]);
+  }, [selectedFilters, filterOptions]);
 
   const cardMeta: Record<FilterOption, { label: string; value: number; valueClass: string }> = {
     // "All", not "Total Items": an owner's includes drafts and proposals, and
@@ -1478,7 +1428,7 @@ export default function WishlistDetail() {
               className="mb-6 grid gap-3 sm:mb-8 sm:gap-4"
               style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(8rem, 1fr))' }}
             >
-              {getFilterOptions().map((key) => {
+              {filterOptions.map((key) => {
                 const meta = cardMeta[key];
                 const active = activeCardKey === key;
                 return (
@@ -1537,9 +1487,10 @@ export default function WishlistDetail() {
                     Status
                   </span>
                   <FilterDropdown
-                    options={getFilterOptions()}
+                    options={filterOptions}
                     selectedFilters={selectedFilters}
-                    onChange={setSelectedFilters}
+                    onChange={chooseStatusFilters}
+                    defaultFilters={defaultFilters}
                     ariaLabel="Filter by status"
                     className="w-full"
                   />
