@@ -81,7 +81,8 @@ import {
   type SortType,
 } from '@/lib/utils/itemFilters';
 import FilterDropdown from '@/components/FilterDropdown';
-import { FILTER_META, TONE_CLASSES } from '@/lib/utils/itemStatus';
+import { FILTER_META } from '@/lib/utils/itemStatus';
+import { TONE_CLASSES } from '@/lib/utils/statusTones';
 import { useFetchItems, useUpdateItem, useCreateItem, useDeleteItem } from '@/lib/hooks/useItems';
 
 interface WishlistMember {

@@ -14,7 +14,7 @@ import { useBusyIds } from '@/lib/hooks/useBusyIds';
 import { signInPath } from '@/lib/utils/callbackUrl';
 import { createMutationTracker } from '@/lib/utils/itemListMerge';
 import { acceptedInviteToast } from '@/lib/utils/confirmationCopy';
-import { TONE_CLASSES } from '@/lib/utils/itemStatus';
+import { TONE_CLASSES } from '@/lib/utils/statusTones';
 
 interface Invite {
   _id: string;

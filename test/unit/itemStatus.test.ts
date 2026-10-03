@@ -1,18 +1,26 @@
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'fs';
+import { readdirSync, readFileSync, statSync } from 'fs';
 import path from 'path';
 import {
   displayStatus,
   FILTER_META,
   STATUS_META,
   statusMeta,
-  TONE_CLASSES,
   type DisplayStatus,
   type ItemStatus,
-  type StatusTone,
   type ViewerRole,
 } from '@/lib/utils/itemStatus';
+import { TONE_CLASSES, type StatusTone } from '@/lib/utils/statusTones';
 import { statusFilterOptions } from '@/lib/utils/itemFilters';
+
+/** Every .ts/.tsx file under `dir`, recursively. */
+function sources(dir: string): string[] {
+  return readdirSync(dir).flatMap((name) => {
+    const full = path.join(dir, name);
+    if (statSync(full).isDirectory()) return sources(full);
+    return /\.tsx?$/.test(name) ? [full] : [];
+  });
+}
 
 const STATUSES: ItemStatus[] = ['draft', 'proposed', 'available', 'booked', 'completed'];
 const ROLES: ViewerRole[] = ['owner', 'member', 'visitor'];
@@ -126,6 +134,43 @@ describe('statusMeta', () => {
     for (const tone of ['success', 'warning', 'danger']) {
       expect(dark).toMatch(new RegExp(`--${tone}: oklch\\(`));
     }
+  });
+});
+
+// regression: every status surface used to pick its own raw palette class,
+// so one status had several colours and several badges failed contrast.
+describe('raw status palette classes', () => {
+  // Not statuses: the "Most wanted" star (WIS-290) and Avatar's gradients.
+  const ALLOWED = [/fill-amber-400 text-amber-500/g];
+  const EXEMPT_FILES = new Set([path.join('components', 'Avatar.tsx')]);
+  const RAW =
+    /\b(?:bg|text|border|ring|fill|stroke|from|to|via|outline|divide|shadow)-(?:emerald|amber|green|blue|yellow|teal)-\d/;
+
+  it('are used nowhere in the app: status colours come from the tokens', () => {
+    const offenders: string[] = [];
+    let scanned = 0;
+    for (const root of ['app', 'components', 'lib']) {
+      for (const file of sources(path.join(process.cwd(), root))) {
+        const rel = path.relative(process.cwd(), file);
+        if (EXEMPT_FILES.has(rel)) continue;
+        scanned++;
+        readFileSync(file, 'utf8')
+          .split('\n')
+          .forEach((line, i) => {
+            const rest = ALLOWED.reduce((l, re) => l.replace(re, ''), line);
+            if (RAW.test(rest)) offenders.push(`${rel}:${i + 1}`);
+          });
+      }
+    }
+    // It did look: the app's sources are all there.
+    expect(scanned).toBeGreaterThan(100);
+    expect(offenders).toEqual([]);
+  });
+
+  it('catches one', () => {
+    expect(RAW.test('className="bg-emerald-500 text-white"')).toBe(true);
+    expect(RAW.test('className="dark:text-amber-400"')).toBe(true);
+    expect(RAW.test('className="bg-success-fill text-white"')).toBe(false);
   });
 });
 

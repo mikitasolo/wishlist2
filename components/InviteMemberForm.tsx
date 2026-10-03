@@ -4,7 +4,7 @@ import { useEffect, useImperativeHandle, useRef, useState, type Ref } from 'reac
 import Icon from './Icon';
 import Avatar from './Avatar';
 import Select from './Select';
-import { TONE_CLASSES } from '@/lib/utils/itemStatus';
+import { TONE_CLASSES } from '@/lib/utils/statusTones';
 
 type Role = 'owner' | 'member';
 

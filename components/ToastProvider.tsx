@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState, useCallback, ReactNode } from 'react';
 import Icon, { IconName } from '@/components/Icon';
-import { TONE_CLASSES } from '@/lib/utils/itemStatus';
+import { TONE_CLASSES } from '@/lib/utils/statusTones';
 
 type ToastType = 'success' | 'error' | 'info';
 
@@ -24,7 +24,7 @@ const config: Record<ToastType, { icon: IconName; chip: string }> = {
     chip: TONE_CLASSES.success.tint,
   },
   error: { icon: 'alert', chip: TONE_CLASSES.danger.tint },
-  info: { icon: 'info', chip: 'bg-primary-500/15 text-accent dark:text-primary-400' },
+  info: { icon: 'info', chip: TONE_CLASSES.info.tint },
 };
 
 let counter = 0;

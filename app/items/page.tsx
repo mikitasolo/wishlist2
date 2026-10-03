@@ -25,7 +25,8 @@ import {
   type SortType,
 } from '@/lib/utils/itemFilters';
 import { formatOwnerItemSummary, tallyItems } from '@/lib/utils/itemCounts';
-import { FILTER_META, statusMeta, TONE_CLASSES } from '@/lib/utils/itemStatus';
+import { FILTER_META, statusMeta } from '@/lib/utils/itemStatus';
+import { TONE_CLASSES } from '@/lib/utils/statusTones';
 
 interface MyItem {
   _id: string;

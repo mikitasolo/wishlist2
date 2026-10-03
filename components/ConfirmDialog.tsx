@@ -4,7 +4,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import Icon, { IconName } from '@/components/Icon';
 import { useBodyScrollLock } from '@/lib/hooks/useBodyScrollLock';
 import { useFocusTrap } from '@/lib/hooks/useFocusTrap';
-import { TONE_CLASSES } from '@/lib/utils/itemStatus';
+import { TONE_CLASSES } from '@/lib/utils/statusTones';
 
 interface ConfirmDialogProps {
   isOpen: boolean;
@@ -111,17 +111,17 @@ export default function ConfirmDialog({
     danger: {
       icon: 'trash',
       chip: TONE_CLASSES.danger.tint,
-      button: 'bg-danger-fill hover:bg-danger-fill-hover active:bg-danger-fill-hover',
+      button: 'bg-danger-fill hover:bg-danger-fill-hover active:brightness-90',
     },
     warning: {
       icon: 'alert',
       chip: TONE_CLASSES.warning.tint,
-      button: 'bg-warning-fill hover:bg-warning-fill-hover active:bg-warning-fill-hover',
+      button: 'bg-warning-fill hover:bg-warning-fill-hover active:brightness-90',
     },
     info: {
       icon: 'info',
-      chip: 'bg-primary-500/15 text-accent dark:text-primary-400',
-      button: 'bg-primary-600 hover:bg-primary-700 active:bg-primary-800',
+      chip: TONE_CLASSES.info.tint,
+      button: 'bg-info-fill hover:bg-info-fill-hover active:brightness-90',
     },
   };
   const { chip, button } = accent[type];

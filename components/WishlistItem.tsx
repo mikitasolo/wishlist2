@@ -9,7 +9,8 @@ import Icon, { type IconName } from '@/components/Icon';
 import Cover from '@/components/Cover';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import Menu, { type MenuItem } from '@/components/Menu';
-import { statusMeta, TONE_CLASSES } from '@/lib/utils/itemStatus';
+import { statusMeta } from '@/lib/utils/itemStatus';
+import { TONE_CLASSES } from '@/lib/utils/statusTones';
 
 // The card's actions are one row, the same height on every card: one labelled
 // primary action, then the product link as a square icon button (unless the

@@ -20,7 +20,7 @@ import { useViewerLocale } from '@/lib/hooks/useViewerLocale';
 import { createListChangeLog, mergeRefreshedList } from '@/lib/utils/listRefresh';
 import type { Occasion } from '@/lib/utils/occasion';
 import { withRequestTimeout } from '@/lib/utils/requestTimeout';
-import { TONE_CLASSES } from '@/lib/utils/itemStatus';
+import { TONE_CLASSES } from '@/lib/utils/statusTones';
 import {
   groupByOccasion,
   needsConfirmation,
@@ -672,6 +672,8 @@ function ReservationCard({
   const locale = useViewerLocale();
   return (
     <div
+      // The warning tone marks a card that needs the gifter's confirmation,
+      // whatever happened to the item: it's not the item's status.
       className={`flex flex-col overflow-hidden rounded-2xl border bg-surface shadow-sm ${
         highlight ? TONE_CLASSES.warning.card : 'border-border'
       }`}
