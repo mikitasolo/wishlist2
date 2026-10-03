@@ -105,8 +105,10 @@ export function TabBar({
 }) {
   const active = useActive(username, pending);
   const destinations = navDestinations(username);
+  // Under the header (z-40), so what overflows the header (the phone search's
+  // results, the account menu) is drawn over the bar, not under it.
   const frame =
-    'glass fixed inset-x-0 bottom-0 z-40 grid grid-cols-4 border-t border-border pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]';
+    'glass fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t border-border pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]';
 
   if (pending) {
     return (

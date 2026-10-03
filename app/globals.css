@@ -286,6 +286,25 @@
   :is([role='dialog'], [role='alertdialog']):focus-visible {
     outline: none;
   }
+
+  /* The phone tab bar (`TabBar`, components/AppNav.tsx), fixed to the bottom
+     of the screen below `sm`. The element that holds it (a page's outermost
+     one, beside the header) pads its bottom by the bar's height, so the end of
+     every page scrolls clear of the bar without each page doing it; it's
+     border-box, so a `min-h-screen` page no taller than the screen doesn't
+     scroll for it. It also sets `--tab-bar-space` for everything inside it,
+     so what sticks to the screen's bottom (a settings form's Unsaved changes
+     bar) rests above the bar. A bar still waiting on the session (`pending`)
+     is only drawn, and only counted, where the session hint says one is
+     coming (lib/utils/sessionHint.ts). Here in the base layer, a page's own
+     `pb-*` would still win. */
+  @media (width < 40rem) {
+    :has(> [data-tab-bar='shown']),
+    [data-session-hint] :has(> [data-tab-bar='pending']) {
+      --tab-bar-space: calc(4rem + env(safe-area-inset-bottom));
+      padding-bottom: var(--tab-bar-space);
+    }
+  }
 }
 
 /* The focus style of a text field (and of a field-like trigger, such as
@@ -305,25 +324,6 @@
   background: color-mix(in srgb, var(--surface) 72%, transparent);
   backdrop-filter: saturate(180%) blur(22px);
   -webkit-backdrop-filter: saturate(180%) blur(22px);
-}
-
-/* The phone tab bar (`TabBar`, components/AppNav.tsx), fixed to the bottom of
-   the screen below `sm`. The element that holds it (a page's outermost one,
-   beside the header) pads its bottom by the bar's height, so the end of every
-   page scrolls clear of the bar without each page doing it; it's border-box,
-   so a `min-h-screen` page no taller than the screen doesn't scroll for it.
-   `--tab-bar-space` also lets what sticks to the screen's bottom (a settings
-   form's Unsaved changes bar) rest above the bar. A bar still waiting on the
-   session (`pending`) is only drawn, and only counted, where the session
-   hint says one is coming (lib/utils/sessionHint.ts). */
-@media (width < 40rem) {
-  :root:has([data-tab-bar='shown']),
-  :root[data-session-hint]:has([data-tab-bar='pending']) {
-    --tab-bar-space: calc(4rem + env(safe-area-inset-bottom));
-  }
-  :has(> [data-tab-bar]) {
-    padding-bottom: var(--tab-bar-space, 0px);
-  }
 }
 
 /* Hide scrollbar for horizontal scroll regions (tabs on mobile) */

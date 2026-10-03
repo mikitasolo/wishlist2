@@ -92,6 +92,23 @@ describe('AuthButton — signing out', () => {
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Sign out' }));
   }
 
+  // regression (WIS-251 review): signOut reloads the page before the session
+  // reads as signed out, so the hint was never cleared and the next load held
+  // the signed-in header's shape, then jumped to Sign in.
+  it('regression: forgets the session hint before signing out', async () => {
+    localStorage.setItem('session-hint', '1');
+    document.documentElement.setAttribute('data-session-hint', '');
+    let hintWhenSignedOut: string | null = 'unread';
+    vi.mocked(signOut).mockImplementationOnce(async () => {
+      hintWhenSignedOut = localStorage.getItem('session-hint');
+      return undefined as never;
+    });
+    await signOutFrom('/');
+    expect(signOut).toHaveBeenCalledTimes(1);
+    expect(hintWhenSignedOut).toBeNull();
+    expect(document.documentElement).not.toHaveAttribute('data-session-hint');
+  });
+
   // A page that needs an account sends a signed-out visitor to sign in, so
   // reloading it once signed out would land on the sign-in form.
   it.each([...AUTH_ONLY_PATHS])('goes home from %s, a page that needs an account', async (path) => {

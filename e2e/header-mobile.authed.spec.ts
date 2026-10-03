@@ -49,6 +49,15 @@ for (const width of [640, 768, 1024]) {
   }) => {
     await page.setViewportSize({ width, height: 800 });
     await open(page, '/booked');
+    // Closed, the search leaves room for the links too, at the narrowest.
+    const links = page.getByRole('banner').getByRole('navigation', { name: 'Main' });
+    expect(await sidewaysScroll(page)).toBe(0);
+    await expect(links.getByRole('link', { name: 'Activity' })).toBeInViewport({ ratio: 1 });
+    await expect(accountButton(page)).toBeInViewport({ ratio: 1 });
+    const activity = (await links.getByRole('link', { name: 'Activity' }).boundingBox())!;
+    const search = (await page.getByRole('button', { name: 'Search', exact: true }).boundingBox())!;
+    expect(activity.x + activity.width).toBeLessThanOrEqual(search.x);
+
     await page.getByRole('button', { name: 'Search', exact: true }).click();
     await expect(page.getByRole('textbox', { name: 'Search people and wishlists' })).toBeVisible();
 

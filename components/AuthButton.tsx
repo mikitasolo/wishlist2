@@ -9,6 +9,7 @@ import { Skeleton } from '@/components/Skeleton';
 import { useTheme } from '@/components/ThemeProvider';
 import { isAuthOnlyPath } from '@/lib/utils/callbackUrl';
 import { meHref } from '@/lib/utils/appNav';
+import { rememberSessionHint } from '@/lib/utils/sessionHint';
 
 /**
  * The account button: its avatar, and the padding and chevron around it from
@@ -74,11 +75,16 @@ export default function AuthButton() {
         label: 'Sign out',
         icon: 'logout',
         separated: true,
-        onSelect: () =>
+        onSelect: () => {
+          // Forgotten first: signOut reloads the page before the session
+          // reads as signed out here, so the next load would otherwise hold
+          // the signed-in header's shape and then jump (WIS-209).
+          rememberSessionHint(false);
           // A page that needs an account would only send them on to the
           // sign-in form once it reloads signed out, so sign out to home
           // from there. Anywhere else, stay on the page, now signed out.
-          signOut(isAuthOnlyPath(window.location.pathname) ? { redirectTo: '/' } : undefined),
+          signOut(isAuthOnlyPath(window.location.pathname) ? { redirectTo: '/' } : undefined);
+        },
       },
     ];
 

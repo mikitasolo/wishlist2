@@ -18,6 +18,9 @@
  * never been signed in here and now is (the first page after a magic link), and
  * once after a session ended somewhere else (it expired, or signed out in
  * another browser). Either way the flag is put right when the session lands.
+ * (A session read that fails reads as signed out to next-auth, so it clears
+ * the flag too, costing the next load one jump.) Signing out from the account
+ * menu clears it before the page reloads (`AuthButton`).
  */
 export const SESSION_HINT_KEY = 'session-hint';
 export const SESSION_HINT_ATTRIBUTE = 'data-session-hint';
