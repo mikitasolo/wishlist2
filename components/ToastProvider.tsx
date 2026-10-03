@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, useCallback, ReactNode } from 'react';
 import Icon, { IconName } from '@/components/Icon';
+import { TONE_CLASSES } from '@/lib/utils/statusTones';
 
 type ToastType = 'success' | 'error' | 'info';
 
@@ -20,10 +21,10 @@ const ToastContext = createContext<ToastContextType | undefined>(undefined);
 const config: Record<ToastType, { icon: IconName; chip: string }> = {
   success: {
     icon: 'check-circle',
-    chip: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400',
+    chip: TONE_CLASSES.success.tint,
   },
-  error: { icon: 'alert', chip: 'bg-red-500/15 text-red-600 dark:text-red-400' },
-  info: { icon: 'info', chip: 'bg-primary-500/15 text-accent dark:text-primary-400' },
+  error: { icon: 'alert', chip: TONE_CLASSES.danger.tint },
+  info: { icon: 'info', chip: TONE_CLASSES.info.tint },
 };
 
 let counter = 0;

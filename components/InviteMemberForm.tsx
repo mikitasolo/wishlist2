@@ -4,6 +4,7 @@ import { useEffect, useImperativeHandle, useRef, useState, type Ref } from 'reac
 import Icon from './Icon';
 import Avatar from './Avatar';
 import Select from './Select';
+import { TONE_CLASSES } from '@/lib/utils/statusTones';
 
 type Role = 'owner' | 'member';
 
@@ -116,7 +117,7 @@ export default function InviteMemberForm({ onInvite, isInviting, ref }: InviteMe
       </p>
 
       {role === 'owner' && (
-        <p className="mb-4 flex gap-2 rounded-xl bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400">
+        <p className={`mb-4 flex gap-2 rounded-xl p-3 text-sm ${TONE_CLASSES.warning.tint}`}>
           <Icon name="alert" size={16} className="mt-0.5 flex-shrink-0" />
           <span>
             An owner gets the same full control you have, including deleting this wishlist, and it

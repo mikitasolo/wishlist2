@@ -52,6 +52,7 @@ vi.mock('@/components/ConfirmDialog', () => ({
 
 import WishlistItem from '@/components/WishlistItem';
 import { coverGradient } from '@/lib/utils/cover';
+import { STATUS_META, type DisplayStatus } from '@/lib/utils/itemStatus';
 
 function item(overrides: Partial<ApiItem>): ApiItem {
   return {
@@ -91,6 +92,127 @@ describe('WishlistItem — booking visibility', () => {
       />
     );
     expect(screen.getByText(/booked by you/i)).toBeInTheDocument();
+  });
+});
+
+describe('WishlistItem — status badges and borders', () => {
+  const badgeOf = () => screen.getByRole('article').querySelector('[data-tone]');
+
+  const cases: {
+    name: string;
+    props: Partial<ComponentProps<typeof WishlistItem>>;
+    status: DisplayStatus;
+  }[] = [
+    {
+      name: 'a draft, to its owner',
+      props: { item: item({ status: 'draft' }), isOwner: true },
+      status: 'draft',
+    },
+    {
+      name: 'a proposal, to its owner',
+      props: { item: item({ status: 'proposed' }), isOwner: true },
+      status: 'proposed',
+    },
+    {
+      name: 'an item the member booked',
+      props: { item: item({ status: 'booked', bookedBy: ME }), isMember: true },
+      status: 'bookedByMe',
+    },
+    {
+      name: 'an item someone else booked',
+      props: { item: item({ status: 'booked', bookedBy: 'someone-else' }), isMember: true },
+      status: 'bookedByOthers',
+    },
+    {
+      name: 'a completed item, to a member',
+      props: { item: item({ status: 'completed' }), isMember: true },
+      status: 'completed',
+    },
+    {
+      name: 'a completed item, to its owner',
+      props: { item: item({ status: 'completed' }), isOwner: true },
+      status: 'completed',
+    },
+  ];
+
+  for (const { name, props, status } of cases) {
+    it(`takes ${name}'s badge and border from the status map`, () => {
+      render(<WishlistItem item={item({})} onUpdate={vi.fn()} isAuthenticated {...props} />);
+      const meta = STATUS_META[status];
+      const badge = badgeOf();
+      expect(badge).not.toBeNull();
+      expect(badge).toHaveTextContent(meta.label);
+      expect(badge).toHaveAttribute('data-tone', meta.tone);
+      for (const cls of meta.classes.badge.split(' ')) expect(badge).toHaveClass(cls);
+      // Its icon, so the status never rests on colour alone.
+      expect(badge!.querySelector('svg')).not.toBeNull();
+      const card = screen.getByRole('article');
+      expect(card).toHaveAttribute('data-status', status);
+      for (const cls of meta.classes.card.split(' ')) expect(card).toHaveClass(cls);
+    });
+  }
+
+  it('shows no badge on an available item', () => {
+    render(<WishlistItem item={item({})} onUpdate={vi.fn()} isAuthenticated isMember />);
+    expect(badgeOf()).toBeNull();
+    expect(screen.getByRole('article')).toHaveAttribute('data-status', 'available');
+  });
+
+  // regression: "Completed" and "Booked by you" were both emerald badges on
+  // emerald-bordered cards, so a member couldn't tell them apart on one grid.
+  it('regression: "Completed" and "Booked by you" look different', () => {
+    const { unmount } = render(
+      <WishlistItem
+        item={item({ status: 'booked', bookedBy: ME })}
+        onUpdate={vi.fn()}
+        isAuthenticated
+        isMember
+      />
+    );
+    const mine = { badge: badgeOf()!.className, card: screen.getByRole('article').className };
+    expect(badgeOf()).toHaveClass('bg-success-fill');
+    unmount();
+
+    render(
+      <WishlistItem
+        item={item({ status: 'completed' })}
+        onUpdate={vi.fn()}
+        isAuthenticated
+        isMember
+      />
+    );
+    const done = badgeOf()!;
+    expect(done).toHaveTextContent('Completed');
+    expect(done).toHaveClass('bg-foreground', 'text-background');
+    expect(done).not.toHaveClass('bg-success-fill');
+    expect(done.className).not.toBe(mine.badge);
+    expect(screen.getByRole('article').className).not.toBe(mine.card);
+    expect(screen.getByRole('article')).not.toHaveClass('border-success/60');
+  });
+
+  // regression: owners must never see booking status, in the card's colours
+  // either: a booked item is an available one to them.
+  it('regression: gives the owner of a booked item no booked badge or border', () => {
+    render(
+      <WishlistItem
+        item={item({ status: 'booked', bookedBy: 'someone-else' })}
+        onUpdate={vi.fn()}
+        isAuthenticated
+        isOwner
+      />
+    );
+    expect(badgeOf()).toBeNull();
+    const card = screen.getByRole('article');
+    expect(card).toHaveAttribute('data-status', 'available');
+    expect(card.className).not.toMatch(/success|warning/);
+  });
+
+  it('fills the Book button with the success tone', () => {
+    render(<WishlistItem item={item({})} onUpdate={vi.fn()} isAuthenticated isMember />);
+    expect(screen.getByRole('button', { name: 'Book this item' })).toHaveClass(
+      'bg-success-fill',
+      'text-white'
+    );
   });
 });
 

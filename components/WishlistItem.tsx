@@ -9,6 +9,8 @@ import Icon, { type IconName } from '@/components/Icon';
 import Cover from '@/components/Cover';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import Menu, { type MenuItem } from '@/components/Menu';
+import { statusMeta } from '@/lib/utils/itemStatus';
+import { TONE_CLASSES } from '@/lib/utils/statusTones';
 
 // The card's actions are one row, the same height on every card: one labelled
 // primary action, then the product link as a square icon button (unless the
@@ -18,16 +20,16 @@ const ROW_CONTROL = 'h-10 rounded-xl text-sm font-semibold';
 const PRIMARY_BASE = `${ROW_CONTROL} inline-flex min-w-0 flex-1 items-center justify-center gap-1.5 px-3 transition-all duration-200 cursor-pointer active:scale-[0.98] disabled:cursor-not-allowed disabled:active:scale-100 aria-disabled:cursor-not-allowed aria-disabled:opacity-60 aria-disabled:active:scale-100`;
 
 const PRIMARY_TONES = {
-  // Booking: the emerald of the "Booked by you" badge.
-  book: 'bg-emerald-600 text-white shadow-sm hover:bg-emerald-500',
+  // Booking: the success fill of the "Booked by you" badge.
+  book: 'bg-success-fill text-white shadow-sm hover:bg-success-fill-hover',
   // Publishing, reviewing, opening the product page.
   primary: 'bg-primary-600 text-white shadow-sm hover:bg-primary-500',
   // Editing: always there for an owner, so it doesn't shout.
   soft: 'bg-primary-500/12 text-accent hover:bg-primary-500/18 dark:text-primary-300',
   // Undoing your own booking.
   neutral: 'bg-muted text-foreground hover:bg-surface-2',
-  // A gift you've given: done, in the emerald of your booking.
-  given: 'bg-emerald-500/12 text-emerald-700 dark:text-emerald-300',
+  // A gift you've given: done, in the success tone of your booking.
+  given: TONE_CLASSES.success.tint,
   // Booked by someone else: nothing to do.
   off: 'bg-muted text-muted-foreground',
 } as const;
@@ -116,8 +118,11 @@ function WishlistItem({
     [item.status, item.proposedBy, session?.user?.id]
   );
 
-  // For owners, items always show as available (bookings are hidden)
-  const displayStatus = isOwner && item.status === 'booked' ? 'available' : item.status;
+  // How the item's status looks to this viewer. For owners, a booked item is
+  // available (bookings are hidden), so they never get a booked badge or border.
+  const status = statusMeta(item.status, isOwner ? 'owner' : isMember ? 'member' : 'visitor', {
+    bookedByViewer: !!isBookedByCurrentUser,
+  });
 
   // While the notes are hidden, the cover links to the product page.
   const productLink = item.link && !showNotes ? item.link : null;
@@ -190,7 +195,7 @@ function WishlistItem({
   const isDraft = item.status === 'draft';
   // Live (available, or booked as far as a member can tell) or completed.
   const isPublished = !isProposed && !isDraft;
-  const isCompleted = displayStatus === 'completed';
+  const isCompleted = status.status === 'completed';
 
   // The one labelled action, by role and state. None (null) means the product
   // link takes its place: for signed-out visitors, signed-in non-members, and
@@ -321,30 +326,12 @@ function WishlistItem({
       }
     : null;
 
-  // Determine border styling based on item status (refined, tokenized)
-  const getBorderClass = () => {
-    if (item.status === 'draft') {
-      return 'border-dashed border-border-strong';
-    }
-    if (item.status === 'proposed') {
-      return 'border-primary-400 ring-1 ring-primary-400/40';
-    }
-    if (item.status === 'booked' && !isOwner && isBookedByCurrentUser) {
-      return 'border-emerald-500/60 ring-1 ring-emerald-500/30';
-    }
-    if (item.status === 'booked' && !isOwner && !isBookedByCurrentUser) {
-      return 'border-amber-500/60 ring-1 ring-amber-500/30';
-    }
-    return 'border-border';
-  };
-
   return (
     <div
-      className={`group relative flex flex-col rounded-3xl border bg-surface p-4 shadow-md transition-all duration-200 hover:shadow-lg sm:p-5 ${
-        displayStatus === 'completed' ? 'ring-1 ring-emerald-500/40' : ''
-      } ${getBorderClass()}`}
+      className={`group relative flex flex-col rounded-3xl border bg-surface p-4 shadow-md transition-all duration-200 hover:shadow-lg sm:p-5 ${status.classes.card}`}
       role="article"
       aria-label={`Item: ${item.name}`}
+      data-status={status.status}
     >
       {/* Notes icon button - positioned absolutely at top-left corner of card */}
       {item.notes && (
@@ -370,31 +357,14 @@ function WishlistItem({
             Most wanted
           </span>
         )}
-        {item.status === 'draft' && (
-          <span className="rounded-full border border-border bg-surface/90 px-2.5 py-1 text-xs font-semibold text-muted-foreground shadow-sm backdrop-blur">
-            Draft
-          </span>
-        )}
-        {item.status === 'proposed' && (
-          <span className="rounded-full bg-primary-600 px-2.5 py-1 text-xs font-semibold text-white shadow-sm">
-            Proposed
-          </span>
-        )}
-        {/* Only show booking badges to members, not owners */}
-        {!isOwner && item.status === 'booked' && isBookedByCurrentUser && (
-          <span className="rounded-full bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white shadow-sm">
-            Booked by you
-          </span>
-        )}
-        {!isOwner && item.status === 'booked' && !isBookedByCurrentUser && (
-          <span className="rounded-full bg-amber-500 px-2.5 py-1 text-xs font-semibold text-white shadow-sm">
-            Booked
-          </span>
-        )}
-        {displayStatus === 'completed' && (
-          <span className="flex items-center gap-1 rounded-full bg-emerald-500 px-2.5 py-1 text-xs font-semibold text-white shadow-sm">
-            <Icon name="check" size={12} />
-            Completed
+        {/* From the status map, so an owner never gets a booking badge. */}
+        {status.badge && (
+          <span
+            data-tone={status.tone}
+            className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold shadow-sm ${status.classes.badge}`}
+          >
+            {status.icon && <Icon name={status.icon} size={12} className="flex-shrink-0" />}
+            {status.label}
           </span>
         )}
       </div>

@@ -52,6 +52,29 @@
   --color-accent: var(--accent);
   --color-accent2: var(--accent2);
 
+  /* Status tones (WIS-234). Read them through `statusMeta` / `TONE_CLASSES`
+     (lib/utils/itemStatus.ts), never as raw emerald/amber/blue classes.
+     - `bg-<tone>-fill` is a solid fill that takes white text at AA or better
+       in either theme (so it's the same in both); `-fill-hover` is one step
+       darker, for buttons.
+     - `text-<tone>` is coloured text on a surface, and `bg-<tone>/10` (or /15)
+       its tint: text-<tone> on its own tint stays at AA too. It's a step darker
+       than the fill in light mode for that reason, and lighter in dark mode.
+     "Done" (Completed) has no colour of its own: it's `bg-foreground
+     text-background`, so it can't be mistaken for success, "Booked by you". */
+  --color-info: var(--info);
+  --color-info-fill: var(--info-fill);
+  --color-info-fill-hover: var(--info-fill-hover);
+  --color-success: var(--success);
+  --color-success-fill: var(--success-fill);
+  --color-success-fill-hover: var(--success-fill-hover);
+  --color-warning: var(--warning);
+  --color-warning-fill: var(--warning-fill);
+  --color-warning-fill-hover: var(--warning-fill-hover);
+  --color-danger: var(--danger);
+  --color-danger-fill: var(--danger-fill);
+  --color-danger-fill-hover: var(--danger-fill-hover);
+
   /* Layered, Apple-style elevation */
   --shadow-xs: 0 1px 2px var(--shadow-color-1);
   --shadow-sm: 0 1px 2px var(--shadow-color-1), 0 1px 1px var(--shadow-color-1);
@@ -75,6 +98,24 @@
      strong link/label contrast (brand-600 alone reads washed out on white). */
   --accent: #3a38a6;
   --accent2: #ff375f;
+
+  /* Status tones (see @theme inline). Fills: white text on each is ≥ 4.7:1.
+     Values are Tailwind's palette: primary-600/700, emerald-700/800,
+     amber-700/800, red-600/700. Text: emerald-800, amber-800, red-700, so that
+     on its own /10–/15 tint it still clears 4.5:1. */
+  --info: var(--accent);
+  --info-fill: #5e5ce6;
+  --info-fill-hover: #4a48c9;
+  --success: oklch(43.2% 0.095 166.913);
+  --success-fill: oklch(50.8% 0.118 165.612);
+  --success-fill-hover: oklch(43.2% 0.095 166.913);
+  --warning: oklch(47.3% 0.137 46.201);
+  --warning-fill: oklch(55.5% 0.163 48.998);
+  --warning-fill-hover: oklch(47.3% 0.137 46.201);
+  --danger: oklch(50.5% 0.213 27.518);
+  --danger-fill: oklch(57.7% 0.245 27.325);
+  --danger-fill-hover: oklch(50.5% 0.213 27.518);
+
   --shadow-color-1: rgb(20 20 43 / 0.08);
   --shadow-color-2: rgb(20 20 43 / 0.14);
 
@@ -101,6 +142,13 @@
   /* On dark surfaces a lighter accent reads best */
   --accent: #a3a1ff;
   --accent2: #ff5277;
+
+  /* Status text lightens on dark surfaces (emerald-400, amber-400, red-400;
+     info follows --accent). The fills carry white text, so they stay put. */
+  --success: oklch(76.5% 0.177 163.223);
+  --warning: oklch(82.8% 0.189 84.429);
+  --danger: oklch(70.4% 0.191 22.216);
+
   --shadow-color-1: rgb(0 0 0 / 0.5);
   --shadow-color-2: rgb(0 0 0 / 0.6);
 
