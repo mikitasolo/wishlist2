@@ -26,11 +26,3 @@ function hash(str: string): number {
 export function coverGradient(seed: string): string {
   return covers[hash(seed || 'wishlist') % covers.length];
 }
-
-/**
- * A list banner's shape (width / height): what the banner crop cuts it to, and
- * the cover strip it fills on a wide screen (`WishlistCover`; 2.4:1 on a phone,
- * where it's trimmed at the sides). Banners cropped to an earlier ratio (16:9)
- * fill it with `object-cover`, so nobody has to upload theirs again.
- */
-export const BANNER_ASPECT = 3;

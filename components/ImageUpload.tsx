@@ -6,16 +6,12 @@ import BannerImage from './BannerImage';
 import ImageCropModal from './ImageCropModal';
 import Button from './Button';
 import Spinner from './Spinner';
-import { BANNER_ASPECT } from '@/lib/utils/cover';
 
 interface ImageUploadProps {
   value: string | null;
   onChange: (url: string | null) => void;
   disabled?: boolean;
-  /**
-   * Crop aspect ratio (width / height) matching where the image renders. A
-   * list banner's (`BANNER_ASPECT`) unless given.
-   */
+  /** Crop aspect ratio (width / height) matching where the image renders. */
   aspect?: number;
   /** Render as a compact circular control (avatars). Forces a 1:1 round crop. */
   circle?: boolean;
@@ -30,7 +26,7 @@ export default function ImageUpload({
   value,
   onChange,
   disabled = false,
-  aspect = BANNER_ASPECT,
+  aspect = 16 / 9,
   circle = false,
 }: ImageUploadProps) {
   // Avatars crop square and display round.
@@ -202,11 +198,7 @@ export default function ImageUpload({
           // for any aspect while holding the preview to ~18rem tall.
           style={{ aspectRatio: String(aspect), maxWidth: `${18 * aspect}rem` }}
         >
-          <BannerImage
-            src={value}
-            alt="Uploaded image"
-            sizes={`(max-width: 640px) 100vw, ${18 * aspect}rem`}
-          />
+          <BannerImage src={value} alt="Uploaded image" sizes="(max-width: 640px) 100vw, 40rem" />
           <div className="absolute right-2 top-2 flex gap-1.5">
             <button
               ref={replaceRef}
@@ -249,10 +241,8 @@ export default function ImageUpload({
           }}
           disabled={disabled || uploading}
           // Same ratio-preserving bound as the filled preview (width-capped, not height-clamped).
-          // At least tall enough for its icon and two lines: a 3:1 banner's zone
-          // on a narrow phone would otherwise be shorter than what it says.
           style={{ aspectRatio: String(aspect), maxWidth: `${18 * aspect}rem` }}
-          className={`mx-auto flex min-h-32 w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 text-center transition-colors ${
+          className={`mx-auto flex w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 text-center transition-colors ${
             dragging
               ? 'border-primary-500 bg-primary-500/12'
               : 'border-border-strong hover:bg-surface-hover'

@@ -11,8 +11,10 @@ export const WISHLIST_COVER_SIZES = '(min-width: 1280px) 76rem, 100vw';
 
 /**
  * A list's banner, as a short full-width strip above its title: 2.4:1 on a
- * phone, 3:1 from `sm` up (the ratio banners are cropped to, `BANNER_ASPECT`;
- * one cropped before that fills it with `object-cover`).
+ * phone, and from `sm` up 3:1 capped at 240px (`max-h-60`), so on a wide
+ * screen it's a strip rather than a third of the page. Banners are stored at
+ * the 16:9 they're cropped to (which list cards and share cards show as is),
+ * so the strip trims their top and bottom (`object-cover`, centred).
  *
  * A list with no banner gets no strip at all, rather than a gradient block that
  * says nothing. A banner that fails to load (a freed blob, a dead external URL)
@@ -33,7 +35,7 @@ export default function WishlistCover({
       seed={seed}
       priority
       sizes={WISHLIST_COVER_SIZES}
-      className="relative mb-6 aspect-[12/5] w-full overflow-hidden rounded-2xl border border-border bg-surface-2 sm:aspect-[3/1] sm:rounded-3xl"
+      className="relative mb-6 aspect-[12/5] w-full overflow-hidden rounded-2xl border border-border bg-surface-2 sm:aspect-[3/1] sm:max-h-60 sm:rounded-3xl"
     />
   );
 }

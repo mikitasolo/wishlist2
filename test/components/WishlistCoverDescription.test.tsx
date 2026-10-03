@@ -19,12 +19,18 @@ describe('WishlistCover', () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it('shows the banner as a full-width strip, 2.4:1 on a phone and 3:1 from sm up', () => {
+  it('shows the banner as a full-width strip, 2.4:1 on a phone and from sm up 3:1 capped at 240px', () => {
     const { container } = render(<WishlistCover bannerUrl={BANNER} seed="w1" />);
     const img = container.querySelector('img')!;
     const strip = img.parentElement!;
     expect(strip).toBe(container.firstChild);
-    expect(strip).toHaveClass('relative', 'w-full', 'aspect-[12/5]', 'sm:aspect-[3/1]');
+    expect(strip).toHaveClass(
+      'relative',
+      'w-full',
+      'aspect-[12/5]',
+      'sm:aspect-[3/1]',
+      'sm:max-h-60'
+    );
     // Fetched at the strip's width, not the viewport's past the page's max width.
     expect(img).toHaveAttribute('sizes', WISHLIST_COVER_SIZES);
     // It's the page's hero: loaded eagerly, not when scrolled to.

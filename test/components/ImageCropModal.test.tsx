@@ -7,40 +7,21 @@ import { emulateFocusFixup } from '../focusFixup';
 // react-easy-crop needs real image loading and layout; a stand-in reports a
 // crop area as soon as it mounts, as the real one does once the image loads,
 // and is a Tab stop, as the real crop area is (it moves with the arrow keys).
-// It shows the shape it was asked to crop to, for the tests of that.
 vi.mock('react-easy-crop', async () => {
   const { useEffect } = await import('react');
   return {
     default: function Cropper({
       onCropComplete,
-      aspect,
-      cropShape,
     }: {
       onCropComplete: (area: unknown, pixels: unknown) => void;
-      aspect: number;
-      cropShape: string;
     }) {
       useEffect(() => {
         onCropComplete({}, { x: 0, y: 0, width: 10, height: 10 });
       }, [onCropComplete]);
-      return (
-        <div
-          tabIndex={0}
-          aria-label="Crop area"
-          data-testid="cropper"
-          data-aspect={aspect}
-          data-shape={cropShape}
-        />
-      );
+      return <div tabIndex={0} aria-label="Crop area" data-testid="cropper" />;
     },
   };
 });
-// The create-wishlist form, for its banner's crop.
-vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
-vi.mock('next-auth/react', () => ({
-  useSession: () => ({ data: { user: { id: 'u1', defaultCurrency: 'USD' } } }),
-}));
-vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast: vi.fn() }) }));
 // Cropping draws on a canvas, which jsdom doesn't have.
 const getCroppedBlob = vi.fn();
 vi.mock('@/lib/utils/cropImage', () => ({
@@ -48,10 +29,8 @@ vi.mock('@/lib/utils/cropImage', () => ({
 }));
 
 import AddItemModal from '@/components/AddItemModal';
-import CreateWishlistModal from '@/components/CreateWishlistModal';
 import ImageCropModal from '@/components/ImageCropModal';
 import ImageUpload from '@/components/ImageUpload';
-import { BANNER_ASPECT } from '@/lib/utils/cover';
 
 beforeAll(() => {
   // useBodyScrollLock restores the scroll position on close; jsdom lacks
@@ -511,40 +490,5 @@ describe('ImageCropModal — cancelling while it crops', () => {
     await user.click(screen.getByRole('button', { name: 'Add item' }));
     await waitFor(() => expect(onAdd).toHaveBeenCalledTimes(1));
     expect(onAdd.mock.calls[0][0].imageUrl).toBe(UPLOADED);
-  });
-});
-
-describe('ImageCropModal — the shape it crops to', () => {
-  const cropper = () => inCrop().getByTestId('cropper');
-
-  // The list page shows a banner as a 3:1 strip (2.4:1 on a phone, trimmed at
-  // the sides), so a banner is cropped to 3:1, in the create-wishlist form and
-  // in the list's settings alike (both use ImageUpload's default).
-  it('crops a list banner to 3:1', () => {
-    expect(BANNER_ASPECT).toBe(3);
-    const { container } = render(<ImageUpload value={null} onChange={vi.fn()} />);
-    pickImage(container);
-    expect(cropper()).toHaveAttribute('data-aspect', '3');
-    expect(cropper()).toHaveAttribute('data-shape', 'rect');
-  });
-
-  it('crops the banner in the create-wishlist form to 3:1', () => {
-    render(<CreateWishlistModal isOpen onClose={vi.fn()} />);
-    pickImage(screen.getByRole('dialog', { name: 'Create new wishlist' }));
-    expect(cropper()).toHaveAttribute('data-aspect', '3');
-  });
-
-  // Only banners changed shape: an item's photo and an avatar keep theirs.
-  it('still crops an item’s photo square', async () => {
-    await openCropOverItemModal();
-    expect(cropper()).toHaveAttribute('data-aspect', '1');
-    expect(cropper()).toHaveAttribute('data-shape', 'rect');
-  });
-
-  it('still crops an avatar square, with a round guide', () => {
-    const { container } = render(<ImageUpload value={null} onChange={vi.fn()} circle />);
-    pickImage(container);
-    expect(cropper()).toHaveAttribute('data-aspect', '1');
-    expect(cropper()).toHaveAttribute('data-shape', 'round');
   });
 });
