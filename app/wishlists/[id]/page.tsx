@@ -1477,16 +1477,17 @@ export default function WishlistDetail() {
                       />
                     )}
 
-                    {/* Toolbar: search, Sort, and Prices when it changes anything */}
-                    <div className="mb-6 flex items-center gap-2 sm:mb-8 sm:gap-3">
+                    {/* Toolbar: search, Sort, and Prices when it changes anything. One
+                        row from sm up; on a phone, search gets a row of its own. */}
+                    <div className="mb-6 flex flex-wrap items-center gap-2 sm:mb-8 sm:flex-nowrap sm:gap-3">
                       <SearchField
                         size="sm"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         onClear={() => setSearchQuery('')}
-                        placeholder="Search…"
+                        placeholder="Search items…"
                         aria-label="Search items by name"
-                        className="min-w-0 flex-1"
+                        className="w-full sm:w-auto sm:min-w-0 sm:flex-1"
                       />
                       <Select
                         value={sortBy}
@@ -1495,7 +1496,7 @@ export default function WishlistDetail() {
                         options={SORT_OPTIONS}
                         valueLabel={SORT_SHORT_LABELS[sortBy]}
                         menuAlign="right"
-                        triggerClassName="flex-shrink-0"
+                        triggerClassName="min-w-0 flex-1 sm:flex-none sm:flex-shrink-0"
                       />
                       {prices.shown && (
                         <Select
