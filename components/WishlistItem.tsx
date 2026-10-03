@@ -332,7 +332,7 @@ function WishlistItem({
 
   return (
     <div
-      className={`group relative flex flex-col rounded-3xl border bg-surface p-4 shadow-md sm:p-5 ${status.classes.card}`}
+      className={`relative flex flex-col rounded-3xl border bg-surface p-4 shadow-md sm:p-5 ${status.classes.card}`}
       role="article"
       aria-label={`Item: ${item.name}`}
       data-status={status.status}

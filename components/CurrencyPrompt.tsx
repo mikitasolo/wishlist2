@@ -115,7 +115,7 @@ export default function CurrencyPrompt() {
       {/* Stacked and full width on a phone, side by side under the text from
           `sm`, and next to it from `md`. A label never wraps: the buttons have
           a fixed height, so a second line would spill out of them. */}
-      <div className="flex flex-col gap-2 sm:flex-row md:shrink-0">
+      <div className="flex flex-col gap-3 sm:flex-row md:shrink-0">
         <Button
           onClick={() => acceptSuggestion(code)}
           disabled={busy}
