@@ -191,14 +191,24 @@ describe('PATCH /api/invites/[inviteId] on an archived list', () => {
     expect(await inviteStatus(ownerInvite)).toBe('accepted');
   });
 
-  it('lets the invitee decline a paused member invite', async () => {
+  // Declining succeeded where a missing invite answers 404, which told the invitee
+  // that the list still exists, archived.
+  it('answers 404 to declining a paused member invite too, and leaves it pending', async () => {
     await setArchived(true);
 
-    const res = await answer(memberInvite, 'decline', mia);
+    await expectPaused(await answer(memberInvite, 'decline', mia));
 
-    expect(res.status).toBe(200);
+    // Back on unarchive, when it can be declined.
+    await setArchived(false);
+    expect((await answer(memberInvite, 'decline', mia)).status).toBe(200);
     expect(await inviteStatus(memberInvite)).toBe('declined');
-    expect(await isMember(mia)).toBe(false);
+  });
+
+  it('still lets the invitee decline an owner invite', async () => {
+    await setArchived(true);
+
+    expect((await answer(ownerInvite, 'decline', olly)).status).toBe(200);
+    expect(await inviteStatus(ownerInvite)).toBe('declined');
   });
 
   it('accepts the member invite once the list is unarchived', async () => {

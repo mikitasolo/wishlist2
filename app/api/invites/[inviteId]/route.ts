@@ -132,6 +132,13 @@ export async function PATCH(
     const answeredAt = new Date();
 
     if (action === 'decline') {
+      // A paused invite (see `isInvitePaused`) can't be declined either: answered
+      // as accept answers it, like an invite that isn't there, so an archived list
+      // can't be told from a missing one. It's back, to decline, on unarchive. An
+      // archive landing after this read lets the decline through, which only
+      // takes the invite away, as declining just before the archive would have.
+      const list = await Wishlist.findById(invite.wishlist).select('archived').lean();
+      if (list && isInvitePaused(invite, list)) return inviteNotFound();
       if (!(await claimInvite(invite._id, 'declined'))) return inviteNotFound();
       await recordInviteAnswer({ invite, answer: 'declined', answeredAt });
       return NextResponse.json({ success: true, data: { status: 'declined' } }, { status: 200 });
