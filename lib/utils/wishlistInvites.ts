@@ -18,7 +18,10 @@ interface IssueInviteArgs {
   invitedBy: Id;
   /** Public name of the inviter, for the email body: `publicDisplayName`, never from their email. */
   inviterName: string;
-  /** Inviter's username for the in-app notification, or null to stay anonymous. */
+  /**
+   * Inviter's username, or null to stay anonymous: names them in the in-app
+   * notification and in the email's subject, which takes no free-text name.
+   */
   actorUsername?: string | null;
   invitedUserId: Id;
   /** Account email of the invitee — fetched by the caller, never stored on the invite. */
@@ -88,7 +91,12 @@ export async function issueWishlistInvite(args: IssueInviteArgs): Promise<IWishl
 
   if (args.invitedUserEmail) {
     try {
-      await sendWishlistInvitationEmail(args.invitedUserEmail, args.wishlistName, args.inviterName);
+      await sendWishlistInvitationEmail(args.invitedUserEmail, {
+        wishlistName: args.wishlistName,
+        role: args.role,
+        inviterName: args.inviterName,
+        inviterUsername: args.actorUsername ?? null,
+      });
     } catch (err) {
       console.error(
         `Wishlist invite ${invite._id} was issued, but its email failed to send:`,

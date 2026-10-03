@@ -51,6 +51,7 @@ const doors = [
   {
     door: 'inviting by username',
     status: 201,
+    role: 'member',
     inviteeEmail: 'friend@x.com',
     inviteeId: () => friendId,
     send: () =>
@@ -61,6 +62,7 @@ const doors = [
   {
     door: 'promoting a member',
     status: 202,
+    role: 'owner',
     inviteeEmail: 'carol@x.com',
     inviteeId: () => memberId,
     send: () =>
@@ -100,7 +102,13 @@ beforeEach(async () => {
 
 describe.each(doors)(
   'the inviter named in an invite, $door',
-  ({ status, inviteeEmail, inviteeId, send }) => {
+  ({ status, role, inviteeEmail, inviteeId, send }) => {
+    /** What the invite email is handed: the inviter's names, never the list's in a subject. */
+    const emailed = (inviterName: string, inviterUsername: string | null) => [
+      inviteeEmail,
+      { wishlistName: WISHLIST_NAME, role, inviterName, inviterUsername },
+    ];
+
     // regression: both invite routes fell back to `session.user.email.split('@')[0]`
     // for an inviter without a username, so the invitee was emailed the local part
     // of the inviter's address ("jane.doe invited you…").
@@ -109,8 +117,8 @@ describe.each(doors)(
       expect((await send()).status).toBe(status);
 
       expect(sendEmail).toHaveBeenCalledOnce();
-      expect(sendEmail).toHaveBeenCalledWith(inviteeEmail, WISHLIST_NAME, 'Someone');
-      expectNoPartOfTheEmail(sendEmail.mock.calls[0][2] as string);
+      expect(sendEmail).toHaveBeenCalledWith(...emailed('Someone', null));
+      expectNoPartOfTheEmail(sendEmail.mock.calls[0][1].inviterName as string);
     });
 
     it('keeps the in-app notification anonymous for an inviter with no username', async () => {
@@ -127,13 +135,13 @@ describe.each(doors)(
     it("falls back to the inviter's name before the neutral one", async () => {
       asInviter({ name: 'Aunt Jo' });
       expect((await send()).status).toBe(status);
-      expect(sendEmail).toHaveBeenCalledWith(inviteeEmail, WISHLIST_NAME, 'Aunt Jo');
+      expect(sendEmail).toHaveBeenCalledWith(...emailed('Aunt Jo', null));
     });
 
     it('names the inviter by their username when they have one', async () => {
       asInviter({ username: 'auntjo', name: 'Aunt Jo' });
       expect((await send()).status).toBe(status);
-      expect(sendEmail).toHaveBeenCalledWith(inviteeEmail, WISHLIST_NAME, 'auntjo');
+      expect(sendEmail).toHaveBeenCalledWith(...emailed('auntjo', 'auntjo'));
     });
   }
 );

@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { SMTP_ENV_VARS } from '@/lib/env';
 import { EMAIL_LOGO_PNG_BASE64 } from '@/lib/emailLogo';
+// Type only: lib/email is imported afresh per test, once the transport is set.
+import type { WishlistInvitationDetails } from '@/lib/email';
 
 // Stand-in for nodemailer: proves whether a transporter is ever created or
 // used, without dialing anything.
@@ -14,6 +16,17 @@ const RECIPIENT = 'friend@example.com';
 const MAGIC_LINK =
   'http://localhost:3000/api/auth/callback/nodemailer?token=secret-token-123&email=friend%40example.com';
 const INVITES_LINK = 'http://localhost:3000/invites';
+
+/** An invite from @alice to a list called Birthday, with any field overridden. */
+function invite(overrides: Partial<WishlistInvitationDetails> = {}): WishlistInvitationDetails {
+  return {
+    wishlistName: 'Birthday',
+    role: 'member',
+    inviterName: 'alice',
+    inviterUsername: 'alice',
+    ...overrides,
+  };
+}
 
 /** The magic link as it must appear in HTML, where a raw `&` isn't valid. */
 const MAGIC_LINK_HTML = MAGIC_LINK.replaceAll('&', '&amp;');
@@ -113,13 +126,13 @@ describe('EMAIL_TRANSPORT=console', () => {
   it('sendWishlistInvitationEmail logs the invitations link and sends nothing', async () => {
     const { sendWishlistInvitationEmail } = await loadEmail('console');
 
-    await sendWishlistInvitationEmail(RECIPIENT, 'Birthday', 'alice');
+    await sendWishlistInvitationEmail(RECIPIENT, invite());
 
     expect(createTransport).not.toHaveBeenCalled();
     expect(sendMail).not.toHaveBeenCalled();
     const printed = String(log.mock.calls[0]![0]);
     expect(printed).toContain(`To:      ${RECIPIENT}`);
-    expect(printed).toContain("Subject: You've been invited to Birthday on Wishlist!");
+    expect(printed).toContain('Subject: @alice invited you to a wishlist');
     expect(printed).toContain(`Link:    ${INVITES_LINK}`);
   });
 });
@@ -177,12 +190,12 @@ describe('EMAIL_TRANSPORT=smtp', () => {
   it('sends the invitation without logging the recipient or link', async () => {
     const { sendWishlistInvitationEmail } = await loadEmail('smtp');
 
-    await sendWishlistInvitationEmail(RECIPIENT, 'Birthday', 'alice');
+    await sendWishlistInvitationEmail(RECIPIENT, invite());
 
     expect(sendMail).toHaveBeenCalledTimes(1);
     expect(sendMail.mock.calls[0]![0]).toMatchObject({
       to: RECIPIENT,
-      subject: "You've been invited to Birthday on Wishlist!",
+      subject: '@alice invited you to a wishlist',
     });
     expect(log).toHaveBeenCalledWith('Sent wishlist invitation email');
     const output = consoleOutput();
@@ -197,7 +210,7 @@ describe('EMAIL_TRANSPORT=smtp', () => {
   it('links the invitation straight to the invites page', async () => {
     const { sendWishlistInvitationEmail } = await loadEmail('smtp');
 
-    await sendWishlistInvitationEmail(RECIPIENT, 'Birthday', 'alice');
+    await sendWishlistInvitationEmail(RECIPIENT, invite());
 
     const { html, text } = sentMessage();
     expect(html).toContain(`<a href="${INVITES_LINK}" class="email-button">Review invitation</a>`);
@@ -235,7 +248,7 @@ describe('EMAIL_TRANSPORT=smtp', () => {
     const { sendWishlistInvitationEmail } = await loadEmail('smtp');
     sendMail.mockRejectedValue('socket closed');
 
-    await expect(sendWishlistInvitationEmail(RECIPIENT, 'Birthday', 'alice')).rejects.toThrow(
+    await expect(sendWishlistInvitationEmail(RECIPIENT, invite())).rejects.toThrow(
       'Could not send wishlist invitation email (unknown error)'
     );
   });
@@ -299,17 +312,16 @@ describe('user-controlled values in email HTML', () => {
   // regression: the invite email interpolated the wishlist name (free text) raw
   // into its HTML, so any owner could put a live link or image in a mail sent
   // from our domain to anyone whose `whoCanInvite` let them invite.
-  it('escapes a wishlist name in the invite HTML and keeps it verbatim in the text and subject', async () => {
+  it('escapes a wishlist name in the invite HTML and keeps it verbatim in the text', async () => {
     const { sendWishlistInvitationEmail } = await loadEmail('smtp');
 
-    await sendWishlistInvitationEmail(RECIPIENT, MARKUP_NAME, 'alice');
+    await sendWishlistInvitationEmail(RECIPIENT, invite({ wishlistName: MARKUP_NAME }));
 
     const { html, text, subject } = sentMessage();
     expect(html).not.toContain('<a href="https://evil.example"');
-    expect(html).toContain(`<h2>You’re invited to “${MARKUP_NAME_HTML}”</h2>`);
     expect(html).toContain(`their wishlist <strong>${MARKUP_NAME_HTML}</strong>.`);
-    expect(text).toContain(`join their wishlist: ${MARKUP_NAME}.`);
-    expect(subject).toBe(`You've been invited to ${MARKUP_NAME} on Wishlist!`);
+    expect(text).toContain(`their wishlist “${MARKUP_NAME}”.`);
+    expect(subject).toBe('@alice invited you to a wishlist');
   });
 
   // regression: the inviter's display name was interpolated raw too, and it isn't
@@ -318,13 +330,16 @@ describe('user-controlled values in email HTML', () => {
     const { sendWishlistInvitationEmail } = await loadEmail('smtp');
     const address = "o'brien@example.com";
 
-    await sendWishlistInvitationEmail(address, 'Birthday', '<img src=x onerror=alert(1)>');
+    await sendWishlistInvitationEmail(
+      address,
+      invite({ inviterName: '<img src=x onerror=alert(1)>', inviterUsername: null })
+    );
 
     const { html, text } = sentMessage();
     expect(html).not.toContain('<img src=x');
     expect(html).toContain('<strong>&lt;img src=x onerror=alert(1)&gt;</strong> invited you');
     expect(html).toContain('Invitation sent to <strong>o&#39;brien@example.com</strong>');
-    expect(text).toContain('<img src=x onerror=alert(1)> has invited you');
+    expect(text).toContain('<img src=x onerror=alert(1)> invited you');
   });
 
   it('escapes the magic link in the button and the paste-this-link fallback', async () => {
@@ -339,13 +354,17 @@ describe('user-controlled values in email HTML', () => {
     expect(text).toContain(MAGIC_LINK);
   });
 
-  // The subject takes the wishlist name raw, and a name can hold a line break.
-  // Nodemailer is what stops that starting a new header, so render the message we
-  // hand it with the real library and check the result.
-  it('cannot inject a header through a wishlist name in the subject', async () => {
+  // Names saved before the schema refused line breaks weren't migrated. The
+  // subject used to take the name raw, and only nodemailer stopped one starting a
+  // new header. It takes no name now, so render the message with the real library
+  // and check that no part of it reaches the headers.
+  it('cannot inject a header through a wishlist name', async () => {
     const { sendWishlistInvitationEmail } = await loadEmail('smtp');
 
-    await sendWishlistInvitationEmail(RECIPIENT, 'Birthday\r\nBcc: attacker@evil.example', 'alice');
+    await sendWishlistInvitationEmail(
+      RECIPIENT,
+      invite({ wishlistName: 'Birthday\r\nBcc: attacker@evil.example' })
+    );
 
     const realNodemailer = await vi.importActual<typeof import('nodemailer')>('nodemailer');
     const info = await realNodemailer
@@ -357,8 +376,76 @@ describe('user-controlled values in email HTML', () => {
       .split('\n\n')[0]!
       .replace(/\n[ \t]+/g, ' '); // unfold continuation lines
     expect(headers).not.toMatch(/^Bcc:/im);
-    expect(headers).toMatch(
-      /^Subject: You've been invited to Birthday +Bcc: attacker@evil\.example on Wishlist!$/m
+    expect(headers).not.toContain('attacker');
+    expect(headers).toMatch(/^Subject: @alice invited you to a wishlist$/m);
+  });
+});
+
+// Fits the 100-character name limit, and mail clients auto-link it even escaped.
+const URL_NAME = 'Claim your gift at https://evil.example/login';
+
+describe('the invite email subject', () => {
+  // regression: the subject was "You've been invited to <wishlist name> on
+  // Wishlist!", so a URL-looking name arrived as a clickable link in the inbox
+  // line of a mail sent from our domain, before the mail was even opened
+  // (WIS-102). It names the inviter and the role instead.
+  it.each([
+    { role: 'member' as const, subject: '@alice invited you to a wishlist' },
+    { role: 'owner' as const, subject: '@alice invited you to co-own a wishlist' },
+  ])('regression: a $role invite leaves the wishlist name out', async ({ role, subject }) => {
+    const { sendWishlistInvitationEmail } = await loadEmail('smtp');
+
+    await sendWishlistInvitationEmail(RECIPIENT, invite({ wishlistName: URL_NAME, role }));
+
+    const sent = sentMessage();
+    expect(sent.subject).toBe(subject);
+    expect(sent.subject).not.toContain('evil.example');
+  });
+
+  // A username is bound to lowercase letters, digits and underscores; a `name`
+  // is free text from an identity provider, so it stays in the body only.
+  it('names an inviter without a username "Someone", never by their free-text name', async () => {
+    const { sendWishlistInvitationEmail } = await loadEmail('smtp');
+
+    await sendWishlistInvitationEmail(
+      RECIPIENT,
+      invite({ inviterName: 'evil.example/login', inviterUsername: null, role: 'owner' })
     );
+
+    const { subject, html, text } = sentMessage();
+    expect(subject).toBe('Someone invited you to co-own a wishlist');
+    expect(html).toContain('<strong>evil.example/login</strong> invited you to co-own');
+    expect(text).toContain('evil.example/login invited you to co-own');
+  });
+
+  it("prints the same subject in the console transport's log", async () => {
+    const { sendWishlistInvitationEmail } = await loadEmail('console');
+
+    await sendWishlistInvitationEmail(RECIPIENT, invite({ wishlistName: URL_NAME, role: 'owner' }));
+
+    const printed = String(log.mock.calls[0]![0]);
+    expect(printed).toContain('Subject: @alice invited you to co-own a wishlist');
+    expect(printed).not.toContain('evil.example');
+  });
+});
+
+describe('the invite email body', () => {
+  // The operator accepted that a client may still auto-link the name in the
+  // body (WIS-102), but it's always inside a sentence that names the inviter,
+  // never a line of its own that could pass for our text.
+  it.each([
+    { role: 'member' as const, invited: 'invited you to their wishlist' },
+    { role: 'owner' as const, invited: 'invited you to co-own their wishlist' },
+  ])('names the list inside a sentence for a $role invite', async ({ role, invited }) => {
+    const { sendWishlistInvitationEmail } = await loadEmail('smtp');
+
+    await sendWishlistInvitationEmail(RECIPIENT, invite({ wishlistName: URL_NAME, role }));
+
+    const { text, html } = sentMessage();
+    const line = `@alice ${invited} “${URL_NAME}”.`;
+    // Nor is it the heading, which an inbox shows as the preview beside the subject.
+    expect(html.match(/<h2>(.*)<\/h2>/)![1]).not.toContain('evil.example');
+    expect(text.split('\n').filter((l) => l.includes(URL_NAME))).toEqual([line]);
+    expect(html).toContain(`<strong>@alice</strong> ${invited} <strong>${URL_NAME}</strong>.`);
   });
 });
