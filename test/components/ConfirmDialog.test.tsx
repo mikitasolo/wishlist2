@@ -137,9 +137,9 @@ describe('ConfirmDialog — icon', () => {
       expect(svgOf()!.innerHTML).not.toBe(trash);
       // Still a danger dialog: the red chip and the red confirm button.
       expect(screen.getByRole('alertdialog').querySelector('[data-icon]')).toHaveClass(
-        'bg-red-500/15'
+        'bg-danger/15'
       );
-      expect(screen.getByRole('button', { name: 'Go' })).toHaveClass('bg-red-600');
+      expect(screen.getByRole('button', { name: 'Go' })).toHaveClass('bg-danger-fill');
     }
   );
 });

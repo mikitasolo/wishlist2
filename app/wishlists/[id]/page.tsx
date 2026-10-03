@@ -81,6 +81,7 @@ import {
   type SortType,
 } from '@/lib/utils/itemFilters';
 import FilterDropdown from '@/components/FilterDropdown';
+import { FILTER_META, TONE_CLASSES } from '@/lib/utils/itemStatus';
 import { useFetchItems, useUpdateItem, useCreateItem, useDeleteItem } from '@/lib/hooks/useItems';
 
 interface WishlistMember {
@@ -1257,29 +1258,18 @@ export default function WishlistDetail() {
     </div>
   );
 
-  const cardMeta: Record<FilterOption, { label: string; value: number; valueClass: string }> = {
-    // "All", not "Total Items": an owner's includes drafts and proposals, and
-    // "N items" means published items only (lib/utils/itemCounts.ts).
-    all: { label: 'All', value: stats.total, valueClass: 'text-foreground' },
-    draft: { label: 'Draft', value: stats.draft, valueClass: 'text-muted-foreground' },
-    proposed: { label: 'Proposed', value: stats.proposed, valueClass: 'text-blue-500' },
-    available: { label: 'Available', value: stats.available, valueClass: 'text-foreground' },
-    bookedByMe: {
-      label: 'Booked by You',
-      value: stats.bookedByYou,
-      valueClass: 'text-green-600 dark:text-green-500',
-    },
-    bookedByOthers: {
-      label: 'Booked by Others',
-      value: Math.max(0, stats.booked - stats.bookedByYou),
-      valueClass: 'text-green-600 dark:text-green-500',
-    },
-    proposedByMe: {
-      label: 'Proposed by You',
-      value: stats.proposedByYou,
-      valueClass: 'text-blue-500',
-    },
-    completed: { label: 'Completed', value: stats.completed, valueClass: 'text-emerald-500' },
+  // Each card's count. Its label and colour come from the status map
+  // (FILTER_META). "All", not "Total Items": an owner's includes drafts and
+  // proposals, and "N items" means published items only (lib/utils/itemCounts.ts).
+  const cardCounts: Record<FilterOption, number> = {
+    all: stats.total,
+    draft: stats.draft,
+    proposed: stats.proposed,
+    available: stats.available,
+    bookedByMe: stats.bookedByYou,
+    bookedByOthers: Math.max(0, stats.booked - stats.bookedByYou),
+    proposedByMe: stats.proposedByYou,
+    completed: stats.completed,
   };
 
   // Not available, or not loaded: said in place, at this URL. Which way to put
@@ -1426,12 +1416,14 @@ export default function WishlistDetail() {
             {/* Archived: say so before anything else, with the way back. Only an
                 owner ever gets an archived list, but the banner checks anyway. */}
             {isOwner && wishlist.archived && (
-              <div className="mb-6 flex flex-col gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 sm:mb-8 sm:flex-row sm:items-center sm:justify-between">
+              <div
+                className={`mb-6 flex flex-col gap-3 rounded-2xl px-4 py-3 sm:mb-8 sm:flex-row sm:items-center sm:justify-between ${TONE_CLASSES.warning.notice}`}
+              >
                 <p className="flex items-center gap-2.5 text-sm font-medium text-foreground">
                   <Icon
                     name="archive"
                     size={18}
-                    className="flex-shrink-0 text-amber-600 dark:text-amber-400"
+                    className={`flex-shrink-0 ${TONE_CLASSES.warning.text}`}
                   />
                   Archived. Only owners can see this list.
                 </p>
@@ -1522,7 +1514,7 @@ export default function WishlistDetail() {
                       style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(8rem, 1fr))' }}
                     >
                       {filterOptions.map((key) => {
-                        const meta = cardMeta[key];
+                        const meta = FILTER_META[key];
                         const active = activeCardKey === key;
                         return (
                           <button
@@ -1540,8 +1532,10 @@ export default function WishlistDetail() {
                             <p className="mb-1 truncate text-xs text-muted-foreground sm:text-sm">
                               {meta.label}
                             </p>
-                            <p className={`text-2xl font-bold sm:text-3xl ${meta.valueClass}`}>
-                              {meta.value}
+                            <p
+                              className={`text-2xl font-bold sm:text-3xl ${TONE_CLASSES[meta.tone].text}`}
+                            >
+                              {cardCounts[key]}
                             </p>
                           </button>
                         );

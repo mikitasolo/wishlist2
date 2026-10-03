@@ -7,6 +7,7 @@ import {
   toggleStatusFilter,
   type FilterOption,
 } from '@/lib/utils/itemFilters';
+import { FILTER_META } from '@/lib/utils/itemStatus';
 
 export type { FilterOption };
 
@@ -53,19 +54,8 @@ export default function FilterDropdown({
     onChange(toggleStatusFilter(selectedFilters, option, options, defaultFilters));
   };
 
-  const getDisplayLabel = (option: FilterOption): string => {
-    const labels: Record<FilterOption, string> = {
-      all: 'All',
-      draft: 'Draft',
-      available: 'Available',
-      bookedByMe: 'Booked by Me',
-      bookedByOthers: 'Booked by Others',
-      completed: 'Completed',
-      proposed: 'Proposed',
-      proposedByMe: 'Proposed by Me',
-    };
-    return labels[option];
-  };
+  // The stat cards' labels (the status map's), so an option and its card match.
+  const getDisplayLabel = (option: FilterOption): string => FILTER_META[option].label;
 
   // Says what the list shows, so never "None selected": no selection shows everything.
   const displayText = isAllSelected

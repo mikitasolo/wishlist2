@@ -1,6 +1,7 @@
 'use client';
 
 import type { UsernameAvailability } from '@/lib/hooks/useUsernameAvailability';
+import { TONE_CLASSES } from '@/lib/utils/itemStatus';
 
 interface UsernameFieldProps {
   value: string;
@@ -48,9 +49,7 @@ export default function UsernameField({
         />
         <span className="flex-shrink-0 text-sm" aria-live="polite">
           {availability === 'checking' && <span className="text-muted-foreground">Checking…</span>}
-          {availability === 'ok' && (
-            <span className="text-emerald-600 dark:text-emerald-400">Available</span>
-          )}
+          {availability === 'ok' && <span className={TONE_CLASSES.success.text}>Available</span>}
           {availability === 'taken' && (
             <span className="text-red-600 dark:text-red-400">Taken</span>
           )}

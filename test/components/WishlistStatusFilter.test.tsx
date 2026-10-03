@@ -165,8 +165,8 @@ describe('the status filter is not carried from one list to another', () => {
       async (user: ReturnType<typeof userEvent.setup>) => {
         await toggleStatus(user, 'Booked by Others');
         await toggleStatus(user, 'Available');
-        await toggleStatus(user, 'Booked by Me');
-        await toggleStatus(user, 'Proposed by Me');
+        await toggleStatus(user, 'Booked by You');
+        await toggleStatus(user, 'Proposed by You');
       },
     ],
   ])(

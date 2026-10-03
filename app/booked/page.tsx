@@ -20,6 +20,7 @@ import { useViewerLocale } from '@/lib/hooks/useViewerLocale';
 import { createListChangeLog, mergeRefreshedList } from '@/lib/utils/listRefresh';
 import type { Occasion } from '@/lib/utils/occasion';
 import { withRequestTimeout } from '@/lib/utils/requestTimeout';
+import { TONE_CLASSES } from '@/lib/utils/itemStatus';
 import {
   groupByOccasion,
   needsConfirmation,
@@ -672,7 +673,7 @@ function ReservationCard({
   return (
     <div
       className={`flex flex-col overflow-hidden rounded-2xl border bg-surface shadow-sm ${
-        highlight ? 'border-amber-500/50 ring-1 ring-amber-500/30' : 'border-border'
+        highlight ? TONE_CLASSES.warning.card : 'border-border'
       }`}
     >
       <div className="flex gap-3 p-3">
@@ -702,7 +703,9 @@ function ReservationCard({
             </p>
           )}
           {note && (
-            <p className="mt-1 inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-400">
+            <p
+              className={`mt-1 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${TONE_CLASSES.warning.tint}`}
+            >
               <Icon name="info" size={11} />
               {note}
             </p>

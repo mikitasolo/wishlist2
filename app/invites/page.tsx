@@ -14,6 +14,7 @@ import { useBusyIds } from '@/lib/hooks/useBusyIds';
 import { signInPath } from '@/lib/utils/callbackUrl';
 import { createMutationTracker } from '@/lib/utils/itemListMerge';
 import { acceptedInviteToast } from '@/lib/utils/confirmationCopy';
+import { TONE_CLASSES } from '@/lib/utils/itemStatus';
 
 interface Invite {
   _id: string;
@@ -240,7 +241,7 @@ export default function InvitesPage() {
                     {/* Accepting co-ownership is destructive on the gifting side —
                         say so before they tap Accept, not after. */}
                     {invite.role === 'owner' && (
-                      <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
+                      <p className={`mt-1 text-xs ${TONE_CLASSES.warning.text}`}>
                         You’ll get full control and the list will show on your profile. Owners never
                         see booking status, so anything you’ve booked here will be released.
                       </p>

@@ -25,6 +25,7 @@ import {
   type SortType,
 } from '@/lib/utils/itemFilters';
 import { formatOwnerItemSummary, tallyItems } from '@/lib/utils/itemCounts';
+import { FILTER_META, statusMeta, TONE_CLASSES } from '@/lib/utils/itemStatus';
 
 interface MyItem {
   _id: string;
@@ -42,12 +43,6 @@ interface MyItem {
   createdAt: string; // ISO date string
 }
 
-const STATUS_BADGE: Partial<Record<MyItem['status'], { label: string; className: string }>> = {
-  draft: { label: 'Draft', className: 'bg-surface-2 text-muted-foreground' },
-  proposed: { label: 'Proposed', className: 'bg-primary-600 text-white' },
-  completed: { label: 'Completed', className: 'bg-emerald-500 text-white' },
-};
-
 // Owner view: booked is folded into "available" by the API (never revealed).
 // Same order the stat cards render in, so cards ↔ dropdown line up.
 const STATUS_FILTER_OPTIONS: FilterOption[] = [
@@ -63,19 +58,6 @@ const STATUS_FILTER_OPTIONS: FilterOption[] = [
 // visit, so a stat card clicked once doesn't narrow the page for good.
 const LS_LISTS = 'items-wishlist-filters';
 const LS_SORT = 'items-sort';
-
-const CARD_META: Record<
-  Exclude<FilterOption, 'bookedByMe' | 'bookedByOthers' | 'proposedByMe'>,
-  { label: string; valueClass: string }
-> = {
-  // "All", not a total: it counts drafts and proposals too, and "N items" means
-  // published items only (lib/utils/itemCounts.ts).
-  all: { label: 'All', valueClass: 'text-foreground' },
-  draft: { label: 'Draft', valueClass: 'text-muted-foreground' },
-  proposed: { label: 'Proposed', valueClass: 'text-blue-500' },
-  available: { label: 'Available', valueClass: 'text-foreground' },
-  completed: { label: 'Completed', valueClass: 'text-emerald-500' },
-};
 
 export default function MyItemsPage() {
   const { status } = useSession();
@@ -328,7 +310,9 @@ export default function MyItemsPage() {
               style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(8rem, 1fr))' }}
             >
               {STATUS_FILTER_OPTIONS.map((key) => {
-                const meta = CARD_META[key as keyof typeof CARD_META];
+                // "All", not a total: it counts drafts and proposals too, and "N
+                // items" means published items only (lib/utils/itemCounts.ts).
+                const meta = FILTER_META[key];
                 const active = activeStatusCard === key;
                 return (
                   <button
@@ -346,7 +330,7 @@ export default function MyItemsPage() {
                     <p className="mb-1 truncate text-xs text-muted-foreground sm:text-sm">
                       {meta.label}
                     </p>
-                    <p className={`text-2xl font-bold sm:text-3xl ${meta.valueClass}`}>
+                    <p className={`text-2xl font-bold sm:text-3xl ${TONE_CLASSES[meta.tone].text}`}>
                       {counts[key as keyof typeof counts]}
                     </p>
                   </button>
@@ -407,7 +391,8 @@ export default function MyItemsPage() {
             ) : (
               <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
                 {visibleItems.map((it) => {
-                  const badge = STATUS_BADGE[it.status];
+                  // The owner's view: the API has already folded booked into available.
+                  const badge = statusMeta(it.status, 'owner');
                   return (
                     <div
                       key={it._id}
@@ -420,10 +405,13 @@ export default function MyItemsPage() {
                         sizes="(max-width: 640px) 50vw, (max-width: 1024px) 25vw, 20vw"
                         className="relative aspect-square w-full bg-surface-2"
                       >
-                        {badge && (
+                        {badge.badge && (
                           <span
-                            className={`absolute left-2 top-2 rounded-full px-2 py-0.5 text-[11px] font-semibold shadow-sm ${badge.className}`}
+                            className={`absolute left-2 top-2 flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold shadow-sm ${badge.classes.badge}`}
                           >
+                            {badge.icon && (
+                              <Icon name={badge.icon} size={11} className="flex-shrink-0" />
+                            )}
                             {badge.label}
                           </span>
                         )}

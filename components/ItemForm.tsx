@@ -16,6 +16,7 @@ import {
 } from '@/lib/utils/itemForm';
 import { currencySymbol, formatPriceInput, parsePriceInput } from '@/lib/utils/currency';
 import { useViewerLocale } from '@/lib/hooks/useViewerLocale';
+import { STATUS_META } from '@/lib/utils/itemStatus';
 
 export { itemToFormData, type ItemFormData } from '@/lib/utils/itemForm';
 
@@ -306,10 +307,10 @@ export default function ItemForm({
 
       {/* Tip for propose mode */}
       {mode === 'propose' && (
-        <div className="border border-blue-500/20 bg-blue-500/10 rounded-lg p-4">
+        <div className={`rounded-lg p-4 ${STATUS_META.proposed.classes.notice}`}>
           <div className="flex items-start gap-2">
             <svg
-              className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0"
+              className="w-5 h-5 mt-0.5 flex-shrink-0"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -321,7 +322,7 @@ export default function ItemForm({
                 d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
               />
             </svg>
-            <p className="text-sm text-blue-700 dark:text-blue-300">
+            <p className="text-sm">
               This item will appear in the wishlist after approval from the wishlist owner.
             </p>
           </div>
