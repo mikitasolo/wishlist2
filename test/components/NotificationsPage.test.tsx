@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import type { NotificationView } from '@/lib/utils/notifications';
 
 const { push, showToast } = vi.hoisted(() => ({ push: vi.fn(), showToast: vi.fn() }));
@@ -156,4 +157,43 @@ describe('NotificationsPage', () => {
     expect(declined.closest('a')).toBeNull();
     expect(screen.queryByText(/invited you/)).toBeNull();
   });
+});
+
+describe('NotificationsPage — a feed that couldn’t be loaded', () => {
+  // regression: a failed read showed "You're all caught up", which claims
+  // there's nothing new, with only a toast to say it wasn't so.
+  it.each([
+    [
+      'a 5xx',
+      async () => ({
+        ok: false,
+        status: 500,
+        json: async () => ({ success: false, error: 'Failed to fetch notifications' }),
+      }),
+    ],
+    [
+      'a network error',
+      async () => {
+        throw new TypeError('Failed to fetch');
+      },
+    ],
+  ])(
+    'regression: says so in its place after %s, with Try again, which reads it afresh',
+    async (_label, fail) => {
+      const fetchMock = vi.fn(fail);
+      vi.stubGlobal('fetch', fetchMock);
+      render(<NotificationsPage />);
+
+      await screen.findByRole('heading', { name: 'Couldn’t load notifications' });
+      expect(screen.queryByText('You’re all caught up')).toBeNull();
+      expect(showToast).not.toHaveBeenCalled();
+
+      serve([row({ _id: 'n-follow', type: 'follow', actorUsername: 'alice' })]);
+      await userEvent.setup().click(screen.getByRole('button', { name: 'Try again' }));
+
+      expect(await screen.findByText(/alice/)).toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: 'Couldn’t load notifications' })).toBeNull();
+      expect(showToast).not.toHaveBeenCalled();
+    }
+  );
 });

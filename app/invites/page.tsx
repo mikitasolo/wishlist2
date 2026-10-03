@@ -8,6 +8,7 @@ import AppHeader from '@/components/AppHeader';
 import AuthButton from '@/components/AuthButton';
 import Avatar from '@/components/Avatar';
 import Icon from '@/components/Icon';
+import LoadError from '@/components/LoadError';
 import { useToast } from '@/components/ToastProvider';
 import { useBusyIds } from '@/lib/hooks/useBusyIds';
 import { signInPath } from '@/lib/utils/callbackUrl';
@@ -31,6 +32,9 @@ export default function InvitesPage() {
   const { showToast } = useToast();
   const [invites, setInvites] = useState<Invite[]>([]);
   const [loading, setLoading] = useState(true);
+  // The account's first load failed: said in place, with Try again, never as
+  // "No pending invitations". A refetch that lands replaces it with the list.
+  const [loadFailed, setLoadFailed] = useState(false);
   // Invites whose answer is still in flight, per invite.
   const { busy, run } = useBusyIds();
   // The answers as a refetch sees them. A list read while one was in flight may
@@ -63,38 +67,45 @@ export default function InvitesPage() {
     outdatedUpTo.current = answerTracker.current.stamp();
     setInvites((prev) => (prev.length ? [] : prev));
     setLoading(true);
+    setLoadFailed(false);
   }, [userId]);
 
-  // The first load of an account shows the skeleton, and says so if it fails.
-  // A refetch (`quiet`) updates the cards in place, and a failed one keeps them.
-  const load = useCallback(
-    (quiet: boolean) => {
-      const tracker = answerTracker.current;
-      const sentAt = tracker.stamp();
-      latestSent.current = sentAt;
-      fetch('/api/users/me/invites', { cache: 'no-store' })
-        .then((r) => r.json())
-        .then((res) => {
-          if (sentAt <= outdatedUpTo.current) return;
-          if (!res.success) throw new Error(res.error);
-          if (tracker.isStale(sentAt)) {
-            // Read again, unless a read sent since the answers settled is
-            // already on its way.
-            if (tracker.isStale(latestSent.current)) tracker.rereadWhenIdle();
-            return;
-          }
-          outdatedUpTo.current = sentAt;
-          setInvites(res.data);
-          setLoading(false);
-        })
-        .catch(() => {
-          if (sentAt <= outdatedUpTo.current || quiet) return;
-          showToast('Failed to load invites', 'error');
-          setLoading(false);
-        });
-    },
-    [showToast]
-  );
+  // The first load of an account shows the skeleton, and says so in its place
+  // if it fails, with no toast. A refetch (`quiet`) updates the cards in place,
+  // and a failed one keeps them.
+  const load = useCallback((quiet: boolean) => {
+    const tracker = answerTracker.current;
+    const sentAt = tracker.stamp();
+    latestSent.current = sentAt;
+    fetch('/api/users/me/invites', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((res) => {
+        if (sentAt <= outdatedUpTo.current) return;
+        if (!res.success) throw new Error(res.error);
+        if (tracker.isStale(sentAt)) {
+          // Read again, unless a read sent since the answers settled is
+          // already on its way.
+          if (tracker.isStale(latestSent.current)) tracker.rereadWhenIdle();
+          return;
+        }
+        outdatedUpTo.current = sentAt;
+        setInvites(res.data);
+        setLoadFailed(false);
+        setLoading(false);
+      })
+      .catch(() => {
+        if (sentAt <= outdatedUpTo.current || quiet) return;
+        setLoadFailed(true);
+        setLoading(false);
+      });
+  }, []);
+
+  // Try again, after the first load failed: the skeleton, then a fresh read.
+  function retryLoad() {
+    setLoadFailed(false);
+    setLoading(true);
+    load(false);
+  }
 
   // Load, then re-check whenever the tab regains focus or something changes
   // invites, as the header's invitation dot does, so the two agree.
@@ -189,6 +200,10 @@ export default function InvitesPage() {
             {Array.from({ length: 3 }).map((_, i) => (
               <div key={i} className="skeleton h-24 rounded-2xl" />
             ))}
+          </div>
+        ) : loadFailed ? (
+          <div className="mt-8">
+            <LoadError title="Couldn’t load your invitations" onRetry={retryLoad} />
           </div>
         ) : invites.length === 0 ? (
           <div className="mt-8 flex flex-col items-center rounded-3xl border border-dashed border-border-strong py-16 text-center sm:py-20">

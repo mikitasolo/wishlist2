@@ -320,22 +320,60 @@ describe('a list that couldn’t be loaded', () => {
     expectStayedHere();
   });
 
-  it('still toasts a failed first items read once the list is on screen, even if it failed first', async () => {
-    let release!: () => void;
-    hold.list = new Promise<void>((resolve) => (release = resolve));
+  // regression: a failed first items read showed the stat tiles at 0 and the
+  // toolbar, with "Failed to load items" below them (no way to retry but a
+  // reload) and in a toast.
+  it.each([
+    ['a 5xx', () => serverError],
+    ['a network error', networkError],
+  ])(
+    'regression: a failed first items read says so in their place after %s, with Try again',
+    async (_label, fail) => {
+      let release!: () => void;
+      hold.list = new Promise<void>((resolve) => (release = resolve));
+      answers = { list: ok(LIST), items: fail };
+      render(<WishlistDetail />);
+
+      // The items read fails while the list read is still on its way: the
+      // list, once it lands, says so in the items' place.
+      await waitFor(() => expect(itemReads()).toBe(1));
+      await act(async () => release());
+      await screen.findByRole('heading', { level: 1, name: 'Birthday' });
+      expect(
+        await screen.findByRole('heading', { name: 'Couldn’t load this list’s items' })
+      ).toBeInTheDocument();
+      // No counts or controls that would say the list is empty, and no toast.
+      expect(screen.queryByTitle('Show all')).toBeNull();
+      expect(screen.queryByPlaceholderText('Search items by name…')).toBeNull();
+      expect(screen.queryByText('No items found')).toBeNull();
+      await settle();
+      expectStayedHere();
+
+      answers.items = ok(ITEMS);
+      const reads = itemReads();
+      await userEvent.setup().click(screen.getByRole('button', { name: 'Try again' }));
+
+      expect(await screen.findByText('Bike')).toBeInTheDocument();
+      expect(itemReads()).toBe(reads + 1);
+      expect(screen.queryByRole('heading', { name: 'Couldn’t load this list’s items' })).toBeNull();
+      // The counts and controls are back with the items.
+      expect(screen.getByTitle('Show all')).toBeInTheDocument();
+      expect(screen.getByPlaceholderText('Search items by name…')).toBeInTheDocument();
+      expectStayedHere();
+    }
+  );
+
+  it('fills the items in when a poll lands after the first read failed', async () => {
     answers = { list: ok(LIST), items: serverError };
     render(<WishlistDetail />);
+    await screen.findByRole('heading', { name: 'Couldn’t load this list’s items' });
 
-    // The items read has failed; the list read is still on its way.
-    await waitFor(() => expect(itemReads()).toBe(1));
-    await settle();
-    expect(showToast).not.toHaveBeenCalled();
+    answers.items = ok(ITEMS);
+    await poll();
 
-    await act(async () => release());
-    await screen.findByRole('heading', { level: 1, name: 'Birthday' });
-    await waitFor(() => expect(showToast).toHaveBeenCalledWith('Failed to load items', 'error'));
-    expect(showToast).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole('heading', { name: 'Failed to load items' })).toBeInTheDocument();
+    expect(await screen.findByText('Bike')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Couldn’t load this list’s items' })).toBeNull();
+    expectStayedHere();
   });
 });
 

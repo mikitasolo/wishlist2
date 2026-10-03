@@ -158,3 +158,59 @@ describe('FollowListModal — its tabs', () => {
 });
 
 type User = ReturnType<typeof userEvent.setup>;
+
+describe('FollowListModal — a list that couldn’t be loaded', () => {
+  const failures: [string, () => Promise<unknown>][] = [
+    [
+      'a 5xx',
+      async () => ({ json: async () => ({ success: false, error: 'Failed to fetch followers' }) }),
+    ],
+    [
+      'a network error',
+      async () => {
+        throw new TypeError('Failed to fetch');
+      },
+    ],
+  ];
+
+  // regression: a failed read showed "No followers yet", which claims there
+  // are none, with nothing to say it had failed.
+  it.each(failures)(
+    'regression: says so in its place after %s, with Try again, which reads it afresh',
+    async (_label, fail) => {
+      const followers = vi.mocked(fetch).getMockImplementation()!;
+      vi.mocked(fetch).mockImplementation(fail as typeof fetch);
+      const user = userEvent.setup();
+      render(<ProfilePage />);
+      await user.click(button('Show followers'));
+
+      await screen.findByRole('heading', { name: 'Couldn’t load followers' });
+      expect(screen.queryByText('No followers yet.')).toBeNull();
+
+      vi.mocked(fetch).mockImplementation(followers);
+      await user.click(button('Try again'));
+      expect(await screen.findByRole('link', { name: '@bob' })).toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: 'Couldn’t load followers' })).toBeNull();
+      // Its button went away while the list was read, and focus stayed in the dialog.
+      expect(screen.getByRole('dialog')).toContainElement(document.activeElement as HTMLElement);
+    }
+  );
+
+  it('reads a tab whose list failed again when it’s opened again', async () => {
+    const followers = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(failures[1][1] as typeof fetch);
+    const user = userEvent.setup();
+    render(<ProfilePage />);
+    await user.click(button('Show followers'));
+    await screen.findByRole('heading', { name: 'Couldn’t load followers' });
+
+    await user.click(button('0 following'));
+    expect(
+      await screen.findByRole('heading', { name: 'Couldn’t load following' })
+    ).toBeInTheDocument();
+
+    vi.mocked(fetch).mockImplementation(followers);
+    await user.click(button('2 followers'));
+    expect(await screen.findByRole('link', { name: '@bob' })).toBeInTheDocument();
+  });
+});

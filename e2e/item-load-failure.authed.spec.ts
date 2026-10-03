@@ -73,8 +73,9 @@ for (const failure of failures) {
   });
 }
 
-// regression: with the hook resolving [] on failure, the page's "Failed to load
-// items" toast was unreachable and a failed first load showed the empty state.
+// regression: with the hook resolving [] on failure, a failed first load showed
+// the empty state; then it showed stat cards reading 0 above an error with no
+// way to retry but a reload, and a toast.
 test('regression: a failed first load says so, not that the list is empty', async ({ page }) => {
   let failing = true;
   await page.route(ITEMS, (route) =>
@@ -84,13 +85,31 @@ test('regression: a failed first load says so, not that the list is empty', asyn
   );
   await page.goto('/wishlists/e2e-birthday');
 
-  await expect(page.getByRole('status').getByText('Failed to load items')).toBeVisible();
-  const loadError = page.getByRole('heading', { name: 'Failed to load items' });
+  const loadError = page.getByRole('heading', { name: 'Couldn’t load this list’s items' });
   await expect(loadError).toBeVisible();
-  // Exclusive with the error panel, so checking it while that shows is enough.
+  // Exclusive with the error panel, so checking these while it shows is enough.
   await expect(emptyList(page)).toHaveCount(0);
+  await expect(page.getByPlaceholder('Search items by name…')).toHaveCount(0);
+  await expect(page.getByRole('status').getByText('Failed to load items')).toHaveCount(0);
 
-  // The poll keeps retrying, and the first read that lands fills the list in.
+  // Try again reads them afresh.
+  failing = false;
+  await page.getByRole('button', { name: 'Try again' }).click();
+  await expect(page.getByRole('article', { name: 'Item: E2E Gift' })).toBeVisible();
+  await expect(loadError).toHaveCount(0);
+});
+
+test('a poll that lands after a failed first load fills the list in', async ({ page }) => {
+  let failing = true;
+  await page.route(ITEMS, (route) =>
+    failing && route.request().method() === 'GET'
+      ? route.fulfill({ status: 500, json: { success: false, error: 'Something went wrong' } })
+      : route.continue()
+  );
+  await page.goto('/wishlists/e2e-birthday');
+  const loadError = page.getByRole('heading', { name: 'Couldn’t load this list’s items' });
+  await expect(loadError).toBeVisible();
+
   failing = false;
   await pollOnce(page);
   await expect(page.getByRole('article', { name: 'Item: E2E Gift' })).toBeVisible();

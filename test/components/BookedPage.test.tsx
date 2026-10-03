@@ -1073,33 +1073,77 @@ describe('BookedPage — reading both lists again while the page is open', () =>
     expect(screen.queryByText(/no longer available to you/)).toBeNull();
   });
 
-  it('the first load failing says so, and a later read fills the lists in', async () => {
+  const loadError = () =>
+    screen.queryByRole('heading', { name: 'Couldn’t load your reservations' });
+
+  // regression: a failed first load toasted, then showed "Nothing reserved
+  // yet", which claims the gifter holds no reservations.
+  it('regression: the first load failing says so in place of the lists, and Try again reads them afresh', async () => {
     const { reads, answerRead } = mockHeldFetch({ holdReads: true });
     render(<BookedPage />);
 
     await answerRead(0, {
       reservations: new TypeError('Failed to fetch'),
-      gifts: new TypeError('Failed to fetch'),
+      gifts: failed('Failed to fetch gift history'),
     });
-    expect(showToast).toHaveBeenCalledWith('Failed to load your reservations', 'error');
-    expect(screen.getByText('Nothing reserved yet')).toBeInTheDocument();
+    expect(loadError()).toBeInTheDocument();
+    expect(screen.queryByText('Nothing reserved yet')).toBeNull();
+    expect(showToast).not.toHaveBeenCalled();
 
-    comeBack('focus');
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
     expect(reads()).toBe(2);
+    // The skeleton, while it's on its way.
+    expect(skeleton()).not.toBeNull();
+    expect(loadError()).toBeNull();
+
     await answerRead(1);
     expect(screen.getByText('Lego set')).toBeInTheDocument();
     expect(historyNames()).toEqual(['Cookbook', 'Mug']);
-    expect(showToast).toHaveBeenCalledTimes(1);
+    expect(loadError()).toBeNull();
+    expect(showToast).not.toHaveBeenCalled();
   });
 
-  it('the first load failing for one list says so, and shows the other', async () => {
+  it('a return to the tab after the first load failed reads the lists again, and fills them in', async () => {
+    const { reads, answerRead } = mockHeldFetch({ holdReads: true });
+    render(<BookedPage />);
+    await answerRead(0, {
+      reservations: new TypeError('Failed to fetch'),
+      gifts: new TypeError('Failed to fetch'),
+    });
+
+    // One that fails too changes nothing.
+    comeBack('focus');
+    expect(reads()).toBe(2);
+    await answerRead(1, { reservations: failed('Failed to fetch reservations') });
+    expect(loadError()).toBeInTheDocument();
+
+    comeBack('focus');
+    expect(reads()).toBe(3);
+    await answerRead(2);
+    expect(screen.getByText('Lego set')).toBeInTheDocument();
+    expect(historyNames()).toEqual(['Cookbook', 'Mug']);
+    expect(loadError()).toBeNull();
+    expect(showToast).not.toHaveBeenCalled();
+  });
+
+  // Half the page would claim the other half is empty: no gift history, or
+  // "Nothing reserved yet".
+  it.each([
+    { failing: 'the gift history', answers: { gifts: failed('Failed to fetch gift history') } },
+    {
+      failing: 'the reservations',
+      answers: { reservations: failed('Failed to fetch reservations') },
+    },
+  ])('the first load failing for $failing shows neither list', async ({ answers }) => {
     const { answerRead } = mockHeldFetch({ holdReads: true });
     render(<BookedPage />);
 
-    await answerRead(0, { gifts: failed('Failed to fetch gift history') });
-    expect(showToast).toHaveBeenCalledWith('Failed to load some data', 'error');
-    expect(screen.getByText('Lego set')).toBeInTheDocument();
-    expect(screen.queryByRole('list')).toBeNull();
+    await answerRead(0, answers);
+    expect(loadError()).toBeInTheDocument();
+    expect(cardName('Lego set')).toBeNull();
+    expect(screen.queryByText('Cookbook')).toBeNull();
+    expect(screen.queryByText('Nothing reserved yet')).toBeNull();
+    expect(showToast).not.toHaveBeenCalled();
   });
 
   it('a return while the first load is on its way sends no second read', async () => {
@@ -1347,10 +1391,28 @@ describe('BookedPage — reading both lists again while the page is open', () =>
       gifts: new TypeError('Failed to fetch'),
     });
 
-    expect(showToast).toHaveBeenCalledWith('Failed to load your reservations', 'error');
-    expect(screen.getByText('Nothing reserved yet')).toBeInTheDocument();
+    expect(loadError()).toBeInTheDocument();
+    expect(showToast).not.toHaveBeenCalled();
     expect(screen.queryByText('Lego set')).toBeNull();
     expect(screen.queryByRole('list')).toBeNull();
+  });
+
+  it("a failed first load's panel doesn't stay up for another account signing in", async () => {
+    const { answerRead } = mockHeldFetch({ holdReads: true });
+    const view = render(<BookedPage />);
+    await answerRead(0, {
+      reservations: new TypeError('Failed to fetch'),
+      gifts: new TypeError('Failed to fetch'),
+    });
+    expect(loadError()).toBeInTheDocument();
+
+    signedIn.userId = 'someone-else';
+    view.rerender(<BookedPage />);
+    expect(loadError()).toBeNull();
+    expect(skeleton()).not.toBeNull();
+
+    await answerRead(1, { reservations: listed([headphones]), gifts: listed([]) });
+    expect(screen.getByText('Headphones')).toBeInTheDocument();
   });
 
   it("the previous account's first load failing late doesn't end the new account's skeleton", async () => {

@@ -1,13 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import AppHeader from '@/components/AppHeader';
 import AuthButton from '@/components/AuthButton';
 import Icon from '@/components/Icon';
-import { useToast } from '@/components/ToastProvider';
+import LoadError from '@/components/LoadError';
 import { signInPath } from '@/lib/utils/callbackUrl';
 import {
   type NotificationView,
@@ -51,37 +51,60 @@ export default function NotificationsPage() {
   const { data: session, status } = useSession();
   const viewerUsername = session?.user?.username ?? null;
   const router = useRouter();
-  const { showToast } = useToast();
   const [items, setItems] = useState<NotificationView[]>([]);
   const [loading, setLoading] = useState(true);
+  // The feed couldn't be read: said in place, with Try again (`attempt`),
+  // never as "You're all caught up".
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     if (status === 'unauthenticated') router.replace(signInPath('/notifications'));
   }, [status, router]);
 
   useEffect(() => {
+    // A read outdated by another (Try again, the session changed) is dropped.
+    let current = true;
     async function load() {
+      let feed: { data: NotificationView[]; unreadCount?: number };
       try {
         const res = await fetch('/api/notifications', { cache: 'no-store' });
         const json = await res.json();
-        if (json.success) {
-          setItems(json.data);
-          // Visiting the page clears the unread badge.
-          if ((json.unreadCount ?? 0) > 0) {
-            await fetch('/api/notifications', { method: 'PATCH' });
-            window.dispatchEvent(new Event('notifications-changed'));
-          }
-        } else {
-          showToast('Failed to load notifications', 'error');
-        }
+        if (!json.success) throw new Error(json.error || 'Failed to load notifications');
+        feed = json;
       } catch {
-        showToast('Failed to load notifications', 'error');
-      } finally {
-        setLoading(false);
+        if (current) {
+          setLoadFailed(true);
+          setLoading(false);
+        }
+        return;
+      }
+      if (!current) return;
+      setItems(feed.data);
+      setLoadFailed(false);
+      setLoading(false);
+      // Visiting the page clears the unread badge. If that fails, the badge
+      // stays, and the next visit clears it: the feed itself is on screen.
+      if ((feed.unreadCount ?? 0) > 0) {
+        try {
+          await fetch('/api/notifications', { method: 'PATCH' });
+          window.dispatchEvent(new Event('notifications-changed'));
+        } catch {
+          /* see above */
+        }
       }
     }
     if (status === 'authenticated') load();
-  }, [status, showToast]);
+    return () => {
+      current = false;
+    };
+  }, [status, attempt]);
+
+  const retryLoad = useCallback(() => {
+    setLoadFailed(false);
+    setLoading(true);
+    setAttempt((n) => n + 1);
+  }, []);
 
   return (
     <div className="min-h-screen">
@@ -107,6 +130,10 @@ export default function NotificationsPage() {
                 </div>
               </div>
             ))}
+          </div>
+        ) : loadFailed ? (
+          <div className="mt-8">
+            <LoadError title="Couldn’t load notifications" onRetry={retryLoad} />
           </div>
         ) : items.length === 0 ? (
           <div className="mt-8 flex flex-col items-center rounded-3xl border border-dashed border-border-strong py-16 text-center">

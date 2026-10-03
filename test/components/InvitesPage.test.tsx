@@ -661,23 +661,41 @@ describe('InvitesPage — keeping the list fresh while it is open', () => {
     expect(showToast).not.toHaveBeenCalled();
   });
 
-  it('the first load failing says so, and a later refetch fills the list in', async () => {
+  // regression: a failed first load toasted, then said "No pending
+  // invitations", which claims there are none.
+  it('regression: the first load failing says so in place, and a later refetch fills the list in', async () => {
     const { list } = mockHeldFetch({ holdLists: true });
     render(<InvitesPage />);
 
     await list(0, loadFailed);
-    expect(showToast).toHaveBeenCalledWith('Failed to load invites', 'error');
-    expect(screen.getByText('No pending invitations')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Couldn’t load your invitations' })).toBeVisible();
+    expect(screen.queryByText('No pending invitations')).toBeNull();
+    expect(showToast).not.toHaveBeenCalled();
 
-    // A refetch failing too doesn't say so again, on every return to the tab.
+    // A refetch failing too keeps the panel, and says nothing more.
     refetchOn('focus');
     await list(1, loadFailed);
-    expect(showToast).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('heading', { name: 'Couldn’t load your invitations' })).toBeVisible();
 
     refetchOn('focus');
     await list(2, listed(invites));
     expect(screen.getByText('Birthday')).toBeInTheDocument();
-    expect(showToast).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('heading', { name: 'Couldn’t load your invitations' })).toBeNull();
+    expect(showToast).not.toHaveBeenCalled();
+  });
+
+  it('Try again after a failed first load reads the list afresh', async () => {
+    const { list, listRequests } = mockHeldFetch({ holdLists: true });
+    render(<InvitesPage />);
+
+    await list(0, loadFailed);
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    // The skeleton while it's read again, then the list.
+    expect(skeleton()).not.toBeNull();
+    expect(listRequests()).toBe(2);
+    await list(1, listed(invites));
+    expect(screen.getByText('Birthday')).toBeInTheDocument();
+    expect(showToast).not.toHaveBeenCalled();
   });
 
   // regression: the page loaded its invites once, when the session became
@@ -717,8 +735,8 @@ describe('InvitesPage — keeping the list fresh while it is open', () => {
     rerender(<InvitesPage />);
     await list(1, loadFailed);
 
-    expect(showToast).toHaveBeenCalledWith('Failed to load invites', 'error');
-    expect(screen.getByText('No pending invitations')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Couldn’t load your invitations' })).toBeVisible();
+    expect(screen.queryByText('No pending invitations')).toBeNull();
     expect(screen.queryByText('Birthday')).toBeNull();
   });
 
