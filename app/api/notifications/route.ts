@@ -1,9 +1,26 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import connectDB from '@/lib/mongodb';
-import Notification from '@/models/Notification';
+import type { FilterQuery } from 'mongoose';
+import Notification, { type INotification } from '@/models/Notification';
+import { pausedInviteWishlistIds } from '@/lib/utils/wishlistInvites';
 
 const FEED_LIMIT = 30;
+
+/**
+ * The current user's notifications, less the ones about a paused invite: an
+ * unanswered `wishlist_invite` for a list that is archived while their member
+ * invite to it waits (see `isInvitePaused`). It's left in place, unread, and
+ * comes back once the list is unarchived. Answered ones ("You joined …") stay.
+ */
+async function visibleNotifications(userId: string): Promise<FilterQuery<INotification>> {
+  const paused = await pausedInviteWishlistIds(userId);
+  if (paused.length === 0) return { user: userId };
+  return {
+    user: userId,
+    $nor: [{ type: 'wishlist_invite', wishlist: { $in: paused }, inviteAnswer: null }],
+  };
+}
 
 // GET /api/notifications - the current user's latest notifications + unread count.
 export async function GET() {
@@ -14,9 +31,10 @@ export async function GET() {
     }
     await connectDB();
 
+    const visible = await visibleNotifications(session.user.id);
     const [rows, unreadCount] = await Promise.all([
-      Notification.find({ user: session.user.id }).sort({ createdAt: -1 }).limit(FEED_LIMIT).lean(),
-      Notification.countDocuments({ user: session.user.id, read: false }),
+      Notification.find(visible).sort({ createdAt: -1 }).limit(FEED_LIMIT).lean(),
+      Notification.countDocuments({ ...visible, read: false }),
     ]);
 
     const data = rows.map((n) => ({
@@ -46,6 +64,7 @@ export async function GET() {
 }
 
 // PATCH /api/notifications - mark all of the current user's notifications read.
+// Only the ones they can see: a paused invite's comes back unread.
 export async function PATCH() {
   try {
     const session = await auth();
@@ -53,7 +72,8 @@ export async function PATCH() {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
     await connectDB();
-    await Notification.updateMany({ user: session.user.id, read: false }, { $set: { read: true } });
+    const visible = await visibleNotifications(session.user.id);
+    await Notification.updateMany({ ...visible, read: false }, { $set: { read: true } });
     return NextResponse.json({ success: true, unreadCount: 0 }, { status: 200 });
   } catch (error) {
     console.error('Error marking notifications read:', error);

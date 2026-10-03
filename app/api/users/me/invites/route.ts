@@ -4,9 +4,10 @@ import connectDB from '@/lib/mongodb';
 import Wishlist from '@/models/Wishlist';
 import WishlistInvite from '@/models/WishlistInvite';
 import User from '@/models/User';
+import { isInvitePaused } from '@/lib/utils/wishlistInvites';
 
 // GET /api/users/me/invites - pending wishlist invites addressed to the current
-// user's account.
+// user's account, except paused ones (see `isInvitePaused`).
 export async function GET() {
   try {
     const session = await auth();
@@ -24,7 +25,7 @@ export async function GET() {
 
     const wishlists = await Wishlist.find({
       _id: { $in: invites.map((i) => i.wishlist) },
-    }).select('name slug');
+    }).select('name slug archived');
     const wlMap = new Map(wishlists.map((w) => [w._id.toString(), w]));
 
     const inviters = await User.find({
@@ -36,6 +37,9 @@ export async function GET() {
       .map((i) => {
         const w = wlMap.get(i.wishlist.toString());
         if (!w) return null; // wishlist was deleted
+        // A member invite to an archived list waits, still pending, until the list
+        // is unarchived: accepting it now would only answer 404.
+        if (isInvitePaused(i, w)) return null;
         const inviter = invMap.get(i.invitedBy.toString());
         return {
           _id: i._id.toString(),
