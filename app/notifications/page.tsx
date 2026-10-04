@@ -401,8 +401,7 @@ export default function ActivityPage() {
                   icon="bell"
                   title="You’re all caught up"
                   body="When someone follows you, invites you to a wishlist, or acts on a proposal, it’ll show up here."
-                >
-                </EmptyState>
+                ></EmptyState>
               )
             )}
           </div>
