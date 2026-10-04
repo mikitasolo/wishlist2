@@ -45,6 +45,7 @@ describe('focus when the opener is gone after a dialog closes', () => {
     await Promise.resolve();
     expect(screen.queryByRole('button', { name: 'Add your first item' })).toBeNull();
     expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'My list' }));
+    expect(document.activeElement).toHaveClass('outline-hidden');
   });
 
   it('prefers a data-focus-fallback target', async () => {

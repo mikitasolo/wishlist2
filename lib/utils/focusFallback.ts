@@ -5,7 +5,7 @@
  *
  * The target is the element marked `data-focus-fallback`, else the page's
  * first `h1` in `main`, else `main`. It's made focusable (`tabindex="-1"`)
- * when it isn't, and its outline is left off: it's a place to continue from,
+ * when it isn't, and its outline is turned off with `outline-hidden` (which keeps forced-colors mode's): it's a place to continue from,
  * not a control.
  */
 export function focusPageFallback(): boolean {
@@ -15,7 +15,7 @@ export function focusPageFallback(): boolean {
     document.querySelector<HTMLElement>('main');
   if (!target) return false;
   if (!target.hasAttribute('tabindex')) target.setAttribute('tabindex', '-1');
-  target.style.outline = 'none';
+  target.classList.add('outline-hidden');
   target.focus({ preventScroll: true });
   return document.activeElement === target;
 }
