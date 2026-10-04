@@ -89,14 +89,14 @@ const listed = (data: Invite[]): Reply => ({ status: 200, body: { success: true,
 /**
  * Answers each PATCH with whatever `patch` resolves to, and each list request
  * with whatever `list` resolves to. By default the list is the server's: both
- * invites, less any that a PATCH has answered or found gone.
+ * invites, less any that a PATCH has answered or found gone or already answered.
  */
 function stubFetch(patch: (url: string) => Promise<Reply>, list?: () => Promise<Reply>) {
   const settled = new Set<string>();
   const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     if (init?.method === 'PATCH' && url.startsWith('/api/invites/')) {
       const reply = await patch(url);
-      if ('body' in reply && (reply.status < 400 || reply.status === 404)) {
+      if ('body' in reply && (reply.status < 400 || reply.status === 404 || reply.status === 409)) {
         settled.add(url.slice('/api/invites/'.length));
       }
       return toResponse(reply);
@@ -241,6 +241,75 @@ describe('Activity, pinned invites — an invite that no longer exists', () => {
       expect(push).not.toHaveBeenCalled();
     }
   );
+});
+
+// WIS-100: an invite answered from another tab or device was told apart from a
+// gone one only by the route's 409, which says what the answer was.
+describe('Activity, pinned invites — an invite already answered elsewhere', () => {
+  const alreadyAnswered = (data: Record<string, unknown>): Reply => ({
+    status: 409,
+    body: { success: false, error: 'This invitation has already been answered.', data },
+  });
+
+  it.each(['Accept', 'Decline'] as const)(
+    'says they already joined, links the list, and drops the card (%s)',
+    async (name) => {
+      mockFetch(
+        alreadyAnswered({ status: 'accepted', wishlistSlug: 'birthday', wishlistId: 'w1' })
+      );
+      await clickOnFirstCard(name);
+
+      await waitFor(() => expect(screen.queryByText('Birthday')).toBeNull());
+      expect(screen.getByText('Housewarming')).toBeInTheDocument();
+      expect(invitesChanged).toHaveBeenCalledTimes(1);
+      expect(showToast).toHaveBeenCalledWith("You've already joined “Birthday”", 'info', {
+        action: { label: 'Open list', href: '/wishlists/birthday' },
+      });
+      expect(showToast).not.toHaveBeenCalledWith(expect.anything(), 'error');
+      // This click joined nothing, so nothing navigates.
+      expect(push).not.toHaveBeenCalled();
+    }
+  );
+
+  it('links the list by its id when it has no slug', async () => {
+    mockFetch(alreadyAnswered({ status: 'accepted', wishlistSlug: null, wishlistId: 'w1' }));
+    await clickOnFirstCard('Accept');
+
+    await waitFor(() =>
+      expect(showToast).toHaveBeenCalledWith("You've already joined “Birthday”", 'info', {
+        action: { label: 'Open list', href: '/wishlists/w1' },
+      })
+    );
+  });
+
+  it('says they already joined without a link when the route gave none', async () => {
+    mockFetch(alreadyAnswered({ status: 'accepted' }));
+    await clickOnFirstCard('Accept');
+
+    await waitFor(() => expect(screen.queryByText('Birthday')).toBeNull());
+    expect(showToast).toHaveBeenCalledWith("You've already joined “Birthday”", 'info', undefined);
+  });
+
+  it('says they already declined it, and drops the card', async () => {
+    mockFetch(alreadyAnswered({ status: 'declined' }));
+    await clickOnFirstCard('Accept');
+
+    await waitFor(() => expect(screen.queryByText('Birthday')).toBeNull());
+    expect(showToast).toHaveBeenCalledWith(
+      'You already declined this invitation',
+      'info',
+      undefined
+    );
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it('keeps the card on a 409 that says nothing about the answer', async () => {
+    mockFetch({ status: 409, body: { success: false, error: 'Conflict' } });
+    await clickOnFirstCard('Accept');
+
+    await waitFor(() => expect(showToast).toHaveBeenCalledWith('Conflict', 'error'));
+    expect(screen.getByText('Birthday')).toBeInTheDocument();
+  });
 });
 
 describe('Activity, pinned invites — failures worth retrying keep the card', () => {

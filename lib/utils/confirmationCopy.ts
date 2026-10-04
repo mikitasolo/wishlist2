@@ -152,6 +152,21 @@ export function acceptedInviteToast(
   return joined + releasedGiftsNote(cancelledReservations);
 }
 
+/**
+ * The invitee's toast when their answer finds the invite already answered, from
+ * another tab or device (the invite route's 409, WIS-100). It names the list
+ * from their own invite card, and says nothing of reservations: whatever that
+ * earlier accept released, its own toast said.
+ */
+export function alreadyAnsweredInviteToast(
+  answer: 'accepted' | 'declined',
+  listName: string
+): string {
+  return answer === 'accepted'
+    ? `You've already joined ${quoted(listName)}`
+    : 'You already declined this invitation';
+}
+
 /** The leaver's toast (`unbookedItemsCount` in the leave's answer). */
 export function leftListToast(
   listName: string | null | undefined,

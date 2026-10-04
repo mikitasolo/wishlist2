@@ -73,11 +73,13 @@ describe('PATCH /api/invites/[inviteId]', () => {
   });
 
   // Regression: matching is by invitedUser only now (email-fallback removed), so
-  // a different user cannot act on someone else's invite.
+  // a different user cannot act on someone else's invite. Answered as a missing
+  // invite (WIS-100), so it doesn't even confirm the invite exists.
   it('regression: a different user cannot accept the invite', async () => {
     const other = await User.create({ email: 'other@x.com', username: 'other' });
     const res = await respond(inviteId, 'accept', other._id.toString());
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ success: false, error: 'Invite not found' });
     expect((await WishlistInvite.findById(inviteId))?.status).toBe('pending');
   });
 
@@ -123,7 +125,7 @@ describe('PATCH /api/invites/[inviteId] claims the invite first', () => {
   // regression: accept recorded `accepted` only after granting the role, so a second
   // accept (another tab, a double click) that read the invite in between granted it
   // again, and the inviter was told twice.
-  it('regression: of two accepts at once, one lets them in and the other gets a 404', async () => {
+  it('regression: of two accepts at once, one lets them in and the other is told it already did', async () => {
     const race = holdFirstCall(
       WishlistInvite,
       'findById',
@@ -134,7 +136,13 @@ describe('PATCH /api/invites/[inviteId] claims the invite first', () => {
     const first = await respond(inviteId, 'accept', inviteeId);
 
     expect(race.outcome()?.status).toBe(200);
-    expect(first.status).toBe(404);
+    expect(first.status).toBe(409);
+    const { data } = await first.json();
+    expect(data).toEqual({
+      status: 'accepted',
+      wishlistSlug: (await Wishlist.findById(wishlistId))!.slug ?? null,
+      wishlistId,
+    });
     expect(await WishlistMember.countDocuments({ wishlist: wishlistId })).toBe(1);
     expect(await acceptedNotifications()).toBe(1);
   });
@@ -152,13 +160,14 @@ describe('PATCH /api/invites/[inviteId] claims the invite first', () => {
     const accepted = await respond(inviteId, 'accept', inviteeId);
 
     expect(race.outcome()?.status).toBe(200);
-    expect(accepted.status).toBe(404);
+    expect(accepted.status).toBe(409);
+    expect((await accepted.json()).data).toEqual({ status: 'declined' });
     expect((await WishlistInvite.findById(inviteId))?.status).toBe('declined');
     expect(await member()).toBeNull();
     expect(await acceptedNotifications()).toBe(0);
   });
 
-  it('an accept that lands during a decline wins, and the decline gets a 404', async () => {
+  it('an accept that lands during a decline wins, and the decline is told it joined', async () => {
     const race = holdFirstCall(
       WishlistInvite,
       'findById',
@@ -169,7 +178,8 @@ describe('PATCH /api/invites/[inviteId] claims the invite first', () => {
     const declined = await respond(inviteId, 'decline', inviteeId);
 
     expect(race.outcome()?.status).toBe(200);
-    expect(declined.status).toBe(404);
+    expect(declined.status).toBe(409);
+    expect((await declined.json()).data.status).toBe('accepted');
     expect((await WishlistInvite.findById(inviteId))?.status).toBe('accepted');
     expect(await member()).not.toBeNull();
   });
@@ -737,5 +747,183 @@ describe('DELETE /api/wishlists/[id]/invites/[inviteId]', () => {
 
     expect(await WishlistInvite.findById(inviteId)).not.toBeNull();
     expect(await inviteNotifications()).toBe(1);
+  });
+});
+
+// WIS-100: an invite the invitee has already answered (another tab, another
+// device) is told apart from one that's gone, but only to its invitee, and the
+// list's link only while they can still open it.
+describe('PATCH /api/invites/[inviteId] on an invite already answered', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const answered = async (status: 'accepted' | 'declined') => {
+    await WishlistInvite.updateOne({ _id: inviteId }, { $set: { status } });
+  };
+
+  // regression: an invite accepted in another tab answered the same 404 as a
+  // cancelled one, so the invitee was told it was no longer available.
+  it.each(['accept', 'decline'])(
+    'answers 409 with the list link to %s an invite they already accepted',
+    async (action) => {
+      expect((await respond(inviteId, 'accept', inviteeId)).status).toBe(200);
+      await Wishlist.updateOne({ _id: wishlistId }, { $set: { slug: 'the-list' } });
+
+      const res = await respond(inviteId, action, inviteeId);
+
+      expect(res.status).toBe(409);
+      expect(await res.json()).toEqual({
+        success: false,
+        error: 'This invitation has already been answered.',
+        data: { status: 'accepted', wishlistSlug: 'the-list', wishlistId },
+      });
+      // Nothing changed: still accepted, still one membership, one notification.
+      expect((await WishlistInvite.findById(inviteId))?.status).toBe('accepted');
+      expect(await WishlistMember.countDocuments({ wishlist: wishlistId })).toBe(1);
+      expect(await Notification.countDocuments({ user: ownerId, type: 'invite_accepted' })).toBe(1);
+    }
+  );
+
+  it('answers 409 declined, with nothing about the list, to an invite they declined', async () => {
+    await answered('declined');
+
+    const res = await respond(inviteId, 'accept', inviteeId);
+
+    expect(res.status).toBe(409);
+    expect((await res.json()).data).toEqual({ status: 'declined' });
+    expect((await WishlistInvite.findById(inviteId))?.status).toBe('declined');
+    expect(await WishlistMember.exists({ wishlist: wishlistId, user: inviteeId })).toBeNull();
+  });
+
+  // An accepted invite outlives a leave or a kick (only pending ones are
+  // cancelled), so "already joined" would be wrong once they're off the list,
+  // even one anyone can open.
+  it.each(['friends', 'everyone'] as const)(
+    'answers 404 once they have left the (%s) list they accepted',
+    async (visibility) => {
+      expect((await respond(inviteId, 'accept', inviteeId)).status).toBe(200);
+      await Wishlist.updateOne({ _id: wishlistId }, { $set: { visibility } });
+      await WishlistMember.deleteOne({ wishlist: wishlistId, user: inviteeId });
+
+      const res = await respond(inviteId, 'accept', inviteeId);
+
+      expect(res.status).toBe(404);
+      expect(await res.json()).toEqual({ success: false, error: 'Invite not found' });
+    }
+  );
+
+  // An invite only claimed by an accept still granting the role may yet be
+  // reopened or withdrawn, so it isn't "already joined" until the role is there.
+  it('answers 404 while the accept that claimed it has not granted the role yet', async () => {
+    await answered('accepted');
+
+    const res = await respond(inviteId, 'decline', inviteeId);
+
+    expect(res.status).toBe(404);
+    expect((await WishlistInvite.findById(inviteId))?.status).toBe('accepted');
+  });
+
+  it('answers 404 to an accepted owner invite while they are still only a member', async () => {
+    await WishlistInvite.updateOne({ _id: inviteId }, { $set: { role: 'owner' } });
+    await answered('accepted');
+    await WishlistMember.create({ wishlist: wishlistId, user: inviteeId });
+
+    expect((await respond(inviteId, 'accept', inviteeId)).status).toBe(404);
+  });
+
+  it('gives an accepted owner invite the link once they are an owner', async () => {
+    await WishlistInvite.updateOne({ _id: inviteId }, { $set: { role: 'owner' } });
+    expect((await respond(inviteId, 'accept', inviteeId)).status).toBe(200);
+
+    const res = await respond(inviteId, 'accept', inviteeId);
+
+    expect(res.status).toBe(409);
+    expect((await res.json()).data).toEqual({
+      status: 'accepted',
+      wishlistSlug: (await Wishlist.findById(wishlistId))!.slug ?? null,
+      wishlistId,
+    });
+  });
+
+  it('gives the link to an invitee who has since become an owner', async () => {
+    await answered('accepted');
+    await Wishlist.updateOne({ _id: wishlistId }, { $push: { owners: inviteeId } });
+
+    expect((await (await respond(inviteId, 'accept', inviteeId)).json()).data).toMatchObject({
+      status: 'accepted',
+      wishlistId,
+    });
+  });
+
+  // An archived list stays indistinguishable from a missing one to a non-owner.
+  it.each(['accepted', 'declined'] as const)(
+    'answers an invite %s on a list archived since as a missing one',
+    async (status) => {
+      await answered(status);
+      await WishlistMember.create({ wishlist: wishlistId, user: inviteeId });
+      await Wishlist.updateOne({ _id: wishlistId }, { $set: { archived: true } });
+
+      const res = await respond(inviteId, 'accept', inviteeId);
+
+      expect(res.status).toBe(404);
+      expect(await res.json()).toEqual({ success: false, error: 'Invite not found' });
+    }
+  );
+
+  it("answers someone else's answered invite as a missing one", async () => {
+    await answered('accepted');
+    const other = await User.create({ email: 'other@x.com', username: 'other' });
+
+    const res = await respond(inviteId, 'accept', other._id.toString());
+
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ success: false, error: 'Invite not found' });
+  });
+
+  // An accept that found the list deleted declines the invite on its way out:
+  // that isn't the invitee's answer, so a retry isn't told they declined it.
+  it('answers an answered invite whose list is gone as a deleted list', async () => {
+    await Wishlist.deleteOne({ _id: wishlistId });
+    expect((await respond(inviteId, 'accept', inviteeId)).status).toBe(404);
+    expect((await WishlistInvite.findById(inviteId))?.status).toBe('declined');
+
+    const res = await respond(inviteId, 'accept', inviteeId);
+
+    expect(res.status).toBe(404);
+    expect((await res.json()).error).toMatch(/no longer exists/i);
+  });
+
+  // The claim matching nothing is re-read: an owner's cancel deleted the row,
+  // so it's still the 404 of an invite that's gone.
+  it.each(['accept', 'decline'])(
+    'still answers 404 when an owner cancels the invite during a %s',
+    async (action) => {
+      const race = holdFirstCall(
+        WishlistInvite,
+        'findById',
+        () => WishlistInvite.deleteOne({ _id: inviteId }),
+        { after: true }
+      );
+
+      const res = await respond(inviteId, action, inviteeId);
+
+      expect(race.held()).toBe(true);
+      expect(res.status).toBe(404);
+      expect(await res.json()).toEqual({ success: false, error: 'Invite not found' });
+      expect(await WishlistMember.exists({ wishlist: wishlistId, user: inviteeId })).toBeNull();
+    }
+  );
+
+  // A paused invite is still pending, so it keeps the 404 it always had.
+  it('still answers 404 for a paused invite', async () => {
+    await Wishlist.updateOne({ _id: wishlistId }, { $set: { archived: true } });
+
+    for (const action of ['accept', 'decline']) {
+      const res = await respond(inviteId, action, inviteeId);
+      expect(res.status).toBe(404);
+      expect(await res.json()).toEqual({ success: false, error: 'Invite not found' });
+    }
+    expect((await WishlistInvite.findById(inviteId))?.status).toBe('pending');
   });
 });

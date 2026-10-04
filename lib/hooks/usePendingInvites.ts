@@ -8,7 +8,7 @@ import { useToast } from '@/components/ToastProvider';
 import type { PendingInvite } from '@/components/InviteCard';
 import { useBusyIds } from '@/lib/hooks/useBusyIds';
 import { createAcceptRedirect } from '@/lib/utils/acceptRedirect';
-import { acceptedInviteToast } from '@/lib/utils/confirmationCopy';
+import { acceptedInviteToast, alreadyAnsweredInviteToast } from '@/lib/utils/confirmationCopy';
 import { createMutationTracker } from '@/lib/utils/itemListMerge';
 import { RequestTimeoutError, withRequestTimeout } from '@/lib/utils/requestTimeout';
 import type { InviteAnswer } from '@/lib/utils/notifications';
@@ -192,12 +192,32 @@ export function usePendingInvites({ onAnswered }: PendingInvitesOptions = {}) {
         // that gave it, here and in the catch below.
         if (account.current !== answeredFor) return;
         // The invite went away while the page was open: an owner cancelled it,
-        // its list was deleted, we left or lost our role there, or another tab
-        // already answered it. Every retry would 404 the same way, so drop the
+        // its list was deleted or archived, or we left or lost our role there.
+        // Every retry would 404 the same way, so drop the
         // card. Any other failure keeps it, so the user can retry.
         if (res.status === 404) {
           dropInvite(invite._id);
           showToast('This invitation is no longer available', 'info');
+          notJoined();
+          return;
+        }
+        // Already answered, from another tab or device (WIS-100). Nothing to
+        // retry, so the card goes, and the toast says what the answer was, with
+        // the list's link when the route gave one (an accept, on a list they can
+        // still open). Nothing navigates: this click didn't join anything.
+        const earlier = res.status === 409 ? result.data?.status : undefined;
+        if (earlier === 'accepted' || earlier === 'declined') {
+          dropInvite(invite._id);
+          answered.current?.(invite, earlier);
+          window.dispatchEvent(new Event('notifications-changed'));
+          const ref = result.data.wishlistSlug ?? result.data.wishlistId;
+          showToast(
+            alreadyAnsweredInviteToast(earlier, invite.wishlistName),
+            'info',
+            earlier === 'accepted' && ref
+              ? { action: { label: 'Open list', href: `/wishlists/${ref}` } }
+              : undefined
+          );
           notJoined();
           return;
         }
