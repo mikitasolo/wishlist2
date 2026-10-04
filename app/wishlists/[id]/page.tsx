@@ -332,6 +332,12 @@ export default function WishlistDetail() {
     [wishlistId, markRefused]
   );
 
+  // The id belongs to the URL it was read at: another URL (another list, or the
+  // same one under its new slug) is read afresh before the id is used again.
+  useEffect(() => {
+    listId.current = null;
+  }, [wishlistId]);
+
   // Fetch wishlist and determine role. Whatever the answer, the page stays at
   // this URL and says where things stand (see `pageLoad`), with no toast.
   useEffect(() => {
