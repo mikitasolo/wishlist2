@@ -17,6 +17,7 @@ import { PATCH as PATCH_ME } from '@/app/api/users/me/route';
 import User from '@/models/User';
 import Follow from '@/models/Follow';
 import Wishlist from '@/models/Wishlist';
+import WishlistMember from '@/models/WishlistMember';
 
 const session = vi.mocked(auth);
 
@@ -121,6 +122,61 @@ describe('users/[id]/wishlists — list visibility under friends-only', () => {
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.data.some((w: { name: string }) => w.name === 'Mugs')).toBe(true);
+  });
+});
+
+describe('users/[id]/wishlists — what visitors see, told to the owner alone', () => {
+  beforeEach(async () => {
+    await User.updateOne({ _id: targetId }, { $set: { 'privacy.profileVisibility': 'everyone' } });
+    const [target, friend, stranger] = [targetId, friendId, strangerId].map(
+      (id) => new mongoose.Types.ObjectId(id)
+    );
+    // 'Mugs' (everyone) is already there.
+    await Wishlist.create({ name: 'Friends', owners: [target], visibility: 'friends' });
+    const hidden = await Wishlist.create({
+      name: 'Hidden',
+      owners: [target],
+      visibility: 'private',
+    });
+    await Wishlist.create({ name: 'Shared', owners: [target, friend], visibility: 'everyone' });
+    await Wishlist.create({
+      name: 'Old',
+      owners: [target],
+      visibility: 'everyone',
+      archived: true,
+    });
+    // The stranger is a member of the private list, so they see it too.
+    await WishlistMember.create({ wishlist: hidden._id, user: stranger });
+  });
+
+  it('counts, for the owner, the lists a signed-out visitor could open', async () => {
+    const res = await wishlists(targetId);
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    // Every active list, and archived ones in neither number.
+    expect(json.data.map((w: { name: string }) => w.name).sort()).toEqual([
+      'Friends',
+      'Hidden',
+      'Mugs',
+      'Shared',
+    ]);
+    expect(json.visitorCount).toBe(2);
+  });
+
+  it('sends no count to anyone else: signed out, a friend, a co-owner or a member', async () => {
+    for (const viewer of [undefined, friendId, strangerId]) {
+      const json = await (await wishlists(viewer)).json();
+      expect(json.success).toBe(true);
+      expect(json).not.toHaveProperty('visitorCount');
+      expect(JSON.stringify(json)).not.toMatch(/visitor/i);
+    }
+  });
+
+  it('keeps archived lists off everyone else’s view of the profile', async () => {
+    for (const viewer of [undefined, friendId, strangerId]) {
+      const json = await (await wishlists(viewer)).json();
+      expect(json.data.some((w: { name: string }) => w.name === 'Old')).toBe(false);
+    }
   });
 });
 
