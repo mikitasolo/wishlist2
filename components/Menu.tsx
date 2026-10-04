@@ -100,6 +100,12 @@ interface MenuProps {
   menuWidthClassName?: string;
   /** Told whenever the menu opens or closes. */
   onOpenChange?: (open: boolean) => void;
+  /**
+   * Always open above the trigger: for a menu at the bottom of a panel that
+   * clips what overflows it (a dialog's footer), where the window's room below
+   * isn't room the menu has.
+   */
+  opensAbove?: boolean;
 }
 
 const isRadioGroup = (entry: MenuEntry): entry is MenuRadioGroup => entry.type === 'radio-group';
@@ -167,6 +173,7 @@ export default function Menu({
   className = 'relative flex',
   menuWidthClassName = 'w-max min-w-[12rem]',
   onOpenChange,
+  opensAbove = false,
 }: MenuProps) {
   const [open, setOpen] = useState(false);
   // Which side of the trigger the menu opens on, and how it lines up with it:
@@ -240,7 +247,7 @@ export default function Menu({
     const fitsRightAligned = t.right - width >= MARGIN;
     const fitsLeftAligned = t.left + width <= viewportWidth - MARGIN;
     setPlacement({
-      above: popover.offsetHeight > roomBelow && roomAbove > roomBelow,
+      above: opensAbove || (popover.offsetHeight > roomBelow && roomAbove > roomBelow),
       alignLeft: !fitsRightAligned,
       // A trigger mid-row on a phone (a page header's Share): neither edge of
       // it leaves room, so the menu keeps to the viewport's left margin.
@@ -258,7 +265,7 @@ export default function Menu({
           : all[0];
     // Not scrolled to: the menu may still be on its old side until it's placed.
     target?.focus({ preventScroll: true });
-  }, [open]);
+  }, [open, opensAbove]);
 
   // Focus never strands: not on an item that's gone while the menu is open
   // (its keys would then reach nothing), nor on <body> once it has closed.

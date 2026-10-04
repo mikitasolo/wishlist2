@@ -1,6 +1,6 @@
 'use client';
 
-import { memo, useMemo, useCallback, useState } from 'react';
+import { memo, useMemo, useCallback, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ApiItem } from '@/types/api';
 import { useSession } from 'next-auth/react';
@@ -142,6 +142,15 @@ function WishlistItem({
   const { data: session } = useSession();
   // The item's details (ItemSheet), opened from the card's body.
   const [sheetOpen, setSheetOpen] = useState(false);
+  const bodyButtonRef = useRef<HTMLButtonElement>(null);
+  // Closes the sheet for one of the page's dialogs (Edit, Review, Save to my
+  // list, + link). Focus goes to the card's body first, so that dialog records
+  // the card as its opener and gives focus back to it, rather than to a
+  // control of the sheet that's gone by then.
+  const closeSheetForDialog = useCallback(() => {
+    bodyButtonRef.current?.focus();
+    setSheetOpen(false);
+  }, []);
   const [isUpdating, setIsUpdating] = useState(false);
   const [showCompleteConfirm, setShowCompleteConfirm] = useState(false);
   const [showToDraftConfirm, setShowToDraftConfirm] = useState(false);
@@ -493,7 +502,7 @@ function WishlistItem({
       type="button"
       onClick={() => {
         if (action.changesStatus && isUpdating) return;
-        if (inSheet && !action.changesStatus) setSheetOpen(false);
+        if (inSheet && !action.changesStatus) closeSheetForDialog();
         action.onClick();
       }}
       disabled={action.unavailable}
@@ -522,7 +531,7 @@ function WishlistItem({
       ? {
           ...menuItems[i],
           onSelect: () => {
-            setSheetOpen(false);
+            closeSheetForDialog();
             menuItems[i].onSelect?.();
           },
         }
@@ -541,13 +550,18 @@ function WishlistItem({
             variant="secondary"
             size="md"
             onClick={() => {
-              setSheetOpen(false);
+              closeSheetForDialog();
               onAddLink?.(item);
             }}
           />
         )}
         {sheetMenuItems.length > 0 && (
-          <Menu label="More actions" items={sheetMenuItems} triggerClassName={ICON_BUTTON} />
+          <Menu
+            label="More actions"
+            items={sheetMenuItems}
+            triggerClassName={ICON_BUTTON}
+            opensAbove
+          />
         )}
       </>
     ) : null;
@@ -630,6 +644,7 @@ function WishlistItem({
             <h3 className="mb-1.5 text-body font-semibold text-foreground sm:mb-3 sm:text-title">
               <button
                 type="button"
+                ref={bodyButtonRef}
                 onClick={() => setSheetOpen(true)}
                 aria-haspopup="dialog"
                 title={item.name}

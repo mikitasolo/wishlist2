@@ -4,7 +4,7 @@
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
 import { render, screen, cleanup, within, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { ComponentProps } from 'react';
+import { useState, type ComponentProps } from 'react';
 import type { ApiItem } from '@/types/api';
 
 const ME = 'user-me';
@@ -18,6 +18,7 @@ vi.mock('@/components/BannerImage', () => ({
 }));
 
 import WishlistItem from '@/components/WishlistItem';
+import BaseModal from '@/components/BaseModal';
 import { atWidth } from './viewport';
 
 // jsdom can't navigate: a click on a link (the cover) goes nowhere.
@@ -211,6 +212,53 @@ describe("the sheet's actions, by role", () => {
     await user.click(within(sheet).getByRole('button', { name: 'Edit item' }));
     expect(onEdit).toHaveBeenCalled();
     expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  // regression: the page's dialog recorded the sheet's Edit as its opener,
+  // which went with the sheet, so closing it dropped focus to <body>.
+  it('regression: gives focus back to the card when the dialog Edit opened from the sheet closes', async () => {
+    const user = userEvent.setup();
+    // The page's edit dialog, opened by the card's onEdit.
+    function Page() {
+      const [editing, setEditing] = useState(false);
+      return (
+        <>
+          <WishlistItem
+            item={item()}
+            onUpdate={vi.fn()}
+            isAuthenticated
+            isOwner
+            onEdit={() => setEditing(true)}
+          />
+          <BaseModal
+            isOpen={editing}
+            onClose={() => setEditing(false)}
+            title="Edit item"
+            titleId="edit-title"
+          >
+            <p>form</p>
+          </BaseModal>
+        </>
+      );
+    }
+    render(<Page />);
+    await user.click(bodyButton());
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Edit item' }));
+    expect(screen.getByRole('dialog', { name: 'Edit item' })).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(bodyButton()).toHaveFocus();
+  });
+
+  // regression: in the dialog-shaped sheet (from `sm` up) a short menu opened
+  // below the footer, where the panel's overflow clipped it.
+  it("regression: opens the sheet's menu above its trigger", async () => {
+    const user = userEvent.setup();
+    renderCard(item(), { isMember: true, onSaveToList: vi.fn() });
+    const sheet = openSheet();
+    await user.click(within(sheet).getByRole('button', { name: 'More actions' }));
+    const popover = within(sheet).getByRole('menu').closest('.bottom-full');
+    expect(popover).not.toBeNull();
   });
 
   it("asks the owner's Delete… over the sheet", async () => {
