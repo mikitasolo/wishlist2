@@ -11,12 +11,20 @@ import SegmentedControl from './SegmentedControl';
 import ImageUpload from './ImageUpload';
 import Select from './Select';
 import Button from './Button';
+import Icon from './Icon';
+import OccasionField from './OccasionField';
 import Field from './Field';
 import Input from './Input';
 import Textarea from './Textarea';
 import { FIELD_HELPER, FIELD_LABEL } from './fieldStyles';
 import { visibilityMeta, VISIBILITY_OPTIONS, type Visibility } from '@/lib/utils/visibility';
 import { currencySelectOptions } from '@/lib/utils/currencies';
+import {
+  draftToOccasion,
+  missingFromDraft,
+  occasionToDraft,
+  type OccasionDraft,
+} from '@/lib/utils/occasion';
 
 /** The new list, as `POST /api/wishlists` answers it: the fields a caller of `onCreated` reads. */
 export interface CreatedWishlist {
@@ -43,7 +51,15 @@ const defaultFormData = {
   visibility: 'everyone' as Visibility,
   bannerUrl: '',
   currency: 'USD',
+  occasion: occasionToDraft(null),
 };
+
+const sameDraft = (a: OccasionDraft, b: OccasionDraft) =>
+  a.kind === b.kind &&
+  a.yearly === b.yearly &&
+  a.date === b.date &&
+  a.month === b.month &&
+  a.day === b.day;
 
 export default function CreateWishlistModal({
   isOpen,
@@ -57,6 +73,8 @@ export default function CreateWishlistModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showConfirmClose, setShowConfirmClose] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const moreId = useId();
   const visibilityLabelId = useId();
   const visibilityHelperId = useId();
 
@@ -66,6 +84,7 @@ export default function CreateWishlistModal({
       setFormData(defaultFormData);
       setHasUnsavedChanges(false);
       setShowConfirmClose(false);
+      setMoreOpen(false);
     }
   }, [isOpen]);
 
@@ -75,7 +94,8 @@ export default function CreateWishlistModal({
       formData.name !== defaultFormData.name ||
       formData.description !== defaultFormData.description ||
       formData.visibility !== defaultFormData.visibility ||
-      formData.bannerUrl !== defaultFormData.bannerUrl;
+      formData.bannerUrl !== defaultFormData.bannerUrl ||
+      !sameDraft(formData.occasion, defaultFormData.occasion);
     setHasUnsavedChanges(hasChanges);
   }, [formData]);
 
@@ -89,6 +109,11 @@ export default function CreateWishlistModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const missing = missingFromDraft(formData.occasion);
+    if (missing) {
+      showToast(missing, 'error');
+      return;
+    }
     setIsSubmitting(true);
 
     try {
@@ -97,7 +122,7 @@ export default function CreateWishlistModal({
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({ ...formData, occasion: draftToOccasion(formData.occasion) }),
       });
 
       const result = await response.json();
@@ -176,43 +201,11 @@ export default function CreateWishlistModal({
             />
           </Field>
 
-          <Field label="Description" id="description">
-            <Textarea
-              value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              placeholder="Optional description"
-              rows={3}
-              disabled={isSubmitting}
-              autoComplete="off"
-            />
-          </Field>
-
-          <div>
-            <label className={FIELD_LABEL}>Currency</label>
-            <Select
-              value={formData.currency}
-              onChange={(v) => setFormData({ ...formData, currency: v })}
-              options={currencySelectOptions}
-              ariaLabel="Wishlist currency"
-              size="md"
-              triggerClassName="w-full"
-              disabled={isSubmitting}
-            />
-            <p className={FIELD_HELPER}>Default currency for prices in this wishlist.</p>
-          </div>
-
-          <div>
-            <label className={FIELD_LABEL}>
-              Banner image <span className="text-muted-foreground">(optional)</span>
-            </label>
-            {/* An upload lands after the render that started it: update the form as it is by then. */}
-            <ImageUpload
-              value={formData.bannerUrl || null}
-              onChange={(url) => setFormData((f) => ({ ...f, bannerUrl: url ?? '' }))}
-              disabled={isSubmitting}
-            />
-            <p className={FIELD_HELPER}>Shown across the top of the list, and on its card.</p>
-          </div>
+          <OccasionField
+            value={formData.occasion}
+            onChange={(occasion) => setFormData((f) => ({ ...f, occasion }))}
+            disabled={isSubmitting}
+          />
 
           <div>
             <span id={visibilityLabelId} className={FIELD_LABEL}>
@@ -229,6 +222,60 @@ export default function CreateWishlistModal({
               disabled={isSubmitting}
               options={VISIBILITY_OPTIONS}
             />
+          </div>
+
+          <div>
+            <button
+              type="button"
+              className="flex items-center gap-1.5 rounded-md text-sm font-medium text-accent disabled:opacity-60"
+              aria-expanded={moreOpen}
+              aria-controls={moreId}
+              disabled={isSubmitting}
+              onClick={() => setMoreOpen((o) => !o)}
+            >
+              <Icon name="chevron-down" size={16} className={moreOpen ? 'rotate-180' : ''} />
+              More options
+            </button>
+            {/* Hidden, not unmounted: an upload in flight and what's typed survive a collapse. */}
+            <div id={moreId} hidden={!moreOpen} className="mt-4 space-y-4">
+              <Field label="Description" id="description">
+                <Textarea
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  placeholder="Optional description"
+                  rows={3}
+                  disabled={isSubmitting}
+                  autoComplete="off"
+                />
+              </Field>
+
+              <div>
+                <label className={FIELD_LABEL}>Currency</label>
+                <Select
+                  value={formData.currency}
+                  onChange={(v) => setFormData({ ...formData, currency: v })}
+                  options={currencySelectOptions}
+                  ariaLabel="Wishlist currency"
+                  size="md"
+                  triggerClassName="w-full"
+                  disabled={isSubmitting}
+                />
+                <p className={FIELD_HELPER}>Default currency for prices in this wishlist.</p>
+              </div>
+
+              <div>
+                <label className={FIELD_LABEL}>
+                  Banner image <span className="text-muted-foreground">(optional)</span>
+                </label>
+                {/* An upload lands after the render that started it: update the form as it is by then. */}
+                <ImageUpload
+                  value={formData.bannerUrl || null}
+                  onChange={(url) => setFormData((f) => ({ ...f, bannerUrl: url ?? '' }))}
+                  disabled={isSubmitting}
+                />
+                <p className={FIELD_HELPER}>Shown across the top of the list, and on its card.</p>
+              </div>
+            </div>
           </div>
         </div>
       </BaseModal>

@@ -96,6 +96,7 @@ export const createWishlistSchema = z.object({
     .toUpperCase()
     .regex(/^[A-Z]{3}$/, 'Invalid currency code')
     .optional(),
+  occasion: occasionSchema.nullable().optional(),
 });
 
 export const updateWishlistSchema = z

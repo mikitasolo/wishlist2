@@ -75,6 +75,13 @@ type User = ReturnType<typeof userEvent.setup>;
 async function tabToCurrency(user: User) {
   expect(nameField()).toHaveFocus();
   await user.tab();
+  expect(screen.getByRole('combobox', { name: 'Occasion' })).toHaveFocus();
+  await user.tab();
+  expect(screen.getByRole('radio', { name: 'Public' })).toHaveFocus();
+  await user.tab();
+  expect(button('More options')).toHaveFocus();
+  await user.keyboard('{Enter}');
+  await user.tab();
   expect(screen.getByLabelText('Description')).toHaveFocus();
   await user.tab();
   expect(currency()).toHaveFocus();
@@ -124,7 +131,7 @@ describe('CreateWishlistModal — keyboard focus', () => {
     // Off the typed field first: user-event fires its `change` on blur, and the
     // confirmation taking focus would fire it in the middle of React's commit.
     await user.tab();
-    const description = screen.getByLabelText('Description');
+    const description = screen.getByRole('combobox', { name: 'Occasion' });
     expect(description).toHaveFocus();
 
     await user.keyboard('{Escape}');
@@ -263,9 +270,7 @@ describe('CreateWishlistModal — the currency Select by keyboard', () => {
   it('regression: with a name typed, Escape on the open menu closes it without asking to discard', async () => {
     const user = await openModal();
     await user.type(nameField(), 'Birthday');
-    await user.tab();
-    await user.tab();
-    expect(currency()).toHaveFocus();
+    await tabToCurrency(user);
     await user.keyboard('{Enter}');
 
     await user.keyboard('{Escape}');
@@ -281,6 +286,7 @@ describe('CreateWishlistModal — the currency Select by keyboard', () => {
   it('chooses an option with the mouse and leaves focus on the trigger, so Tab carries on from there', async () => {
     const user = await openModal();
 
+    await user.click(button('More options'));
     await user.click(currency());
     await user.click(option('PLN · Polish Zloty'));
     expect(menu()).toBeNull();
@@ -298,8 +304,7 @@ describe('CreateWishlistModal — the currency Select by keyboard', () => {
     expect(currency()).toHaveTextContent('EUR · Euro');
     expect(currency()).toHaveFocus();
 
-    // On past the banner and the visibility choice (one stop: a radio group).
-    await user.tab();
+    // On past the banner.
     await user.tab();
     await user.tab();
     expect(button('Cancel')).toHaveFocus();
@@ -361,5 +366,74 @@ describe('CreateWishlistModal — keyboard focus while it creates the wishlist',
     expect(push).toHaveBeenCalledWith('/wishlists/birthday');
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(button('New wishlist')).toHaveFocus();
+  });
+});
+
+describe('CreateWishlistModal — the new order', () => {
+  const sentBody = (fetchMock: ReturnType<typeof vi.fn>) =>
+    JSON.parse((fetchMock.mock.calls[0] as unknown as [string, { body: string }])[1].body);
+  const created = () =>
+    vi.fn(async () => ({ json: async () => ({ success: true, data: { _id: 'w1', slug: 's' } }) }));
+
+  it('asks for Name, Occasion and Visibility first, with the rest under More options', async () => {
+    await openModal();
+    const occasion = screen.getByRole('combobox', { name: 'Occasion' });
+    const visibility = screen.getByRole('radiogroup', { name: 'Visibility' });
+    const follows = (a: Node, b: Node) =>
+      Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(follows(nameField(), occasion)).toBe(true);
+    expect(follows(occasion, visibility)).toBe(true);
+    expect(follows(visibility, button('More options'))).toBe(true);
+    expect(screen.getByRole('radio', { name: 'Invite only' })).toBeInTheDocument();
+  });
+
+  it('starts More options collapsed and expands it', async () => {
+    const user = await openModal();
+    expect(button('More options')).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByLabelText('Description')).not.toBeVisible();
+    expect(screen.queryByRole('combobox', { name: 'Wishlist currency' })).toBeNull();
+
+    await user.click(button('More options'));
+    expect(button('More options')).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByLabelText('Description')).toBeVisible();
+    expect(currency()).toBeVisible();
+  });
+
+  it('keeps Create in the footer, outside the scrolling body', async () => {
+    await openModal();
+    expect(button('Create wishlist').parentElement).toBe(button('Cancel').parentElement);
+    expect(button('Create wishlist').parentElement).not.toContainElement(nameField());
+  });
+
+  it('sends no occasion as null', async () => {
+    const fetchMock = created();
+    vi.stubGlobal('fetch', fetchMock);
+    const user = await openModal();
+    fireEvent.change(nameField(), { target: { value: 'Anna' } });
+    await user.click(button('Create wishlist'));
+    expect(sentBody(fetchMock)).toMatchObject({
+      name: 'Anna',
+      visibility: 'everyone',
+      occasion: null,
+    });
+  });
+
+  it('submits a yearly occasion as its day and month on the placeholder year', async () => {
+    const fetchMock = created();
+    vi.stubGlobal('fetch', fetchMock);
+    const user = await openModal();
+    fireEvent.change(nameField(), { target: { value: 'Anna' } });
+    await user.click(screen.getByRole('combobox', { name: 'Occasion' }));
+    await user.click(option('Birthday'));
+    await user.click(screen.getByRole('combobox', { name: 'Occasion month' }));
+    await user.click(option('March'));
+    await user.click(screen.getByRole('combobox', { name: 'Occasion day' }));
+    await user.click(option('14'));
+    await user.click(button('Create wishlist'));
+    expect(sentBody(fetchMock).occasion).toEqual({
+      kind: 'birthday',
+      date: '2000-03-14',
+      recurrence: 'yearly',
+    });
   });
 });

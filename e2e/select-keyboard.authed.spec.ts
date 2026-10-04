@@ -59,6 +59,8 @@ test('regression: Escape on the currency menu in the create-wishlist modal close
   // Home's, in its greeting row (the header has none since WIS-302).
   await page.locator('main header').getByRole('button', { name: 'New list' }).click();
   const dialog = page.getByRole('dialog', { name: 'Create new wishlist' });
+  // The currency sits under More options, collapsed to begin with.
+  await dialog.getByRole('button', { name: 'More options' }).click();
   const currency = dialog.getByRole('combobox', { name: 'Wishlist currency' });
   const menu = page.getByRole('listbox', { name: 'Wishlist currency' });
 

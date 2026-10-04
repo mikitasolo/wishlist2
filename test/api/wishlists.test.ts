@@ -432,3 +432,56 @@ describe('POST /api/wishlists and PATCH /api/wishlists/[id] — name validation'
     expect((await Wishlist.findOne())?.name).toBe('Birthday');
   });
 });
+
+describe('POST /api/wishlists — occasion', () => {
+  beforeEach(() => {
+    session.mockResolvedValue({ user: { id: ownerId } } as never);
+  });
+
+  const create = (body: unknown) =>
+    CREATE(
+      new NextRequest('http://localhost/api/wishlists', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+    );
+
+  it('stores a yearly occasion on the placeholder year, whatever year was sent', async () => {
+    const res = await create({
+      name: 'Anna',
+      occasion: { kind: 'birthday', date: '1990-03-14', recurrence: 'yearly' },
+    });
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.data.occasion).toMatchObject({ kind: 'birthday', date: '2000-03-14' });
+    const stored = await Wishlist.findById(body.data._id).lean();
+    expect(stored?.occasion?.date).toBe('2000-03-14');
+  });
+
+  it('keeps the year of a one-off', async () => {
+    const res = await create({
+      name: 'Wedding',
+      occasion: { kind: 'wedding', date: '2031-06-20', recurrence: null },
+    });
+    expect(res.status).toBe(201);
+    const stored = await Wishlist.findById((await res.json()).data._id).lean();
+    expect(stored?.occasion).toMatchObject({ kind: 'wedding', date: '2031-06-20' });
+  });
+
+  it('creates a list with no occasion when null is sent', async () => {
+    const res = await create({ name: 'Plain', occasion: null });
+    expect(res.status).toBe(201);
+    const stored = await Wishlist.findById((await res.json()).data._id).lean();
+    expect(stored?.occasion ?? null).toBeNull();
+  });
+
+  it.each([
+    { kind: 'party', date: '2031-06-20', recurrence: null },
+    { kind: 'wedding', date: '2027-02-30', recurrence: null },
+  ])('refuses an invalid occasion with a 400 and stores nothing', async (occasion) => {
+    const res = await create({ name: 'Bad', occasion });
+    expect(res.status).toBe(400);
+    expect(await Wishlist.countDocuments({ name: 'Bad' })).toBe(0);
+  });
+});
