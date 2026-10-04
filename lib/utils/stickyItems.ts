@@ -19,11 +19,12 @@ interface Identified {
 
 /**
  * Lays `fresh` (the items the chip, search and sort would show, in order) out
- * with every pinned item in its slot from `anchor` (the order on screen when
- * it was pinned). A pinned item goes right after the nearest card before it in
- * `anchor` that is still shown and not pinned, or first when there's none. A
- * pinned item that's gone from `all` (deleted, declined) is left out, and one
- * missing from `anchor` is placed as `fresh` places it.
+ * with every pinned item in its slot: the position it had in `anchor` (the
+ * order on screen when it was pinned), with everything else filling the other
+ * slots in `fresh`'s order. A slot is a position, not a neighbour, so a poll
+ * that moves or drops the card beside a pinned one doesn't take it along. A
+ * pinned item past the end goes last, one gone from `all` (deleted, declined)
+ * is left out, and one missing from `anchor` is placed as `fresh` places it.
  */
 export function keepPinnedInPlace<T extends Identified>(
   fresh: readonly T[],
@@ -34,31 +35,21 @@ export function keepPinnedInPlace<T extends Identified>(
   if (pinned.length === 0) return [...fresh];
   const byId = new Map(all.map((item) => [item._id, item]));
   const anchorIndex = new Map(anchor.map((id, index) => [id, index]));
-  const sticky = new Set(pinned.filter((id) => byId.has(id) && anchorIndex.has(id)));
+  const sticky = pinned
+    .filter((id, i) => byId.has(id) && anchorIndex.has(id) && pinned.indexOf(id) === i)
+    .sort((a, b) => anchorIndex.get(a)! - anchorIndex.get(b)!);
+  const stickySet = new Set(sticky);
+  const rest = fresh.filter((item) => !stickySet.has(item._id));
 
-  const rest = fresh.filter((item) => !sticky.has(item._id));
-  const restIds = new Set(rest.map((item) => item._id));
-
-  // Each pinned item's place in `rest`: after the card it followed, or first.
-  const after = new Map<string | null, T[]>();
-  for (const id of anchor) {
-    if (!sticky.has(id)) continue;
-    let predecessor: string | null = null;
-    for (let i = anchorIndex.get(id)! - 1; i >= 0; i--) {
-      const candidate = anchor[i];
-      if (!sticky.has(candidate) && restIds.has(candidate)) {
-        predecessor = candidate;
-        break;
-      }
+  const result: T[] = [];
+  let r = 0;
+  let p = 0;
+  while (r < rest.length || p < sticky.length) {
+    if (p < sticky.length && (anchorIndex.get(sticky[p])! <= result.length || r >= rest.length)) {
+      result.push(byId.get(sticky[p++])!);
+    } else {
+      result.push(rest[r++]);
     }
-    const group = after.get(predecessor) ?? [];
-    group.push(byId.get(id)!);
-    after.set(predecessor, group);
-  }
-
-  const result: T[] = [...(after.get(null) ?? [])];
-  for (const item of rest) {
-    result.push(item, ...(after.get(item._id) ?? []));
   }
   return result;
 }

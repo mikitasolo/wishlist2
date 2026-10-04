@@ -42,15 +42,36 @@ describe('keepPinnedInPlace', () => {
     ]);
   });
 
-  it('places a pinned item after the nearest card before it that is still shown', () => {
-    const all = [it_('a'), it_('b'), it_('c', 'booked'), it_('d')];
-    // b has since left the chip (someone else reserved it): c follows a.
-    const fresh = [all[0], all[3]];
-    expect(ids(keepPinnedInPlace(fresh, all, ['c'], ['a', 'b', 'c', 'd']))).toEqual([
+  it('keeps a pinned item in its position when a card before it leaves the chip', () => {
+    const all = [it_('a'), it_('b'), it_('c', 'booked'), it_('d'), it_('e')];
+    // b has since left the chip (someone else reserved it): c keeps slot 2.
+    const fresh = [all[0], all[3], all[4]];
+    expect(ids(keepPinnedInPlace(fresh, all, ['c'], ['a', 'b', 'c', 'd', 'e']))).toEqual([
       'a',
-      'c',
       'd',
+      'c',
+      'e',
     ]);
+  });
+
+  // regression: a pinned card was tied to the card before it, so when a poll
+  // moved that card to another group (someone else reserved it), the pinned
+  // card jumped along with it.
+  it('regression: keeps a pinned item in its slot when a poll moves the card before it away', () => {
+    const all = [it_('a', 'booked'), it_('x', 'booked'), it_('b'), it_('c')];
+    // Under All, a (reserved by someone else now) moves to the end.
+    const fresh = [all[2], all[3], all[0]];
+    expect(ids(keepPinnedInPlace(fresh, all, ['x'], ['a', 'x', 'b', 'c']))).toEqual([
+      'b',
+      'x',
+      'c',
+      'a',
+    ]);
+  });
+
+  it('puts a pinned item whose slot is past the end last', () => {
+    const all = [it_('a'), it_('b'), it_('z', 'booked')];
+    expect(ids(keepPinnedInPlace([all[0]], all, ['z'], ['a', 'b', 'z']))).toEqual(['a', 'z']);
   });
 
   it('shows the pinned item as last read, so a poll lands on the card in place', () => {
@@ -76,9 +97,9 @@ describe('keepPinnedInPlace', () => {
     const fresh = [all[0], all[3], all[1]];
     expect(ids(keepPinnedInPlace(fresh, all, ['b'], ['a', 'b', 'c']))).toEqual([
       'n',
+      'b',
       'c',
       'a',
-      'b',
     ]);
   });
 });
