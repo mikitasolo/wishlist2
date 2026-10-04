@@ -172,6 +172,70 @@ describe('PATCH /api/items/[id] — publish / move to draft', () => {
     expect(item?.bookedBy).toBeNull();
     expect(await Reservation.findOne({ gifter: memberId, item: id })).not.toBeNull();
   });
+
+  // What an owner's answer says about an item, less what tells two items apart.
+  const ownerAnswer = async (res: Response) => {
+    const { data, ...rest } = await res.json();
+    const { _id, createdAt, updatedAt, ...fields } = data;
+    return { ...rest, data: fields };
+  };
+
+  // regression (WIS-108): an owner's `available` (Publish, Reopen) released any
+  // booking, so one sent from a stale view (a co-owner published the item and a
+  // member booked it since) left it bookable again while its gifter still held
+  // a Reservation: a second member could then book it too.
+  it("regression: publishing or reopening a booked item keeps the member's booking, with the answer an unbooked item gets", async () => {
+    session.mockResolvedValue({ user: { id: memberId } } as never);
+    const bookedId = await makeItem('available');
+    await patch(bookedId, { status: 'booked' });
+    const freeId = await makeItem('available');
+
+    session.mockResolvedValue({ user: { id: ownerId } } as never);
+    const onBooked = await patch(bookedId, { status: 'available' });
+    const onFree = await patch(freeId, { status: 'available' });
+    expect(onBooked.status).toBe(200);
+    expect(onFree.status).toBe(200);
+    expect(await ownerAnswer(onBooked)).toEqual(await ownerAnswer(onFree));
+
+    const item = await Item.findById(bookedId);
+    expect(item?.status).toBe('booked');
+    expect(item?.bookedBy?.toString()).toBe(memberId);
+    expect(await Reservation.findOne({ gifter: memberId, item: bookedId })).not.toBeNull();
+  });
+
+  it('regression: a content edit sent with the publish still lands on a booked item, and the booking stays', async () => {
+    session.mockResolvedValue({ user: { id: memberId } } as never);
+    const bookedId = await makeItem('available');
+    await patch(bookedId, { status: 'booked' });
+    const freeId = await makeItem('draft');
+
+    session.mockResolvedValue({ user: { id: ownerId } } as never);
+    const body = { status: 'available', name: 'Renamed', mostWanted: true };
+    const onBooked = await patch(bookedId, body);
+    const onFree = await patch(freeId, body);
+    expect(onBooked.status).toBe(200);
+    expect(await ownerAnswer(onBooked)).toEqual(await ownerAnswer(onFree));
+
+    const item = await Item.findById(bookedId);
+    expect([item?.name, item?.mostWanted, item?.status]).toEqual(['Renamed', true, 'booked']);
+    expect(item?.bookedBy?.toString()).toBe(memberId);
+    expect(await Reservation.findOne({ gifter: memberId, item: bookedId })).not.toBeNull();
+  });
+
+  it('publishing an item deleted since it was read is still a 404', async () => {
+    session.mockResolvedValue({ user: { id: ownerId } } as never);
+    const id = await makeItem('draft');
+    const spy = vi.spyOn(Item, 'findById').mockImplementationOnce((() => {
+      const read = Item.findOne({ _id: id });
+      return read.then(async (doc) => {
+        await Item.deleteOne({ _id: id });
+        return doc;
+      });
+    }) as never);
+    const res = await patch(id, { status: 'available' });
+    spy.mockRestore();
+    expect(res.status).toBe(404);
+  });
 });
 
 // regression: the owner branch of PATCH took `status` and `bookedBy` as given.

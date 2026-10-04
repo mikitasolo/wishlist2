@@ -174,6 +174,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     // The same for a proposer's edit of their own proposal, or an owner's
     // approval of one; null otherwise.
     let proposalGuard: ItemWriteGuard | null = null;
+    // An owner's publish or reopen (`available` on a live item): set only on an
+    // item that isn't booked, see the write below.
+    let publishesLiveItem = false;
 
     let updateData: Partial<
       Pick<
@@ -307,10 +310,19 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         }
         updateData.status = status;
         // None of these is 'booked', so the item comes out with no booker: moving
-        // off 'booked' (including to 'completed') unassigns it. Cleared whatever
-        // the earlier read said, since a member may have booked since. The
-        // gifter's Reservation is kept, so they can still log the gift.
+        // a booked item to draft or marking it received unassigns it. Cleared
+        // whatever the earlier read said, since a member may have booked since.
+        // The gifter's Reservation is kept, so they can still log the gift.
         updateData.bookedBy = null;
+        // Publish and reopen are never meant for a live item, and an owner sees a
+        // booked one as available, so `available` on it can only come from a
+        // stale view (a co-owner published it and a member booked it since).
+        // Releasing that booking would leave it bookable again while its gifter
+        // still holds a Reservation: two gifters, one item. So it's a no-op on a
+        // booked item (status and bookedBy stay), decided by the write itself,
+        // and never refused: the owner's answer folds `booked` into `available`,
+        // so it's the same as on an unbooked item (WIS-108).
+        publishesLiveItem = status === 'available';
       }
     } else {
       // Regular members can only update status (for booking/unbooking)
@@ -389,16 +401,37 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     // proposer's edit, likewise, only while the item is still their proposal,
     // or it would overwrite an owner's approval that landed in between, and an
     // owner's approval only while the item is still a proposal. An owner's
-    // edit that doesn't approve it is written unconditionally, as on any item.
+    // other edits are written unconditionally, as on any item, but for a publish
+    // or reopen's status change (below).
     const writeGuard = bookingGuard ?? proposalGuard;
     // An edit that replaces or clears the image frees the one it replaced, so its
     // write hands back the item as it was just before it landed.
     const replacesImage = updateData.imageUrl !== undefined;
-    const written = await Item.findOneAndUpdate(
-      { _id: id, ...writeGuard?.filter },
+    const writeOptions = {
+      returnDocument: replacesImage ? ('before' as const) : ('after' as const),
+      runValidators: true,
+    };
+    // An owner's publish or reopen is written only on an item that isn't booked
+    // (see where it's set above): the filter, not the earlier read, decides, so a
+    // member booking it in between keeps their booking.
+    let written = await Item.findOneAndUpdate(
+      { _id: id, ...writeGuard?.filter, ...(publishesLiveItem && { status: { $ne: 'booked' } }) },
       { $set: updateData },
-      { returnDocument: replacesImage ? 'before' : 'after', runValidators: true }
+      writeOptions
     );
+    if (!written && publishesLiveItem) {
+      // Booked (or gone). The status change is dropped, and whatever else the
+      // owner sent lands as any content edit would, unconditionally. The answer
+      // is then the one an unbooked item gets, since the owner's folds `booked`
+      // into `available`.
+      const contentOnly = { ...updateData };
+      delete contentOnly.status;
+      delete contentOnly.bookedBy;
+      written =
+        Object.keys(contentOnly).length > 0
+          ? await Item.findOneAndUpdate({ _id: id }, { $set: contentOnly }, writeOptions)
+          : await Item.findById(id);
+    }
 
     if (!written) {
       // The item changed, or went, since it was read. Nothing was written, so the
