@@ -53,19 +53,35 @@ vi.mock('@/components/ThemeProvider', () => ({
 // An upload that finishes, and Remove: the real control crops and posts the
 // file first. It ignores `disabled`, like an upload that finishes while a save
 // is in flight.
+// Hands its form's unsaved uploads what the real one does (WIS-181).
 vi.mock('@/components/ImageUpload', () => ({
   default: ({
     value,
     onChange,
+    uploads,
   }: {
     value: string | null;
     onChange: (url: string | null) => void;
+    uploads?: import('@/lib/utils/freshUploads').FreshUploads;
   }) => (
     <div data-testid="photo" data-value={value ?? ''}>
-      <button type="button" onClick={() => onChange(upload.url)}>
+      <button
+        type="button"
+        onClick={() => {
+          if (uploads && !uploads.add(upload.url)) return;
+          uploads?.discard(value);
+          onChange(upload.url);
+        }}
+      >
         Finish upload
       </button>
-      <button type="button" onClick={() => onChange(null)}>
+      <button
+        type="button"
+        onClick={() => {
+          uploads?.discard(value);
+          onChange(null);
+        }}
+      >
         Remove photo
       </button>
     </div>
@@ -104,6 +120,10 @@ let holdPatch: Promise<void> | null;
 let holdReply: Promise<void> | null;
 /** Set to make the next PATCH fail. */
 let failPatch: string | boolean;
+/** Set to make the next PATCH fail without an answer (the network). */
+let dropPatch: boolean;
+/** The uploads the page handed back to DELETE /api/upload. */
+let released: string[];
 /** Set to hold the next GET's answer (read when it's sent) until the test lets it go. */
 let holdGet: Promise<void> | null;
 /** How many GETs of the profile the page has sent. */
@@ -126,6 +146,8 @@ beforeEach(() => {
   holdPatch = null;
   holdReply = null;
   failPatch = false;
+  dropPatch = false;
+  released = [];
   holdGet = null;
   gets = 0;
   failGet = null;
@@ -157,6 +179,10 @@ beforeEach(() => {
       const hold = holdPatch;
       holdPatch = null;
       if (hold) await hold;
+      if (dropPatch) {
+        dropPatch = false;
+        throw new TypeError('Failed to fetch');
+      }
       if (failPatch) {
         const error = typeof failPatch === 'string' ? failPatch : 'Failed to update profile';
         failPatch = false;
@@ -172,6 +198,10 @@ beforeEach(() => {
       holdReply = null;
       if (replyHold) await replyHold;
       return reply({ success: true, data: answer });
+    }
+    if (url === '/api/upload' && method === 'DELETE') {
+      released.push(JSON.parse(String(init?.body)).url);
+      return reply({ success: true });
     }
     if (url.startsWith('/api/users/check-username')) {
       return reply({ available: true });
@@ -693,4 +723,33 @@ describe('settings that couldn’t be loaded', () => {
       expect(showToast).not.toHaveBeenCalled();
     }
   );
+});
+
+describe('Settings — a profile photo no save took (WIS-181)', () => {
+  it('hands back a photo whose save was refused, which the control no longer shows', async () => {
+    const user = await openSettings();
+    failPatch = true;
+    await user.click(screen.getByRole('button', { name: 'Finish upload' }));
+    await waitFor(() => expect(photoValue()).toBe(OLD_PHOTO));
+    expect(released).toEqual([PHOTO]);
+  });
+
+  it('keeps a photo whose save got no answer, since it may have landed', async () => {
+    const user = await openSettings();
+    dropPatch = true;
+    await user.click(screen.getByRole('button', { name: 'Finish upload' }));
+    await waitFor(() => expect(photoValue()).toBe(OLD_PHOTO));
+    cleanup();
+    expect(released).toEqual([]);
+  });
+
+  it('keeps a saved photo, and the one it replaced, when the page is left', async () => {
+    const user = await openSettings();
+    await user.click(screen.getByRole('button', { name: 'Finish upload' }));
+    await waitFor(() => expect(server.image).toBe(PHOTO));
+    await user.click(screen.getByRole('button', { name: 'Remove photo' }));
+    await waitFor(() => expect(server.image).toBeNull());
+    cleanup();
+    expect(released).toEqual([]);
+  });
 });

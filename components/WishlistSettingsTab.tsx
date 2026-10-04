@@ -16,6 +16,7 @@ import { currencySelectOptions } from '@/lib/utils/currencies';
 import { DELETE_LIST_WARNING } from '@/lib/utils/confirmationCopy';
 import { VISIBILITY_OPTIONS, visibilityMeta } from '@/lib/utils/visibility';
 import type { WishlistSettings, WishlistSettingsForm } from '@/lib/utils/wishlistSettings';
+import type { FreshUploads } from '@/lib/utils/freshUploads';
 
 /**
  * What archiving does, where it's offered and again when it's confirmed. An
@@ -39,6 +40,8 @@ interface WishlistSettingsTabProps {
   onSubmit: (e: FormEvent<HTMLFormElement>) => void;
   /** Puts the form back as it was last filled. */
   onDiscard: () => void;
+  /** The page's unsaved cover photo uploads (`useFreshUploads`). */
+  uploads?: FreshUploads;
   archived: boolean;
   archiving: boolean;
   /** Archive: asks first. */
@@ -73,6 +76,7 @@ export default function WishlistSettingsTab({
   onEdit,
   onSubmit,
   onDiscard,
+  uploads,
   archived,
   archiving,
   onArchive,
@@ -120,6 +124,7 @@ export default function WishlistSettingsTab({
               <ImageUpload
                 value={form.bannerUrl || null}
                 onChange={(url) => onEdit({ bannerUrl: url ?? '' })}
+                uploads={uploads}
                 disabled={saving}
               />
               <p className={FIELD_HELPER}>Shown across the top of the list, and on its card.</p>

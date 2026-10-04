@@ -19,6 +19,7 @@ import {
 } from '@/lib/utils/itemForm';
 import { currencySymbol, formatPriceInput, parsePriceInput } from '@/lib/utils/currency';
 import { useViewerLocale } from '@/lib/hooks/useViewerLocale';
+import { useFreshUploads } from '@/lib/hooks/useFreshUploads';
 
 export { itemToFormData, type ItemFormData } from '@/lib/utils/itemForm';
 
@@ -158,6 +159,10 @@ export default function ItemForm({
   // render that started it, so it carries the generation it was started in.
   const [generation, setGeneration] = useState(0);
   const generationRef = useRef(0);
+  // Photos uploaded here that no save has taken: one replaced or removed before
+  // a save, a late one for an item already saved, and whatever is left when the
+  // form goes (the dialog is cancelled or closed) are handed back (WIS-181).
+  const uploads = useFreshUploads();
   useEffect(() => {
     if (!focusNameNext || submitting) return;
     setFocusNameNext(false);
@@ -299,6 +304,10 @@ export default function ItemForm({
       // When creating, use undefined to omit them
       const isEditing = !!initialData;
 
+      // The photo this save carries is the save's from here on. A failed save
+      // can't say whether it landed (the dialogs reject either way), so a
+      // photo it carried is never handed back, even once the dialog closes.
+      const settleUpload = uploads.saving(content.imageUrl);
       await onSubmit(
         {
           name: content.name,
@@ -310,7 +319,11 @@ export default function ItemForm({
           status,
         },
         itemChanges(formData, initialDataRef.current, locale)
-      );
+      ).catch((error: unknown) => {
+        settleUpload('unknown');
+        throw error;
+      });
+      settleUpload('saved');
 
       // A new item's form clears for the next one (it only stays open with
       // Keep adding). The currency stays as it was picked: the next item is
@@ -451,9 +464,13 @@ export default function ItemForm({
           compact
           value={formData.imageUrl || null}
           onChange={(url) => {
-            if (generation !== generationRef.current) return;
+            if (generation !== generationRef.current) {
+              uploads.discard(url);
+              return;
+            }
             setFormData((f) => ({ ...f, imageUrl: url ?? '' }));
           }}
+          uploads={uploads}
           disabled={submitting}
           aspect={1}
         />

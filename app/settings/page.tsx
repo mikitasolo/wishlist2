@@ -41,6 +41,7 @@ import type { InvitePolicy, ProfileVisibility } from '@/models/User';
 import Field from '@/components/Field';
 import Textarea from '@/components/Textarea';
 import { FIELD_HELPER, FIELD_LABEL } from '@/components/fieldStyles';
+import { useFreshUploads } from '@/lib/hooks/useFreshUploads';
 
 /**
  * The settings that save as they're changed (D8): each sends only itself, the
@@ -67,7 +68,10 @@ const SEARCHABLE_OFF =
 const WHO_CAN_INVITE_HELPER = 'Owners of a list you’re on can still offer to make you a co-owner.';
 
 type PatchResult =
-  { ok: true; profile: ProfileSettings; email: string } | { ok: false; error?: string };
+  | { ok: true; profile: ProfileSettings; email: string }
+  // `answered`: the server refused it, so it's over and wrote nothing. Without
+  // it the save may still have landed (a dropped connection, an unreadable answer).
+  | { ok: false; error?: string; answered?: boolean };
 
 export default function SettingsPage() {
   const { status, update } = useKnownSession();
@@ -214,7 +218,7 @@ export default function SettingsPage() {
       const result = await res.json();
       // Before the session refresh below, whose reload is then read after this save.
       settle();
-      if (!result.success) return { ok: false, error: result.error };
+      if (!result.success) return { ok: false, error: result.error, answered: true };
       const profile = profileSettings(result.data);
       if (seq > applied.current) {
         applied.current = seq;
@@ -234,6 +238,10 @@ export default function SettingsPage() {
   // meanwhile, which goes once that save has answered: two saves of one
   // setting in flight could land in either order.
   const running = useRef(new Set<InstantField>());
+  // Profile photos uploaded here that no save has taken: one replaced before
+  // its save went, one a refused save put back, and one waiting to go when the
+  // page is left are handed back (WIS-181).
+  const photoUploads = useFreshUploads();
   const queued = useRef<Partial<ProfileSettings>>({});
 
   function changeInstant<K extends InstantField>(field: K, value: ProfileSettings[K]) {
@@ -261,11 +269,20 @@ export default function SettingsPage() {
         // on the server for a privacy one, so it can't write back any other.
         if (lastSent === null || lastSent.value !== value) {
           note(field, { kind: 'saving' });
+          const photo = field === 'image' ? (value as ProfileSettings['image']) : null;
+          const settlePhoto = photoUploads.saving(photo);
           const result = await patchProfile(settingChange(field, value), {
             ...current,
             [field]: value,
           });
+          settlePhoto(result.ok ? 'saved' : result.answered ? 'refused' : 'unknown');
           if (!result.ok) {
+            // The control goes back to what's saved, so neither the refused
+            // photo nor one waiting behind it is shown any more.
+            if (field === 'image') {
+              photoUploads.discard(photo);
+              photoUploads.discard(queued.current.image);
+            }
             delete queued.current[field];
             // Back to what's saved, which is what the control shows again, and
             // read the profile afresh in case what's saved was read out of date.
@@ -381,6 +398,7 @@ export default function SettingsPage() {
             <ImageUpload
               value={form.image}
               onChange={(image) => changeInstant('image', image)}
+              uploads={photoUploads}
               disabled={savingImage}
               circle
             />

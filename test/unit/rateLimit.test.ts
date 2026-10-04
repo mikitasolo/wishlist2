@@ -107,6 +107,7 @@ const KEY_KINDS: Record<LimiterName, KeyKind> = {
   signinEmail: 'email',
   signinIp: 'ip',
   upload: 'user',
+  uploadRelease: 'user',
   invite: 'user',
   follow: 'user',
   content: 'user',
