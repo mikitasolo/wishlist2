@@ -177,26 +177,38 @@ export interface ItemsRead {
  * since it was sent. `stamp` (e.g. the page's `mutations.stamp`) is called as
  * the shared request goes out, and everyone who joined it resolves with that
  * same `sentAt`, so each can tell how old its items really are.
+ *
+ * A read that hasn't answered within `ITEM_REQUEST_TIMEOUT_MS` is aborted and
+ * rejects with a `RequestTimeoutError`, a plain failure (not a refusal): a poll
+ * keeps its list and a first load shows `LoadError`. The timeout sits inside
+ * the shared request, so everyone who joined it is released together and the
+ * dedup entry goes with it: the next read sends a fresh request instead of
+ * joining the abandoned one.
  */
 export function useFetchItems() {
   return useCallback(async (wishlistId: string, stamp: () => number): Promise<ItemsRead> => {
     const requestKey = createRequestKey(`/api/wishlists/${wishlistId}/items`, 'GET');
 
-    return deduplicateRequest(requestKey, async () => {
-      const sentAt = stamp();
-      const response = await fetch(`/api/wishlists/${wishlistId}/items`, { cache: 'no-store' });
-      const result: ApiResponse<ApiItem[]> = await response.json();
+    return deduplicateRequest(requestKey, () =>
+      withRequestTimeout(async (signal) => {
+        const sentAt = stamp();
+        const response = await fetch(`/api/wishlists/${wishlistId}/items`, {
+          cache: 'no-store',
+          signal,
+        });
+        const result: ApiResponse<ApiItem[]> = await response.json();
 
-      // The list is missing, or hidden from the viewer now: a later read would
-      // be refused the same way.
-      if (isRefusal(response.status, result)) {
-        throw new ReadRefusedError(result.error || 'Failed to fetch items');
-      }
-      if (!response.ok || !result.success || !Array.isArray(result.data)) {
-        throw new Error(result.error || 'Failed to fetch items');
-      }
+        // The list is missing, or hidden from the viewer now: a later read would
+        // be refused the same way.
+        if (isRefusal(response.status, result)) {
+          throw new ReadRefusedError(result.error || 'Failed to fetch items');
+        }
+        if (!response.ok || !result.success || !Array.isArray(result.data)) {
+          throw new Error(result.error || 'Failed to fetch items');
+        }
 
-      return { items: result.data, sentAt };
-    });
+        return { items: result.data, sentAt };
+      })
+    );
   }, []);
 }
