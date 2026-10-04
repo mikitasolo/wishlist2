@@ -1,6 +1,7 @@
 'use client';
 
-import { memo, useMemo, useCallback, useState, useEffect } from 'react';
+import { memo, useMemo, useCallback, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { ApiItem } from '@/types/api';
 import { useSession } from 'next-auth/react';
 import { itemAnchorId } from '@/lib/utils/itemDeepLink';
@@ -16,6 +17,7 @@ import Menu, { type MenuItem } from '@/components/Menu';
 import { statusMeta } from '@/lib/utils/itemStatus';
 import { TONE_CLASSES } from '@/lib/utils/statusTones';
 import IconButton from '@/components/IconButton';
+import ItemSheet from '@/components/ItemSheet';
 import { iconButtonClassName } from '@/components/buttonStyles';
 import { coverInitial } from '@/lib/utils/cover';
 import {
@@ -138,18 +140,23 @@ function WishlistItem({
   highlighted = false,
 }: WishlistItemProps) {
   const { data: session } = useSession();
-  const [showNotes, setShowNotes] = useState(false);
+  // The item's details (ItemSheet), opened from the card's body.
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const bodyButtonRef = useRef<HTMLButtonElement>(null);
+  // Closes the sheet for one of the page's dialogs (Edit, Review, Save to my
+  // list, + link). Focus goes to the card's body first, so that dialog records
+  // the card as its opener and gives focus back to it, rather than to a
+  // control of the sheet that's gone by then.
+  const closeSheetForDialog = useCallback(() => {
+    bodyButtonRef.current?.focus();
+    setSheetOpen(false);
+  }, []);
   const [isUpdating, setIsUpdating] = useState(false);
   const [showCompleteConfirm, setShowCompleteConfirm] = useState(false);
   const [showToDraftConfirm, setShowToDraftConfirm] = useState(false);
   const [showReleaseConfirm, setShowReleaseConfirm] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-
-  // Reset showNotes when item changes
-  useEffect(() => {
-    setShowNotes(false);
-  }, [item._id]);
 
   const isBookedByCurrentUser = useMemo(
     () => item.bookedBy && session?.user?.id && item.bookedBy === session.user.id,
@@ -177,8 +184,8 @@ function WishlistItem({
     bookedByViewer: !!isBookedByCurrentUser,
   });
 
-  // While the notes are hidden, the cover links to the product page.
-  const productLink = item.link && !showNotes ? item.link : null;
+  // The cover links to the product page.
+  const productLink = item.link || null;
 
   // Price to display: the item's own, exactly, or converted to the picked
   // currency, which is only approximate ("≈ €247"), so the original goes under
@@ -188,6 +195,12 @@ function WishlistItem({
     () => (item.price ? convertedPrice(item.price, priceCurrency, rates) : null),
     [item.price, priceCurrency, rates]
   );
+  const priceText = item.price
+    ? converted
+      ? formatApproxPrice(converted, locale)
+      : formatPrice(item.price, locale)
+    : null;
+  const originalPriceText = item.price && converted ? formatPrice(item.price, locale) : null;
 
   const handleToggleBooked = useCallback(async () => {
     if (isOwner || isUpdating) return;
@@ -390,7 +403,8 @@ function WishlistItem({
   // and other people's proposals can't be copied (the page gives no
   // `onSaveToList` for them). The status changes are held while the card's
   // update runs; Edit and Save to my list aren't.
-  const menuItems: MenuItem[] = cardMenuActions(actionContext).map((action): MenuItem => {
+  const menuActions = cardMenuActions(actionContext);
+  const menuItems: MenuItem[] = menuActions.map((action): MenuItem => {
     switch (action) {
       case 'markReceived':
         return {
@@ -477,6 +491,81 @@ function WishlistItem({
   const slot = linkSlot(actionContext);
   const showLinkSquare = !!primary && smUp !== false;
 
+  // The primary action, on the card or in its sheet. Reserved by someone else
+  // is really disabled. A status change held while this card's update runs
+  // only looks it, so focus on it stays put. In the sheet, the label is never
+  // shortened (it's as wide as the screen), and an action that opens a dialog
+  // of the page's (Edit, Review, Save to my list) closes the sheet first, so
+  // that dialog isn't stacked over it.
+  const primaryButton = (action: PrimaryAction, inSheet = false) => (
+    <button
+      type="button"
+      onClick={() => {
+        if (action.changesStatus && isUpdating) return;
+        if (inSheet && !action.changesStatus) closeSheetForDialog();
+        action.onClick();
+      }}
+      disabled={action.unavailable}
+      aria-disabled={action.changesStatus && isUpdating ? true : undefined}
+      aria-label={action.ariaLabel}
+      className={`${PRIMARY_BASE} ${PRIMARY_TONES[action.tone]}`}
+    >
+      <Icon name={action.icon} size={16} className={PRIMARY_ICON} />
+      {action.shortLabel && !inSheet ? (
+        <>
+          <span className="truncate sm:hidden">{action.shortLabel}</span>
+          <span className="truncate max-sm:hidden">{action.label}</span>
+        </>
+      ) : (
+        <span className="truncate">{action.label}</span>
+      )}
+    </button>
+  );
+
+  // The sheet offers the card's actions (the same `cardMenuActions`), less the
+  // product link, which it shows with its domain. Those that open one of the
+  // page's dialogs close the sheet first; the card's own confirmations open
+  // over it.
+  const sheetMenuItems: MenuItem[] = menuActions.map((action, i) =>
+    action === 'editDraft' || action === 'saveToList'
+      ? {
+          ...menuItems[i],
+          onSelect: () => {
+            closeSheetForDialog();
+            menuItems[i].onSelect?.();
+          },
+        }
+      : menuItems[i]
+  );
+  const sheetAddLink = slot === 'add-link' && !!onAddLink;
+  const sheetActions =
+    primary || sheetAddLink || sheetMenuItems.length > 0 ? (
+      <>
+        {primary && primaryButton(primary, true)}
+        {sheetAddLink && (
+          <IconButton
+            icon="plus"
+            label="Add product link"
+            title="Add product link"
+            variant="secondary"
+            size="md"
+            onClick={() => {
+              closeSheetForDialog();
+              onAddLink?.(item);
+            }}
+          />
+        )}
+        {sheetMenuItems.length > 0 && (
+          <Menu
+            label="More actions"
+            items={sheetMenuItems}
+            triggerClassName={ICON_BUTTON}
+            opensAbove
+          />
+        )}
+      </>
+    ) : null;
+
   return (
     <div
       id={itemAnchorId(item._id)}
@@ -493,26 +582,11 @@ function WishlistItem({
       data-dimmed={(dimmed && !highlighted) || undefined}
       data-highlighted={highlighted || undefined}
     >
-      {/* The cover and what sits on it. From `sm` up, the notes button and
-          the badges overhang its top corners, as they always have. On the
-          narrow card below it they sit inside it, so they never run into each
-          other or the card's corners: the badges top right (the status first,
-          then Most wanted as just its star), the notes button bottom left. */}
+      {/* The cover and what sits on it. From `sm` up, the badges overhang its
+          top right corner, as they always have. On the narrow card below it
+          they sit inside it, so they never run into the card's corner (the
+          status first, then Most wanted as just its star). */}
       <div className="relative mb-3 flex-shrink-0 sm:mb-4">
-        {item.notes && (
-          <IconButton
-            icon={showNotes ? 'image' : 'info'}
-            label={showNotes ? 'Show image' : 'Show notes'}
-            title={showNotes ? 'Show image' : 'Show notes'}
-            onClick={() => setShowNotes(!showNotes)}
-            variant="glass"
-            size="sm"
-            shape="pill"
-            iconClassName={showNotes ? 'text-accent' : undefined}
-            className="absolute bottom-1.5 left-1.5 z-10 sm:-left-2 sm:-top-2 sm:bottom-auto"
-          />
-        )}
-
         <div className="absolute right-1.5 top-1.5 z-10 flex flex-col items-end gap-1 sm:-right-2 sm:-top-2 sm:gap-2">
           {item.mostWanted && (
             <Badge className="shadow-sm max-sm:px-1.5">
@@ -536,11 +610,9 @@ function WishlistItem({
             ))}
         </div>
 
-        {/* Image / notes area — when notes are shown, the image stays visible
-            behind a frosted, dimmed layer so the text is easy to read on top.
-            Gradient shows through when there's no image (or it fails to load),
-            with the item's initial on it below `sm`, where an item with no
-            image at all gets a shorter, 4:3 frame. */}
+        {/* The gradient shows through when there's no image (or it fails to
+            load), with the item's initial on it below `sm`, where an item with
+            no image at all gets a shorter, 4:3 frame. */}
         <Cover
           src={item.imageUrl}
           seed={item._id}
@@ -549,51 +621,56 @@ function WishlistItem({
           link={
             productLink ? { href: productLink, label: `View ${item.name} product page` } : undefined
           }
-          // Not under the notes, where it would show through blurred.
           placeholder={
-            !showNotes && (
-              <span className="text-4xl font-semibold text-white/90 [text-shadow:0_1px_3px_rgba(0,0,0,0.25)] sm:hidden">
-                {coverInitial(item.name)}
-              </span>
-            )
+            <span className="text-4xl font-semibold text-white/90 [text-shadow:0_1px_3px_rgba(0,0,0,0.25)] sm:hidden">
+              {coverInitial(item.name)}
+            </span>
           }
           className={`relative block w-full overflow-hidden rounded-2xl bg-surface-2 ${
             item.imageUrl ? 'aspect-square' : 'aspect-[4/3] sm:aspect-square'
           } ${productLink ? 'transition-opacity duration-200 hover:opacity-90' : ''}`}
-        >
-          {showNotes && item.notes && (
-            <div className="absolute inset-0 flex items-center justify-center p-3 sm:p-4">
-              <div className="absolute inset-0 bg-black/45 backdrop-blur-md" aria-hidden />
-              <p className="relative max-h-full overflow-y-auto whitespace-pre-wrap break-words text-center text-sm font-medium leading-relaxed text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.65)] sm:text-lg">
-                {item.notes}
-              </p>
-            </div>
-          )}
-        </Cover>
+        />
       </div>
 
       {/* Content */}
       <div className="flex flex-col flex-grow">
-        {/* Item name - can vary in height */}
-        <div className="flex-grow">
-          <h3
-            className="mb-1.5 line-clamp-2 text-body font-semibold text-foreground sm:mb-3 sm:text-title"
-            title={item.name}
-          >
-            {item.name}
-          </h3>
-        </div>
+        {/* The card's body (its name, price and notes) opens the item's
+            details: the name is the button, and its ::after stretches over the
+            rest of the body. The cover still opens the product page, and the
+            actions below sit outside it. */}
+        <div className="relative flex flex-grow flex-col">
+          {/* Item name - can vary in height */}
+          <div className="flex-grow">
+            <h3 className="mb-1.5 text-body font-semibold text-foreground sm:mb-3 sm:text-title">
+              <button
+                type="button"
+                ref={bodyButtonRef}
+                onClick={() => setSheetOpen(true)}
+                aria-haspopup="dialog"
+                title={item.name}
+                className="block w-full cursor-pointer rounded-md text-left after:absolute after:inset-0 after:content-['']"
+              >
+                <span className="line-clamp-2">{item.name}</span>
+              </button>
+            </h3>
+          </div>
 
-        {/* Price - fixed position */}
-        <div className="mb-2 flex min-h-[28px] min-w-0 flex-col justify-center sm:mb-3 sm:min-h-[32px]">
-          {item.price && (
-            <p className="truncate text-lg font-semibold text-foreground sm:text-xl">
-              {converted ? formatApproxPrice(converted, locale) : formatPrice(item.price, locale)}
-            </p>
-          )}
-          {item.price && converted && (
-            <p className="truncate text-xs text-muted-foreground">
-              {formatPrice(item.price, locale)}
+          {/* Price - fixed position */}
+          <div className="mb-2 flex min-h-[28px] min-w-0 flex-col justify-center sm:mb-3 sm:min-h-[32px]">
+            {priceText && (
+              <p className="truncate text-lg font-semibold text-foreground sm:text-xl">
+                {priceText}
+              </p>
+            )}
+            {originalPriceText && (
+              <p className="truncate text-xs text-muted-foreground">{originalPriceText}</p>
+            )}
+          </div>
+
+          {/* A line of the notes; the sheet has them all. */}
+          {item.notes && (
+            <p className="mb-2 line-clamp-1 break-words text-meta text-muted-foreground sm:mb-3">
+              {item.notes}
             </p>
           )}
         </div>
@@ -601,29 +678,7 @@ function WishlistItem({
         {/* Actions: one row, the same height on every card. */}
         <div className="mt-auto flex min-h-10 items-center gap-2">
           {primary ? (
-            <button
-              type="button"
-              onClick={() => {
-                if (!(primary.changesStatus && isUpdating)) primary.onClick();
-              }}
-              // Reserved by someone else is really disabled. A status change
-              // held while this card's update runs only looks it, so focus on
-              // it stays put.
-              disabled={primary.unavailable}
-              aria-disabled={primary.changesStatus && isUpdating ? true : undefined}
-              aria-label={primary.ariaLabel}
-              className={`${PRIMARY_BASE} ${PRIMARY_TONES[primary.tone]}`}
-            >
-              <Icon name={primary.icon} size={16} className={PRIMARY_ICON} />
-              {primary.shortLabel ? (
-                <>
-                  <span className="truncate sm:hidden">{primary.shortLabel}</span>
-                  <span className="truncate max-sm:hidden">{primary.label}</span>
-                </>
-              ) : (
-                <span className="truncate">{primary.label}</span>
-              )}
-            </button>
+            primaryButton(primary)
           ) : productPage ? (
             <a {...productPage} className={`${PRIMARY_BASE} ${PRIMARY_TONES.primary}`}>
               <Icon name="external-link" size={16} className={PRIMARY_ICON} />
@@ -665,75 +720,98 @@ function WishlistItem({
         </div>
       </div>
 
-      {showCompleteConfirm && (
-        <ConfirmDialog
+      {/* The item's details. With the live item, so a poll's update shows in
+          it, and it goes with the card when the item is deleted. */}
+      {sheetOpen && (
+        <ItemSheet
+          item={item}
           isOpen
-          title="Mark as received?"
-          message="It stays on the list with a ✓ so people know it's taken care of, and nobody can reserve it. You can undo this."
-          confirmText="Mark as received"
-          cancelText="Cancel"
-          type="info"
-          onConfirm={() => {
-            setShowCompleteConfirm(false);
-            applyStatus('completed');
-          }}
-          onCancel={() => setShowCompleteConfirm(false)}
+          onClose={() => setSheetOpen(false)}
+          status={status}
+          price={priceText}
+          originalPrice={originalPriceText}
+          actions={sheetActions}
         />
       )}
 
-      {showToDraftConfirm && (
-        <ConfirmDialog
-          isOpen
-          title="Move to draft?"
-          // An owner's status change frees the item but keeps the gifter's
-          // reservation. Read by an owner, so it can't say whether anyone has.
-          message="Hide it from everyone else? If someone reserved it, it's released here, but they keep it on their Reserved page."
-          confirmText="Move to draft"
-          cancelText="Cancel"
-          type="warning"
-          onConfirm={() => {
-            setShowToDraftConfirm(false);
-            applyStatus('draft');
-          }}
-          onCancel={() => setShowToDraftConfirm(false)}
-        />
-      )}
+      {/* The confirmations are portalled to <body>, as the sheet is, so one
+          asked from the sheet opens over it whatever the card's own stacking
+          (a dimmed card's opacity would otherwise trap it under the sheet). */}
+      {(showCompleteConfirm || showToDraftConfirm || showDeleteConfirm || showReleaseConfirm) &&
+        createPortal(
+          <>
+            {showCompleteConfirm && (
+              <ConfirmDialog
+                isOpen
+                title="Mark as received?"
+                message="It stays on the list with a ✓ so people know it's taken care of, and nobody can reserve it. You can undo this."
+                confirmText="Mark as received"
+                cancelText="Cancel"
+                type="info"
+                onConfirm={() => {
+                  setShowCompleteConfirm(false);
+                  applyStatus('completed');
+                }}
+                onCancel={() => setShowCompleteConfirm(false)}
+              />
+            )}
 
-      {showDeleteConfirm && onDelete && (
-        <ConfirmDialog
-          isOpen
-          // Declining a proposal is the review dialog's Decline: the same
-          // words, and the proposer is told nothing (D12).
-          title={isProposed ? 'Decline this proposal?' : 'Delete item'}
-          message={
-            isProposed
-              ? "It's removed from the list."
-              : 'Are you sure you want to delete this item? This action cannot be undone.'
-          }
-          confirmText={isProposed ? 'Decline' : 'Delete'}
-          pendingText={isProposed ? 'Declining…' : 'Deleting…'}
-          cancelText="Cancel"
-          type="danger"
-          onConfirm={handleConfirmDelete}
-          onCancel={() => setShowDeleteConfirm(false)}
-        />
-      )}
+            {showToDraftConfirm && (
+              <ConfirmDialog
+                isOpen
+                title="Move to draft?"
+                // An owner's status change frees the item but keeps the gifter's
+                // reservation. Read by an owner, so it can't say whether anyone has.
+                message="Hide it from everyone else? If someone reserved it, it's released here, but they keep it on their Reserved page."
+                confirmText="Move to draft"
+                cancelText="Cancel"
+                type="warning"
+                onConfirm={() => {
+                  setShowToDraftConfirm(false);
+                  applyStatus('draft');
+                }}
+                onCancel={() => setShowToDraftConfirm(false)}
+              />
+            )}
 
-      {showReleaseConfirm && (
-        <ConfirmDialog
-          isOpen
-          title="Release this gift?"
-          message="You’ve marked it as given. Once it’s released, someone else on the list could reserve it and buy it again."
-          confirmText="Release"
-          cancelText="Cancel"
-          type="warning"
-          onConfirm={() => {
-            setShowReleaseConfirm(false);
-            handleRelease();
-          }}
-          onCancel={() => setShowReleaseConfirm(false)}
-        />
-      )}
+            {showDeleteConfirm && onDelete && (
+              <ConfirmDialog
+                isOpen
+                // Declining a proposal is the review dialog's Decline: the same
+                // words, and the proposer is told nothing (D12).
+                title={isProposed ? 'Decline this proposal?' : 'Delete item'}
+                message={
+                  isProposed
+                    ? "It's removed from the list."
+                    : 'Are you sure you want to delete this item? This action cannot be undone.'
+                }
+                confirmText={isProposed ? 'Decline' : 'Delete'}
+                pendingText={isProposed ? 'Declining…' : 'Deleting…'}
+                cancelText="Cancel"
+                type="danger"
+                onConfirm={handleConfirmDelete}
+                onCancel={() => setShowDeleteConfirm(false)}
+              />
+            )}
+
+            {showReleaseConfirm && (
+              <ConfirmDialog
+                isOpen
+                title="Release this gift?"
+                message="You’ve marked it as given. Once it’s released, someone else on the list could reserve it and buy it again."
+                confirmText="Release"
+                cancelText="Cancel"
+                type="warning"
+                onConfirm={() => {
+                  setShowReleaseConfirm(false);
+                  handleRelease();
+                }}
+                onCancel={() => setShowReleaseConfirm(false)}
+              />
+            )}
+          </>,
+          document.body
+        )}
     </div>
   );
 }

@@ -64,6 +64,12 @@ interface BaseModalProps {
    * one step of a flow. Disabled while submitting, like the close button.
    */
   back?: { label: string; onClick: () => void };
+  /**
+   * `sheet`: below `sm` the panel is a bottom sheet (full width, flush with
+   * the screen's bottom, rising from it); from `sm` up it's the usual dialog.
+   * Focus, Escape and the backdrop work the same either way.
+   */
+  variant?: 'dialog' | 'sheet';
 }
 
 /**
@@ -92,7 +98,9 @@ export default function BaseModal({
   shouldInterceptClose,
   onInterceptClose,
   back,
+  variant = 'dialog',
 }: BaseModalProps) {
+  const sheet = variant === 'sheet';
   const handleClose = useCallback(() => {
     if (shouldInterceptClose && shouldInterceptClose() && onInterceptClose) {
       onInterceptClose();
@@ -137,7 +145,11 @@ export default function BaseModal({
 
   const panelProps = {
     tabIndex: -1,
-    className: `animate-dialog-in flex max-h-full w-full ${sizeStyles[size]} flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-lg`,
+    className: `flex max-h-full w-full ${sizeStyles[size]} flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-lg ${
+      sheet
+        ? 'animate-sheet-in max-sm:max-w-none max-sm:rounded-b-none max-sm:border-x-0 max-sm:border-b-0 max-sm:pb-[env(safe-area-inset-bottom)]'
+        : 'animate-dialog-in'
+    }`,
     onClick: (e: React.MouseEvent) => e.stopPropagation(),
     role: 'dialog',
     'aria-modal': true,
@@ -194,15 +206,23 @@ export default function BaseModal({
     // *visible* area on mobile — where a `vh`/`inset-0`-sized box overflows behind
     // the browser chrome. The dialog fills almost all of that with small margins,
     // its header and footer stay put, and the body scrolls internally.
+    // A sheet sits flush with the screen's sides and bottom below `sm` (the
+    // panel pads itself for the home indicator), so only its top is padded.
     <div
-      className="animate-fade-in fixed left-0 right-0 top-0 z-50 flex h-[100dvh] items-center justify-center bg-slate-900/40 backdrop-blur-sm"
+      className={`animate-fade-in fixed left-0 right-0 top-0 z-50 flex h-[100dvh] justify-center bg-slate-900/40 backdrop-blur-sm ${
+        sheet ? 'items-end sm:items-center sm:px-3 sm:pb-3' : 'items-center'
+      }`}
       onClick={handleBackdropClick}
-      style={{
-        paddingTop: 'max(0.75rem, env(safe-area-inset-top))',
-        paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))',
-        paddingLeft: 'max(0.75rem, env(safe-area-inset-left))',
-        paddingRight: 'max(0.75rem, env(safe-area-inset-right))',
-      }}
+      style={
+        sheet
+          ? { paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }
+          : {
+              paddingTop: 'max(0.75rem, env(safe-area-inset-top))',
+              paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))',
+              paddingLeft: 'max(0.75rem, env(safe-area-inset-left))',
+              paddingRight: 'max(0.75rem, env(safe-area-inset-right))',
+            }
+      }
     >
       {onSubmit ? (
         <form

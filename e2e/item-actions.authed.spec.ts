@@ -103,3 +103,33 @@ test("the owner's card menu closes on a click outside it", async ({ page }) => {
   await page.mouse.click(2, 400);
   await expect(menu).toBeHidden();
 });
+
+// WIS-258: the card's body opens the item's details, a bottom sheet on a phone.
+for (const width of [390, 1280]) {
+  test(`the card's body opens the item sheet, and Escape closes it, at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/wishlists/e2e-birthday');
+    const card = page.getByRole('article', { name: 'Item: E2E Gift' });
+    const body = card.getByRole('button', { name: 'E2E Gift' });
+
+    await body.click();
+    const sheet = page.getByRole('dialog', { name: 'E2E Gift' });
+    await expect(sheet).toBeVisible();
+    await expect(sheet.getByRole('button', { name: 'Edit item' })).toBeVisible();
+    if (width < 640) {
+      // Flush with the screen's bottom, once it has risen into place.
+      await expect
+        .poll(async () => {
+          const box = (await sheet.boundingBox())!;
+          return [Math.round(box.y + box.height), Math.round(box.width)];
+        })
+        .toEqual([900, width]);
+    }
+
+    await page.keyboard.press('Escape');
+    await expect(sheet).toBeHidden();
+    await expect(body).toBeFocused();
+  });
+}
