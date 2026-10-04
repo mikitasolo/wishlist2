@@ -24,6 +24,8 @@ interface EditItemModalProps {
   // silently drop them and fall back to USD.
   wishlistCurrency: string | null | undefined;
   userCurrency: string | null | undefined;
+  // Opens with focus on the Link field (an owner's "+ link" on a card).
+  initialFocus?: 'link';
 }
 
 export default function EditItemModal({
@@ -34,6 +36,7 @@ export default function EditItemModal({
   item,
   wishlistCurrency,
   userCurrency,
+  initialFocus,
 }: EditItemModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const formId = useId();
@@ -161,6 +164,7 @@ export default function EditItemModal({
           onFormChange={setHasUnsavedChanges}
           isSubmitting={isSubmitting || isDeleting}
           formId={formId}
+          initialFocus={initialFocus}
         />
       </BaseModal>
 

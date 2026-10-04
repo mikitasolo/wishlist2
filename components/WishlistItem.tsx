@@ -18,6 +18,12 @@ import { TONE_CLASSES } from '@/lib/utils/statusTones';
 import IconButton from '@/components/IconButton';
 import { iconButtonClassName } from '@/components/buttonStyles';
 import { coverInitial } from '@/lib/utils/cover';
+import {
+  cardMenuActions,
+  linkSlot,
+  savesAsPrimary,
+  type CardActionContext,
+} from '@/lib/utils/itemCardActions';
 import { SM_UP_QUERY, useMediaQuery } from '@/lib/hooks/useMediaQuery';
 
 // The card's actions are one row, the same height on every card: one labelled
@@ -57,12 +63,9 @@ const PRIMARY_TONES = {
   off: 'bg-muted text-muted-foreground',
 } as const;
 
-// The squares beside it: `md` icon buttons, the row's height.
-const SQUARE = 'inline-flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl';
-
 const ICON_BUTTON = `${iconButtonClassName({ variant: 'secondary', size: 'md' })} aria-expanded:bg-muted aria-expanded:text-foreground aria-disabled:cursor-not-allowed aria-disabled:opacity-60`;
 
-/** The product-link square and its "no link" marker: from `sm` up only. */
+/** The product-link square and the owner's "+ link": from `sm` up only. */
 const SM_UP_ONLY = 'max-sm:hidden';
 
 interface PrimaryAction {
@@ -94,6 +97,13 @@ interface WishlistItemProps {
   onReview?: (item: ApiItem) => void;
   /** "Save to my list": shown when given (the page decides who may copy what). */
   onSaveToList?: (item: ApiItem) => void;
+  /**
+   * An owner's Delete… (or Decline… on a proposal), asked once confirmed.
+   * Rejects when the delete fails (the page has said so).
+   */
+  onDelete?: (item: ApiItem) => Promise<void>;
+  /** "+ link": opens Edit on the Link field, for an owner's item with no link. */
+  onAddLink?: (item: ApiItem) => void;
   isAuthenticated: boolean;
   isOwner?: boolean;
   isMember?: boolean;
@@ -117,6 +127,8 @@ function WishlistItem({
   onEdit,
   onReview,
   onSaveToList,
+  onDelete,
+  onAddLink,
   isAuthenticated,
   isOwner = false,
   isMember = false,
@@ -131,6 +143,8 @@ function WishlistItem({
   const [showCompleteConfirm, setShowCompleteConfirm] = useState(false);
   const [showToDraftConfirm, setShowToDraftConfirm] = useState(false);
   const [showReleaseConfirm, setShowReleaseConfirm] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Reset showNotes when item changes
   useEffect(() => {
@@ -197,6 +211,30 @@ function WishlistItem({
     },
     [item._id, onUpdate]
   );
+
+  // A content edit of `mostWanted` alone: never the status.
+  const handleToggleMostWanted = useCallback(async () => {
+    if (!isOwner || isUpdating) return;
+    setIsUpdating(true);
+    try {
+      await onUpdate(item._id, { mostWanted: !item.mostWanted });
+    } finally {
+      setIsUpdating(false);
+    }
+  }, [isOwner, isUpdating, item._id, item.mostWanted, onUpdate]);
+
+  const handleConfirmDelete = useCallback(async () => {
+    if (!onDelete || isDeleting) return;
+    setIsDeleting(true);
+    try {
+      await onDelete(item);
+    } catch {
+      // The page has said why; the item stays listed.
+    } finally {
+      setShowDeleteConfirm(false);
+      setIsDeleting(false);
+    }
+  }, [onDelete, item, isDeleting]);
 
   // Releasing a gift already marked as given, once confirmed. Only ever an
   // unbook: if a poll has shown the item isn't theirs any more while the
@@ -319,46 +357,96 @@ function WishlistItem({
           };
   }
 
-  // Everything else the viewer may do. Moving a completed item to draft isn't
-  // offered (it never was), and drafts and other people's proposals can't be
-  // copied (the page gives no `onSaveToList` for them). The status changes
-  // are held while the card's update runs; Edit and Save to my list aren't.
-  const menuItems: MenuItem[] = [];
-  if (isAuthenticated && isOwner && isPublished) {
-    menuItems.push({
-      label: isCompleted ? 'Mark as not received' : 'Mark as received',
-      icon: isCompleted ? 'undo' : 'check-circle',
-      onSelect: handleToggleCompleted,
-      disabled: isUpdating,
-    });
-    if (!isCompleted) {
-      menuItems.push({
-        label: 'Move to draft',
-        icon: 'note',
-        onSelect: handleMoveToDraft,
-        disabled: isUpdating,
-      });
-    }
-  }
-  if (isAuthenticated && isOwner && isDraft && onEdit) {
-    menuItems.push({ label: 'Edit', icon: 'edit', onSelect: () => onEdit(item) });
-  }
-  if (isAuthenticated && isMember && isGivenByCurrentUser) {
-    menuItems.push({
-      label: 'Release…',
-      icon: 'undo',
-      onSelect: () => setShowReleaseConfirm(true),
-      disabled: isUpdating,
-    });
-  }
-  if (isAuthenticated && onSaveToList) {
-    menuItems.push({
+  // The actions beyond the primary come from one place (itemCardActions), so
+  // anything that reuses the card's actions reads the same set.
+  const actionContext: CardActionContext = {
+    isAuthenticated,
+    isOwner,
+    isMember,
+    status: item.status,
+    isCompleted,
+    isGivenByViewer: isGivenByCurrentUser,
+    hasLink: !!item.link,
+    canEdit: !!onEdit,
+    canSave: !!onSaveToList,
+    canDelete: !!onDelete,
+    canAddLink: !!onAddLink,
+  };
+  // No link and nothing else to do with it: a signed-in non-member saves the
+  // item instead, as the primary.
+  if (!primary && onSaveToList && savesAsPrimary(actionContext)) {
+    primary = {
       label: 'Save to my list',
+      shortLabel: 'Save',
+      ariaLabel: 'Save to my list',
       icon: 'plus',
-      onSelect: () => onSaveToList(item),
-      separated: true,
-    });
+      tone: 'soft',
+      onClick: () => onSaveToList(item),
+    };
+    actionContext.primaryIsSave = true;
   }
+
+  // Moving a completed item to draft isn't offered (it never was), and drafts
+  // and other people's proposals can't be copied (the page gives no
+  // `onSaveToList` for them). The status changes are held while the card's
+  // update runs; Edit and Save to my list aren't.
+  const menuItems: MenuItem[] = cardMenuActions(actionContext).map((action): MenuItem => {
+    switch (action) {
+      case 'markReceived':
+        return {
+          label: isCompleted ? 'Mark as not received' : 'Mark as received',
+          icon: isCompleted ? 'undo' : 'check-circle',
+          onSelect: handleToggleCompleted,
+          disabled: isUpdating,
+        };
+      case 'moveToDraft':
+        return {
+          label: 'Move to draft',
+          icon: 'note',
+          onSelect: handleMoveToDraft,
+          disabled: isUpdating,
+        };
+      case 'editDraft':
+        return { label: 'Edit', icon: 'edit', onSelect: () => onEdit?.(item) };
+      case 'mostWanted':
+        return {
+          label: item.mostWanted ? 'Not most wanted' : 'Mark as most wanted',
+          icon: 'star',
+          onSelect: handleToggleMostWanted,
+          disabled: isUpdating,
+        };
+      case 'releaseGiven':
+        return {
+          label: 'Release…',
+          icon: 'undo',
+          onSelect: () => setShowReleaseConfirm(true),
+          disabled: isUpdating,
+        };
+      case 'saveToList':
+        return {
+          label: 'Save to my list',
+          icon: 'plus',
+          onSelect: () => onSaveToList?.(item),
+          separated: true,
+        };
+      case 'decline':
+        return {
+          label: 'Decline…',
+          icon: 'trash',
+          onSelect: () => setShowDeleteConfirm(true),
+          separated: true,
+          danger: true,
+        };
+      case 'delete':
+        return {
+          label: 'Delete…',
+          icon: 'trash',
+          onSelect: () => setShowDeleteConfirm(true),
+          separated: true,
+          danger: true,
+        };
+    }
+  });
 
   // The product page opens in a new tab, from the primary action or the link button.
   const productPage = item.link
@@ -386,6 +474,7 @@ function WishlistItem({
   const showMenu = menuItems.length > 0 || (linkFolds && smUp !== true);
   // A menu holding nothing but the folded link is there below `sm` only.
   const menuBelowSmOnly = menuItems.length === 0;
+  const slot = linkSlot(actionContext);
   const showLinkSquare = !!primary && smUp !== false;
 
   return (
@@ -510,7 +599,7 @@ function WishlistItem({
         </div>
 
         {/* Actions: one row, the same height on every card. */}
-        <div className="mt-auto flex items-center gap-2">
+        <div className="mt-auto flex min-h-10 items-center gap-2">
           {primary ? (
             <button
               type="button"
@@ -540,35 +629,30 @@ function WishlistItem({
               <Icon name="external-link" size={16} className={PRIMARY_ICON} />
               <span className="truncate">View item</span>
             </a>
-          ) : (
-            <p
-              className={`${ROW_CONTROL} flex min-w-0 flex-1 items-center justify-center border border-dashed border-border px-3 font-medium italic text-muted-foreground`}
-            >
-              <span className="truncate">No link provided</span>
-            </p>
-          )}
+          ) : null}
 
           {/* The product link, when the primary action isn't already it: from
               `sm` up (below it, it's in the menu). */}
-          {showLinkSquare &&
-            (productPage ? (
-              <a
-                {...productPage}
-                className={`${ICON_BUTTON} ${SM_UP_ONLY}`}
-                title="View product page"
-              >
-                <Icon name="external-link" size={18} />
-              </a>
-            ) : (
-              <span
-                role="img"
-                aria-label="No link provided"
-                title="No link provided"
-                className={`${SQUARE} border border-dashed border-border text-muted-foreground/70 ${SM_UP_ONLY}`}
-              >
-                <Icon name="link-off" size={18} />
-              </span>
-            ))}
+          {showLinkSquare && slot === 'link' && productPage && (
+            <a
+              {...productPage}
+              className={`${ICON_BUTTON} ${SM_UP_ONLY}`}
+              title="View product page"
+            >
+              <Icon name="external-link" size={18} />
+            </a>
+          )}
+          {showLinkSquare && slot === 'add-link' && onAddLink && (
+            <IconButton
+              icon="plus"
+              label="Add product link"
+              title="Add product link"
+              variant="secondary"
+              size="md"
+              onClick={() => onAddLink(item)}
+              className={SM_UP_ONLY}
+            />
+          )}
 
           {showMenu && (
             <Menu
@@ -612,6 +696,26 @@ function WishlistItem({
             applyStatus('draft');
           }}
           onCancel={() => setShowToDraftConfirm(false)}
+        />
+      )}
+
+      {showDeleteConfirm && onDelete && (
+        <ConfirmDialog
+          isOpen
+          // Declining a proposal is the review dialog's Decline: the same
+          // words, and the proposer is told nothing (D12).
+          title={isProposed ? 'Decline this proposal?' : 'Delete item'}
+          message={
+            isProposed
+              ? "It's removed from the list."
+              : 'Are you sure you want to delete this item? This action cannot be undone.'
+          }
+          confirmText={isProposed ? 'Decline' : 'Delete'}
+          pendingText={isProposed ? 'Declining…' : 'Deleting…'}
+          cancelText="Cancel"
+          type="danger"
+          onConfirm={handleConfirmDelete}
+          onCancel={() => setShowDeleteConfirm(false)}
         />
       )}
 

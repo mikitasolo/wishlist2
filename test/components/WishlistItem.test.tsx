@@ -374,9 +374,12 @@ describe('WishlistItem — owner status actions', () => {
 interface Offer {
   /** The labelled action: a button's or link's accessible name, or a static note. */
   primary:
-    { button: string; text: string; disabled?: boolean } | { link: string } | { note: string };
-  /** The square link button: the product page, the "no link" marker, or none. */
-  linkButton: 'link' | 'none-provided' | null;
+    | { button: string; text: string; disabled?: boolean }
+    | { link: string }
+    // Nothing in that slot (no dead placeholder).
+    | { nothing: true };
+  /** The square beside it: the product page, an owner's "+ link", or none. */
+  linkButton: 'link' | 'add-link' | null;
   /** The menu's items, in order; null for no menu at all. */
   menu: string[] | null;
 }
@@ -397,64 +400,88 @@ describe('WishlistItem — the action row, by role and state', () => {
     {
       name: 'owner, live item',
       item: { link: LINK },
-      props: { isOwner: true, onEdit: vi.fn(), onSaveToList: vi.fn() },
+      props: { isOwner: true, onEdit: vi.fn(), onSaveToList: vi.fn(), onDelete: vi.fn() },
       offer: {
         primary: { button: 'Edit item', text: 'Edit' },
         linkButton: 'link',
-        menu: ['Mark as received', 'Move to draft', 'Save to my list'],
+        menu: [
+          'Mark as received',
+          'Move to draft',
+          'Mark as most wanted',
+          'Save to my list',
+          'Delete…',
+        ],
       },
     },
     {
       // regression guard: owners never see booking status.
       name: 'owner, item someone booked (shown as available)',
       item: { link: LINK, status: 'booked', bookedBy: 'someone-else' },
-      props: { isOwner: true, onEdit: vi.fn(), onSaveToList: vi.fn() },
+      props: { isOwner: true, onEdit: vi.fn(), onSaveToList: vi.fn(), onDelete: vi.fn() },
       offer: {
         primary: { button: 'Edit item', text: 'Edit' },
         linkButton: 'link',
-        menu: ['Mark as received', 'Move to draft', 'Save to my list'],
+        menu: [
+          'Mark as received',
+          'Move to draft',
+          'Mark as most wanted',
+          'Save to my list',
+          'Delete…',
+        ],
       },
     },
     {
       name: 'owner, completed item',
       item: { link: LINK, status: 'completed' },
-      props: { isOwner: true, onEdit: vi.fn(), onSaveToList: vi.fn() },
+      props: { isOwner: true, onEdit: vi.fn(), onSaveToList: vi.fn(), onDelete: vi.fn() },
       offer: {
         primary: { button: 'Edit item', text: 'Edit' },
         linkButton: 'link',
-        menu: ['Mark as not received', 'Save to my list'],
+        menu: ['Mark as not received', 'Mark as most wanted', 'Save to my list', 'Delete…'],
       },
     },
     {
       // The page gives no "Save to my list" for a draft.
       name: 'owner, draft',
       item: { link: LINK, status: 'draft' },
-      props: { isOwner: true, onEdit: vi.fn() },
+      props: { isOwner: true, onEdit: vi.fn(), onDelete: vi.fn() },
       offer: {
         primary: { button: 'Publish item', text: 'Publish' },
         linkButton: 'link',
-        menu: ['Edit'],
+        menu: ['Edit', 'Mark as most wanted', 'Delete…'],
       },
     },
     {
-      // Nothing else to do on someone's proposal: no menu at all.
+      // Declining is all there is to do on someone's proposal.
       name: 'owner, proposed item',
       item: { link: LINK, status: 'proposed' },
-      props: { isOwner: true, onReview: vi.fn() },
+      props: { isOwner: true, onReview: vi.fn(), onDelete: vi.fn() },
       offer: {
         primary: { button: 'Review proposed item', text: 'Review' },
         linkButton: 'link',
-        menu: null,
+        menu: ['Decline…'],
       },
     },
     {
       name: 'owner, live item without a link',
       item: {},
-      props: { isOwner: true, onEdit: vi.fn(), onSaveToList: vi.fn() },
+      props: {
+        isOwner: true,
+        onEdit: vi.fn(),
+        onSaveToList: vi.fn(),
+        onDelete: vi.fn(),
+        onAddLink: vi.fn(),
+      },
       offer: {
         primary: { button: 'Edit item', text: 'Edit' },
-        linkButton: 'none-provided',
-        menu: ['Mark as received', 'Move to draft', 'Save to my list'],
+        linkButton: 'add-link',
+        menu: [
+          'Mark as received',
+          'Move to draft',
+          'Mark as most wanted',
+          'Save to my list',
+          'Delete…',
+        ],
       },
     },
     {
@@ -523,7 +550,7 @@ describe('WishlistItem — the action row, by role and state', () => {
       props: { isMember: true, onSaveToList: vi.fn() },
       offer: {
         primary: { button: 'Reserve this item', text: 'Reserve' },
-        linkButton: 'none-provided',
+        linkButton: null,
         menu: ['Save to my list'],
       },
     },
@@ -537,7 +564,12 @@ describe('WishlistItem — the action row, by role and state', () => {
       name: 'signed-in visitor, item without a link',
       item: {},
       props: { onSaveToList: vi.fn() },
-      offer: { primary: { note: 'No link provided' }, linkButton: null, menu: ['Save to my list'] },
+      // Saving takes the primary's place, so the menu has nothing left.
+      offer: {
+        primary: { button: 'Save to my list', text: 'Save' },
+        linkButton: null,
+        menu: null,
+      },
     },
     {
       name: 'signed-out visitor',
@@ -549,7 +581,7 @@ describe('WishlistItem — the action row, by role and state', () => {
       name: 'signed-out visitor, item without a link',
       item: {},
       props: { isAuthenticated: false },
-      offer: { primary: { note: 'No link provided' }, linkButton: null, menu: null },
+      offer: { primary: { nothing: true }, linkButton: null, menu: null },
     },
   ];
 
@@ -573,7 +605,7 @@ describe('WishlistItem — the action row, by role and state', () => {
       expect(rowLinks[0]).toHaveTextContent('View item');
       expect(rowLinks[0]).toHaveAttribute('href', LINK);
     } else {
-      expect(within(card).getByText(offer.primary.note)).toBeInTheDocument();
+      expect(within(card).queryByText('No link provided')).toBeNull();
     }
 
     if (offer.linkButton === 'link') {
@@ -582,12 +614,9 @@ describe('WishlistItem — the action row, by role and state', () => {
       expect(rowLinks[0]).toHaveAttribute('target', '_blank');
       expect(rowLinks[0]).toHaveAttribute('title', 'View product page');
       expect(rowLinks[0]).not.toHaveTextContent('View item');
-    } else if (offer.linkButton === 'none-provided') {
+    } else if (offer.linkButton === 'add-link') {
       expect(rowLinks).toHaveLength(0);
-      expect(within(card).getByRole('img', { name: 'No link provided' })).toHaveAttribute(
-        'title',
-        'No link provided'
-      );
+      expect(within(card).getByRole('button', { name: 'Add product link' })).toBeEnabled();
     } else if (!('link' in offer.primary)) {
       expect(rowLinks).toHaveLength(0);
     }
@@ -626,12 +655,10 @@ describe('WishlistItem — the action row, by role and state', () => {
       expect(rowLinks).toHaveLength(1);
       expect(rowLinks[0]).toHaveTextContent('View item');
     } else {
-      expect(within(card).getByText(offer.primary.note)).toBeInTheDocument();
+      expect(within(card).queryByText('No link provided')).toBeNull();
     }
-    expect(within(card).queryByRole('img', { name: 'No link provided' })).toBeNull();
-    expect(
-      card.querySelector('[title="View product page"], [title="No link provided"]')
-    ).toBeNull();
+    expect(within(card).queryByRole('button', { name: 'Add product link' })).toBeNull();
+    expect(card.querySelector('[title="View product page"]')).toBeNull();
 
     const menu =
       offer.linkButton === 'link' ? ['Open product page', ...(offer.menu ?? [])] : offer.menu;
@@ -1214,7 +1241,7 @@ describe('WishlistItem — "Save to my list"', () => {
   const moreActions = () => screen.queryByRole('button', { name: 'More actions' });
 
   it('is offered to signed-in owners, members and visitors, and hands over the item', () => {
-    const shown = item({ status: 'booked', bookedBy: 'someone-else' });
+    const shown = item({ status: 'booked', bookedBy: 'someone-else', link: LINK });
     for (const props of [{ isOwner: true }, { isMember: true }, {}]) {
       const onSaveToList = vi.fn();
       const { unmount } = render(
@@ -1250,5 +1277,142 @@ describe('WishlistItem — "Save to my list"', () => {
     render(<WishlistItem item={item({})} onUpdate={vi.fn()} isAuthenticated isMember />);
     expect(moreActions()).toBeNull();
     expect(screen.queryByText('Save to my list')).toBeNull();
+  });
+});
+
+describe("WishlistItem — the owner's menu: Most wanted, Delete and Decline", () => {
+  const openMenu = () => fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
+
+  it('toggles Most wanted with a content edit of mostWanted alone', async () => {
+    const onUpdate = vi.fn().mockResolvedValue(undefined);
+    const { unmount } = render(
+      <WishlistItem item={item({})} onUpdate={onUpdate} isAuthenticated isOwner />
+    );
+    openMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Mark as most wanted' }));
+    expect(onUpdate).toHaveBeenCalledWith('item-1', { mostWanted: true });
+    await act(async () => {});
+    unmount();
+
+    onUpdate.mockClear();
+    render(
+      <WishlistItem item={item({ mostWanted: true })} onUpdate={onUpdate} isAuthenticated isOwner />
+    );
+    openMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Not most wanted' }));
+    expect(onUpdate).toHaveBeenCalledWith('item-1', { mostWanted: false });
+    await act(async () => {});
+  });
+
+  it('is not offered to members', () => {
+    render(
+      <WishlistItem
+        item={item({})}
+        onUpdate={vi.fn()}
+        onSaveToList={vi.fn()}
+        isAuthenticated
+        isMember
+      />
+    );
+    openMenu();
+    expect(screen.queryByRole('menuitem', { name: /most wanted/i })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: /delete|decline/i })).toBeNull();
+  });
+
+  it('asks before deleting, and Cancel sends nothing', async () => {
+    const onDelete = vi.fn().mockResolvedValue(undefined);
+    render(
+      <WishlistItem
+        item={item({})}
+        onUpdate={vi.fn()}
+        onDelete={onDelete}
+        isAuthenticated
+        isOwner
+      />
+    );
+    openMenu();
+    const del = screen.getByRole('menuitem', { name: 'Delete…' });
+    expect(del).toHaveClass('text-danger');
+    fireEvent.click(del);
+    expect(onDelete).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog')).toHaveTextContent('Delete item');
+    fireEvent.click(screen.getByRole('button', { name: 'cancel' }));
+    expect(onDelete).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog')).toBeNull();
+
+    openMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete…' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    expect(onDelete).toHaveBeenCalledWith(expect.objectContaining({ _id: 'item-1' }));
+    await act(async () => {});
+  });
+
+  it('keeps the item when the delete fails', async () => {
+    const onDelete = vi.fn().mockRejectedValue(new Error('nope'));
+    render(
+      <WishlistItem
+        item={item({})}
+        onUpdate={vi.fn()}
+        onDelete={onDelete}
+        isAuthenticated
+        isOwner
+      />
+    );
+    openMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete…' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    await act(async () => {});
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.getByRole('article')).toBeInTheDocument();
+  });
+
+  it("declines a proposal with the review dialog's words, after asking", async () => {
+    const onDelete = vi.fn().mockResolvedValue(undefined);
+    render(
+      <WishlistItem
+        item={item({ status: 'proposed' })}
+        onUpdate={vi.fn()}
+        onReview={vi.fn()}
+        onDelete={onDelete}
+        isAuthenticated
+        isOwner
+      />
+    );
+    openMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Decline…' }));
+    expect(onDelete).not.toHaveBeenCalled();
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveTextContent('Decline this proposal?');
+    expect(dialog).toHaveTextContent("It's removed from the list.");
+    fireEvent.click(screen.getByRole('button', { name: 'Decline' }));
+    expect(onDelete).toHaveBeenCalledTimes(1);
+    await act(async () => {});
+  });
+
+  it('+ link opens Edit for the item', () => {
+    const onAddLink = vi.fn();
+    const shown = item({});
+    render(
+      <WishlistItem
+        item={shown}
+        onUpdate={vi.fn()}
+        onEdit={vi.fn()}
+        onAddLink={onAddLink}
+        isAuthenticated
+        isOwner
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Add product link' }));
+    expect(onAddLink).toHaveBeenCalledWith(shown);
+  });
+
+  it('a signed-in non-member saves a linkless item as the primary action', () => {
+    const onSaveToList = vi.fn();
+    const shown = item({});
+    render(
+      <WishlistItem item={shown} onUpdate={vi.fn()} onSaveToList={onSaveToList} isAuthenticated />
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Save to my list' }));
+    expect(onSaveToList).toHaveBeenCalledWith(shown);
   });
 });
