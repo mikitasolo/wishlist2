@@ -14,12 +14,24 @@ test('regression: a new list tells its owner it is empty, Add your first item ad
   await page.locator('main header').getByRole('button', { name: 'New list' }).click();
   const create = page.getByRole('dialog', { name: 'Create new wishlist' });
   await create.getByLabel('Wishlist name').fill('E2E New List');
+  // Occasion and visibility come right after the name; the rest is folded away.
+  await expect(create.getByRole('button', { name: 'More options' })).toHaveAttribute(
+    'aria-expanded',
+    'false'
+  );
+  await create.getByRole('combobox', { name: 'Occasion' }).click();
+  await page.getByRole('option', { name: 'Birthday' }).click();
+  await create.getByRole('combobox', { name: 'Occasion month' }).click();
+  await page.getByRole('option', { name: 'March' }).click();
+  await create.getByRole('combobox', { name: 'Occasion day' }).click();
+  await page.getByRole('option', { name: '14', exact: true }).click();
   await create.getByRole('button', { name: 'Create wishlist' }).click();
   await page.waitForURL(/\/wishlists\/[^/?#]+$/);
   const list = new URL(page.url()).pathname;
 
   try {
     await expect(page.getByRole('heading', { level: 1, name: 'E2E New List' })).toBeVisible();
+    await expect(page.getByText(/Birthday/).first()).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Your list is empty' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'No items found' })).toHaveCount(0);
     await expect(page.getByRole('textbox', { name: 'Search items by name' })).toHaveCount(0);

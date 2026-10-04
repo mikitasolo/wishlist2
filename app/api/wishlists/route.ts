@@ -168,7 +168,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { name, description, visibility, bannerUrl, currency } = validation.data;
+    const { name, description, visibility, bannerUrl, currency, occasion } = validation.data;
 
     if (!canAttachImage(bannerUrl, session.user.id)) {
       return NextResponse.json({ success: false, error: FOREIGN_IMAGE_ERROR }, { status: 400 });
@@ -186,6 +186,7 @@ export async function POST(request: NextRequest) {
       visibility,
       isPublic: visibility === 'everyone',
       bannerUrl: bannerUrl || null,
+      ...(occasion ? { occasion } : {}),
       currency: currency || user.defaultCurrency || 'USD',
     });
 
