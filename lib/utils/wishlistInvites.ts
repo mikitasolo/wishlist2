@@ -59,14 +59,36 @@ export function pendingInviteCapResponse() {
   return NextResponse.json({ success: false, error: PENDING_INVITE_CAP_ERROR }, { status: 429 });
 }
 
-/** Pending invites to `invitedUserId` that count toward the cap, leaving out `except`. */
-function countCappedPending(invitedUserId: Id, except?: mongoose.Types.ObjectId) {
-  return WishlistInvite.countDocuments({
+/**
+ * Pending invites to `invitedUserId` that count toward the cap, leaving out
+ * `except`: those created within the window that the invitee is shown and can
+ * answer, by the same rule as `GET /api/users/me/invites`. A paused invite (a
+ * `member` invite to an archived list, `isInvitePaused`) or one whose list is
+ * gone is hidden from them and can't be declined, so counting it would let
+ * someone fill the cap behind their back (invite them from 20 lists, archive
+ * the lists) and keep everyone else from inviting them for a month.
+ */
+async function countCappedPending(
+  invitedUserId: Id,
+  except?: mongoose.Types.ObjectId
+): Promise<number> {
+  const invites = await WishlistInvite.find({
     invitedUser: invitedUserId,
     status: 'pending',
     createdAt: { $gt: new Date(Date.now() - PENDING_INVITE_CAP_WINDOW_MS) },
     ...(except ? { _id: { $ne: except } } : {}),
-  });
+  })
+    .select('wishlist role')
+    .lean();
+  if (invites.length === 0) return 0;
+  const lists = await Wishlist.find({ _id: { $in: invites.map((i) => i.wishlist) } })
+    .select('archived')
+    .lean();
+  const byId = new Map(lists.map((w) => [w._id.toString(), w]));
+  return invites.filter((invite) => {
+    const list = byId.get(invite.wishlist.toString());
+    return !!list && !isInvitePaused(invite, list);
+  }).length;
 }
 
 /**

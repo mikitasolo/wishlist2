@@ -78,7 +78,12 @@ afterEach(() => {
 async function seedInvites(
   to: string,
   n: number,
-  { status = 'pending', createdAt = new Date() }: { status?: string; createdAt?: Date } = {}
+  {
+    status = 'pending',
+    createdAt = new Date(),
+    role = 'member',
+    archived = false,
+  }: { status?: string; createdAt?: Date; role?: 'member' | 'owner'; archived?: boolean } = {}
 ) {
   const docs = [];
   for (let i = 0; i < n; i++) {
@@ -87,12 +92,13 @@ async function seedInvites(
       name: `List ${i}`,
       owners: [inviter],
       visibility: 'everyone',
+      archived,
     });
     docs.push({
       wishlist: list._id,
       invitedBy: inviter,
       invitedUser: new mongoose.Types.ObjectId(to),
-      role: 'member',
+      role,
       status,
       createdAt,
       updatedAt: createdAt,
@@ -168,6 +174,25 @@ describe('pending-invite cap per invitee (POST /members)', () => {
     expect(await WishlistInvite.countDocuments({ invitedUser: erin, status: 'pending' })).toBe(
       PENDING_INVITE_CAP + 1
     );
+  });
+
+  // regression: paused invites (a member invite to an archived list) are hidden
+  // from the invitee and can't be declined, so counting them let anyone fill the
+  // cap behind their back: invite them from 20 lists, then archive the lists.
+  it('does not count paused invites the invitee cannot see or decline', async () => {
+    await seedInvites(erin, PENDING_INVITE_CAP, { archived: true });
+    expect((await inviteErin()).status).toBe(201);
+  });
+
+  it('still counts owner invites to an archived list, which the invitee can answer', async () => {
+    await seedInvites(erin, PENDING_INVITE_CAP, { role: 'owner', archived: true });
+    await expectRefusedAndNothingSent(await inviteErin());
+  });
+
+  it('does not count invites to a list that no longer exists', async () => {
+    await seedInvites(erin, PENDING_INVITE_CAP);
+    await Wishlist.deleteMany({ _id: { $ne: wid } });
+    expect((await inviteErin()).status).toBe(201);
   });
 
   it('counts only that invitee', async () => {
