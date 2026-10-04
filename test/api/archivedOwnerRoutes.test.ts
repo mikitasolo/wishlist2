@@ -26,12 +26,15 @@ import {
   PATCH as demote,
   DELETE as removeOwner,
 } from '@/app/api/wishlists/[id]/owners/[userId]/route';
+import { GET as getJoinRequests } from '@/app/api/wishlists/[id]/requests/route';
+import { PATCH as answerJoinRequest } from '@/app/api/wishlists/[id]/requests/[requestId]/route';
 import { __setRateLimiters, type RateLimiter } from '@/lib/rateLimit';
 import User from '@/models/User';
 import Wishlist from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
 import WishlistInvite from '@/models/WishlistInvite';
 import Notification from '@/models/Notification';
+import WishlistJoinRequest from '@/models/WishlistJoinRequest';
 
 const session = vi.mocked(auth);
 
@@ -42,6 +45,8 @@ let erin: string; // signed in, nothing to do with the list
 let frank: string; // has a pending invite to the list
 let carolMembership: string;
 let frankInvite: string;
+let dave: string;
+let daveRequest: string; // dave asked to join (WIS-275)
 
 const SLUG = 'surprise-party';
 /** What every route answers for a list that doesn't exist. */
@@ -61,7 +66,7 @@ beforeEach(async () => {
   carol = await user('carol');
   erin = await user('erin');
   frank = await user('frank');
-  await user('dave'); // invited by POST /members
+  dave = await user('dave'); // invited by POST /members; has asked to join
 });
 
 /** The list every test acts on, archived or not, with a member and an invite on it. */
@@ -80,6 +85,7 @@ async function makeList({ archived }: { archived: boolean }) {
   frankInvite = (
     await WishlistInvite.create({ wishlist: id, invitedBy: alice, invitedUser: frank })
   )._id.toString();
+  daveRequest = (await WishlistJoinRequest.create({ wishlist: id, user: dave }))._id.toString();
   return id;
 }
 
@@ -178,6 +184,21 @@ const ROUTES: OwnerRoute[] = [
       }),
     ownerStatus: 200,
   },
+  {
+    name: 'GET /api/wishlists/[id]/requests',
+    send: (id) =>
+      getJoinRequests(req(`/api/wishlists/${id}/requests`), { params: Promise.resolve({ id }) }),
+    ownerStatus: 200,
+  },
+  {
+    name: 'PATCH /api/wishlists/[id]/requests/[requestId]',
+    send: (id) =>
+      answerJoinRequest(
+        req(`/api/wishlists/${id}/requests/${daveRequest}`, 'PATCH', { action: 'decline' }),
+        { params: Promise.resolve({ id, requestId: daveRequest }) }
+      ),
+    ownerStatus: 200,
+  },
 ];
 
 const route = (name: string) => ROUTES.find((r) => r.name === name)!;
@@ -214,6 +235,7 @@ async function snapshot() {
     invites: (await WishlistInvite.find().lean())
       .map((i) => `${i.invitedUser}:${i.role}:${i.status}`)
       .sort(),
+    joinRequests: (await WishlistJoinRequest.find().lean()).map((r) => r.status).sort(),
     notifications: await Notification.countDocuments(),
     emails: sendEmail.mock.calls.length,
   };

@@ -19,6 +19,7 @@ import {
   withdrawUnlessInviterOwns,
 } from '@/lib/utils/wishlistInvites';
 import { isObjectIdParam } from '@/lib/utils/objectId';
+import { endPendingJoinRequest } from '@/lib/utils/joinRequests';
 
 const inviteNotFound = () =>
   NextResponse.json({ success: false, error: 'Invite not found' }, { status: 404 });
@@ -277,6 +278,8 @@ export async function PATCH(
         })
       ),
       recordInviteAnswer({ invite, answer: 'accepted', answeredAt }),
+      // On the list now, so a request to join it is over (best-effort).
+      endPendingJoinRequest(invite.wishlist, userId),
     ]);
 
     return NextResponse.json(

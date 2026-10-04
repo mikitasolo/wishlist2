@@ -201,6 +201,12 @@ export const inviteMemberSchema = z.object({
   role: wishlistRoleSchema.optional().default('member'),
 });
 
+// An owner's answer to a request to join their list (WIS-275): Invite issues a
+// member invite, Decline ends it without telling anyone.
+export const joinRequestAnswerSchema = z.object({
+  action: z.enum(['invite', 'decline']),
+});
+
 // Item schemas
 // A product link: one typed without a scheme ("amazon.de/dp/1") gets https://,
 // and only an http(s) address is accepted (never javascript:, data:, …).

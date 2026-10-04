@@ -11,6 +11,7 @@ export const NOTIFICATION_TYPES = [
   'proposal_approved',
   'role_changed',
   'removed_from_wishlist',
+  'join_request',
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
@@ -64,7 +65,8 @@ export interface NotificationView {
 
 /**
  * The types whose row names who did it, so the feed shows that person's avatar
- * and the API looks them up. Never a proposal (anonymous to the owners), a
+ * and the API looks them up (a join request: whoever asked, by their public
+ * handle, which only the list's owners are sent). Never a proposal (anonymous to the owners), a
  * demotion or a removal (which never say which owner did it), or an approved
  * proposal (which carries no actor): those show their type's icon instead.
  */
@@ -72,6 +74,7 @@ const ACTOR_TYPES: ReadonlySet<NotificationType> = new Set([
   'follow',
   'wishlist_invite',
   'invite_accepted',
+  'join_request',
 ]);
 
 /** Whether a notification of `type` may show its actor (see `ACTOR_TYPES`). */
@@ -195,6 +198,9 @@ export function notificationParts(n: NotificationView): NotificationPart[] {
       return ['You’re now a member of ', list(n)];
     case 'removed_from_wishlist':
       return ['You were removed from ', list(n)];
+    // To the list's owners only, naming the requester by their public handle.
+    case 'join_request':
+      return [`${actor(n)} asked to join `, list(n)];
     default:
       return ['You have a new notification'];
   }
@@ -243,6 +249,11 @@ export function notificationLink(
       return listLink(n);
     case 'removed_from_wishlist':
       return null;
+    // The list's People tab, where its Requests are answered.
+    case 'join_request':
+      return n.wishlistSlug || n.wishlistId
+        ? `/wishlists/${n.wishlistSlug ?? n.wishlistId}?tab=people`
+        : '/notifications';
     default:
       return '/notifications';
   }
@@ -265,6 +276,8 @@ export function notificationIcon(n: NotificationView): IconName {
       return 'users';
     case 'removed_from_wishlist':
       return 'logout';
+    case 'join_request':
+      return 'user-plus';
     default:
       return 'bell';
   }

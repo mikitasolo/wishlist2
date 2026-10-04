@@ -85,6 +85,9 @@ const SPECS = {
   follow: { tokens: 60, window: '1 h', policy: 'fail-open', keyKind: 'user' },
   content: { tokens: 60, window: '1 h', policy: 'fail-open', keyKind: 'user' },
   booking: { tokens: 60, window: '1 h', policy: 'fail-open', keyKind: 'user' },
+  // Asking a list's owners to invite you (WIS-275): each ask notifies every
+  // owner, so a cancel-and-ask-again loop can't turn into a stream of them.
+  joinRequest: { tokens: 10, window: '1 h', policy: 'fail-open', keyKind: 'user' },
   usernameCheck: { tokens: 30, window: '1 m', policy: 'fail-open', keyKind: 'user' },
   // A list's URL, chosen by its owner. Slugs are unique across every list, so
   // "already taken" (409) says some list holds one, an archived list included

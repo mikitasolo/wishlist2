@@ -106,6 +106,7 @@ const KEY_KINDS: Record<LimiterName, KeyKind> = {
   follow: 'user',
   content: 'user',
   booking: 'user',
+  joinRequest: 'user',
   usernameCheck: 'user',
   wishlistSlug: 'user',
   search: 'ip',
