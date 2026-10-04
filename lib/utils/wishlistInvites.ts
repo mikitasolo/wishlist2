@@ -57,7 +57,9 @@ function mailFailure(err: unknown) {
  * page — so nothing after that depends on the email: the notification is created
  * regardless, and a failed send is logged and swallowed. Failing the call there
  * would tell the inviter it didn't work while leaving the invite in place, and
- * their retry would be refused as already pending.
+ * their retry would be refused as already pending. The one exception is an invite
+ * taken back or answered before its notification was written
+ * (`settledSinceIssued`): its notification is settled and no email goes out.
  */
 export async function issueWishlistInvite(args: IssueInviteArgs): Promise<IWishlistInvite | null> {
   const existing = await WishlistInvite.findOne({
@@ -83,7 +85,7 @@ export async function issueWishlistInvite(args: IssueInviteArgs): Promise<IWishl
     throw err;
   }
 
-  await createNotification({
+  const notification = await createNotification({
     user: args.invitedUserId,
     type: 'wishlist_invite',
     actorUsername: args.actorUsername ?? null,
@@ -92,6 +94,13 @@ export async function issueWishlistInvite(args: IssueInviteArgs): Promise<IWishl
     wishlistName: args.wishlistName,
     inviteRole: args.role,
   });
+
+  // The invite may have been taken back, or answered, while its notification
+  // was being written: an owner's cancel, a kick or role change's
+  // `cancelPendingInvites`, or the invitee answering from its card. Their
+  // cleanup or `recordInviteAnswer` ran before this row existed, so settling it
+  // is this call's job, and no email goes out for an invite that's settled.
+  if (await settledSinceIssued(invite, notification)) return invite;
 
   if (args.invitedUserEmail) {
     try {
@@ -110,6 +119,59 @@ export async function issueWishlistInvite(args: IssueInviteArgs): Promise<IWishl
   }
 
   return invite;
+}
+
+/**
+ * Re-check, once its notification is written, that an invite just issued is
+ * still pending, and if it isn't, settle that one notification. Returns whether
+ * the invite was settled meanwhile (and then no email is sent):
+ *   - gone (an owner's cancel, a removal's `cancelPendingInvites`): the
+ *     notification is deleted;
+ *   - answered (accepted or declined from its card, which the invitee sees as
+ *     soon as the invite exists): the answer is written onto it and it's marked
+ *     read, as `recordInviteAnswer` would have done had the row existed when it
+ *     ran. Its time window can't reach this row anyway: the row is newer than
+ *     the answer.
+ *
+ * Every cleanup that takes an invite back clears its notification after its
+ * delete, so of that cleanup and this check at least one sees the notification:
+ *   - the delete landed before this read: this call deletes the row it wrote;
+ *   - it lands after: the cleanup's clear runs after the delete and so after
+ *     this row was written (`clearCancelledInviteNotifications` bounds what it
+ *     clears by its own check, not by when the cancel began).
+ *
+ * Only the row this call wrote is touched, by its id, never by person and list
+ * (notifications carry no invite id), so a newer invite's notification, written
+ * for a re-invite that landed after the cancel or the answer, is never taken.
+ *
+ * An accepted invite is only claimed until the role is granted, and a failed
+ * grant reopens it; the notification then reads as joined over a pending invite
+ * until it's answered again (the invite card on Activity is what answers it).
+ *
+ * Best-effort, like the notification itself: a failure is logged by its kind
+ * and the invite counts as still pending.
+ */
+async function settledSinceIssued(
+  invite: Pick<IWishlistInvite, '_id'>,
+  notification: mongoose.Types.ObjectId | null
+): Promise<boolean> {
+  try {
+    const now = await WishlistInvite.findById(invite._id).select('status').lean();
+    if (now?.status === 'pending') return false;
+    if (notification) {
+      if (!now) await Notification.deleteOne({ _id: notification });
+      else {
+        await Notification.updateOne(
+          { _id: notification },
+          { $set: { read: true, inviteAnswer: now.status } }
+        );
+      }
+    }
+    return true;
+  } catch (err) {
+    console.error(`Re-check failed for issued invite ${invite._id}:`, errorKind(err));
+    return false;
+  }
 }
 
 /**
@@ -236,14 +298,12 @@ export async function cancelInvitesSentBy(wishlistId: Id, inviterId: Id): Promis
   // Each invite is its own, so they go side by side.
   await Promise.all(
     sent.map(async ({ _id }) => {
-      // Before the delete, so a re-invite landing after it keeps its notification.
-      const cancelledAt = new Date();
       const invite = await WishlistInvite.findOneAndDelete({
         _id,
         wishlist: wishlistId,
         status: 'pending',
       });
-      if (invite) await clearCancelledInviteNotifications(invite, cancelledAt);
+      if (invite) await clearCancelledInviteNotifications(invite);
     })
   );
 }
@@ -272,12 +332,16 @@ export async function withdrawUnlessInviterOwns(
 /**
  * Clear the `wishlist_invite` notification of an invite that an owner cancelled
  * (by hand, or by removing or demoting whoever sent it). It still reads as an
- * invite, but there is nothing left to accept. Notifications carry
- * no invite id, which bounds what may go:
+ * invite, but there is nothing left to accept. Call it once the invite's
+ * delete has landed. Notifications carry no invite id, which bounds what may go:
  *  - only while no other pending invite for this person and list remains: the
  *    unique pending index allows one at most, but only once it's built;
- *  - only notifications from before `cancelledAt`, taken before the invite was
- *    deleted, so a re-invite landing in between keeps its own.
+ *  - only notifications from before that check, so a re-invite landing after it
+ *    keeps its own (one landing before it is the pending invite it finds).
+ * Bounding it by the check rather than by when the cancel began also takes the
+ * notification of the very invite cancelled when `issueWishlistInvite` wrote it
+ * after the cancel began but re-checked the invite before the delete landed
+ * (WIS-183). One written after the delete, that call takes back itself.
  * An invite that was already accepted or declined is never cancelled, so its
  * notification, which is history by then, is never reached.
  *
@@ -287,10 +351,11 @@ export async function withdrawUnlessInviterOwns(
  * the filter, the invitee's id included.
  */
 export async function clearCancelledInviteNotifications(
-  invite: Pick<IWishlistInvite, '_id' | 'wishlist' | 'invitedUser'>,
-  cancelledAt: Date
+  invite: Pick<IWishlistInvite, '_id' | 'wishlist' | 'invitedUser'>
 ): Promise<void> {
   try {
+    // Before the check: a re-invite it doesn't see writes its notification later.
+    const checkedAt = new Date();
     const stillPending = await WishlistInvite.exists({
       wishlist: invite.wishlist,
       invitedUser: invite.invitedUser,
@@ -301,7 +366,7 @@ export async function clearCancelledInviteNotifications(
       user: invite.invitedUser,
       wishlist: invite.wishlist,
       type: 'wishlist_invite',
-      createdAt: { $lt: cancelledAt },
+      createdAt: { $lt: checkedAt },
     });
   } catch (err) {
     console.error(

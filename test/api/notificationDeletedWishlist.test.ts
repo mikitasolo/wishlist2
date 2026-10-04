@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
+import mongoose from 'mongoose';
 import { NextRequest } from 'next/server';
 import { connectTestDB, disconnectTestDB, clearTestDB } from '../db';
 import { holdFirstCall } from '../interleave';
@@ -202,7 +203,8 @@ describe('a notification about a list deleted while it is being written', () => 
       if (!listExists) await Wishlist.deleteOne({ _id: wishlistId });
       spyOn().mockRejectedValueOnce(new Error('db down near rita@x.com'));
 
-      await expect(notify('role_changed')).resolves.toBeUndefined();
+      // Resolves (never throws), with the id of the row it kept.
+      await expect(notify('role_changed')).resolves.toBeInstanceOf(mongoose.Types.ObjectId);
 
       expect(await listNotifications()).toBe(1);
       expect(log).toHaveBeenCalledTimes(1);
@@ -219,7 +221,7 @@ describe('a notification about a list deleted while it is being written', () => 
     const exists = vi.spyOn(Wishlist, 'exists');
     vi.spyOn(Notification, 'create').mockRejectedValueOnce(new Error(`bad user ${mia}`));
 
-    await expect(notify('role_changed')).resolves.toBeUndefined();
+    await expect(notify('role_changed')).resolves.toBeNull();
 
     expect(await listNotifications()).toBe(0);
     expect(exists).not.toHaveBeenCalled();

@@ -60,8 +60,11 @@ const ANONYMOUS_TYPES: ReadonlySet<NotificationType> = new Set([
  * A notification about a wishlist is taken back if the list turns out to be
  * gone once it's written: see `dropIfWishlistGone`.
  */
-export async function createNotification(args: CreateNotificationArgs): Promise<void> {
-  await createNotifications([args.user], args);
+export async function createNotification(
+  args: CreateNotificationArgs
+): Promise<mongoose.Types.ObjectId | null> {
+  const [id] = await createNotifications([args.user], args);
+  return id ?? null;
 }
 
 /**
@@ -69,17 +72,22 @@ export async function createNotification(args: CreateNotificationArgs): Promise<
  * owner of a co-owned wishlist, so no owner misses a proposal just because
  * someone else created the list. Duplicate ids are collapsed. The list is
  * re-checked once for the whole fan-out, after every row is written.
+ *
+ * Returns the ids of the rows that carry it (a follow and a failed write have
+ * none), so a caller can take back exactly what it wrote: see
+ * `issueWishlistInvite`.
  */
 export async function createNotifications(
   users: Id[],
   args: Omit<CreateNotificationArgs, 'user'>
-): Promise<void> {
+): Promise<mongoose.Types.ObjectId[]> {
   // `String`, not `.toString()`: a missing recipient must fail in the guarded
   // write below, which logs it, not throw out of a best-effort side effect.
   const unique = Array.from(new Set(users.map(String)));
   const ids = await Promise.all(unique.map((user) => writeNotification({ ...args, user })));
   const written = ids.filter((id): id is mongoose.Types.ObjectId => id !== null);
   if (args.wishlist) await dropIfWishlistGone(args.wishlist, written);
+  return written;
 }
 
 /**
