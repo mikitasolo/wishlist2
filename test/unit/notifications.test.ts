@@ -439,11 +439,12 @@ describe('notificationIcon', () => {
 });
 
 describe('showsActor', () => {
-  it('shows who did it on a follow, an invite and an accepted invite only', () => {
+  it('shows who did it on a follow, an invite, an accepted invite and a request to join only', () => {
     expect(NOTIFICATION_TYPES.filter(showsActor)).toEqual([
       'follow',
       'wishlist_invite',
       'invite_accepted',
+      'join_request',
     ]);
   });
 
@@ -520,5 +521,31 @@ describe('withInviteAnswers', () => {
     ];
     expect(withInviteAnswers([older], answers)).toEqual([older]);
     expect(withInviteAnswers([pending()], answers)[0].inviteAnswer).toBe('declined');
+  });
+});
+
+describe('a request to join (WIS-275)', () => {
+  const request = (over: Partial<NotificationView> = {}) =>
+    make({
+      type: 'join_request',
+      actorUsername: 'ivan_petrov',
+      wishlistName: 'Anna’s 30th',
+      wishlistSlug: 'anna-30',
+      wishlistId: 'w1',
+      ...over,
+    });
+
+  it('names the requester by handle and the list', () => {
+    expect(notificationText(request())).toBe('@ivan_petrov asked to join Anna’s 30th');
+    expect(notificationParts(request())).toEqual([
+      '@ivan_petrov asked to join ',
+      { listName: 'Anna’s 30th' },
+    ]);
+  });
+
+  it('links to the list’s People tab, where it’s answered', () => {
+    expect(notificationLink(request())).toBe('/wishlists/anna-30?tab=people');
+    expect(notificationLink(request({ wishlistSlug: null }))).toBe('/wishlists/w1?tab=people');
+    expect(notificationIcon(request())).toBe('user-plus');
   });
 });

@@ -7,6 +7,7 @@ import { createNotification } from '@/lib/notifications';
 import { isDuplicateKeyError } from '@/lib/utils/mongoErrors';
 import { errorKind } from '@/lib/utils/errorKind';
 import { isWishlistOwner } from '@/lib/utils/wishlistOwners';
+import { endPendingJoinRequest } from '@/lib/utils/joinRequests';
 
 type Id = string | mongoose.Types.ObjectId;
 
@@ -195,6 +196,9 @@ export async function cancelPendingInvites(wishlistId: Id, userId: Id): Promise<
     status: 'pending',
   });
   if (deletedCount) await clearInviteNotifications(wishlistId, userId);
+  // A request to join that outlived their joining would come back to the
+  // owners' Requests the moment they're off the list. Best-effort.
+  await endPendingJoinRequest(wishlistId, userId);
 }
 
 /**

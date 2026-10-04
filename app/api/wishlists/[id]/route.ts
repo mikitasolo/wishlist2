@@ -5,6 +5,7 @@ import connectDB from '@/lib/mongodb';
 import Wishlist, { IWishlist } from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
 import WishlistInvite from '@/models/WishlistInvite';
+import WishlistJoinRequest from '@/models/WishlistJoinRequest';
 import Notification from '@/models/Notification';
 import User from '@/models/User';
 import Item from '@/models/Item';
@@ -373,6 +374,8 @@ export async function DELETE(
     //  - Memberships.
     //  - Invites, whatever their status (accepted/declined rows are only
     //    history for a list that no longer exists).
+    //  - Requests to join, pending or declined (an ask that lands after this
+    //    takes its own row back: POST /requests re-checks the list).
     //  - Notifications that link to the list, which would now 404 (the
     //    `wishlist_invite` ones even look actionable). One that a request
     //    already past its checks writes after this is taken back by
@@ -385,6 +388,7 @@ export async function DELETE(
       bestEffort('Item', id, () => deleteItemsAndImages(id)),
       bestEffort('Membership', id, () => WishlistMember.deleteMany({ wishlist: id })),
       bestEffort('Invite', id, () => WishlistInvite.deleteMany({ wishlist: id })),
+      bestEffort('Join request', id, () => WishlistJoinRequest.deleteMany({ wishlist: id })),
       bestEffort('Notification', id, () => Notification.deleteMany({ wishlist: id })),
       deleteOwnBlob(wishlist.bannerUrl),
       // Its cached share card, which would otherwise go on naming it for a day.

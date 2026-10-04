@@ -121,18 +121,54 @@ describe('the wishlist page’s note on getting invited', () => {
     });
   });
 
-  it('shows a signed-in non-member their username to send the owners', async () => {
+  it('lets a signed-in non-member ask to join, and cancel the request', async () => {
     viewAs({ id: 'ivan', username: 'ivan_petrov' });
     list = { owners: ['anna_m', 'chloe_r'], userRole: null };
+    const user = userEvent.setup();
+    const base = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      const method = init?.method ?? 'GET';
+      if (url === '/api/wishlists/w1/requests' && method === 'POST') {
+        return reply({ success: true, data: { requested: true } }, 201);
+      }
+      if (url === '/api/wishlists/w1/requests/me' && method === 'DELETE') {
+        return reply({ success: true, data: { requested: false } });
+      }
+      if (url === '/api/wishlists/w1/requests/me') {
+        return reply({ success: true, data: { requested: false } });
+      }
+      return base(url, init);
+    });
     render(<WishlistDetail />);
     await listShown();
 
     const note = screen.getByRole('note');
     expect(note).toHaveTextContent('Only people @anna_m and @chloe_r invite can reserve items');
-    expect(note).toHaveTextContent('Ask them to invite you.');
-    expect(note).toHaveTextContent('Your username is @ivan_petrov');
-    expect(screen.getByRole('button', { name: 'Copy your username' })).toBeInTheDocument();
+    expect(note).toHaveTextContent('Ask to join, and they can invite you.');
     expect(screen.queryByRole('button', { name: 'Sign in' })).toBeNull();
+
+    await user.click(await screen.findByRole('button', { name: 'Ask to join' }));
+    expect(fetchMock).toHaveBeenCalledWith('/api/wishlists/w1/requests', { method: 'POST' });
+    expect(await screen.findByRole('button', { name: 'Requested' })).toBeDisabled();
+    expect(showToast).toHaveBeenCalledWith('Request sent to the owners', 'success');
+
+    await user.click(screen.getByRole('button', { name: 'Cancel request' }));
+    expect(fetchMock).toHaveBeenCalledWith('/api/wishlists/w1/requests/me', { method: 'DELETE' });
+    expect(await screen.findByRole('button', { name: 'Ask to join' })).toBeEnabled();
+  });
+
+  it('shows Requested to someone who has already asked', async () => {
+    viewAs({ id: 'ivan', username: 'ivan_petrov' });
+    const base = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) =>
+      url === '/api/wishlists/w1/requests/me'
+        ? reply({ success: true, data: { requested: true } })
+        : base(url, init)
+    );
+    render(<WishlistDetail />);
+    await listShown();
+    expect(await screen.findByRole('button', { name: 'Requested' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Cancel request' })).toBeInTheDocument();
   });
 
   it.each([
@@ -145,6 +181,8 @@ describe('the wishlist page’s note on getting invited', () => {
     await listShown();
 
     expect(callout()).toBeNull();
-    expect(screen.queryByRole('button', { name: /Copy your username/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Ask to join' })).toBeNull();
+    // A member or an owner has nothing to ask, so their state is never read.
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/requests'))).toBe(false);
   });
 });

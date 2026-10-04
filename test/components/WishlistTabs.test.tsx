@@ -38,6 +38,14 @@ let userRole: 'owner' | 'member' | null;
 let invites: { _id: string; role: 'owner' | 'member'; username: string; image: null }[];
 /** Whether the people read fails. */
 let membersFail: boolean;
+/** Pending requests to join (WIS-275). */
+let joinRequests: {
+  _id: string;
+  user: { _id: string; username: string; image: null };
+  createdAt: string;
+}[];
+/** Holds the next answer to a request until it's released. */
+let heldAnswer: Promise<void> | undefined;
 /** Holds the next invite cancel until it's released. */
 let heldCancel: Promise<void> | undefined;
 /** Holds every read of the list until it's released. */
@@ -74,6 +82,8 @@ beforeEach(() => {
     { _id: 'inv-finn', role: 'owner', username: 'finn', image: null },
   ];
   membersFail = false;
+  joinRequests = [];
+  heldAnswer = undefined;
   heldCancel = undefined;
   heldList = undefined;
   fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
@@ -112,6 +122,33 @@ beforeEach(() => {
     }
     if (url === '/api/wishlists/birthday/invites' && method === 'GET') {
       return reply({ success: true, data: [...invites] });
+    }
+    if (url === '/api/wishlists/birthday/requests' && method === 'GET') {
+      return reply({ success: true, data: [...joinRequests] });
+    }
+    const answered = /^\/api\/wishlists\/birthday\/requests\/([^/]+)$/.exec(url)?.[1];
+    if (answered && method === 'PATCH') {
+      const wait = heldAnswer;
+      heldAnswer = undefined;
+      await wait;
+      const request = joinRequests.find((r) => r._id === answered);
+      joinRequests = joinRequests.filter((r) => r._id !== answered);
+      const { action } = JSON.parse(String(init?.body));
+      if (action === 'invite' && request) {
+        invites = [
+          ...invites,
+          {
+            _id: `inv-${request.user.username}`,
+            role: 'member',
+            username: request.user.username,
+            image: null,
+          },
+        ];
+      }
+      return reply({
+        success: true,
+        data: { status: action === 'invite' ? 'invited' : 'declined' },
+      });
     }
     const cancelled = /^\/api\/wishlists\/birthday\/invites\/([^/]+)$/.exec(url)?.[1];
     if (cancelled && method === 'DELETE') {
@@ -395,6 +432,62 @@ describe('People', () => {
     expect(captionOf('dave')).toBe('Member');
     expect(await rowMenuItems(user, 'dave')).toEqual(['Make owner…', 'Remove…']);
     expect(requests('/api/wishlists/birthday/invites/inv-dave', 'DELETE')).toHaveLength(1);
+  });
+
+  it('shows no Requests group while nobody has asked', async () => {
+    openAt('?tab=people');
+    await screen.findByRole('button', { name: 'Actions for @bob' });
+    expect(within(peoplePanel()).queryByRole('heading', { name: 'Requests' })).toBeNull();
+  });
+
+  it('lists requests to join first, by handle, and Invite sends a member invite', async () => {
+    joinRequests = [
+      { _id: 'req-ivan', user: { _id: 'ivan', username: 'ivan', image: null }, createdAt: '' },
+      { _id: 'req-kim', user: { _id: 'kim', username: 'kim', image: null }, createdAt: '' },
+    ];
+    openAt('?tab=people');
+    const user = userEvent.setup();
+    const invite = await screen.findByRole('button', { name: 'Invite @ivan' });
+    const headings = within(peoplePanel())
+      .getAllByRole('heading')
+      .map((h) => h.textContent);
+    expect(headings[0]).toBe('Requests');
+    expect(captionOf('ivan')).toBe('Asked to join');
+    // Not counted among the people on the list.
+    expect(screen.getAllByRole('tab')[1]).toHaveTextContent('People4');
+
+    let release!: () => void;
+    heldAnswer = new Promise<void>((resolve) => (release = resolve));
+    await user.click(invite);
+    expect(requests('/api/wishlists/birthday/requests/req-ivan', 'PATCH')).toHaveLength(1);
+    expect(JSON.parse(String(fetchMock.mock.calls.at(-1)?.[1]?.body))).toEqual({
+      action: 'invite',
+    });
+    // The row goes at once; a second click can't send it twice.
+    expect(screen.queryByRole('button', { name: 'Invite @ivan' })).toBeNull();
+
+    act(() => release());
+    await waitFor(() => expect(showToast).toHaveBeenCalledWith('Invite sent to @ivan', 'success'));
+    // Now under Invited, as any member invite.
+    await waitFor(() => expect(captionOf('ivan')).toBe('Invited as member'));
+    expect(screen.getByRole('button', { name: 'Invite @kim' })).toBeEnabled();
+  });
+
+  it('Decline takes the request away without inviting anyone', async () => {
+    joinRequests = [
+      { _id: 'req-ivan', user: { _id: 'ivan', username: 'ivan', image: null }, createdAt: '' },
+    ];
+    openAt('?tab=people');
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Decline @ivan’s request' }));
+    await waitFor(() => expect(showToast).toHaveBeenCalledWith('Request declined', 'success'));
+    expect(
+      JSON.parse(String(requests('/api/wishlists/birthday/requests/req-ivan', 'PATCH')[0][1].body))
+    ).toEqual({
+      action: 'decline',
+    });
+    expect(within(peoplePanel()).queryByRole('heading', { name: 'Requests' })).toBeNull();
+    expect(within(peoplePanel()).queryByRole('link', { name: '@ivan' })).toBeNull();
   });
 
   it('cancels an invite from the Invited row', async () => {

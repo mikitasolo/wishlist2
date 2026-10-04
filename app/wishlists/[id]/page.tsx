@@ -27,6 +27,7 @@ import WishlistCover from '@/components/WishlistCover';
 import WishlistDescription from '@/components/WishlistDescription';
 import WishlistTabs, { listTabId, listTabPanelId } from '@/components/WishlistTabs';
 import WishlistPeopleTab, {
+  type JoinRequestView,
   type PendingInvite,
   type WishlistPerson,
 } from '@/components/WishlistPeopleTab';
@@ -45,6 +46,7 @@ import { missingFromDraft } from '@/lib/utils/occasion';
 import { getVisibility } from '@/lib/utils/visibility';
 import { onCurrentListTab, useListTab, type ListTab } from '@/lib/hooks/useListTab';
 import { useBusyIds } from '@/lib/hooks/useBusyIds';
+import { useJoinRequest } from '@/lib/hooks/useJoinRequest';
 import {
   rebaseSettingsForm,
   settingsChanges,
@@ -129,6 +131,8 @@ export default function WishlistDetail() {
   // Everyone on the list, owners and members (owners only ever read it).
   const [members, setMembers] = useState<WishlistPerson[]>([]);
   const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
+  // Pending requests to join the list (owners only, read when People opens).
+  const [joinRequests, setJoinRequests] = useState<JoinRequestView[]>([]);
   // Where the page stands with the list. `unavailable`: a read of the list or
   // its items was refused (the list is missing, or hidden from this viewer),
   // which the page shows in place. `failed`: the first read of the list failed
@@ -260,6 +264,13 @@ export default function WishlistDetail() {
   // The viewer's role decides which status chips they get (none for a visitor).
   const viewerRole: ViewerRole = isOwner ? 'owner' : isMember ? 'member' : 'visitor';
   const viewerId = session?.user?.id ?? null;
+
+  // A signed-in visitor's Ask to join (WIS-275), on a list they can open.
+  const joinRequest = useJoinRequest(
+    wishlist ? String(wishlist._id) : null,
+    viewerId,
+    pageLoad === 'ready' && viewerRole === 'visitor' && !!wishlist && !wishlist.archived
+  );
 
   // The status chip the list is shown on: All on every list the page opens
   // (or the URL's ?show=), kept only for this list and role, and never saved.
@@ -419,6 +430,7 @@ export default function WishlistDetail() {
   // the one opening People, after a demotion's) would put back what the
   // change took away: an answer sent before the one on screen is dropped.
   const invitesReads = useRef({ sent: 0, landed: 0 });
+  const requestsReads = useRef({ sent: 0, landed: 0 });
   const membersReads = useRef({ sent: 0, landed: 0 });
 
   const refreshInvites = useCallback(async () => {
@@ -432,6 +444,22 @@ export default function WishlistDetail() {
       setPendingInvites(result.data || []);
     } catch {
       /* ignore */
+    }
+  }, [apiId, wishlistId]);
+
+  // Read the pending requests to join again (owners only), on the same terms
+  // as the invites: an answer sent before the one on screen is dropped.
+  const refreshRequests = useCallback(async () => {
+    if (!wishlistId) return;
+    const sentNo = ++requestsReads.current.sent;
+    try {
+      const res = await fetch(`/api/wishlists/${apiId()}/requests`, { cache: 'no-store' });
+      const result = await res.json();
+      if (!result.success || sentNo < requestsReads.current.landed) return;
+      requestsReads.current.landed = sentNo;
+      setJoinRequests(result.data || []);
+    } catch {
+      /* ignore: the group keeps what it has */
     }
   }, [apiId, wishlistId]);
 
@@ -463,18 +491,22 @@ export default function WishlistDetail() {
   const membersReadFor = useRef<string | null>(null);
   useEffect(() => {
     if (!isOwner || !wishlistId) return;
-    if (peopleOpen) void refreshInvites();
+    if (peopleOpen) {
+      void refreshInvites();
+      void refreshRequests();
+    }
     if (!peopleOpen && membersReadFor.current === wishlistId) return;
     membersReadFor.current = wishlistId;
     void refreshMembers();
-  }, [wishlistId, isOwner, peopleOpen, refreshMembers, refreshInvites]);
+  }, [wishlistId, isOwner, peopleOpen, refreshMembers, refreshInvites, refreshRequests]);
 
   // Try again, after the first read of the people failed.
   const retryMembers = useCallback(() => {
     setMembersRead('loading');
     void refreshMembers();
     void refreshInvites();
-  }, [refreshMembers, refreshInvites]);
+    void refreshRequests();
+  }, [refreshMembers, refreshInvites, refreshRequests]);
 
   // The page's item mutations. A background poll that lands while one is in
   // flight, or whose read was in flight across one, is stale and must be
@@ -893,6 +925,43 @@ export default function WishlistDetail() {
         }
       }),
     [apiId, wishlistId, showToast, refreshInvites, runRowAction]
+  );
+
+  /**
+   * Answer a request to join (by its id, which is also its row's busy id):
+   * Invite sends them a member invite, which joins the Invited group; Decline
+   * ends it and tells nobody. Either way the row goes at once.
+   */
+  const answerJoinRequest = useCallback(
+    (joinRequest: JoinRequestView, action: 'invite' | 'decline') =>
+      runRowAction(joinRequest._id, async () => {
+        if (!wishlistId) return;
+        const name = joinRequest.user.username ? `@${joinRequest.user.username}` : 'them';
+        setJoinRequests((prev) => prev.filter((r) => r._id !== joinRequest._id));
+        const failed = action === 'invite' ? 'Couldn’t send the invite' : 'Couldn’t decline it';
+        try {
+          const res = await fetch(`/api/wishlists/${apiId()}/requests/${joinRequest._id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action }),
+          });
+          const result = await res.json();
+          if (result.success) {
+            showToast(
+              action === 'invite' ? `Invite sent to ${name}` : 'Request declined',
+              'success'
+            );
+            if (action === 'invite') await refreshInvites();
+          } else {
+            showToast(result.error || failed, 'error');
+            await Promise.all([refreshRequests(), refreshMembers(), refreshInvites()]);
+          }
+        } catch {
+          showToast(failed, 'error');
+          await refreshRequests();
+        }
+      }),
+    [apiId, wishlistId, showToast, refreshInvites, refreshRequests, refreshMembers, runRowAction]
   );
 
   const handleKickMember = useCallback(
@@ -1592,7 +1661,8 @@ export default function WishlistDetail() {
           <JoinListCallout
             ownerUsernames={ownerUsernames}
             ownerCount={owners.ids.length}
-            viewer={session?.user ? { username: session.user.username } : null}
+            signedIn={!!session?.user}
+            joinRequest={joinRequest}
           />
         )}
 
@@ -1854,6 +1924,9 @@ export default function WishlistDetail() {
               }
               people={members}
               invites={pendingInvites}
+              requests={joinRequests}
+              onInviteRequest={(r) => answerJoinRequest(r, 'invite')}
+              onDeclineRequest={(r) => answerJoinRequest(r, 'decline')}
               viewerId={viewerId}
               linkOpensForOthers={!wishlist.archived && getVisibility(wishlist) !== 'private'}
               ownerCount={ownerCount}
