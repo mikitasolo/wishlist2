@@ -1,5 +1,12 @@
 import { z } from 'zod';
 import { normalizeOccasionDate, OCCASION_KINDS } from '@/lib/utils/occasion';
+import {
+  isVisiblyBlank,
+  LINE_BREAK_OR_CONTROL_CHAR,
+  BIDI_CONTROL_CHAR,
+  NAME_BIDI_MESSAGE,
+  NAME_CONTROL_CHAR_MESSAGE,
+} from '@/lib/utils/visibleName';
 import { ITEM_NOTES_MAX, isHttpUrl, normalizeItemLink } from '@/lib/utils/itemFields';
 
 /**
@@ -13,47 +20,31 @@ import { ITEM_NOTES_MAX, isHttpUrl, normalizeItemLink } from '@/lib/utils/itemFi
 
 // Wishlist schemas
 
-// Any control character (Unicode Cc: CR, LF, tab, NUL, NEL, …) or the Unicode
-// line and paragraph separators.
-const LINE_BREAK_OR_CONTROL_CHAR = /[\p{Cc}\p{Zl}\p{Zp}]/u;
-
-// The bidi embeddings and overrides (U+202A–U+202E) and isolates
-// (U+2066–U+2069). They reorder the text after them, so a name holding one can
-// make the rest of an email's line read as something else (a domain spelled
-// backwards, say). The bidi marks (LRM, RLM, ALM) only nudge neutral characters
-// and stay allowed, as does right-to-left text itself.
-const BIDI_CONTROL_CHAR = /[\u202A-\u202E\u2066-\u2069]/u;
-
-// Unicode's Default_Ignorable_Code_Point: every character that renders as
-// nothing (zero-width space and joiners, word joiner, BOM, bidi marks,
-// variation selectors, tag characters, Hangul fillers, soft hyphen).
-const INVISIBLE_CHAR = /\p{Default_Ignorable_Code_Point}/gu;
-
-/** Whether a name shows nothing at all: only whitespace and invisible characters. */
-function isVisiblyBlank(name: string): boolean {
-  return name.replace(INVISIBLE_CHAR, '').trim() === '';
+// A name is one line of text that people read in lists, notifications and
+// emails. It goes raw into the invite email's plain-text part, where an inner
+// line break would start new lines of text under our branding. So it's refused
+// rather than cleaned up. The check runs after `.trim()`, so a line break at
+// either end is just trimmed off. For the same reason it can't hold a bidi
+// override or isolate. A name that shows nothing (only zero-width characters,
+// say) is refused like an empty one; the zero-width joiner and non-joiner are
+// fine inside a visible name, since emoji sequences and Persian text need
+// them. A blank name stops there, so it gets only the one error (not also "too
+// long" or "hidden characters"). Wishlist and item names share this.
+function visibleLineName(requiredMessage: string, max: number) {
+  return z
+    .string()
+    .trim()
+    .refine((name) => !isVisiblyBlank(name), { message: requiredMessage, abort: true })
+    .max(max, `Name must be ${max} characters or less`)
+    .refine((name) => !LINE_BREAK_OR_CONTROL_CHAR.test(name), {
+      message: NAME_CONTROL_CHAR_MESSAGE,
+    })
+    .refine((name) => !BIDI_CONTROL_CHAR.test(name), {
+      message: NAME_BIDI_MESSAGE,
+    });
 }
 
-// A wishlist name is one line of text. It goes raw into the invite email's
-// plain-text part, where an inner line break would start new lines of text
-// under our branding. So the name is refused rather than cleaned up. The check
-// runs after `.trim()`, so a line break at either end is just trimmed off. For
-// the same reason it can't hold a bidi override or isolate. A name that shows
-// nothing (only zero-width characters, say) is refused like an empty one; the
-// zero-width joiner and non-joiner are fine inside a visible name, since emoji
-// sequences and Persian text need them. A blank name stops there, so it gets
-// only the one error (not also "too long" or "hidden characters").
-const wishlistNameSchema = z
-  .string()
-  .trim()
-  .refine((name) => !isVisiblyBlank(name), { message: 'Wishlist name is required', abort: true })
-  .max(100, 'Name must be 100 characters or less')
-  .refine((name) => !LINE_BREAK_OR_CONTROL_CHAR.test(name), {
-    message: "Name can't contain line breaks or control characters",
-  })
-  .refine((name) => !BIDI_CONTROL_CHAR.test(name), {
-    message: "Name can't contain hidden text-direction characters",
-  });
+const wishlistNameSchema = visibleLineName('Wishlist name is required', 100);
 
 // A list's occasion. `date` is a plain calendar date, `YYYY-MM-DD`. A one-off's
 // must exist as it is: `2028-02-29` passes, `2027-02-29` and `2026-02-30`
@@ -220,11 +211,7 @@ const itemNotesSchema = z
   .max(ITEM_NOTES_MAX, `Notes must be ${ITEM_NOTES_MAX} characters or less`);
 
 export const createItemSchema = z.object({
-  name: z
-    .string()
-    .trim()
-    .min(1, 'Item name is required')
-    .max(200, 'Name must be 200 characters or less'),
+  name: visibleLineName('Item name is required', 200),
   imageUrl: z.url('Invalid image URL').optional(),
   price: z
     .object({
@@ -254,12 +241,7 @@ export const createItemSchema = z.object({
 
 export const updateItemSchema = z
   .object({
-    name: z
-      .string()
-      .trim()
-      .min(1, 'Item name is required')
-      .max(200, 'Name must be 200 characters or less')
-      .optional(),
+    name: visibleLineName('Item name is required', 200).optional(),
     imageUrl: z.url('Invalid image URL').optional().nullable(),
     price: z
       .object({

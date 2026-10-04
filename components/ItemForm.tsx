@@ -1,5 +1,6 @@
 'use client';
 
+import { isVisiblyBlank, nameCharacterProblem } from '@/lib/utils/visibleName';
 import { useState, useRef, useEffect, useMemo, useId } from 'react';
 import ImageUpload from './ImageUpload';
 import Toggle from './Toggle';
@@ -207,7 +208,16 @@ export default function ItemForm({
   const linkValue = normalizeItemLink(formData.link);
   const linkError =
     linkValue && !isHttpUrl(linkValue) ? 'Enter a web address like https://example.com' : null;
-  const nameError = formData.name.trim() ? null : 'Enter a name for the item';
+  const trimmedName = formData.name.trim();
+  // An existing name the schema now refuses (an older item's) stays editable:
+  // it's only checked once it differs from what the form was filled with, as
+  // the server only sees a name that changed (itemChanges).
+  const nameUnchanged = trimmedName === (initialData?.name ?? '').trim();
+  const nameError = isVisiblyBlank(trimmedName)
+    ? 'Enter a name for the item'
+    : nameUnchanged
+      ? null
+      : nameCharacterProblem(trimmedName);
 
   // Leaving the link puts it in full ("amazon.de/x" becomes "https://amazon.de/x").
   const handleLinkBlur = () => {

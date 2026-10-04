@@ -192,6 +192,27 @@ describe('ItemForm — create submission', () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
+  it('refuses a name with a text-direction override under Name, but not an unchanged one', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(<ItemForm onSubmit={onSubmit} onCancel={vi.fn()} mode="create" />);
+    fireEvent.change(screen.getByLabelText(/item name/i), { target: { value: 'Gift \u202E' } });
+    fireEvent.click(screen.getByRole('button', { name: /^submit$/i }));
+    expect(
+      await screen.findByText("Name can't contain hidden text-direction characters")
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText(/item name/i)).toHaveAttribute('aria-invalid', 'true');
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  // WIS-292: an item named before the bidi check existed stays editable.
+  it('lets an edit save while a name the schema now refuses is left as it was', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    const legacy = { ...filled, name: 'Gift \u202E' };
+    render(<ItemForm onSubmit={onSubmit} onCancel={vi.fn()} mode="edit" initialData={legacy} />);
+    fireEvent.click(screen.getByRole('button', { name: /^submit$/i }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+  });
+
   it('accepts a link without a scheme, and fills in https:// when it is left', async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     render(<ItemForm onSubmit={onSubmit} onCancel={vi.fn()} mode="create" />);
