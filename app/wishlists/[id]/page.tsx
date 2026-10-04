@@ -22,6 +22,7 @@ import ShareButton from '@/components/ShareButton';
 import Select from '@/components/Select';
 import WishlistHeader, { WishlistHeaderSkeleton } from '@/components/WishlistHeader';
 import JoinListCallout from '@/components/JoinListCallout';
+import MemberWelcome from '@/components/MemberWelcome';
 import WishlistCover from '@/components/WishlistCover';
 import WishlistDescription from '@/components/WishlistDescription';
 import WishlistTabs, { listTabId, listTabPanelId } from '@/components/WishlistTabs';
@@ -1511,6 +1512,16 @@ export default function WishlistDetail() {
             viewer={session?.user ? { username: session.user.username } : null}
           />
         )}
+
+        {/* The one-time welcome after accepting a member invite (`?welcome=1`). */}
+        <MemberWelcome
+          wishlistId={String(wishlist._id)}
+          userId={session?.user?.id ?? null}
+          isMember={isMember}
+          isOwner={isOwner}
+          ownerUsernames={ownerUsernames}
+          ownerCount={owners.ids.length}
+        />
 
         {/* An owner's tabs: Items · People (n) · Settings, in the URL (`?tab=`). */}
         {isOwner && (

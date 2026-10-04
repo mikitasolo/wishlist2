@@ -328,7 +328,7 @@ describe('Activity, pinned invites — answering an invite', () => {
     });
     await clickOnFirstCard('Accept');
 
-    await waitFor(() => expect(push).toHaveBeenCalledWith('/wishlists/birthday'));
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/wishlists/birthday?welcome=1'));
     expect(screen.queryByText('Birthday')).toBeNull();
     expect(invitesChanged).toHaveBeenCalledTimes(1);
     expect(showToast).toHaveBeenCalledWith('Joined “Birthday”', 'success');
@@ -484,7 +484,7 @@ describe('Activity, pinned invites — answering several invites at once', () =>
     expectDisabled('Housewarming');
 
     await answer('inv-housewarming', joined('housewarming', 'w2'));
-    await waitFor(() => expect(push).toHaveBeenCalledWith('/wishlists/housewarming'));
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/wishlists/housewarming?welcome=1'));
     expect(screen.queryByText('Housewarming')).toBeNull();
     expectEnabled('Birthday');
   });
@@ -514,7 +514,7 @@ describe('Activity, pinned invites — answering several invites at once', () =>
       fireEvent.click(cardButtons('Housewarming').decline);
 
       await held.answer('inv-birthday', joined('birthday', 'w1'));
-      await waitFor(() => expect(push).toHaveBeenCalledWith('/wishlists/birthday'));
+      await waitFor(() => expect(push).toHaveBeenCalledWith('/wishlists/birthday?welcome=1'));
       expect(screen.queryByText('Birthday')).toBeNull();
       expectDisabled('Housewarming');
       return held;
@@ -564,7 +564,7 @@ describe('Activity, pinned invites — answering several invites at once', () =>
       expect(push).not.toHaveBeenCalled();
 
       await answer('inv-housewarming', joined('housewarming', 'w2'));
-      await waitFor(() => expect(push).toHaveBeenCalledWith('/wishlists/housewarming'));
+      await waitFor(() => expect(push).toHaveBeenCalledWith('/wishlists/housewarming?welcome=1'));
       expect(showToast).toHaveBeenCalledWith('Joined “Housewarming”', 'success');
       expect(push).toHaveBeenCalledTimes(1);
     });
@@ -573,7 +573,7 @@ describe('Activity, pinned invites — answering several invites at once', () =>
       const { answer } = await acceptBoth();
 
       await answer('inv-housewarming', joined('housewarming', 'w2'));
-      await waitFor(() => expect(push).toHaveBeenCalledWith('/wishlists/housewarming'));
+      await waitFor(() => expect(push).toHaveBeenCalledWith('/wishlists/housewarming?welcome=1'));
 
       await answer('inv-birthday', joined('birthday', 'w1'));
       await waitFor(() => expect(screen.queryByText('Birthday')).toBeNull());
@@ -595,7 +595,7 @@ describe('Activity, pinned invites — answering several invites at once', () =>
       expect(push).not.toHaveBeenCalled();
 
       await answer('inv-housewarming', reply);
-      await waitFor(() => expect(push).toHaveBeenCalledWith('/wishlists/birthday'));
+      await waitFor(() => expect(push).toHaveBeenCalledWith('/wishlists/birthday?welcome=1'));
       expect(showToast).toHaveBeenCalledWith(message, expect.any(String));
       expect(push).toHaveBeenCalledTimes(1);
     });
@@ -608,7 +608,7 @@ describe('Activity, pinned invites — answering several invites at once', () =>
       expect(push).not.toHaveBeenCalled();
 
       await answer('inv-birthday', joined('birthday', 'w1'));
-      await waitFor(() => expect(push).toHaveBeenCalledWith('/wishlists/birthday'));
+      await waitFor(() => expect(push).toHaveBeenCalledWith('/wishlists/birthday?welcome=1'));
       expect(push).toHaveBeenCalledTimes(1);
     });
 
@@ -635,7 +635,7 @@ describe('Activity, pinned invites — answering several invites at once', () =>
       expect(push).not.toHaveBeenCalled();
 
       await answer('inv-housewarming', joined('housewarming', 'w2'));
-      await waitFor(() => expect(push).toHaveBeenCalledWith('/wishlists/housewarming'));
+      await waitFor(() => expect(push).toHaveBeenCalledWith('/wishlists/housewarming?welcome=1'));
       expect(push).toHaveBeenCalledTimes(1);
     });
   });
