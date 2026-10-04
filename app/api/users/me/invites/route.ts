@@ -8,7 +8,7 @@ import Reservation from '@/models/Reservation';
 import User from '@/models/User';
 import { isInvitePaused } from '@/lib/utils/wishlistInvites';
 import { getWishlistViewAccess } from '@/lib/utils/wishlistAccess';
-import { countWishlistItems, countsFor } from '@/lib/utils/wishlistItemCounts';
+import { countReservedBy, countWishlistItems, countsFor } from '@/lib/utils/wishlistItemCounts';
 import type { Occasion } from '@/lib/utils/occasion';
 
 /**
@@ -25,7 +25,9 @@ import type { Occasion } from '@/lib/utils/occasion';
  * invitee holds on that list, which accepting it ends (`addWishlistOwner`'s
  * `cancelledReservations`, the count the accept toast reports). It's the
  * caller's own, about their own bookings, so it may go back to them; it's never
- * on a member invite, which releases nothing.
+ * on a member invite, which releases nothing. With it goes `holdsBookings`:
+ * whether any item there is still booked by them, which accepting frees too,
+ * even with no Reservation left (a gift they've marked as given).
  */
 export async function GET() {
   try {
@@ -77,11 +79,18 @@ export async function GET() {
       wishlists.filter((w) => viewable.has(w._id.toString())).map((w) => w._id)
     );
 
-    // The caller's own reservations, on the lists they're invited to co-own only.
-    const reservations = await countReservationsOf(
-      new mongoose.Types.ObjectId(userId),
-      shown.filter(({ invite }) => invite.role === 'owner').map(({ wishlist }) => wishlist._id)
-    );
+    // The caller's own holdings, on the lists they're invited to co-own only:
+    // their Reservations, and the items still booked by them (a gift marked as
+    // given keeps its booking but no longer has a Reservation), all of which
+    // accepting releases.
+    const gifter = new mongoose.Types.ObjectId(userId);
+    const ownerListIds = shown
+      .filter(({ invite }) => invite.role === 'owner')
+      .map(({ wishlist }) => wishlist._id);
+    const [reservations, bookings] = await Promise.all([
+      countReservationsOf(gifter, ownerListIds),
+      countReservedBy(ownerListIds, gifter),
+    ]);
 
     const data = shown.map(({ invite, wishlist }) => {
       const id = wishlist._id.toString();
@@ -102,7 +111,12 @@ export async function GET() {
               itemCount: countsFor(itemCounts, id).items,
             }
           : null,
-        ...(invite.role === 'owner' ? { yourReservations: reservations.get(id) ?? 0 } : {}),
+        ...(invite.role === 'owner'
+          ? {
+              yourReservations: reservations.get(id) ?? 0,
+              holdsBookings: (bookings.get(id) ?? 0) > 0,
+            }
+          : {}),
       };
     });
 

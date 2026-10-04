@@ -37,7 +37,11 @@ describe('InviteCard', () => {
   it('shows a co-owner invite’s role chip and what it means', () => {
     renderCard({ role: 'owner', yourReservations: 0 });
     expect(screen.getByText('Co-owner')).toBeInTheDocument();
-    expect(screen.getByText('You’ll edit the list and manage who’s on it.')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'You’ll edit the list, manage who’s on it, and it will show on your profile.'
+      )
+    ).toBeInTheDocument();
   });
 
   it('warns about releasing reservations only when the invitee holds some there', () => {

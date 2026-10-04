@@ -64,7 +64,7 @@ describe('the role', () => {
 
   it('says what each role means', () => {
     expect(inviteRoleLine({ role: 'owner', invitedByUsername: 'chloe_r' })).toBe(
-      'You’ll edit the list and manage who’s on it.'
+      'You’ll edit the list, manage who’s on it, and it will show on your profile.'
     );
     expect(inviteRoleLine({ role: 'member', invitedByUsername: 'ben_carter' })).toBe(
       'You can reserve gifts and suggest items. @ben_carter won’t see who reserved what.'
@@ -92,7 +92,21 @@ describe('inviteReleaseWarning', () => {
     expect(inviteReleaseWarning({ role: 'owner' })).toBeNull();
   });
 
+  // regression: a gift marked as given keeps its booking but has no Reservation,
+  // so a count of Reservations alone said nothing, and accepting put it back on
+  // the list as available without a word.
+  it('regression: still warns, without a count, when only a given gift is booked there', () => {
+    expect(inviteReleaseWarning({ role: 'owner', yourReservations: 0, holdsBookings: true })).toBe(
+      'Co-owners can’t see reservations, so accepting releases what you’ve reserved here, gifts you’ve given included.'
+    );
+    expect(
+      inviteReleaseWarning({ role: 'owner', yourReservations: 2, holdsBookings: true })
+    ).toMatch(/^You’ve reserved 2 gifts here/);
+  });
+
   it('never warns on a member invite, which releases nothing', () => {
-    expect(inviteReleaseWarning({ role: 'member', yourReservations: 3 })).toBeNull();
+    expect(
+      inviteReleaseWarning({ role: 'member', yourReservations: 3, holdsBookings: true })
+    ).toBeNull();
   });
 });

@@ -17,6 +17,8 @@ interface InviteCopyInput {
   preview?: InvitePreview | null;
   /** Owner invites only: the invitee's own reservations on the list. */
   yourReservations?: number;
+  /** Owner invites only: whether an item there is still booked by the invitee. */
+  holdsBookings?: boolean;
 }
 
 /** The chip on an invitation: what accepting it makes you. */
@@ -55,23 +57,33 @@ export function inviteMetaLine(
 export function inviteRoleLine(
   invite: Pick<InviteCopyInput, 'role' | 'invitedByUsername'>
 ): string {
-  if (invite.role === 'owner') return 'You’ll edit the list and manage who’s on it.';
+  if (invite.role === 'owner') {
+    return 'You’ll edit the list, manage who’s on it, and it will show on your profile.';
+  }
   const owner = invite.invitedByUsername ? `@${invite.invitedByUsername}` : 'The owners';
   return `You can reserve gifts and suggest items. ${owner} won’t see who reserved what.`;
 }
 
 /**
- * The consent warning on an owner invite whose invitee holds reservations on
- * the list, which accepting ends (owners never see reservations). Null when
- * there's nothing of theirs to release, and always on a member invite. The
- * count is the invitee's own, shown only to them.
+ * The consent warning on an owner invite whose invitee holds something on the
+ * list that accepting releases (owners never see reservations): their
+ * Reservations, counted, or else a booking with none left (a gift they've
+ * marked as given, which goes back to available). Null when there's nothing of
+ * theirs to release, and always on a member invite. The count is the invitee's
+ * own, shown only to them.
  */
 export function inviteReleaseWarning(
-  invite: Pick<InviteCopyInput, 'role' | 'yourReservations'>
+  invite: Pick<InviteCopyInput, 'role' | 'yourReservations' | 'holdsBookings'>
 ): string | null {
+  if (invite.role !== 'owner') return null;
   const count = invite.yourReservations ?? 0;
-  if (invite.role !== 'owner' || count <= 0) return null;
-  return `You’ve reserved ${plural(count, 'gift')} here. Co-owners can’t see reservations, so accepting releases ${
-    count === 1 ? 'it' : 'them'
-  }.`;
+  if (count > 0) {
+    return `You’ve reserved ${plural(count, 'gift')} here. Co-owners can’t see reservations, so accepting releases ${
+      count === 1 ? 'it' : 'them'
+    }.`;
+  }
+  if (invite.holdsBookings) {
+    return 'Co-owners can’t see reservations, so accepting releases what you’ve reserved here, gifts you’ve given included.';
+  }
+  return null;
 }

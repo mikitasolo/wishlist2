@@ -190,12 +190,33 @@ describe('GET /api/users/me/invites: the reservations an owner invite releases',
     expect((await forList(ben, id)).yourReservations).toBe(0);
   });
 
+  // regression: a gift marked as given has no Reservation but is still booked by
+  // the gifter, and accepting frees it; counting Reservations alone hid that.
+  it('regression: says when an item is still booked by them with no Reservation left', async () => {
+    const id = await list('everyone');
+    await reserve(ben, id, 1);
+    // Marked as given: the Reservation goes, the booking stays.
+    await Reservation.deleteMany({ gifter: ben, wishlist: id });
+    await invite(id, 'owner');
+
+    expect(await forList(ben, id)).toMatchObject({ yourReservations: 0, holdsBookings: true });
+  });
+
+  it('says no booking is held when only another gifter has booked there', async () => {
+    const id = await list('everyone'); // item B is booked by carol
+    await invite(id, 'owner');
+
+    expect((await forList(ben, id)).holdsBookings).toBe(false);
+  });
+
   it('never carries a count on a member invite', async () => {
     const id = await list('everyone');
     await reserve(ben, id, 2);
     await invite(id, 'member');
 
-    expect(await forList(ben, id)).not.toHaveProperty('yourReservations');
+    const card = await forList(ben, id);
+    expect(card).not.toHaveProperty('yourReservations');
+    expect(card).not.toHaveProperty('holdsBookings');
   });
 
   it('gives each invitee only their own count', async () => {

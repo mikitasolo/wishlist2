@@ -33,6 +33,8 @@ export interface PendingInvite {
   preview?: InvitePreview | null;
   /** Owner invites only: how many reservations of the invitee's accepting ends. */
   yourReservations?: number;
+  /** Owner invites only: an item there is still booked by the invitee (accepting frees it). */
+  holdsBookings?: boolean;
 }
 
 interface InviteCardProps {
