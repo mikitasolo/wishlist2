@@ -797,20 +797,23 @@ function ReservationCard({
             href={link}
             target="_blank"
             rel="noopener noreferrer"
-            className={`${buttonClassName({ size: 'sm' })} flex-1 sm:flex-none`}
+            className={`${buttonClassName({ size: 'sm' })} flex-1 whitespace-nowrap sm:flex-none`}
           >
             Open link
             <Icon name="external-link" size={16} />
           </a>
         )}
+        {/* One row at every width: beside Open link it keeps its own width,
+            and drops its check below `sm`, so both fit on one line at 360. */}
         <Button
           size="sm"
-          icon="check"
+          icon={link ? undefined : 'check'}
           variant={link ? 'secondary' : 'primary'}
           disabled={busy}
           onClick={onGift}
-          className="flex-1 sm:flex-none"
+          className={`whitespace-nowrap ${link ? '' : 'flex-1 sm:flex-none'}`}
         >
+          {link && <Icon name="check" size={16} className="max-sm:hidden" />}
           Mark as given
         </Button>
         <Menu
