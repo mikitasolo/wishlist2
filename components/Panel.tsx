@@ -59,9 +59,13 @@ export default function Panel({
 
   if (variant === 'list') {
     return (
-      <Tag className={`overflow-hidden ${SURFACE} ${className}`} {...props}>
+      <Tag className={`${SURFACE} ${className}`} {...props}>
         {heading && <div className={`border-b border-border py-4 ${INSET}`}>{heading}</div>}
-        <div className="divide-y divide-border">{children}</div>
+        {/* No overflow-hidden on the panel: a row's menu opens in place and spills past its
+            bottom edge. So the first and last row keep the panel's corners themselves. */}
+        <div className="divide-y divide-border [&>:first-child]:rounded-t-[inherit] [&>:last-child]:rounded-b-[inherit]">
+          {children}
+        </div>
       </Tag>
     );
   }
