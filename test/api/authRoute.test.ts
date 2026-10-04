@@ -56,7 +56,36 @@ describe('POST /api/auth/[...nextauth]', () => {
 });
 
 describe('GET /api/auth/[...nextauth]', () => {
-  it("is Auth.js's handler, untouched", () => {
-    expect(GET).toBe(handlers.GET);
+  const get = (path: string) => new NextRequest(`${BASE}${path}`);
+
+  it("passes Auth.js's answer through untouched when it isn't a refused magic link", async () => {
+    const answer = Response.redirect(`${BASE}/wishlists/birthday`);
+    handlers.GET.mockResolvedValueOnce(answer);
+    const request = get('/api/auth/callback/nodemailer?token=t&callbackUrl=%2Fbooked');
+
+    expect(await GET(request)).toBe(answer);
+    expect(handlers.GET).toHaveBeenCalledWith(request);
+  });
+
+  it('adds the callbackUrl only on the magic link’s own callback', async () => {
+    const answer = Response.redirect(`${BASE}/auth/error?error=Verification`);
+    handlers.GET.mockResolvedValueOnce(answer);
+
+    expect(await GET(get('/api/auth/callback/other?callbackUrl=%2Fbooked'))).toBe(answer);
+  });
+
+  it('adds the callbackUrl to a Verification redirect and keeps its cookies', async () => {
+    const headers = new Headers({ Location: `${BASE}/auth/error?error=Verification` });
+    headers.append('Set-Cookie', 'a=1; Path=/');
+    headers.append('Set-Cookie', 'b=2; Path=/');
+    handlers.GET.mockResolvedValueOnce(new Response(null, { status: 302, headers }));
+
+    const res = await GET(get('/api/auth/callback/nodemailer?token=t&callbackUrl=%2Fbooked'));
+
+    expect(res.status).toBe(302);
+    expect(res.headers.get('Location')).toBe(
+      `${BASE}/auth/error?error=Verification&callbackUrl=%2Fbooked`
+    );
+    expect(res.headers.getSetCookie()).toEqual(['a=1; Path=/', 'b=2; Path=/']);
   });
 });
