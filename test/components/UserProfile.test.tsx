@@ -8,19 +8,20 @@ type Session = {
   status: 'loading' | 'authenticated' | 'unauthenticated';
 };
 
-const { push, router, showToast, session } = vi.hoisted(() => {
+const { push, router, showToast, session, signIn } = vi.hoisted(() => {
   const push = vi.fn();
   return {
     push,
     // The same router on every render, as Next's is: the page's load depends on it.
     router: { push },
     showToast: vi.fn(),
+    signIn: vi.fn(),
     // Mutable, so a test can let the session resolve while the page is open.
     session: { current: { data: null, status: 'loading' } as Session },
   };
 });
 
-vi.mock('next-auth/react', () => ({ useSession: () => session.current }));
+vi.mock('next-auth/react', () => ({ useSession: () => session.current, signIn }));
 vi.mock('next/navigation', () => ({
   useRouter: () => router,
   useParams: () => ({ username: 'friend' }),
@@ -39,7 +40,7 @@ vi.mock('next/link', () => ({
 // tests; this file is about the profile's own load and what it shows.
 vi.mock('@/components/AppHeader', () => ({ default: () => null }));
 vi.mock('@/components/AuthButton', () => ({ default: () => null }));
-vi.mock('@/components/ShareButton', () => ({ default: () => null }));
+vi.mock('@/components/ShareButton', () => ({ default: () => <button>Share</button> }));
 vi.mock('@/components/FollowListModal', () => ({ default: () => null }));
 vi.mock('@/components/CreateWishlistModal', () => ({
   default: ({ isOpen }: { isOpen: boolean }) =>
@@ -92,6 +93,7 @@ beforeEach(() => {
   cleanup();
   push.mockReset();
   showToast.mockReset();
+  signIn.mockReset();
   session.current = { data: null, status: 'loading' };
 });
 afterEach(() => {
@@ -288,5 +290,99 @@ describe('UserProfile — follower counts', () => {
 
     expect(await screen.findByRole('button', { name: '0 followers' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '3 following' })).toBeInTheDocument();
+  });
+});
+
+describe('UserProfile — following', () => {
+  function stubWithFollow(user: ReturnType<typeof profile>, wishlistsStatus = 200) {
+    const fetchMock = vi.fn(async (url: string, init?: { method?: string }) => {
+      if (url === '/api/users/by-username/friend') return json({ success: true, data: user });
+      if (url === '/api/users/friend-id/wishlists') {
+        return wishlistsStatus === 403
+          ? { ok: false, status: 403, json: async () => ({ success: false }) }
+          : json({ success: true, data: [] });
+      }
+      if (url === '/api/users/friend-id/follow') return json({ success: true, init });
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    return fetchMock;
+  }
+  const follows = (fetchMock: ReturnType<typeof vi.fn>) =>
+    fetchMock.mock.calls.filter(([url]) => url === '/api/users/friend-id/follow');
+
+  it('puts Follow before Share and names what the button does', async () => {
+    session.current = signedIn('me');
+    stubWithFollow(profile());
+    render(<UserProfile />);
+    const follow = await screen.findByRole('button', { name: 'Follow @friend' });
+    const share = screen.getByRole('button', { name: 'Share' });
+    expect(follow.compareDocumentPosition(share) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('names Following as Unfollow', async () => {
+    session.current = signedIn('me');
+    stubWithFollow(profile({ isFollowing: true }));
+    render(<UserProfile />);
+    expect(await screen.findByRole('button', { name: 'Unfollow @friend' })).toBeTruthy();
+  });
+
+  it('asks before unfollowing a friend, and Cancel keeps following', async () => {
+    session.current = signedIn('me');
+    const fetchMock = stubWithFollow(
+      profile({ isFollowing: true, followsYou: true, isFriend: true })
+    );
+    render(<UserProfile />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Unfollow @friend' }));
+    expect(await screen.findByText('Unfollow @friend?')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(follows(fetchMock)).toHaveLength(0);
+    expect(screen.getByRole('button', { name: 'Unfollow @friend' })).toBeTruthy();
+  });
+
+  it('unfollows a friend once confirmed', async () => {
+    session.current = signedIn('me');
+    const fetchMock = stubWithFollow(
+      profile({ isFollowing: true, followsYou: true, isFriend: true })
+    );
+    render(<UserProfile />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Unfollow @friend' }));
+    const dialog = await screen.findByRole('alertdialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Unfollow' }));
+    await waitFor(() => expect(follows(fetchMock)).toHaveLength(1));
+    expect(follows(fetchMock)[0][1]).toMatchObject({ method: 'DELETE' });
+  });
+
+  it('unfollows someone who is not a friend with no confirmation', async () => {
+    session.current = signedIn('me');
+    const fetchMock = stubWithFollow(profile({ isFollowing: true }));
+    render(<UserProfile />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Unfollow @friend' }));
+    await waitFor(() => expect(follows(fetchMock)).toHaveLength(1));
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+  });
+
+  it('says what a friends-only profile needs, before and after following', async () => {
+    session.current = signedIn('me');
+    stubWithFollow(profile(), 403);
+    render(<UserProfile />);
+    expect(await screen.findByText(/Follow each other to become friends/)).toBeTruthy();
+    expect(screen.queryByText(/private/i)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Follow @friend' }));
+    expect(
+      await screen.findByText(
+        'Only @friend’s friends can see their wishlists. You’ll see them once they follow you back.'
+      )
+    ).toBeTruthy();
+  });
+
+  it('sends a signed-out visitor to sign in, back to the profile', async () => {
+    session.current = { data: null, status: 'unauthenticated' };
+    const fetchMock = stubWithFollow(profile());
+    render(<UserProfile />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Follow @friend' }));
+    expect(signIn).toHaveBeenCalledWith(undefined, { redirectTo: window.location.href });
+    expect(showToast).not.toHaveBeenCalled();
+    expect(follows(fetchMock)).toHaveLength(0);
   });
 });

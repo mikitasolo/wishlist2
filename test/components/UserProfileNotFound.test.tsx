@@ -136,7 +136,7 @@ describe('a profile that couldn’t be loaded', () => {
 
     await screen.findByRole('heading', { level: 1, name: '@nobody_here' });
     expect(profileReads()).toBe(reads + 1);
-    expect(screen.getByRole('button', { name: 'Follow' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Follow @/ })).toBeInTheDocument();
   });
 });
 

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, usePathname, useSearchParams } from 'next/navigation';
-import { useSession } from 'next-auth/react';
+import { signIn, useSession } from 'next-auth/react';
 import Link from 'next/link';
 import AuthButton from '@/components/AuthButton';
 import AppHeader from '@/components/AppHeader';
@@ -13,6 +13,7 @@ import ShareButton from '@/components/ShareButton';
 import FollowListModal, { type FollowTab } from '@/components/FollowListModal';
 import CreateWishlistModal from '@/components/CreateWishlistModal';
 import Button from '@/components/Button';
+import ConfirmDialog from '@/components/ConfirmDialog';
 import GlobalSearch from '@/components/GlobalSearch';
 import Badge from '@/components/Badge';
 import LoadError from '@/components/LoadError';
@@ -64,6 +65,7 @@ export default function UserProfile() {
   const [listsFailed, setListsFailed] = useState(false);
   const [followBusy, setFollowBusy] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
+  const [confirmUnfollow, setConfirmUnfollow] = useState(false);
   const viewerId = session?.user?.id ?? null;
 
   // `?followers=1` (`followersHref`, which a follow notification links to)
@@ -151,7 +153,8 @@ export default function UserProfile() {
   async function toggleFollow() {
     if (!profile || followBusy) return;
     if (!session?.user) {
-      showToast('Sign in to follow people', 'info');
+      // Back to this profile once they're in, like the other signed-out prompts.
+      signIn(undefined, { redirectTo: window.location.href });
       return;
     }
     setFollowBusy(true);
@@ -189,6 +192,13 @@ export default function UserProfile() {
     } finally {
       setFollowBusy(false);
     }
+  }
+
+  // Unfollowing a friend (a mutual follow) ends friends-only access both ways,
+  // so it asks first; unfollowing anyone else is one tap.
+  function onFollowClick() {
+    if (profile?.isFollowing && profile.isFriend) setConfirmUnfollow(true);
+    else toggleFollow();
   }
 
   if (status === 'loading' || loading) {
@@ -293,10 +303,6 @@ export default function UserProfile() {
             </div>
           </div>
           <div className="flex flex-shrink-0 items-center gap-3">
-            <ShareButton
-              url={profile ? `/users/${encodeURIComponent(profile.username)}` : undefined}
-              title={profile ? `@${profile.username}` : undefined}
-            />
             {profile?.isSelf && (
               <Link
                 href="/settings"
@@ -312,12 +318,39 @@ export default function UserProfile() {
                 size="sm"
                 shape="pill"
                 icon={profile.isFollowing ? undefined : 'plus'}
-                onClick={toggleFollow}
+                onClick={onFollowClick}
                 disabled={followBusy}
+                className="group"
+                aria-label={
+                  profile.isFollowing
+                    ? `Unfollow @${profile.username}`
+                    : `${profile.followsYou ? 'Follow back' : 'Follow'} @${profile.username}`
+                }
               >
-                {profile.isFollowing ? 'Following' : profile.followsYou ? 'Follow back' : 'Follow'}
+                {profile.isFollowing ? (
+                  // Both words share one cell, so the button keeps its width.
+                  <span className="inline-grid">
+                    <span className="col-start-1 row-start-1 group-hover:invisible group-focus-visible:invisible">
+                      Following
+                    </span>
+                    <span
+                      aria-hidden
+                      className="invisible col-start-1 row-start-1 group-hover:visible group-focus-visible:visible"
+                    >
+                      Unfollow
+                    </span>
+                  </span>
+                ) : profile.followsYou ? (
+                  'Follow back'
+                ) : (
+                  'Follow'
+                )}
               </Button>
             )}
+            <ShareButton
+              url={profile ? `/users/${encodeURIComponent(profile.username)}` : undefined}
+              title={profile ? `@${profile.username}` : undefined}
+            />
           </div>
         </div>
 
@@ -333,8 +366,12 @@ export default function UserProfile() {
           <EmptyState
             tone="muted"
             icon="lock"
-            title="Wishlists are private"
-            body={`@${profile?.username} only shares their wishlists with friends. Follow each other to connect.`}
+            title="Wishlists are friends only"
+            body={
+              profile?.isFollowing
+                ? `Only @${profile.username}’s friends can see their wishlists. You’ll see them once they follow you back.`
+                : `Only @${profile?.username}’s friends can see their wishlists. Follow each other to become friends.`
+            }
           />
         ) : listsFailed ? (
           <LoadError
@@ -375,6 +412,18 @@ export default function UserProfile() {
       {profile?.isSelf && (
         <CreateWishlistModal isOpen={showCreate} onClose={() => setShowCreate(false)} />
       )}
+      <ConfirmDialog
+        isOpen={confirmUnfollow}
+        title={`Unfollow @${profile?.username}?`}
+        message="You’ll stop being friends, so lists either of you share with friends only won’t be shared between you."
+        confirmText="Unfollow"
+        icon="user-minus"
+        onCancel={() => setConfirmUnfollow(false)}
+        onConfirm={() => {
+          setConfirmUnfollow(false);
+          return toggleFollow();
+        }}
+      />
 
       {followModal && profile && (
         <FollowListModal
