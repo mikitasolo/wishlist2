@@ -116,10 +116,51 @@ describe.each(hooks)('$name', ({ send, failed }) => {
   });
 
   it("keeps the server's own error for a request that fails in time", async () => {
-    fetchMock.mockResolvedValueOnce(reply(404, { success: false, error: 'Item not found' }));
+    fetchMock.mockResolvedValueOnce(reply(403, { success: false, error: 'Not allowed' }));
 
     await expect(send()).resolves.toBe(failed);
+    expect(onError).toHaveBeenCalledExactlyOnceWith('Not allowed');
+  });
+});
+
+describe('a retry whose first attempt went through (WIS-158)', () => {
+  // regression: a delete retried after its first attempt timed out but landed
+  // got the server's 404 "Item not found" as an error, and the Edit/Review
+  // dialog stayed open over an item that was gone.
+  it('takes a 404 on an owner’s delete as already deleted, with no error', async () => {
+    fetchMock.mockResolvedValueOnce(reply(404, { success: false, error: 'Item not found' }));
+    const onDeleted = vi.fn();
+
+    const result = renderHook(() => useDeleteItem(onDeleted, onError)).result.current('i1', {
+      notFoundIsDone: true,
+    });
+
+    await expect(result).resolves.toBe(true);
+    expect(onDeleted).toHaveBeenCalledOnce();
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  // A proposer's 404 may be an archived list refusing them, the proposal
+  // still there: never reported as deleted.
+  it('keeps a 404 an error without notFoundIsDone', async () => {
+    fetchMock.mockResolvedValueOnce(reply(404, { success: false, error: 'Item not found' }));
+
+    const result = renderHook(() => useDeleteItem(undefined, onError)).result.current('i1');
+
+    await expect(result).resolves.toBe(false);
     expect(onError).toHaveBeenCalledExactlyOnceWith('Item not found');
+  });
+
+  it('sends a create with its idempotency key, and none without one', async () => {
+    fetchMock.mockResolvedValue(reply(201, { success: true, data: ITEM }));
+    const create = renderHook(() => useCreateItem(undefined, onError)).result.current;
+
+    await create('w1', { name: 'Bike' }, 'key-0123456789abcdef');
+    await create('w1', { name: 'Lamp' });
+
+    const headers = fetchMock.mock.calls.map(([, init]) => init.headers as Record<string, string>);
+    expect(headers[0]['Idempotency-Key']).toBe('key-0123456789abcdef');
+    expect(headers[1]).not.toHaveProperty('Idempotency-Key');
   });
 });
 

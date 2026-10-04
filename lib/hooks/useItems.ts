@@ -5,13 +5,17 @@
  * answered within `ITEM_REQUEST_TIMEOUT_MS` (see `withRequestTimeout`). A
  * timeout is reported like any other failure: `onError` gets the "took too
  * long" message and the hook resolves `null` / `false`. A retry then sends a
- * new request, because the abandoned one is no longer shared.
+ * new request, because the abandoned one is no longer shared. That retry is
+ * safe even when the abandoned request was saved (WIS-158): a create sent with
+ * the same `idempotencyKey` answers with the item the first attempt made, and a
+ * delete sent with `notFoundIsDone` counts a 404 as done.
  */
 
 import { useCallback } from 'react';
 import { ApiItem, ApiResponse } from '@/types/api';
 import { deduplicateRequest, createRequestKey } from '@/lib/utils/requestDeduplication';
 import { withRequestTimeout } from '@/lib/utils/requestTimeout';
+import { IDEMPOTENCY_HEADER } from '@/lib/utils/submissionKey';
 import { isRefusal, ReadRefusedError } from '@/lib/utils/resourceRead';
 
 /**
@@ -81,7 +85,9 @@ export function useCreateItem(
         notes?: string | null;
         mostWanted?: boolean;
         status?: 'draft' | 'available';
-      }
+      },
+      /** The submission's key (`createSubmissionKeys`), the same on each retry of it. */
+      idempotencyKey?: string
     ): Promise<ApiItem | null> => {
       const requestKey = createRequestKey(`/api/wishlists/${wishlistId}/items`, 'POST', newItem);
 
@@ -92,6 +98,7 @@ export function useCreateItem(
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
+                ...(idempotencyKey ? { [IDEMPOTENCY_HEADER]: idempotencyKey } : {}),
               },
               body: JSON.stringify(newItem),
               signal,
@@ -125,7 +132,20 @@ export function useCreateItem(
  */
 export function useDeleteItem(onSuccess?: () => void, onError?: (error: string) => void) {
   return useCallback(
-    async (id: string): Promise<boolean> => {
+    async (
+      id: string,
+      {
+        notFoundIsDone = false,
+      }: {
+        /**
+         * Count a 404 as already deleted (WIS-158): a retry whose first attempt
+         * went through, or a co-owner's delete. Only for an owner: the route
+         * also answers a non-owner 404 on an archived list, where the item
+         * still exists, and that refusal must stay one.
+         */
+        notFoundIsDone?: boolean;
+      } = {}
+    ): Promise<boolean> => {
       const requestKey = createRequestKey(`/api/items/${id}`, 'DELETE');
 
       try {
@@ -135,6 +155,8 @@ export function useDeleteItem(onSuccess?: () => void, onError?: (error: string) 
               method: 'DELETE',
               signal,
             });
+
+            if (notFoundIsDone && response.status === 404) return;
 
             const result: ApiResponse<void> = await response.json();
 

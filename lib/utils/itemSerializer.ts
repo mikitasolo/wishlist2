@@ -23,7 +23,7 @@ export type ItemViewer =
   | { role: 'visitor' };
 
 /** An item as every item response carries it (see `ApiItem` for the client's view). */
-export type SerializedItem = Omit<IItem, 'bookedBy' | 'proposedBy'> & {
+export type SerializedItem = Omit<IItem, 'bookedBy' | 'proposedBy' | 'idempotencyKey'> & {
   bookedBy?: string;
   proposedBy?: string;
   priceInUsdCents: number | null;
@@ -57,7 +57,10 @@ export function serializeItem(
   rates: Map<string, number>
 ): SerializedItem {
   const raw = (typeof item.toObject === 'function' ? item.toObject() : { ...item }) as IItem;
-  const base = { ...raw, priceInUsdCents: itemPriceInUsdCents(raw.price, rates) };
+  // The create request's key is the server's, never anyone's to read: a freshly
+  // created document still carries it (WIS-158).
+  const { idempotencyKey: _idempotencyKey, ...fields } = raw;
+  const base = { ...fields, priceInUsdCents: itemPriceInUsdCents(raw.price, rates) };
   const isViewers = (id: Types.ObjectId | null | undefined) =>
     viewer.role !== 'owner' && viewer.role !== 'visitor' && id?.toString() === viewer.id;
 

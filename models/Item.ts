@@ -63,6 +63,16 @@ const ItemSchema = new Schema(
       ref: 'User',
       required: false,
     },
+    // The create request's idempotency key, scoped to its sender
+    // (`scopedIdempotencyKey`, lib/utils/itemIdempotency.ts: a hash of their
+    // user id and the key their browser sent), so a retried POST answers with
+    // the item the first attempt made instead of a second copy (WIS-158).
+    // Never read back (`select: false`) and never in a response.
+    idempotencyKey: {
+      type: String,
+      required: false,
+      select: false,
+    },
   },
   {
     timestamps: true,
@@ -71,6 +81,14 @@ const ItemSchema = new Schema(
 
 // Index for faster lookups
 ItemSchema.index({ wishlist: 1 });
+// One item per create request: a retry of it, or two of its attempts racing,
+// can't make a second. Partial on the field's existence, since items created
+// before it (and any created without a key) have none; that's also why
+// autoIndex can build it safely: no existing row is in it (WIS-158).
+ItemSchema.index(
+  { wishlist: 1, idempotencyKey: 1 },
+  { unique: true, partialFilterExpression: { idempotencyKey: { $exists: true } } }
+);
 
 // Base document type
 export interface IItem {
@@ -88,6 +106,7 @@ export interface IItem {
   status: 'draft' | 'available' | 'booked' | 'completed' | 'proposed';
   bookedBy?: mongoose.Types.ObjectId | null;
   proposedBy?: mongoose.Types.ObjectId | null;
+  idempotencyKey?: string;
   createdAt: Date;
   updatedAt: Date;
 }
