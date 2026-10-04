@@ -16,6 +16,7 @@ interface UsernameFieldProps {
   autoFocus?: boolean;
   /** The account's current username; once the field differs, the helper warns that the link changes. */
   savedUsername?: string | null;
+  placeholder?: string;
 }
 
 /**
@@ -32,6 +33,7 @@ export default function UsernameField({
   disabled = false,
   autoFocus = false,
   savedUsername = null,
+  placeholder,
 }: UsernameFieldProps) {
   const changing = !!savedUsername && value !== '' && value !== savedUsername;
   return (
@@ -66,6 +68,7 @@ export default function UsernameField({
         maxLength={20}
         disabled={disabled}
         autoFocus={autoFocus}
+        placeholder={placeholder}
       />
     </Field>
   );

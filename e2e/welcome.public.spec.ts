@@ -23,7 +23,11 @@ test('a new account is offered a username, and keeping the generated one continu
   // The generated handle is random, nothing taken from the email.
   const keep = page.getByRole('button', { name: /^Keep @/ });
   await expect(keep).toHaveText(/^Keep @user_[a-z0-9]{8}$/);
-  await expect(page.getByLabel('Username', { exact: true })).toHaveValue(/^user_[a-z0-9]{8}$/);
+  // The field starts empty: the generated handle is only on the Keep button.
+  await expect(page.getByLabel('Username', { exact: true })).toHaveValue('');
+  await expect(page.getByRole('button', { name: 'Save username' })).toBeDisabled();
+  // The minimal header: no navigation, no search.
+  await expect(page.getByRole('link', { name: 'Reserved' })).toHaveCount(0);
 
   await keep.click();
   await expect(page).toHaveURL('/notifications');

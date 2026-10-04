@@ -12,6 +12,12 @@ interface AppHeaderProps {
   actions?: ReactNode;
   /** Whether to show the unified search (default true). */
   search?: boolean;
+  /**
+   * Just the logo and `actions`: no navigation links, tab bar or search. For a
+   * step the user is meant to finish (Welcome), which the app's own ways out
+   * would only distract from.
+   */
+  minimal?: boolean;
 }
 
 /**
@@ -41,7 +47,7 @@ interface AppHeaderProps {
  * over the icon, and in the header it widens the last of the links, so neither
  * moves anything else.
  */
-export default function AppHeader({ actions, search = true }: AppHeaderProps) {
+export default function AppHeader({ actions, search = true, minimal = false }: AppHeaderProps) {
   const { data: session, status } = useSession();
   const [searchOpen, setSearchOpen] = useState(false);
   // An `update()` puts a known session back through loading: it's still signed in.
@@ -57,7 +63,7 @@ export default function AppHeader({ actions, search = true }: AppHeaderProps) {
         <div className="mx-auto flex h-14 max-w-7xl items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
           <div className="flex min-w-0 items-center gap-4 lg:gap-6">
             <BrandLink />
-            {signedIn ? (
+            {minimal ? null : signedIn ? (
               <HeaderNav
                 username={username}
                 unread={unread}
@@ -71,12 +77,12 @@ export default function AppHeader({ actions, search = true }: AppHeaderProps) {
             ) : null}
           </div>
           <div className="flex min-w-0 items-center gap-2 sm:gap-3">
-            {search && <GlobalSearch onOpenChange={setSearchOpen} />}
+            {search && !minimal && <GlobalSearch onOpenChange={setSearchOpen} />}
             {actions}
           </div>
         </div>
       </header>
-      {signedIn ? (
+      {minimal ? null : signedIn ? (
         <TabBar username={username} unread={unread} />
       ) : pending ? (
         <TabBar pending />

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import AppHeader from '@/components/AppHeader';
 import AuthButton from '@/components/AuthButton';
+import OwnHandle from '@/components/OwnHandle';
 import WishlistList from '@/components/WishlistList';
 import EmptyState from '@/components/EmptyState';
 import { WishlistListSkeleton } from '@/components/Skeleton';
@@ -23,7 +24,8 @@ type Wishlist = IWishlist & {
 };
 
 export default function SharedWishlistsPage() {
-  const { status } = useSession();
+  const { data: session, status } = useSession();
+  const username = session?.user?.username ?? null;
   const router = useRouter();
   const { showToast } = useToast();
   const [member, setMember] = useState<Wishlist[]>([]);
@@ -68,7 +70,12 @@ export default function SharedWishlistsPage() {
             tone="muted"
             icon="users"
             title="Nothing shared yet"
-            body="When someone invites you to their wishlist, it’ll show up here."
+            body={
+              <>
+                Joining someone’s list? They invite you by username:{' '}
+                {username && <OwnHandle username={username} />}
+              </>
+            }
           />
         ) : (
           <div className="mt-8">
