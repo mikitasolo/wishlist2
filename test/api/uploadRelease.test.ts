@@ -113,6 +113,17 @@ describe('DELETE /api/upload', () => {
     }
   });
 
+  // regression: the reference check matched the URL as sent, while the store
+  // finds a blob by its path, so a record's image with `?x` (or `#x`) appended
+  // passed the check and freed the image the record still shows.
+  it('regression: never frees an image a record shows, sent with a query or fragment', async () => {
+    as(ALICE);
+    await Item.collection.insertOne({ imageUrl: blobOf(ALICE) });
+    for (const url of [`${blobOf(ALICE)}?x`, `${blobOf(ALICE)}?`, `${blobOf(ALICE)}#x`]) {
+      await expectKept(await release({ url }));
+    }
+  });
+
   // Each record that can show an upload keeps it, the caller's own or anyone
   // else's: a co-owner keeping it on an item, an approved proposal, a
   // reservation whose snapshot copy failed and holds the item's blob.
@@ -133,6 +144,18 @@ describe('DELETE /api/upload', () => {
       expect(del).toHaveBeenCalledWith(blobOf(ALICE, 'image-other.jpg'));
     });
   }
+
+  it('keeps an upload a record shows with a query or fragment after it', async () => {
+    as(ALICE);
+    await Wishlist.collection.insertOne({ bannerUrl: `${blobOf(ALICE)}?v=2` });
+    await GiftLog.collection.insertOne({ itemImage: `${blobOf(ALICE, 'gift.jpg')}#top` });
+    await expectKept(await release({ url: blobOf(ALICE) }));
+    await expectKept(await release({ url: blobOf(ALICE, 'gift.jpg') }));
+    // A longer name that only starts the same is another image.
+    await Item.collection.insertOne({ imageUrl: blobOf(ALICE, 'solo.jpg.bak') });
+    await release({ url: blobOf(ALICE, 'solo.jpg') });
+    expect(del.mock.calls).toEqual([[blobOf(ALICE, 'solo.jpg')]]);
+  });
 
   it('is rate-limited on its own budget, before touching anything', async () => {
     as(ALICE);

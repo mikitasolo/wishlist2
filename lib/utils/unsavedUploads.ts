@@ -29,15 +29,30 @@ import { deleteOwnBlob, isUploadedBy } from '@/lib/utils/blob';
  * browser holds that end: it never hands back an upload any save may still be
  * carrying (one in flight, or one whose outcome it couldn't tell).
  *
+ * The URL must be exactly what `/api/upload` answered: no query or fragment, not
+ * even an empty one. The reference check matches it as written, while the store
+ * finds the blob by its path, so `<a record's image>?x` would pass the check and
+ * still free the image the record shows.
+ *
  * Returns whether the blob was freed, for the tests; the route answers the same
  * either way, so it never says whether anything shows the image (a reservation
  * holding an owner's blob would tell them their item was reserved).
  */
 export async function releaseUnsavedUpload(url: string, userId: string): Promise<boolean> {
-  if (!isUploadedBy(url, userId)) return false;
+  if (!isPlainBlobUrl(url) || !isUploadedBy(url, userId)) return false;
   if (await isImageReferenced(url)) return false;
   await deleteOwnBlob(url);
   return true;
+}
+
+/** `url` is its origin and path alone, as `put()` returns a blob's URL. */
+function isPlainBlobUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return url === parsed.origin + parsed.pathname;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -47,12 +62,19 @@ export async function releaseUnsavedUpload(url: string, userId: string): Promise
  * snapshot copy failed. A new image field needs adding here.
  */
 export async function isImageReferenced(url: string): Promise<boolean> {
+  // A record may hold the blob's URL with a query or fragment after it (an image
+  // field takes one: `canAttachImage` checks the path), which still shows it.
+  const shows = { $regex: `^${escapeRegExp(url)}(?:[?#]|$)` };
   const found = await Promise.all([
-    Item.exists({ imageUrl: url }),
-    Wishlist.exists({ bannerUrl: url }),
-    User.exists({ image: url }),
-    Reservation.exists({ itemImage: url }),
-    GiftLog.exists({ itemImage: url }),
+    Item.exists({ imageUrl: shows }),
+    Wishlist.exists({ bannerUrl: shows }),
+    User.exists({ image: shows }),
+    Reservation.exists({ itemImage: shows }),
+    GiftLog.exists({ itemImage: shows }),
   ]);
   return found.some(Boolean);
+}
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
