@@ -7,10 +7,6 @@ import { test, expect } from './fixtures';
 // lives in the browser, and the create-wishlist modal is closed without
 // creating.
 
-// Tall enough for the Sort menu, which opens below its trigger whatever the
-// room there (WIS-214), to fit in the viewport for a click.
-test.use({ viewport: { width: 1280, height: 1600 } });
-
 // regression: on a page, the menu's options came after everything else in the
 // Tab order, so the keyboard couldn't reach them.
 test('regression: picks the sort order on the wishlist page from the keyboard', async ({
@@ -25,6 +21,11 @@ test('regression: picks the sort order on the wishlist page from the keyboard', 
   await sort.focus();
   await page.keyboard.press('Space');
   await expect(menu).toBeVisible();
+  // The menu fits the viewport, wherever the trigger sits (WIS-214).
+  const box = (await menu.boundingBox())!;
+  const viewport = page.viewportSize()!;
+  expect(box.y).toBeGreaterThanOrEqual(0);
+  expect(box.y + box.height).toBeLessThanOrEqual(viewport.height);
   await page.keyboard.press('ArrowDown');
   await page.keyboard.press('Enter');
   await expect(menu).toBeHidden();
