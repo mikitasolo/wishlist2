@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   DELETE_LIST_WARNING,
   acceptedInviteToast,
+  alreadyAnsweredInviteToast,
   deleteListCopy,
   leftListToast,
   memberLeaveCopy,
@@ -146,5 +147,17 @@ describe('the toasts back to the gifter', () => {
     );
     expect(leftListToast('Camping trip', 0)).toBe('You left “Camping trip”');
     expect(leftListToast(undefined, undefined)).toBe('You left the wishlist');
+  });
+});
+
+describe('alreadyAnsweredInviteToast', () => {
+  it('names the list they already joined, and says nothing of reservations', () => {
+    expect(alreadyAnsweredInviteToast('accepted', 'Garden')).toBe("You've already joined “Garden”");
+  });
+
+  it('says they already declined it', () => {
+    expect(alreadyAnsweredInviteToast('declined', 'Garden')).toBe(
+      'You already declined this invitation'
+    );
   });
 });

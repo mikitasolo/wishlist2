@@ -299,7 +299,7 @@ describe('answering an invite updates its notification', () => {
   it("doesn't touch the notification when someone else's answer is refused", async () => {
     const id = await invite(anna);
 
-    expect((await answer(id, 'decline', cara)).status).toBe(403);
+    expect((await answer(id, 'decline', cara)).status).toBe(404);
 
     const [row] = (await feedOf(anna)).rows;
     expect(shown(row)).toEqual({
