@@ -14,17 +14,25 @@ export type BadgeTone = 'neutral' | 'info' | 'success' | 'warning' | 'danger' | 
 /** sm: in a dense grid (`/items`), beside a heading (a count); md: on a card, by a title. */
 export type BadgeSize = 'sm' | 'md';
 
+/**
+ * Over a cover image of any brightness (WIS-308): white text on a dark frost.
+ * 60% black over a pure white photo composites to #666 (white on it: 5.7:1,
+ * past AA's 4.5:1), and over a black one it's darker still. A light frost
+ * (`bg-white/20`) fell to about 1:1 on a bright photo.
+ */
+export const GLASS = 'border border-white/20 bg-black/60 text-white shadow-sm backdrop-blur-md';
+
 const TONES: Record<BadgeTone, string> = {
   neutral: TONE_CLASSES.neutral.badge,
   info: TONE_CLASSES.info.tint,
   success: TONE_CLASSES.success.tint,
   warning: TONE_CLASSES.warning.tint,
   danger: TONE_CLASSES.danger.tint,
-  glass: 'border border-white/25 bg-white/20 text-white backdrop-blur-md',
+  glass: GLASS,
 };
 
 /** `glass` darkened, for a cover that's been greyed out (an archived list's). */
-const GLASS_DIM = 'border border-white/25 bg-black/30 text-white backdrop-blur-md';
+export const GLASS_DIM = 'border border-white/20 bg-black/70 text-white shadow-sm backdrop-blur-md';
 
 const SIZES: Record<BadgeSize, string> = {
   sm: 'gap-1 px-2 py-0.5',

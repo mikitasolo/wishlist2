@@ -2,6 +2,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
 import Badge, { badgeClassName } from '@/components/Badge';
+import { iconButtonClassName } from '@/components/buttonStyles';
 import { STATUS_META, statusMeta } from '@/lib/utils/itemStatus';
 import { TONE_CLASSES } from '@/lib/utils/statusTones';
 
@@ -51,7 +52,7 @@ describe('Badge — tones and sizes', () => {
     ['success', TONE_CLASSES.success.tint],
     ['warning', TONE_CLASSES.warning.tint],
     ['danger', TONE_CLASSES.danger.tint],
-    ['glass', 'border-white/25 bg-white/20 text-white backdrop-blur-md'],
+    ['glass', 'border-white/20 bg-black/60 text-white backdrop-blur-md'],
   ] as const)('the %s tone', (tone, classes) => {
     render(<Badge tone={tone}>Label</Badge>);
     expectClasses(screen.getByText('Label'), classes);
@@ -70,8 +71,8 @@ describe('Badge — tones and sizes', () => {
         Archived
       </Badge>
     );
-    expect(screen.getByText('Archived')).toHaveClass('bg-black/30');
-    expect(screen.getByText('Archived')).not.toHaveClass('bg-white/20');
+    expect(screen.getByText('Archived')).toHaveClass('bg-black/70');
+    expect(screen.getByText('Archived')).not.toHaveClass('bg-black/60');
   });
 
   it('is smaller at sm', () => {
@@ -80,7 +81,36 @@ describe('Badge — tones and sizes', () => {
   });
 
   it('gives a label that isn’t a Badge the same look', () => {
-    expect(badgeClassName({ tone: 'glass' })).toContain('bg-white/20');
+    expect(badgeClassName({ tone: 'glass' })).toContain('bg-black/60');
     expect(badgeClassName()).toContain(TONE_CLASSES.neutral.badge);
+  });
+});
+
+// regression: WIS-308 — the glass tone was white text on a 20% white frost, which
+// fell to about 1:1 over a bright cover photo and couldn't be read.
+describe('Badge — glass over a cover', () => {
+  it('is white text on a dark frost, never a light one', () => {
+    render(<Badge tone="glass">Public</Badge>);
+    const el = screen.getByText('Public');
+    expect(el).toHaveClass('text-white', 'bg-black/60', 'backdrop-blur-md');
+    expect(el.className).not.toMatch(/bg-white/);
+  });
+
+  it('the label for an occasion on a cover shares it', () => {
+    const c = badgeClassName({ tone: 'glass' });
+    expect(c).toContain('bg-black/60');
+    expect(c).not.toMatch(/bg-white/);
+  });
+
+  it('keeps the glass icon button an opaque surface, readable on any photo', () => {
+    const c = iconButtonClassName({ variant: 'glass' });
+    expect(c).toContain('bg-surface/90');
+    expect(c).not.toMatch(/bg-white|bg-black/);
+  });
+
+  it('keeps an archived cover’s frost at least as dark', () => {
+    const c = badgeClassName({ tone: 'glass', dim: true });
+    expect(c).toContain('bg-black/70');
+    expect(c).not.toMatch(/bg-white/);
   });
 });
