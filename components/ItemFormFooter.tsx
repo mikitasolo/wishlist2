@@ -13,9 +13,15 @@ interface ItemFormFooterProps {
   onCancel: () => void;
   submitLabel: string;
   submittingLabel: string;
-  /** An add's second action: saves the new item as a draft. */
+  /** An add's (or a review's) second action: saves the item as a draft. */
   saveAsDraft?: boolean;
-  /** An edit's Delete, a red text button on the left. */
+  /** The draft action's label ("Save as draft"; a review's "Add as draft"). */
+  draftLabel?: string;
+  /** Read by the draft action instead of the primary while a draft save runs. */
+  draftSubmittingLabel?: string;
+  /** Whether the save running is the draft action's (see `draftSubmittingLabel`). */
+  savingDraft?: boolean;
+  /** An edit's Delete (a review's Decline), a red text button on the left. */
   onDelete?: () => void;
   deleteLabel?: string;
   /** The "Keep adding" checkbox, for a form that clears itself and stays open. */
@@ -23,13 +29,15 @@ interface ItemFormFooterProps {
 }
 
 // On a phone the buttons share the row's width; from `sm` up they keep their own.
-const BUTTON_CLASS = 'max-sm:flex-1 max-sm:px-3';
+// A label stays on one line, so a review's row of three (Decline, Cancel, Add as
+// draft) doesn't break "Add as draft" in two.
+const BUTTON_CLASS = 'max-sm:flex-1 max-sm:px-3 whitespace-nowrap';
 
 /**
  * The item dialogs' pinned footer (give it to `BaseModal`'s `footer`): Cancel,
  * then, for an add, Save as draft, then the primary action. Its submit button is
  * the form's default one, so Enter in a field presses it, never the draft button.
- * Delete (an edit) sits on the left. "Keep adding" has a line of its own on a
+ * Delete (an edit) or Decline (a review) sits on the left. "Keep adding" has a line of its own on a
  * phone, where the buttons need the width.
  */
 export default function ItemFormFooter({
@@ -40,6 +48,9 @@ export default function ItemFormFooter({
   submitLabel,
   submittingLabel,
   saveAsDraft,
+  draftLabel = 'Save as draft',
+  draftSubmittingLabel,
+  savingDraft = false,
   onDelete,
   deleteLabel = 'Delete item',
   keepAdding,
@@ -68,7 +79,7 @@ export default function ItemFormFooter({
           variant="danger-ghost"
           onClick={onDelete}
           disabled={busy}
-          className="mr-auto"
+          className="mr-auto whitespace-nowrap max-sm:px-3"
         >
           {deleteLabel}
         </Button>
@@ -90,7 +101,7 @@ export default function ItemFormFooter({
           disabled={busy}
           className={BUTTON_CLASS}
         >
-          Save as draft
+          {saving && savingDraft && draftSubmittingLabel ? draftSubmittingLabel : draftLabel}
         </Button>
       )}
       <Button
@@ -99,7 +110,7 @@ export default function ItemFormFooter({
         disabled={busy}
         className={`${BUTTON_CLASS} ${saveAsDraft ? 'max-sm:basis-full' : ''}`}
       >
-        {saving ? submittingLabel : submitLabel}
+        {saving && !(savingDraft && draftSubmittingLabel) ? submittingLabel : submitLabel}
       </Button>
     </div>
   );

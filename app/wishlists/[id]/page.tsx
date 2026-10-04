@@ -744,7 +744,7 @@ export default function WishlistDetail() {
       // the server agreed.
       const approved = await handleUpdateItem(itemToReview._id, updates);
       if (!approved) throw new Error('Failed to approve item');
-      showToast('Item approved successfully', 'success');
+      showToast(updates.status === 'draft' ? 'Added as a draft' : 'Added to the list', 'success');
     },
     [itemToReview, handleUpdateItem, showToast]
   );
@@ -759,7 +759,7 @@ export default function WishlistDetail() {
     const deleted = await mutations.track(() => deleteItemHook(itemId));
     if (!deleted) throw new Error('Failed to delete item');
     setItems((prevItems) => prevItems.filter((item) => item._id !== itemId));
-    showToast('Proposed item deleted', 'success');
+    showToast('Proposal declined', 'success');
   }, [itemToReview, deleteItemHook, showToast, mutations]);
 
   const handleEditItem = useCallback((item: ApiItem) => {

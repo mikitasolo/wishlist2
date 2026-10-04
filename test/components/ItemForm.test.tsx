@@ -30,9 +30,12 @@ describe('ItemForm — status toggle visibility', () => {
     expect(screen.getByRole('button', { name: 'Save as draft' })).toBeInTheDocument();
   });
 
-  it('shows the toggle when reviewing a proposal', () => {
+  // The review's status comes from the button pressed (Add to list or Add as
+  // draft), as a create's does.
+  it('has no status toggle when reviewing a proposal', () => {
     render(<ItemForm onSubmit={vi.fn()} onCancel={vi.fn()} mode="review" initialData={filled} />);
-    expect(screen.getByRole('radio', { name: /published/i })).toBeInTheDocument();
+    expect(screen.queryByRole('radio', { name: /published/i })).toBeNull();
+    expect(screen.queryByRole('radio', { name: /^draft$/i })).toBeNull();
   });
 
   it('hides the toggle in propose mode', () => {
@@ -46,6 +49,72 @@ describe('ItemForm — status toggle visibility', () => {
     render(<ItemForm onSubmit={vi.fn()} onCancel={vi.fn()} mode="edit" initialData={filled} />);
     expect(screen.queryByRole('radio', { name: /published/i })).toBeNull();
     expect(screen.queryByRole('radio', { name: /^draft$/i })).toBeNull();
+  });
+});
+
+describe('ItemForm — review submission', () => {
+  it('submits status "available" from the primary button, "draft" from the draft button', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(<ItemForm onSubmit={onSubmit} onCancel={vi.fn()} mode="review" initialData={filled} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /^submit$/i }));
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'available' }),
+        expect.anything()
+      )
+    );
+
+    onSubmit.mockClear();
+    fireEvent.click(screen.getByRole('button', { name: 'Save as draft' }));
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'draft' }),
+        expect.anything()
+      )
+    );
+  });
+});
+
+describe('ItemForm — a link the schema now refuses', () => {
+  // An item or proposal saved before only http(s) links were accepted can hold
+  // another scheme. The form says so as it opens, and won't save it back as it
+  // is: the owner fixes or clears it first (WIS-257).
+  it('says what is wrong with it as the form opens, and refuses to save it', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(
+      <ItemForm
+        onSubmit={onSubmit}
+        onCancel={vi.fn()}
+        mode="review"
+        initialData={{ ...filled, link: 'ftp://example.com/gift' }}
+      />
+    );
+    const link = screen.getByLabelText(/product link/i);
+    expect(link).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByText('Enter a web address like https://example.com')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /^submit$/i }));
+    await waitFor(() => expect(link).toHaveFocus());
+    expect(onSubmit).not.toHaveBeenCalled();
+
+    // Cleared, it saves, and the change sent clears the stored link.
+    fireEvent.change(link, { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: /^submit$/i }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    expect(onSubmit.mock.calls[0][1]).toEqual({ link: null });
+  });
+
+  it('shows no error for a valid link, or none, as the form opens', () => {
+    render(
+      <ItemForm
+        onSubmit={vi.fn()}
+        onCancel={vi.fn()}
+        mode="edit"
+        initialData={{ ...filled, link: 'https://example.com' }}
+      />
+    );
+    expect(screen.getByLabelText(/product link/i)).not.toHaveAttribute('aria-invalid', 'true');
   });
 });
 

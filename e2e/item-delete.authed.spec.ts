@@ -48,21 +48,26 @@ async function expectNoToast(page: Page, text: string) {
 
 // regression: the delete handlers ignored useDeleteItem's `false`, so a failed
 // delete still dropped the item from the list and closed its modal, and the
-// review modal's path toasted "Proposed item deleted" right after the error.
+// review modal's path toasted its success ("Proposal declined" now) right after
+// the error.
 for (const flow of [
   {
     from: 'edit',
     item: 'E2E Gift',
     open: 'Edit item',
     title: 'Edit item',
+    remove: 'Delete item',
+    confirm: 'Delete',
     success: 'Item deleted successfully',
   },
   {
     from: 'review',
     item: 'E2E Proposal',
     open: 'Review proposed item',
-    title: 'Review proposed item',
-    success: 'Proposed item deleted',
+    title: 'Someone proposed an item',
+    remove: 'Decline',
+    confirm: 'Decline',
+    success: 'Proposal declined',
   },
 ]) {
   test(`regression: a failed delete from the ${flow.from} modal keeps the item and the modal`, async ({
@@ -78,24 +83,24 @@ for (const flow of [
     const card = page.getByRole('article', { name: `Item: ${flow.item}` });
     await card.getByRole('button', { name: flow.open }).click();
     const dialog = page.getByRole('dialog', { name: flow.title });
-    await dialog.getByRole('button', { name: 'Delete item' }).click();
+    await dialog.getByRole('button', { name: flow.remove, exact: true }).click();
     await page
       .getByRole('alertdialog')
-      .getByRole('button', { name: 'Delete', exact: true })
+      .getByRole('button', { name: flow.confirm, exact: true })
       .click();
 
     await expect(toast(page, 'Something went wrong')).toBeVisible();
     await expectNoToast(page, flow.success);
     await expect(page.getByRole('alertdialog')).toBeHidden();
     await expect(dialog).toBeVisible();
-    await expect(dialog.getByRole('button', { name: 'Delete item' })).toBeEnabled();
+    await expect(dialog.getByRole('button', { name: flow.remove, exact: true })).toBeEnabled();
     await expect(card).toBeVisible();
   });
 }
 
 // regression: deleting a proposal toasted twice, the hook's generic "Item
-// deleted successfully" on top of the page's "Proposed item deleted".
-test('regression: deleting a proposal removes it and says so once', async ({ page }) => {
+// deleted successfully" on top of the page's own (now "Proposal declined").
+test('regression: declining a proposal removes it and says so once', async ({ page }) => {
   let deleted = false;
   await addProposal(page, () => !deleted);
   await answerItemDelete(page, () => {
@@ -105,11 +110,11 @@ test('regression: deleting a proposal removes it and says so once', async ({ pag
 
   const card = page.getByRole('article', { name: 'Item: E2E Proposal' });
   await card.getByRole('button', { name: 'Review proposed item' }).click();
-  const dialog = page.getByRole('dialog', { name: 'Review proposed item' });
-  await dialog.getByRole('button', { name: 'Delete item' }).click();
-  await page.getByRole('alertdialog').getByRole('button', { name: 'Delete', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Someone proposed an item' });
+  await dialog.getByRole('button', { name: 'Decline', exact: true }).click();
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Decline', exact: true }).click();
 
-  await expect(toast(page, 'Proposed item deleted')).toBeVisible();
+  await expect(toast(page, 'Proposal declined')).toBeVisible();
   await expectNoToast(page, 'Item deleted successfully');
   await expect(dialog).toBeHidden();
   await expect(card).toBeHidden();

@@ -24,12 +24,16 @@ function item(overrides: Partial<ApiItem>): ApiItem {
   } as ApiItem;
 }
 
-// Both item modals offer "Delete item" behind a confirmation; run every case on each.
+// Both item modals offer a delete behind a confirmation (the review's Decline);
+// run every case on each.
 const modals = [
   {
     name: 'EditItemModal',
     submitLabel: 'Save',
     submittingLabel: 'Saving…',
+    deleteLabel: 'Delete item',
+    confirmLabel: 'Delete',
+    pendingLabel: 'Deleting…',
     renderModal: (onDelete: () => Promise<void>, onClose: () => void) =>
       render(
         <EditItemModal
@@ -45,8 +49,12 @@ const modals = [
   },
   {
     name: 'ReviewItemModal',
-    submitLabel: 'Approve item',
-    submittingLabel: 'Approving…',
+    submitLabel: 'Add to list',
+    submittingLabel: 'Adding…',
+    // A review declines the proposal, which deletes it.
+    deleteLabel: 'Decline',
+    confirmLabel: 'Decline',
+    pendingLabel: 'Declining…',
     renderModal: (onDelete: () => Promise<void>, onClose: () => void) =>
       render(
         <ReviewItemModal
@@ -62,10 +70,7 @@ const modals = [
   },
 ];
 
-const deleteItemButton = () => screen.getByRole('button', { name: /^delete item$/i });
 const confirmation = () => screen.queryByRole('alertdialog');
-const confirmDelete = () =>
-  fireEvent.click(within(confirmation()!).getByRole('button', { name: /^delete$/i }));
 
 // An onDelete that stays in flight until the test calls `finish`.
 function pendingDelete() {
@@ -86,7 +91,13 @@ beforeAll(() => {
 afterAll(() => vi.restoreAllMocks());
 beforeEach(() => cleanup());
 
-describe.each(modals)('$name — delete outcome', ({ renderModal, submitLabel, submittingLabel }) => {
+describe.each(modals)('$name — delete outcome', (modal) => {
+  const { renderModal, submitLabel, submittingLabel, pendingLabel } = modal;
+  const deleteItemButton = () => screen.getByRole('button', { name: modal.deleteLabel });
+  const confirmButton = () =>
+    within(confirmation()!).getByRole('button', { name: modal.confirmLabel });
+  const confirmDelete = () => fireEvent.click(confirmButton());
+
   // The modal logs the rejection it catches; keep the test output clean.
   beforeEach(() => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -123,7 +134,7 @@ describe.each(modals)('$name — delete outcome', ({ renderModal, submitLabel, s
 
     await user.click(deleteItemButton());
     expect(within(confirmation()!).getByRole('button', { name: 'Cancel' })).toHaveFocus();
-    await user.click(within(confirmation()!).getByRole('button', { name: /^delete$/i }));
+    await user.click(confirmButton());
 
     await waitFor(() => expect(confirmation()).toBeNull());
     expect(deleteItemButton()).toHaveFocus();
@@ -160,7 +171,7 @@ describe.each(modals)('$name — delete outcome', ({ renderModal, submitLabel, s
 
     fireEvent.click(deleteItemButton());
     confirmDelete();
-    const pending = within(confirmation()!).getByRole('button', { name: 'Deleting…' });
+    const pending = within(confirmation()!).getByRole('button', { name: pendingLabel });
     expect(pending).toBeDisabled();
     fireEvent.click(pending);
     expect(onDelete).toHaveBeenCalledTimes(1);
@@ -171,14 +182,14 @@ describe.each(modals)('$name — delete outcome', ({ renderModal, submitLabel, s
 
   // regression: the form's submit button took its label from the disabled state,
   // which a delete sets too, so while a delete ran it read "Saving…" /
-  // "Approving…", as if the user's changes were being saved.
+  // "Adding…", as if the user's changes were being saved.
   it('regression: keeps the form disabled but not labelled as saving while the delete runs', async () => {
     const { onDelete, finish } = pendingDelete();
     renderModal(onDelete, vi.fn());
 
     fireEvent.click(deleteItemButton());
     confirmDelete();
-    expect(within(confirmation()!).getByRole('button', { name: 'Deleting…' })).toBeDisabled();
+    expect(within(confirmation()!).getByRole('button', { name: pendingLabel })).toBeDisabled();
     expect(screen.getByRole('button', { name: submitLabel })).toBeDisabled();
     expect(screen.queryByRole('button', { name: submittingLabel })).toBeNull();
     expect(deleteItemButton()).toBeDisabled();

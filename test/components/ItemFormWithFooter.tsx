@@ -5,7 +5,8 @@ import ItemFormFooter from '@/components/ItemFormFooter';
 /**
  * An `ItemForm` with its pinned footer's buttons, as the item modals draw them
  * (the buttons sit outside the form and submit it by its id), for tests of the
- * form alone. Cancel, then Save as draft (a create's), then the submit button.
+ * form alone. Cancel, then Save as draft (a create's or a review's), then the
+ * submit button.
  */
 export default function ItemFormWithFooter({
   submitLabel = 'Submit',
@@ -23,7 +24,7 @@ export default function ItemFormWithFooter({
         onCancel={props.onCancel}
         submitLabel={submitLabel}
         submittingLabel={submittingLabel}
-        saveAsDraft={(props.mode ?? 'create') === 'create'}
+        saveAsDraft={['create', 'review'].includes(props.mode ?? 'create')}
       />
     </>
   );

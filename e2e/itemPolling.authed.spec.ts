@@ -312,14 +312,18 @@ for (const flow of [
     item: 'E2E Gift',
     open: 'Edit item',
     title: 'Edit item',
+    remove: 'Delete item',
+    confirm: 'Delete',
     done: 'Item deleted successfully',
   },
   {
     from: 'review',
     item: polledProposal.name,
     open: 'Review proposed item',
-    title: 'Review proposed item',
-    done: 'Proposed item deleted',
+    title: 'Someone proposed an item',
+    remove: 'Decline',
+    confirm: 'Decline',
+    done: 'Proposal declined',
   },
 ]) {
   // regression: the delete handlers filtered the item out without bumping
@@ -349,7 +353,7 @@ for (const flow of [
     await card.getByRole('button', { name: flow.open }).click();
     await page
       .getByRole('dialog', { name: flow.title })
-      .getByRole('button', { name: 'Delete item' })
+      .getByRole('button', { name: flow.remove, exact: true })
       .click();
 
     // The poll reads the list while the item still exists, but only hands it
@@ -359,7 +363,7 @@ for (const flow of [
 
     await page
       .getByRole('alertdialog')
-      .getByRole('button', { name: 'Delete', exact: true })
+      .getByRole('button', { name: flow.confirm, exact: true })
       .click();
     await expect(page.getByRole('status').getByText(flow.done)).toBeVisible();
     await expect(card).toHaveCount(0);
@@ -447,8 +451,8 @@ for (const flow of [
         .getByRole('button', { name: 'Review proposed item' })
         .click();
       await page
-        .getByRole('dialog', { name: 'Review proposed item' })
-        .getByRole('button', { name: 'Approve item' })
+        .getByRole('dialog', { name: 'Someone proposed an item' })
+        .getByRole('button', { name: 'Add to list' })
         .click();
     },
     // Only a published item has owner buttons; a proposal is reviewed instead.
@@ -457,8 +461,8 @@ for (const flow of [
     reverted: (page: Page) =>
       cardOf(page, polledProposal.name).getByText('Proposed', { exact: true }),
     async settled(page: Page) {
-      await expect(page.getByRole('status').getByText('Item approved successfully')).toBeVisible();
-      await expect(page.getByRole('dialog', { name: 'Review proposed item' })).toBeHidden();
+      await expect(page.getByRole('status').getByText('Added to the list')).toBeVisible();
+      await expect(page.getByRole('dialog', { name: 'Someone proposed an item' })).toBeHidden();
     },
   },
   {
