@@ -286,6 +286,37 @@ describe('notificationLink', () => {
   });
 });
 
+describe('an invite to co-own a list', () => {
+  const invite = (inviteRole: NotificationView['inviteRole']) =>
+    make({
+      type: 'wishlist_invite',
+      actorUsername: 'chloe_r',
+      wishlistName: 'Garden',
+      wishlistId: 'w1',
+      inviteRole,
+    });
+
+  it('says co-own on an owner invite', () => {
+    expect(notificationText(invite('owner'))).toBe('@chloe_r invited you to co-own Garden');
+    expect(notificationParts(invite('owner'))).toEqual([
+      '@chloe_r invited you to co-own ',
+      { listName: 'Garden' },
+    ]);
+  });
+
+  it('reads as a plain invite as a member, or on a row from before the role was recorded', () => {
+    for (const role of ['member', null, undefined] as const) {
+      expect(notificationText(invite(role))).toBe('@chloe_r invited you to Garden');
+    }
+  });
+
+  it('reads as the answer once answered, whatever the role', () => {
+    expect(notificationText({ ...invite('owner'), inviteAnswer: 'accepted' })).toBe(
+      'You joined Garden'
+    );
+  });
+});
+
 describe('an answered invite', () => {
   const invite = (inviteAnswer: NotificationView['inviteAnswer']) =>
     make({

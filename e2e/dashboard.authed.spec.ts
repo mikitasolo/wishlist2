@@ -34,6 +34,8 @@ async function withNeedsYou(page: Page) {
             wishlistSlug: 'e2e-family-christmas',
             invitedByUsername: 'e2efriend',
             invitedByImage: null,
+            preview: null,
+            yourReservations: 1,
           },
         ],
       },
@@ -92,7 +94,10 @@ test('the dashboard opens on the greeting, what needs you and what is coming up'
   await expect(needsYou.getByRole('listitem')).toHaveCount(2);
   const invite = needsYou.getByRole('listitem').first();
   await expect(invite).toContainText('E2E Family Christmas');
-  await expect(invite).toContainText('anything you’ve reserved here will be released');
+  await expect(invite).toContainText('Co-owner');
+  await expect(invite).toContainText(
+    'You’ve reserved 1 gift here. Co-owners can’t see reservations, so accepting releases it.'
+  );
   await expect(invite.getByRole('button', { name: 'Accept' })).toBeVisible();
   await expect(invite.getByRole('button', { name: 'Decline' })).toBeVisible();
   await expect(needsYou.getByText('2 reservations changed')).toBeVisible();

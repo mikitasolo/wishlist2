@@ -114,6 +114,7 @@ export async function GET(request: NextRequest) {
         wishlistId: n.wishlist ? n.wishlist.toString() : null,
         itemName: n.itemName ?? null,
         inviteAnswer: n.inviteAnswer ?? null,
+        inviteRole: n.type === 'wishlist_invite' ? (n.inviteRole ?? null) : null,
         actorId: actor?.id ?? null,
         actorImage: actor?.image ?? null,
         followingActor: oneFollower && actor ? followed.has(actor.id) : null,

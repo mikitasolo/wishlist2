@@ -20,6 +20,10 @@ export const INVITE_ANSWERS = ['accepted', 'declined'] as const;
 
 export type InviteAnswer = (typeof INVITE_ANSWERS)[number];
 
+/** The role a `wishlist_invite` offers, recorded on its row. */
+export const INVITE_ROLES = ['owner', 'member'] as const;
+export type InviteRole = (typeof INVITE_ROLES)[number];
+
 // The client-facing shape (ids stringified) returned by /api/notifications.
 export interface NotificationView {
   _id: string;
@@ -40,6 +44,9 @@ export interface NotificationView {
   // pending, and on every other type. Optional, like `count`: a response from a
   // server older than it has none.
   inviteAnswer?: InviteAnswer | null;
+  // A `wishlist_invite`: the role it offers. Null on every other type and on an
+  // invite row written before it was recorded. Optional, like `count`.
+  inviteRole?: InviteRole | null;
   // The actor as they are now, looked up by the account the row recorded (never
   // by `actorUsername`, which can change hands) when the feed is read with
   // `?actors=1`, on the types that show one (`showsActor`): their id (for
@@ -155,6 +162,7 @@ function followText(n: NotificationView): string {
 function inviteParts(n: NotificationView): NotificationPart[] {
   if (n.inviteAnswer === 'accepted') return ['You joined ', list(n)];
   if (n.inviteAnswer === 'declined') return ['You declined the invite to ', list(n)];
+  if (n.inviteRole === 'owner') return [`${actor(n)} invited you to co-own `, list(n)];
   return [`${actor(n)} invited you to `, list(n)];
 }
 

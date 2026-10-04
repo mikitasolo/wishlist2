@@ -2,7 +2,7 @@ import mongoose from 'mongoose';
 import Notification, { NotificationType } from '@/models/Notification';
 import Wishlist from '@/models/Wishlist';
 import type { IWishlistInvite } from '@/models/WishlistInvite';
-import { showsActor, type InviteAnswer } from '@/lib/utils/notifications';
+import { showsActor, type InviteAnswer, type InviteRole } from '@/lib/utils/notifications';
 import { errorKind } from '@/lib/utils/errorKind';
 
 type Id = string | mongoose.Types.ObjectId;
@@ -17,6 +17,8 @@ interface CreateNotificationArgs {
   wishlistName?: string | null;
   wishlistSlug?: string | null;
   itemName?: string | null;
+  /** `wishlist_invite` only: the role it offers. */
+  inviteRole?: InviteRole | null;
 }
 
 /**
@@ -106,6 +108,9 @@ async function writeNotification(
       wishlistName: args.wishlistName ?? null,
       wishlistSlug: args.wishlistSlug ?? null,
       itemName: args.itemName ?? null,
+      ...(args.type === 'wishlist_invite' && args.inviteRole
+        ? { inviteRole: args.inviteRole }
+        : {}),
       read: false,
     });
     return row._id;
