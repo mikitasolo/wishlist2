@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Icon from './Icon';
+import { pickerTriggerClassName } from './fieldStyles';
 import { POPOVER_OPTION_ROW, POPOVER_SURFACE } from './popoverStyles';
 import {
   multiSelectSummary,
@@ -77,7 +78,7 @@ export default function MultiSelectDropdown<V extends string>({
         type="button"
         aria-label={ariaLabel}
         onClick={() => setIsOpen((v) => !v)}
-        className="flex h-9 w-full items-center justify-between gap-2 rounded-xl border border-border-strong bg-surface px-3.5 text-sm font-medium text-foreground outline-hidden field-focus transition-colors hover:bg-surface-hover"
+        className={`${pickerTriggerClassName('sm')} w-full`}
       >
         <span className="truncate">{multiSelectSummary(selected, options, isAll, allLabel)}</span>
         <Icon

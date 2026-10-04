@@ -13,7 +13,12 @@
 export type FieldSize = 'sm' | 'lg';
 
 const BORDER =
-  'rounded-xl border border-border-strong bg-surface text-foreground outline-hidden field-focus disabled:cursor-not-allowed';
+  'border border-border-strong bg-surface text-foreground outline-hidden field-focus disabled:cursor-not-allowed';
+
+export type FieldShape = 'rounded' | 'pill';
+
+/** `rounded-xl` by default; `pill` for a field that sits in page chrome (the header's search). */
+const SHAPE: Record<FieldShape, string> = { rounded: 'rounded-xl', pill: 'rounded-full' };
 
 const inputSizeStyles: Record<FieldSize, string> = {
   sm: 'h-9 px-3 text-sm',
@@ -26,18 +31,18 @@ const textareaSizeStyles: Record<FieldSize, string> = {
 };
 
 /** A plain text input. */
-export function inputClassName(size: FieldSize = 'lg'): string {
-  return `${BORDER} w-full ${inputSizeStyles[size]}`;
+export function inputClassName(size: FieldSize = 'lg', shape: FieldShape = 'rounded'): string {
+  return `${SHAPE[shape]} ${BORDER} w-full ${inputSizeStyles[size]}`;
 }
 
 /** A textarea. */
 export function textareaClassName(size: FieldSize = 'lg'): string {
-  return `${BORDER} w-full ${textareaSizeStyles[size]}`;
+  return `${SHAPE.rounded} ${BORDER} w-full ${textareaSizeStyles[size]}`;
 }
 
 /** The box that draws a field's border around a borderless input and what sits beside it. */
-export function fieldBoxClassName(size: FieldSize = 'lg'): string {
-  return `${BORDER} flex w-full items-center gap-2 has-[input:disabled]:cursor-not-allowed ${inputSizeStyles[size]}`;
+export function fieldBoxClassName(size: FieldSize = 'lg', shape: FieldShape = 'rounded'): string {
+  return `${SHAPE[shape]} ${BORDER} flex w-full items-center gap-2 has-[input:disabled]:cursor-not-allowed ${inputSizeStyles[size]}`;
 }
 
 /** The borderless input inside `fieldBoxClassName`. */
@@ -52,3 +57,12 @@ export const FIELD_HELPER = 'mt-1.5 text-xs text-muted-foreground';
 
 /** A field's error, under it. */
 export const FIELD_ERROR = 'mt-1.5 text-xs text-danger';
+
+/**
+ * A field-like trigger that opens a popup (`Select`'s, the filter dropdowns'):
+ * a field's border and focus, at the field's height, with a medium-weight
+ * label and a hover.
+ */
+export function pickerTriggerClassName(size: FieldSize = 'lg'): string {
+  return `flex items-center justify-between gap-2 ${SHAPE.rounded} ${BORDER} ${inputSizeStyles[size].replace('px-3 ', 'px-3.5 ')} font-medium transition-colors hover:bg-surface-hover disabled:opacity-50`;
+}

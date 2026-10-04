@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Icon from '@/components/Icon';
 import IconButton from '@/components/IconButton';
+import SearchField from '@/components/SearchField';
 import Avatar from '@/components/Avatar';
 import {
   POPOVER_GROUP_LABEL,
@@ -340,54 +341,36 @@ export default function GlobalSearch({ variant = 'header', onOpenChange }: Globa
           : 'fixed inset-x-0 top-0 z-50 flex h-14 items-center gap-2 border-b border-border bg-surface px-4 sm:relative sm:inset-auto sm:top-auto sm:z-auto sm:h-auto sm:border-0 sm:bg-transparent sm:px-0'
       }
     >
-      <div
-        className={
-          inline
-            ? 'flex w-full items-center gap-2 rounded-full border border-border-strong bg-surface pl-4 pr-1.5 shadow-xs field-focus'
-            : 'flex min-w-0 flex-1 items-center gap-2 rounded-full border border-border-strong bg-surface pl-3.5 pr-1.5 shadow-xs field-focus sm:w-72 sm:flex-none'
-        }
-      >
-        <Icon
-          name="search"
-          size={inline ? 18 : 16}
-          className="flex-shrink-0 text-muted-foreground"
-        />
-        <input
-          ref={inputRef}
-          role="combobox"
-          aria-autocomplete="list"
-          aria-expanded={listShown}
-          aria-controls={listShown ? listboxId : undefined}
-          aria-activedescendant={activeOption ? optionId(active) : undefined}
-          value={q}
-          onChange={(e) => {
-            setQ(e.target.value);
-            setOpen(true);
-          }}
-          onFocus={() => setOpen(true)}
-          onClick={() => setOpen(true)}
-          onKeyDown={onKeyDown}
-          placeholder="Search people & wishlists"
-          aria-label="Search people and wishlists"
-          className={`${inline ? 'h-11' : 'h-10'} min-w-0 flex-1 border-0 bg-transparent text-body outline-hidden`}
-          autoComplete="off"
-          autoCapitalize="none"
-          spellCheck={false}
-        />
-        {inline ? (
-          q && (
-            <IconButton
-              type="button"
-              icon="close"
-              label="Clear search"
-              onClick={clear}
-              shape="pill"
-            />
+      <SearchField
+        ref={inputRef}
+        role="combobox"
+        aria-autocomplete="list"
+        aria-expanded={listShown}
+        aria-controls={listShown ? listboxId : undefined}
+        aria-activedescendant={activeOption ? optionId(active) : undefined}
+        value={q}
+        onChange={(e) => {
+          setQ(e.target.value);
+          setOpen(true);
+        }}
+        onFocus={() => setOpen(true)}
+        onClick={() => setOpen(true)}
+        onKeyDown={onKeyDown}
+        placeholder="Search people & wishlists"
+        aria-label="Search people and wishlists"
+        autoComplete="off"
+        autoCapitalize="none"
+        spellCheck={false}
+        size={inline ? 'lg' : 'sm'}
+        shape="pill"
+        onClear={clear}
+        trailing={
+          inline ? undefined : (
+            <IconButton icon="close" label="Close search" onClick={collapse} shape="pill" />
           )
-        ) : (
-          <IconButton icon="close" label="Close search" onClick={collapse} shape="pill" />
-        )}
-      </div>
+        }
+        className={inline ? undefined : 'min-w-0 flex-1 sm:w-72 sm:flex-none'}
+      />
 
       {open && (note !== null || listShown) && (
         <div

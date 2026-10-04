@@ -6,12 +6,15 @@ import {
   BOXED_INPUT,
   fieldBoxClassName,
   inputClassName,
+  type FieldShape,
   type FieldSize,
 } from '@/components/fieldStyles';
 
 export interface InputProps extends Omit<ComponentPropsWithRef<'input'>, 'size'> {
   /** `lg` (44px, the default) in a form, `sm` (36px) in a toolbar. */
   size?: FieldSize;
+  /** `rounded` (the default), or `pill` for a field in page chrome. */
+  shape?: FieldShape;
   /** Shown inside the field, before the text (a currency symbol, `@`, an icon). */
   leading?: ReactNode;
   /** Shown inside the field, after the text (a status, a clear button). */
@@ -30,6 +33,7 @@ export interface InputProps extends Omit<ComponentPropsWithRef<'input'>, 'size'>
  */
 export default function Input({
   size = 'lg',
+  shape = 'rounded',
   leading,
   trailing,
   className = '',
@@ -44,13 +48,13 @@ export default function Input({
         type={type}
         {...props}
         {...control}
-        className={`${inputClassName(size)} ${className}`}
+        className={`${inputClassName(size, shape)} ${className}`}
       />
     );
   }
 
   return (
-    <div className={`${fieldBoxClassName(size)} ${className}`}>
+    <div className={`${fieldBoxClassName(size, shape)} ${className}`}>
       {leading !== undefined && (
         <span className="flex flex-shrink-0 items-center text-muted-foreground">{leading}</span>
       )}

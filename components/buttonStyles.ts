@@ -22,6 +22,8 @@ export type ButtonVariant =
   | 'danger-ghost'
   | 'destructive'
   | 'warning'
+  | 'success'
+  | 'success-soft'
   | 'cancel'
   | 'ghost'
   | 'scrim';
@@ -53,6 +55,11 @@ const variantStyles: Record<ButtonVariant, string> = {
   /** Confirms something that needs care: solid amber. */
   warning:
     'bg-warning-fill text-white shadow-sm hover:bg-warning-fill-hover active:scale-[0.98] disabled:hover:bg-warning-fill',
+  /** Confirms a booking: the success fill of the "Reserved by you" badge. */
+  success:
+    'bg-success-fill text-white shadow-sm hover:bg-success-fill-hover active:scale-[0.98] disabled:hover:bg-success-fill',
+  /** A done state in the success tone (a gift given). */
+  'success-soft': 'bg-success/12 text-success disabled:hover:bg-success/12',
   cancel: 'bg-muted text-foreground hover:bg-surface-2 active:scale-[0.98] disabled:hover:bg-muted',
   ghost: 'text-foreground hover:bg-muted active:scale-[0.98] disabled:hover:bg-transparent',
   /** Over a photo (the preview's Replace and Remove): white on a dark, blurred scrim. */

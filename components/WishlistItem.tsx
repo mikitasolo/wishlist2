@@ -14,10 +14,13 @@ import ItemCardView from '@/components/ItemCardView';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import Menu, { type MenuItem } from '@/components/Menu';
 import { statusMeta } from '@/lib/utils/itemStatus';
-import { TONE_CLASSES } from '@/lib/utils/statusTones';
 import IconButton from '@/components/IconButton';
 import ItemSheet from '@/components/ItemSheet';
-import { iconButtonClassName } from '@/components/buttonStyles';
+import {
+  buttonClassName,
+  iconButtonClassName,
+  type ButtonVariant,
+} from '@/components/buttonStyles';
 import {
   cardMenuActions,
   linkSlot,
@@ -39,9 +42,11 @@ import { SM_UP_QUERY, useMediaQuery } from '@/lib/hooks/useMediaQuery';
 // rendered while it's open, offers the link below `sm` only. Nothing hidden is
 // ever focusable: `display: none` takes it out of the tab order and the
 // accessibility tree.
-const ROW_CONTROL = 'h-10 rounded-xl text-sm font-semibold';
-
-const PRIMARY_BASE = `${ROW_CONTROL} inline-flex min-w-0 flex-1 items-center justify-center @container gap-1 px-1.5 sm:gap-1.5 sm:px-3 transition-all duration-200 cursor-pointer active:scale-[0.98] disabled:cursor-not-allowed disabled:active:scale-100 aria-disabled:cursor-not-allowed aria-disabled:opacity-60 aria-disabled:active:scale-100`;
+// The primary is a `md` (40px) `Button` that fills the row: it shrinks with the
+// card (tighter padding below `sm`), is a size container for its icon (below),
+// and, while its status change is in flight, is held with `aria-disabled`.
+const PRIMARY_EXTRAS =
+  'min-w-0 flex-1 @container gap-1! px-1.5! sm:gap-1.5! sm:px-3! aria-disabled:cursor-not-allowed aria-disabled:opacity-60 aria-disabled:active:scale-100';
 
 // The primary's icon gives way to its label where the button is too narrow
 // for both (a two-column card on a phone narrower than about 390px): the
@@ -50,18 +55,24 @@ const PRIMARY_ICON = 'flex-shrink-0 @max-[5.25rem]:hidden';
 
 const PRIMARY_TONES = {
   // Reserve: the success fill of the "Reserved by you" badge.
-  book: 'bg-success-fill text-white shadow-sm hover:bg-success-fill-hover',
+  book: { variant: 'success' },
   // Publishing, reviewing, opening the product page.
-  primary: 'bg-primary-600 text-white shadow-sm hover:bg-primary-500',
+  primary: { variant: 'primary' },
   // Editing: always there for an owner, so it doesn't shout.
-  soft: 'bg-primary-500/12 text-accent hover:bg-primary-500/18',
+  soft: { variant: 'soft' },
   // Undoing your own booking.
-  neutral: 'bg-muted text-foreground hover:bg-surface-2',
-  // A gift you've given: done, in the success tone of your booking.
-  given: TONE_CLASSES.success.tint,
+  neutral: { variant: 'cancel' },
+  // A gift you've given: done, in the success tone of your booking. Disabled,
+  // but not dimmed: it's a state, not an unavailable action.
+  given: { variant: 'success-soft', extra: 'disabled:opacity-100!' },
   // Reserved by someone else: nothing to do.
-  off: 'bg-muted text-muted-foreground',
-} as const;
+  off: { variant: 'cancel', extra: 'text-muted-foreground! disabled:opacity-100!' },
+} as const satisfies Record<string, { variant: ButtonVariant; extra?: string }>;
+
+const primaryClassName = (tone: keyof typeof PRIMARY_TONES) => {
+  const t: { variant: ButtonVariant; extra?: string } = PRIMARY_TONES[tone];
+  return `${buttonClassName({ variant: t.variant, size: 'md' })} ${PRIMARY_EXTRAS} ${t.extra ?? ''}`;
+};
 
 const ICON_BUTTON = `${iconButtonClassName({ variant: 'secondary', size: 'md' })} aria-expanded:bg-muted aria-expanded:text-foreground aria-disabled:cursor-not-allowed aria-disabled:opacity-60`;
 
@@ -506,7 +517,7 @@ function WishlistItem({
       disabled={action.unavailable}
       aria-disabled={action.changesStatus && isUpdating ? true : undefined}
       aria-label={action.ariaLabel}
-      className={`${PRIMARY_BASE} ${PRIMARY_TONES[action.tone]}`}
+      className={primaryClassName(action.tone)}
     >
       <Icon name={action.icon} size={16} className={PRIMARY_ICON} />
       {action.shortLabel && !inSheet ? (
@@ -569,7 +580,7 @@ function WishlistItem({
       {primary ? (
         primaryButton(primary)
       ) : productPage ? (
-        <a {...productPage} className={`${PRIMARY_BASE} ${PRIMARY_TONES.primary}`}>
+        <a {...productPage} className={primaryClassName('primary')}>
           <Icon name="external-link" size={16} className={PRIMARY_ICON} />
           <span className="truncate">View item</span>
         </a>
