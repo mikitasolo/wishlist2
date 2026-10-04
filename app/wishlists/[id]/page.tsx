@@ -99,6 +99,7 @@ import {
 } from '@/lib/utils/listChips';
 import { useListChip } from '@/lib/hooks/useListChip';
 import { useItemDeepLink } from '@/lib/hooks/useItemDeepLink';
+import { useStickyItems } from '@/lib/hooks/useStickyItems';
 import { useListPrices } from '@/lib/hooks/useListPrices';
 import { TONE_CLASSES } from '@/lib/utils/statusTones';
 import { useReceivedToast } from '@/lib/hooks/useReceivedToast';
@@ -1372,9 +1373,24 @@ export default function WishlistDetail() {
     [items, activeChip, viewerRole, viewerId, sortBy]
   );
 
-  const sortedItems = useMemo(
+  const filteredItems = useMemo(
     () => searchItemsByName(chipItems, searchQuery),
     [chipItems, searchQuery]
+  );
+
+  // A card the viewer reserves, releases, publishes or marks stays in its
+  // slot, and in view, until they change the chip, search or sort (WIS-297).
+  const { items: sortedItems, pin: pinItem } = useStickyItems(
+    filteredItems,
+    items,
+    JSON.stringify([wishlistId, viewerRole, activeChip, sortBy, searchQuery])
+  );
+  const handleStickyCardUpdate = useCallback(
+    (id: string, updates: Partial<ApiItem>) => {
+      if (updates.status !== undefined) pinItem(id);
+      return handleCardUpdate(id, updates);
+    },
+    [pinItem, handleCardUpdate]
   );
 
   // The list has no items at all, as far as this viewer can see: no filter is
@@ -1762,7 +1778,7 @@ export default function WishlistDetail() {
                       <WishlistItem
                         key={item._id}
                         item={item}
-                        onUpdate={handleCardUpdate}
+                        onUpdate={handleStickyCardUpdate}
                         onEdit={
                           // Owners can edit non-proposed items
                           // Proposers can edit their own proposed items
