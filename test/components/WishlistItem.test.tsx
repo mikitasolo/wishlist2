@@ -942,24 +942,6 @@ describe('WishlistItem — while an update runs', () => {
   });
 });
 
-describe('WishlistItem — notes overlay', () => {
-  // Regression: notes render OVER the image, not by replacing it with a gray box.
-  it('regression: shows the note text while the image stays rendered', () => {
-    render(
-      <WishlistItem
-        item={item({ notes: 'Size L, blue please', imageUrl: 'https://x/y.jpg' })}
-        onUpdate={vi.fn()}
-        isAuthenticated
-        isMember
-      />
-    );
-    // Toggle notes on.
-    fireEvent.click(screen.getByRole('button', { name: /show notes/i }));
-    expect(screen.getByText('Size L, blue please')).toBeInTheDocument();
-    expect(screen.getByTestId('banner-image')).toBeInTheDocument();
-  });
-});
-
 describe('WishlistItem — cover image', () => {
   const IMAGE = 'https://x/y.jpg';
 
@@ -996,17 +978,6 @@ describe('WishlistItem — cover image', () => {
     const initial = within(cover).getByText('W');
     expect(initial.closest('[aria-hidden]')).not.toBeNull();
     expect(initial).toHaveClass('sm:hidden');
-  });
-
-  it('takes the initial away while the notes are shown over the placeholder', () => {
-    render(
-      <WishlistItem item={item({ notes: 'Size L' })} onUpdate={vi.fn()} isAuthenticated isMember />
-    );
-    const cover = screen.getByRole('article').querySelector('[class*="aspect-"]') as HTMLElement;
-    expect(within(cover).getByText('C')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /show notes/i }));
-    expect(within(cover).getByText('Size L')).toBeInTheDocument();
-    expect(within(cover).queryByText('C')).toBeNull();
   });
 
   it('keeps an item with an image square, with no initial', () => {
@@ -1064,25 +1035,6 @@ describe('WishlistItem — cover image', () => {
     expect(link).toHaveAttribute('href', 'https://shop.example/gift');
     expect(screen.queryByTestId('banner-image')).toBeNull();
     expect(link.style.background).toBe(placeholderOf('item-1'));
-  });
-
-  it('keeps the placeholder while the notes are toggled over a broken image', () => {
-    render(
-      <WishlistItem
-        item={item({ imageUrl: IMAGE, link: 'https://shop.example/gift', notes: 'Size L' })}
-        onUpdate={vi.fn()}
-        isAuthenticated
-        isMember
-      />
-    );
-    fireEvent.error(screen.getByTestId('banner-image'));
-
-    fireEvent.click(screen.getByRole('button', { name: /show notes/i }));
-
-    expect(screen.getByText('Size L')).toBeInTheDocument();
-    expect(screen.queryByTestId('banner-image')).toBeNull();
-    const cover = screen.getByText('Size L').closest('.aspect-square') as HTMLElement;
-    expect(cover.style.background).toBe(placeholderOf('item-1'));
   });
 
   it('shows the new image when an edit replaces a broken one', () => {

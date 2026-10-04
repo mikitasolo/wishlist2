@@ -34,3 +34,13 @@ export function isHttpUrl(value: string): boolean {
     return false;
   }
 }
+
+/**
+ * The domain a product link opens ("amazon.de" for https://www.amazon.de/dp/1),
+ * shown beside the link so a gifter knows where it goes. Null for anything
+ * that isn't an absolute http(s) URL: such a link isn't offered at all.
+ */
+export function linkDomain(value: string | null | undefined): string | null {
+  if (!value || !isHttpUrl(value)) return null;
+  return new URL(value).hostname.replace(/^www\./, '') || null;
+}

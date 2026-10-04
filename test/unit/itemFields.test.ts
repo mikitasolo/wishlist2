@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isHttpUrl, normalizeItemLink } from '@/lib/utils/itemFields';
+import { isHttpUrl, linkDomain, normalizeItemLink } from '@/lib/utils/itemFields';
 import { createItemSchema, updateItemSchema } from '@/lib/validations';
 
 describe('normalizeItemLink', () => {
@@ -54,5 +54,20 @@ describe('item schemas: link', () => {
   it('leaves the link out when none is sent, and clears it with null on update', () => {
     expect(createItemSchema.safeParse({ name: 'x' }).success).toBe(true);
     expect(updateItemSchema.safeParse({ link: null }).success).toBe(true);
+  });
+});
+
+describe('linkDomain', () => {
+  it("names a link's domain, without www.", () => {
+    expect(linkDomain('https://www.amazon.de/dp/1?tag=x')).toBe('amazon.de');
+    expect(linkDomain('http://shop.example:8080/x')).toBe('shop.example');
+  });
+
+  it('gives nothing for a link that is not http(s)', () => {
+    expect(linkDomain('javascript:alert(1)')).toBeNull();
+    expect(linkDomain('data:text/html,hi')).toBeNull();
+    expect(linkDomain('amazon.de/dp/1')).toBeNull();
+    expect(linkDomain('')).toBeNull();
+    expect(linkDomain(null)).toBeNull();
   });
 });

@@ -379,6 +379,25 @@
   animation: dialog-in 0.26s cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 
+/* A bottom sheet (BaseModal's `sheet`) rises from the screen's bottom below
+   `sm`, and opens as a dialog from `sm` up, where it is one. */
+@keyframes sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+.animate-sheet-in {
+  animation: sheet-in 0.3s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+@media (width >= 40rem) {
+  .animate-sheet-in {
+    animation: dialog-in 0.26s cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+}
+
 /* Skeleton shimmer */
 @keyframes shimmer {
   100% {
@@ -429,6 +448,7 @@
   .animate-toast-in,
   .animate-fade-in,
   .animate-dialog-in,
+  .animate-sheet-in,
   .skeleton::after {
     animation: none;
   }
