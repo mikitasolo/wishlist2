@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import mongoose from 'mongoose';
-import { SESSION_USER_FIELDS, sessionPayload } from '@/lib/utils/sessionPayload';
+import { SESSION_USER_FIELDS, clientSession, sessionPayload } from '@/lib/utils/sessionPayload';
 
 const id = new mongoose.Types.ObjectId();
 const EXPIRES = new Date('2026-10-31T12:00:00.000Z');
@@ -125,5 +125,48 @@ describe('sessionPayload', () => {
     expect(() => sessionPayload(undefined, null, EXPIRES)).toThrow('No user id for the session');
     expect(() => sessionPayload({ id: 42, email: 'me@example.com' }, null, EXPIRES)).toThrow();
     expect(() => sessionPayload({ id: '' }, null, EXPIRES)).toThrow();
+  });
+});
+
+describe('clientSession', () => {
+  const expires = EXPIRES.toISOString();
+
+  it('keeps exactly the allowlisted fields and expires', () => {
+    const session = sessionPayload(
+      { id: 'u1', email: 'me@example.com', username: 'me', defaultCurrency: 'EUR' },
+      null,
+      EXPIRES
+    );
+    expect(clientSession(session)).toEqual(session);
+  });
+
+  // The home page hands this to the browser in its HTML: a raw database row
+  // (Auth.js's `{ ...sessionRow, user: userRow }`) must lose everything else,
+  // the session token above all, even if `auth()` ever returned one.
+  it('drops a session token, a raw row’s fields and anything else', () => {
+    const raw = {
+      sessionToken: 'secret-token',
+      userId: 'u1',
+      expires,
+      user: {
+        id: 'u1',
+        email: 'me@example.com',
+        username: 'me',
+        emailVerified: new Date(),
+        currencyChosenAt: new Date(),
+        privacy: { profileVisibility: 'friends' },
+        _id: 'u1',
+      },
+    };
+    const out = clientSession(raw as never);
+    expect(out).toEqual({ user: { id: 'u1', email: 'me@example.com', username: 'me' }, expires });
+    expect(JSON.stringify(out)).not.toContain('secret-token');
+  });
+
+  it('is null for no session, or one without a user id', () => {
+    expect(clientSession(null)).toBeNull();
+    expect(clientSession(undefined)).toBeNull();
+    expect(clientSession({ user: { email: 'me@example.com' }, expires } as never)).toBeNull();
+    expect(clientSession({ user: { id: '' }, expires } as never)).toBeNull();
   });
 });

@@ -39,7 +39,7 @@ vi.mock('@/components/FollowListModal', () => ({ default: () => null }));
 vi.mock('@/components/ShareButton', () => ({ default: () => null }));
 vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }));
 
-import Home from '@/app/page';
+import Home from '@/components/Dashboard';
 import MyWishlistsPage from '@/app/wishlists/mine/page';
 import SharedWishlistsPage from '@/app/wishlists/shared/page';
 import UserProfile from '@/app/users/[username]/page';

@@ -81,3 +81,24 @@ test('regression: the session endpoint has the user’s id and username, never t
   expect(token).toBeTruthy();
   expect(text).not.toContain(token!);
 });
+
+// The home page reads the session on the server (WIS-269) and puts it in its
+// HTML, so it's the same allowlist as the session endpoint, and the page is
+// never cached for anyone else.
+test('the home page’s server HTML is signed in, private, and has no session token', async ({
+  page,
+}) => {
+  const res = await page.request.get('/');
+  expect(res.status()).toBe(200);
+  expect(res.headers()['cache-control']).toMatch(/private|no-store/);
+  const html = await res.text();
+
+  expect(html).toContain('e2euser');
+  expect(html).not.toContain('Wishlists your friends can shop from');
+  expect(html).not.toContain('sessionToken');
+  const token = (await page.context().cookies()).find(
+    (c) => c.name === 'authjs.session-token'
+  )?.value;
+  expect(token).toBeTruthy();
+  expect(html).not.toContain(token!);
+});

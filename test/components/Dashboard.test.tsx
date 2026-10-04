@@ -70,7 +70,7 @@ vi.mock('@/components/CreateWishlistModal', () => ({
 vi.mock('@/components/ShareButton', () => ({ default: () => null }));
 vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }));
 
-import Home from '@/app/page';
+import Home from '@/components/Dashboard';
 import { atWidth } from './viewport';
 
 function list(id: string, name: string, fields: Record<string, unknown> = {}) {

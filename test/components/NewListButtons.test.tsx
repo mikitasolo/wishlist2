@@ -43,7 +43,7 @@ vi.mock('@/components/CreateWishlistModal', () => ({
 }));
 
 import AppHeader from '@/components/AppHeader';
-import Home from '@/app/page';
+import Home from '@/components/Dashboard';
 import MyWishlistsPage from '@/app/wishlists/mine/page';
 import { atWidth } from './viewport';
 
