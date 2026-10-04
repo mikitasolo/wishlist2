@@ -5,7 +5,8 @@ import {
   RequestTimeoutError,
   withRequestTimeout,
 } from '@/lib/utils/requestTimeout';
-import { createMutationTracker, updateItemOptimistically } from '@/lib/utils/itemListMerge';
+import { updateItemOptimistically } from '@/lib/utils/itemListMerge';
+import { createMutationTracker } from '@/lib/utils/mutationTracker';
 import type { ApiItem } from '@/types/api';
 
 // A request that never answers, like a fetch on a dropped connection: it only

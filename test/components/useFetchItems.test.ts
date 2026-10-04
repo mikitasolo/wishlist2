@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, cleanup } from '@testing-library/react';
 import { useFetchItems } from '@/lib/hooks/useItems';
 import { clearPendingRequests } from '@/lib/utils/requestDeduplication';
-import { createMutationTracker } from '@/lib/utils/itemListMerge';
+import { createMutationTracker } from '@/lib/utils/mutationTracker';
 import { ITEM_REQUEST_TIMEOUT_MS, RequestTimeoutError } from '@/lib/utils/requestTimeout';
 import { ReadRefusedError } from '@/lib/utils/resourceRead';
 import type { ApiItem } from '@/types/api';

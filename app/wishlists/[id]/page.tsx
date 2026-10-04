@@ -55,11 +55,8 @@ import {
   type WishlistSettings,
   type WishlistSettingsForm,
 } from '@/lib/utils/wishlistSettings';
-import {
-  createMutationTracker,
-  prependCreatedItem,
-  updateItemOptimistically,
-} from '@/lib/utils/itemListMerge';
+import { prependCreatedItem, updateItemOptimistically } from '@/lib/utils/itemListMerge';
+import { createMutationTracker } from '@/lib/utils/mutationTracker';
 import { RequestTimeoutError, withRequestTimeout } from '@/lib/utils/requestTimeout';
 import { createSubmissionKeys, IDEMPOTENCY_HEADER } from '@/lib/utils/submissionKey';
 import { canCopyItem } from '@/lib/utils/itemCopy';
