@@ -99,6 +99,7 @@ import {
 import { useListChip } from '@/lib/hooks/useListChip';
 import { useListPrices } from '@/lib/hooks/useListPrices';
 import { TONE_CLASSES } from '@/lib/utils/statusTones';
+import { useReserveToast } from '@/lib/hooks/useReserveToast';
 import { useFetchItems, useUpdateItem, useCreateItem, useDeleteItem } from '@/lib/hooks/useItems';
 
 type PageLoad = 'loading' | 'ready' | 'unavailable' | 'failed';
@@ -670,6 +671,16 @@ export default function WishlistDetail() {
         reconcile: () => fetchItems(true),
       }),
     [updateItemHook, session?.user?.id, fetchItems, mutations]
+  );
+
+  // A member's reserve says what it means and where it lives (WIS-260).
+  const reserveOwnerNames = useMemo(
+    () => (owners.ids.length === 1 ? owners.usernames : []),
+    [owners]
+  );
+  const handleCardUpdate = useReserveToast<ApiItem>(
+    (id, updates) => handleUpdateItem(id, updates as Partial<ApiItem>),
+    { isOwner, ownerUsernames: reserveOwnerNames }
   );
 
   const handleProposeItem = useCallback(
@@ -1694,7 +1705,7 @@ export default function WishlistDetail() {
                       <WishlistItem
                         key={item._id}
                         item={item}
-                        onUpdate={handleUpdateItem}
+                        onUpdate={handleCardUpdate}
                         onEdit={
                           // Owners can edit non-proposed items
                           // Proposers can edit their own proposed items
