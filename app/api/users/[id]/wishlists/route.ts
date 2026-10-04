@@ -146,7 +146,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // opening one (`getWishlistViewAccess` with no viewer, which asks nothing
     // of the database). Anyone else's answer carries no count or flag about
     // lists they can't see. Archived lists aren't on the profile, so they're
-    // in neither number.
+    // in neither number. A friends-only profile still counts its public lists:
+    // a visitor can't browse them here, but each one's own link opens for
+    // them, so a lower count would understate what they can see.
     if (isSelf) {
       const admitted = await Promise.all(
         uniqueWishlists.map(async (w) => (await getWishlistViewAccess(w, null)).allowed)
