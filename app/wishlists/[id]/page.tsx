@@ -1380,7 +1380,12 @@ export default function WishlistDetail() {
 
   // `?item=<id>` (the Reserved page's View on list): scroll to that item and
   // highlight it, clearing a chip or search that would hide it.
-  const itemIds = useMemo(() => items.map((i) => i._id), [items]);
+  // What All shows this viewer, so a link to anything else (a draft sent to
+  // a member, say) does nothing rather than resetting their view.
+  const itemIds = useMemo(
+    () => orderListItems(items, 'all', viewerRole, viewerId, sortBy).map((i) => i._id),
+    [items, viewerRole, viewerId, sortBy]
+  );
   const isItemShown = useCallback(
     (id: string) => sortedItems.some((i) => i._id === id),
     [sortedItems]
