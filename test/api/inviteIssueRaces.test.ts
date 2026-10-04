@@ -97,8 +97,8 @@ async function kickCarol() {
   });
 }
 
-function issueTo(invitedUserId: string, role: 'owner' | 'member') {
-  return issueWishlistInvite({
+async function issueTo(invitedUserId: string, role: 'owner' | 'member') {
+  const issued = await issueWishlistInvite({
     wishlistId: wid,
     wishlistName: 'Family list',
     role,
@@ -108,6 +108,8 @@ function issueTo(invitedUserId: string, role: 'owner' | 'member') {
     invitedUserId,
     invitedUserEmail: 'invitee@x.com',
   });
+  if (issued === 'capped') throw new Error('invite capped');
+  return issued;
 }
 
 describe('issueWishlistInvite and a cancel landing before its notification', () => {

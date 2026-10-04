@@ -13,6 +13,7 @@ import { isWishlistOwner, ownerIds } from '@/lib/utils/wishlistOwners';
 import {
   isInvitePaused,
   issueWishlistInvite,
+  pendingInviteCapResponse,
   withdrawUnlessInviterOwns,
 } from '@/lib/utils/wishlistInvites';
 import { publicDisplayName } from '@/lib/utils/displayName';
@@ -260,6 +261,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         { status: 400 }
       );
     }
+    // Too many pending invites already wait for them (WIS-40): nothing was sent.
+    if (invite === 'capped') return pendingInviteCapResponse();
 
     // The re-read above only narrows the race with a co-owner removing or
     // demoting the caller: that removal's `cancelInvitesSentBy` may have read

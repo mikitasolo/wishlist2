@@ -96,8 +96,8 @@ async function pendingInvite(
     actorUsername: 'alice',
     invitedUserId,
   });
-  expect(invite).not.toBeNull();
-  return invite!._id.toString();
+  if (!invite || invite === 'capped') throw new Error('invite not issued');
+  return invite._id.toString();
 }
 
 const invitesNotifications = (user: string, wishlist: string) =>

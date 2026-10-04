@@ -18,6 +18,7 @@ import {
   cancelInvitesSentBy,
   cancelPendingInvites,
   issueWishlistInvite,
+  pendingInviteCapResponse,
   withdrawInvite,
   withdrawUnlessInviterOwns,
 } from '@/lib/utils/wishlistInvites';
@@ -208,6 +209,8 @@ export async function POST(
         { status: 400 }
       );
     }
+    // Too many pending invites already wait for them (WIS-40): nothing was sent.
+    if (invite === 'capped') return pendingInviteCapResponse();
 
     // The membership check above ran before the invite existed, so a kick or
     // leave that landed since then cancelled their invites while this one wasn't
