@@ -3,6 +3,7 @@ import {
   profileChanges,
   profileSettings,
   rebaseProfileForm,
+  settingChange,
   type ProfileSettings,
 } from '@/lib/utils/profileSettings';
 
@@ -182,5 +183,25 @@ describe('rebaseProfileForm', () => {
 
     expect(next).toEqual(reloaded);
     expect(profileChanges(next, reloaded)).toEqual({});
+  });
+});
+
+describe('settingChange', () => {
+  it('sends the one setting as profileChanges would, a privacy one under privacy', () => {
+    expect(settingChange('searchable', false)).toEqual({ privacy: { searchable: false } });
+    expect(settingChange('whoCanInvite', 'nobody')).toEqual({
+      privacy: { whoCanInvite: 'nobody' },
+    });
+    expect(settingChange('profileVisibility', 'friends')).toEqual({
+      privacy: { profileVisibility: 'friends' },
+    });
+    expect(settingChange('defaultCurrency', 'pln')).toEqual({ defaultCurrency: 'PLN' });
+    expect(settingChange('image', NEW_PHOTO)).toEqual({ image: NEW_PHOTO });
+    expect(settingChange('username', 'Alice')).toEqual({ username: 'alice' });
+    expect(settingChange('bio', ' Mugs. ')).toEqual({ bio: 'Mugs.' });
+  });
+
+  it('clears the photo with an empty string, as profileChanges does', () => {
+    expect(settingChange('image', null)).toEqual({ image: '' });
   });
 });

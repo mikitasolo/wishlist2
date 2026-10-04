@@ -132,6 +132,33 @@ export function profileChanges(form: ProfileSettings, saved: ProfileSettings): P
 }
 
 /**
+ * What a save of the one setting `key`, set to `value`, sends: shaped and
+ * stored-cased as `profileChanges` would send it (a privacy setting under
+ * `privacy`), but sent whatever the profile was last read as. The settings
+ * that save as they're changed use it: the control's change is the intent, and
+ * a save answer that landed out of order could leave the profile last read
+ * already showing `value`, which would otherwise send nothing.
+ */
+export function settingChange<K extends keyof ProfileSettings>(
+  key: K,
+  value: ProfileSettings[K]
+): ProfileChanges {
+  const settings = { [key]: value } as Partial<ProfileSettings>;
+  switch (key) {
+    case 'username':
+      return { username: settings.username!.toLowerCase() };
+    case 'image':
+      return { image: settings.image || '' };
+    case 'bio':
+      return { bio: settings.bio!.trim() };
+    case 'defaultCurrency':
+      return { defaultCurrency: settings.defaultCurrency!.toUpperCase() };
+    default:
+      return { privacy: { [key]: value } as Partial<PrivacySettings> };
+  }
+}
+
+/**
  * The form refilled from `saved`, the profile as the server now has it, keeping
  * whatever has been edited since `base`. A field of `form` still as it is in
  * `base` (compared as `profileChanges` does, so an edit the server would store

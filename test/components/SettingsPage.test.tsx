@@ -98,6 +98,8 @@ let server: Profile;
 let patches: Record<string, unknown>[];
 /** Set to hold the next PATCH's answer until the test lets it go. */
 let holdPatch: Promise<void> | null;
+/** Set to hold the next PATCH's answer, once it has been written, until the test lets it go. */
+let holdReply: Promise<void> | null;
 /** Set to make the next PATCH fail. */
 let failPatch: string | boolean;
 /** Set to hold the next GET's answer (read when it's sent) until the test lets it go. */
@@ -120,6 +122,7 @@ beforeEach(() => {
   upload.url = PHOTO;
   patches = [];
   holdPatch = null;
+  holdReply = null;
   failPatch = false;
   holdGet = null;
   gets = 0;
@@ -162,7 +165,11 @@ beforeEach(() => {
       const { privacy, ...rest } = body;
       if ('image' in rest) rest.image = rest.image || null;
       server = { ...server, ...rest, privacy: { ...server.privacy, ...privacy } };
-      return reply({ success: true, data: server });
+      const answer = { ...server, privacy: { ...server.privacy } };
+      const replyHold = holdReply;
+      holdReply = null;
+      if (replyHold) await replyHold;
+      return reply({ success: true, data: answer });
     }
     if (url.startsWith('/api/users/check-username')) {
       return reply({ available: true });
@@ -352,6 +359,36 @@ describe('settings that save as they change', () => {
     expect(patches[1]).toEqual({ privacy: { searchable: true } });
     await waitFor(() => expect(searchable()).toHaveAttribute('aria-checked', 'true'));
     expect(server.privacy.searchable).toBe(true);
+  });
+
+  // regression: saves of different settings run side by side, and an earlier
+  // one's answer arriving last put its older profile in as saved: turning the
+  // setting back then sent nothing, as it already read as saved that way.
+  it('regression: an earlier save answered last can’t stop the next change from being sent', async () => {
+    const user = await openSettings();
+    let releaseA!: () => void;
+    holdReply = new Promise((resolve) => (releaseA = resolve));
+
+    // A is written, but answers after B.
+    await user.click(searchable());
+    await waitFor(() => expect(patches).toHaveLength(1));
+    await user.click(inviteOption('Friends'));
+    await waitFor(() => expect(patches).toHaveLength(2));
+    await waitFor(() => expect(inviteOption('Friends')).toHaveAttribute('aria-checked', 'true'));
+    await act(async () => {
+      releaseA();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    await waitFor(() => expect(screen.getAllByText('Saved')).toHaveLength(2));
+    expect(inviteOption('Friends')).toHaveAttribute('aria-checked', 'true');
+
+    // A's answer predates B's write, so it read "Everyone": picking that back
+    // has to be sent all the same.
+    await user.click(inviteOption('Everyone'));
+    await waitFor(() => expect(patches).toHaveLength(3));
+    expect(patches[2]).toEqual({ privacy: { whoCanInvite: 'everyone' } });
+    await waitFor(() => expect(server.privacy.whoCanInvite).toBe('everyone'));
+    expect(server.privacy.searchable).toBe(false);
   });
 
   it('reads the session again after a new photo or currency, so the header shows it', async () => {
@@ -631,6 +668,26 @@ describe('the account', () => {
     expect(screen.getByText('alice@example.com')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Sign out' }));
+    expect(signOut).toHaveBeenCalledWith({ redirectTo: '/' });
+  });
+
+  it('asks before signing out with the bio unsaved', async () => {
+    const user = await openSettings();
+    await user.type(bio(), ' Plants.');
+
+    await user.click(screen.getByRole('button', { name: 'Sign out' }));
+    const dialog = await screen.findByRole('alertdialog', { name: 'Discard changes?' });
+    expect(signOut).not.toHaveBeenCalled();
+    await user.click(within(dialog).getByRole('button', { name: 'Keep editing' }));
+    expect(signOut).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: 'Sign out' }));
+    await user.click(
+      within(await screen.findByRole('alertdialog', { name: 'Discard changes?' })).getByRole(
+        'button',
+        { name: 'Discard' }
+      )
+    );
     expect(signOut).toHaveBeenCalledWith({ redirectTo: '/' });
   });
 });

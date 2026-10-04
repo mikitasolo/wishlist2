@@ -30,6 +30,7 @@ import {
   profileChanges,
   profileSettings,
   rebaseProfileForm,
+  settingChange,
   type ProfileChanges,
   type ProfileSettings,
 } from '@/lib/utils/profileSettings';
@@ -116,6 +117,10 @@ export default function SettingsPage() {
   // save's write: taken in once the save has answered, it would put back what
   // the save replaced. So it's dropped, and the save's own answer stands.
   const saves = useRef({ sent: 0, inFlight: 0 });
+  // The latest save, in the order they were sent, whose answer has been taken
+  // in. Saves of different settings run side by side, so an earlier one's
+  // answer can arrive after a later one's: it's dropped then, as older.
+  const applied = useRef(0);
   const availability = useUsernameAvailability(form.username, saved?.username ?? null);
   const currencyField = useRef<HTMLDivElement>(null);
 
@@ -190,6 +195,7 @@ export default function SettingsPage() {
     base: ProfileSettings
   ): Promise<PatchResult> {
     saves.current = { sent: saves.current.sent + 1, inFlight: saves.current.inFlight + 1 };
+    const seq = saves.current.sent;
     let settled = false;
     const settle = () => {
       if (settled) return;
@@ -207,8 +213,11 @@ export default function SettingsPage() {
       settle();
       if (!result.success) return { ok: false, error: result.error };
       const profile = profileSettings(result.data);
-      setEmail(result.data.email);
-      refill(profile, base);
+      if (seq > applied.current) {
+        applied.current = seq;
+        setEmail(result.data.email);
+        refill(profile, base);
+      }
       if (IN_SESSION.some((key) => key in changes)) await update().catch(() => null);
       return { ok: true, profile, email: result.data.email };
     } catch {
@@ -236,7 +245,7 @@ export default function SettingsPage() {
   async function runInstant<K extends InstantField>(field: K, first: ProfileSettings[K]) {
     running.current.add(field);
     let next: ProfileSettings[K] | undefined = first;
-    let sentAny = false;
+    let lastSent: { value: ProfileSettings[K] } | null = null;
     try {
       while (next !== undefined) {
         const value: ProfileSettings[K] = next;
@@ -244,27 +253,31 @@ export default function SettingsPage() {
         next = undefined;
         const current = latest.current;
         if (!current) return;
-        // Only this setting, as `profileChanges` sends it (a privacy one by its
-        // own dotted path on the server), so it can't write back any other.
-        const base = { ...current, [field]: value };
-        const changes = profileChanges(base, current);
-        if (Object.keys(changes).length > 0) {
+        // Every change of the control is sent (but one picked back to what
+        // this run has just saved): only this setting, by its own dotted path
+        // on the server for a privacy one, so it can't write back any other.
+        if (lastSent === null || lastSent.value !== value) {
           note(field, { kind: 'saving' });
-          const result = await patchProfile(changes, base);
+          const result = await patchProfile(settingChange(field, value), {
+            ...current,
+            [field]: value,
+          });
           if (!result.ok) {
             delete queued.current[field];
-            // Back to what's saved, which is what the control shows again.
+            // Back to what's saved, which is what the control shows again, and
+            // read the profile afresh in case what's saved was read out of date.
             setSettings((s) =>
               s.saved ? { ...s, form: { ...s.form, [field]: s.saved[field] } } : s
             );
             note(field, { kind: 'error', message: INSTANT_ERROR });
+            setAttempt((n) => n + 1);
             return;
           }
-          sentAny = true;
+          lastSent = { value };
         }
         next = queued.current[field] as ProfileSettings[K] | undefined;
       }
-      note(field, sentAny ? { kind: 'saved' } : undefined);
+      note(field, lastSent ? { kind: 'saved' } : undefined);
     } finally {
       running.current.delete(field);
     }
@@ -306,6 +319,13 @@ export default function SettingsPage() {
   }
 
   function handleSignOut() {
+    // With the username or bio unsaved, ask first, in the page's own dialog:
+    // the browser's leave prompt would only come once the session is gone.
+    if (textDirty) guard.hold(signOutNow);
+    else signOutNow();
+  }
+
+  function signOutNow() {
     // Forgotten first, as the account menu does (WIS-209). Settings needs an
     // account, so signing out from it goes home.
     rememberSessionHint(false);
