@@ -64,7 +64,7 @@ const reply = (body: unknown, status = 200, onRead?: () => void) => ({
 /** The list as the API answers it. */
 function listBody(s: Server) {
   return {
-    _id: 'w1',
+    _id: 'birthday',
     name: 'Birthday',
     slug: 'birthday',
     description: s.description,

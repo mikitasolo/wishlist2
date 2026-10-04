@@ -138,7 +138,7 @@ beforeEach(() => {
       return respond(held ? await held : answers.items);
     }
     if (url === '/api/wishlists/w1') return respond(answers.byId ?? answers.list);
-    if (url === `/api/wishlists/${params.id}/members/me` && init?.method === 'DELETE') {
+    if (url === `/api/wishlists/w1/members/me` && init?.method === 'DELETE') {
       const wait = hold.leave;
       hold.leave = undefined;
       await wait;
