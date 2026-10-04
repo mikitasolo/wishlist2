@@ -21,6 +21,9 @@ vi.mock('@/components/AppHeader', () => ({ default: () => null }));
 vi.mock('@/components/AuthButton', () => ({ default: () => null }));
 vi.mock('@/components/ImageUpload', () => ({ default: () => null }));
 vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }));
+vi.mock('@/components/ThemeProvider', () => ({
+  useTheme: () => ({ theme: 'light', setTheme: vi.fn() }),
+}));
 
 import SettingsPage from '@/app/settings/page';
 import { SETTINGS_CURRENCY_PATH } from '@/lib/utils/currencies';
