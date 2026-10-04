@@ -152,8 +152,15 @@ describe("an owner's tabs", () => {
   it('shows Items · People (n) · Settings, and opens on Items with no ?tab=', async () => {
     openAt();
     await onItems();
-    const tabs = screen.getAllByRole('tab');
-    expect(tabs.map((t) => t.textContent)).toEqual(['Items', 'People4', 'Settings']);
+    // regression: People's count comes from its own read, which can land after
+    // the Items empty state, so wait for it instead of reading the labels at once.
+    await waitFor(() =>
+      expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual([
+        'Items',
+        'People4',
+        'Settings',
+      ])
+    );
     expect(selectedTab()).toHaveTextContent('Items');
     // The selected tab labels the panel under the bar.
     expect(screen.getByRole('tabpanel')).toHaveAccessibleName('Items');
