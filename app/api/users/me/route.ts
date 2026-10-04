@@ -3,7 +3,14 @@ import { auth } from '@/lib/auth';
 import connectDB from '@/lib/mongodb';
 import User, { type IUser, type IUserPrivacy } from '@/models/User';
 import Follow from '@/models/Follow';
-import { updateProfileSchema, validateRequestBody } from '@/lib/validations';
+import { deleteAccountSchema, updateProfileSchema, validateRequestBody } from '@/lib/validations';
+import { enforce, userKey } from '@/lib/rateLimit';
+import { deleteAccount } from '@/lib/utils/accountDeletion';
+import {
+  deletionConfirmationTarget,
+  matchesDeletionConfirmation,
+} from '@/lib/utils/deletionConfirmation';
+import { errorKind } from '@/lib/utils/errorKind';
 import { isReservedUsername } from '@/lib/utils/username';
 import {
   canAttachImage,
@@ -201,6 +208,59 @@ export async function PATCH(request: NextRequest) {
     console.error('Error updating profile:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to update profile' },
+      { status: 500 }
+    );
+  }
+}
+
+// DELETE /api/users/me - delete the account and everything in it, at once
+// (WIS-276). The body confirms it with the username, or the email for an account
+// with none, and the cascade is `deleteAccount` (lib/utils/accountDeletion.ts).
+// It ends the account's sessions itself, so the page only has to sign out.
+export async function DELETE(request: NextRequest) {
+  try {
+    const session = await auth();
+    if (!session?.user) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const limited = await enforce('accountDelete', userKey(session.user.id));
+    if (limited) return limited;
+
+    const validation = await validateRequestBody(request, deleteAccountSchema);
+    if (!validation.success) {
+      return NextResponse.json(
+        { success: false, error: validation.error },
+        { status: validation.status }
+      );
+    }
+
+    await connectDB();
+    const user = await User.findById(session.user.id).select('username email').lean();
+    if (!user) {
+      return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
+    }
+    const target = deletionConfirmationTarget(user);
+    if (!matchesDeletionConfirmation(validation.data.confirm, target)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            target.kind === 'username'
+              ? 'Type your username to confirm'
+              : 'Type your email to confirm',
+        },
+        { status: 400 }
+      );
+    }
+
+    await deleteAccount(session.user.id);
+    return NextResponse.json({ success: true, data: {} }, { status: 200 });
+  } catch (error) {
+    // Its kind only: an error here can quote a record of the account's.
+    console.error('Error deleting account:', errorKind(error));
+    return NextResponse.json(
+      { success: false, error: 'Failed to delete account' },
       { status: 500 }
     );
   }

@@ -8,6 +8,7 @@ import { ownedByFilter, ownerIds } from '@/lib/utils/wishlistOwners';
 import { isOwnerOfWishlist } from '@/lib/utils/wishlistAccess';
 import { errorKind } from '@/lib/utils/errorKind';
 import { purgeShareCards } from '@/lib/og/purge';
+import { cancelPendingInvites } from '@/lib/utils/wishlistInvites';
 
 /**
  * Changing who owns a wishlist. Ownership is consequential in both directions,
@@ -84,6 +85,35 @@ export async function releaseLateBookings(wishlistId: string, userId: string): P
     );
     return 0;
   }
+}
+
+/**
+ * Take a member off a list of their own accord: what `DELETE
+ * /api/wishlists/[id]/members/me` does for a member, and an account deletion for
+ * each list its account is a member of. Frees the items they booked (their
+ * reservations stay, so they can still log a gift they went on to give), cancels
+ * their pending invites for the list before the membership delete and again after
+ * it, and frees their bookings once more after it, for a booking that checked
+ * their membership before the delete (`releaseLateBookings`).
+ *
+ * `removed` is false when the membership delete matched nothing: a concurrent
+ * request (another leave, a kick, their own accept of a promotion) took the row
+ * first, and this call didn't take them off the list.
+ */
+export async function leaveAsMember(
+  wishlistId: string,
+  userId: string,
+  membershipId: mongoose.Types.ObjectId | string
+): Promise<{ removed: boolean; unbookedItems: number }> {
+  const unbooked = await releaseUserBookings(wishlistId, userId);
+  await cancelPendingInvites(wishlistId, userId);
+
+  const { deletedCount } = await WishlistMember.deleteOne({ _id: membershipId });
+  if (!deletedCount) return { removed: false, unbookedItems: unbooked };
+
+  const late = await releaseLateBookings(wishlistId, userId);
+  await cancelPendingInvites(wishlistId, userId);
+  return { removed: true, unbookedItems: unbooked + late };
 }
 
 /**

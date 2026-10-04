@@ -279,6 +279,24 @@ export async function getUserUploadBytes(userId: string): Promise<number> {
   return total;
 }
 
+/**
+ * Every blob under a user's `uploads/<id>/` folder, for erasing them with their
+ * account. Nothing without our own store (local dev, CI): then there's nothing
+ * of ours to free. A failed listing throws, so the account deletion stops before
+ * the account goes and can be finished by running it again.
+ */
+export async function listUserUploads(userId: string): Promise<string[]> {
+  if (!ownBlobHost() || !userId) return [];
+  const urls: string[] = [];
+  let cursor: string | undefined;
+  do {
+    const res = await list({ prefix: `uploads/${userId}/`, cursor, limit: 1000 });
+    for (const b of res.blobs) if (isUploadedBy(b.url, userId)) urls.push(b.url);
+    cursor = res.cursor;
+  } while (cursor);
+  return urls;
+}
+
 /** What `copyBlobToUploads` made: the copy's URL, or why there is none. */
 export type UploadCopy = { ok: true; url: string } | { ok: false; reason: 'quota' | 'failed' };
 

@@ -3,17 +3,10 @@ import mongoose, { type UpdateQuery } from 'mongoose';
 import { auth } from '@/lib/auth';
 import connectDB from '@/lib/mongodb';
 import Wishlist, { IWishlist } from '@/models/Wishlist';
-import WishlistMember from '@/models/WishlistMember';
-import WishlistInvite from '@/models/WishlistInvite';
-import WishlistJoinRequest from '@/models/WishlistJoinRequest';
-import Notification from '@/models/Notification';
 import User from '@/models/User';
-import Item from '@/models/Item';
 import { updateWishlistSchema, validateRequestBody } from '@/lib/validations';
 import {
   canAttachImage,
-  deleteOwnBlob,
-  deleteOwnBlobs,
   FOREIGN_IMAGE_ERROR,
   freeReplacedImage,
   isSameImage,
@@ -31,6 +24,7 @@ import {
   serializeWishlist,
 } from '@/lib/utils/wishlistOwners';
 import { purgeShareCards } from '@/lib/og/purge';
+import { deleteOwnedWishlist } from '@/lib/utils/wishlistDeletion';
 import { enforce, userKey } from '@/lib/rateLimit';
 
 /**
@@ -300,27 +294,6 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   }
 }
 
-/** Run one cleanup step after a wishlist delete; log and swallow a failure. */
-async function bestEffort(
-  what: string,
-  wishlistId: string,
-  step: () => PromiseLike<unknown>
-): Promise<void> {
-  try {
-    await step();
-  } catch (err) {
-    console.error(`${what} cleanup failed for deleted wishlist ${wishlistId}:`, err);
-  }
-}
-
-/** Delete a deleted list's items, then free the images uploaded for them. */
-async function deleteItemsAndImages(wishlistId: string): Promise<void> {
-  // Collected before the items go, or their blobs would be orphaned in storage.
-  const items = await Item.find({ wishlist: wishlistId }).select('imageUrl').lean();
-  await Item.deleteMany({ wishlist: wishlistId });
-  await deleteOwnBlobs(items.map((i) => i.imageUrl));
-}
-
 // DELETE /api/wishlists/[id] - Delete a wishlist (any owner; owners are equal)
 export async function DELETE(
   request: NextRequest,
@@ -343,15 +316,9 @@ export async function DELETE(
       return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
     }
 
-    // Only an owner can delete, and the delete is its own ownership check: it
-    // only matches while the caller still owns the list. A check against a copy
-    // read earlier would race: a co-owner removing the caller a moment before
-    // wouldn't stop it. So the list goes first, and nothing else is touched
-    // unless it did.
-    const wishlist = await Wishlist.findOneAndDelete({
-      _id: id,
-      ...ownedByFilter(session.user.id),
-    });
+    // Only an owner can delete, and the delete is its own ownership check, so
+    // nothing else is touched unless it matched (see `deleteOwnedWishlist`).
+    const wishlist = await deleteOwnedWishlist(id, session.user.id);
     if (!wishlist) {
       // Nothing was deleted, so this read only picks the answer: another owner
       // deleted the list first (or it's archived, which looks the same to anyone
@@ -364,36 +331,6 @@ export async function DELETE(
         { status: 403 }
       );
     }
-
-    // Best-effort cleanup of what only made sense while the list existed. The
-    // list is already gone, so each step logs and continues: a failure here
-    // must not turn a successful delete into an error. Whatever a failed step
-    // leaves behind points at a list that no longer exists, so nothing can
-    // reach it.
-    //  - Items, and their uploaded images.
-    //  - Memberships.
-    //  - Invites, whatever their status (accepted/declined rows are only
-    //    history for a list that no longer exists).
-    //  - Requests to join, pending or declined (an ask that lands after this
-    //    takes its own row back: POST /requests re-checks the list).
-    //  - Notifications that link to the list, which would now 404 (the
-    //    `wishlist_invite` ones even look actionable). One that a request
-    //    already past its checks writes after this is taken back by
-    //    `createNotification(s)` (lib/notifications.ts), which re-checks the
-    //    list once it's written.
-    //  - Our own uploaded cover image.
-    // Reservations and gift logs deliberately stay: they're the gifter's, so
-    // they can still see what they claimed and log the gift.
-    await Promise.all([
-      bestEffort('Item', id, () => deleteItemsAndImages(id)),
-      bestEffort('Membership', id, () => WishlistMember.deleteMany({ wishlist: id })),
-      bestEffort('Invite', id, () => WishlistInvite.deleteMany({ wishlist: id })),
-      bestEffort('Join request', id, () => WishlistJoinRequest.deleteMany({ wishlist: id })),
-      bestEffort('Notification', id, () => Notification.deleteMany({ wishlist: id })),
-      deleteOwnBlob(wishlist.bannerUrl),
-      // Its cached share card, which would otherwise go on naming it for a day.
-      purgeShareCards({ wishlistIds: [id] }),
-    ]);
 
     return NextResponse.json({ success: true, data: {} }, { status: 200 });
   } catch (error) {

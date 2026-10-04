@@ -8,6 +8,7 @@ import AppHeader from '@/components/AppHeader';
 import AuthButton from '@/components/AuthButton';
 import Button from '@/components/Button';
 import ConfirmDialog from '@/components/ConfirmDialog';
+import DeleteAccount from '@/components/DeleteAccount';
 import Icon from '@/components/Icon';
 import ImageUpload from '@/components/ImageUpload';
 import LoadError from '@/components/LoadError';
@@ -527,6 +528,16 @@ export default function SettingsPage() {
               Sign out
             </Button>
           </div>
+          <DeleteAccount
+            username={saved?.username ?? ''}
+            email={email}
+            onDeleted={() => {
+              // The account and its sessions are gone: nothing unsaved is
+              // left to guard, and this browser signs out to the home page.
+              discardText();
+              signOutNow();
+            }}
+          />
         </Panel>
 
         {/* On a phone the username and bio's Save sits in a bar stuck to the

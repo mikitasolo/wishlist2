@@ -284,6 +284,14 @@ export const updateItemSchema = z
     message: 'At least one field must be provided for update',
   });
 
+/**
+ * `DELETE /api/users/me`: what the person typed to confirm it, their username
+ * or email (`matchesDeletionConfirmation`, lib/utils/deletionConfirmation.ts).
+ */
+export const deleteAccountSchema = z.object({
+  confirm: z.string().max(320),
+});
+
 // Helper function to validate request body
 export async function validateRequestBody<T>(
   request: Request,
