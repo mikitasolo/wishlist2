@@ -139,7 +139,7 @@ for (const flow of [
     // e2e-birthday has an item, so the button stays once the list has loaded.
     openOnceLoaded: 'Add item',
     title: 'Add new item',
-    submit: 'Add item',
+    submit: 'Add to list',
     done: 'Item added successfully',
   },
   {
@@ -150,7 +150,7 @@ for (const flow of [
     // the proposal too, and the spec takes that way.
     openOnceLoaded: 'Propose an item',
     title: 'Propose new item',
-    submit: 'Propose item',
+    submit: 'Propose',
     done: 'Item proposed successfully',
   },
 ]) {
@@ -390,7 +390,7 @@ async function renameGift(page: Page) {
   await cardOf(page, 'E2E Gift').getByRole('button', { name: 'Edit item' }).click();
   const dialog = page.getByRole('dialog', { name: 'Edit item' });
   await dialog.getByLabel('Item name').fill('E2E Renamed Gift');
-  await dialog.getByRole('button', { name: 'Save changes' }).click();
+  await dialog.getByRole('button', { name: 'Save' }).click();
 }
 
 // Answers the item PATCH here as the server would, once `answer` resolves, so
@@ -634,7 +634,7 @@ test("regression: a failed booking's reconcile read dropped behind a proposal is
   await page.getByRole('button', { name: 'Propose', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Propose new item' });
   await dialog.getByLabel('Item name').fill('E2E Proposed Meanwhile');
-  await dialog.getByRole('button', { name: 'Propose item', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Propose', exact: true }).click();
   await postArrived.promise;
 
   // The reconcile read lands while the proposal's POST is in flight, so it's
@@ -771,7 +771,7 @@ test('regression: a stalled edit is given up on, the item goes back to its serve
   expect(await renamed.count()).toBe(0);
   await expect(dialog).toBeVisible();
   await expect(dialog.getByLabel('Item name')).toHaveValue('E2E Renamed Gift');
-  await expect(dialog.getByRole('button', { name: 'Save changes' })).toBeEnabled();
+  await expect(dialog.getByRole('button', { name: 'Save' })).toBeEnabled();
 
   // The reconcile read, which the dropped poll's re-read joins, lands.
   await (await reads.next()).land();
@@ -825,7 +825,7 @@ test('a stalled proposal is given up on, keeping the modal open, and the read st
   await page.getByRole('button', { name: 'Propose an item' }).click();
   const dialog = page.getByRole('dialog', { name: 'Propose new item' });
   await dialog.getByLabel('Item name').fill(name);
-  await dialog.getByRole('button', { name: 'Propose item', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Propose', exact: true }).click();
   await postArrived.promise;
 
   // A poll that lands while the POST is stalled is dropped.
@@ -838,7 +838,7 @@ test('a stalled proposal is given up on, keeping the modal open, and the read st
   await expect(page.getByRole('status').getByText(REQUEST_TIMEOUT_MESSAGE)).toBeVisible();
   await expect(dialog).toBeVisible();
   await expect(dialog.getByLabel('Item name')).toHaveValue(name);
-  await expect(dialog.getByRole('button', { name: 'Propose item', exact: true })).toBeEnabled();
+  await expect(dialog.getByRole('button', { name: 'Propose', exact: true })).toBeEnabled();
 
   // The page reads the list again in place of the dropped poll; no tick runs.
   await (await reads.next()).land();

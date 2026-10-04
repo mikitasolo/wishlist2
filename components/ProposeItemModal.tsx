@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useId } from 'react';
 import BaseModal from './BaseModal';
 import ItemForm from './ItemForm';
+import ItemFormFooter from './ItemFormFooter';
 import ConfirmDialog from './ConfirmDialog';
 import { defaultItemCurrency } from '@/lib/utils/currencies';
 
@@ -34,6 +35,7 @@ export default function ProposeItemModal({
   userCurrency,
 }: ProposeItemModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const formId = useId();
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showConfirmClose, setShowConfirmClose] = useState(false);
   // Keep adding: a save clears the form for the next proposal instead of
@@ -102,17 +104,26 @@ export default function ProposeItemModal({
         isSubmitting={isSubmitting}
         shouldInterceptClose={() => hasUnsavedChanges}
         onInterceptClose={() => setShowConfirmClose(true)}
+        footer={
+          <ItemFormFooter
+            formId={formId}
+            busy={isSubmitting}
+            saving={isSubmitting}
+            onCancel={handleClose}
+            submitLabel="Propose"
+            submittingLabel="Proposing…"
+            keepAdding={{ checked: keepAdding, onChange: setKeepAdding }}
+          />
+        }
       >
         <ItemForm
           onSubmit={handleSubmit}
           onCancel={handleClose}
-          submitLabel="Propose item"
-          submittingLabel="Proposing…"
           isSubmitting={isSubmitting}
           mode="propose"
           onFormChange={setHasUnsavedChanges}
           defaultCurrency={defaultItemCurrency(wishlistCurrency, userCurrency)}
-          keepAdding={{ checked: keepAdding, onChange: setKeepAdding }}
+          formId={formId}
         />
       </BaseModal>
 

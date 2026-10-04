@@ -36,7 +36,7 @@ const currencies = { wishlistCurrency: 'USD', userCurrency: 'USD' };
 const modals = [
   {
     name: 'AddItemModal',
-    submitLabel: 'Add item',
+    submitLabel: 'Add to list',
     submittingLabel: 'Adding…',
     needsName: true,
     renderModal: (onSubmit: Submit) =>
@@ -44,7 +44,7 @@ const modals = [
   },
   {
     name: 'EditItemModal',
-    submitLabel: 'Save changes',
+    submitLabel: 'Save',
     submittingLabel: 'Saving…',
     needsName: true,
     renderModal: (onSubmit: Submit) =>
@@ -60,7 +60,7 @@ const modals = [
   },
   {
     name: 'ProposeItemModal',
-    submitLabel: 'Propose item',
+    submitLabel: 'Propose',
     submittingLabel: 'Proposing…',
     needsName: true,
     renderModal: (onSubmit: Submit) =>

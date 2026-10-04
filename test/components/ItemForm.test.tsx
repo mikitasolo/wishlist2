@@ -7,7 +7,8 @@ vi.mock('@/components/ImageUpload', () => ({
   default: () => <div data-testid="image-upload" />,
 }));
 
-import ItemForm, { type ItemFormData } from '@/components/ItemForm';
+import ItemForm from './ItemFormWithFooter';
+import type { ItemFormData } from '@/components/ItemForm';
 
 const filled: ItemFormData = {
   name: 'Existing',
@@ -23,10 +24,10 @@ const filled: ItemFormData = {
 beforeEach(() => cleanup());
 
 describe('ItemForm — status toggle visibility', () => {
-  it('shows the Published/Draft toggle when creating', () => {
+  it("has no status toggle when creating: Save as draft is the footer's", () => {
     render(<ItemForm onSubmit={vi.fn()} onCancel={vi.fn()} mode="create" />);
-    expect(screen.getByRole('radio', { name: /published/i })).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: /draft/i })).toBeInTheDocument();
+    expect(screen.queryByRole('radio', { name: /published/i })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Save as draft' })).toBeInTheDocument();
   });
 
   it('shows the toggle when reviewing a proposal', () => {
@@ -49,9 +50,9 @@ describe('ItemForm — status toggle visibility', () => {
 });
 
 describe('ItemForm — create submission', () => {
-  it('submits status "available" when Published, "draft" when toggled', async () => {
+  it('submits status "available" from the primary button, "draft" from Save as draft', async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
-    const { rerender } = render(<ItemForm onSubmit={onSubmit} onCancel={vi.fn()} mode="create" />);
+    render(<ItemForm onSubmit={onSubmit} onCancel={vi.fn()} mode="create" />);
 
     fireEvent.change(screen.getByLabelText(/item name/i), { target: { value: 'Gift' } });
     fireEvent.click(screen.getByRole('button', { name: /^submit$/i }));
@@ -63,16 +64,100 @@ describe('ItemForm — create submission', () => {
     );
 
     onSubmit.mockClear();
-    rerender(<ItemForm onSubmit={onSubmit} onCancel={vi.fn()} mode="create" />);
     fireEvent.change(screen.getByLabelText(/item name/i), { target: { value: 'Draft gift' } });
-    fireEvent.click(screen.getByRole('radio', { name: /^draft$/i }));
-    fireEvent.click(screen.getByRole('button', { name: /^submit$/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save as draft' }));
     await waitFor(() =>
       expect(onSubmit).toHaveBeenCalledWith(
-        expect.objectContaining({ status: 'draft' }),
+        expect.objectContaining({ name: 'Draft gift', status: 'draft' }),
         expect.anything()
       )
     );
+
+    // The draft asked for once doesn't stick to the next save.
+    onSubmit.mockClear();
+    fireEvent.change(screen.getByLabelText(/item name/i), { target: { value: 'Another' } });
+    fireEvent.click(screen.getByRole('button', { name: /^submit$/i }));
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'available' }),
+        expect.anything()
+      )
+    );
+  });
+
+  it('lays the fields out as Name, Link, Price, Notes, Photo, Most wanted', () => {
+    const { container } = render(<ItemForm onSubmit={vi.fn()} onCancel={vi.fn()} mode="create" />);
+    const form = container.querySelector('form')!;
+    const order = [
+      screen.getByLabelText(/item name/i),
+      screen.getByLabelText(/product link/i),
+      screen.getByLabelText(/^price$/i),
+      screen.getByLabelText(/^notes$/i),
+      screen.getByTestId('image-upload'),
+      screen.getByRole('switch', { name: /most wanted/i }),
+    ];
+    for (let i = 1; i < order.length; i++) {
+      expect(
+        order[i - 1].compareDocumentPosition(order[i]) & Node.DOCUMENT_POSITION_FOLLOWING
+      ).toBeTruthy();
+    }
+    expect(form).toHaveAttribute('novalidate');
+  });
+
+  it('shows errors under the fields and focuses the first invalid one', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(<ItemForm onSubmit={onSubmit} onCancel={vi.fn()} mode="create" />);
+
+    fireEvent.change(screen.getByLabelText(/product link/i), { target: { value: 'javascript:x' } });
+    fireEvent.click(screen.getByRole('button', { name: /^submit$/i }));
+
+    expect(await screen.findByText('Enter a name for the item')).toBeInTheDocument();
+    expect(screen.getByLabelText(/item name/i)).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByLabelText(/item name/i)).toHaveFocus();
+    expect(onSubmit).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText(/item name/i), { target: { value: 'Gift' } });
+    fireEvent.click(screen.getByRole('button', { name: /^submit$/i }));
+    expect(await screen.findByText(/enter a web address/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/product link/i)).toHaveFocus();
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('accepts a link without a scheme, and fills in https:// when it is left', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(<ItemForm onSubmit={onSubmit} onCancel={vi.fn()} mode="create" />);
+    fireEvent.change(screen.getByLabelText(/item name/i), { target: { value: 'Gift' } });
+    const link = screen.getByLabelText(/product link/i);
+    fireEvent.change(link, { target: { value: 'amazon.de/dp/123' } });
+    fireEvent.blur(link);
+    expect(link).toHaveValue('https://amazon.de/dp/123');
+
+    fireEvent.change(link, { target: { value: 'etsy.com/x' } });
+    fireEvent.click(screen.getByRole('button', { name: /^submit$/i }));
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({ link: 'https://etsy.com/x' }),
+        expect.anything()
+      )
+    );
+  });
+
+  it('counts the notes only near the 300 character limit', () => {
+    render(<ItemForm onSubmit={vi.fn()} onCancel={vi.fn()} mode="create" />);
+    const notes = screen.getByLabelText(/^notes$/i);
+    expect(notes).toHaveAttribute('maxlength', '300');
+    expect(screen.queryByText(/\/300 characters/)).toBeNull();
+    fireEvent.change(notes, { target: { value: 'x'.repeat(250) } });
+    expect(screen.getByText('250/300 characters')).toBeInTheDocument();
+  });
+});
+
+describe('ItemForm — propose', () => {
+  it('says the owners will review it, in one line, without naming a proposer', () => {
+    const { container } = render(<ItemForm onSubmit={vi.fn()} onCancel={vi.fn()} mode="propose" />);
+    expect(screen.getByText("The owners will review it before it's added")).toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/proposer|proposed by|you proposed/i);
+    expect(screen.queryByRole('switch', { name: /most wanted/i })).toBeNull();
   });
 });
 
@@ -125,11 +210,16 @@ describe('ItemForm — what an edit changed', () => {
   });
 });
 
-// The currency picker's trigger is a button labelled with the selected code.
-const currencyButton = (code: string) => screen.getByRole('button', { name: code });
+// The currency picker is the shared Select: a combobox whose trigger shows the
+// selected code, with the options in a listbox.
+const currencyButton = (code: string) => {
+  const trigger = screen.getByRole('combobox', { name: 'Currency' });
+  expect(trigger).toHaveTextContent(code);
+  return trigger;
+};
 const pickCurrency = (from: string, name: RegExp) => {
   fireEvent.click(currencyButton(from));
-  fireEvent.click(screen.getByRole('button', { name }));
+  fireEvent.click(screen.getByRole('option', { name }));
 };
 
 describe('ItemForm — default currency', () => {
@@ -176,7 +266,7 @@ describe('ItemForm — default currency', () => {
     );
 
     fireEvent.change(screen.getByLabelText(/item name/i), { target: { value: 'Gift' } });
-    pickCurrency('PLN', /EUR\s*Euro/);
+    pickCurrency('PLN', /EUR · Euro/);
     expect(currencyButton('EUR')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /^submit$/i }));
@@ -202,7 +292,7 @@ describe('ItemForm — default currency', () => {
     expect(onFormChange).not.toHaveBeenCalledWith(true);
 
     // Picking a different currency is a real edit.
-    pickCurrency('PLN', /EUR\s*Euro/);
+    pickCurrency('PLN', /EUR · Euro/);
     expect(onFormChange).toHaveBeenLastCalledWith(true);
   });
 
@@ -319,7 +409,7 @@ describe('ItemForm — price field', () => {
     inLocale('pl-PL');
     render(<ItemForm onSubmit={vi.fn()} onCancel={vi.fn()} mode="create" defaultCurrency="PLN" />);
     expect(priceInput().parentElement).toHaveTextContent(/^zł$/);
-    pickCurrency('PLN', /EUR\s*Euro/);
+    pickCurrency('PLN', /EUR · Euro/);
     expect(priceInput().parentElement).toHaveTextContent(/^€$/);
   });
 
@@ -346,8 +436,6 @@ describe('ItemForm — price field', () => {
     expect(priceInput()).toHaveValue('12,34,5');
     expect(priceInput()).toHaveAttribute('aria-invalid', 'true');
     expect(priceInput()).toHaveAccessibleDescription('Enter a price like 349.00');
-    // The browser won't submit it either, as for a missing name.
-    expect(priceInput().validity.valid).toBe(false);
 
     submit();
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -355,7 +443,6 @@ describe('ItemForm — price field', () => {
 
     typePrice('12.50');
     expect(priceInput()).not.toHaveAttribute('aria-invalid');
-    expect(priceInput().validity.valid).toBe(true);
     // Once fixed, typing isn't nagged again until the field is left.
     fireEvent.change(priceInput(), { target: { value: '12.5.' } });
     expect(screen.queryByText(/enter a price like/i)).toBeNull();

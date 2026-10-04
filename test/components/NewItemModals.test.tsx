@@ -19,20 +19,24 @@ type Currencies = {
 const modals = [
   {
     name: 'AddItemModal',
-    submitLabel: /^add item$/i,
+    submitLabel: /^add to list$/i,
     renderModal: (onSubmit: () => Promise<void>, onClose: () => void, c: Currencies) =>
       render(<AddItemModal isOpen onClose={onClose} onAdd={onSubmit} {...c} />),
   },
   {
     name: 'ProposeItemModal',
-    submitLabel: /^propose item$/i,
+    submitLabel: /^propose$/i,
     renderModal: (onSubmit: () => Promise<void>, onClose: () => void, c: Currencies) =>
       render(<ProposeItemModal isOpen onClose={onClose} onPropose={onSubmit} {...c} />),
   },
 ];
 
 // The currency picker's trigger is a button labelled with the selected code.
-const currencyButton = (code: string) => screen.getByRole('button', { name: code });
+const currencyButton = (code: string) => {
+  const trigger = screen.getByRole('combobox', { name: 'Currency' });
+  expect(trigger).toHaveTextContent(code);
+  return trigger;
+};
 
 // useBodyScrollLock restores the scroll position on close; jsdom lacks scrollTo.
 beforeAll(() => {
@@ -56,7 +60,7 @@ describe.each(modals)('$name — default currency', ({ renderModal, submitLabel 
   it("regression: starts on the wishlist's currency, not USD", () => {
     open({ wishlistCurrency: 'PLN', userCurrency: 'EUR' });
     expect(currencyButton('PLN')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'USD' })).toBeNull();
+    expect(screen.getByRole('combobox', { name: 'Currency' })).not.toHaveTextContent('USD');
   });
 
   it("falls back to the viewer's default when the wishlist has no currency", () => {
@@ -98,7 +102,7 @@ describe.each(modals)('$name — default currency', ({ renderModal, submitLabel 
   it('still prompts once the currency is actually changed', () => {
     const { onClose } = open({ wishlistCurrency: 'PLN', userCurrency: 'EUR' });
     fireEvent.click(currencyButton('PLN'));
-    fireEvent.click(screen.getByRole('button', { name: /EUR\s*Euro/ }));
+    fireEvent.click(screen.getByRole('option', { name: /EUR · Euro/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Close modal' }));
     expect(onClose).not.toHaveBeenCalled();
     expect(screen.getByText(/discard changes\?/i)).toBeInTheDocument();
@@ -186,7 +190,7 @@ describe('New item modals — most wanted', () => {
 
     fireEvent.change(screen.getByLabelText(/item name/i), { target: { value: 'Bike' } });
     fireEvent.click(mostWantedSwitch()!);
-    fireEvent.click(screen.getByRole('button', { name: /^add item$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^add to list$/i }));
     await waitFor(() =>
       expect(onAdd).toHaveBeenCalledWith(
         expect.objectContaining({ name: 'Bike', mostWanted: true })

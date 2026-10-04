@@ -34,7 +34,8 @@ vi.mock('next-auth/react', () => ({
 }));
 vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast: vi.fn() }) }));
 
-import ItemForm, { type ItemFormData } from '@/components/ItemForm';
+import ItemForm from './ItemFormWithFooter';
+import type { ItemFormData } from '@/components/ItemForm';
 import CreateWishlistModal from '@/components/CreateWishlistModal';
 
 const UPLOADED = 'https://teststore42.public.blob.vercel-storage.com/uploads/u1/gift.webp';
@@ -154,7 +155,7 @@ describe('ItemForm — editing while its image uploads', () => {
       await user.type(notes, 'Blue, please');
 
       await answerUpload();
-      expect(screen.getByAltText('Uploaded image').getAttribute('src')).toContain(
+      expect(screen.getByAltText('Item photo').getAttribute('src')).toContain(
         encodeURIComponent(UPLOADED)
       );
       expect(name).toHaveValue('Bike');

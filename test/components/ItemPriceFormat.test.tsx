@@ -56,7 +56,7 @@ function renderCardAndEdit(shown: ApiItem, onSave = vi.fn().mockResolvedValue(un
     card: screen.getByRole('article', { name: `Item: ${shown.name}` }),
     dialog,
     price: within(dialog).getByLabelText(/^price$/i),
-    save: () => fireEvent.click(within(dialog).getByRole('button', { name: 'Save changes' })),
+    save: () => fireEvent.click(within(dialog).getByRole('button', { name: 'Save' })),
     onSave,
     onClose,
   };

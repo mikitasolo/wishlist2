@@ -28,7 +28,7 @@ test('regression: a new list tells its owner it is empty, Add your first item ad
     await page.getByRole('button', { name: 'Add your first item' }).click();
     const dialog = page.getByRole('dialog', { name: 'Add new item' });
     await dialog.getByLabel('Item name').fill('E2E First Item');
-    await dialog.getByRole('button', { name: 'Add item', exact: true }).click();
+    await dialog.getByRole('button', { name: 'Add to list', exact: true }).click();
 
     await expect(page.getByRole('article', { name: 'Item: E2E First Item' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Your list is empty' })).toHaveCount(0);
@@ -44,7 +44,7 @@ test('regression: a new list tells its owner it is empty, Add your first item ad
     await dialog.getByRole('checkbox', { name: 'Keep adding' }).check();
     for (const name of ['E2E Second Item', 'E2E Third Item']) {
       await dialog.getByLabel('Item name').fill(name);
-      await dialog.getByRole('button', { name: 'Add item', exact: true }).click();
+      await dialog.getByRole('button', { name: 'Add to list', exact: true }).click();
       await expect(page.getByRole('article', { name: `Item: ${name}` })).toBeVisible();
       // Cleared, still open, and ready for the next one.
       await expect(dialog.getByLabel('Item name')).toHaveValue('');

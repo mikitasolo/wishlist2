@@ -49,7 +49,7 @@ test('a member saves a copy of a friend’s item to their own list', async ({ pa
   const posted = page.waitForRequest(
     (req) => req.method() === 'POST' && /\/api\/wishlists\/[^/]+\/items$/.test(req.url())
   );
-  await form.getByRole('button', { name: 'Add item', exact: true }).click();
+  await form.getByRole('button', { name: 'Add to list', exact: true }).click();
 
   const request = await posted;
   expect(request.postDataJSON()).toMatchObject({

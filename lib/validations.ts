@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { normalizeOccasionDate, OCCASION_KINDS } from '@/lib/utils/occasion';
+import { ITEM_NOTES_MAX, isHttpUrl, normalizeItemLink } from '@/lib/utils/itemFields';
 
 /**
  * Validation schemas for API endpoints
@@ -200,6 +201,17 @@ export const inviteMemberSchema = z.object({
 });
 
 // Item schemas
+// A product link: one typed without a scheme ("amazon.de/dp/1") gets https://,
+// and only an http(s) address is accepted (never javascript:, data:, …).
+const itemLinkSchema = z.preprocess(
+  (v) => (typeof v === 'string' ? normalizeItemLink(v) : v),
+  z.url('Invalid link URL').refine(isHttpUrl, 'Invalid link URL')
+);
+const itemNotesSchema = z
+  .string()
+  .trim()
+  .max(ITEM_NOTES_MAX, `Notes must be ${ITEM_NOTES_MAX} characters or less`);
+
 export const createItemSchema = z.object({
   name: z
     .string()
@@ -217,8 +229,8 @@ export const createItemSchema = z.object({
     })
     .optional()
     .nullable(), // Price object is optional, but if provided, both value and currency are required
-  link: z.url('Invalid link URL').optional(),
-  notes: z.string().trim().max(100, 'Notes must be 100 characters or less').optional(),
+  link: itemLinkSchema.optional(),
+  notes: itemNotesSchema.optional(),
   mostWanted: z.boolean().optional(),
   // A new item is never booked or completed, and takes no `bookedBy`: a booking
   // only comes from a member booking it (PATCH), which also writes the
@@ -252,8 +264,8 @@ export const updateItemSchema = z
       })
       .optional()
       .nullable(), // Price object is optional, but if provided, both value and currency are required
-    link: z.url('Invalid link URL').optional().nullable(),
-    notes: z.string().trim().max(100, 'Notes must be 100 characters or less').optional().nullable(),
+    link: itemLinkSchema.optional().nullable(),
+    notes: itemNotesSchema.optional().nullable(),
     mostWanted: z.boolean().optional(),
     // The route narrows this per role: members only book/unbook, owners only
     // draft/available/completed (draft/available when approving a proposal).

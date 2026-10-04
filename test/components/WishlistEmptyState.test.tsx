@@ -177,7 +177,7 @@ async function addFirstItem(user: ReturnType<typeof userEvent.setup>, name: stri
   await user.click(screen.getByRole('button', { name: 'Add your first item' }));
   const dialog = await screen.findByRole('dialog', { name: 'Add new item' });
   await user.type(within(dialog).getByLabelText(/Item name/), name);
-  await user.click(within(dialog).getByRole('button', { name: 'Add item' }));
+  await user.click(within(dialog).getByRole('button', { name: 'Add to list' }));
 }
 
 describe('a list with no items at all', () => {

@@ -15,6 +15,12 @@ interface ImageUploadProps {
   aspect?: number;
   /** Render as a compact circular control (avatars). Forces a 1:1 round crop. */
   circle?: boolean;
+  /**
+   * Render as a 72px thumbnail row ("Add photo", or the thumbnail with Replace
+   * and Remove), for a form where the photo is one field among others (the
+   * item form). An image dropped anywhere on the page, or pasted, is taken too.
+   */
+  compact?: boolean;
 }
 
 /**
@@ -28,6 +34,7 @@ export default function ImageUpload({
   disabled = false,
   aspect = 16 / 9,
   circle = false,
+  compact = false,
 }: ImageUploadProps) {
   // Avatars crop square and display round.
   const effectiveAspect = circle ? 1 : aspect;
@@ -105,6 +112,36 @@ export default function ImageUpload({
     return () => document.removeEventListener('paste', onPaste);
   }, [disabled, handleFile]);
 
+  // The compact row has no drop zone to aim at: a file dropped anywhere is
+  // taken, as a pasted one is (the dialog around it is the target).
+  useEffect(() => {
+    if (!compact || disabled) return;
+    const hasFiles = (e: DragEvent) => !!e.dataTransfer?.types?.includes('Files');
+    const onDragOver = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      setDragging(true);
+    };
+    const onDragEnd = (e: DragEvent) => {
+      if (!e.relatedTarget) setDragging(false);
+    };
+    const onDrop = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      setDragging(false);
+      const f = e.dataTransfer?.files?.[0];
+      if (f) handleFile(f);
+    };
+    document.addEventListener('dragover', onDragOver);
+    document.addEventListener('dragleave', onDragEnd);
+    document.addEventListener('drop', onDrop);
+    return () => {
+      document.removeEventListener('dragover', onDragOver);
+      document.removeEventListener('dragleave', onDragEnd);
+      document.removeEventListener('drop', onDrop);
+    };
+  }, [compact, disabled, handleFile]);
+
   const openPicker = () => {
     if (!disabled && !uploading) inputRef.current?.click();
   };
@@ -124,7 +161,59 @@ export default function ImageUpload({
         }}
       />
 
-      {circle ? (
+      {compact ? (
+        <div className="flex items-center gap-4">
+          <div
+            className={`relative flex h-[72px] w-[72px] flex-shrink-0 items-center justify-center overflow-hidden rounded-xl transition-colors ${
+              value
+                ? 'border border-border bg-surface-2'
+                : dragging
+                  ? 'border-2 border-dashed border-primary-500 bg-primary-500/12'
+                  : 'border-2 border-dashed border-border-strong hover:bg-surface-hover'
+            } ${disabled ? 'opacity-60' : ''}`}
+          >
+            {value ? (
+              <BannerImage src={value} alt="Item photo" sizes="72px" />
+            ) : (
+              <Icon name="image" size={18} className="text-muted-foreground" />
+            )}
+            {uploading && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black/40 text-white">
+                <Spinner className="text-white" />
+              </div>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <Button
+              ref={replaceRef}
+              type="button"
+              variant="secondary"
+              size="sm"
+              icon={value ? undefined : 'plus'}
+              onClick={openPicker}
+              disabled={disabled || uploading}
+            >
+              {value ? 'Replace' : 'Add photo'}
+            </Button>
+            {value && (
+              <Button
+                type="button"
+                variant="danger-ghost"
+                size="sm"
+                onClick={() => onChange(null)}
+                disabled={disabled || uploading}
+              >
+                Remove
+              </Button>
+            )}
+            {uploading && (
+              <span className="inline-flex h-9 items-center text-sm text-muted-foreground">
+                Uploading…
+              </span>
+            )}
+          </div>
+        </div>
+      ) : circle ? (
         <div className="flex items-center gap-4">
           <button
             type="button"
