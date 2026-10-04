@@ -9,7 +9,7 @@ export default function BrandLink() {
   return (
     <Link
       href="/"
-      className="flex items-center text-xl font-semibold tracking-tighter text-foreground transition-opacity hover:opacity-80"
+      className="flex shrink-0 items-center whitespace-nowrap text-xl font-semibold tracking-tighter text-foreground transition-opacity hover:opacity-80"
       aria-label="Wishlist home"
     >
       Wishlist
