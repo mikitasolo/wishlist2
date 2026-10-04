@@ -46,21 +46,18 @@ const WishlistSchema = new Schema(
       type: [{ type: Schema.Types.ObjectId, ref: 'User' }],
       default: [],
     },
-    // Legacy flag, kept in sync with `visibility` (everyone ⇒ true). Written,
-    // never read: who may see a list is decided by `visibility` alone.
-    isPublic: {
-      type: Boolean,
-      default: true,
-      required: true,
-    },
     // Who can see this wishlist:
     //  - everyone: anyone with the link / on any owner's profile
     //  - friends:  any owner's friends (mutual follows) + members
     //  - private:  owners + explicit members only
+    // No default, on purpose: every write names the tier (the create route
+    // always passes one), and a stored list somehow missing it must fail closed
+    // on every reader. A default would hydrate it as `everyone` in a
+    // `findById` read while the query side (search, profiles) and lean reads
+    // match it to no tier.
     visibility: {
       type: String,
       enum: ['everyone', 'friends', 'private'],
-      default: 'everyone',
       required: true,
     },
     archived: {
@@ -128,7 +125,6 @@ export interface IWishlist {
   slug?: string | null;
   description?: string | null;
   owners: mongoose.Types.ObjectId[];
-  isPublic: boolean;
   visibility: 'everyone' | 'friends' | 'private';
   archived?: boolean;
   currency?: string;

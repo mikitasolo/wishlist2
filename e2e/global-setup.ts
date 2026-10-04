@@ -64,7 +64,6 @@ export default async function globalSetup(_config: FullConfig) {
     name: 'E2E Birthday List',
     owners: [user._id],
     visibility: 'everyone',
-    isPublic: true,
     slug: 'e2e-birthday',
     currency: 'USD',
   });
@@ -81,7 +80,6 @@ export default async function globalSetup(_config: FullConfig) {
     name: 'E2E Friend List',
     owners: [friend._id],
     visibility: 'everyone',
-    isPublic: true,
     slug: 'e2e-friend',
     currency: 'USD',
   });

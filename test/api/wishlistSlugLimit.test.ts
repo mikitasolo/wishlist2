@@ -54,7 +54,6 @@ async function makeList({ archived = false, slug = 'birthday' } = {}) {
     slug,
     owners: [alice],
     visibility: 'everyone',
-    isPublic: true,
     archived,
   });
   const id = wl._id.toString();

@@ -68,10 +68,11 @@ export type ApiWishlist = Omit<IWishlist, 'owners' | 'featuredBy' | 'occasion'> 
  * Shape a wishlist for an API response: exposes the owner set as plain id
  * strings, folds the per-owner `featuredBy` set down to the boolean `featured`
  * *this viewer* cares about (so a co-owner's dashboard pin never reads as
- * yours), and drops the deprecated single-owner fields so clients can't start
- * depending on them again. The occasion goes to every viewer: whoever may see
- * the list may see its date, so this adds no rule of its own, and a list saved
- * before occasions existed reads as `occasion: null`.
+ * yours), and drops the deprecated fields (the single-owner ones, the legacy
+ * `isPublic` flag) so clients can't start depending on them again. The
+ * occasion goes to every viewer: whoever may see the list may see its date, so
+ * this adds no rule of its own, and a list saved before occasions existed reads
+ * as `occasion: null`.
  */
 export function serializeWishlist(
   wishlist: IWishlist & { toObject?: () => unknown },
@@ -79,8 +80,11 @@ export function serializeWishlist(
 ): ApiWishlist {
   const raw = (
     typeof wishlist.toObject === 'function' ? wishlist.toObject() : { ...wishlist }
-  ) as IWishlist;
-  const { owners: _owners, featuredBy: _featuredBy, ...rest } = raw;
+  ) as IWishlist & { isPublic?: unknown };
+  // `isPublic` is the legacy flag the schema dropped (WIS-184). A list stored
+  // before then still carries it, and a read hands back what's stored, so it's
+  // left out here rather than sent to clients that must not start reading it.
+  const { owners: _owners, featuredBy: _featuredBy, isPublic: _isPublic, ...rest } = raw;
   return {
     ...rest,
     owners: ownerIds(wishlist),

@@ -39,7 +39,12 @@ beforeEach(async () => {
   otto = (await User.create({ email: 'otto@x.com', username: 'otto' }))._id.toString();
   mia = (await User.create({ email: 'mia@x.com', username: 'mia' }))._id.toString();
   wishlistId = (
-    await Wishlist.create({ name: 'Trip', slug: 'trip', owners: [rita, otto] })
+    await Wishlist.create({
+      name: 'Trip',
+      slug: 'trip',
+      owners: [rita, otto],
+      visibility: 'everyone',
+    })
   )._id.toString();
   await WishlistMember.create({ wishlist: wishlistId, user: mia });
 });
@@ -164,7 +169,7 @@ describe('a notification about a list deleted while it is being written', () => 
   });
 
   it('only takes back the rows it wrote, not other notifications of the recipient', async () => {
-    const other = await Wishlist.create({ name: 'Home', owners: [otto] });
+    const other = await Wishlist.create({ name: 'Home', owners: [otto], visibility: 'everyone' });
     await createNotification({
       user: mia,
       type: 'wishlist_invite',

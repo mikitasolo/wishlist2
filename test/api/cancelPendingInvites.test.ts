@@ -61,11 +61,19 @@ beforeEach(async () => {
   carol = (await User.create({ email: 'c@x.com', username: 'carol' }))._id.toString();
   erin = (await User.create({ email: 'e@x.com', username: 'erin' }))._id.toString();
 
-  const wl = await Wishlist.create({ name: 'Family list', owners: [alice, bob] });
+  const wl = await Wishlist.create({
+    name: 'Family list',
+    owners: [alice, bob],
+    visibility: 'everyone',
+  });
   wid = wl._id.toString();
   await WishlistMember.create({ wishlist: wid, user: carol });
 
-  const other = await Wishlist.create({ name: 'Other list', owners: [alice] });
+  const other = await Wishlist.create({
+    name: 'Other list',
+    owners: [alice],
+    visibility: 'everyone',
+  });
   otherId = other._id.toString();
 });
 

@@ -70,7 +70,6 @@ function listBody(s: Server) {
     description: s.description,
     owners: [...s.owners],
     visibility: 'everyone',
-    isPublic: true,
     archived: false,
     featured: false,
     currency: 'EUR',

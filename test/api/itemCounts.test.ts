@@ -134,7 +134,7 @@ const bookingKeys = (row: object) => Object.keys(row).filter((k) => /book|reserv
 
 describe('countWishlistItems', () => {
   it('counts published items, drafts and proposals per list, and zeros for a list with none', async () => {
-    const empty = await Wishlist.create({ name: 'Empty', owners: [owner] });
+    const empty = await Wishlist.create({ name: 'Empty', owners: [owner], visibility: 'everyone' });
     const ids = [listId, archivedId].map((id) => new mongoose.Types.ObjectId(id));
     const counts = await countWishlistItems([...ids, empty._id]);
 

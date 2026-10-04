@@ -155,7 +155,7 @@ describe('DELETE /api/users/me: the request', () => {
   });
 
   it('deletes the lists the confirmation named', async () => {
-    const mine = await Wishlist.create({ name: 'Mine', owners: [ann] });
+    const mine = await Wishlist.create({ name: 'Mine', owners: [ann], visibility: 'everyone' });
     signIn(ann);
     const res = await DELETE_ME(deleteRequest('ann', [mine._id.toString()]));
     expect(res.status).toBe(200);
@@ -166,7 +166,7 @@ describe('DELETE /api/users/me: the request', () => {
   it('regression: refuses, changing nothing, when a list became its alone after the confirmation', async () => {
     // The dialog named no list; since then a co-owner left `later`, so deleting
     // the account would now delete it too, unasked.
-    const later = await Wishlist.create({ name: 'Later', owners: [ann] });
+    const later = await Wishlist.create({ name: 'Later', owners: [ann], visibility: 'everyone' });
     await db().collection('sessions').insertOne({ sessionToken: 't', userId: annOid });
     signIn(ann);
     const res = await DELETE_ME(deleteRequest('ann', []));
@@ -194,10 +194,10 @@ describe('DELETE /api/users/me: the request', () => {
 
 describe('GET /api/users/me/deletion', () => {
   it('names only the lists the caller owns alone, archived ones included', async () => {
-    await Wishlist.create({ name: 'Mine', owners: [ann] });
-    await Wishlist.create({ name: 'Old', owners: [ann], archived: true });
-    await Wishlist.create({ name: 'Shared', owners: [ann, bob] });
-    await Wishlist.create({ name: 'Bobs', owners: [bob] });
+    await Wishlist.create({ name: 'Mine', owners: [ann], visibility: 'everyone' });
+    await Wishlist.create({ name: 'Old', owners: [ann], visibility: 'everyone', archived: true });
+    await Wishlist.create({ name: 'Shared', owners: [ann, bob], visibility: 'everyone' });
+    await Wishlist.create({ name: 'Bobs', owners: [bob], visibility: 'everyone' });
     signIn(ann);
     const res = await PREVIEW();
     const names = (await res.json()).data.soleOwnedLists.map((l: { name: string }) => l.name);
@@ -210,6 +210,7 @@ describe('deleteAccount: the cascade', () => {
     const list = await Wishlist.create({
       name: 'Mine',
       owners: [ann],
+      visibility: 'everyone',
       bannerUrl: upload(ann, 'banner.jpg'),
     });
     const item = await Item.create({
@@ -242,7 +243,12 @@ describe('deleteAccount: the cascade', () => {
   });
 
   it('only takes the account off a co-owned list, which keeps working for the other owner', async () => {
-    const list = await Wishlist.create({ name: 'Ours', owners: [bob, ann], featuredBy: [ann] });
+    const list = await Wishlist.create({
+      name: 'Ours',
+      owners: [bob, ann],
+      visibility: 'everyone',
+      featuredBy: [ann],
+    });
     await Item.create({ wishlist: list._id, name: 'Lamp' });
     // An invite ann sent for it, and one she was sent elsewhere.
     await WishlistInvite.create({ wishlist: list._id, invitedBy: ann, invitedUser: cat });
@@ -257,7 +263,7 @@ describe('deleteAccount: the cascade', () => {
   });
 
   it('frees the items it booked as a member and leaves the list, as a member leaving does', async () => {
-    const list = await Wishlist.create({ name: 'Bobs', owners: [bob] });
+    const list = await Wishlist.create({ name: 'Bobs', owners: [bob], visibility: 'everyone' });
     await WishlistMember.create({ wishlist: list._id, user: ann });
     const item = await Item.create({
       wishlist: list._id,
@@ -266,7 +272,11 @@ describe('deleteAccount: the cascade', () => {
       bookedBy: ann,
     });
     // A booking on a list she's no longer on is freed too.
-    const elsewhere = await Wishlist.create({ name: 'Other', owners: [bob] });
+    const elsewhere = await Wishlist.create({
+      name: 'Other',
+      owners: [bob],
+      visibility: 'everyone',
+    });
     const stray = await Item.create({
       wishlist: elsewhere._id,
       name: 'Kettle',
@@ -286,7 +296,7 @@ describe('deleteAccount: the cascade', () => {
   });
 
   it('erases its reservations and gift history, freeing their snapshots, and nobody else’s', async () => {
-    const list = await Wishlist.create({ name: 'Bobs', owners: [bob] });
+    const list = await Wishlist.create({ name: 'Bobs', owners: [bob], visibility: 'everyone' });
     const item = await Item.create({ wishlist: list._id, name: 'Lamp' });
     await Reservation.create({
       ...reservationOf(ann, list._id.toString(), item._id.toString(), bob),
@@ -320,6 +330,7 @@ describe('deleteAccount: the cascade', () => {
     const shared = await Wishlist.create({
       name: 'Ours',
       owners: [bob, ann],
+      visibility: 'everyone',
       bannerUrl: upload(ann, 'banner.jpg'),
     });
     const item = await Item.create({
@@ -359,7 +370,7 @@ describe('deleteAccount: the cascade', () => {
     await Notification.create({ user: ann, type: 'follow' });
     await Notification.create({ user: bob, type: 'follow', actor: ann, actorUsername: 'ann' });
     const bobsOther = await Notification.create({ user: bob, type: 'follow', actor: cat });
-    const list = await Wishlist.create({ name: 'Bobs', owners: [bob] });
+    const list = await Wishlist.create({ name: 'Bobs', owners: [bob], visibility: 'everyone' });
     const proposal = await Item.create({
       wishlist: list._id,
       name: 'Idea',
@@ -393,8 +404,12 @@ describe('deleteAccount: the cascade', () => {
   });
 
   it('can be finished by running it again after a failure part-way, and is a no-op once done', async () => {
-    const mine = await Wishlist.create({ name: 'Mine', owners: [ann] });
-    const shared = await Wishlist.create({ name: 'Ours', owners: [bob, ann] });
+    const mine = await Wishlist.create({ name: 'Mine', owners: [ann], visibility: 'everyone' });
+    const shared = await Wishlist.create({
+      name: 'Ours',
+      owners: [bob, ann],
+      visibility: 'everyone',
+    });
     await Follow.create({ follower: ann, following: bob });
     vi.spyOn(Follow, 'deleteMany').mockRejectedValueOnce(new Error('down'));
 
@@ -417,8 +432,8 @@ describe('deleteAccount: the cascade', () => {
 
 describe('deleteAccount: requests to join (WIS-314)', () => {
   it('deletes its requests and the owners’ notifications about them, and nobody else’s', async () => {
-    const bobs = await Wishlist.create({ name: 'Bobs', owners: [bob] });
-    const other = await Wishlist.create({ name: 'Other', owners: [bob] });
+    const bobs = await Wishlist.create({ name: 'Bobs', owners: [bob], visibility: 'everyone' });
+    const other = await Wishlist.create({ name: 'Other', owners: [bob], visibility: 'everyone' });
     await WishlistJoinRequest.create({ wishlist: bobs._id, user: ann });
     await WishlistJoinRequest.create({
       wishlist: other._id,
@@ -451,7 +466,7 @@ describe('deleteAccount: requests to join (WIS-314)', () => {
   });
 
   it('is finished by running it again after its own step fails, and is then a no-op', async () => {
-    const bobs = await Wishlist.create({ name: 'Bobs', owners: [bob] });
+    const bobs = await Wishlist.create({ name: 'Bobs', owners: [bob], visibility: 'everyone' });
     await WishlistJoinRequest.create({ wishlist: bobs._id, user: ann });
     const catsRequest = await WishlistJoinRequest.create({ wishlist: bobs._id, user: cat });
     vi.spyOn(WishlistJoinRequest, 'deleteMany').mockRejectedValueOnce(new Error('down'));
@@ -471,7 +486,7 @@ describe('deleteAccount: races on a list it owns', () => {
   it('regression: a co-owner joining just before the delete keeps the list, without the account', async () => {
     // The account read the list as its alone, then bob accepted an owner invite
     // before the delete landed. Deleting it would take bob's list from him.
-    const list = await Wishlist.create({ name: 'Mine', owners: [ann] });
+    const list = await Wishlist.create({ name: 'Mine', owners: [ann], visibility: 'everyone' });
     const original = Wishlist.findOneAndDelete.bind(Wishlist);
     vi.spyOn(Wishlist, 'findOneAndDelete').mockImplementationOnce(((
       ...args: Parameters<typeof Wishlist.findOneAndDelete>
@@ -490,7 +505,11 @@ describe('deleteAccount: races on a list it owns', () => {
   it('regression: the other owner leaving at the same moment never leaves the list ownerless', async () => {
     // Both read the list as shared; bob's leave lands first, so the account's
     // removal is refused as the last owner, and the list is deleted instead.
-    const list = await Wishlist.create({ name: 'Ours', owners: [ann, bob] });
+    const list = await Wishlist.create({
+      name: 'Ours',
+      owners: [ann, bob],
+      visibility: 'everyone',
+    });
     const original = Wishlist.updateOne.bind(Wishlist);
     vi.spyOn(Wishlist, 'updateOne').mockImplementationOnce(((
       ...args: Parameters<typeof Wishlist.updateOne>
@@ -511,7 +530,11 @@ describe('deleteAccount: races on a list it owns', () => {
     // The confirmation named no list (this one was shared then). Bob leaves while
     // the deletion runs, so the account becomes its only owner: it stops, with the
     // list kept and still owned, and the account there to confirm again.
-    const list = await Wishlist.create({ name: 'Ours', owners: [ann, bob] });
+    const list = await Wishlist.create({
+      name: 'Ours',
+      owners: [ann, bob],
+      visibility: 'everyone',
+    });
     const original = Wishlist.updateOne.bind(Wishlist);
     vi.spyOn(Wishlist, 'updateOne').mockImplementationOnce(((
       ...args: Parameters<typeof Wishlist.updateOne>
@@ -529,7 +552,7 @@ describe('deleteAccount: races on a list it owns', () => {
   });
 
   it('regression: a booking that lands while it leaves as a member is freed by the second pass', async () => {
-    const list = await Wishlist.create({ name: 'Bobs', owners: [bob] });
+    const list = await Wishlist.create({ name: 'Bobs', owners: [bob], visibility: 'everyone' });
     await WishlistMember.create({ wishlist: list._id, user: ann });
     const item = await Item.create({ wishlist: list._id, name: 'Lamp' });
     // A booking in flight from another tab, written once the account has left.

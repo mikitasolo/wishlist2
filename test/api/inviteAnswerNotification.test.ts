@@ -162,7 +162,9 @@ describe('answering an invite updates its notification', () => {
   });
 
   it("leaves everyone else's notifications, and the invitee's others, as they were", async () => {
-    const otherList = (await Wishlist.create({ name: 'Other list', owners: [ben] }))._id;
+    const otherList = (
+      await Wishlist.create({ name: 'Other list', owners: [ben], visibility: 'everyone' })
+    )._id;
     const id = await invite(anna);
     await invite(cara);
     await invite(anna, otherList.toString());

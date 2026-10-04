@@ -78,7 +78,6 @@ describe("the Share popover's text matches getWishlistViewAccess", () => {
       name: 'List',
       owners: [ids.owner, ids.coOwner],
       visibility,
-      isPublic: visibility === 'everyone',
       archived,
     });
     await WishlistMember.create({ wishlist: wishlist._id, user: ids.member });

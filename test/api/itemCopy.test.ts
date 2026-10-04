@@ -439,7 +439,7 @@ describe('POST /api/wishlists/[id]/items with sourceItemId — what can be copie
   it('404s for an item on a list the caller can’t see', async () => {
     as(bob);
     for (const visibility of ['private', 'friends'] as const) {
-      await Wishlist.updateOne({ _id: aliceList }, { visibility, isPublic: false });
+      await Wishlist.updateOne({ _id: aliceList }, { visibility });
       const source = await makeItem();
       await expectNotFound(await createIn(bobList, copyBody(source)));
     }
@@ -493,7 +493,7 @@ describe('POST /api/wishlists/[id]/items with sourceItemId — what can be copie
   });
 
   it('answers a hidden item exactly as a missing one', async () => {
-    await Wishlist.updateOne({ _id: aliceList }, { visibility: 'private', isPublic: false });
+    await Wishlist.updateOne({ _id: aliceList }, { visibility: 'private' });
     const hidden = await makeItem();
     as(bob);
 
@@ -508,7 +508,7 @@ describe('POST /api/wishlists/[id]/items with sourceItemId — what can be copie
   });
 
   it('copies from a private list the caller is a member of, and from a friend’s friends-only list', async () => {
-    await Wishlist.updateOne({ _id: aliceList }, { visibility: 'private', isPublic: false });
+    await Wishlist.updateOne({ _id: aliceList }, { visibility: 'private' });
     await WishlistMember.create({ wishlist: aliceList, user: bob });
     as(bob);
     expect((await createIn(bobList, copyBody(await makeItem()))).status).toBe(201);

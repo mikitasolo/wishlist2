@@ -167,7 +167,7 @@ describe('GET /api/users/me/reservations/summary', () => {
     const closed = await list();
     await book(closed, gifter, 'On a list closed to them');
     await WishlistMember.deleteOne({ wishlist: closed, user: gifter });
-    await Wishlist.findByIdAndUpdate(closed, { visibility: 'private', isPublic: false });
+    await Wishlist.findByIdAndUpdate(closed, { visibility: 'private' });
     // And the owner deleted this one, items and all.
     const deleted = await list();
     await Item.findByIdAndDelete(await book(deleted, gifter, 'On a deleted list'));

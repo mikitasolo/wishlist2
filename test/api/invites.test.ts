@@ -454,7 +454,11 @@ describe('DELETE /api/wishlists/[id]/invites/[inviteId]', () => {
     Notification.countDocuments({ user: inviteeId, wishlist: wishlistId, type: 'wishlist_invite' });
 
   beforeEach(async () => {
-    const otherList = await Wishlist.create({ name: 'Other', owners: [ownerId] });
+    const otherList = await Wishlist.create({
+      name: 'Other',
+      owners: [ownerId],
+      visibility: 'everyone',
+    });
     otherListId = otherList._id.toString();
     const bystander = await User.create({ email: 'bystander@x.com', username: 'bystander' });
     bystanderId = bystander._id.toString();

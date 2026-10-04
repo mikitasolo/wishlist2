@@ -77,7 +77,6 @@ async function makeList({ archived }: { archived: boolean }) {
     owners: [alice, bob],
     featuredBy: [alice],
     visibility: 'everyone',
-    isPublic: true,
     archived,
   });
   const id = wl._id.toString();

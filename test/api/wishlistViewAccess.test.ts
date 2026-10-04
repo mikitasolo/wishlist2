@@ -80,7 +80,6 @@ async function makeList(visibility: Visibility, archived = false) {
     name: 'Birthday',
     owners: [owner, coOwner],
     visibility,
-    isPublic: visibility === 'everyone',
     archived,
   });
   wishlistId = wl._id.toString();
@@ -261,7 +260,6 @@ describe('GET /api/wishlists/[id] — slug backfill on an old list', () => {
       owners: [new mongoose.Types.ObjectId(owner)],
       featuredBy: [],
       visibility: 'private',
-      isPublic: false,
     });
     wishlistId = insertedId.toString();
     await WishlistMember.create({ wishlist: insertedId, user: member });

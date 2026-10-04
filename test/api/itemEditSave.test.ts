@@ -66,7 +66,12 @@ beforeEach(async () => {
   alice = (await User.create({ email: 'a@x.com', username: 'alice' }))._id.toString();
   bob = (await User.create({ email: 'b@x.com', username: 'bob' }))._id.toString();
   wishlistId = (
-    await Wishlist.create({ name: 'Birthday', owners: [alice, bob], currency: 'USD' })
+    await Wishlist.create({
+      name: 'Birthday',
+      owners: [alice, bob],
+      visibility: 'everyone',
+      currency: 'USD',
+    })
   )._id.toString();
 });
 

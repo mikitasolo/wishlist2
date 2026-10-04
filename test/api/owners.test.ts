@@ -216,7 +216,7 @@ describe('co-ownership — reading the list', () => {
   // a `WishlistMember` row, and co-owners don't have one — so a list you co-owned
   // vanished from your co-owner's profile the moment it wasn't public.
   it('regression: a co-owner sees a private shared list on the other owner’s profile', async () => {
-    await Wishlist.updateOne({ _id: wid }, { $set: { visibility: 'private', isPublic: false } });
+    await Wishlist.updateOne({ _id: wid }, { $set: { visibility: 'private' } });
 
     const body = await profileOf(bob, alice);
     const row = body.data.find((w: { _id: string }) => w._id === wid);
@@ -240,7 +240,7 @@ describe('co-ownership — reading the list', () => {
   // The friends tier is gated on friendship with the profile's owner, which a
   // co-owner needn't have.
   it('regression: a co-owner sees a friends-only shared list without being friends', async () => {
-    await Wishlist.updateOne({ _id: wid }, { $set: { visibility: 'friends', isPublic: false } });
+    await Wishlist.updateOne({ _id: wid }, { $set: { visibility: 'friends' } });
 
     const body = await profileOf(bob, alice);
     expect(body.data.map((w: { _id: string }) => w._id)).toContain(wid);
@@ -248,7 +248,7 @@ describe('co-ownership — reading the list', () => {
 
   // The fix must widen access for owners only — not for everyone else.
   it('still hides a private list from a stranger and from a plain member’s view of it', async () => {
-    await Wishlist.updateOne({ _id: wid }, { $set: { visibility: 'private', isPublic: false } });
+    await Wishlist.updateOne({ _id: wid }, { $set: { visibility: 'private' } });
     const stranger = (await User.create({ email: 'z@x.com', username: 'zoe' }))._id.toString();
 
     expect((await profileOf(bob, stranger)).data).toHaveLength(0);
@@ -1269,9 +1269,9 @@ describe('racing removals still leave the wishlist an owner', () => {
         const cover = ownBlob(alice, 'cover.jpg');
         await Wishlist.updateOne({ _id: wid }, { $set: { bannerUrl: cover } });
         const settings = async () => {
-          const { name, slug, description, visibility, isPublic, archived, bannerUrl, currency } =
+          const { name, slug, description, visibility, archived, bannerUrl, currency } =
             (await Wishlist.findById(wid).lean())!;
-          return { name, slug, description, visibility, isPublic, archived, bannerUrl, currency };
+          return { name, slug, description, visibility, archived, bannerUrl, currency };
         };
         const before = await settings();
 

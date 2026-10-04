@@ -88,7 +88,6 @@ beforeEach(() => {
           ownerUsernames: [...owners],
           userRole,
           visibility: 'everyone',
-          isPublic: true,
           archived: false,
           featured: false,
           currency: 'EUR',

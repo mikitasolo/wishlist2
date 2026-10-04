@@ -22,7 +22,6 @@ function wishlist(overrides: Partial<IWishlist> = {}): IWishlist {
     slug: 'list',
     description: null,
     owners: [A],
-    isPublic: true,
     visibility: 'everyone',
     archived: false,
     currency: 'USD',
@@ -103,6 +102,15 @@ describe('serializeWishlist', () => {
   it('does not expose the raw featuredBy set', () => {
     const out = serializeWishlist(wishlist({ owners: [A], featuredBy: [A] }), null);
     expect(out).not.toHaveProperty('featuredBy');
+  });
+
+  // A list stored before WIS-184 still carries the legacy `isPublic` flag, and
+  // a read hands back what's stored, schema or not. Nothing may start reading it.
+  it('does not expose a legacy isPublic flag a stored list still carries', () => {
+    const legacy = { ...wishlist({ visibility: 'private' }), isPublic: true };
+    const out = serializeWishlist(legacy, null);
+    expect(out).not.toHaveProperty('isPublic');
+    expect(out.visibility).toBe('private');
   });
 
   it('keeps the rest of the wishlist intact', () => {

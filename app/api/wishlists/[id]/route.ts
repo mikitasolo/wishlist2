@@ -159,7 +159,6 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         | 'name'
         | 'slug'
         | 'description'
-        | 'isPublic'
         | 'visibility'
         | 'archived'
         | 'bannerUrl'
@@ -210,7 +209,6 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     }
     if (validatedData.visibility !== undefined) {
       updateData.visibility = validatedData.visibility;
-      updateData.isPublic = validatedData.visibility === 'everyone';
     }
     if (validatedData.archived !== undefined) updateData.archived = validatedData.archived;
     // Set, changed or (null) cleared in the same write as the rest of the edit.

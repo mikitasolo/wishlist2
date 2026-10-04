@@ -54,7 +54,6 @@ const list = () => ({
   ownerUsernames: ['alice'],
   userRole: 'owner',
   visibility: 'everyone',
-  isPublic: true,
   archived,
   featured: false,
   currency: 'EUR',

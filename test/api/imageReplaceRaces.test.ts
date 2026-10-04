@@ -66,7 +66,11 @@ beforeEach(async () => {
     { email: 'c@x.com', username: 'carol' },
   ]);
   [alice, bob, carol] = [a, b, c].map((u) => u._id.toString());
-  const wl = await Wishlist.create({ name: 'Birthday', owners: [a._id, b._id] });
+  const wl = await Wishlist.create({
+    name: 'Birthday',
+    owners: [a._id, b._id],
+    visibility: 'everyone',
+  });
   wishlistId = wl._id.toString();
   await WishlistMember.create({ wishlist: wl._id, user: c._id });
   itemId = (await Item.create({ wishlist: wl._id, name: 'Blue Mug' }))._id.toString();
