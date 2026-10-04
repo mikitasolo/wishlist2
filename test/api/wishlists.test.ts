@@ -247,8 +247,10 @@ describe('DELETE /api/wishlists/[id] — cleanup', () => {
   }
 
   it('still deletes the list and succeeds when item cleanup fails', async () => {
+    // Each item is deleted on its own (WIS-206), so there has to be one to fail.
+    await Item.create({ wishlist: doomedId, name: 'Gift' });
     await expectDeleteSurvives(
-      vi.spyOn(Item, 'deleteMany').mockRejectedValueOnce(new Error('db hiccup')),
+      vi.spyOn(Item, 'findOneAndDelete').mockRejectedValueOnce(new Error('db hiccup')),
       () => WishlistMember.countDocuments({ wishlist: doomedId })
     );
   });
