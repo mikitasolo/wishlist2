@@ -796,22 +796,49 @@ describe('PATCH /api/invites/[inviteId] on an invite already answered', () => {
     expect(await WishlistMember.exists({ wishlist: wishlistId, user: inviteeId })).toBeNull();
   });
 
-  // The list is friends-only, so once they're off it they can't open it.
-  it('leaves the link out once they can no longer open the list', async () => {
+  // An accepted invite outlives a leave or a kick (only pending ones are
+  // cancelled), so "already joined" would be wrong once they're off the list,
+  // even one anyone can open.
+  it.each(['friends', 'everyone'] as const)(
+    'answers 404 once they have left the (%s) list they accepted',
+    async (visibility) => {
+      expect((await respond(inviteId, 'accept', inviteeId)).status).toBe(200);
+      await Wishlist.updateOne({ _id: wishlistId }, { $set: { visibility } });
+      await WishlistMember.deleteOne({ wishlist: wishlistId, user: inviteeId });
+
+      const res = await respond(inviteId, 'accept', inviteeId);
+
+      expect(res.status).toBe(404);
+      expect(await res.json()).toEqual({ success: false, error: 'Invite not found' });
+    }
+  );
+
+  // An invite only claimed by an accept still granting the role may yet be
+  // reopened or withdrawn, so it isn't "already joined" until the role is there.
+  it('answers 404 while the accept that claimed it has not granted the role yet', async () => {
     await answered('accepted');
+
+    const res = await respond(inviteId, 'decline', inviteeId);
+
+    expect(res.status).toBe(404);
+    expect((await WishlistInvite.findById(inviteId))?.status).toBe('accepted');
+  });
+
+  it('answers 404 to an accepted owner invite while they are still only a member', async () => {
+    await WishlistInvite.updateOne({ _id: inviteId }, { $set: { role: 'owner' } });
+    await answered('accepted');
+    await WishlistMember.create({ wishlist: wishlistId, user: inviteeId });
+
+    expect((await respond(inviteId, 'accept', inviteeId)).status).toBe(404);
+  });
+
+  it('gives an accepted owner invite the link once they are an owner', async () => {
+    await WishlistInvite.updateOne({ _id: inviteId }, { $set: { role: 'owner' } });
+    expect((await respond(inviteId, 'accept', inviteeId)).status).toBe(200);
 
     const res = await respond(inviteId, 'accept', inviteeId);
 
     expect(res.status).toBe(409);
-    expect((await res.json()).data).toEqual({ status: 'accepted' });
-  });
-
-  it('gives the link of a list anyone can open, member or not', async () => {
-    await answered('accepted');
-    await Wishlist.updateOne({ _id: wishlistId }, { $set: { visibility: 'everyone' } });
-
-    const res = await respond(inviteId, 'accept', inviteeId);
-
     expect((await res.json()).data).toEqual({
       status: 'accepted',
       wishlistSlug: (await Wishlist.findById(wishlistId))!.slug ?? null,

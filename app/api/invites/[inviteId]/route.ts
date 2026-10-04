@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import type mongoose from 'mongoose';
 import { auth } from '@/lib/auth';
 import connectDB from '@/lib/mongodb';
-import Wishlist from '@/models/Wishlist';
+import Wishlist, { type IWishlist } from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
 import WishlistInvite, { type IWishlistInvite } from '@/models/WishlistInvite';
 import { createNotifications, recordInviteAnswer } from '@/lib/notifications';
@@ -34,22 +34,28 @@ const wishlistGone = () =>
  * 409 with the invite's `status`, so they're told they joined (or declined)
  * instead of that the invite is gone. Only ever for the invitee: an invite
  * addressed to anyone else is answered like a missing one before this is
- * reached. An accepted one carries the list's link (`wishlistSlug`,
- * `wishlistId`) only while the invitee can open the list
- * (`getWishlistViewAccess`), so it never hands out a link to a list that's
- * private to them since, or one they've been taken off. A list that's gone gets
+ * reached. An accepted one is only "already joined" while they hold the role
+ * it names (owner, or member or owner for a member invite): an accepted invite
+ * outlives their leaving or being taken off, and one only claimed by an accept
+ * still on its way may yet be reopened or withdrawn, so either way it's the
+ * 404 of an invite that's gone (`holdsInvitedRole`). It carries the list's link
+ * (`wishlistSlug`, `wishlistId`) only while the invitee can open the list
+ * (`getWishlistViewAccess`). A list that's gone gets
  * the deleted list's 404: its invites go with it, and an accept that found it
  * gone declined the invite on the way out, which isn't their answer. An archived
  * list they don't own gets the `Invite not found` 404, as a paused invite does,
  * so to a non-owner it stays indistinguishable from a missing one.
  */
 async function alreadyAnswered(
-  invite: Pick<IWishlistInvite, 'wishlist' | 'status'>,
+  invite: Pick<IWishlistInvite, 'wishlist' | 'status' | 'role'>,
   userId: string
 ): Promise<NextResponse> {
   const list = await Wishlist.findById(invite.wishlist).select('owners visibility archived slug');
   if (!list) return wishlistGone();
   if (isHiddenByArchive(list, userId)) return inviteNotFound();
+  if (invite.status === 'accepted' && !(await holdsInvitedRole(list, invite.role, userId))) {
+    return inviteNotFound();
+  }
   const data: { status: string; wishlistSlug?: string | null; wishlistId?: string } = {
     status: invite.status,
   };
@@ -63,6 +69,17 @@ async function alreadyAnswered(
   );
 }
 
+/** Whether the invitee holds the role an accepted invite of theirs names. */
+async function holdsInvitedRole(
+  list: Pick<IWishlist, '_id' | 'owners'>,
+  role: IWishlistInvite['role'],
+  userId: string
+): Promise<boolean> {
+  if (isWishlistOwner(list, userId)) return true;
+  if (role === 'owner') return false;
+  return !!(await WishlistMember.exists({ wishlist: list._id, user: userId }));
+}
+
 /**
  * The answer when this request's claim matched nothing: something else reached
  * the pending invite first. Read again to tell which. The invitee's own answer
@@ -71,7 +88,9 @@ async function alreadyAnswered(
  * pending) keeps the 404 it always had.
  */
 async function lostClaim(inviteId: mongoose.Types.ObjectId, userId: string): Promise<NextResponse> {
-  const now = await WishlistInvite.findById(inviteId).select('wishlist invitedUser status').lean();
+  const now = await WishlistInvite.findById(inviteId)
+    .select('wishlist invitedUser status role')
+    .lean();
   if (!now || now.status === 'pending' || now.invitedUser?.toString() !== userId) {
     return inviteNotFound();
   }
