@@ -169,6 +169,8 @@ export default function WishlistDetail() {
   const [sortBy, setSortBy] = useState<SortType>(DEFAULT_WISHLIST_SORT);
   const [searchQuery, setSearchQuery] = useState('');
   const [itemToEdit, setItemToEdit] = useState<ApiItem | null>(null);
+  // Edit opened from a card's "+ link" starts on the Link field.
+  const [editOnLink, setEditOnLink] = useState(false);
   const [itemToReview, setItemToReview] = useState<ApiItem | null>(null);
   // "Save to my list": the item being copied to one of the viewer's own lists.
   const [itemToSave, setItemToSave] = useState<ApiItem | null>(null);
@@ -765,8 +767,29 @@ export default function WishlistDetail() {
   }, [itemToReview, deleteItemHook, showToast, mutations]);
 
   const handleEditItem = useCallback((item: ApiItem) => {
+    setEditOnLink(false);
     setItemToEdit(item);
   }, []);
+
+  const handleAddItemLink = useCallback((item: ApiItem) => {
+    setEditOnLink(true);
+    setItemToEdit(item);
+  }, []);
+
+  // A card's Delete… / Decline…, once confirmed. Rejects on failure so the
+  // card keeps its item; same poll guard as the dialogs' deletes.
+  const handleCardDelete = useCallback(
+    async (item: ApiItem) => {
+      const deleted = await mutations.track(() => deleteItemHook(item._id));
+      if (!deleted) throw new Error('Failed to delete item');
+      setItems((prevItems) => prevItems.filter((i) => i._id !== item._id));
+      showToast(
+        item.status === 'proposed' ? 'Proposal declined' : 'Item deleted successfully',
+        'success'
+      );
+    },
+    [deleteItemHook, showToast, mutations]
+  );
 
   const handleSaveEdit = useCallback(
     async (updates: Partial<ApiItem>) => {
@@ -1749,6 +1772,8 @@ export default function WishlistDetail() {
                             ? handleEditItem
                             : undefined
                         }
+                        onDelete={isOwner ? handleCardDelete : undefined}
+                        onAddLink={isOwner ? handleAddItemLink : undefined}
                         onReview={
                           isOwner && item.status === 'proposed'
                             ? () => setItemToReview(item)
@@ -1851,6 +1876,7 @@ export default function WishlistDetail() {
         <EditItemModal
           isOpen={!!itemToEdit}
           onClose={() => setItemToEdit(null)}
+          initialFocus={editOnLink ? 'link' : undefined}
           onSave={handleSaveEdit}
           onDelete={handleDeleteItem}
           item={itemToEdit}

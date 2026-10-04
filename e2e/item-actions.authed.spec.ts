@@ -15,8 +15,8 @@ for (const width of [375, 1280]) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto('/wishlists/e2e-birthday');
     const card = page.getByRole('article', { name: 'Item: E2E Gift' });
-    const noLink = card.getByRole('img', { name: 'No link provided' });
-    // On a phone the link (or its "no link" marker) is left to the menu (WIS-245).
+    const noLink = card.getByRole('button', { name: 'Add product link' });
+    // On a phone the link (or its "+ link") is left to the menu (WIS-245).
     const row = [
       card.getByRole('button', { name: 'Edit item' }),
       ...(width < 640 ? [] : [noLink]),
@@ -52,7 +52,7 @@ test("the owner's card menu works from the keyboard and gives focus back", async
   await page.keyboard.press('ArrowDown');
   await expect(menu.getByRole('menuitem', { name: 'Move to draft' })).toBeFocused();
   await page.keyboard.press('End');
-  await expect(menu.getByRole('menuitem', { name: 'Save to my list' })).toBeFocused();
+  await expect(menu.getByRole('menuitem', { name: 'Delete…' })).toBeFocused();
 
   await page.keyboard.press('Escape');
   await expect(menu).toBeHidden();
@@ -60,10 +60,10 @@ test("the owner's card menu works from the keyboard and gives focus back", async
 
   // Shift+Tab closes it and moves on from the trigger, back along the row.
   await page.keyboard.press('ArrowUp');
-  await expect(menu.getByRole('menuitem', { name: 'Save to my list' })).toBeFocused();
+  await expect(menu.getByRole('menuitem', { name: 'Delete…' })).toBeFocused();
   await page.keyboard.press('Shift+Tab');
   await expect(menu).toBeHidden();
-  await expect(card.getByRole('button', { name: 'Edit item' })).toBeFocused();
+  await expect(card.getByRole('button', { name: 'Add product link' })).toBeFocused();
 
   // A confirmation opened from the menu gives focus back to the menu's button.
   await more.focus();
@@ -87,7 +87,9 @@ test("the owner's card menu closes on a click outside it", async ({ page }) => {
   await expect(menu.getByRole('menuitem')).toHaveText([
     'Mark as received',
     'Move to draft',
+    'Mark as most wanted',
     'Save to my list',
+    'Delete…',
   ]);
   // Inside the viewport, above its button when there's no room below it.
   const box = (await menu.boundingBox())!;

@@ -62,7 +62,7 @@ test('two cards sit side by side at 390px, the link in each card’s menu', asyn
     const more = card.getByRole('button', { name: 'More actions' });
     await expect(edit).toBeVisible();
     await expect(more).toBeVisible();
-    await expect(card.getByRole('img', { name: 'No link provided' })).toHaveCount(0);
+    await expect(card.getByRole('button', { name: 'Add product link' })).toHaveCount(0);
     const [editBox, moreBox] = await Promise.all([edit.boundingBox(), more.boundingBox()]);
     expect(moreBox!.y).toBeCloseTo(editBox!.y, 0);
     expect(moreBox!.x).toBeGreaterThan(editBox!.x + editBox!.width);
@@ -85,7 +85,9 @@ test('two cards sit side by side at 390px, the link in each card’s menu', asyn
     'Open product page',
     'Mark as received',
     'Move to draft',
+    'Mark as most wanted',
     'Save to my list',
+    'Delete…',
   ]);
   const box = (await menu.boundingBox())!;
   expect(box.x).toBeGreaterThanOrEqual(0);
@@ -99,7 +101,9 @@ test('two cards sit side by side at 390px, the link in each card’s menu', asyn
   await expect(gift.getByRole('menuitem')).toHaveText([
     'Mark as received',
     'Move to draft',
+    'Mark as most wanted',
     'Save to my list',
+    'Delete…',
   ]);
 });
 
@@ -127,7 +131,9 @@ test('from sm up, the link is a square beside the primary again, not in the menu
   await expect(linked.getByRole('menuitem')).toHaveText([
     'Mark as received',
     'Move to draft',
+    'Mark as most wanted',
     'Save to my list',
+    'Delete…',
   ]);
 
   // Down to a phone's width and back, without a reload.

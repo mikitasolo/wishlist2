@@ -78,6 +78,9 @@ interface ItemFormProps {
   // up if omitted. The form clears itself after a new item is saved, whether or
   // not the modal stays open (Keep adding: see handleSubmit).
   formId?: string;
+  // The field focus starts on, when the form isn't the name's (Edit opened by
+  // an owner's "+ link"). The dialog leaves focus to a field with `autoFocus`.
+  initialFocus?: 'link';
 }
 
 /**
@@ -106,6 +109,7 @@ export default function ItemForm({
   submittingLabel = 'Submitting…',
   isSubmitting: externalIsSubmitting,
   firstInputRef: externalFirstInputRef,
+  initialFocus,
   renderButtons,
   mode = 'create',
   itemId,
@@ -361,6 +365,7 @@ export default function ItemForm({
       >
         <Input
           ref={linkInputRef}
+          autoFocus={initialFocus === 'link'}
           inputMode="url"
           autoCapitalize="none"
           spellCheck={false}

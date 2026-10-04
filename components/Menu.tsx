@@ -46,6 +46,8 @@ export interface MenuItem {
   disabled?: boolean;
   /** Draws a divider above the item, setting it apart from the ones before it. */
   separated?: boolean;
+  /** Starts a deletion: the label and icon are red (the `danger` token). */
+  danger?: boolean;
 }
 
 /**
@@ -355,7 +357,7 @@ export default function Menu({
         <Icon
           name={item.icon}
           size={MENU_ICON_SIZE}
-          className="flex-shrink-0 text-muted-foreground"
+          className={`flex-shrink-0 ${item.danger ? '' : 'text-muted-foreground'}`}
         />
       )}
       {item.label}
@@ -363,7 +365,8 @@ export default function Menu({
     </>
   );
 
-  const itemClassName = `${POPOVER_ACTION_ROW} cursor-pointer whitespace-nowrap text-foreground outline-hidden transition-colors focus:bg-row-active aria-disabled:cursor-not-allowed aria-disabled:opacity-50`;
+  const itemClassName = (item: MenuItem) =>
+    `${POPOVER_ACTION_ROW} cursor-pointer whitespace-nowrap ${item.danger ? 'text-danger' : 'text-foreground'} outline-hidden transition-colors focus:bg-row-active aria-disabled:cursor-not-allowed aria-disabled:opacity-50`;
 
   const renderItem = (item: MenuItem) => {
     if (item.href) {
@@ -377,7 +380,7 @@ export default function Menu({
           else choose(item);
         },
         onMouseMove: followPointer,
-        className: itemClassName,
+        className: itemClassName(item),
       };
       return item.external ? (
         <a {...linkProps} target="_blank" rel="noopener noreferrer">
@@ -395,7 +398,7 @@ export default function Menu({
         aria-disabled={item.disabled || undefined}
         onClick={() => choose(item)}
         onMouseMove={followPointer}
-        className={itemClassName}
+        className={itemClassName(item)}
       >
         {itemContent(item)}
       </button>
