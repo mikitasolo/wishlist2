@@ -52,6 +52,9 @@ export default function UserProfile() {
   // On your own profile only: how many of your lists a signed-out visitor
   // could open. The API sends it to no one else.
   const [visitorCount, setVisitorCount] = useState<number | null>(null);
+  // Your own archived lists (self only): they're off the profile, so an empty
+  // profile mustn't claim you've never made a wishlist.
+  const [archivedCount, setArchivedCount] = useState(0);
   // The nearest occasion first, in the viewer's local date; until that's
   // known, the API's order (newest first), which doesn't depend on it.
   const today = useLocalToday();
@@ -146,6 +149,11 @@ export default function UserProfile() {
           user.isSelf && typeof wishlistsResult.visitorCount === 'number'
             ? wishlistsResult.visitorCount
             : null
+        );
+        setArchivedCount(
+          user.isSelf && typeof wishlistsResult.archivedCount === 'number'
+            ? wishlistsResult.archivedCount
+            : 0
         );
       } catch (error) {
         if (!current) return;
@@ -403,7 +411,13 @@ export default function UserProfile() {
             icon="list"
             {...(profile?.isSelf
               ? {
-                  title: 'You haven’t made a wishlist yet',
+                  title:
+                    archivedCount > 0
+                      ? 'No wishlists on your profile'
+                      : 'You haven’t made a wishlist yet',
+                  ...(archivedCount > 0 && {
+                    body: 'Archived lists aren’t shown on your profile. You’ll find them on Home, under Archived.',
+                  }),
                   actions: (
                     <Button icon="plus" onClick={() => setShowCreate(true)}>
                       New list
