@@ -10,8 +10,7 @@ vi.mock('next-auth/react', async (importOriginal) => ({
   ...(await importOriginal<typeof import('next-auth/react')>()),
   signIn,
 }));
-const refresh = vi.hoisted(() => vi.fn());
-vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn(), refresh }) }));
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock('@/components/AppHeader', () => ({
   default: ({ actions }: { actions?: ReactNode }) => <header>{actions}</header>,
 }));
@@ -48,7 +47,6 @@ function home(live: Live, seeded: Session | null | undefined) {
 }
 
 beforeEach(() => {
-  refresh.mockReset();
   signIn.mockReset();
 });
 
@@ -79,15 +77,18 @@ describe('the home page’s session', () => {
   it('shows the landing once the live session says signed out', () => {
     home({ data: null, status: 'unauthenticated', update }, undefined);
     expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument();
-    expect(refresh).not.toHaveBeenCalled();
   });
 
-  // The server sends no landing to an account: a session that ends without a
-  // reload (signed out in another tab) asks the server for the page again.
-  it('asks the server for the landing when an account’s session ends in place', () => {
+  // regression: the server sends no landing to an account, and the gate first
+  // fell back to the dashboard's skeleton, which a failed session read (next-auth
+  // reports it as signed out) then left on screen for good, under a signed-out
+  // header. It draws the landing itself instead.
+  it('regression: shows the landing when an account’s session reads as signed out in place', () => {
     home({ data: null, status: 'unauthenticated', update }, ACCOUNT);
-    expect(refresh).toHaveBeenCalledTimes(1);
-    expect(screen.getByTestId('dashboard')).toHaveTextContent('unauthenticated:none');
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
+      'Wishlists your friends can shop from'
+    );
+    expect(screen.queryByTestId('dashboard')).toBeNull();
   });
 
   // An `update()` puts next-auth's session back through loading, keeping the
