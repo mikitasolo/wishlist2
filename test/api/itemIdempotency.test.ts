@@ -73,7 +73,11 @@ beforeEach(async () => {
   });
   wishlistId = wl._id.toString();
   await WishlistMember.create({ wishlist: wl._id, user: member._id });
-  const other = await Wishlist.create({ name: 'Other', owners: [owner._id] });
+  const other = await Wishlist.create({
+    name: 'Other',
+    owners: [owner._id],
+    visibility: 'everyone',
+  });
   otherListId = other._id.toString();
 });
 
