@@ -112,7 +112,9 @@ export async function PATCH(
     }
 
     // Invite: an invite, so it spends the inviter's invite budget.
-    const limited = await enforce('invite', userKey(callerId));
+    const limited = await enforce('invite', userKey(callerId), {
+      newAccount: session.user.newAccount,
+    });
     if (limited) return limited;
 
     const pending = await WishlistJoinRequest.findOne({

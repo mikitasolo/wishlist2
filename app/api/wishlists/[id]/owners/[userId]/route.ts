@@ -168,7 +168,9 @@ export async function POST(
     if (!membership || !target) return notAMember();
 
     // This sends mail, so it carries the same budget as the invite route.
-    const limited = await enforce('invite', userKey(session.user.id));
+    const limited = await enforce('invite', userKey(session.user.id), {
+      newAccount: session.user.newAccount,
+    });
     if (limited) return limited;
 
     // The owner check above ran against the list as it was read at the start of

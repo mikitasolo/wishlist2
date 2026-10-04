@@ -1,5 +1,6 @@
 import type { Session } from 'next-auth';
 import type { IUser } from '@/models/User';
+import { isNewAccount } from './accountAge';
 
 /**
  * Everything a session carries about its user, and so everything `auth()`
@@ -11,7 +12,12 @@ import type { IUser } from '@/models/User';
  * - `image`: their avatar in the header;
  * - `defaultCurrency`: the default for new lists and for showing prices;
  * - `currencyChosen`: whether they've answered the dashboard's currency prompt,
- *   which reads it (a yes or no: `User.currencyChosenAt` itself isn't sent).
+ *   which reads it (a yes or no: `User.currencyChosenAt` itself isn't sent);
+ * - `newAccount`: whether the account's first verified sign-in is under 24h
+ *   old (`isNewAccount`), which picks the stricter rate-limit tier on the
+ *   routes that pass it to `enforce` (WIS-42). A yes or no about the caller's
+ *   own account, worked out on every check, so no route reads the account
+ *   again for it and `User.emailVerified` itself isn't sent.
  * Add a field only together with what reads it.
  */
 export const SESSION_USER_FIELDS = [
@@ -22,6 +28,7 @@ export const SESSION_USER_FIELDS = [
   'image',
   'defaultCurrency',
   'currencyChosen',
+  'newAccount',
 ] as const;
 
 /** A non-empty string from a raw row, or undefined. */
@@ -32,7 +39,7 @@ function text(value: unknown): string | undefined {
 /** The fields of the Mongoose read the session takes, when that read worked. */
 export type SessionDbUser = Pick<
   IUser,
-  '_id' | 'username' | 'image' | 'defaultCurrency' | 'currencyChosenAt'
+  '_id' | 'username' | 'image' | 'defaultCurrency' | 'currencyChosenAt' | 'emailVerified'
 >;
 
 /**
@@ -48,12 +55,14 @@ export type SessionDbUser = Pick<
  * backfilled a username into it (a legacy row without one), or null, in which
  * case the row stands in. A raw row has no schema defaults, hence the
  * fallbacks below (`defaultCurrency` 'USD'; `image` is null by default; an
- * account without `currencyChosenAt` hasn't answered the prompt).
+ * account without `currencyChosenAt` hasn't answered the prompt; one
+ * without `emailVerified` is new). `now` is for tests.
  */
 export function sessionPayload(
   row: Record<string, unknown> | null | undefined,
   dbUser: SessionDbUser | null,
-  expires: unknown
+  expires: unknown,
+  now: number = Date.now()
 ): Session {
   const id = dbUser ? dbUser._id.toString() : text(row?.id);
   // Fail closed: a session without its user's id would still read as signed
@@ -69,6 +78,7 @@ export function sessionPayload(
     image: (dbUser ? dbUser.image : text(row?.image)) || undefined,
     defaultCurrency: (dbUser ? dbUser.defaultCurrency : text(row?.defaultCurrency)) || 'USD',
     currencyChosen: (dbUser ? dbUser.currencyChosenAt : row?.currencyChosenAt) instanceof Date,
+    newAccount: isNewAccount(dbUser ? dbUser.emailVerified : row?.emailVerified, now),
   } satisfies Record<(typeof SESSION_USER_FIELDS)[number], unknown>;
   return {
     user,

@@ -159,7 +159,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // Throttle invites so one actor can't flood others' invitation/notification lists.
     // Only once the caller is known to own the list: a 429 that only an existing
     // list could answer with would give away an archived one.
-    const limited = await enforce('invite', userKey(session.user.id));
+    const limited = await enforce('invite', userKey(session.user.id), {
+      newAccount: session.user.newAccount,
+    });
     if (limited) return limited;
 
     // Validate request body

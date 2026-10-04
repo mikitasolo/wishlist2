@@ -65,6 +65,7 @@ describe('GET /api/auth/session', () => {
       username: 'alice',
       defaultCurrency: 'USD',
       currencyChosen: false,
+      newAccount: true,
     });
     expect(SESSION_USER_FIELDS).toEqual(expect.arrayContaining(Object.keys(body.user)));
     expect(new Date(body.expires).getTime()).toBeGreaterThan(Date.now());
@@ -133,6 +134,7 @@ describe('GET /api/auth/session', () => {
       username: expect.stringMatching(/^user_[a-z0-9]{8}$/),
       defaultCurrency: 'USD',
       currencyChosen: false,
+      newAccount: true,
     });
     expect((await User.findById(legacy).lean())!.username).toBe(first.user.username);
     // One read of the account (the generator's own `exists` checks also run

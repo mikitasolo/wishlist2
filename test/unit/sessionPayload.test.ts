@@ -22,6 +22,7 @@ describe('sessionPayload', () => {
         image: undefined,
         defaultCurrency: 'GBP',
         currencyChosen: false,
+        newAccount: true,
       },
       expires: '2026-10-31T12:00:00.000Z',
     });
@@ -42,6 +43,7 @@ describe('sessionPayload', () => {
       image: 'a.webp',
       defaultCurrency: 'USD',
       currencyChosen: false,
+      newAccount: true,
     });
   });
 
@@ -82,6 +84,7 @@ describe('sessionPayload', () => {
         image: undefined,
         defaultCurrency: 'USD',
         currencyChosen: false,
+        newAccount: true,
       },
       expires: 'not-a-date-object',
     });
@@ -113,6 +116,58 @@ describe('sessionPayload', () => {
           .currencyChosen
       ).toBe(false);
     }
+  });
+
+  // WIS-42: the stricter rate-limit tier reads it; the timestamp itself stays put.
+  describe('newAccount', () => {
+    const NOW = new Date('2026-10-04T12:00:00.000Z').getTime();
+    const HOUR = 60 * 60 * 1000;
+    const fromRead = { _id: id, username: 'me', image: null, defaultCurrency: 'USD' };
+
+    it('is true for an account first signed in under 24h ago', () => {
+      const verified = new Date(NOW - HOUR);
+      const payload = sessionPayload({ id: 'row-id', emailVerified: verified }, null, EXPIRES, NOW);
+      expect(payload.user.newAccount).toBe(true);
+      expect(JSON.stringify(payload)).not.toContain(verified.toISOString().slice(0, 13));
+    });
+
+    it('is false once the account is 24h old', () => {
+      const old = (ms: number) =>
+        sessionPayload({ id: 'row-id', emailVerified: new Date(NOW - ms) }, null, EXPIRES, NOW).user
+          .newAccount;
+      expect(old(25 * HOUR)).toBe(false);
+      expect(old(24 * HOUR)).toBe(false);
+      expect(old(24 * HOUR - 1)).toBe(true);
+    });
+
+    it('is true without an emailVerified, or one that isn’t a date', () => {
+      for (const emailVerified of [undefined, null, '2020-01-01T00:00:00.000Z', new Date('x')]) {
+        expect(
+          sessionPayload({ id: 'row-id', emailVerified }, null, EXPIRES, NOW).user.newAccount
+        ).toBe(true);
+      }
+    });
+
+    it('reads the account’s own read over the row, as every other field', () => {
+      const old = new Date(NOW - 30 * 24 * HOUR);
+      const fresh = new Date(NOW - HOUR);
+      expect(
+        sessionPayload(
+          { id: 'row-id', emailVerified: fresh },
+          { ...fromRead, emailVerified: old },
+          EXPIRES,
+          NOW
+        ).user.newAccount
+      ).toBe(false);
+      expect(
+        sessionPayload(
+          { id: 'row-id', emailVerified: old },
+          { ...fromRead, emailVerified: fresh },
+          EXPIRES,
+          NOW
+        ).user.newAccount
+      ).toBe(true);
+    });
   });
 
   it('gives an empty expiry when there is none', () => {

@@ -10,10 +10,12 @@ import {
   STORE_TIMEOUT_MS,
   BLOCK_STATS_TTL_SECONDS,
   __setRateLimiters,
+  tierLimits,
   type BlockStatsPipeline,
   type BlockStatsStore,
   type KeyKind,
   type LimiterName,
+  type NewAccountLimiterName,
   type RateLimitKey,
   type RateLimiter,
   type RateLimitResult,
@@ -38,6 +40,9 @@ function fake(result: Partial<RateLimitResult> | (() => never)): RateLimiter {
 }
 
 const deny = () => fake({ success: false, reset: Date.now() + 60_000, remaining: 0 });
+
+/** `enforce`'s options for an account past its first 24h: the standard tier. */
+const STANDARD = { newAccount: false };
 
 const consoleMethods = ['log', 'info', 'warn', 'error'] as const;
 let spies: Record<(typeof consoleMethods)[number], MockInstance>;
@@ -119,23 +124,31 @@ const LIMITERS = Object.entries(KEY_KINDS) as [LimiterName, KeyKind][];
 type Untyped<R> = (name: LimiterName, key: RateLimitKey) => Promise<R>;
 const enforceAny = enforce as Untyped<Awaited<ReturnType<typeof enforce>>>;
 const checkAny = checkRateLimit as Untyped<boolean>;
+// And the same for the limiters with a new-account tier, which take its option.
+type UntypedTiered<R> = (
+  name: NewAccountLimiterName,
+  key: RateLimitKey,
+  options: { newAccount: boolean | undefined }
+) => Promise<R>;
+const enforceTiered = enforce as UntypedTiered<Awaited<ReturnType<typeof enforce>>>;
+const checkTiered = checkRateLimit as UntypedTiered<boolean>;
 
 describe('enforce', () => {
   it('allows when no limiter is configured (disabled)', async () => {
     __setRateLimiters({}); // configured-but-empty stands in for "not configured"
-    expect(await enforce('upload', userKey('user-1'))).toBeNull();
+    expect(await enforce('upload', userKey('user-1'), STANDARD)).toBeNull();
   });
 
   it('allows when under the limit', async () => {
     __setRateLimiters({ upload: fake({ success: true }) });
-    expect(await enforce('upload', userKey('user-1'))).toBeNull();
+    expect(await enforce('upload', userKey('user-1'), STANDARD)).toBeNull();
   });
 
   it('returns a 429 with a Retry-After header when over the limit', async () => {
     const reset = Date.now() + 30_000;
     __setRateLimiters({ upload: fake({ success: false, reset }) });
 
-    const res = await enforce('upload', userKey('user-1'));
+    const res = await enforce('upload', userKey('user-1'), STANDARD);
     expect(res).not.toBeNull();
     expect(res!.status).toBe(429);
 
@@ -149,7 +162,7 @@ describe('enforce', () => {
 
   it('never emits a Retry-After below 1 second', async () => {
     __setRateLimiters({ upload: fake({ success: false, reset: Date.now() - 5_000 }) });
-    const res = await enforce('upload', userKey('user-1'));
+    const res = await enforce('upload', userKey('user-1'), STANDARD);
     expect(Number(res!.headers.get('Retry-After'))).toBeGreaterThanOrEqual(1);
   });
 });
@@ -182,7 +195,7 @@ describe('the rate_limited log line', () => {
   it('logs nothing for an allowed request', async () => {
     __setRateLimiters({ upload: fake({ success: true }), signinEmail: fake({ success: true }) });
 
-    expect(await enforce('upload', userKey('user-1'))).toBeNull();
+    expect(await enforce('upload', userKey('user-1'), STANDARD)).toBeNull();
     expect(await checkRateLimit('signinEmail', emailKey('a@b.com'))).toBe(true);
     expect(everythingLogged()).toBe('[]');
   });
@@ -201,9 +214,9 @@ describe('the rate_limited log line', () => {
     // since that key would be logged under the wrong keyKind.
     __setRateLimiters({});
     // @ts-expect-error a raw string is not a RateLimitKey
-    expect(await enforce('upload', 'user-1')).toBeNull();
+    expect(await enforce('upload', 'user-1', STANDARD)).toBeNull();
     // @ts-expect-error an IP key on a user-keyed limiter
-    expect(await enforce('upload', ipKey(new Headers()))).toBeNull();
+    expect(await enforce('upload', ipKey(new Headers()), STANDARD)).toBeNull();
     // @ts-expect-error a user key on an IP-keyed limiter
     expect(await checkRateLimit('signinIp', userKey('user-1'))).toBe(true);
     // @ts-expect-error an IP key on the email-keyed limiter
@@ -273,7 +286,7 @@ describe('failure policy when the store throws', () => {
       }),
     });
 
-    expect(await enforce('upload', key)).toBeNull(); // fail-open
+    expect(await enforce('upload', key, STANDARD)).toBeNull(); // fail-open
 
     expect(lines('error')).toEqual([
       expect.objectContaining({
@@ -499,9 +512,9 @@ describe('the block counter', () => {
     __setRateLimiters({ upload: deny() }, store);
 
     vi.setSystemTime(new Date('2026-10-01T23:59:59.999Z'));
-    await enforce('upload', userKey(IDENTIFIERS.user));
+    await enforce('upload', userKey(IDENTIFIERS.user), STANDARD);
     vi.setSystemTime(new Date('2026-10-02T00:00:00.000Z'));
-    await enforce('upload', userKey(IDENTIFIERS.user));
+    await enforce('upload', userKey(IDENTIFIERS.user), STANDARD);
 
     expect(pipelines).toEqual([
       counted('rl:stats:production:upload:2026-10-01'),
@@ -516,7 +529,7 @@ describe('the block counter', () => {
       store
     );
 
-    expect(await enforce('upload', userKey('user-1'))).toBeNull();
+    expect(await enforce('upload', userKey('user-1'), STANDARD)).toBeNull();
     expect(await checkRateLimit('signinEmail', emailKey('a@b.com'))).toBe(true);
     expect(pipelines).toEqual([]);
     expect(after).not.toHaveBeenCalled();
@@ -599,7 +612,7 @@ describe('the block counter', () => {
     __setRateLimiters({ content: deny() }, store);
 
     vi.setSystemTime(new Date('2026-10-01T23:59:59.999Z'));
-    await enforce('content', userKey(IDENTIFIERS.user));
+    await enforce('content', userKey(IDENTIFIERS.user), STANDARD);
     vi.setSystemTime(new Date('2026-10-02T00:00:00.500Z'));
     await deferred[0]!();
 
@@ -660,7 +673,7 @@ describe('the block counter', () => {
       });
       __setRateLimiters({ invite: deny() }, store);
 
-      expect((await enforce('invite', userKey(IDENTIFIERS.user)))?.status).toBe(429);
+      expect((await enforce('invite', userKey(IDENTIFIERS.user), STANDARD))?.status).toBe(429);
       await expect(deferred[0]!()).resolves.toBeUndefined();
       expect(lines('error')).toEqual([
         expect.objectContaining({ event: 'rate_limit_store_error', name: 'invite', op: 'count' }),
@@ -675,7 +688,7 @@ describe('the block counter', () => {
       };
       __setRateLimiters({ follow: deny() }, store);
 
-      expect((await enforce('follow', userKey(IDENTIFIERS.user)))?.status).toBe(429);
+      expect((await enforce('follow', userKey(IDENTIFIERS.user), STANDARD))?.status).toBe(429);
       await vi.waitFor(() =>
         expect(lines('error')).toEqual([
           {
@@ -714,6 +727,163 @@ describe('the block counter', () => {
         },
       ]);
       expect(everythingLogged()).not.toContain(IDENTIFIERS.email);
+    });
+  });
+});
+
+// WIS-42: the operator's values (2026-10-04). Only these surfaces have a
+// new-account tier; booking, search and sign-in keep one limit for everyone.
+const NEW_ACCOUNT_LIMITS: Record<NewAccountLimiterName, { tokens: number; window: string }> = {
+  invite: { tokens: 5, window: '1 h' },
+  follow: { tokens: 20, window: '1 h' },
+  content: { tokens: 20, window: '1 h' },
+  upload: { tokens: 5, window: '10 m' },
+};
+const TIERED = Object.keys(NEW_ACCOUNT_LIMITS) as NewAccountLimiterName[];
+const NEW = { newAccount: true };
+
+describe('the new-account tier', () => {
+  it('has the agreed limits, stricter than the standard tier', () => {
+    for (const name of TIERED) {
+      expect(tierLimits(name, true)).toEqual(NEW_ACCOUNT_LIMITS[name]);
+      const standard = tierLimits(name, false);
+      expect(standard.window).toBe(NEW_ACCOUNT_LIMITS[name].window);
+      expect(standard.tokens).toBeGreaterThan(NEW_ACCOUNT_LIMITS[name].tokens);
+    }
+  });
+
+  it('leaves every other limiter on its one tier', () => {
+    for (const name of Object.keys(KEY_KINDS) as LimiterName[]) {
+      if ((TIERED as LimiterName[]).includes(name)) continue;
+      expect(tierLimits(name, true)).toEqual(tierLimits(name, false));
+    }
+  });
+
+  it.each(TIERED)(
+    '%s: a new account is counted on <name>:new, anyone else on <name>',
+    async (name) => {
+      const calls: string[] = [];
+      const recording = (id: string): RateLimiter => ({
+        async limit(key) {
+          calls.push(`${id} ${key}`);
+          return { success: true, reset: 0, limit: 1, remaining: 1 };
+        },
+      });
+      __setRateLimiters({ [name]: recording(name), [`${name}:new`]: recording(`${name}:new`) });
+      const key = userKey(IDENTIFIERS.user);
+
+      await enforceTiered(name, key, NEW);
+      await enforceTiered(name, key, STANDARD);
+      await enforceTiered(name, key, { newAccount: undefined });
+      await checkTiered(name, key, NEW);
+
+      expect(calls).toEqual([
+        `${name}:new ${IDENTIFIERS.user}`,
+        `${name} ${IDENTIFIERS.user}`,
+        `${name} ${IDENTIFIERS.user}`,
+        `${name}:new ${IDENTIFIERS.user}`,
+      ]);
+    }
+  );
+
+  it('turns a new account away on its own tier while the standard one would allow it', async () => {
+    __setRateLimiters({ invite: fake({ success: true }), 'invite:new': deny() });
+    const key = userKey(IDENTIFIERS.user);
+
+    expect((await enforce('invite', key, NEW))?.status).toBe(429);
+    expect(await enforce('invite', key, STANDARD)).toBeNull();
+  });
+
+  it.each(TIERED)(
+    '%s: a block logs one line with tier "new", and counts it apart, never with the key',
+    async (name) => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date('2026-10-01T12:00:00Z'));
+      vi.stubEnv('VERCEL_ENV', 'production');
+      const { store, pipelines } = fakeStats();
+      __setRateLimiters({ [`${name}:new`]: deny() }, store);
+      const key = userKey(IDENTIFIERS.user);
+
+      expect((await enforceTiered(name, key, NEW))?.status).toBe(429);
+
+      expect(lines('warn')).toEqual([
+        { event: 'rate_limited', name, keyKind: 'user', tier: 'new' },
+      ]);
+      await vi.waitFor(() =>
+        expect(pipelines).toEqual([counted(`rl:stats:production:${name}:new:2026-10-01`)])
+      );
+      expect(everythingLogged()).not.toContain(IDENTIFIERS.user);
+      vi.unstubAllEnvs();
+      vi.useRealTimers();
+    }
+  );
+
+  it('logs a store failure on the new tier with tier "new" and its policy', async () => {
+    __setRateLimiters({
+      'upload:new': fake(() => {
+        throw new Error(`redis down for ${IDENTIFIERS.user}`);
+      }),
+    });
+
+    expect(await enforce('upload', userKey(IDENTIFIERS.user), NEW)).toBeNull(); // fail-open
+    expect(lines('error')).toEqual([
+      {
+        event: 'rate_limit_store_error',
+        name: 'upload',
+        keyKind: 'user',
+        tier: 'new',
+        policy: 'fail-open',
+        error: 'Error: redis down for <key>',
+      },
+    ]);
+  });
+
+  it('is required where it exists and refused where it does not, at compile time', async () => {
+    // The assertions that matter are the `@ts-expect-error`s: a route on a tiered
+    // limiter can't forget the session's `newAccount`, and no other takes one.
+    __setRateLimiters({});
+    const key = userKey(IDENTIFIERS.user);
+    // @ts-expect-error a tiered limiter needs { newAccount }
+    expect(await enforce('invite', key)).toBeNull();
+    // @ts-expect-error booking has no new-account tier
+    expect(await enforce('booking', key, NEW)).toBeNull();
+    // @ts-expect-error nor does search
+    expect(await enforce('search', ipKey(new Headers()), NEW)).toBeNull();
+    expect(await enforce('booking', key)).toBeNull();
+  });
+
+  describe('against the real SDK', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+      vi.stubEnv('UPSTASH_REDIS_REST_URL', 'https://test-store.upstash.io');
+      vi.stubEnv('UPSTASH_REDIS_REST_TOKEN', 'test-token');
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(() => new Promise<never>(() => {}))
+      );
+      __setRateLimiters(null); // build the real registry from the env above
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+    });
+
+    /** Everything sent to the store so far, as one string. */
+    const sent = () => JSON.stringify(vi.mocked(fetch).mock.calls);
+
+    it.each(TIERED)('%s: keeps the new tier under its own prefix, rl:<name>:new', async (name) => {
+      void enforceTiered(name, userKey(IDENTIFIERS.user), NEW);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(sent()).toContain(`rl:${name}:new:${IDENTIFIERS.user}`);
+
+      vi.mocked(fetch).mockClear();
+      void enforceTiered(name, userKey(IDENTIFIERS.user), STANDARD);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(sent()).toContain(`rl:${name}:${IDENTIFIERS.user}`);
+      expect(sent()).not.toContain(`rl:${name}:new:`);
+      await vi.advanceTimersByTimeAsync(STORE_TIMEOUT_MS);
     });
   });
 });

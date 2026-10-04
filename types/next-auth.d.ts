@@ -14,6 +14,11 @@ declare module 'next-auth' {
       defaultCurrency?: string;
       /** Whether they've answered the dashboard's currency prompt (`User.currencyChosenAt`). */
       currencyChosen?: boolean;
+      /**
+       * Whether the account's first verified sign-in is under 24h old, which
+       * picks the stricter rate-limit tier (`enforce`'s `newAccount`, WIS-42).
+       */
+      newAccount?: boolean;
     };
   }
 }

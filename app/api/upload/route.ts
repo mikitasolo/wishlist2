@@ -88,7 +88,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Blob storage/bandwidth costs money — cap uploads per user.
-    const limited = await enforce('upload', userKey(session.user.id));
+    const limited = await enforce('upload', userKey(session.user.id), {
+      newAccount: session.user.newAccount,
+    });
     if (limited) return limited;
 
     const form = await request.formData();
