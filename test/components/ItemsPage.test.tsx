@@ -128,13 +128,13 @@ describe('/items — counts and archived lists', () => {
   it('keeps the lists you had picked when the archived ones come in', async () => {
     replies[BASE] = reply([...ACTIVE, item('Rug', 'available', 'flat')]);
     replies[WITH_ARCHIVED] = reply([...ACTIVE, item('Rug', 'available', 'flat'), ...ARCHIVED]);
-    localStorage.setItem('items-wishlist-filters', JSON.stringify(['flat']));
     render(<MyItemsPage />);
 
     expect(await screen.findByText('Rug', { selector: 'p' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'All lists' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Birthday' }));
     expect(shown('Bike')).toBeNull();
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Flat' }));
     fireEvent.click(screen.getByRole('checkbox', { name: 'Include archived' }));
     expect(await screen.findByText('Boxes', { selector: 'p' })).toBeInTheDocument();
     expect(shown('Rug')).toBeInTheDocument();
@@ -248,19 +248,32 @@ describe('/items — a first load that fails', () => {
     expect(showToast).not.toHaveBeenCalled();
   });
 
-  it('restores the saved list filter from the read that succeeds, not the failed one', async () => {
-    localStorage.setItem('items-wishlist-filters', JSON.stringify(['flat']));
-    replies[BASE] = async () => {
-      throw new TypeError('Failed to fetch');
-    };
-    render(<MyItemsPage />);
-    await screen.findByRole('heading', { name: 'Couldn’t load your items' });
-
+  // regression: the List filter was saved as the ids you had picked ("All lists"
+  // included), so a list created since was unticked on the next visit and its
+  // items were missing. It isn't saved any more: every visit starts on all lists.
+  it('regression: a list created since a saved filter was written still shows up', async () => {
+    localStorage.setItem('items-wishlist-filters', JSON.stringify(['birthday']));
     replies[BASE] = reply([...ACTIVE, item('Rug', 'available', 'flat')]);
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    render(<MyItemsPage />);
 
     expect(await screen.findByText('Rug', { selector: 'p' })).toBeInTheDocument();
+    expect(shown('Bike')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'All lists' })).toBeInTheDocument();
+    expect(localStorage.getItem('items-wishlist-filters')).toBeNull();
+  });
+
+  it('regression: unticking every list goes back to all lists, not an empty grid', async () => {
+    replies[BASE] = reply([...ACTIVE, item('Rug', 'available', 'flat')]);
+    render(<MyItemsPage />);
+    expect(await screen.findByText('Rug', { selector: 'p' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'All lists' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Birthday' }));
     expect(shown('Bike')).toBeNull();
-    expect(JSON.parse(localStorage.getItem('items-wishlist-filters') ?? '[]')).toEqual(['flat']);
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Flat' }));
+
+    expect(shown('Bike')).toBeInTheDocument();
+    expect(shown('Rug')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'All lists' })).toBeInTheDocument();
   });
 });

@@ -93,6 +93,14 @@ export const OLD_STATUS_FILTER_STORAGE_KEYS = [
   'items-status-filters',
 ] as const;
 
+/** The key an earlier version saved the /items List filter under. */
+const OLD_LIST_FILTER_STORAGE_KEY = 'items-wishlist-filters';
+
+/** Deletes the List filter an earlier version saved, so it can't hide new lists. */
+export function forgetSavedListFilter(storage: Pick<Storage, 'removeItem'>): void {
+  storage.removeItem(OLD_LIST_FILTER_STORAGE_KEY);
+}
+
 /** Deletes every status filter an earlier version of the app saved. */
 export function forgetSavedStatusFilters(storage: Pick<Storage, 'removeItem'>): void {
   for (const key of OLD_STATUS_FILTER_STORAGE_KEYS) storage.removeItem(key);
