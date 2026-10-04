@@ -51,8 +51,8 @@ async function invite(userId: string, list = listId, role: IWishlistInvite['role
     actorUsername: 'ben',
     invitedUserId: userId,
   });
-  expect(issued).not.toBeNull();
-  return issued!._id.toString();
+  if (!issued || issued === 'capped') throw new Error('invite not issued');
+  return issued._id.toString();
 }
 
 function answer(inviteId: string, action: 'accept' | 'decline', userId = anna) {

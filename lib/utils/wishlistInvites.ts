@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { NextResponse } from 'next/server';
 import WishlistInvite, { IWishlistInvite } from '@/models/WishlistInvite';
 import Wishlist, { IWishlist } from '@/models/Wishlist';
 import Notification from '@/models/Notification';
@@ -40,12 +41,52 @@ function mailFailure(err: unknown) {
 }
 
 /**
+ * How many pending invites one person can have waiting (WIS-40), across every
+ * inviter and list, counting only those created in the last
+ * `PENDING_INVITE_CAP_WINDOW_MS`. A rate limit slows one inviter down; this
+ * stops a flood from reaching its target however many inviters take part. Older
+ * pending invites stay pending and visible, they just stop counting, so the cap
+ * heals itself.
+ */
+export const PENDING_INVITE_CAP = 20;
+export const PENDING_INVITE_CAP_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+
+/** What the invite routes answer when `issueWishlistInvite` returns `'capped'`. */
+export const PENDING_INVITE_CAP_ERROR = 'This person has too many pending invitations right now';
+
+/** The 429 for an invitee at the cap: the cap's own wording, and nothing else about them. */
+export function pendingInviteCapResponse() {
+  return NextResponse.json({ success: false, error: PENDING_INVITE_CAP_ERROR }, { status: 429 });
+}
+
+/** Pending invites to `invitedUserId` that count toward the cap, leaving out `except`. */
+function countCappedPending(invitedUserId: Id, except?: mongoose.Types.ObjectId) {
+  return WishlistInvite.countDocuments({
+    invitedUser: invitedUserId,
+    status: 'pending',
+    createdAt: { $gt: new Date(Date.now() - PENDING_INVITE_CAP_WINDOW_MS) },
+    ...(except ? { _id: { $ne: except } } : {}),
+  });
+}
+
+/**
  * Create a pending invite and tell the invitee about it (in-app notification +
  * email). Membership/ownership is only granted when they accept, so this is also
  * the promotion path for co-ownership.
  *
  * Returns `null` when the invitee already has a pending invite for this list —
  * in which case nothing is sent: no second email, no second notification.
+ *
+ * Returns `'capped'` when the invitee already has `PENDING_INVITE_CAP` pending
+ * invites created within the window: no invite is left behind and nothing is
+ * sent. It's checked after "already pending", so an inviter who already has one
+ * out to them learns nothing from it, and after every check the routes make
+ * before calling this (the invitee's `whoCanInvite` included), so only someone
+ * who could otherwise invite them ever hears it. The count before the insert is
+ * only a fast path: inviters racing past it could all land the 20th, so once the
+ * invite exists the others are counted again, and it's withdrawn (while still
+ * pending) if they already fill the cap. Racing calls may then all withdraw
+ * theirs, and a retry goes through; the cap is never exceeded.
  *
  * At most one pending invite per (wishlist, invitee) is enforced by the unique
  * partial index on `WishlistInvite`, so two concurrent calls can't both create
@@ -61,13 +102,17 @@ function mailFailure(err: unknown) {
  * taken back or answered before its notification was written
  * (`settledSinceIssued`): its notification is settled and no email goes out.
  */
-export async function issueWishlistInvite(args: IssueInviteArgs): Promise<IWishlistInvite | null> {
+export async function issueWishlistInvite(
+  args: IssueInviteArgs
+): Promise<IWishlistInvite | null | 'capped'> {
   const existing = await WishlistInvite.findOne({
     wishlist: args.wishlistId,
     invitedUser: args.invitedUserId,
     status: 'pending',
   });
   if (existing) return null;
+
+  if ((await countCappedPending(args.invitedUserId)) >= PENDING_INVITE_CAP) return 'capped';
 
   let invite: IWishlistInvite;
   try {
@@ -83,6 +128,16 @@ export async function issueWishlistInvite(args: IssueInviteArgs): Promise<IWishl
     // email and the notification; this one sends nothing.
     if (isDuplicateKeyError(err)) return null;
     throw err;
+  }
+
+  // Re-check the cap now that this invite exists (see above). Withdrawn only
+  // while still pending: one the invitee answered in that instant is real, and
+  // goes on as any other issued invite.
+  if (
+    (await countCappedPending(args.invitedUserId, invite._id)) >= PENDING_INVITE_CAP &&
+    (await WishlistInvite.deleteOne({ _id: invite._id, status: 'pending' })).deletedCount > 0
+  ) {
+    return 'capped';
   }
 
   const notification = await createNotification({

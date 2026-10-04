@@ -100,8 +100,8 @@ async function sendInvite(from: string, to: string, role: 'owner' | 'member') {
     actorUsername: null,
     invitedUserId: to,
   });
-  expect(invite).not.toBeNull();
-  return invite!._id.toString();
+  if (!invite || invite === 'capped') throw new Error('invite not issued');
+  return invite._id.toString();
 }
 
 const pendingFrom = (from: string) =>

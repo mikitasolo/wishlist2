@@ -12,6 +12,7 @@ import { isWishlistOwner } from '@/lib/utils/wishlistOwners';
 import {
   isInvitePaused,
   issueWishlistInvite,
+  pendingInviteCapResponse,
   withdrawUnlessInviterOwns,
 } from '@/lib/utils/wishlistInvites';
 import { clearJoinRequestNotifications } from '@/lib/utils/joinRequests';
@@ -176,6 +177,13 @@ export async function PATCH(
     } catch (err) {
       await restoreRequest(claimed);
       throw err;
+    }
+
+    // Too many pending invites already wait for them (WIS-40): nothing was
+    // issued or sent, so the request goes back to pending for a later Invite.
+    if (invite === 'capped') {
+      await restoreRequest(claimed);
+      return pendingInviteCapResponse();
     }
 
     // As the invite routes do: a removal that landed meanwhile may have missed
