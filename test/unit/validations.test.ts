@@ -214,6 +214,46 @@ describe('item name on createItemSchema and updateItemSchema', () => {
     }
   });
 
+  // WIS-292: item names get the wishlist name's checks (the owner reads them in
+  // the list and in the "Someone proposed …" notification).
+  it.each(schemas)('%s rejects a bidi override or isolate in the name', (_, schema) => {
+    for (const name of ['Gift \u202E', 'a\u2066b', '\u202Aa']) {
+      expect(nameIssues(schema, name)).toEqual([
+        { path: ['name'], message: "Name can't contain hidden text-direction characters" },
+      ]);
+    }
+  });
+
+  it.each(schemas)('%s rejects line breaks and control characters in the name', (_, schema) => {
+    expect(nameIssues(schema, 'a\nb')).toEqual([
+      { path: ['name'], message: "Name can't contain line breaks or control characters" },
+    ]);
+  });
+
+  it.each(schemas)(
+    '%s rejects a name of only invisible characters, with one error',
+    (_, schema) => {
+      for (const name of ['\u200B', ' \u200B\u2060\uFEFF ', '\u3164']) {
+        expect(nameIssues(schema, name)).toEqual([
+          { path: ['name'], message: 'Item name is required' },
+        ]);
+      }
+    }
+  );
+
+  it.each(schemas)('%s keeps names with joiners, RTL text and bidi marks', (_, schema) => {
+    for (const name of ['👨\u200D👩\u200D👧 set', 'کتاب', 'a\u200Fb']) {
+      const res = schema.safeParse({ name });
+      expect(res.success && res.data.name).toBe(name);
+    }
+  });
+
+  // An edit that leaves the name out isn't refused over a legacy name: the
+  // schema only sees what the client sends, and itemChanges drops an unchanged name.
+  it('update accepts a body without a name', () => {
+    expect(updateItemSchema.safeParse({ notes: 'x' }).success).toBe(true);
+  });
+
   it.each(schemas)('%s counts the 200-character limit after trimming', (_, schema) => {
     const res = schema.safeParse({ name: `  ${'x'.repeat(200)}  ` });
     expect(res.success && res.data.name).toBe('x'.repeat(200));
