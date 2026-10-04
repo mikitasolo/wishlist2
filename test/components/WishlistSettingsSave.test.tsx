@@ -32,7 +32,7 @@ import { openListTab } from './listMenu';
 
 // The list as Alice's page loads it: she and Bob own it.
 const loaded = {
-  _id: 'w1',
+  _id: 'birthday',
   name: 'Birthday',
   slug: 'birthday',
   description: 'Things I would like',

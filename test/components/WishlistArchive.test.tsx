@@ -46,7 +46,7 @@ const reply = (body: unknown, status = 200) => ({
 });
 
 const list = () => ({
-  _id: 'w1',
+  _id: 'birthday',
   name: 'Birthday',
   slug: 'birthday',
   description: '',

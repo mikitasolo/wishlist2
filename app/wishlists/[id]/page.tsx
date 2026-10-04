@@ -151,6 +151,10 @@ export default function WishlistDetail() {
   // The id of the list on screen, once read. The page's reads go by its URL,
   // which an owner can change (a new slug), so a refusal is checked by id.
   const listId = useRef<string | null>(null);
+  // What this page's writes and side reads address the list by: its id once
+  // read, never its URL's slug, which a co-owner can change under an open page.
+  // The first read and the item polls keep the slug, so a refusal can follow it.
+  const apiId = useCallback((): string => listId.current ?? wishlistId ?? '', [wishlistId]);
   // Set while this page leaves or deletes the list itself: what a poll says
   // about it then, before the page moves on, doesn't matter any more.
   const departed = useRef(false);
@@ -415,7 +419,7 @@ export default function WishlistDetail() {
     if (!wishlistId) return;
     const sentNo = ++invitesReads.current.sent;
     try {
-      const res = await fetch(`/api/wishlists/${wishlistId}/invites`, { cache: 'no-store' });
+      const res = await fetch(`/api/wishlists/${apiId()}/invites`, { cache: 'no-store' });
       const result = await res.json();
       if (!result.success || sentNo < invitesReads.current.landed) return;
       invitesReads.current.landed = sentNo;
@@ -423,7 +427,7 @@ export default function WishlistDetail() {
     } catch {
       /* ignore */
     }
-  }, [wishlistId]);
+  }, [apiId, wishlistId]);
 
   // Read the people on the list again (owners only). Only the first read
   // failing is shown (People says so): a later one keeps the rows it has.
@@ -432,7 +436,7 @@ export default function WishlistDetail() {
     const sentNo = ++membersReads.current.sent;
     let read = false;
     try {
-      const res = await fetch(`/api/wishlists/${wishlistId}/members`, { cache: 'no-store' });
+      const res = await fetch(`/api/wishlists/${apiId()}/members`, { cache: 'no-store' });
       const result = await res.json();
       if (result.success) {
         read = true;
@@ -445,7 +449,7 @@ export default function WishlistDetail() {
     } finally {
       setMembersRead((prev) => (read ? 'loaded' : prev === 'loaded' ? prev : 'failed'));
     }
-  }, [wishlistId]);
+  }, [apiId, wishlistId]);
 
   // For an owner: the people, read once when the page knows it's an owner's
   // (People's count), and with the pending invites whenever People opens.
@@ -641,10 +645,10 @@ export default function WishlistDetail() {
       if (!wishlistId) return;
       // The hook toasts a failure and resolves null. Reject so AddItemModal
       // stays open with the user's input; it closes itself on success.
-      const created = await mutations.track(() => createItemHook(wishlistId, itemData));
+      const created = await mutations.track(() => createItemHook(apiId(), itemData));
       if (!created) throw new Error('Failed to create item');
     },
-    [createItemHook, wishlistId, mutations]
+    [apiId, createItemHook, wishlistId, mutations]
   );
 
   // Every item update (edit, book, publish, approve, ...) goes through here.
@@ -704,7 +708,7 @@ export default function WishlistDetail() {
         try {
           // Given up on after ITEM_REQUEST_TIMEOUT_MS, like the hooks' requests.
           return await withRequestTimeout(async (signal) => {
-            const response = await fetch(`/api/wishlists/${wishlistId}/items`, {
+            const response = await fetch(`/api/wishlists/${apiId()}/items`, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
@@ -737,7 +741,7 @@ export default function WishlistDetail() {
       setItems((prevItems) => prependCreatedItem(prevItems, proposed));
       showToast('Item proposed successfully', 'success');
     },
-    [wishlistId, showToast, mutations]
+    [apiId, wishlistId, showToast, mutations]
   );
 
   const handleReviewItem = useCallback(
@@ -823,7 +827,7 @@ export default function WishlistDetail() {
 
       setIsInviting(true);
       try {
-        const response = await fetch(`/api/wishlists/${wishlistId}/members`, {
+        const response = await fetch(`/api/wishlists/${apiId()}/members`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -847,7 +851,7 @@ export default function WishlistDetail() {
         setIsInviting(false);
       }
     },
-    [wishlistId, showToast, refreshInvites]
+    [apiId, wishlistId, showToast, refreshInvites]
   );
 
   // The People rows with an action in flight: by user id for an owner's or a
@@ -864,7 +868,7 @@ export default function WishlistDetail() {
         // Optimistic removal.
         setPendingInvites((prev) => prev.filter((i) => i._id !== inviteId));
         try {
-          const res = await fetch(`/api/wishlists/${wishlistId}/invites/${inviteId}`, {
+          const res = await fetch(`/api/wishlists/${apiId()}/invites/${inviteId}`, {
             method: 'DELETE',
           });
           const result = await res.json();
@@ -879,7 +883,7 @@ export default function WishlistDetail() {
           await refreshInvites();
         }
       }),
-    [wishlistId, showToast, refreshInvites, runRowAction]
+    [apiId, wishlistId, showToast, refreshInvites, runRowAction]
   );
 
   const handleKickMember = useCallback(
@@ -915,7 +919,7 @@ export default function WishlistDetail() {
     if (!wishlistId) return null;
     const sentAt = ownerRemovals.stamp();
     try {
-      const res = await fetch(`/api/wishlists/${wishlistId}`, { cache: 'no-store' });
+      const res = await fetch(`/api/wishlists/${apiId()}`, { cache: 'no-store' });
       const result = await res.json();
       if (!result.success || !result.data) return null;
       const read = ownerRemovals.land(sentAt, shownOwnersOf(result.data));
@@ -925,7 +929,7 @@ export default function WishlistDetail() {
       /* the page keeps the owners it has */
       return null;
     }
-  }, [wishlistId, ownerRemovals]);
+  }, [apiId, wishlistId, ownerRemovals]);
 
   // Opening People reads the owners again too, as it does the members: a
   // co-owner who accepted an invite since the page loaded then counts, so a
@@ -947,8 +951,8 @@ export default function WishlistDetail() {
     const { type, memberId, memberUsername } = deleteConfirm;
     const path =
       type === 'owner'
-        ? `/api/wishlists/${wishlistId}/owners/${memberId}`
-        : `/api/wishlists/${wishlistId}/members/${memberId}`;
+        ? `/api/wishlists/${apiId()}/owners/${memberId}`
+        : `/api/wishlists/${apiId()}/members/${memberId}`;
 
     try {
       await runRowAction(deleteConfirm.memberUserId ?? memberId, async () => {
@@ -980,6 +984,7 @@ export default function WishlistDetail() {
       setDeleteConfirm(null);
     }
   }, [
+    apiId,
     wishlistId,
     deleteConfirm,
     showToast,
@@ -1001,7 +1006,7 @@ export default function WishlistDetail() {
       runRowAction(userId, async () => {
         if (!wishlistId) return;
         try {
-          const res = await fetch(`/api/wishlists/${wishlistId}/owners/${userId}`, {
+          const res = await fetch(`/api/wishlists/${apiId()}/owners/${userId}`, {
             method: 'POST',
           });
           const result = await res.json();
@@ -1019,7 +1024,7 @@ export default function WishlistDetail() {
           showToast('Failed to send owner invitation', 'error');
         }
       }),
-    [wishlistId, showToast, refreshInvites, runRowAction]
+    [apiId, wishlistId, showToast, refreshInvites, runRowAction]
   );
 
   /**
@@ -1032,7 +1037,7 @@ export default function WishlistDetail() {
       runRowAction(userId, async () => {
         if (!wishlistId) return;
         try {
-          const res = await fetch(`/api/wishlists/${wishlistId}/owners/${userId}`, {
+          const res = await fetch(`/api/wishlists/${apiId()}/owners/${userId}`, {
             method: 'PATCH',
           });
           const result = await res.json();
@@ -1049,7 +1054,16 @@ export default function WishlistDetail() {
           showToast('Failed to update owner', 'error');
         }
       }),
-    [wishlistId, showToast, refreshMembers, refreshInvites, dropOwner, refreshOwners, runRowAction]
+    [
+      apiId,
+      wishlistId,
+      showToast,
+      refreshMembers,
+      refreshInvites,
+      dropOwner,
+      refreshOwners,
+      runRowAction,
+    ]
   );
 
   const confirmPromoteToOwner = useCallback(async () => {
@@ -1102,7 +1116,7 @@ export default function WishlistDetail() {
     departed.current = true;
     let left = false;
     try {
-      const response = await fetch(`/api/wishlists/${wishlistId}/members/me`, {
+      const response = await fetch(`/api/wishlists/${apiId()}/members/me`, {
         method: 'DELETE',
       });
 
@@ -1123,7 +1137,7 @@ export default function WishlistDetail() {
       if (!left) departed.current = false;
       setDeleteConfirm(null);
     }
-  }, [wishlistId, deleteConfirm, wishlist?.name, router, showToast]);
+  }, [apiId, wishlistId, deleteConfirm, wishlist?.name, router, showToast]);
 
   const handleDeleteWishlist = useCallback(() => {
     setDeleteConfirm({
@@ -1139,7 +1153,7 @@ export default function WishlistDetail() {
     departed.current = true;
     let deleted = false;
     try {
-      const response = await fetch(`/api/wishlists/${wishlistId}`, {
+      const response = await fetch(`/api/wishlists/${apiId()}`, {
         method: 'DELETE',
       });
 
@@ -1160,7 +1174,7 @@ export default function WishlistDetail() {
       setDeleteConfirm(null);
       setIsDeletingWishlist(false);
     }
-  }, [wishlistId, deleteConfirm, router, showToast]);
+  }, [apiId, wishlistId, deleteConfirm, router, showToast]);
 
   // Archive or unarchive the list: from Settings, from the confirmation, or
   // from the archived banner's Unarchive.
@@ -1170,7 +1184,7 @@ export default function WishlistDetail() {
       archivingRef.current = true;
       setIsArchiving(true);
       try {
-        const res = await fetch(`/api/wishlists/${wishlistId}`, {
+        const res = await fetch(`/api/wishlists/${apiId()}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ archived }),
@@ -1189,7 +1203,7 @@ export default function WishlistDetail() {
         setIsArchiving(false);
       }
     },
-    [wishlistId, showToast]
+    [apiId, wishlistId, showToast]
   );
 
   // Closed once the request settles, so the dialog shows it running meanwhile.
@@ -1247,7 +1261,7 @@ export default function WishlistDetail() {
     pinningRef.current = true;
     setIsPinning(true);
     try {
-      const res = await fetch(`/api/wishlists/${wishlistId}`, {
+      const res = await fetch(`/api/wishlists/${apiId()}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ featured: pin }),
@@ -1265,7 +1279,7 @@ export default function WishlistDetail() {
       pinningRef.current = false;
       setIsPinning(false);
     }
-  }, [wishlistId, wishlist, showToast]);
+  }, [apiId, wishlistId, wishlist, showToast]);
 
   // The members endpoint returns one list; the UI shows the two relationships
   // separately, because they aren't rungs on a ladder.
@@ -1305,7 +1319,7 @@ export default function WishlistDetail() {
       setIsSavingSettings(true);
 
       try {
-        const response = await fetch(`/api/wishlists/${wishlistId}`, {
+        const response = await fetch(`/api/wishlists/${apiId()}`, {
           method: 'PATCH',
           headers: {
             'Content-Type': 'application/json',
@@ -1344,7 +1358,7 @@ export default function WishlistDetail() {
         setIsSavingSettings(false);
       }
     },
-    [settingsForm, settingsBaseline, wishlistId, refillSettings, router, showToast]
+    [apiId, settingsForm, settingsBaseline, wishlistId, refillSettings, router, showToast]
   );
   // Who each username suggestion in the invite form already is on the list.
   const inviteStatuses = useMemo(

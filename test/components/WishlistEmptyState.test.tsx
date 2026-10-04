@@ -97,7 +97,7 @@ beforeEach(() => {
       return reply({
         success: true,
         data: {
-          _id: 'w-birthday',
+          _id: 'birthday',
           name: 'Birthday',
           slug: 'birthday',
           description: '',

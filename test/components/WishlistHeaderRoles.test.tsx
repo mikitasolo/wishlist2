@@ -70,7 +70,7 @@ beforeEach(() => {
       return reply({
         success: true,
         data: {
-          _id: 'w1',
+          _id: 'birthday',
           name: 'Birthday',
           slug: 'birthday',
           description: list.description ?? '',
@@ -91,7 +91,7 @@ beforeEach(() => {
       if (failPin) return reply({ success: false, error: 'Failed to update wishlist' }, 500);
       const { featured } = JSON.parse(String(init?.body));
       list.featured = featured;
-      return reply({ success: true, data: { _id: 'w1', featured } });
+      return reply({ success: true, data: { _id: 'birthday', featured } });
     }
     // Items, members, invites, rates.
     if (method === 'GET') return reply({ success: true, data: [] });
