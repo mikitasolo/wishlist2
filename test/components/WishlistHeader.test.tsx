@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // The top of a wishlist's page: its full name, a meta line (owners, the
 // occasion's date and countdown, visibility), and one row of actions for the
-// viewer's role, with Pin to my dashboard and Leave list… in its ⋯ menu.
+// viewer's role, with Pin to my dashboard and Leave list in its ⋯ menu.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup, act, within } from '@testing-library/react';
 import { renderToString } from 'react-dom/server';

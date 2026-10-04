@@ -758,7 +758,7 @@ function ListName({ r }: { r: Reservation }) {
 /**
  * A gift still to give: Open link ↗ to the shop (the primary, when the item
  * has a link), Mark as given, and a menu with View on list (straight to the
- * item: `?item=`) and Release…. The item's notes ("size M, blue") are under
+ * item: `?item=`) and Release. The item's notes ("size M, blue") are under
  * its name. The list's name is left out under a dated group's heading, which
  * names it already.
  */
@@ -843,7 +843,7 @@ function ReservationCard({
               icon: 'arrow-right',
               href: itemDeepLink(r.wishlistSlug ?? r.wishlistId, r.itemId),
             },
-            { label: 'Release…', icon: 'undo', onSelect: onRelease, disabled: busy },
+            { label: 'Release', icon: 'undo', onSelect: onRelease, disabled: busy },
           ]}
         />
       </div>

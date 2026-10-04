@@ -428,7 +428,7 @@ describe('"Given by you" on the items read (givenByMe)', () => {
   it("comes back with the member's own book and unbook, as the list read gives it", async () => {
     const lego = await bookAndGive('Lego set');
 
-    // Released from the list (Release… on the card): freed for the others, and
+    // Released from the list (Release on the card): freed for the others, and
     // the gift stays in their history, which is permanent.
     const released = await patchItem(gifter, lego, { status: 'available' });
     expect(released.status).toBe(200);

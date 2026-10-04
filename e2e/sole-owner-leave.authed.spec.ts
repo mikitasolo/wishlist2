@@ -5,7 +5,7 @@ import { test, expect } from './fixtures';
 // the invite form, on People, has to be opened and scrolled to.
 test.use({ viewport: { width: 390, height: 640 } });
 
-test("the sole owner's Leave list… explains, and takes them to an owner invite", async ({
+test("the sole owner's Leave list explains, and takes them to an owner invite", async ({
   page,
 }) => {
   const leaves: string[] = [];
@@ -19,7 +19,7 @@ test("the sole owner's Leave list… explains, and takes them to an owner invite
   // Leave is in the title's ⋯ menu, never a button beside Share.
   await expect(page.getByRole('button', { name: /^Leave/ })).toHaveCount(0);
   await page.getByRole('button', { name: 'More list actions' }).click();
-  await page.getByRole('menuitem', { name: 'Leave list…' }).click();
+  await page.getByRole('menuitem', { name: 'Leave list' }).click();
 
   const dialog = page.getByRole('alertdialog', { name: "You're the only owner" });
   await expect(dialog).toContainText(/invite a co-owner/);

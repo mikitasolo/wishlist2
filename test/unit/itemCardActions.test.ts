@@ -21,7 +21,7 @@ const base: CardActionContext = {
 };
 
 describe('cardMenuActions', () => {
-  it('gives an owner Most wanted and a last Delete…, never a booking action', () => {
+  it('gives an owner Most wanted and a last Delete, never a booking action', () => {
     const c = { ...base, isOwner: true, canDelete: true, canSave: true };
     expect(cardMenuActions(c)).toEqual([
       'markReceived',
@@ -32,7 +32,7 @@ describe('cardMenuActions', () => {
     ]);
   });
 
-  it('gives a proposal only Decline… to its owner', () => {
+  it('gives a proposal only Decline to its owner', () => {
     const c = { ...base, isOwner: true, status: 'proposed', canDelete: true };
     expect(cardMenuActions(c)).toEqual(['decline']);
   });

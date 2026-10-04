@@ -346,18 +346,18 @@ describe('People', () => {
       .map((h) => h.textContent);
     expect(groups).toEqual(['Owners', 'Members', 'Invited']);
 
-    // Yourself: "You", and no menu (Leave list… is in the title's ⋯).
+    // Yourself: "You", and no menu (Leave list is in the title's ⋯).
     expect(captionOf('alice')).toBe('You');
     expect(screen.queryByRole('button', { name: 'Actions for @alice' })).toBeNull();
     // Another owner.
     expect(captionOf('bob')).toBe('Owner');
-    expect(await rowMenuItems(user, 'bob')).toEqual(['Make member…', 'Remove…']);
+    expect(await rowMenuItems(user, 'bob')).toEqual(['Make member', 'Remove']);
     // A member.
     expect(captionOf('carol')).toBe('Member');
-    expect(await rowMenuItems(user, 'carol')).toEqual(['Make owner…', 'Remove…']);
+    expect(await rowMenuItems(user, 'carol')).toEqual(['Make owner', 'Remove']);
     // A member with an owner invite pending: no second Make owner.
     expect(captionOf('dave')).toBe('Owner invite pending');
-    expect(await rowMenuItems(user, 'dave')).toEqual(['Cancel invite', 'Remove…']);
+    expect(await rowMenuItems(user, 'dave')).toEqual(['Cancel invite', 'Remove']);
 
     // The invites, but not Dave's again.
     const invited = within(peoplePanel());
@@ -391,16 +391,16 @@ describe('People', () => {
     expect(within(peoplePanel()).queryByRole('heading', { name: 'Invited' })).toBeNull();
   });
 
-  it('asks before Make owner…, Make member… and Remove…', async () => {
+  it('asks before Make owner, Make member and Remove', async () => {
     openAt('?tab=people');
     const user = userEvent.setup();
     await screen.findByRole('button', { name: 'Actions for @bob' });
 
     for (const [username, action, dialog] of [
-      ['carol', 'Make owner…', 'Make owner?'],
-      ['bob', 'Make member…', 'Make @bob a member?'],
-      ['bob', 'Remove…', 'Remove @bob as an owner?'],
-      ['carol', 'Remove…', 'Remove @carol?'],
+      ['carol', 'Make owner', 'Make owner?'],
+      ['bob', 'Make member', 'Make @bob a member?'],
+      ['bob', 'Remove', 'Remove @bob as an owner?'],
+      ['carol', 'Remove', 'Remove @carol?'],
     ]) {
       await pickRowAction(user, username, action);
       const confirm = await screen.findByRole('alertdialog', { name: dialog });
@@ -423,14 +423,14 @@ describe('People', () => {
       expect(requests('/api/wishlists/birthday/invites/inv-dave', 'DELETE')).toHaveLength(1)
     );
     // Held: the row's actions do nothing until it settles.
-    const remove = await rowMenuItem(user, 'dave', 'Remove…');
+    const remove = await rowMenuItem(user, 'dave', 'Remove');
     expect(remove).toHaveAttribute('aria-disabled', 'true');
     await user.keyboard('{Escape}');
 
     act(() => release());
     await waitFor(() => expect(showToast).toHaveBeenCalledWith('Invitation cancelled', 'success'));
     expect(captionOf('dave')).toBe('Member');
-    expect(await rowMenuItems(user, 'dave')).toEqual(['Make owner…', 'Remove…']);
+    expect(await rowMenuItems(user, 'dave')).toEqual(['Make owner', 'Remove']);
     expect(requests('/api/wishlists/birthday/invites/inv-dave', 'DELETE')).toHaveLength(1);
   });
 

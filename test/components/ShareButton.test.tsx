@@ -182,7 +182,7 @@ describe('ShareButton — the owner popover', () => {
     expect(showToast).not.toHaveBeenCalled();
   });
 
-  it('offers Copy link, and no Share… on a desktop', async () => {
+  it('offers Copy link, and no Share on a desktop', async () => {
     device({ touch: false, webShare: true });
     const user = renderOwner();
     await user.click(shareButton());
@@ -197,17 +197,17 @@ describe('ShareButton — the owner popover', () => {
     expect(share).not.toHaveBeenCalled();
   });
 
-  it('adds Share… on a touch device, which opens the share sheet; Copy link still copies', async () => {
+  it('adds Share on a touch device, which opens the share sheet; Copy link still copies', async () => {
     device({ touch: true, webShare: true });
     const user = renderOwner({ visibility: 'friends' });
     await user.click(shareButton());
 
     expect(screen.getAllByRole('menuitem').map((el) => el.textContent)).toEqual([
       'Copy link',
-      'Share…',
+      'Share',
       'Invite people to reserve gifts',
     ]);
-    await user.click(screen.getByRole('menuitem', { name: 'Share…' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Share' }));
     expect(share).toHaveBeenCalledWith({ url: LIST_URL(), title: 'Birthday' });
     expect(showToast).not.toHaveBeenCalled();
 
@@ -222,7 +222,7 @@ describe('ShareButton — the owner popover', () => {
     share.mockRejectedValue(new DOMException('Share canceled', 'AbortError'));
     const user = renderOwner();
     await user.click(shareButton());
-    await user.click(screen.getByRole('menuitem', { name: 'Share…' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Share' }));
 
     await waitFor(() => expect(share).toHaveBeenCalled());
     expect(showToast).not.toHaveBeenCalled();

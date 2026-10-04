@@ -131,7 +131,7 @@ describe('Archiving a list', () => {
     render(<WishlistDetail />);
     const archive = await openSettings(user);
 
-    expect(archive).toHaveTextContent('Archive…');
+    expect(archive).toHaveTextContent('Archive');
     expect(await archiveRow()).toHaveTextContent(ARCHIVE_EXPLANATION);
     // Not the old copy, which made it sound like tidying the dashboard.
     expect(document.body).not.toHaveTextContent(/top of your dashboard without deleting/);

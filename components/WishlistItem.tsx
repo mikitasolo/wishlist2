@@ -109,7 +109,7 @@ interface WishlistItemProps {
   /** "Save to my list": shown when given (the page decides who may copy what). */
   onSaveToList?: (item: ApiItem) => void;
   /**
-   * An owner's Delete… (or Decline… on a proposal), asked once confirmed.
+   * An owner's Delete (or Decline on a proposal), asked once confirmed.
    * Rejects when the delete fails (the page has said so).
    */
   onDelete?: (item: ApiItem) => Promise<void>;
@@ -440,7 +440,7 @@ function WishlistItem({
         };
       case 'releaseGiven':
         return {
-          label: 'Release…',
+          label: 'Release',
           icon: 'undo',
           onSelect: () => setShowReleaseConfirm(true),
           disabled: isUpdating,
@@ -454,7 +454,7 @@ function WishlistItem({
         };
       case 'decline':
         return {
-          label: 'Decline…',
+          label: 'Decline',
           icon: 'trash',
           onSelect: () => setShowDeleteConfirm(true),
           separated: true,
@@ -462,7 +462,7 @@ function WishlistItem({
         };
       case 'delete':
         return {
-          label: 'Delete…',
+          label: 'Delete',
           icon: 'trash',
           onSelect: () => setShowDeleteConfirm(true),
           separated: true,

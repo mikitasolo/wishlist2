@@ -193,7 +193,7 @@ const byline = () => screen.getByRole('heading', { level: 1, name: 'Birthday' })
 const credited = (username: string) =>
   within(byline()).queryByRole('link', { name: `@${username}` });
 
-/** Pick Leave list… and expect the dialog `name`, then cancel it. */
+/** Pick Leave list and expect the dialog `name`, then cancel it. */
 async function expectLeaveDialog(user: ReturnType<typeof userEvent.setup>, name: string) {
   await pickLeave(user);
   const dialog = await screen.findByRole('alertdialog', { name });
@@ -203,12 +203,12 @@ async function expectLeaveDialog(user: ReturnType<typeof userEvent.setup>, name:
 
 /**
  * Alice is the only owner left, so nothing offers to take her off the list (the
- * server would refuse it): her Leave list… only explains why.
+ * server would refuse it): her Leave list only explains why.
  */
 const expectSoleOwner = (user: ReturnType<typeof userEvent.setup>) =>
   expectLeaveDialog(user, "You're the only owner");
 
-/** Alice has a co-owner, so her Leave list… asks her to confirm stepping down. */
+/** Alice has a co-owner, so her Leave list asks her to confirm stepping down. */
 const expectCanLeave = (user: ReturnType<typeof userEvent.setup>) =>
   expectLeaveDialog(user, 'Leave “Birthday”?');
 
@@ -230,7 +230,7 @@ const demotions = () =>
  */
 async function demoteFirst(user: ReturnType<typeof userEvent.setup>, username: string) {
   const calls = showToast.mock.calls.length;
-  await pickRowAction(user, username, 'Make member…');
+  await pickRowAction(user, username, 'Make member');
   const dialog = await demoteDialog(username);
   await user.click(within(dialog).getByRole('button', { name: 'Make member' }));
   await waitFor(() => expect(showToast).toHaveBeenCalledTimes(calls + 1));
@@ -257,7 +257,7 @@ describe('the wishlist page after an owner is demoted or removed', () => {
 
     expect(credited('bob')).not.toBeInTheDocument();
     expect(within(byline()).getByText('you')).toBeInTheDocument();
-    // Her Leave list… explains instead of asking to confirm a leave.
+    // Her Leave list explains instead of asking to confirm a leave.
     await expectSoleOwner(user);
   });
 
@@ -265,7 +265,7 @@ describe('the wishlist page after an owner is demoted or removed', () => {
   it('regression: after removing the only other co-owner, Leave no longer leaves and the byline drops them', async () => {
     const user = await openPeople();
 
-    await pickRowAction(user, 'bob', 'Remove…');
+    await pickRowAction(user, 'bob', 'Remove');
     const dialog = await screen.findByRole('alertdialog');
     expect(dialog).toHaveTextContent('Remove @bob as an owner?');
     await user.click(within(dialog).getByRole('button', { name: 'Remove' }));
@@ -312,14 +312,14 @@ describe('the wishlist page after an owner is demoted or removed', () => {
         : succeed(url, init)
     );
 
-    await pickRowAction(user, 'bob', 'Make member…');
+    await pickRowAction(user, 'bob', 'Make member');
     const dialog = await demoteDialog('bob');
     await user.click(within(dialog).getByRole('button', { name: 'Make member' }));
     await waitFor(() => expect(showToast).toHaveBeenCalledWith('Failed to update owner', 'error'));
     await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
     // The row is given back, so it can be tried again.
     await user.click(screen.getByRole('button', { name: 'Actions for @bob' }));
-    expect(await screen.findByRole('menuitem', { name: 'Make member…' })).not.toHaveAttribute(
+    expect(await screen.findByRole('menuitem', { name: 'Make member' })).not.toHaveAttribute(
       'aria-disabled'
     );
     await user.keyboard('{Escape}');
@@ -415,7 +415,7 @@ describe('Make member', () => {
   it('regression: asks first, sends nothing on Cancel, and sends one demotion once confirmed', async () => {
     const user = await openPeople();
 
-    await pickRowAction(user, 'bob', 'Make member…');
+    await pickRowAction(user, 'bob', 'Make member');
     let dialog = await demoteDialog('bob');
     expect(dialog).toHaveTextContent(
       "They keep access and can reserve gifts, but can no longer edit or manage the list. They'll be notified. Making them an owner again needs their acceptance."
@@ -431,7 +431,7 @@ describe('Make member', () => {
     // The demotion is held, so it's still in flight when the second click lands.
     const demotion = gate();
     held.demote = demotion.promise;
-    await pickRowAction(user, 'bob', 'Make member…');
+    await pickRowAction(user, 'bob', 'Make member');
     dialog = await demoteDialog('bob');
     const confirm = within(dialog).getByRole('button', { name: 'Make member' });
     // Twice before the page re-renders, so only the handlers' own guards can

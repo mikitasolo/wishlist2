@@ -26,8 +26,8 @@ export async function pickFromListMenu(user: User, label: string | RegExp) {
   await user.click(within(menu).getByRole('menuitem', { name: label }));
 }
 
-/** Leave list…, from the header's ⋯ menu. */
-export const pickLeave = (user: User) => pickFromListMenu(user, 'Leave list…');
+/** Leave list, from the header's ⋯ menu. */
+export const pickLeave = (user: User) => pickFromListMenu(user, 'Leave list');
 
 /** An owner's tab under the list's title: Items, People (with its count) or Settings. */
 export const listTab = (name: 'Items' | 'People' | 'Settings') =>

@@ -94,11 +94,11 @@ interface WishlistPeopleTabProps {
   onRetry: () => void;
   /** Whether a row's action is in flight (`useBusyIds`), by user id or, for an invite or a request, its id. */
   busy: (id: string) => boolean;
-  /** Make member…: asks before a co-owner is made a member. */
+  /** Make member: asks before a co-owner is made a member. */
   onDemote: (owner: { userId: string; username: string | null }) => void;
-  /** Make owner…: asks before a member is sent an owner invite. */
+  /** Make owner: asks before a member is sent an owner invite. */
   onPromote: (member: { userId: string; username: string }) => void;
-  /** Remove…: asks before an owner or a member is taken off the list. */
+  /** Remove: asks before an owner or a member is taken off the list. */
   onRemove: (person: {
     /** What the removal's route takes: an owner's user id, a member's membership id. */
     id: string;
@@ -115,12 +115,12 @@ interface WishlistPeopleTabProps {
  * panel with the list's Owners, Members and the people Invited, one line each:
  * avatar, @name, a caption, and a ⋯ menu of what can be done about them.
  *
- * - Another owner's menu: Make member… and Remove…, each confirmed. A list
+ * - Another owner's menu: Make member and Remove, each confirmed. A list
  *   always keeps one owner, so with only one there are no other owner rows.
- * - A member's: Make owner… (an invite they have to accept) and Remove…. While
+ * - A member's: Make owner (an invite they have to accept) and Remove. While
  *   their owner invite is pending, the row says so and offers Cancel invite
- *   instead of Make owner…, and the invite isn't listed again under Invited.
- * - Your own row says "You", with no menu: Leave list… is in the title's ⋯.
+ *   instead of Make owner, and the invite isn't listed again under Invited.
+ * - Your own row says "You", with no menu: Leave list is in the title's ⋯.
  * - An invite: "Invited as co-owner" or "Invited as member", and Cancel.
  * - A request to join (WIS-275), first, under Requests: "Asked to join", with
  *   Invite (a member invite they still have to accept) and Decline (silent).
@@ -225,13 +225,13 @@ export default function WishlistPeopleTab({
                         username={owner.user.username}
                         items={[
                           {
-                            label: 'Make member…',
+                            label: 'Make member',
                             icon: 'user',
                             disabled: busy(userId),
                             onSelect: () => onDemote({ userId, username }),
                           },
                           {
-                            label: 'Remove…',
+                            label: 'Remove',
                             icon: 'user-minus',
                             separated: true,
                             disabled: busy(userId),
@@ -270,14 +270,14 @@ export default function WishlistPeopleTab({
                       onSelect: () => onCancelInvite(ownerInvite._id, userId),
                     }
                   : {
-                      label: 'Make owner…',
+                      label: 'Make owner',
                       icon: 'user-plus',
                       disabled: busy(userId),
                       onSelect: () =>
                         onPromote({ userId, username: member.user.username || 'this person' }),
                     },
                 {
-                  label: 'Remove…',
+                  label: 'Remove',
                   icon: 'user-minus',
                   separated: true,
                   disabled: busy(userId),

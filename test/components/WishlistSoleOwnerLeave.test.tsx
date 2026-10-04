@@ -132,12 +132,12 @@ async function openPeople(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe('Leave for the sole owner of a list', () => {
-  it('offers Leave list… in the title’s ⋯ menu, and no Leave on their own owner row', async () => {
+  it('offers Leave list in the title’s ⋯ menu, and no Leave on their own owner row', async () => {
     const user = userEvent.setup();
     render(<WishlistDetail />);
     await listTab('People');
     expect(leaveButtons()).toHaveLength(0);
-    expect(await listMenuItems(user)).toEqual(['Pin to my dashboard', 'Leave list…']);
+    expect(await listMenuItems(user)).toEqual(['Pin to my dashboard', 'Leave list']);
 
     await openPeople(user);
     // regression: a co-owner saw Leave twice, in the header and on their own row.
@@ -157,7 +157,7 @@ describe('Leave for the sole owner of a list', () => {
     const dialog = await screen.findByRole('alertdialog', { name: "You're the only owner" });
     // Carol is a member, so the way to her comes first.
     expect(dialog).toHaveAccessibleDescription(
-      'A wishlist needs at least one owner. To leave, make someone else an owner first: pick Make owner… in one of your members’ menus on People, or invite a co-owner. Once they accept, you can leave. Or delete the wishlist instead.'
+      'A wishlist needs at least one owner. To leave, make someone else an owner first: pick Make owner in one of your members’ menus on People, or invite a co-owner. Once they accept, you can leave. Or delete the wishlist instead.'
     );
     // Nothing in it leaves or deletes: only the way to a co-owner, or back.
     expect(
@@ -169,14 +169,14 @@ describe('Leave for the sole owner of a list', () => {
     expect(screen.queryByRole('alertdialog', { name: 'Leave “Birthday”?' })).toBeNull();
 
     // Cancel closes it, back on the ⋯ menu that opened it, with People open
-    // behind it: Carol's Make owner…, which the notice points to, is right there.
+    // behind it: Carol's Make owner, which the notice points to, is right there.
     await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
     await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
     await waitFor(() => expect(listMenuTrigger()).toHaveFocus());
     expect(await listTab('People')).toHaveAttribute('aria-selected', 'true');
     expect(window.location.search).toBe('?tab=people');
     await screen.findByRole('button', { name: 'Actions for @carol' });
-    expect(await rowMenuItems(user, 'carol')).toEqual(['Make owner…', 'Remove…']);
+    expect(await rowMenuItems(user, 'carol')).toEqual(['Make owner', 'Remove']);
     expect(leaveRequests()).toHaveLength(0);
   });
 
@@ -197,7 +197,7 @@ describe('Leave for the sole owner of a list', () => {
     const user = userEvent.setup();
     render(<WishlistDetail />);
     await listTab('People');
-    // People isn't open: Leave list… opens it on the way to the form.
+    // People isn't open: Leave list opens it on the way to the form.
     expect(screen.queryByPlaceholderText('Search by username')).toBeNull();
 
     await pickLeave(user);
@@ -284,7 +284,7 @@ describe('Leave for everyone who can leave', () => {
     await waitFor(() => expect(router.push).toHaveBeenCalledWith('/'));
   });
 
-  it('gives a member Leave list… in the ⋯ menu, beside Propose and Share, and its confirmation', async () => {
+  it('gives a member Leave list in the ⋯ menu, beside Propose and Share, and its confirmation', async () => {
     owners = ['bob'];
     userRole = 'member';
     const user = userEvent.setup();
@@ -293,9 +293,9 @@ describe('Leave for everyone who can leave', () => {
     await screen.findByRole('button', { name: 'Propose' });
     // Off the action row, where it sat with the weight of Share.
     expect(leaveButtons()).toHaveLength(0);
-    // A member doesn't manage the list: no tabs, and the menu holds Leave list… alone.
+    // A member doesn't manage the list: no tabs, and the menu holds Leave list alone.
     expect(screen.queryByRole('tablist')).toBeNull();
-    expect(await listMenuItems(user)).toEqual(['Leave list…']);
+    expect(await listMenuItems(user)).toEqual(['Leave list']);
 
     await pickLeave(user);
 

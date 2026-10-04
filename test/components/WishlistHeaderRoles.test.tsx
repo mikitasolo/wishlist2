@@ -127,7 +127,7 @@ describe('the header’s actions for each viewer', () => {
       owners: ['alice'],
       role: 'owner' as const,
       row: ['Add item', 'Share', 'More list actions'],
-      menu: ['Pin to my dashboard', 'Leave list…'],
+      menu: ['Pin to my dashboard', 'Leave list'],
     },
     {
       who: 'a co-owner',
@@ -135,7 +135,7 @@ describe('the header’s actions for each viewer', () => {
       owners: ['bob', 'alice'],
       role: 'owner' as const,
       row: ['Add item', 'Share', 'More list actions'],
-      menu: ['Pin to my dashboard', 'Leave list…'],
+      menu: ['Pin to my dashboard', 'Leave list'],
     },
     {
       who: 'a member',
@@ -143,7 +143,7 @@ describe('the header’s actions for each viewer', () => {
       owners: ['alice'],
       role: 'member' as const,
       row: ['Propose', 'Share', 'More list actions'],
-      menu: ['Leave list…'],
+      menu: ['Leave list'],
     },
     {
       who: 'a signed-in visitor',
@@ -169,7 +169,7 @@ describe('the header’s actions for each viewer', () => {
 
     expect(await actionRow()).toEqual(row);
     expect(await listMenuItems(user)).toEqual(menu);
-    // Leave is never a button of its own: it's Leave list…, in the menu.
+    // Leave is never a button of its own: it's Leave list, in the menu.
     expect(screen.queryByRole('button', { name: /^Leave/ })).toBeNull();
   });
 
@@ -204,14 +204,14 @@ describe('Pin to my dashboard', () => {
     await waitFor(() =>
       expect(showToast).toHaveBeenCalledWith('Pinned to your dashboard', 'success')
     );
-    expect(await listMenuItems(user)).toEqual(['Unpin from my dashboard', 'Leave list…']);
+    expect(await listMenuItems(user)).toEqual(['Unpin from my dashboard', 'Leave list']);
 
     await pickFromListMenu(user, 'Unpin from my dashboard');
     await waitFor(() => expect(listPatches()).toEqual([{ featured: true }, { featured: false }]));
     await waitFor(() =>
       expect(showToast).toHaveBeenCalledWith('Unpinned from your dashboard', 'success')
     );
-    expect(await listMenuItems(user)).toEqual(['Pin to my dashboard', 'Leave list…']);
+    expect(await listMenuItems(user)).toEqual(['Pin to my dashboard', 'Leave list']);
   });
 
   it('starts from the caller’s own pin, as the list read gives it', async () => {
@@ -219,7 +219,7 @@ describe('Pin to my dashboard', () => {
     const user = userEvent.setup();
     render(<WishlistDetail />);
     await actionRow();
-    expect(await listMenuItems(user)).toEqual(['Unpin from my dashboard', 'Leave list…']);
+    expect(await listMenuItems(user)).toEqual(['Unpin from my dashboard', 'Leave list']);
   });
 
   it('keeps the pin as it was when the request fails', async () => {
@@ -233,7 +233,7 @@ describe('Pin to my dashboard', () => {
     await waitFor(() =>
       expect(showToast).toHaveBeenCalledWith('Failed to update wishlist', 'error')
     );
-    expect(await listMenuItems(user)).toEqual(['Pin to my dashboard', 'Leave list…']);
+    expect(await listMenuItems(user)).toEqual(['Pin to my dashboard', 'Leave list']);
   });
 
   it('is no longer a section of the settings form', async () => {

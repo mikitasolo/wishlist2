@@ -47,7 +47,7 @@ for (const flow of [
     path: '/wishlists/e2e-birthday',
     open: async (page: Page) => {
       await addMember(page);
-      await pickMemberAction(page, 'Remove…');
+      await pickMemberAction(page, 'Remove');
     },
     confirm: 'Remove',
     pending: 'Removing…',
@@ -61,7 +61,7 @@ for (const flow of [
     path: '/wishlists/e2e-birthday',
     open: async (page: Page) => {
       await addMember(page);
-      await pickMemberAction(page, 'Make owner…');
+      await pickMemberAction(page, 'Make owner');
     },
     confirm: 'Send owner invite',
     pending: 'Sending…',
@@ -75,7 +75,7 @@ for (const flow of [
     path: '/wishlists/e2e-friend',
     open: async (page: Page) => {
       await page.getByRole('button', { name: 'More list actions' }).click();
-      await page.getByRole('menuitem', { name: 'Leave list…' }).click();
+      await page.getByRole('menuitem', { name: 'Leave list' }).click();
     },
     confirm: 'Leave',
     pending: 'Leaving…',
@@ -89,7 +89,7 @@ for (const flow of [
     path: '/wishlists/e2e-birthday',
     open: async (page: Page) => {
       await openTab(page, 'Settings');
-      await page.getByRole('button', { name: 'Delete…' }).click();
+      await page.getByRole('button', { name: 'Delete' }).click();
     },
     confirm: 'Delete',
     pending: 'Deleting…',
