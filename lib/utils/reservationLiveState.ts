@@ -4,6 +4,7 @@ import {
   readReservationWishlists,
   type OpenReservationWishlist,
 } from '@/lib/utils/reservationWishlists';
+import { isHttpUrl } from '@/lib/utils/itemFields';
 import type { ReservationStatusInfo } from '@/lib/utils/reservations';
 
 /** What a reservation records of where it was made: its item and its list. */
@@ -16,6 +17,14 @@ interface ReservationRef {
 export interface ReservationLiveState extends ReservationStatusInfo {
   /** The list as the gifter may still see it, or `null` (gone, hidden from them, or archived). */
   wishlist: OpenReservationWishlist | null;
+  /**
+   * The live item's product link (http(s) only) and notes, while it's still
+   * booked by the gifter on a list they may open, where they can read both on
+   * the list anyway. Otherwise `null`: once it isn't theirs, or the list isn't
+   * open to them (archived included), nothing more of the item reaches them.
+   */
+  itemLink: string | null;
+  itemNotes: string | null;
 }
 
 /**
@@ -44,7 +53,7 @@ export async function readReservationLiveState(
     reservations.length === 0
       ? []
       : Item.find({ _id: { $in: reservations.map((r) => r.item) } })
-          .select('status bookedBy')
+          .select('status bookedBy link notes')
           .lean(),
     readReservationWishlists(
       gifterId,
@@ -58,13 +67,16 @@ export async function readReservationLiveState(
     const entry = wishlists.get(r.wishlist.toString());
     const listArchived = !!entry?.archived;
     const wishlist = entry && !entry.archived ? entry : null;
+    const stillReserved = listArchived
+      ? null
+      : !!it && it.status === 'booked' && it.bookedBy?.toString() === gifterId;
+    // Live details only for a card that's still active: theirs, on a list they can open.
+    const live = stillReserved && wishlist ? it : null;
     return {
       // Frozen on an archived list: nothing of what its owners have done to the
       // item since reaches the gifter.
       itemStatus: listArchived ? null : it ? it.status : 'deleted',
-      stillReserved: listArchived
-        ? null
-        : !!it && it.status === 'booked' && it.bookedBy?.toString() === gifterId,
+      stillReserved,
       // Whether the gifter may still open the list: `readReservationWishlists`
       // has it (`viewableWishlistsFilter`'s rules). Only their own access, never
       // why they've lost it, except a list only its archiving hides from them,
@@ -72,6 +84,8 @@ export async function readReservationLiveState(
       listOpen: !!wishlist,
       listArchived,
       wishlist,
+      itemLink: live?.link && isHttpUrl(live.link) ? live.link : null,
+      itemNotes: live?.notes?.trim() ? live.notes : null,
     };
   };
 }

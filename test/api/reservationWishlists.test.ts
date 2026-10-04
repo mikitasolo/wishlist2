@@ -380,6 +380,101 @@ const OWNER_ACTIONS = {
 /** What a reservation's row says of the live item. */
 const liveItem = (row: Row) => ({ itemStatus: row.itemStatus, stillReserved: row.stillReserved });
 
+describe('GET /api/users/me/reservations — the live item’s link and notes (WIS-263)', () => {
+  const LINK = 'https://shop.example/mug';
+  const NOTES = 'Size M, blue';
+
+  /** `gifter` books an item with a link and notes; returns the item's id. */
+  async function bookWithDetails(wishlistId: string) {
+    await book(wishlistId);
+    const item = await Item.findOneAndUpdate(
+      { name: 'Blue Mug' },
+      { link: LINK, notes: NOTES },
+      { new: true }
+    ).lean();
+    return item!._id.toString();
+  }
+
+  /** What the gifter's one reservation says of the live item. */
+  async function details() {
+    const rows = await read();
+    expect(rows).toHaveLength(1);
+    const row = rows[0] as Row & { itemLink?: unknown; itemNotes?: unknown };
+    return { link: row.itemLink, notes: row.itemNotes };
+  }
+
+  const NONE = { link: null, notes: null };
+
+  it('come back while the item is still reserved by the gifter, with the owner’s username', async () => {
+    const id = await list();
+    await bookWithDetails(id);
+    expect(await details()).toEqual({ link: LINK, notes: NOTES });
+    const [row] = await read();
+    expect((row as Row & { wishlistOwnerUsername?: unknown }).wishlistOwnerUsername).toBe('owner');
+  });
+
+  it('only an http(s) link', async () => {
+    const id = await list();
+    const itemId = await bookWithDetails(id);
+    // Written past the schema, as a record from before it checked links might be.
+    await Item.collection.updateOne(
+      { _id: new mongoose.Types.ObjectId(itemId) },
+      { $set: { link: 'javascript:alert(1)' } }
+    );
+    expect(await details()).toEqual({ link: null, notes: NOTES });
+  });
+
+  // regression (WIS-263): the live link and notes are only the gifter's to read
+  // while they hold the booking on a list they can open, as on the list itself.
+  // Once they don't, nothing more of the item reaches them.
+  describe('regression: none once the item isn’t the gifter’s on a list they can open', () => {
+    it('after they release it', async () => {
+      const id = await list();
+      const itemId = await bookWithDetails(id);
+      await Item.updateOne({ _id: itemId }, { status: 'available', bookedBy: null });
+      expect(await details()).toEqual(NONE);
+    });
+
+    it('after the owner removes it', async () => {
+      const id = await list();
+      const itemId = await bookWithDetails(id);
+      await Item.deleteOne({ _id: itemId });
+      expect(await details()).toEqual(NONE);
+    });
+
+    it.each(['completed', 'draft'])('after the owner marks it %s', async (status) => {
+      const id = await list();
+      const itemId = await bookWithDetails(id);
+      await Item.updateOne({ _id: itemId }, { status, bookedBy: null });
+      expect(await details()).toEqual(NONE);
+    });
+
+    it('once someone else holds it', async () => {
+      const id = await list();
+      const itemId = await bookWithDetails(id);
+      await Item.updateOne({ _id: itemId }, { bookedBy: coOwner });
+      expect(await details()).toEqual(NONE);
+    });
+
+    it('after a loss of visibility, though it is still booked to them', async () => {
+      const id = await list({ visibility: 'private' });
+      await bookWithDetails(id);
+      await removeGifter(id);
+      expect(await details()).toEqual(NONE);
+      const [row] = await read();
+      expect(row.stillReserved).toBe(true);
+      expect((row as Row & { wishlistOwnerUsername?: unknown }).wishlistOwnerUsername).toBe(null);
+    });
+
+    it('once the list is archived', async () => {
+      const id = await list();
+      await bookWithDetails(id);
+      await ownerEdits(id, { archived: true });
+      expect(await details()).toEqual(NONE);
+    });
+  });
+});
+
 describe('GET /api/users/me/reservations — a reservation on an archived list is frozen', () => {
   // regression (WIS-124): an archived list is its owners' alone, yet a
   // gifter's reservation on it still came back with the live item's status and
@@ -408,6 +503,9 @@ describe('GET /api/users/me/reservations — a reservation on an archived list i
         // Nothing live: no link, no date, no item status.
         wishlistSlug: null,
         wishlistOccasion: null,
+        wishlistOwnerUsername: null,
+        itemLink: null,
+        itemNotes: null,
         itemStatus: null,
         stillReserved: null,
         listOpen: false,

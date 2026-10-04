@@ -3,6 +3,7 @@
 import { memo, useMemo, useCallback, useState, useEffect } from 'react';
 import { ApiItem } from '@/types/api';
 import { useSession } from 'next-auth/react';
+import { itemAnchorId } from '@/lib/utils/itemDeepLink';
 import { convertedPrice, formatApproxPrice, formatPrice } from '@/lib/utils/currency';
 import { useViewerLocale } from '@/lib/hooks/useViewerLocale';
 import Icon, { type IconName } from '@/components/Icon';
@@ -106,6 +107,8 @@ interface WishlistItemProps {
    * the pointer or with focus inside, so it's still readable and usable.
    */
   dimmed?: boolean;
+  /** Outlined, as the item a link to it (`?item=`) pointed at; never dimmed then. */
+  highlighted?: boolean;
 }
 
 function WishlistItem({
@@ -120,6 +123,7 @@ function WishlistItem({
   priceCurrency = 'original',
   rates = null,
   dimmed = false,
+  highlighted = false,
 }: WishlistItemProps) {
   const { data: session } = useSession();
   const [showNotes, setShowNotes] = useState(false);
@@ -386,13 +390,19 @@ function WishlistItem({
 
   return (
     <div
-      className={`relative flex min-w-0 flex-col rounded-3xl border bg-surface p-3 shadow-md transition-opacity sm:p-5 ${status.classes.card} ${
-        dimmed ? 'opacity-60 focus-within:opacity-100 hover:opacity-100' : ''
+      id={itemAnchorId(item._id)}
+      className={`relative flex min-w-0 scroll-mt-24 flex-col rounded-3xl border bg-surface p-3 shadow-md transition-opacity sm:p-5 ${status.classes.card} ${
+        highlighted
+          ? 'ring-2 ring-ring ring-offset-2 ring-offset-background'
+          : dimmed
+            ? 'opacity-60 focus-within:opacity-100 hover:opacity-100'
+            : ''
       }`}
       role="article"
       aria-label={`Item: ${item.name}`}
       data-status={status.status}
-      data-dimmed={dimmed || undefined}
+      data-dimmed={(dimmed && !highlighted) || undefined}
+      data-highlighted={highlighted || undefined}
     >
       {/* The cover and what sits on it. From `sm` up, the notes button and
           the badges overhang its top corners, as they always have. On the

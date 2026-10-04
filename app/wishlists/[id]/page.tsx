@@ -98,6 +98,7 @@ import {
   orderListItems,
 } from '@/lib/utils/listChips';
 import { useListChip } from '@/lib/hooks/useListChip';
+import { useItemDeepLink } from '@/lib/hooks/useItemDeepLink';
 import { useListPrices } from '@/lib/hooks/useListPrices';
 import { TONE_CLASSES } from '@/lib/utils/statusTones';
 import { useReceivedToast } from '@/lib/hooks/useReceivedToast';
@@ -1377,6 +1378,26 @@ export default function WishlistDetail() {
   // Clear the item search when switching to a different wishlist.
   useEffect(() => setSearchQuery(''), [wishlistId]);
 
+  // `?item=<id>` (the Reserved page's View on list): scroll to that item and
+  // highlight it, clearing a chip or search that would hide it.
+  // What All shows this viewer, so a link to anything else (a draft sent to
+  // a member, say) does nothing rather than resetting their view.
+  const itemIds = useMemo(
+    () => orderListItems(items, 'all', viewerRole, viewerId, sortBy).map((i) => i._id),
+    [items, viewerRole, viewerId, sortBy]
+  );
+  const isItemShown = useCallback(
+    (id: string) => sortedItems.some((i) => i._id === id),
+    [sortedItems]
+  );
+  const highlightedItemId = useItemDeepLink({
+    listKey: wishlistId,
+    ready: itemsLoaded && onItems,
+    itemIds,
+    isShown: isItemShown,
+    reveal: showAllItems,
+  });
+
   // Prices (D9): someone else's list starts in the viewer's currency, their
   // own on each item's; offered only when some price is in another currency.
   const prices = useListPrices({
@@ -1743,6 +1764,7 @@ export default function WishlistDetail() {
                         priceCurrency={prices.value}
                         rates={prices.rates}
                         dimmed={activeChip === 'all' && isDimmedInAll(item, viewerRole, viewerId)}
+                        highlighted={item._id === highlightedItemId}
                       />
                     ))}
                   </div>

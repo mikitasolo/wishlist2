@@ -4,6 +4,7 @@
 // they can still open its list (`listOpen`), and whether that list is archived
 // (`listArchived`); these helpers turn that into UI grouping and copy.
 
+import { convertPrice } from '@/lib/utils/currency';
 import { NO_UPCOMING_OCCASION, occasionSortKey, type Occasion } from '@/lib/utils/occasion';
 
 export interface ReservationStatusInfo {
@@ -157,4 +158,56 @@ export function groupByOccasion<T extends OccasionGroupable>(
     groups.push({ key: NO_DATE_GROUP, occasion: null, wishlistName: null, reservations: undated });
   }
   return groups;
+}
+
+/**
+ * The main action on a card that needs the gifter's confirmation, picked from
+ * what happened to it (WIS-263): `'gave'` (Mark as given, as "I gave it") when
+ * the gift most likely went ahead, `'dismiss'` (Dismiss, with "I gave it
+ * anyway" beside it) when it most likely didn't.
+ *
+ * - The owner marked it received: they've had it, so most likely from the gifter.
+ * - Removed, moved to draft, or reserved by someone else now: most likely not.
+ * - Still theirs on a list they can't open, or frozen on an archived list:
+ *   nothing says it didn't go ahead, so it's still the gift they reserved.
+ */
+export function changedCardPrimary(r: ReservationStatusInfo): 'gave' | 'dismiss' {
+  if (r.listArchived || r.stillReserved) return 'gave';
+  return r.itemStatus === 'completed' ? 'gave' : 'dismiss';
+}
+
+/** A price in cents, in a currency of any case. */
+interface PriceLike {
+  value: number;
+  currency: string;
+}
+
+/**
+ * The sum of `prices` in `currency` (D9), for the Reserved page's "≈ €520 to
+ * give": `approx` when any of them was converted at the day's rate. `null`
+ * when nothing is priced, or when a price can't be converted (no rates yet,
+ * or none for its currency), since a total that left one out would be wrong.
+ */
+export function totalInCurrency(
+  prices: readonly (PriceLike | null)[],
+  currency: string,
+  rates: Record<string, number> | null
+): { price: PriceLike; approx: boolean } | null {
+  const target = currency.toLowerCase();
+  let sum = 0;
+  let approx = false;
+  let any = false;
+  for (const p of prices) {
+    if (!p) continue;
+    any = true;
+    if (p.currency.toLowerCase() === target) {
+      sum += p.value;
+      continue;
+    }
+    const converted = rates ? convertPrice(p, target, rates) : null;
+    if (!converted) return null;
+    sum += converted.value;
+    approx = true;
+  }
+  return any ? { price: { value: Math.round(sum), currency: target }, approx } : null;
 }

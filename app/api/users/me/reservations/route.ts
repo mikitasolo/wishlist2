@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import connectDB from '@/lib/mongodb';
 import Reservation from '@/models/Reservation';
+import User from '@/models/User';
 import { errorKind } from '@/lib/utils/errorKind';
 import { readReservationLiveState } from '@/lib/utils/reservationLiveState';
 
@@ -10,8 +11,11 @@ import { readReservationLiveState } from '@/lib/utils/reservationLiveState';
 // and its item's id, plus the live item's current status so the UI can hint
 // when the owner has since completed / drafted / removed it, whether the gifter
 // may still open the list (`listOpen`), and, only while they may, its live slug
-// (for the card's link, which falls back to the id) and occasion (which the
-// page groups the gifts still to give by).
+// (for the card's link, which falls back to the id), occasion (which the page
+// groups the gifts still to give by) and primary owner's username (which its
+// headings name). While the item is still booked by the gifter on a list they
+// may open, it also carries the live item's link (http(s) only) and notes,
+// which they can read on the list anyway; once it isn't, those are `null`.
 //
 // A reservation on a list that only its archiving hides from the gifter
 // (`listArchived`) is frozen instead (WIS-124): an archived list is its owners'
@@ -43,8 +47,23 @@ export async function GET() {
     // of queries however many reservations there are.
     const liveState = await readReservationLiveState(session.user.id, reservations);
 
-    const data = reservations.map((r) => {
-      const { wishlist, itemStatus, stillReserved, listOpen, listArchived } = liveState(r);
+    // The usernames of the open lists' primary owners, which the page's
+    // headings name, in one query however many lists there are.
+    const states = reservations.map((r) => liveState(r));
+    const ownerIds = Array.from(
+      new Set(states.flatMap((s) => (s.wishlist?.ownerId ? [s.wishlist.ownerId] : [])))
+    );
+    const owners =
+      ownerIds.length === 0
+        ? []
+        : await User.find({ _id: { $in: ownerIds } })
+            .select('username')
+            .lean();
+    const usernames = new Map(owners.map((u) => [u._id.toString(), u.username ?? null]));
+
+    const data = reservations.map((r, i) => {
+      const { wishlist, itemStatus, stillReserved, listOpen, listArchived, itemLink, itemNotes } =
+        states[i];
       return {
         _id: r._id.toString(),
         // The gifter's own record of which item they reserved: what Release sends
@@ -57,6 +76,13 @@ export async function GET() {
         wishlistId: r.wishlist.toString(),
         wishlistSlug: wishlist?.slug ?? null,
         wishlistOccasion: wishlist?.occasion ?? null,
+        // A list the gifter may open: its primary owner, by username (null
+        // for none). Nothing for a list out of their reach.
+        wishlistOwnerUsername: (wishlist?.ownerId && usernames.get(wishlist.ownerId)) || null,
+        // The live item's link and notes, only while it's still theirs on a
+        // list they may open (see `readReservationLiveState`).
+        itemLink,
+        itemNotes,
         itemStatus,
         stillReserved,
         listOpen,

@@ -3,6 +3,7 @@ import Wishlist from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
 import { getFriendIds } from '@/lib/utils/friends';
 import type { Occasion } from '@/lib/utils/occasion';
+import { primaryOwnerId } from '@/lib/utils/wishlistOwners';
 import { isHiddenByArchive, viewableUnlessArchivedFilter } from '@/lib/utils/wishlistAccess';
 
 type Id = string | mongoose.Types.ObjectId;
@@ -24,6 +25,12 @@ export interface OpenReservationWishlist {
    * on the next read. `null` for a list with none.
    */
   occasion: Occasion | null;
+  /**
+   * The list's primary owner's id (`primaryOwnerId`), which the page's heading
+   * names the list's owner by. Only for a list the gifter may open, whose
+   * owners they can see there anyway.
+   */
+  ownerId: string | null;
 }
 
 interface StoredOccasion {
@@ -95,7 +102,12 @@ export async function readReservationWishlists(
       w._id.toString(),
       isHiddenByArchive(w, gifterId)
         ? { archived: true }
-        : { archived: false, slug: w.slug ?? null, occasion: toOccasion(w.occasion) },
+        : {
+            archived: false,
+            slug: w.slug ?? null,
+            occasion: toOccasion(w.occasion),
+            ownerId: primaryOwnerId(w),
+          },
     ])
   );
 }

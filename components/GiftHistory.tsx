@@ -4,7 +4,7 @@ import Link from 'next/link';
 import Badge from '@/components/Badge';
 import IconButton from '@/components/IconButton';
 import SnapshotThumb from '@/components/SnapshotThumb';
-import { formatPrice } from '@/lib/utils/currency';
+import { convertedPrice, formatApproxPrice, formatPrice } from '@/lib/utils/currency';
 import { useViewerLocale } from '@/lib/hooks/useViewerLocale';
 
 export interface GiftEntry {
@@ -21,16 +21,26 @@ export interface GiftEntry {
 /** Past this many entries, the history is split under a header for each year. */
 export const YEAR_HEADER_THRESHOLD = 10;
 
+/** What a gift's price is shown in (D9): the viewer's currency, and the rates to convert with. */
+interface ShownIn {
+  currency?: string;
+  rates?: Record<string, number> | null;
+}
+
 function GiftRow({
   gift,
   busy,
   onDelete,
+  currency = 'original',
+  rates = null,
 }: {
   gift: GiftEntry;
   busy: boolean;
   onDelete: (id: string) => void;
-}) {
+} & ShownIn) {
   const locale = useViewerLocale();
+  // In the viewer's currency as "≈", with the original beside it (D9).
+  const converted = gift.itemPrice ? convertedPrice(gift.itemPrice, currency, rates) : null;
   const date = new Date(gift.giftedAt).toLocaleDateString(undefined, {
     year: 'numeric',
     month: 'short',
@@ -60,7 +70,10 @@ function GiftRow({
         </div>
         <p className="truncate text-xs text-muted-foreground sm:shrink-0 sm:text-right">
           <time dateTime={gift.giftedAt}>{date}</time>
-          {gift.itemPrice && ` · ${formatPrice(gift.itemPrice, locale)}`}
+          {gift.itemPrice &&
+            (converted
+              ? ` · ${formatApproxPrice(converted, locale)} (${formatPrice(gift.itemPrice, locale)})`
+              : ` · ${formatPrice(gift.itemPrice, locale)}`)}
         </p>
       </div>
       <IconButton
@@ -80,11 +93,13 @@ export default function GiftHistory({
   gifts,
   busy,
   onDelete,
+  currency,
+  rates,
 }: {
   gifts: GiftEntry[];
   busy: (id: string) => boolean;
   onDelete: (id: string) => void;
-}) {
+} & ShownIn) {
   const byYear = gifts.length > YEAR_HEADER_THRESHOLD;
   const groups: { year: string | null; items: GiftEntry[] }[] = [];
   for (const g of gifts) {
@@ -109,7 +124,14 @@ export default function GiftHistory({
             )}
             <ul className="divide-y divide-border">
               {group.items.map((g) => (
-                <GiftRow key={g._id} gift={g} busy={busy(g._id)} onDelete={onDelete} />
+                <GiftRow
+                  key={g._id}
+                  gift={g}
+                  busy={busy(g._id)}
+                  onDelete={onDelete}
+                  currency={currency}
+                  rates={rates}
+                />
               ))}
             </ul>
           </div>
