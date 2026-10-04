@@ -83,7 +83,13 @@ function Welcome() {
   // The currency question, only if Home would ask it. Null until the browser's
   // suggestion is known; the row's own pick, once made, replaces the suggestion.
   const suggestion = useCurrencySuggestion();
-  const offered = currencyToOffer(session?.user, suggestion);
+  const offeredNow = currencyToOffer(session?.user, suggestion);
+  // Latched once offered: saving refreshes the session, which records the answer
+  // and would otherwise take the row away while the page is still on its way out.
+  const [offered, setOffered] = useState<string | null>(null);
+  useEffect(() => {
+    if (offeredNow) setOffered((latched) => latched ?? offeredNow);
+  }, [offeredNow]);
   const [pickedCurrency, setPickedCurrency] = useState<string | null>(null);
   const currency = offered ? (pickedCurrency ?? offered) : null;
   const currentCurrency = (session?.user?.defaultCurrency ?? 'USD').toUpperCase();

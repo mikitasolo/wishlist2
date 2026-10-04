@@ -71,10 +71,14 @@ export default function SharedWishlistsPage() {
             icon="users"
             title="Nothing shared yet"
             body={
-              <>
-                Joining someone’s list? They invite you by username:{' '}
-                {username && <OwnHandle username={username} />}
-              </>
+              username ? (
+                <>
+                  Joining someone’s list? They invite you by username:{' '}
+                  <OwnHandle username={username} />
+                </>
+              ) : (
+                'When someone invites you to their wishlist, it’ll show up here.'
+              )
             }
           />
         ) : (
