@@ -5,7 +5,9 @@ import Wishlist from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
 import WishlistInvite from '@/models/WishlistInvite';
 import Item from '@/models/Item';
+import WishlistJoinRequest from '@/models/WishlistJoinRequest';
 import Follow from '@/models/Follow';
+import { clearJoinRequestNotifications } from '@/lib/utils/joinRequests';
 import Notification from '@/models/Notification';
 import { ownedByFilter } from '@/lib/utils/wishlistOwners';
 import {
@@ -39,7 +41,8 @@ import { purgeShareCards } from '@/lib/og/purge';
  *      holds booked is freed.
  *   4. Its own reservations and gift history go (`deleteReservations`,
  *      `deleteGiftLogs`), freeing their snapshots.
- *   5. Its invites, follows and notifications (its own, and any that name it as
+ *   5. Its invites, requests to join (with the owners' `join_request`
+ *      notifications about them), follows and notifications (its own, and any that name it as
  *      their actor), its proposals' link back to it, and its dashboard pins.
  *   6. Its uploads, once nothing points at them any more.
  *   7. Its sign-in accounts and verification tokens, and its sessions again.
@@ -134,6 +137,15 @@ async function eraseHoldings(userId: string, agreed: ReadonlySet<string>): Promi
     $or: [{ invitedUser: uid }, { invitedBy: uid }],
     status: { $ne: 'pending' },
   });
+
+  // Its requests to join (WIS-314): first the owners' `join_request`
+  // notifications naming it, then the rows, so a failure in between leaves rows
+  // that the next run finds again.
+  const asked: mongoose.Types.ObjectId[] = await WishlistJoinRequest.distinct('wishlist', {
+    user: uid,
+  });
+  for (const wishlistId of asked) await clearJoinRequestNotifications(wishlistId, uid);
+  await WishlistJoinRequest.deleteMany({ user: uid });
 
   await Follow.deleteMany({ $or: [{ follower: uid }, { following: uid }] });
   await Notification.deleteMany({ $or: [{ user: uid }, { actor: uid }] });

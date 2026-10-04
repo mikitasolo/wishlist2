@@ -37,6 +37,7 @@ import Reservation from '@/models/Reservation';
 import GiftLog from '@/models/GiftLog';
 import Follow from '@/models/Follow';
 import Notification from '@/models/Notification';
+import WishlistJoinRequest from '@/models/WishlistJoinRequest';
 
 const session = vi.mocked(auth);
 
@@ -218,6 +219,8 @@ describe('deleteAccount: the cascade', () => {
       bookedBy: cat,
     });
     await WishlistMember.create({ wishlist: list._id, user: cat });
+    // Bob asked to join it: the list delete takes requests with it.
+    await WishlistJoinRequest.create({ wishlist: list._id, user: bob });
     await Notification.create({ user: bob, type: 'removed_from_wishlist', wishlist: list._id });
     const catsBooking = await Reservation.create(
       reservationOf(cat, list._id.toString(), item._id.toString(), ann)
@@ -230,6 +233,7 @@ describe('deleteAccount: the cascade', () => {
     expect(await Item.exists({ wishlist: list._id })).toBeNull();
     expect(await WishlistMember.exists({ wishlist: list._id })).toBeNull();
     expect(await Notification.exists({ wishlist: list._id })).toBeNull();
+    expect(await WishlistJoinRequest.exists({ wishlist: list._id })).toBeNull();
     expect(purge).toHaveBeenCalledWith({ wishlistIds: [list._id.toString()] });
     expect(del).toHaveBeenCalledWith(upload(ann, 'banner.jpg'));
     // The gifter's own records stay, as with any list delete.
@@ -408,6 +412,58 @@ describe('deleteAccount: the cascade', () => {
     const before = await Wishlist.find({}).lean();
     await expect(eraseAnn()).resolves.toBe('deleted');
     expect(await Wishlist.find({}).lean()).toEqual(before);
+  });
+});
+
+describe('deleteAccount: requests to join (WIS-314)', () => {
+  it('deletes its requests and the owners’ notifications about them, and nobody else’s', async () => {
+    const bobs = await Wishlist.create({ name: 'Bobs', owners: [bob] });
+    const other = await Wishlist.create({ name: 'Other', owners: [bob] });
+    await WishlistJoinRequest.create({ wishlist: bobs._id, user: ann });
+    await WishlistJoinRequest.create({
+      wishlist: other._id,
+      user: ann,
+      status: 'declined',
+      declinedAt: new Date(),
+    });
+    const catsRequest = await WishlistJoinRequest.create({ wishlist: bobs._id, user: cat });
+    await Notification.create({
+      user: bob,
+      type: 'join_request',
+      actor: ann,
+      actorUsername: 'ann',
+      wishlist: bobs._id,
+    });
+    const aboutCat = await Notification.create({
+      user: bob,
+      type: 'join_request',
+      actor: cat,
+      actorUsername: 'cat',
+      wishlist: bobs._id,
+    });
+
+    await eraseAnn();
+
+    expect(await WishlistJoinRequest.exists({ user: ann })).toBeNull();
+    expect(await Notification.exists({ type: 'join_request', actor: ann })).toBeNull();
+    expect(await WishlistJoinRequest.exists({ _id: catsRequest._id })).toBeTruthy();
+    expect(await Notification.exists({ _id: aboutCat._id })).toBeTruthy();
+  });
+
+  it('is finished by running it again after its own step fails, and is then a no-op', async () => {
+    const bobs = await Wishlist.create({ name: 'Bobs', owners: [bob] });
+    await WishlistJoinRequest.create({ wishlist: bobs._id, user: ann });
+    const catsRequest = await WishlistJoinRequest.create({ wishlist: bobs._id, user: cat });
+    vi.spyOn(WishlistJoinRequest, 'deleteMany').mockRejectedValueOnce(new Error('down'));
+
+    await expect(eraseAnn()).rejects.toThrow('down');
+    expect(await WishlistJoinRequest.exists({ user: ann })).toBeTruthy();
+    expect(await User.exists({ _id: ann })).toBeTruthy();
+
+    await expect(eraseAnn()).resolves.toBe('deleted');
+    expect(await WishlistJoinRequest.exists({ user: ann })).toBeNull();
+    await expect(eraseAnn()).resolves.toBe('deleted');
+    expect(await WishlistJoinRequest.exists({ _id: catsRequest._id })).toBeTruthy();
   });
 });
 
