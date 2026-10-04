@@ -19,6 +19,7 @@ import { signInPath } from '@/lib/utils/callbackUrl';
 import { formatPrice } from '@/lib/utils/currency';
 import { useViewerLocale } from '@/lib/hooks/useViewerLocale';
 import {
+  forgetSavedListFilter,
   forgetSavedStatusFilters,
   isEveryStatusSelected,
   isSortType,
@@ -60,9 +61,9 @@ const STATUS_FILTER_OPTIONS: FilterOption[] = [
 const STATUS_PICKER = statusFilterPicker(STATUS_FILTER_OPTIONS, STATUS_FILTER_OPTIONS);
 
 // localStorage keys — kept separate from the per-wishlist page's keys. The
-// status filter isn't saved, as on the wishlist page: it starts on All each
-// visit, so a stat card clicked once doesn't narrow the page for good.
-const LS_LISTS = 'items-wishlist-filters';
+// status and list filters aren't saved: each starts on All every visit, so a
+// stat card clicked once, or the lists you had when you last picked, don't
+// narrow the page for good (a list created since would be missing).
 const LS_SORT = 'items-sort';
 
 export default function MyItemsPage() {
@@ -152,13 +153,13 @@ export default function MyItemsPage() {
   useEffect(() => {
     if (!ready) return;
     forgetSavedStatusFilters(localStorage);
+    forgetSavedListFilter(localStorage);
     const storedSort = localStorage.getItem(LS_SORT);
     if (isSortType(storedSort)) setSort(storedSort);
   }, [ready]);
 
-  // Restore the list filter once items (and therefore valid ids) are known;
-  // fall back to "all lists". Stale ids from deleted (or archived) lists are
-  // dropped. After that, each read Include archived makes selects the lists it
+  // Start the list filter on all lists once items are known. Ids of deleted
+  // (or archived) lists are dropped. After that, each read Include archived makes selects the lists it
   // adds and drops the ones it takes away, back to all lists if that leaves none.
   useEffect(() => {
     if (!ready) return;
@@ -175,26 +176,8 @@ export default function MyItemsPage() {
       });
       return;
     }
-    const stored = localStorage.getItem(LS_LISTS);
-    if (stored) {
-      try {
-        const valid = (JSON.parse(stored) as string[]).filter((id) => ids.has(id));
-        if (valid.length > 0) {
-          setWishlistFilters(valid);
-          return;
-        }
-      } catch {
-        /* ignore malformed */
-      }
-    }
     setWishlistFilters(Array.from(ids));
   }, [ready, items]);
-
-  // Persist changes (skip empty selections so a transient state can't clobber).
-  useEffect(() => {
-    if (!ready || wishlistFilters.length === 0) return;
-    localStorage.setItem(LS_LISTS, JSON.stringify(wishlistFilters));
-  }, [ready, wishlistFilters]);
 
   // Distinct lists the user owns (from the loaded items — no extra fetch).
   const wishlistOptions = useMemo(() => {
@@ -209,6 +192,10 @@ export default function MyItemsPage() {
     }
     return Array.from(seen, ([value, label]) => ({ value, label }));
   }, [items]);
+
+  // An empty selection means all lists, never an empty grid.
+  const changeWishlistFilters = (next: string[]) =>
+    setWishlistFilters(next.length > 0 ? next : wishlistOptions.map((o) => o.value));
 
   // "57 items · 3 drafts · 2 to review", counted as the dashboard counts them.
   const summary = useMemo(() => formatOwnerItemSummary(tallyItems(items)), [items]);
@@ -362,7 +349,7 @@ export default function MyItemsPage() {
                 className="min-w-[200px]"
                 options={wishlistOptions}
                 selected={wishlistFilters}
-                onChange={setWishlistFilters}
+                onChange={changeWishlistFilters}
                 allLabel="All lists"
                 extraToggle={{
                   label: 'Include archived',

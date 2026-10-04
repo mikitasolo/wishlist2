@@ -8,6 +8,7 @@ import {
   isSortType,
   toggleStatusFilter,
   isEveryStatusSelected,
+  forgetSavedListFilter,
   forgetSavedStatusFilters,
   SORT_OPTIONS,
   WISHLIST_SORT_STORAGE_KEY,
@@ -113,6 +114,17 @@ describe('forgetSavedStatusFilters', () => {
       [WISHLIST_SORT_STORAGE_KEY, 'price-asc'],
     ]);
     forgetSavedStatusFilters({ removeItem: (key) => void entries.delete(key) });
+    expect([...entries.keys()]).toEqual([WISHLIST_SORT_STORAGE_KEY]);
+  });
+});
+
+describe('forgetSavedListFilter', () => {
+  it('deletes the saved list filter and leaves the sort alone', () => {
+    const entries = new Map<string, string>([
+      ['items-wishlist-filters', '["a"]'],
+      [WISHLIST_SORT_STORAGE_KEY, 'price-asc'],
+    ]);
+    forgetSavedListFilter({ removeItem: (key) => void entries.delete(key) });
     expect([...entries.keys()]).toEqual([WISHLIST_SORT_STORAGE_KEY]);
   });
 });
