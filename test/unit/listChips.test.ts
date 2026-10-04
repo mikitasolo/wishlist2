@@ -112,6 +112,16 @@ describe('countListChips and orderListItems: an owner', () => {
     expect(under('received')).toEqual(['vase']);
   });
 
+  // regression: W-18 — a received item used to drop out of the owner's default
+  // view, so it seemed to vanish. It stays under All, last and dimmed.
+  it('regression: keeps a received item in the default view, dimmed', () => {
+    const all = orderListItems(items, 'all', 'owner', ME, 'date-asc');
+    const vase = all.find((i) => i.name === 'vase');
+    expect(vase).toBeDefined();
+    expect(all[all.length - 1]).toBe(vase);
+    expect(isDimmedInAll(vase!, 'owner', ME)).toBe(true);
+  });
+
   it('puts proposals, then drafts, then live items, then received ones under All', () => {
     expect(names(orderListItems(items, 'all', 'owner', ME, 'date-asc'))).toEqual([
       'idea',

@@ -575,7 +575,7 @@ function WishlistItem({
         <ConfirmDialog
           isOpen
           title="Mark as received?"
-          message="This marks the item as received on this wishlist."
+          message="It stays on the list with a ✓ so people know it's taken care of, and nobody can reserve it. You can undo this."
           confirmText="Mark as received"
           cancelText="Cancel"
           type="info"
