@@ -84,14 +84,18 @@ export function serializeItem(
  * The `givenByViewer` of a member's `ItemViewer`: of `items`, the ones
  * `memberId` holds the booking of and has marked as given. Reads only their own
  * gift history and reservations (`itemsGivenBy`), and nothing when they hold no
- * booking among them. Never call it for an owner: owners are booking-blind.
+ * booking among them. Only a `booked` item counts, so a stray `bookedBy` left
+ * on an item in another status never reads as a gift. Never call it for an
+ * owner: owners are booking-blind.
  */
 export function readGivenByViewer(
   memberId: string,
-  items: Pick<IItem, '_id' | 'bookedBy'>[]
+  items: Pick<IItem, '_id' | 'status' | 'bookedBy'>[]
 ): Promise<Set<string>> {
   return itemsGivenBy(
     memberId,
-    items.filter((item) => item.bookedBy?.toString() === memberId).map((item) => item._id)
+    items
+      .filter((item) => item.status === 'booked' && item.bookedBy?.toString() === memberId)
+      .map((item) => item._id)
   );
 }
