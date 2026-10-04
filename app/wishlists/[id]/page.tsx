@@ -61,6 +61,7 @@ import {
   updateItemOptimistically,
 } from '@/lib/utils/itemListMerge';
 import { RequestTimeoutError, withRequestTimeout } from '@/lib/utils/requestTimeout';
+import { createSubmissionKeys, IDEMPOTENCY_HEADER } from '@/lib/utils/submissionKey';
 import { canCopyItem } from '@/lib/utils/itemCopy';
 import {
   deleteListCopy,
@@ -670,6 +671,13 @@ export default function WishlistDetail() {
     showToast(error, 'error');
   });
 
+  // Each dialog's Idempotency-Key: a retry of a submission whose answer was
+  // lost (a timeout) sends the same one, so the server answers with the item
+  // the first attempt saved instead of adding a second (WIS-158). Reset on a
+  // success and when the dialog closes.
+  const [addKeys] = useState(createSubmissionKeys);
+  const [proposeKeys] = useState(createSubmissionKeys);
+
   const handleCreateItem = useCallback(
     async (itemData: {
       name: string;
@@ -683,10 +691,12 @@ export default function WishlistDetail() {
       if (!wishlistId) return;
       // The hook toasts a failure and resolves null. Reject so AddItemModal
       // stays open with the user's input; it closes itself on success.
-      const created = await mutations.track(() => createItemHook(apiId(), itemData));
+      const key = addKeys.keyFor(itemData);
+      const created = await mutations.track(() => createItemHook(apiId(), itemData, key));
       if (!created) throw new Error('Failed to create item');
+      addKeys.reset();
     },
-    [apiId, createItemHook, wishlistId, mutations]
+    [apiId, createItemHook, wishlistId, mutations, addKeys]
   );
 
   // Every item update (edit, book, publish, approve, ...) goes through here.
@@ -742,6 +752,7 @@ export default function WishlistDetail() {
       status: 'proposed';
     }) => {
       if (!wishlistId) return;
+      const key = proposeKeys.keyFor(itemData);
       const result = await mutations.track(async (): Promise<ApiResponse<ApiItem> | null> => {
         try {
           // Given up on after ITEM_REQUEST_TIMEOUT_MS, like the hooks' requests.
@@ -750,6 +761,7 @@ export default function WishlistDetail() {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
+                [IDEMPOTENCY_HEADER]: key,
               },
               body: JSON.stringify(itemData),
               signal,
@@ -775,11 +787,12 @@ export default function WishlistDetail() {
         showToast(message, 'error');
         throw new Error(message);
       }
+      proposeKeys.reset();
       // Same poll guards as an owner's add (see createItemHook).
       setItems((prevItems) => prependCreatedItem(prevItems, proposed));
       showToast('Item proposed successfully', 'success');
     },
-    [apiId, wishlistId, showToast, mutations]
+    [apiId, wishlistId, showToast, mutations, proposeKeys]
   );
 
   const handleReviewItem = useCallback(
@@ -1977,7 +1990,10 @@ export default function WishlistDetail() {
       {showAddItemModal && (
         <AddItemModal
           isOpen={showAddItemModal}
-          onClose={() => setShowAddItemModal(false)}
+          onClose={() => {
+            addKeys.reset();
+            setShowAddItemModal(false);
+          }}
           onAdd={handleCreateItem}
           wishlistCurrency={wishlist?.currency}
           userCurrency={session?.user?.defaultCurrency}
@@ -1987,7 +2003,10 @@ export default function WishlistDetail() {
       {showProposeItemModal && (
         <ProposeItemModal
           isOpen={showProposeItemModal}
-          onClose={() => setShowProposeItemModal(false)}
+          onClose={() => {
+            proposeKeys.reset();
+            setShowProposeItemModal(false);
+          }}
           onPropose={handleProposeItem}
           wishlistCurrency={wishlist?.currency}
           userCurrency={session?.user?.defaultCurrency}

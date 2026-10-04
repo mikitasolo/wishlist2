@@ -28,6 +28,12 @@ import {
 } from '@/lib/utils/itemCopy';
 import { isCountedOnShareCard } from '@/lib/og/data';
 import { purgeShareCards } from '@/lib/og/purge';
+import {
+  IDEMPOTENCY_HEADER,
+  isIdempotencyKeyClash,
+  readIdempotencyKey,
+  scopedIdempotencyKey,
+} from '@/lib/utils/itemIdempotency';
 
 /**
  * The item a "Save to my list" copy is made from, if `viewerId` may copy it:
@@ -45,6 +51,40 @@ async function findCopySource(sourceItemId: string, viewerId: string) {
   if (!sourceList) return null;
   const access = await getWishlistViewAccess(sourceList, viewerId);
   return access.allowed ? source : null;
+}
+
+/**
+ * The answer to a create whose key (`scopedKey`, already scoped to the caller)
+ * made an item on this list before: that item, shaped for the caller as the
+ * first answer was, so a retry of a POST whose response was lost doesn't add a
+ * second copy (WIS-158). Null when the key made nothing here (nor anything
+ * since deleted), and the create goes ahead.
+ *
+ * The caller passed every check the first attempt did, again, before this. A
+ * key only ever finds the caller's own item. One a member can no longer see
+ * (an owner has since made it a draft, or it was made while they owned the
+ * list) isn't returned: they get a 409 that says no more than that it's
+ * already there, never its status.
+ */
+async function replayCreate(
+  wishlistId: string,
+  scopedKey: string,
+  isOwner: boolean,
+  userId: string,
+  rates: Map<string, number>
+): Promise<NextResponse | null> {
+  const existing = await Item.findOne({ wishlist: wishlistId, idempotencyKey: scopedKey });
+  if (!existing) return null;
+  if (!isOwner && existing.status === 'draft') {
+    return NextResponse.json(
+      { success: false, error: 'This item has already been added' },
+      { status: 409 }
+    );
+  }
+  const viewer: ItemViewer = isOwner
+    ? { role: 'owner' }
+    : { role: 'member', id: userId, givenByViewer: await readGivenByViewer(userId, [existing]) };
+  return NextResponse.json({ success: true, data: serializeItem(existing, viewer, rates) });
 }
 
 // GET /api/wishlists/[id]/items - Get all items for a wishlist
@@ -130,6 +170,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 // With `sourceItemId`, an owner saves a copy of an item they can see ("Save to
 // my list"): the fields are the ones sent, and the source's image blob, if sent
 // back unchanged, is copied into the caller's own uploads (see findCopySource).
+// With an `Idempotency-Key` header, a retry answers with the item the first
+// attempt made (see replayCreate).
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth();
@@ -185,6 +227,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       );
     }
 
+    const idempotencyKey = readIdempotencyKey(request.headers);
+    if (idempotencyKey === undefined) {
+      return NextResponse.json(
+        { success: false, error: `Invalid ${IDEMPOTENCY_HEADER} header` },
+        { status: 400 }
+      );
+    }
+    const scopedKey = idempotencyKey && scopedIdempotencyKey(session.user.id, idempotencyKey);
+
     const { name, imageUrl, price, link, notes, mostWanted, status, sourceItemId } =
       validation.data;
     const isCopy = sourceItemId !== undefined;
@@ -227,6 +278,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         { success: false, error: 'Owners cannot create proposed items' },
         { status: 400 }
       );
+    }
+
+    // A retry of a create that was saved answers with that item. Checked once
+    // everything that could refuse the request has passed again, and before a
+    // copy's image is copied, which a retry mustn't do twice.
+    if (scopedKey) {
+      const replayed = await replayCreate(wishlistId, scopedKey, isOwner, session.user.id, rates);
+      if (replayed) return replayed;
     }
 
     // "Save to my list": a copy goes into a list of your own (members only ever
@@ -284,6 +343,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       status: string;
       bookedBy: null;
       proposedBy?: mongoose.Types.ObjectId;
+      idempotencyKey?: string;
     }
 
     const itemData: ItemCreateData = {
@@ -304,6 +364,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       // Always unbooked. A booking with no Reservation behind it is one nobody
       // can release (only the holder can unbook, and owners are booking-blind).
       bookedBy: null,
+      ...(scopedKey ? { idempotencyKey: scopedKey } : {}),
     };
 
     // Set proposedBy for proposed items
@@ -311,11 +372,20 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       itemData.proposedBy = new mongoose.Types.ObjectId(session.user.id);
     }
 
-    const item = await Item.create(itemData).catch(async (err) => {
+    let item;
+    try {
+      item = await Item.create(itemData);
+    } catch (err) {
       // Nothing holds the copy now, so free it rather than leak it.
       await deleteOwnBlob(copiedImageUrl);
+      // Another attempt of this same request got there first (two retries
+      // racing past replayCreate): answer with its item.
+      if (scopedKey && isIdempotencyKeyClash(err)) {
+        const replayed = await replayCreate(wishlistId, scopedKey, isOwner, session.user.id, rates);
+        if (replayed) return replayed;
+      }
       throw err;
-    });
+    }
 
     // A visible new item changes the count on the list's share card.
     if (isCountedOnShareCard(item.status)) await purgeShareCards({ wishlistIds: [wishlistId] });
