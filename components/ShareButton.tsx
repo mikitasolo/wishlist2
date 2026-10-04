@@ -38,7 +38,7 @@ interface ShareButtonProps {
   className?: string;
   /**
    * Set for a list's owners: Share opens a popover that says who the link opens
-   * for (`linkAudience`) and offers Copy link, Share… on a touch device, and
+   * for (`linkAudience`) and offers Copy link, Share on a touch device, and
    * inviting people. Everyone else gets the plain share, with no popover.
    */
   owner?: ShareOwnerInfo;
@@ -52,7 +52,7 @@ function subscribeToPointer(onChange: () => void): () => void {
   return () => query.removeEventListener?.('change', onChange);
 }
 
-/** The server can't know the device: it renders no Share…, and the browser adds it once hydrated. */
+/** The server can't know the device: it renders no Share, and the browser adds it once hydrated. */
 const noShareSheetOnServer = () => false;
 
 /**
@@ -121,7 +121,7 @@ export default function ShareButton({
   const items: MenuItem[] = [
     { label: 'Copy link', icon: 'link', onSelect: () => share(false) },
     ...(sheetAvailable
-      ? [{ label: 'Share…', icon: 'share' as const, onSelect: () => share(true) }]
+      ? [{ label: 'Share', icon: 'share' as const, onSelect: () => share(true) }]
       : []),
     {
       label: 'Invite people to reserve gifts',

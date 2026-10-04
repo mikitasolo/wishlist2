@@ -409,7 +409,7 @@ describe('WishlistItem — the action row, by role and state', () => {
           'Move to draft',
           'Mark as most wanted',
           'Save to my list',
-          'Delete…',
+          'Delete',
         ],
       },
     },
@@ -426,7 +426,7 @@ describe('WishlistItem — the action row, by role and state', () => {
           'Move to draft',
           'Mark as most wanted',
           'Save to my list',
-          'Delete…',
+          'Delete',
         ],
       },
     },
@@ -437,7 +437,7 @@ describe('WishlistItem — the action row, by role and state', () => {
       offer: {
         primary: { button: 'Edit item', text: 'Edit' },
         linkButton: 'link',
-        menu: ['Mark as not received', 'Mark as most wanted', 'Save to my list', 'Delete…'],
+        menu: ['Mark as not received', 'Mark as most wanted', 'Save to my list', 'Delete'],
       },
     },
     {
@@ -448,7 +448,7 @@ describe('WishlistItem — the action row, by role and state', () => {
       offer: {
         primary: { button: 'Publish item', text: 'Publish' },
         linkButton: 'link',
-        menu: ['Edit', 'Mark as most wanted', 'Delete…'],
+        menu: ['Edit', 'Mark as most wanted', 'Delete'],
       },
     },
     {
@@ -459,7 +459,7 @@ describe('WishlistItem — the action row, by role and state', () => {
       offer: {
         primary: { button: 'Review proposed item', text: 'Review' },
         linkButton: 'link',
-        menu: ['Decline…'],
+        menu: ['Decline'],
       },
     },
     {
@@ -480,7 +480,7 @@ describe('WishlistItem — the action row, by role and state', () => {
           'Move to draft',
           'Mark as most wanted',
           'Save to my list',
-          'Delete…',
+          'Delete',
         ],
       },
     },
@@ -524,7 +524,7 @@ describe('WishlistItem — the action row, by role and state', () => {
       offer: {
         primary: { button: 'Given by you', text: 'Given by you', disabled: true },
         linkButton: 'link',
-        menu: ['Release…', 'Save to my list'],
+        menu: ['Release', 'Save to my list'],
       },
     },
     {
@@ -783,11 +783,11 @@ describe('WishlistItem — a gift the member has marked as given', () => {
     expect(within(button).getByText('Given by you')).toHaveClass('max-sm:hidden');
   });
 
-  it('warns before Release… in the menu unbooks it', async () => {
+  it('warns before Release in the menu unbooks it', async () => {
     const onUpdate = vi.fn().mockResolvedValue(undefined);
     render(<WishlistItem item={given} onUpdate={onUpdate} isAuthenticated isMember />);
 
-    pick('Release…');
+    pick('Release');
     const dialog = screen.getByRole('dialog');
     expect(dialog).toHaveTextContent('Release this gift?');
     expect(dialog).toHaveTextContent('someone else on the list could reserve it and buy it again');
@@ -803,23 +803,23 @@ describe('WishlistItem — a gift the member has marked as given', () => {
     const onUpdate = vi.fn();
     render(<WishlistItem item={given} onUpdate={onUpdate} isAuthenticated isMember />);
 
-    pick('Release…');
+    pick('Release');
     fireEvent.click(screen.getByRole('button', { name: 'cancel' }));
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(onUpdate).not.toHaveBeenCalled();
   });
 
-  it('holds Release… while the unbook runs', async () => {
+  it('holds Release while the unbook runs', async () => {
     let settle!: () => void;
     const onUpdate = vi.fn(() => new Promise<void>((resolve) => (settle = resolve)));
     render(<WishlistItem item={given} onUpdate={onUpdate} isAuthenticated isMember />);
 
-    pick('Release…');
+    pick('Release');
     fireEvent.click(screen.getByRole('button', { name: 'Release' }));
     expect(onUpdate).toHaveBeenCalledTimes(1);
 
     openMenu();
-    const releaseItem = screen.getByRole('menuitem', { name: 'Release…' });
+    const releaseItem = screen.getByRole('menuitem', { name: 'Release' });
     expect(releaseItem).toHaveAttribute('aria-disabled', 'true');
     fireEvent.click(releaseItem);
     expect(screen.queryByRole('dialog')).toBeNull();
@@ -831,7 +831,7 @@ describe('WishlistItem — a gift the member has marked as given', () => {
     const onUpdate = vi.fn();
     const view = render(<WishlistItem item={given} onUpdate={onUpdate} isAuthenticated isMember />);
 
-    pick('Release…');
+    pick('Release');
     // A poll lands meanwhile: they've released it from another tab.
     view.rerender(
       <WishlistItem
@@ -868,7 +868,7 @@ describe('WishlistItem — a gift the member has marked as given', () => {
     expect(screen.queryByText(/given/i)).toBeNull();
     expect(screen.queryByText(/book|reserv/i)).toBeNull();
     openMenu();
-    expect(screen.queryByRole('menuitem', { name: 'Release…' })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: 'Release' })).toBeNull();
   });
 });
 
@@ -1298,7 +1298,7 @@ describe("WishlistItem — the owner's menu: Most wanted, Delete and Decline", (
       />
     );
     openMenu();
-    const del = screen.getByRole('menuitem', { name: 'Delete…' });
+    const del = screen.getByRole('menuitem', { name: 'Delete' });
     expect(del).toHaveClass('text-danger');
     fireEvent.click(del);
     expect(onDelete).not.toHaveBeenCalled();
@@ -1308,7 +1308,7 @@ describe("WishlistItem — the owner's menu: Most wanted, Delete and Decline", (
     expect(screen.queryByRole('dialog')).toBeNull();
 
     openMenu();
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete…' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
     expect(onDelete).toHaveBeenCalledWith(expect.objectContaining({ _id: 'item-1' }));
     await act(async () => {});
@@ -1326,7 +1326,7 @@ describe("WishlistItem — the owner's menu: Most wanted, Delete and Decline", (
       />
     );
     openMenu();
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete…' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
     await act(async () => {});
     expect(screen.queryByRole('dialog')).toBeNull();
@@ -1346,7 +1346,7 @@ describe("WishlistItem — the owner's menu: Most wanted, Delete and Decline", (
       />
     );
     openMenu();
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Decline…' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Decline' }));
     expect(onDelete).not.toHaveBeenCalled();
     const dialog = screen.getByRole('dialog');
     expect(dialog).toHaveTextContent('Decline this proposal?');

@@ -507,7 +507,7 @@ describe('a list that stops being available while it’s open', () => {
     expect(listReads()).toBe(reads);
   });
 
-  /** A member leaves through the header's Leave list…, its request held until `release`. */
+  /** A member leaves through the header's Leave list, its request held until `release`. */
   async function leave() {
     let release!: () => void;
     hold.leave = new Promise<void>((resolve) => (release = resolve));

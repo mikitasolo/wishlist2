@@ -327,7 +327,7 @@ const GIFT_BUTTON = /^(Mark as given|I gave it|I gave it anyway)$/;
 /**
  * The buttons on the reservation card for `itemName`: its "Mark as given" (on
  * a changed row "I gave it" or "I gave it anyway"), then the "More actions"
- * menu holding Release… on an active card, or Dismiss on one that needs
+ * menu holding Release on an active card, or Dismiss on one that needs
  * confirmation (each null where the card doesn't have it).
  */
 function reservationButtons(itemName: string) {
@@ -395,12 +395,12 @@ function dismiss(itemName: string) {
   if (!dismiss) throw new Error(`no Dismiss on the card for ${itemName}`);
   clickAndConfirm(dismiss, 'Remove');
 }
-/** Opens the card's "More actions" menu and picks Release…, which asks first. */
+/** Opens the card's "More actions" menu and picks Release, which asks first. */
 function openRelease(itemName: string) {
   const { release } = reservationButtons(itemName);
   if (!release) throw new Error(`no Release on the card for ${itemName}`);
   fireEvent.click(release);
-  fireEvent.click(screen.getByRole('menuitem', { name: 'Release…' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Release' }));
 }
 function release(itemName: string) {
   openRelease(itemName);
@@ -1951,7 +1951,7 @@ describe('BookedPage — what to give next (WIS-263)', () => {
       'href',
       '/wishlists/birthday?item=item-lego'
     );
-    expect(screen.getByRole('menuitem', { name: 'Release…' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'Release' })).toBeInTheDocument();
   });
 
   it('never links anything but http(s)', async () => {

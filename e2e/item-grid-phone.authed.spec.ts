@@ -87,7 +87,7 @@ test('two cards sit side by side at 390px, the link in each card’s menu', asyn
     'Move to draft',
     'Mark as most wanted',
     'Save to my list',
-    'Delete…',
+    'Delete',
   ]);
   const box = (await menu.boundingBox())!;
   expect(box.x).toBeGreaterThanOrEqual(0);
@@ -103,7 +103,7 @@ test('two cards sit side by side at 390px, the link in each card’s menu', asyn
     'Move to draft',
     'Mark as most wanted',
     'Save to my list',
-    'Delete…',
+    'Delete',
   ]);
 });
 
@@ -133,7 +133,7 @@ test('from sm up, the link is a square beside the primary again, not in the menu
     'Move to draft',
     'Mark as most wanted',
     'Save to my list',
-    'Delete…',
+    'Delete',
   ]);
 
   // Down to a phone's width and back, without a reload.

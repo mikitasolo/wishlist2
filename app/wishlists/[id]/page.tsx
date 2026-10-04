@@ -243,7 +243,7 @@ export default function WishlistDetail() {
   // The ref turns a second click away before the disabled state has rendered.
   const archivingRef = useRef(false);
   const [isArchiving, setIsArchiving] = useState(false);
-  // The sole owner's Leave list… (in the title's ⋯ menu) explains why they
+  // The sole owner's Leave list (in the title's ⋯ menu) explains why they
   // can't and offers the way out instead: make someone else an owner (a member,
   // with Make owner, or an invited co-owner), then leave. Nothing in it leaves
   // or deletes anything.
@@ -819,7 +819,7 @@ export default function WishlistDetail() {
     setItemToEdit(item);
   }, []);
 
-  // A card's Delete… / Decline…, once confirmed. Rejects on failure so the
+  // A card's Delete / Decline, once confirmed. Rejects on failure so the
   // card keeps its item; same poll guard as the dialogs' deletes.
   const handleCardDelete = useCallback(
     async (item: ApiItem) => {
@@ -1294,12 +1294,12 @@ export default function WishlistDetail() {
   }, [setArchived]);
 
   const ownerCount = owners.ids.length;
-  // A co-owner may step down. The sole owner can't: their Leave list…
+  // A co-owner may step down. The sole owner can't: their Leave list
   // explains that they'd have to make someone else an owner first, or delete
   // the list.
   const canLeave = isOwner ? ownerCount > 1 : isMember;
 
-  // Leave list…, from the title's ⋯ menu: confirm, or for the sole owner, why
+  // Leave list, from the title's ⋯ menu: confirm, or for the sole owner, why
   // not. The page counted its owners when it last read them, which can predate
   // a co-owner accepting the invite the notice pointed the sole owner to, so
   // their owners are read again first: once that co-owner counts, they're asked
@@ -1610,7 +1610,7 @@ export default function WishlistDetail() {
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
         {/* The banner, as a short strip across the top (none without one), then
             the name, the meta line (owners, occasion, visibility) and the
-            viewer's actions, with Leave list… and Pin in the ⋯ menu, then the
+            viewer's actions, with Leave list and Pin in the ⋯ menu, then the
             description. The same on every tab, so moving between them doesn't move them. */}
         <WishlistCover bannerUrl={wishlist.bannerUrl} seed={wishlist._id.toString()} />
         <WishlistHeader
@@ -1918,7 +1918,7 @@ export default function WishlistDetail() {
                   isInviting={isInviting}
                   statuses={inviteStatuses}
                   // A member's suggestion makes them a co-owner through the same
-                  // confirmation and promotion invite as their Make owner….
+                  // confirmation and promotion invite as their Make owner.
                   onPromote={setPromoteConfirm}
                 />
               }
@@ -2062,7 +2062,7 @@ export default function WishlistDetail() {
           // ("promote them from the members list"), so the way to them comes first.
           message={
             memberRows.length > 0
-              ? 'A wishlist needs at least one owner. To leave, make someone else an owner first: pick Make owner… in one of your members’ menus on People, or invite a co-owner. Once they accept, you can leave. Or delete the wishlist instead.'
+              ? 'A wishlist needs at least one owner. To leave, make someone else an owner first: pick Make owner in one of your members’ menus on People, or invite a co-owner. Once they accept, you can leave. Or delete the wishlist instead.'
               : 'A wishlist needs at least one owner. To leave, invite a co-owner first; once they accept, you can leave. Or delete the wishlist instead.'
           }
           onConfirm={inviteCoOwnerInstead}

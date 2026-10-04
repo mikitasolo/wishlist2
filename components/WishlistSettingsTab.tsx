@@ -41,12 +41,12 @@ interface WishlistSettingsTabProps {
   onDiscard: () => void;
   archived: boolean;
   archiving: boolean;
-  /** Archive…: asks first. */
+  /** Archive: asks first. */
   onArchive: () => void;
   /** Unarchive: only gives back the access people had, so it isn't asked about. */
   onUnarchive: () => void;
   deleting: boolean;
-  /** Delete…: asks first. */
+  /** Delete: asks first. */
   onDelete: () => void;
 }
 
@@ -56,7 +56,7 @@ interface WishlistSettingsTabProps {
  * 1. About: name, description, occasion, cover photo.
  * 2. Who can see it: the visibility, its helper under the control.
  * 3. Advanced: the currency, and the link, which warns once it's changed.
- * 4. Danger zone: Archive… and Delete…, which act at once (each confirmed),
+ * 4. Danger zone: Archive and Delete, which act at once (each confirmed),
  *    apart from the form.
  *
  * The first three are one form. While it differs from the list as last filled
@@ -210,12 +210,12 @@ export default function WishlistSettingsTab({
             onClick={archived ? onUnarchive : onArchive}
             disabled={archiving}
           >
-            {archived ? 'Unarchive' : 'Archive…'}
+            {archived ? 'Unarchive' : 'Archive'}
           </Button>
         </DangerRow>
         <DangerRow title="Delete wishlist" description={DELETE_LIST_WARNING}>
           <Button variant="danger" size="sm" onClick={onDelete} disabled={deleting}>
-            {deleting ? 'Deleting…' : 'Delete…'}
+            {deleting ? 'Deleting…' : 'Delete'}
           </Button>
         </DangerRow>
       </Panel>

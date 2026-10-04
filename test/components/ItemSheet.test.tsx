@@ -206,7 +206,7 @@ describe("the sheet's actions, by role", () => {
       within(menu)
         .getAllByRole('menuitem')
         .map((i) => i.textContent)
-    ).toEqual(['Mark as received', 'Move to draft', 'Mark as most wanted', 'Delete…']);
+    ).toEqual(['Mark as received', 'Move to draft', 'Mark as most wanted', 'Delete']);
     await user.keyboard('{Escape}');
 
     await user.click(within(sheet).getByRole('button', { name: 'Edit item' }));
@@ -261,12 +261,12 @@ describe("the sheet's actions, by role", () => {
     expect(popover).not.toBeNull();
   });
 
-  it("asks the owner's Delete… over the sheet", async () => {
+  it("asks the owner's Delete over the sheet", async () => {
     const user = userEvent.setup();
     renderCard(item(), { isOwner: true, onEdit: vi.fn(), onDelete: vi.fn() });
     const sheet = openSheet();
     await user.click(within(sheet).getByRole('button', { name: 'More actions' }));
-    await user.click(within(sheet).getByRole('menuitem', { name: 'Delete…' }));
+    await user.click(within(sheet).getByRole('menuitem', { name: 'Delete' }));
     const confirm = screen.getByRole('alertdialog');
     expect(within(confirm).getByRole('button', { name: 'Delete' })).toBeInTheDocument();
     // Portalled to <body>, beside the sheet rather than under the card.

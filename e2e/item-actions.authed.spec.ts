@@ -52,7 +52,7 @@ test("the owner's card menu works from the keyboard and gives focus back", async
   await page.keyboard.press('ArrowDown');
   await expect(menu.getByRole('menuitem', { name: 'Move to draft' })).toBeFocused();
   await page.keyboard.press('End');
-  await expect(menu.getByRole('menuitem', { name: 'Delete…' })).toBeFocused();
+  await expect(menu.getByRole('menuitem', { name: 'Delete' })).toBeFocused();
 
   await page.keyboard.press('Escape');
   await expect(menu).toBeHidden();
@@ -60,7 +60,7 @@ test("the owner's card menu works from the keyboard and gives focus back", async
 
   // Shift+Tab closes it and moves on from the trigger, back along the row.
   await page.keyboard.press('ArrowUp');
-  await expect(menu.getByRole('menuitem', { name: 'Delete…' })).toBeFocused();
+  await expect(menu.getByRole('menuitem', { name: 'Delete' })).toBeFocused();
   await page.keyboard.press('Shift+Tab');
   await expect(menu).toBeHidden();
   await expect(card.getByRole('button', { name: 'Add product link' })).toBeFocused();
@@ -89,7 +89,7 @@ test("the owner's card menu closes on a click outside it", async ({ page }) => {
     'Move to draft',
     'Mark as most wanted',
     'Save to my list',
-    'Delete…',
+    'Delete',
   ]);
   // Inside the viewport, above its button when there's no room below it.
   const box = (await menu.boundingBox())!;

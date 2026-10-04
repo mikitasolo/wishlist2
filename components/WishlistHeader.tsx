@@ -38,7 +38,7 @@ interface WishlistHeaderProps {
   onAddItem: () => void;
   onPropose: () => void;
   onTogglePin: () => void;
-  /** Leave list…: the page asks to confirm, or tells a sole owner why they can't. */
+  /** Leave list: the page asks to confirm, or tells a sole owner why they can't. */
   onLeave: () => void;
   /**
    * The list's Share (a `ShareButton`, which the page sets up with the list's
@@ -54,9 +54,9 @@ interface WishlistHeaderProps {
  * to up to three lines, never truncated to one), a meta line (its owners, its
  * occasion with the date it falls on, its visibility), and one row of actions
  * for the viewer's role:
- * - an owner: Add item, Share and ⋯ (Pin to my dashboard, Leave list…), with
+ * - an owner: Add item, Share and ⋯ (Pin to my dashboard, Leave list), with
  *   the list's tabs (Items · People · Settings) under the header, not here;
- * - a member: Propose, Share and ⋯ (Leave list…);
+ * - a member: Propose, Share and ⋯ (Leave list);
  * - anyone else: Share.
  *
  * On a wide screen the actions sit beside the name.
@@ -88,7 +88,7 @@ export default function WishlistHeader({
     });
   }
   if (role !== 'visitor') {
-    menuItems.push({ label: 'Leave list…', icon: 'logout', onSelect: onLeave });
+    menuItems.push({ label: 'Leave list', icon: 'logout', onSelect: onLeave });
   }
 
   return (

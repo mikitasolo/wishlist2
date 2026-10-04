@@ -253,7 +253,7 @@ describe("an owner's confirmations", () => {
     await openPeople(user);
     await screen.findByRole('link', { name: '@carol' });
 
-    await pickRowAction(user, 'carol', 'Remove…');
+    await pickRowAction(user, 'carol', 'Remove');
 
     const dialog = await screen.findByRole('alertdialog', { name: 'Remove @carol?' });
     expect(dialog).toHaveAccessibleDescription(
@@ -276,7 +276,7 @@ describe("an owner's confirmations", () => {
     await openPeople(user);
     await waitFor(() => expect(screen.getAllByRole('link', { name: '@bob' })).toHaveLength(2));
 
-    await pickRowAction(user, 'bob', 'Remove…');
+    await pickRowAction(user, 'bob', 'Remove');
 
     const dialog = await screen.findByRole('alertdialog', { name: 'Remove @bob as an owner?' });
     expect(dialog).toHaveAccessibleDescription(
@@ -314,7 +314,7 @@ describe("an owner's confirmations", () => {
     expect(zone).toHaveTextContent(
       "Deleting this wishlist takes its items and everyone's access with it. This can't be undone."
     );
-    await user.click(within(zone).getByRole('button', { name: 'Delete…' }));
+    await user.click(within(zone).getByRole('button', { name: 'Delete' }));
 
     const dialog = await screen.findByRole('alertdialog', { name: 'Delete “Birthday”?' });
     // Every item goes, the draft and the proposal included.
@@ -332,7 +332,7 @@ describe("an owner's confirmations", () => {
     await screen.findByRole('heading', { name: 'Couldn’t load this list’s items' });
     await openSettings(user);
 
-    await user.click(screen.getByRole('button', { name: 'Delete…' }));
+    await user.click(screen.getByRole('button', { name: 'Delete' }));
 
     const dialog = await screen.findByRole('alertdialog', { name: 'Delete “Birthday”?' });
     expect(dialog).toHaveAccessibleDescription(
