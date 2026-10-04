@@ -48,7 +48,6 @@ export async function DELETE(
     // record the answer before they grant anything, in the same kind of
     // conditional write, so an answer still in flight is covered too: exactly one
     // of the two matches the pending row.
-    const cancelledAt = new Date();
     const invite = await WishlistInvite.findOneAndDelete({
       _id: inviteId,
       wishlist: id,
@@ -69,7 +68,7 @@ export async function DELETE(
     // Its notification has nothing left to act on. Best-effort: the invite is
     // already gone, so a failed cleanup must not turn a successful cancel into an
     // error.
-    await clearCancelledInviteNotifications(invite, cancelledAt);
+    await clearCancelledInviteNotifications(invite);
 
     return NextResponse.json({ success: true, data: {} }, { status: 200 });
   } catch (error) {
