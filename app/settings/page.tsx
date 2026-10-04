@@ -18,6 +18,7 @@ import Select from '@/components/Select';
 import Toggle from '@/components/Toggle';
 import UsernameField from '@/components/UsernameField';
 import { useTheme } from '@/components/ThemeProvider';
+import { parseThemeChoice } from '@/lib/utils/theme';
 import { buttonClassName } from '@/components/buttonStyles';
 import { signInPath } from '@/lib/utils/callbackUrl';
 import { currencySelectOptions, SETTINGS_CURRENCY_FIELD_ID } from '@/lib/utils/currencies';
@@ -388,6 +389,7 @@ export default function SettingsPage() {
             onChange={(username) => edit({ username })}
             availability={availability}
             disabled={savingText}
+            savedUsername={saved.username}
           />
           {saved.username && <ProfileLink username={saved.username} />}
 
@@ -569,7 +571,7 @@ export default function SettingsPage() {
   );
 }
 
-/** Light or Dark, as the account menu's Theme sets it: kept in this browser, not the account. */
+/** Light, Dark or System (the default), as the account menu's Theme sets it: kept in this browser, not the account. */
 function ThemeSetting() {
   const { theme, setTheme } = useTheme();
   return (
@@ -582,10 +584,11 @@ function ThemeSetting() {
         className="max-w-xs"
         ariaLabelledBy="theme-label"
         value={theme}
-        onChange={(t) => setTheme(t === 'dark' ? 'dark' : 'light')}
+        onChange={(t) => setTheme(parseThemeChoice(t))}
         options={[
           { value: 'light', label: 'Light', icon: 'sun' },
           { value: 'dark', label: 'Dark', icon: 'moon' },
+          { value: 'system', label: 'System', icon: 'monitor' },
         ]}
       />
     </div>

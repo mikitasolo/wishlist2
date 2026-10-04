@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, act, cleanup, fireEvent } from '@testing-library/react';
+import { render, screen, act, cleanup, fireEvent, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 type User = { id: string; email: string; username: string };
@@ -22,7 +22,7 @@ vi.mock('next-auth/react', () => ({
 
 const { setTheme } = vi.hoisted(() => ({ setTheme: vi.fn() }));
 vi.mock('@/components/ThemeProvider', () => ({
-  useTheme: () => ({ theme: 'light', setTheme }),
+  useTheme: () => ({ theme: 'system', resolvedTheme: 'light', setTheme }),
 }));
 
 vi.mock('next/link', () => ({
@@ -207,7 +207,13 @@ describe('AuthButton — the account menu from the keyboard', () => {
   it('says which theme is on, and changes it from the keyboard, staying open', async () => {
     const user = await openFromKeyboard();
     expect(screen.getByRole('group', { name: 'Theme' })).toContainElement(radio('Light'));
-    expect(radio('Light')).toHaveAttribute('aria-checked', 'true');
+    expect(
+      within(screen.getByRole('group', { name: 'Theme' }))
+        .getAllByRole('menuitemradio')
+        .map((r) => r.textContent)
+    ).toEqual(['Light', 'Dark', 'System']);
+    expect(radio('System')).toHaveAttribute('aria-checked', 'true');
+    expect(radio('Light')).toHaveAttribute('aria-checked', 'false');
     expect(radio('Dark')).toHaveAttribute('aria-checked', 'false');
 
     await user.keyboard('d');

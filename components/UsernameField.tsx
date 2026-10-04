@@ -14,6 +14,8 @@ interface UsernameFieldProps {
   id?: string;
   disabled?: boolean;
   autoFocus?: boolean;
+  /** The account's current username; once the field differs, the helper warns that the link changes. */
+  savedUsername?: string | null;
 }
 
 /**
@@ -29,12 +31,18 @@ export default function UsernameField({
   id = 'username',
   disabled = false,
   autoFocus = false,
+  savedUsername = null,
 }: UsernameFieldProps) {
+  const changing = !!savedUsername && value !== '' && value !== savedUsername;
   return (
     <Field
       label="Username"
       id={id}
-      helper="3–20 characters, starting with a letter. Letters, numbers, and underscores only."
+      helper={
+        changing
+          ? `3–20 characters, starting with a letter. Letters, numbers, and underscores only. Your profile link becomes …/users/${value}. Links you've already shared will stop working.`
+          : '3–20 characters, starting with a letter. Letters, numbers, and underscores only.'
+      }
     >
       <Input
         leading="@"

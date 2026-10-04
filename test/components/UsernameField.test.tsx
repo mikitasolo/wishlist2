@@ -9,12 +9,17 @@ import {
 } from '@/lib/hooks/useUsernameAvailability';
 
 /** The field wired to the hook the way the settings and welcome pages wire it. */
-function Harness({ current }: { current: string | null }) {
+function Harness({ current, warn = false }: { current: string | null; warn?: boolean }) {
   const [value, setValue] = useState(current ?? '');
   const availability = useUsernameAvailability(value, current);
   return (
     <>
-      <UsernameField value={value} onChange={setValue} availability={availability} />
+      <UsernameField
+        value={value}
+        onChange={setValue}
+        availability={availability}
+        savedUsername={warn ? current : null}
+      />
       <output data-testid="availability">{availability}</output>
     </>
   );
@@ -47,6 +52,32 @@ beforeEach(() => {
 });
 afterEach(() => {
   vi.useRealTimers();
+});
+
+describe('the link warning', () => {
+  const warning = () => screen.queryByText(/Links you've already shared will stop working/);
+
+  it('appears only once the field differs from the saved username', () => {
+    render(<Harness current="alice" warn />);
+    expect(warning()).toBeNull();
+
+    type('alice_two');
+    expect(warning()).toHaveTextContent('Your profile link becomes …/users/alice_two.');
+
+    type('alice');
+    expect(warning()).toBeNull();
+  });
+
+  it('is not shown for an empty field, or where no saved name is given', () => {
+    render(<Harness current="alice" warn />);
+    type('');
+    expect(warning()).toBeNull();
+    cleanup();
+
+    render(<Harness current="alice" />);
+    type('alice_two');
+    expect(warning()).toBeNull();
+  });
 });
 
 describe('UsernameField + useUsernameAvailability', () => {

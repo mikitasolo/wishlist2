@@ -7,6 +7,7 @@ import Button from '@/components/Button';
 import Menu, { type MenuEntry } from '@/components/Menu';
 import { Skeleton } from '@/components/Skeleton';
 import { useTheme } from '@/components/ThemeProvider';
+import { parseThemeChoice } from '@/lib/utils/theme';
 import { isAuthOnlyPath } from '@/lib/utils/callbackUrl';
 import { meHref } from '@/lib/utils/appNav';
 import { rememberSessionHint } from '@/lib/utils/sessionHint';
@@ -68,8 +69,9 @@ export default function AuthButton() {
         options: [
           { value: 'light', label: 'Light', icon: 'sun' },
           { value: 'dark', label: 'Dark', icon: 'moon' },
+          { value: 'system', label: 'System', icon: 'monitor' },
         ],
-        onChange: (t) => setTheme(t === 'dark' ? 'dark' : 'light'),
+        onChange: (t) => setTheme(parseThemeChoice(t)),
       },
       {
         label: 'Sign out',
