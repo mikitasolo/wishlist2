@@ -68,8 +68,14 @@ async function search(q: string, as: string | null, sections?: string) {
   expect(res.status).toBe(200);
   const body = await res.json();
   return body.data as {
-    users: { username: string; image: string | null }[];
-    wishlists: { _id: string; name: string; slug: string | null; ownerUsername: string | null }[];
+    users: { username: string; image: string | null; relation: string | null }[];
+    wishlists: {
+      _id: string;
+      name: string;
+      slug: string | null;
+      ownerUsername: string | null;
+      relation: string | null;
+    }[];
   };
 }
 
@@ -176,14 +182,22 @@ describe('GET /api/search — privacy settings', () => {
     expect(await listNames('gifts', open)).toEqual(['Shared gifts']);
   });
 
-  it('returns only username + image for people and name + slug + owner username for lists', async () => {
+  it('returns only username + image + relation for people and name + slug + owner username + relation for lists', async () => {
     const owner = await user('gifter');
     await list('Gifter list', [owner]);
 
     const data = await search('gifter', null);
-    expect(data.users).toEqual([{ username: 'gifter', image: 'https://img.example/gifter.png' }]);
+    expect(data.users).toEqual([
+      { username: 'gifter', image: 'https://img.example/gifter.png', relation: null },
+    ]);
     expect(data.wishlists).toHaveLength(1);
-    expect(Object.keys(data.wishlists[0]).sort()).toEqual(['_id', 'name', 'ownerUsername', 'slug']);
+    expect(Object.keys(data.wishlists[0]).sort()).toEqual([
+      '_id',
+      'name',
+      'ownerUsername',
+      'relation',
+      'slug',
+    ]);
     expect(data.wishlists[0]).toMatchObject({
       name: 'Gifter list',
       slug: 'gifter-list',
@@ -244,7 +258,7 @@ describe('GET /api/search — the query', () => {
 });
 
 describe('GET /api/search — ranking', () => {
-  it('ranks people: exact match, friends, following, followers, everyone else; prefix before substring', async () => {
+  it('ranks people: exact match, then prefix, then substring; friends, following, followers, everyone else within each', async () => {
     const me = await user('searcher');
     await user('ali'); // a stranger, but the exact match
     const friend = await user('alizfriend');
@@ -261,10 +275,10 @@ describe('GET /api/search — ranking', () => {
     expect(await usernames('ali', me)).toEqual([
       'ali',
       'alizfriend',
-      'xalifriend',
       'alizfollowing',
       'alizfollower',
       'aliastranger',
+      'xalifriend',
     ]);
     // Signed out there's no graph: exact match, then prefix, then substring.
     expect(await usernames('ali', null)).toEqual([
@@ -274,6 +288,31 @@ describe('GET /api/search — ranking', () => {
       'alizfollowing',
       'alizfriend',
       'xalifriend',
+    ]);
+  });
+
+  // regression: the relationship tier sorted before the match, so for "ann" a
+  // friend who only contains it (@hannah_s) came above the prefix matches,
+  // the searcher's own @anna_m among them (WIS-271).
+  it('ranks the "ann" case by match first, relationship second, and leaves the searcher out', async () => {
+    const me = await user('anna_m');
+    await user('ann'); // a stranger, but the exact match
+    const hannah = await user('hannah_s'); // a friend, substring only
+    const annaF = await user('anna_f'); // a friend, prefix
+    const annaG = await user('anna_g'); // followed, prefix
+    await user('annie'); // a stranger, prefix
+    await user('joann'); // a stranger, substring
+    await befriend(me, hannah);
+    await befriend(me, annaF);
+    await follow(me, annaG);
+
+    expect(await usernames('ann', me)).toEqual([
+      'ann',
+      'anna_f',
+      'anna_g',
+      'annie',
+      'hannah_s',
+      'joann',
     ]);
   });
 
@@ -375,8 +414,16 @@ describe('GET /api/search — people only (`sections=users`, the invite form’s
 
       expect(data).toEqual({
         users: [
-          { username: 'alizfriend', image: 'https://img.example/alizfriend.png' },
-          { username: 'aliastranger', image: 'https://img.example/aliastranger.png' },
+          {
+            username: 'alizfriend',
+            image: 'https://img.example/alizfriend.png',
+            relation: 'friend',
+          },
+          {
+            username: 'aliastranger',
+            image: 'https://img.example/aliastranger.png',
+            relation: null,
+          },
         ],
         wishlists: [
           {
@@ -384,12 +431,14 @@ describe('GET /api/search — people only (`sections=users`, the invite form’s
             name: 'Ali birthday',
             slug: 'ali-birthday',
             ownerUsername: 'alizfriend',
+            relation: 'member',
           },
           {
             _id: expect.any(String),
             name: 'Ali wedding',
             slug: 'ali-wedding',
             ownerUsername: 'aliastranger',
+            relation: null,
           },
         ],
       });
@@ -398,4 +447,77 @@ describe('GET /api/search — people only (`sections=users`, the invite form’s
       expect(reads.ownerNames).toHaveBeenCalledTimes(1);
     }
   );
+});
+
+describe('GET /api/search — the searcher and their relations', () => {
+  it('leaves the searcher out of People, on an exact match too, but keeps their lists', async () => {
+    const me = await user('anna_m');
+    await user('anna_x');
+    await list('anna_m birthday', [me], 'private');
+
+    expect(await usernames('anna_m', me)).toEqual([]);
+    expect(await usernames('anna', me)).toEqual(['anna_x']);
+    expect((await search('@anna_m', me, 'users')).users).toEqual([]);
+    expect(await listNames('anna_m', me)).toEqual(['anna_m birthday']);
+    // Anyone else still finds them.
+    expect(await usernames('anna_m', null)).toEqual(['anna_m']);
+  });
+
+  it('labels people only by the searcher’s own follows: friend, follows you, or nothing', async () => {
+    const me = await user('searcher');
+    const friend = await user('pal_friend');
+    const followsMe = await user('pal_follower');
+    const followed = await user('pal_followed'); // I follow them; they don't follow back
+    const stranger = await user('pal_stranger');
+    await befriend(me, friend);
+    await follow(followsMe, me);
+    await follow(me, followed);
+    // Other people's follows say nothing to the searcher.
+    await befriend(stranger, followed);
+    await follow(stranger, friend);
+
+    const relations = async (as: string | null) =>
+      Object.fromEntries((await search('pal_', as)).users.map((u) => [u.username, u.relation]));
+
+    expect(await relations(me)).toEqual({
+      pal_friend: 'friend',
+      pal_follower: 'follows_you',
+      pal_followed: null,
+      pal_stranger: null,
+    });
+    // The stranger sees only their own relations, never the searcher's.
+    expect(await relations(stranger)).toEqual({
+      pal_friend: null, // they follow pal_friend, who doesn't follow back
+      pal_follower: null,
+      pal_followed: 'friend',
+    });
+    expect(Object.values(await relations(null)).every((r) => r === null)).toBe(true);
+  });
+
+  it('labels lists only by the searcher’s own ownership and membership', async () => {
+    const me = await user('searcher');
+    const friend = await user('friend');
+    const other = await user('other');
+    await befriend(me, friend);
+    await list('Gift mine', [me]);
+    await list('Gift co-owned', [friend, me]);
+    await join(await list('Gift joined', [friend], 'private'), me);
+    await join(await list('Gift friend', [friend]), other); // someone else's membership
+
+    const relations = async (as: string | null) =>
+      Object.fromEntries((await search('gift', as)).wishlists.map((w) => [w.name, w.relation]));
+
+    expect(await relations(me)).toEqual({
+      'Gift mine': 'owner',
+      'Gift co-owned': 'owner',
+      'Gift joined': 'member',
+      'Gift friend': null,
+    });
+    expect(await relations(other)).toEqual({
+      'Gift mine': null,
+      'Gift co-owned': null,
+      'Gift friend': 'member',
+    });
+    expect(Object.values(await relations(null)).every((r) => r === null)).toBe(true);
+  });
 });

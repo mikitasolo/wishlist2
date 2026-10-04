@@ -59,7 +59,7 @@ for (const width of [640, 768, 1024]) {
     expect(activity.x + activity.width).toBeLessThanOrEqual(search.x);
 
     await page.getByRole('button', { name: 'Search', exact: true }).click();
-    await expect(page.getByRole('textbox', { name: 'Search people and wishlists' })).toBeVisible();
+    await expect(page.getByRole('combobox', { name: 'Search people and wishlists' })).toBeVisible();
 
     expect(await sidewaysScroll(page)).toBe(0);
     await expect(accountButton(page)).toBeInViewport({ ratio: 1 });
