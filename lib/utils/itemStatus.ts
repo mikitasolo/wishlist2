@@ -21,7 +21,6 @@
  */
 import type { IconName } from '@/components/Icon';
 import type { ApiItem } from '@/types/api';
-import type { FilterOption } from '@/lib/utils/itemFilters';
 import { TONE_CLASSES, type StatusTone, type ToneClasses } from '@/lib/utils/statusTones';
 
 export type ItemStatus = ApiItem['status'];
@@ -90,25 +89,3 @@ export function statusMeta(
 ): StatusMeta {
   return STATUS_META[displayStatus(status, role, bookedByViewer)];
 }
-
-/** A status filter option's (and its stat tile's) label and tone. */
-export interface FilterMeta {
-  label: string;
-  tone: StatusTone;
-}
-
-const fromStatus = (status: DisplayStatus): FilterMeta => ({
-  label: STATUS_META[status].filterLabel,
-  tone: STATUS_META[status].tone,
-});
-
-export const FILTER_META: Record<FilterOption, FilterMeta> = {
-  all: { label: 'All', tone: 'neutral' },
-  draft: fromStatus('draft'),
-  proposed: fromStatus('proposed'),
-  available: fromStatus('available'),
-  bookedByMe: fromStatus('bookedByMe'),
-  bookedByOthers: fromStatus('bookedByOthers'),
-  proposedByMe: { label: 'Proposed by you', tone: STATUS_META.proposed.tone },
-  completed: fromStatus('completed'),
-};

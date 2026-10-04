@@ -7,7 +7,6 @@ import {
   multiSelectSummary,
   plainMultiSelectRule,
   type MultiSelectOption,
-  type MultiSelectRule,
 } from '@/lib/utils/multiSelect';
 
 export type { MultiSelectOption };
@@ -20,12 +19,6 @@ interface MultiSelectDropdownProps<V extends string> {
   onChange: (values: V[]) => void;
   /** The All row's label, and the trigger's while everything is selected. */
   allLabel?: string;
-  /**
-   * What a click on a row does, and what counts as everything. By default a
-   * row ticks or unticks its own value; the status filter brings its own
-   * (`statusFilterPicker`), which never leaves the selection empty.
-   */
-  rule?: MultiSelectRule<V>;
   /** A visible label above the trigger ("List:"). */
   label?: string;
   /** The trigger's accessible name, when there's no visible `label`. */
@@ -43,15 +36,13 @@ const CHECKBOX = 'h-4 w-4 flex-shrink-0 cursor-pointer accent-primary-600';
 
 /**
  * A filter that picks any number of options: a trigger saying what's picked,
- * opening a checkbox list with an All row on top. The status filter on a list
- * and on Items, and the list filter on Items.
+ * opening a checkbox list with an All row on top: the list filter on Items.
  */
 export default function MultiSelectDropdown<V extends string>({
   options,
   selected,
   onChange,
   allLabel = 'All',
-  rule = plainMultiSelectRule<V>(),
   label,
   ariaLabel,
   className = '',
@@ -69,6 +60,7 @@ export default function MultiSelectDropdown<V extends string>({
   }, []);
 
   const values = options.map((o) => o.value);
+  const rule = plainMultiSelectRule<V>();
   const isAll = rule.isAll(selected, values);
   const toggle = (value: V | null) => onChange(rule.toggle(selected, value, values));
 

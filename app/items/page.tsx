@@ -242,6 +242,11 @@ export default function MyItemsPage() {
     return orderListItems(matching, chip, 'owner', null, sort);
   }, [scopedItems, searchQuery, chip, sort]);
 
+  // Until the Lists filter has been filled from the items (one effect after
+  // they land), the chips would count nothing: the skeleton stands in, so a
+  // count is never shown as 0 before it's known.
+  const showSkeleton = loading || (ready && items.length > 0 && wishlistFilters.length === 0);
+
   return (
     <div className="min-h-screen">
       <AppHeader actions={<AuthButton />} />
@@ -255,7 +260,7 @@ export default function MyItemsPage() {
             : `Across the wishlists you own${includeArchived ? ', archived ones too' : ''}: ${summary}`}
         </p>
 
-        {loading ? (
+        {showSkeleton ? (
           <div className="mt-8">
             <ListControlsSkeleton chips={OWNER_CHIPS.length} />
             <SkeletonGrid count={8} variant="item" />
@@ -305,7 +310,7 @@ export default function MyItemsPage() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onClear={() => setSearchQuery('')}
-                placeholder="Search items…"
+                placeholder="Search items"
                 aria-label="Search items by name"
                 className="w-full sm:w-auto sm:min-w-0 sm:flex-1"
               />
