@@ -440,7 +440,7 @@ export default function Menu({
                 tabIndex={-1}
                 onClick={() => group.onChange(option.value)}
                 onMouseMove={followPointer}
-                className={`relative z-10 flex min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-2 py-1.5 text-sm font-semibold transition-colors ${
+                className={`relative z-10 flex min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ${
                   checked ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
                 }`}
               >

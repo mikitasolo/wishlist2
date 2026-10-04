@@ -103,7 +103,7 @@ export default function AuthButton() {
         menuLabel="Account"
         className="relative flex-shrink-0"
         triggerClassName={`flex text-sm font-semibold text-foreground transition-colors hover:bg-muted ${ACCOUNT_TRIGGER_BOX}`}
-        menuWidthClassName="w-64"
+        menuWidthClassName="w-80"
         trigger={(menuOpen) => (
           <>
             <Avatar name={displayName} src={image} size="sm" />
