@@ -1,6 +1,7 @@
 import nodemailer from 'nodemailer';
 import { getEnvVars } from './env';
 import { EMAIL_LOGO_PNG_BASE64 } from './emailLogo';
+import { isolateForText } from './utils/emailText';
 
 // Get validated environment variables
 const env = getEnvVars();
@@ -108,7 +109,8 @@ async function deliver(email: OutgoingEmail): Promise<void> {
  * has to be one line, or it adds lines of its own to a text part. The wishlist
  * name's schema (`lib/validations.ts`) refuses line breaks and control
  * characters on create and rename, and the bidi overrides and isolates that
- * would reorder the rest of the line. Rows saved before it did weren't migrated.
+ * would reorder the rest of the line. Rows saved before it did weren't migrated,
+ * so every free-text value in a text part goes through `isolateForText`.
  */
 const HTML_ESCAPES: Record<string, string> = {
   '&': '&amp;',
@@ -385,7 +387,7 @@ export async function sendWishlistInvitationEmail(
     html,
     // The name stays inside a sentence that names the inviter, never a line of
     // its own that could pass for our own text.
-    text: `Wishlist invitation\n\n${inviter} ${invitedTo} “${wishlistName}”.\n\nAccept or decline it on your Activity page: ${invitesUrl}`,
+    text: `Wishlist invitation\n\n${isolateForText(inviter)} ${invitedTo} “${isolateForText(wishlistName)}”.\n\nAccept or decline it on your Activity page: ${invitesUrl}`,
     link: invitesUrl,
   });
 }
