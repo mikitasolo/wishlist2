@@ -160,7 +160,8 @@ describe('a change that did not land notifies nobody', () => {
 
     expect(race.held()).toBe(true);
     expect(race.outcome()?.status).toBe(200);
-    expect(res.status).toBe(400);
+    // Bob is no longer an owner (WIS-61: this used to be the last-owner 400).
+    expect(res.status).toBe(404);
     expect(await allNotifications()).toHaveLength(0);
   });
 

@@ -4,7 +4,7 @@ import Item from '@/models/Item';
 import { deleteReservations } from '@/lib/utils/reservationSnapshots';
 import Wishlist, { IWishlist } from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
-import { ownedByFilter, ownerIds } from '@/lib/utils/wishlistOwners';
+import { isWishlistOwner, ownedByFilter, ownerIds } from '@/lib/utils/wishlistOwners';
 import { isOwnerOfWishlist } from '@/lib/utils/wishlistAccess';
 import { errorKind } from '@/lib/utils/errorKind';
 import { purgeShareCards } from '@/lib/og/purge';
@@ -235,13 +235,17 @@ export async function promoteMemberToOwner(
  * nothing, and the caller must stop before any follow-on side effect.
  *
  *   - removed         → done.
- *   - actor-not-owner → whoever is acting stopped being an owner since the
- *                       caller checked (a concurrent request removed them), so
- *                       they no longer get to change who owns the list.
- *   - last-owner      → the user is the only owner left. The same write miss
- *                       also covers a user who already stopped being an owner.
+ *   - actor-not-owner  → whoever is acting stopped being an owner since the
+ *                        caller checked (a concurrent request removed them, or
+ *                        the list is gone), so they no longer get to change who
+ *                        owns the list. When the user acts on themselves (leaving)
+ *                        this is also "they're already off the owners".
+ *   - target-not-owner → the actor still owns the list, but the user they acted
+ *                        on already stopped being an owner (a concurrent
+ *                        demotion, removal or leave got there first).
+ *   - last-owner       → the user is still an owner, and the only one left.
  */
-export type OwnerRemoval = 'removed' | 'actor-not-owner' | 'last-owner';
+export type OwnerRemoval = 'removed' | 'actor-not-owner' | 'target-not-owner' | 'last-owner';
 
 /**
  * Remove a user from a wishlist's owners, on the say-so of `actorId`: another
@@ -303,8 +307,15 @@ export async function removeWishlistOwner(
     // bring them back as a member.
     if (created) await WishlistMember.deleteOne(created);
     // The write already refused, so this read only picks the answer. It can be a
-    // moment newer than the write; nothing was changed either way.
-    return (await isOwnerOfWishlist(wishlistId, actorId)) ? 'last-owner' : 'actor-not-owner';
+    // moment newer than the write; nothing was changed either way. The actor is
+    // checked first, so a caller who lost ownership is told so whatever happened
+    // to the user, and a leave (the user acting on themselves) never reads as
+    // `'target-not-owner'`. A user who's already off the owners is told apart from
+    // the last owner: a race lost to another removal isn't "the only owner".
+    const current = await Wishlist.findById(wishlistId).select('owners').lean();
+    if (!current || !isWishlistOwner(current, actorId)) return 'actor-not-owner';
+    if (!isWishlistOwner(current, userId)) return 'target-not-owner';
+    return 'last-owner';
   }
 
   // The list's share card names its primary owner, and this may have been them,

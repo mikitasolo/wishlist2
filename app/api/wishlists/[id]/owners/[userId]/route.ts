@@ -80,14 +80,15 @@ const lastOwnerError = () =>
     { status: 400 }
   );
 
+const notAnOwnerError = () =>
+  NextResponse.json(
+    { success: false, error: 'This person is not an owner of this wishlist' },
+    { status: 404 }
+  );
+
 /** Extra guards for acting on an *existing* owner (demote / remove). */
 function checkExistingOwner(wishlist: IWishlist, userId: string): NextResponse | null {
-  if (!isWishlistOwner(wishlist, userId)) {
-    return NextResponse.json(
-      { success: false, error: 'This person is not an owner of this wishlist' },
-      { status: 404 }
-    );
-  }
+  if (!isWishlistOwner(wishlist, userId)) return notAnOwnerError();
   if (isLastOwner(wishlist, userId)) return lastOwnerError();
   return null;
 }
@@ -97,7 +98,9 @@ function checkExistingOwner(wishlist: IWishlist, userId: string): NextResponse |
  * concurrent request just took off the owners gets what any non-owner gets,
  * which on a list that's archived (or gone by now) is the 404 of a list that
  * doesn't exist (see `getOwnerAccess`). Nothing was changed, so that read only
- * picks the answer.
+ * picks the answer. A target whom a concurrent request already took off the
+ * owners (their own leave, another owner's demotion or removal) gets the same
+ * 404 as one who never was an owner, not the last-owner 400 (WIS-61).
  */
 async function removalRefused(
   wishlistId: string,
@@ -105,6 +108,7 @@ async function removalRefused(
   result: Exclude<OwnerRemoval, 'removed'>
 ): Promise<NextResponse> {
   if (result === 'last-owner') return lastOwnerError();
+  if (result === 'target-not-owner') return notAnOwnerError();
   return lostOwnership(wishlistId, callerId);
 }
 
@@ -270,8 +274,8 @@ export async function PATCH(
     // Losing ownership also drops their dashboard pin for this list (per-owner).
     // Nothing to release: they land as a member, who can see and cancel their own
     // bookings — the stranded-booking problem only runs the other way. Not
-    // `'removed'`: a concurrent removal took the caller off the owners, or left
-    // the target the last one, so nothing was changed.
+    // `'removed'`: a concurrent removal took the caller or the target off the
+    // owners, or left the target the last one, so nothing was changed.
     const removal = await removeWishlistOwner(authorized.wishlist, userId, {
       actorId: session.user.id,
       keepAsMember: true,
@@ -336,8 +340,8 @@ export async function DELETE(
     const invalid = checkExistingOwner(authorized.wishlist, userId);
     if (invalid) return invalid;
 
-    // Not `'removed'`: a concurrent removal took the caller off the owners, or
-    // left the target the last one — release nothing.
+    // Not `'removed'`: a concurrent removal took the caller or the target off the
+    // owners, or left the target the last one — release nothing.
     const removal = await removeWishlistOwner(authorized.wishlist, userId, {
       actorId: session.user.id,
       keepAsMember: false,

@@ -195,7 +195,8 @@ async function giveUpOwnedList(
     }
     // A co-owner demoted or removed them first: they're no longer an owner, and
     // a membership a demotion left them is the member pass's.
-    if (removal === 'actor-not-owner') return;
+    // (The account acts on itself, so `'target-not-owner'` means the same.)
+    if (removal === 'actor-not-owner' || removal === 'target-not-owner') return;
     // 'last-owner': the other owners left meanwhile, so read it again and delete it.
   }
   throw new Error('An owned wishlist kept changing during account deletion');
