@@ -8,7 +8,7 @@
  * new request, because the abandoned one is no longer shared. That retry is
  * safe even when the abandoned request was saved (WIS-158): a create sent with
  * the same `idempotencyKey` answers with the item the first attempt made, and a
- * delete whose item is already gone (404) counts as done.
+ * delete sent with `notFoundIsDone` counts a 404 as done.
  */
 
 import { useCallback } from 'react';
@@ -132,7 +132,20 @@ export function useCreateItem(
  */
 export function useDeleteItem(onSuccess?: () => void, onError?: (error: string) => void) {
   return useCallback(
-    async (id: string): Promise<boolean> => {
+    async (
+      id: string,
+      {
+        notFoundIsDone = false,
+      }: {
+        /**
+         * Count a 404 as already deleted (WIS-158): a retry whose first attempt
+         * went through, or a co-owner's delete. Only for an owner: the route
+         * also answers a non-owner 404 on an archived list, where the item
+         * still exists, and that refusal must stay one.
+         */
+        notFoundIsDone?: boolean;
+      } = {}
+    ): Promise<boolean> => {
       const requestKey = createRequestKey(`/api/items/${id}`, 'DELETE');
 
       try {
@@ -143,10 +156,7 @@ export function useDeleteItem(onSuccess?: () => void, onError?: (error: string) 
               signal,
             });
 
-            // Already gone: a retry whose first attempt went through (its
-            // answer lost), or a co-owner's delete. Either way the item the
-            // page meant to delete no longer exists, which is what it asked.
-            if (response.status === 404) return;
+            if (notFoundIsDone && response.status === 404) return;
 
             const result: ApiResponse<void> = await response.json();
 

@@ -277,4 +277,25 @@ describe('a retried delete (WIS-158)', () => {
     expect(articles('Lamp')).toHaveLength(0);
     expect(showToast.mock.calls.filter(([, type]) => type === 'error')).toEqual([]);
   });
+
+  // An archived list answers a proposer 404 too, with the proposal still there:
+  // that refusal must not read as a delete.
+  it("keeps a proposer's 404 an error, and their proposal listed", async () => {
+    userRole = 'member';
+    deleteAnswer = 404;
+    listItems = [item('Lamp'), item('Kite', { status: 'proposed', proposedBy: 'carol' })];
+    const user = userEvent.setup();
+    await open();
+
+    const card = screen.getByRole('article', { name: 'Item: Kite' });
+    await user.click(within(card).getByRole('button', { name: 'Edit proposed item' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Edit proposed item' });
+    await user.click(within(dialog).getByRole('button', { name: 'Delete item' }));
+    const confirm = await screen.findByRole('alertdialog', { name: 'Delete item' });
+    await user.click(within(confirm).getByRole('button', { name: 'Delete' }));
+
+    await waitFor(() => expect(showToast).toHaveBeenCalledWith('Item not found', 'error'));
+    expect(screen.getByRole('dialog', { name: 'Edit proposed item' })).toBe(dialog);
+    expect(articles('Kite')).toHaveLength(1);
+  });
 });

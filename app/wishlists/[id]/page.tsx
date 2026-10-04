@@ -816,7 +816,8 @@ export default function WishlistDetail() {
     // stays open and the item stays listed; it closes itself on success. The
     // request is tracked, so a poll whose read started before the delete
     // settled is dropped instead of bringing the deleted item back.
-    const deleted = await mutations.track(() => deleteItemHook(itemId));
+    // Owner-only, so a 404 means it's already gone (see useDeleteItem).
+    const deleted = await mutations.track(() => deleteItemHook(itemId, { notFoundIsDone: true }));
     if (!deleted) throw new Error('Failed to delete item');
     setItems((prevItems) => prevItems.filter((item) => item._id !== itemId));
     showToast('Proposal declined', 'success');
@@ -836,7 +837,10 @@ export default function WishlistDetail() {
   // card keeps its item; same poll guard as the dialogs' deletes.
   const handleCardDelete = useCallback(
     async (item: ApiItem) => {
-      const deleted = await mutations.track(() => deleteItemHook(item._id));
+      // Owner-only, so a 404 means it's already gone (see useDeleteItem).
+      const deleted = await mutations.track(() =>
+        deleteItemHook(item._id, { notFoundIsDone: true })
+      );
       if (!deleted) throw new Error('Failed to delete item');
       setItems((prevItems) => prevItems.filter((i) => i._id !== item._id));
       showToast(
@@ -866,11 +870,16 @@ export default function WishlistDetail() {
     // The hook toasts a failure and resolves false. Reject so EditItemModal
     // stays open and the item stays listed; it closes itself on success.
     // Same poll guard as handleDeleteProposedItem.
-    const deleted = await mutations.track(() => deleteItemHook(itemId));
+    // An owner's 404 means it's already gone, e.g. a retry whose first attempt
+    // went through (WIS-158). A proposer's may be the archived list refusing
+    // them, with the proposal still there, so it stays an error.
+    const deleted = await mutations.track(() =>
+      deleteItemHook(itemId, { notFoundIsDone: isOwner })
+    );
     if (!deleted) throw new Error('Failed to delete item');
     setItems((prevItems) => prevItems.filter((item) => item._id !== itemId));
     showToast('Item deleted successfully', 'success');
-  }, [itemToEdit, deleteItemHook, showToast, mutations]);
+  }, [itemToEdit, deleteItemHook, showToast, mutations, isOwner]);
 
   const handleInvite = useCallback(
     async (payload: { username: string; role: 'owner' | 'member' }) => {
