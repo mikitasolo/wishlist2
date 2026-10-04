@@ -1,11 +1,14 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import Icon from '@/components/Icon';
 import IconButton from '@/components/IconButton';
 import Input, { type InputProps } from '@/components/Input';
 import { CONTROL_ICON_SIZE } from '@/components/buttonStyles';
 
-interface SearchFieldProps extends Omit<InputProps, 'leading' | 'trailing'> {
+interface SearchFieldProps extends Omit<InputProps, 'leading'> {
+  /** Replaces the clear button (the header search's Close). */
+  trailing?: ReactNode;
   /** Shows a clear button while there's text, which calls this. */
   onClear?: () => void;
   /** The clear button's accessible name. */
@@ -21,6 +24,7 @@ export default function SearchField({
   size = 'lg',
   onClear,
   clearLabel = 'Clear search',
+  trailing,
   value,
   ...props
 }: SearchFieldProps) {
@@ -31,7 +35,8 @@ export default function SearchField({
       value={value}
       leading={<Icon name="search" size={CONTROL_ICON_SIZE[size]} />}
       trailing={
-        onClear && hasText ? (
+        trailing ??
+        (onClear && hasText ? (
           <IconButton
             icon="close"
             label={clearLabel}
@@ -45,7 +50,7 @@ export default function SearchField({
             shape="pill"
             className="-mr-2"
           />
-        ) : undefined
+        ) : undefined)
       }
       {...props}
     />

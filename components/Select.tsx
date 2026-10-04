@@ -3,6 +3,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import Icon from './Icon';
+import { pickerTriggerClassName } from './fieldStyles';
 import { POPOVER_OPTION_ROW, POPOVER_SURFACE } from './popoverStyles';
 
 export interface SelectOption {
@@ -29,11 +30,6 @@ interface SelectProps {
    */
   valueLabel?: string;
 }
-
-const sizeStyles = {
-  sm: 'h-9 text-sm',
-  lg: 'h-11 text-body',
-};
 
 /** How long a pause ends a type-ahead search, as in a native select. */
 const TYPEAHEAD_RESET_MS = 500;
@@ -279,7 +275,7 @@ export default function Select({
           if (e.key === ' ' && !e.altKey && !e.ctrlKey && !e.metaKey) e.preventDefault();
         }}
         onBlur={() => setOpen(false)}
-        className={`flex items-center justify-between gap-2 rounded-xl border border-border-strong bg-surface px-3.5 font-medium text-foreground outline-hidden field-focus transition-colors hover:bg-surface-hover disabled:opacity-50 ${sizeStyles[size]} ${triggerClassName}`}
+        className={`${pickerTriggerClassName(size)} ${triggerClassName}`}
       >
         {selected ? (
           <span className="truncate">{valueLabel ?? selected.label}</span>
