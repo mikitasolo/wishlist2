@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup, act } from '@testing-library/react';
+import { render, screen, cleanup, act, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import Select, { type SelectOption } from '@/components/Select';
@@ -507,5 +507,23 @@ describe('Select — placeholder', () => {
   it('shows nothing when no option matches and there is no placeholder', () => {
     render(<Select value="" onChange={() => {}} options={options} ariaLabel="Sort by" />);
     expect(trigger()).toHaveTextContent(/^$/);
+  });
+});
+
+describe('Select — a second press on the trigger', () => {
+  // regression: Safari and Firefox on macOS do not focus a clicked button, so the
+  // mousedown blurred the trigger, the blur closed the menu, and the click that
+  // followed opened it again (WIS-315). The open menu's trigger cancels the
+  // mousedown so focus never leaves it; a closed one does not (it takes focus).
+  it('cancels the trigger mousedown only while the menu is open', async () => {
+    const user = userEvent.setup();
+    render(<SortPage />);
+    // fireEvent returns false when the event was cancelled.
+    expect(fireEvent.mouseDown(trigger())).toBe(true);
+    await user.click(trigger());
+    expect(screen.getByRole('listbox')).toBeInTheDocument();
+    expect(fireEvent.mouseDown(trigger())).toBe(false);
+    await user.click(trigger());
+    expect(screen.queryByRole('listbox')).toBeNull();
   });
 });

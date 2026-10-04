@@ -261,6 +261,13 @@ export default function Select({
         aria-controls={menuShown ? listboxId : undefined}
         aria-activedescendant={menuShown && options[active] ? optionId(active) : undefined}
         aria-label={ariaLabel}
+        // While it's open, keep focus where it is: Safari and Firefox on macOS
+        // don't focus a clicked button, so the mousedown would blur the
+        // trigger, and the blur close the menu, before the click (to close it)
+        // reopened it (WIS-315).
+        onMouseDown={(e) => {
+          if (open) e.preventDefault();
+        }}
         onClick={() => {
           // Safari doesn't focus a clicked button, and the menu's keys work
           // through the trigger's focus.
