@@ -5,6 +5,8 @@ import {
   partitionReservations,
   groupByOccasion,
   NO_DATE_GROUP,
+  changedCardPrimary,
+  totalInCurrency,
 } from '@/lib/utils/reservations';
 import type { Occasion } from '@/lib/utils/occasion';
 
@@ -215,5 +217,71 @@ describe('groupByOccasion', () => {
 
   it('returns no groups for no reservations', () => {
     expect(groupByOccasion([], TODAY)).toEqual([]);
+  });
+});
+
+describe('changedCardPrimary (WIS-263)', () => {
+  const changed = { stillReserved: false, listOpen: true, listArchived: false };
+  it.each([
+    ['completed', 'gave'],
+    ['deleted', 'dismiss'],
+    ['draft', 'dismiss'],
+    ['booked', 'dismiss'],
+    ['available', 'dismiss'],
+  ] as const)('an item now %s → %s', (itemStatus, expected) => {
+    expect(changedCardPrimary({ ...changed, itemStatus })).toBe(expected);
+  });
+
+  it('still theirs on a list they can’t open, or frozen on an archived one → gave', () => {
+    expect(
+      changedCardPrimary({
+        itemStatus: 'booked',
+        stillReserved: true,
+        listOpen: false,
+        listArchived: false,
+      })
+    ).toBe('gave');
+    expect(
+      changedCardPrimary({
+        itemStatus: null,
+        stillReserved: null,
+        listOpen: false,
+        listArchived: true,
+      })
+    ).toBe('gave');
+  });
+});
+
+describe('totalInCurrency (D9)', () => {
+  const rates = { eur: 0.9, gbp: 0.8 };
+
+  it('sums prices already in the currency exactly, whatever their case', () => {
+    expect(
+      totalInCurrency(
+        [{ value: 1000, currency: 'eur' }, null, { value: 250, currency: 'EUR' }],
+        'EUR',
+        null
+      )
+    ).toEqual({ price: { value: 1250, currency: 'eur' }, approx: false });
+  });
+
+  it('converts the others, and says the total is approximate', () => {
+    expect(
+      totalInCurrency(
+        [
+          { value: 5000, currency: 'eur' },
+          { value: 8000, currency: 'gbp' },
+        ],
+        'EUR',
+        rates
+      )
+    ).toEqual({ price: { value: 14000, currency: 'eur' }, approx: true });
+  });
+
+  it('gives no total when nothing is priced, or when a price can’t be converted', () => {
+    expect(totalInCurrency([null], 'EUR', rates)).toBeNull();
+    expect(totalInCurrency([], 'EUR', rates)).toBeNull();
+    expect(totalInCurrency([{ value: 100, currency: 'gbp' }], 'EUR', null)).toBeNull();
+    expect(totalInCurrency([{ value: 100, currency: 'xyz' }], 'EUR', rates)).toBeNull();
   });
 });

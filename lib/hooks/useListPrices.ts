@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useState } from 'react';
+import { useCurrencyRates } from '@/lib/hooks/useCurrencyRates';
 import type { SelectOption } from '@/components/Select';
 import { currencySelectOptions } from '@/lib/utils/currencies';
 import {
@@ -71,22 +72,8 @@ export function useListPrices({
   }, [viewerId, context, key, viewerCurrency]);
 
   const needed = !!viewerId && needsPricesControl(items, viewerCurrency);
-  const [rates, setRates] = useState<Record<string, number> | null>(null);
   // Read once, the first time they're needed.
-  const ratesWanted = needed || rates !== null;
-  useEffect(() => {
-    if (!ratesWanted) return;
-    let cancelled = false;
-    fetch('/api/currency-rates', { cache: 'no-store' })
-      .then((r) => r.json())
-      .then((res) => {
-        if (!cancelled && res.success) setRates(res.data.rates as Record<string, number>);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [ratesWanted]);
+  const rates = useCurrencyRates(needed);
 
   const shown = needed && rates !== null;
   const choice = picked && picked.key === key ? picked.value : null;

@@ -19,17 +19,25 @@ import ConfirmDialog from '@/components/ConfirmDialog';
 import { useBusyIds } from '@/lib/hooks/useBusyIds';
 import { useLocalToday } from '@/lib/hooks/useLocalToday';
 import { signInPath } from '@/lib/utils/callbackUrl';
-import { formatPrice } from '@/lib/utils/currency';
+import { convertedPrice, formatApproxPrice, formatPrice } from '@/lib/utils/currency';
+import { useCurrencyRates } from '@/lib/hooks/useCurrencyRates';
+import { needsPricesControl, viewerPriceCurrency } from '@/lib/utils/listPrices';
+import { isHttpUrl } from '@/lib/utils/itemFields';
+import { itemDeepLink } from '@/lib/utils/itemDeepLink';
+import Menu from '@/components/Menu';
+import { buttonClassName, iconButtonClassName } from '@/components/buttonStyles';
 import { useViewerLocale } from '@/lib/hooks/useViewerLocale';
 import { createListChangeLog, mergeRefreshedList } from '@/lib/utils/listRefresh';
 import type { Occasion } from '@/lib/utils/occasion';
 import { withRequestTimeout } from '@/lib/utils/requestTimeout';
 import { TONE_CLASSES } from '@/lib/utils/statusTones';
 import {
+  changedCardPrimary,
   groupByOccasion,
   needsConfirmation,
   partitionReservations,
   reservationNote,
+  totalInCurrency,
   type OccasionGroup,
 } from '@/lib/utils/reservations';
 import Button from '@/components/Button';
@@ -71,6 +79,15 @@ interface Reservation {
    * of what has happened to the item since, until the list is unarchived.
    */
   listArchived: boolean;
+  /**
+   * The list's primary owner, by username, while the gifter can open it
+   * (`null` otherwise, or for one with none): a group's heading names them.
+   */
+  wishlistOwnerUsername?: string | null;
+  /** The live item's product link, only while it's still theirs on a list they can open. */
+  itemLink?: string | null;
+  /** The live item's notes ("size M, blue"), on the same terms as its link. */
+  itemNotes?: string | null;
 }
 
 type Gift = GiftEntry;
@@ -115,6 +132,7 @@ export default function BookedPage() {
   const userId = session?.user?.id;
   const router = useRouter();
   const { showToast } = useToast();
+  const locale = useViewerLocale();
   // The viewer's local date, which "To give" is grouped by: `null` until it's
   // known (see `useLocalToday`), and until then the cards aren't grouped.
   const today = useLocalToday();
@@ -401,15 +419,53 @@ export default function BookedPage() {
     });
   }
 
+  // The cards still to give, and the ones that changed since they were reserved.
+  const { needsConfirm, active } = partitionReservations(reservations);
+  // D9: prices in the viewer's own currency, as "≈" with the original under
+  // them. The rates are only read once some price is in another currency.
+  const viewerCurrency = viewerPriceCurrency(session?.user?.defaultCurrency);
+  const rates = useCurrencyRates(
+    needsPricesControl(
+      [
+        ...reservations.map((r) => ({ price: r.itemPrice })),
+        ...gifts.map((g) => ({ price: g.itemPrice })),
+      ],
+      viewerCurrency
+    )
+  );
+  const toGiveTotal = totalInCurrency(
+    active.map((r) => r.itemPrice),
+    viewerCurrency,
+    rates
+  );
+
   return (
     <div className="min-h-screen">
       <AppHeader actions={<AuthButton />} />
       <main className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
         <h1 className="text-3xl font-semibold tracking-tight text-foreground">Reserved by you</h1>
-        <p className="mt-1 text-muted-foreground">
-          Gifts you’ve reserved across everyone’s wishlists. When you’ve given one, mark it as given
-          to keep it in your gift history.
-        </p>
+        {!loading && !loadFailed && reservations.length > 0 ? (
+          // "4 to give · 3 to review · ≈ €520 to give": what's left to do, at a glance.
+          <p className="mt-1 text-muted-foreground" data-testid="reserved-summary">
+            {[
+              `${active.length} to give`,
+              needsConfirm.length > 0 && `${needsConfirm.length} to review`,
+              toGiveTotal &&
+                `${
+                  toGiveTotal.approx
+                    ? formatApproxPrice(toGiveTotal.price, locale)
+                    : formatPrice(toGiveTotal.price, locale)
+                } to give`,
+            ]
+              .filter(Boolean)
+              .join(' · ')}
+          </p>
+        ) : (
+          <p className="mt-1 text-muted-foreground">
+            Gifts you’ve reserved across everyone’s wishlists. When you’ve given one, mark it as
+            given to keep it in your gift history.
+          </p>
+        )}
 
         {loading ? (
           <div className="mt-8">
@@ -430,7 +486,8 @@ export default function BookedPage() {
                   </div>
                   <div className="flex gap-2 border-t border-border p-3">
                     <Skeleton className="h-9 flex-1 rounded-xl" />
-                    <Skeleton className="h-9 w-20 rounded-xl" />
+                    <Skeleton className="h-9 w-28 rounded-xl" />
+                    <Skeleton className="h-9 w-9 rounded-xl" />
                   </div>
                 </div>
               ))}
@@ -450,53 +507,20 @@ export default function BookedPage() {
               />
             ) : (
               (() => {
-                const { needsConfirm, active } = partitionReservations(reservations);
-                // "To give", grouped by each list's upcoming occasion, afresh on
-                // every render: a read or a card's action moves or drops cards
-                // between groups. With no occasion coming up on any list there's
-                // one group, and it needs no heading.
+                // "To give", grouped by each list's upcoming occasion, nearest
+                // first, afresh on every render: a read or a card's action moves
+                // or drops cards between groups. With no occasion coming up on
+                // any list there's one group, and it needs no heading.
                 const toGive = groupByOccasion(active, today);
                 const headed = toGive.some((group) => group.occasion);
                 return (
                   <>
-                    {/* Detached reservations: the item changed after it was reserved,
-                        so ask the gifter to resolve them. */}
-                    {needsConfirm.length > 0 && (
-                      <section>
-                        <SectionHeading
-                          title="Needs your confirmation"
-                          count={needsConfirm.length}
-                        />
-                        <p className="-mt-2 mb-4 px-1 text-sm text-muted-foreground">
-                          These changed after you reserved them. If you gave the gift, mark it so
-                          it’s saved to your history — otherwise dismiss it. Either way, the owner’s
-                          list isn’t affected.
-                        </p>
-                        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-                          {needsConfirm.map((r) => (
-                            <ReservationCard
-                              key={r._id}
-                              r={r}
-                              busy={busy(r._id)}
-                              highlight
-                              onGift={() => setGiftConfirm(r._id)}
-                              secondary={{
-                                label: 'Dismiss',
-                                title: 'Remove from reservations',
-                                onClick: () => setDismissConfirm(r._id),
-                              }}
-                            />
-                          ))}
-                        </div>
-                      </section>
-                    )}
-
-                    {/* Active reservations, by their list's upcoming occasion */}
+                    {/* What's still to give comes first: it's what the page is for. */}
                     <section>
                       <SectionHeading title="To give" count={active.length} />
                       {active.length === 0 ? (
                         <p className="px-1 text-sm text-muted-foreground">
-                          Nothing actively reserved right now.
+                          Nothing to give right now.
                         </p>
                       ) : (
                         <div className="space-y-8">
@@ -507,16 +531,16 @@ export default function BookedPage() {
                                   key={r._id}
                                   r={r}
                                   busy={busy(r._id)}
+                                  // A dated group's heading names the list already.
+                                  showList={!group.occasion}
+                                  viewerCurrency={viewerCurrency}
+                                  rates={rates}
                                   onGift={() => setGiftConfirm(r._id)}
                                   // Still reserved to them, on a list they can open:
                                   // Release frees it there too. Dismissing would
                                   // leave it reserved under their name, with
                                   // nothing tracking it.
-                                  secondary={{
-                                    label: 'Release',
-                                    title: 'Release this gift so others can reserve it',
-                                    onClick: () => setReleaseConfirm(r._id),
-                                  }}
+                                  onRelease={() => setReleaseConfirm(r._id)}
                                 />
                               ))}
                             </ReservationGroup>
@@ -524,14 +548,50 @@ export default function BookedPage() {
                         </div>
                       )}
                     </section>
+
+                    {/* Detached reservations: the item changed after it was
+                        reserved, so ask the gifter to resolve them. */}
+                    {needsConfirm.length > 0 && (
+                      <section>
+                        <SectionHeading
+                          title="Changed since you reserved"
+                          count={needsConfirm.length}
+                        />
+                        <p className="-mt-2 mb-4 px-1 text-sm text-muted-foreground">
+                          If you gave the gift, mark it so it’s saved to your history. Otherwise
+                          dismiss it. Either way, the owner’s list isn’t affected.
+                        </p>
+                        <div
+                          className={`divide-y divide-border overflow-hidden rounded-2xl border bg-surface shadow-sm ${TONE_CLASSES.warning.card}`}
+                        >
+                          {needsConfirm.map((r) => (
+                            <ChangedRow
+                              key={r._id}
+                              r={r}
+                              busy={busy(r._id)}
+                              viewerCurrency={viewerCurrency}
+                              rates={rates}
+                              onGift={() => setGiftConfirm(r._id)}
+                              onDismiss={() => setDismissConfirm(r._id)}
+                            />
+                          ))}
+                        </div>
+                      </section>
+                    )}
                   </>
                 );
               })()
             )}
 
-            {/* Gift history */}
+            {/* Gift history, last: what's done. */}
             {gifts.length > 0 && (
-              <GiftHistory gifts={gifts} busy={busy} onDelete={setDeleteGiftConfirm} />
+              <GiftHistory
+                gifts={gifts}
+                busy={busy}
+                onDelete={setDeleteGiftConfirm}
+                currency={viewerCurrency}
+                rates={rates}
+              />
             )}
           </div>
         )}
@@ -604,98 +664,260 @@ export default function BookedPage() {
   );
 }
 
+/** The "More actions" square beside a card's buttons, as on an item card. */
+const MENU_TRIGGER = `${iconButtonClassName({ variant: 'secondary', size: 'sm' })} aria-expanded:bg-muted aria-expanded:text-foreground`;
+
+/** Where a card's list is: its page, by slug, or by id while it has none. */
+const listPath = (r: Reservation) => `/wishlists/${r.wishlistSlug ?? r.wishlistId}`;
+
 /**
- * A reservation card's second action: Release on one still active, Dismiss on
- * one that needs confirmation.
+ * A reservation's price in the viewer's currency (D9): "≈ €247" with the
+ * original small under it, or exactly as it is when it's in their currency
+ * already, or can't be converted yet.
  */
-interface CardAction {
-  label: 'Release' | 'Dismiss';
-  title: string;
-  onClick: () => void;
+function ReservationPrice({
+  price,
+  viewerCurrency,
+  rates,
+  compact = false,
+}: {
+  price: Price;
+  viewerCurrency: string;
+  rates: Record<string, number> | null;
+  compact?: boolean;
+}) {
+  const locale = useViewerLocale();
+  const converted = convertedPrice(price, viewerCurrency, rates);
+  if (!converted) {
+    return (
+      <span className="text-sm font-medium text-muted-foreground">
+        {formatPrice(price, locale)}
+      </span>
+    );
+  }
+  return (
+    <span className={compact ? 'inline' : 'flex flex-col'}>
+      <span className="text-sm font-medium text-muted-foreground">
+        {formatApproxPrice(converted, locale)}
+      </span>
+      <span className="text-xs text-muted-foreground">
+        {compact ? ' · ' : ''}
+        {formatPrice(price, locale)}
+      </span>
+    </span>
+  );
 }
 
+/**
+ * The list a card's reservation is on: a link while the gifter can open it,
+ * else its name alone.
+ */
+function ListName({ r }: { r: Reservation }) {
+  if (r.listOpen) {
+    return (
+      <Link
+        href={listPath(r)}
+        className="inline-flex min-w-0 items-center gap-1 text-xs font-medium text-accent hover:underline"
+      >
+        <Icon name="gift" size={12} />
+        <span className="truncate">{r.wishlistName}</span>
+      </Link>
+    );
+  }
+  // A link would only lead to "not available": say so here instead, unless the
+  // note already says why it isn't (still reserved to them, it's the one thing
+  // it says, and on an archived list it says that).
+  return (
+    <span className="inline-flex min-w-0 items-center gap-1 text-xs font-medium text-muted-foreground">
+      <Icon name="gift" size={12} />
+      <span className="truncate">
+        {r.stillReserved || r.listArchived
+          ? r.wishlistName
+          : `${r.wishlistName} · no longer available to you`}
+      </span>
+    </span>
+  );
+}
+
+/**
+ * A gift still to give: Open link ↗ to the shop (the primary, when the item
+ * has a link), Mark as given, and a menu with View on list (straight to the
+ * item: `?item=`) and Release…. The item's notes ("size M, blue") are under
+ * its name. The list's name is left out under a dated group's heading, which
+ * names it already.
+ */
 function ReservationCard({
   r,
   busy,
-  highlight = false,
+  showList,
+  viewerCurrency,
+  rates,
   onGift,
-  secondary,
+  onRelease,
 }: {
   r: Reservation;
   busy: boolean;
-  highlight?: boolean;
+  showList: boolean;
+  viewerCurrency: string;
+  rates: Record<string, number> | null;
   onGift: () => void;
-  secondary: CardAction;
+  onRelease: () => void;
 }) {
-  const note = reservationNote(r);
-  const locale = useViewerLocale();
+  const nameId = useId();
+  // The API only sends an http(s) link; checked again, since it's an href.
+  const link = r.itemLink && isHttpUrl(r.itemLink) ? r.itemLink : null;
   return (
-    <div
-      // The warning tone marks a card that needs the gifter's confirmation,
-      // whatever happened to the item: it's not the item's status.
-      className={`flex flex-col overflow-hidden rounded-2xl border bg-surface shadow-sm ${
-        highlight ? TONE_CLASSES.warning.card : 'border-border'
-      }`}
+    <article
+      aria-labelledby={nameId}
+      className="flex flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-sm"
     >
-      <div className="flex gap-3 p-3">
+      <div className="flex flex-1 gap-3 p-3">
         <SnapshotThumb src={r.itemImage} alt={r.itemName} seed={r._id} />
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-body font-semibold text-foreground">{r.itemName}</p>
+        <div className="flex min-w-0 flex-1 flex-col items-start gap-0.5">
+          <p id={nameId} className="w-full truncate text-body font-semibold text-foreground">
+            {r.itemName}
+          </p>
           {r.itemPrice && (
-            <p className="text-sm font-medium text-muted-foreground">
-              {formatPrice(r.itemPrice, locale)}
-            </p>
+            <ReservationPrice price={r.itemPrice} viewerCurrency={viewerCurrency} rates={rates} />
           )}
-          {r.listOpen ? (
-            <Link
-              href={`/wishlists/${r.wishlistSlug ?? r.wishlistId}`}
-              className="mt-0.5 inline-flex items-center gap-1 text-xs font-medium text-primary-600 hover:underline dark:text-primary-300"
+          {showList && <ListName r={r} />}
+          {r.itemNotes && (
+            <p
+              className="line-clamp-2 w-full text-xs whitespace-pre-line text-muted-foreground"
+              title={r.itemNotes}
             >
-              <Icon name="gift" size={12} />
-              {r.wishlistName}
-            </Link>
-          ) : (
-            // A link would only lead to "not available": say so here instead,
-            // unless the note already says why it isn't (still reserved to
-            // them, it's the one thing it says, and on an archived list it says
-            // that).
-            <p className="mt-0.5 inline-flex items-center gap-1 text-xs font-medium text-muted-foreground">
-              <Icon name="gift" size={12} />
-              {r.stillReserved || r.listArchived
-                ? r.wishlistName
-                : `${r.wishlistName} · no longer available to you`}
-            </p>
-          )}
-          {note && (
-            <p className="mt-1">
-              <Badge tone="warning" size="sm" icon="info">
-                {note}
-              </Badge>
+              {r.itemNotes}
             </p>
           )}
         </div>
       </div>
       <div className="flex gap-2 border-t border-border p-3">
-        <Button size="sm" icon="check" disabled={busy} onClick={onGift} className="flex-1">
+        {link && (
+          <a
+            href={link}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`${buttonClassName({ size: 'sm' })} min-w-0 flex-1`}
+          >
+            Open link
+            <Icon name="external-link" size={16} />
+          </a>
+        )}
+        <Button
+          size="sm"
+          icon="check"
+          variant={link ? 'secondary' : 'primary'}
+          disabled={busy}
+          onClick={onGift}
+          className={link ? undefined : 'flex-1'}
+        >
           Mark as given
         </Button>
-        <Button
-          variant="cancel"
-          size="sm"
-          disabled={busy}
-          onClick={secondary.onClick}
-          title={secondary.title}
-        >
-          {secondary.label}
-        </Button>
+        <Menu
+          label="More actions"
+          icon="more"
+          triggerClassName={MENU_TRIGGER}
+          items={[
+            {
+              label: 'View on list',
+              icon: 'arrow-right',
+              href: itemDeepLink(r.wishlistSlug ?? r.wishlistId, r.itemId),
+            },
+            { label: 'Release…', icon: 'undo', onSelect: onRelease, disabled: busy },
+          ]}
+        />
       </div>
-    </div>
+    </article>
   );
 }
 
 /**
- * One group of "To give": a list's reservations under its upcoming occasion
- * ("Birthday · in 12 days", then the list's name), or the rest under "No date".
+ * A reservation that changed since it was reserved, as a compact row in the
+ * warning tone. Its main action follows what happened (`changedCardPrimary`):
+ * "I gave it" when the owner marked it received (or nothing says it didn't go
+ * ahead), else Dismiss, with "I gave it anyway" beside it.
+ */
+function ChangedRow({
+  r,
+  busy,
+  viewerCurrency,
+  rates,
+  onGift,
+  onDismiss,
+}: {
+  r: Reservation;
+  busy: boolean;
+  viewerCurrency: string;
+  rates: Record<string, number> | null;
+  onGift: () => void;
+  onDismiss: () => void;
+}) {
+  const nameId = useId();
+  const note = reservationNote(r);
+  const gaveFirst = changedCardPrimary(r) === 'gave';
+  const gave = (
+    <Button
+      key="gave"
+      size="sm"
+      icon="check"
+      variant={gaveFirst ? 'primary' : 'ghost'}
+      disabled={busy}
+      onClick={onGift}
+    >
+      {gaveFirst ? 'I gave it' : 'I gave it anyway'}
+    </Button>
+  );
+  const dismiss = (
+    <Button
+      key="dismiss"
+      size="sm"
+      variant={gaveFirst ? 'ghost' : 'secondary'}
+      disabled={busy}
+      onClick={onDismiss}
+      title="Remove from reservations"
+    >
+      Dismiss
+    </Button>
+  );
+  return (
+    <article aria-labelledby={nameId} className="flex gap-3 p-3 sm:px-4">
+      <SnapshotThumb src={r.itemImage} alt={r.itemName} seed={r._id} small />
+      <div className="min-w-0 flex-1">
+        <p id={nameId} className="truncate text-sm font-semibold text-foreground">
+          {r.itemName}
+        </p>
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2">
+          <ListName r={r} />
+          {r.itemPrice && (
+            <span className="text-xs text-muted-foreground">
+              <ReservationPrice
+                price={r.itemPrice}
+                viewerCurrency={viewerCurrency}
+                rates={rates}
+                compact
+              />
+            </span>
+          )}
+        </div>
+        {note && (
+          <p className="mt-1">
+            <Badge tone="warning" size="sm" icon="info">
+              {note}
+            </Badge>
+          </p>
+        )}
+        <div className="mt-2 flex flex-wrap gap-2">
+          {gaveFirst ? [gave, dismiss] : [dismiss, gave]}
+        </div>
+      </div>
+    </article>
+  );
+}
+
+/**
+ * One group of "To give": a list's reservations under its upcoming occasion,
+ * "Birthday · today — Dmitri's birthday · @dmitri_v", or the rest under "No
+ * date".
  */
 function ReservationGroup({
   group,
@@ -707,17 +929,28 @@ function ReservationGroup({
   children: React.ReactNode;
 }) {
   const headingId = useId();
+  const first = group.reservations[0];
   return (
     <section aria-labelledby={headed ? headingId : undefined}>
       {headed && (
         <h3
           id={headingId}
-          className="mb-3 flex min-w-0 items-center gap-2 px-1 text-sm font-semibold text-foreground"
+          className="mb-3 flex min-w-0 flex-wrap items-center gap-x-1.5 px-1 text-sm font-semibold text-foreground"
         >
           {group.occasion ? (
             <>
-              <OccasionLabel occasion={group.occasion} />{' '}
-              <span className="truncate">{group.wishlistName}</span>
+              <OccasionLabel occasion={group.occasion} className="text-sm font-semibold" />{' '}
+              <span aria-hidden="true">—</span>{' '}
+              {/* Only an open list has an occasion to group by, so it's linked. */}
+              <Link href={listPath(first)} className="min-w-0 truncate hover:underline">
+                {group.wishlistName}
+              </Link>
+              {first.wishlistOwnerUsername && (
+                <span className="font-normal text-muted-foreground">
+                  {' '}
+                  · @{first.wishlistOwnerUsername}
+                </span>
+              )}
             </>
           ) : (
             'No date'

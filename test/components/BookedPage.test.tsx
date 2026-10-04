@@ -7,11 +7,14 @@ const { push, showToast, signedIn } = vi.hoisted(() => ({
   push: vi.fn(),
   showToast: vi.fn(),
   // Mutable, so a test can sign another account in while the page is open.
-  signedIn: { userId: 'me' },
+  signedIn: { userId: 'me', defaultCurrency: 'USD' },
 }));
 
 vi.mock('next-auth/react', () => ({
-  useSession: () => ({ data: { user: { id: signedIn.userId } }, status: 'authenticated' }),
+  useSession: () => ({
+    data: { user: { id: signedIn.userId, defaultCurrency: signedIn.defaultCurrency } },
+    status: 'authenticated',
+  }),
 }));
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push }) }));
@@ -95,6 +98,9 @@ type Reservation = Omit<
   /** Both `null` on an archived list (`listArchived`), which says nothing live. */
   itemStatus: string | null;
   stillReserved: boolean | null;
+  wishlistOwnerUsername?: string | null;
+  itemLink?: string | null;
+  itemNotes?: string | null;
 };
 type Gift = typeof legoGift;
 
@@ -158,7 +164,13 @@ function toResponse(reply: Reply) {
 function mockHeldFetch({
   holdReads = false,
   initial = reservations,
-}: { holdReads?: boolean; initial?: Reservation[] } = {}) {
+  rates,
+}: {
+  holdReads?: boolean;
+  initial?: Reservation[];
+  /** Exchange rates `/api/currency-rates` answers with; without them it fails. */
+  rates?: Record<string, number>;
+} = {}) {
   const lists = { reservations: [...initial], gifts: [...gifts] };
   const server = {
     /** Both lists as the server holds them right now. */
@@ -255,6 +267,9 @@ function mockHeldFetch({
           : url === '/api/users/me/gifts'
             ? 'gifts'
             : null;
+      if (url === '/api/currency-rates' && rates) {
+        return toResponse({ status: 200, body: { success: true, data: { rates } } });
+      }
       if (!list) throw new Error(`unexpected fetch ${url}`);
       if (!holdReads) return toResponse(server.snapshot()[list]);
       return toResponse(await new Promise<Reply>((resolve) => heldReads[list].push(resolve)));
@@ -303,29 +318,29 @@ const dismissKey = (id: string) => `DELETE /api/reservations/${id}`;
 const releaseKey = (itemId: string) => `PATCH /api/items/${itemId}`;
 const deleteGiftKey = (id: string) => `DELETE /api/gifts/${id}`;
 
+/** The reservation card (or changed row) for `itemName`, or null once it's off the page. */
+const cardFor = (itemName: string) => screen.queryByRole('article', { name: itemName });
+
+/** "Mark as given", as an active card and a changed row's two kinds of it say it. */
+const GIFT_BUTTON = /^(Mark as given|I gave it|I gave it anyway)$/;
+
 /**
- * The buttons on the reservation card for `itemName`: "Mark as given", then
- * Release on an active card or Dismiss on one that needs confirmation (each
- * null where the card doesn't have it), and `second`, whichever of the two it
- * has.
+ * The buttons on the reservation card for `itemName`: its "Mark as given" (on
+ * a changed row "I gave it" or "I gave it anyway"), then the "More actions"
+ * menu holding Release… on an active card, or Dismiss on one that needs
+ * confirmation (each null where the card doesn't have it).
  */
 function reservationButtons(itemName: string) {
-  // The card is the nearest ancestor of its name that holds its buttons.
-  let card: HTMLElement | null = cardName(itemName);
+  const card = cardFor(itemName);
   if (!card) throw new Error(`no reservation card for ${itemName}`);
-  while (card && !within(card).queryByRole('button', { name: 'Mark as given' })) {
-    card = card.parentElement;
-  }
-  const scope = within(card!);
-  const release = scope.queryByRole('button', { name: 'Release' });
+  const scope = within(card);
+  const release = scope.queryByRole('button', { name: 'More actions' });
   const dismiss = scope.queryByRole('button', { name: 'Dismiss' });
-  const second = release ?? dismiss;
-  if (!second) throw new Error(`no Release or Dismiss on the card for ${itemName}`);
+  if (!release && !dismiss) throw new Error(`no Release or Dismiss on the card for ${itemName}`);
   return {
-    gift: scope.getByRole('button', { name: 'Mark as given' }),
+    gift: scope.getByRole('button', { name: GIFT_BUTTON }),
     release,
     dismiss,
-    second,
   };
 }
 
@@ -333,24 +348,21 @@ function reservationButtons(itemName: string) {
  * The name on the reservation card for `itemName`, or null once the card is off
  * the page. Its gift-history row, once it's gifted, doesn't count.
  */
-const cardName = (itemName: string) =>
-  screen.queryAllByText(itemName).find((el) => !el.closest('li')) ?? null;
+const cardName = (itemName: string) => {
+  const card = cardFor(itemName);
+  return card ? within(card).getByText(itemName) : null;
+};
 
 /** The note on the reservation card for `itemName` (why it needs confirmation), or null. */
 function noteOn(itemName: string) {
-  let card: HTMLElement | null = cardName(itemName);
-  while (card && !within(card).queryByRole('button', { name: 'Mark as given' })) {
-    card = card.parentElement;
-  }
+  const card = cardFor(itemName);
   if (!card) throw new Error(`no reservation card for ${itemName}`);
   return card.querySelector('p > span.rounded-full')?.textContent ?? null;
 }
 
 /** The link to its list on the reservation card for `itemName`. */
 function listLink(itemName: string) {
-  // The card is the nearest ancestor of its name that holds a link.
-  let card: HTMLElement | null = cardName(itemName);
-  while (card && !within(card).queryByRole('link')) card = card.parentElement;
+  const card = cardFor(itemName);
   if (!card) throw new Error(`no reservation card for ${itemName}`);
   return within(card).getByRole('link');
 }
@@ -383,22 +395,28 @@ function dismiss(itemName: string) {
   if (!dismiss) throw new Error(`no Dismiss on the card for ${itemName}`);
   clickAndConfirm(dismiss, 'Remove');
 }
-function release(itemName: string) {
+/** Opens the card's "More actions" menu and picks Release…, which asks first. */
+function openRelease(itemName: string) {
   const { release } = reservationButtons(itemName);
   if (!release) throw new Error(`no Release on the card for ${itemName}`);
-  clickAndConfirm(release, 'Release');
+  fireEvent.click(release);
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Release…' }));
+}
+function release(itemName: string) {
+  openRelease(itemName);
+  fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Release' }));
 }
 const deleteGift = (itemName: string) => clickAndConfirm(deleteGiftButton(itemName), 'Delete');
 
 function expectReservationDisabled(itemName: string) {
   const buttons = reservationButtons(itemName);
   expect(buttons.gift).toBeDisabled();
-  expect(buttons.second).toBeDisabled();
+  if (buttons.dismiss) expect(buttons.dismiss).toBeDisabled();
 }
 function expectReservationEnabled(itemName: string) {
   const buttons = reservationButtons(itemName);
   expect(buttons.gift).toBeEnabled();
-  expect(buttons.second).toBeEnabled();
+  if (buttons.dismiss) expect(buttons.dismiss).toBeEnabled();
 }
 
 type Held = ReturnType<typeof mockHeldFetch>;
@@ -420,6 +438,7 @@ beforeEach(() => {
   push.mockReset();
   showToast.mockReset();
   signedIn.userId = 'me';
+  signedIn.defaultCurrency = 'USD';
 });
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -443,7 +462,7 @@ describe('BookedPage — acting on several cards at once', () => {
 
     // A's disabled buttons open no second dialog, so nothing more goes out for A.
     fireEvent.click(reservationButtons('Lego set').gift);
-    fireEvent.click(reservationButtons('Lego set').second);
+    openRelease('Lego set');
     expect(screen.queryByRole('alertdialog')).toBeNull();
 
     // B settling first doesn't unlock A either...
@@ -530,7 +549,7 @@ describe('BookedPage — acting on several cards at once', () => {
 
     // Both confirmations for one card, opened before either is confirmed.
     fireEvent.click(lego.gift);
-    fireEvent.click(lego.second);
+    openRelease('Lego set');
     const confirm = (title: string, confirmText: string) =>
       fireEvent.click(
         within(screen.getByRole('alertdialog', { name: title })).getByRole('button', {
@@ -580,7 +599,7 @@ describe('BookedPage — Release on an active card, Dismiss on a changed one', (
   it("asks first, then sends the list's own unbook to the item, and takes the card off once it lands", async () => {
     const { answer, sent } = await renderHeld();
 
-    fireEvent.click(reservationButtons('Lego set').release!);
+    openRelease('Lego set');
     const dialog = screen.getByRole('alertdialog', { name: 'Release this gift?' });
     expect(dialog).toHaveTextContent('Others on the list will be able to reserve it.');
     fireEvent.click(within(dialog).getByRole('button', { name: 'Release' }));
@@ -610,7 +629,7 @@ describe('BookedPage — Release on an active card, Dismiss on a changed one', (
   it('sends nothing when the confirmation is cancelled', async () => {
     const { sent } = await renderHeld();
 
-    fireEvent.click(reservationButtons('Lego set').release!);
+    openRelease('Lego set');
     fireEvent.click(
       within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Cancel' })
     );
@@ -716,15 +735,15 @@ describe('BookedPage — Release on an active card, Dismiss on a changed one', (
     expect(document.body.textContent).not.toMatch(/archiv/i);
     // Both need confirmation; nothing is left to give.
     expect(
-      screen.getByRole('heading', { level: 2, name: /Needs your confirmation/ })
-    ).toHaveTextContent('Needs your confirmation2');
-    expect(screen.getByText('Nothing actively reserved right now.')).toBeInTheDocument();
+      screen.getByRole('heading', { level: 2, name: /Changed since you reserved/ })
+    ).toHaveTextContent('Changed since you reserved2');
+    expect(screen.getByText('Nothing to give right now.')).toBeInTheDocument();
   });
 
   it('releases nothing, and says why, for a card a read has found changed while its confirmation was open', async () => {
     const { server, sent } = await renderHeld();
 
-    fireEvent.click(reservationButtons('Lego set').release!);
+    openRelease('Lego set');
     // Elsewhere, meanwhile: the owner marks it received, and the page reads it.
     server.detach('res-lego', 'completed');
     act(() => {
@@ -1130,9 +1149,9 @@ describe('BookedPage — reading both lists again while the page is open', () =>
       /removed|received|draft|no longer reserved|no longer available/i
     );
     expect(
-      screen.getByRole('heading', { level: 2, name: /Needs your confirmation/ })
-    ).toHaveTextContent('Needs your confirmation2');
-    expect(screen.getByText('Nothing actively reserved right now.')).toBeInTheDocument();
+      screen.getByRole('heading', { level: 2, name: /Changed since you reserved/ })
+    ).toHaveTextContent('Changed since you reserved2');
+    expect(screen.getByText('Nothing to give right now.')).toBeInTheDocument();
 
     // Unarchived: as before, the link and the item's hints with it.
     comeBack('focus');
@@ -1402,16 +1421,25 @@ describe('BookedPage — reading both lists again while the page is open', () =>
   });
 
   it.each([
-    { dialog: 'Mark as given?', open: () => reservationButtons('Lego set').gift },
-    { dialog: 'Remove from reservations?', open: () => reservationButtons('Scarf').second },
-    { dialog: 'Release this gift?', open: () => reservationButtons('Lego set').second },
-    { dialog: 'Delete from gift history?', open: () => deleteGiftButton('Cookbook') },
+    {
+      dialog: 'Mark as given?',
+      open: () => fireEvent.click(reservationButtons('Lego set').gift),
+    },
+    {
+      dialog: 'Remove from reservations?',
+      open: () => fireEvent.click(reservationButtons('Scarf').dismiss!),
+    },
+    { dialog: 'Release this gift?', open: () => openRelease('Lego set') },
+    {
+      dialog: 'Delete from gift history?',
+      open: () => fireEvent.click(deleteGiftButton('Cookbook')),
+    },
   ])(
     'another account signing in closes a "$dialog" confirmation left open for the previous one',
     async ({ dialog, open }) => {
       const { rerender, sent } = await renderLoaded();
 
-      fireEvent.click(open());
+      open();
       expect(screen.getByRole('alertdialog', { name: dialog })).toBeInTheDocument();
       signedIn.userId = 'someone-else';
       rerender(<BookedPage />);
@@ -1552,7 +1580,7 @@ describe('BookedPage — keyboard focus in a confirmation', () => {
         expect(dialog).toContainElement(document.activeElement as HTMLElement);
       }
     }
-    expect(lego.second).not.toHaveFocus();
+    expect(lego.release).not.toHaveFocus();
 
     // Closing it hands focus back to the card's button that opened it.
     await user.keyboard('{Escape}');
@@ -1622,8 +1650,8 @@ describe('BookedPage — "To give" grouped by the list’s upcoming occasion', (
     },
   ];
 
-  const WEDDING_GROUP = 'Wedding · in 3 days Wedding registry';
-  const BIRTHDAY_GROUP = 'Birthday · in 12 days Anna’s birthday';
+  const WEDDING_GROUP = 'Wedding · in 3 days — Wedding registry';
+  const BIRTHDAY_GROUP = 'Birthday · in 12 days — Anna’s birthday';
 
   /** The group headings in "To give", top to bottom. */
   const headings = () => screen.queryAllByRole('heading', { level: 3 }).map((h) => h.textContent);
@@ -1729,7 +1757,7 @@ describe('BookedPage — "To give" grouped by the list’s upcoming occasion', (
       window.dispatchEvent(new Event('focus'));
     });
 
-    const HOLIDAY_GROUP = 'Holiday · tomorrow Odds and ends';
+    const HOLIDAY_GROUP = 'Holiday · tomorrow — Odds and ends';
     await waitFor(() => expect(headings()).toEqual([HOLIDAY_GROUP, WEDDING_GROUP, 'No date']));
     expect(cardsUnder(HOLIDAY_GROUP)).toEqual(['Plain mug']);
     expect(cardsUnder('No date')).toEqual(['Toy train', 'Kite', 'Party hat']);
@@ -1755,11 +1783,201 @@ describe('BookedPage — prices', () => {
       render(<BookedPage />);
       await screen.findByText('Lego set');
 
-      // The price is the gifter's own snapshot, shown exactly: never converted.
+      // The price is the gifter's own snapshot, shown exactly while there are
+      // no rates to convert it with.
       expect(screen.getByText('1.234,50 €')).toBeInTheDocument();
       expect(screen.queryByText(/≈/)).toBeNull();
     } finally {
       language.mockRestore();
     }
+  });
+});
+
+describe('BookedPage — what to give next (WIS-263)', () => {
+  /** The page's section headings, top to bottom, without their counts. */
+  const sections = () =>
+    screen.getAllByRole('heading', { level: 2 }).map((h) => h.firstChild?.textContent);
+
+  /** The labels of a card's buttons and links, in the order they're shown. */
+  const actionsOn = (itemName: string) =>
+    Array.from(cardFor(itemName)!.querySelectorAll('a, button')).map(
+      (el) => el.textContent?.trim() || el.getAttribute('aria-label')
+    );
+
+  it('shows To give first, then what changed, then the gift history', async () => {
+    mockHeldFetch();
+    render(<BookedPage />);
+    await screen.findByText('Lego set');
+    expect(sections()).toEqual(['To give', 'Changed since you reserved', 'Gift history']);
+  });
+
+  it('sums up under the title: to give, to review, and the total in the viewer’s currency', async () => {
+    signedIn.defaultCurrency = 'EUR';
+    mockHeldFetch({
+      initial: [
+        { ...reservations[0], itemPrice: { value: 5000, currency: 'eur' } },
+        {
+          ...reservations[0],
+          _id: 'res-kite',
+          itemId: 'item-kite',
+          itemName: 'Kite',
+          // £80 = $100 = €90 at these rates.
+          itemPrice: { value: 8000, currency: 'gbp' },
+        },
+        // To review: not in the total.
+        { ...reservations[1], itemPrice: { value: 99900, currency: 'eur' } },
+      ],
+      rates: { eur: 0.9, gbp: 0.8 },
+    });
+    render(<BookedPage />);
+    await screen.findByText('Lego set');
+
+    await waitFor(() =>
+      expect(screen.getByTestId('reserved-summary')).toHaveTextContent(
+        '2 to give · 1 to review · ≈ €140 to give'
+      )
+    );
+    // Each price in the viewer's currency, approximately, with the original under it.
+    const kite = within(cardFor('Kite')!);
+    expect(kite.getByText('≈ €90')).toBeInTheDocument();
+    expect(kite.getByText('£80.00')).toBeInTheDocument();
+    // One already in it is shown exactly.
+    expect(within(cardFor('Lego set')!).getByText('€50.00')).toBeInTheDocument();
+  });
+
+  it('leaves out what there is none of, and an exact total needs no "≈"', async () => {
+    mockHeldFetch({
+      initial: [{ ...reservations[0], itemPrice: { value: 2500, currency: 'usd' } }],
+    });
+    render(<BookedPage />);
+    await screen.findByText('Lego set');
+    expect(screen.getByTestId('reserved-summary')).toHaveTextContent(
+      /^1 to give · \$25\.00 to give$/
+    );
+  });
+
+  it('an active card opens the shop link first, shows the notes, and its menu leads to the item on its list', async () => {
+    mockHeldFetch({
+      initial: [
+        {
+          ...reservations[0],
+          itemLink: 'https://shop.example/lego',
+          itemNotes: 'The 2026 edition',
+        },
+        { ...reservations[0], _id: 'res-kite', itemId: 'item-kite', itemName: 'Kite' },
+      ],
+    });
+    render(<BookedPage />);
+    await screen.findByText('Lego set');
+
+    const lego = within(cardFor('Lego set')!);
+    const open = lego.getByRole('link', { name: 'Open link' });
+    expect(open).toHaveAttribute('href', 'https://shop.example/lego');
+    expect(open).toHaveAttribute('target', '_blank');
+    expect(open).toHaveAttribute('rel', 'noopener noreferrer');
+    expect(lego.getByText('The 2026 edition')).toBeInTheDocument();
+    expect(actionsOn('Lego set').slice(-3)).toEqual(['Open link', 'Mark as given', 'More actions']);
+
+    // No link: Mark as given leads.
+    expect(within(cardFor('Kite')!).queryByRole('link', { name: 'Open link' })).toBeNull();
+
+    fireEvent.click(lego.getByRole('button', { name: 'More actions' }));
+    expect(screen.getByRole('menuitem', { name: 'View on list' })).toHaveAttribute(
+      'href',
+      '/wishlists/birthday?item=item-lego'
+    );
+    expect(screen.getByRole('menuitem', { name: 'Release…' })).toBeInTheDocument();
+  });
+
+  it('never links anything but http(s)', async () => {
+    mockHeldFetch({ initial: [{ ...reservations[0], itemLink: 'javascript:alert(1)' }] });
+    render(<BookedPage />);
+    await screen.findByText('Lego set');
+    expect(within(cardFor('Lego set')!).queryByRole('link', { name: 'Open link' })).toBeNull();
+  });
+
+  describe('a changed card’s main action follows its note', () => {
+    const changed = (fields: Partial<Reservation>): Reservation => ({
+      ...reservations[0],
+      stillReserved: false,
+      ...fields,
+    });
+
+    it.each([
+      [
+        'the owner marked it received',
+        changed({ itemStatus: 'completed' }),
+        ['I gave it', 'Dismiss'],
+      ],
+      ['the owner removed it', changed({ itemStatus: 'deleted' }), ['Dismiss', 'I gave it anyway']],
+      [
+        'the owner moved it to draft',
+        changed({ itemStatus: 'draft' }),
+        ['Dismiss', 'I gave it anyway'],
+      ],
+      [
+        'someone else reserved it',
+        changed({ itemStatus: 'booked' }),
+        ['Dismiss', 'I gave it anyway'],
+      ],
+      [
+        'the list is no longer available',
+        changed({ stillReserved: true, listOpen: false, wishlistSlug: null }),
+        ['I gave it', 'Dismiss'],
+      ],
+      ['the list was archived', changed(ARCHIVED), ['I gave it', 'Dismiss']],
+    ])('%s', async (_note, r, expected) => {
+      mockHeldFetch({ initial: [r] });
+      render(<BookedPage />);
+      await screen.findByText('Lego set');
+      const buttons = within(cardFor('Lego set')!)
+        .getAllByRole('button')
+        .map((b) => b.textContent);
+      expect(buttons).toEqual(expected);
+    });
+  });
+
+  describe('grouped by occasion', () => {
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date(2026, 9, 2, 12));
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('heads a dated group with the occasion, the list and its owner, and drops the list from its cards', async () => {
+      mockHeldFetch({
+        initial: [
+          {
+            ...reservations[0],
+            wishlistName: 'Dmitri’s birthday',
+            wishlistOccasion: { kind: 'birthday', date: '2000-10-02', recurrence: 'yearly' },
+            wishlistOwnerUsername: 'dmitri_v',
+          },
+          {
+            ...reservations[0],
+            _id: 'res-kite',
+            itemId: 'item-kite',
+            itemName: 'Kite',
+            wishlistId: 'w2',
+            wishlistSlug: 'odds',
+            wishlistName: 'Odds and ends',
+          },
+        ],
+      });
+      render(<BookedPage />);
+      await screen.findByText('Lego set');
+
+      const headings = screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent);
+      expect(headings).toEqual(['Birthday · today — Dmitri’s birthday · @dmitri_v', 'No date']);
+      // The heading names the list: the card doesn't again.
+      expect(within(cardFor('Lego set')!).queryByText('Dmitri’s birthday')).toBeNull();
+      // Under "No date" it does.
+      expect(within(cardFor('Kite')!).getByRole('link', { name: 'Odds and ends' })).toHaveAttribute(
+        'href',
+        '/wishlists/odds'
+      );
+    });
   });
 });
