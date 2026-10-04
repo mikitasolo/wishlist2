@@ -28,7 +28,7 @@ vi.mock('@/components/NeedsYou', () => ({ default: () => null }));
 vi.mock('@/components/CreateWishlistModal', () => ({ default: () => null }));
 vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast: vi.fn() }) }));
 
-import Home from '@/app/page';
+import Home from '@/components/Dashboard';
 
 function lists(n: number, prefix: string, owner: string) {
   return Array.from({ length: n }, (_, i) => ({

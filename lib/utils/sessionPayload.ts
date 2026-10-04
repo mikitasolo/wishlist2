@@ -75,3 +75,23 @@ export function sessionPayload(
     expires: expires instanceof Date ? expires.toISOString() : (text(expires) ?? ''),
   };
 }
+
+/**
+ * The session as a server component may hand it to the browser (the home
+ * page's `SeededSession`): `auth()`'s answer, which is already the session
+ * callback's allowlist, rebuilt once more from `SESSION_USER_FIELDS` and
+ * `expires` alone. So whatever `auth()` ever returns, a raw row's session
+ * token or any other field of it can't reach the page's HTML, where any script
+ * could read it.
+ */
+export function clientSession(session: Session | null | undefined): Session | null {
+  const raw = session?.user as Record<string, unknown> | undefined;
+  if (!raw || typeof raw.id !== 'string' || !raw.id) return null;
+  const user = Object.fromEntries(
+    SESSION_USER_FIELDS.filter((field) => raw[field] !== undefined).map((field) => [
+      field,
+      raw[field],
+    ])
+  ) as Session['user'];
+  return { user, expires: typeof session?.expires === 'string' ? session.expires : '' };
+}
