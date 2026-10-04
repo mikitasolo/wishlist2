@@ -81,10 +81,39 @@ async function bestEffort(
   }
 }
 
-/** Delete a deleted list's items, then free the images uploaded for them. */
+/** How many of a deleted list's items are deleted at once. */
+const ITEM_DELETE_BATCH = 50;
+
+/**
+ * Delete a deleted list's items, and free the images they held as they went.
+ *
+ * Each item is taken by its own `findOneAndDelete`, and the image freed is the
+ * one that delete returned, never one read before it (WIS-206). An item request
+ * that read the list before it was deleted can still write after: an edit
+ * replacing an item's image frees the one its own write replaced, so freeing
+ * what an earlier read saw would free that one twice and orphan the image the
+ * edit put in its place. And the items are read again until none are left, so
+ * one created in that window is deleted too, with its image.
+ *
+ * Throws (for `bestEffort` to log) once the rest of its batch has settled and
+ * their images are freed, if any delete failed.
+ */
 async function deleteItemsAndImages(wishlistId: string): Promise<void> {
-  // Collected before the items go, or their blobs would be orphaned in storage.
-  const items = await Item.find({ wishlist: wishlistId }).select('imageUrl').lean();
-  await Item.deleteMany({ wishlist: wishlistId });
-  await deleteOwnBlobs(items.map((i) => i.imageUrl));
+  for (;;) {
+    const batch = await Item.find({ wishlist: wishlistId })
+      .select('_id')
+      .limit(ITEM_DELETE_BATCH)
+      .lean();
+    if (batch.length === 0) return;
+    const deleted = await Promise.allSettled(
+      batch.map(({ _id }) =>
+        Item.findOneAndDelete({ _id, wishlist: wishlistId }, { projection: { imageUrl: 1 } })
+      )
+    );
+    await deleteOwnBlobs(
+      deleted.map((result) => (result.status === 'fulfilled' ? result.value?.imageUrl : null))
+    );
+    const failed = deleted.find((result) => result.status === 'rejected');
+    if (failed) throw failed.reason;
+  }
 }
