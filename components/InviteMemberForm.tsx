@@ -32,6 +32,9 @@ export const ROLE_HELPER: Record<Role, string> = {
   owner: 'Can edit everything, and never sees reservations.',
 };
 
+/** Under the field when an email is typed: invites go by username, never email. */
+export const EMAIL_HINT = 'Invite people by their username. Ask them for their @handle.';
+
 const ROLE_OPTIONS = [
   { value: 'member', label: 'Member' },
   { value: 'owner', label: 'Co-owner' },
@@ -50,7 +53,8 @@ export interface InviteMemberFormHandle {
 }
 
 interface InviteMemberFormProps {
-  onInvite: (payload: { username: string; role: Role }) => Promise<void>;
+  /** Resolves to whether the invite was sent: the form clears only after one. */
+  onInvite: (payload: { username: string; role: Role }) => Promise<boolean>;
   isInviting: boolean;
   /**
    * Who's on the list already, by lower-cased username (`listStatusByUsername`):
@@ -115,11 +119,15 @@ export default function InviteMemberForm({
 
   const id = useId();
   const listboxId = `${id}-listbox`;
+  const emailHintId = `${id}-email-hint`;
   const helperId = `${id}-role-helper`;
   const optionId = (i: number) => `${id}-option-${i}`;
 
   // What the search and the invite both take: trimmed, lower-cased, no `@`.
   const term = usernameQuery(value);
+  // An email isn't a username: invites go by username only, so it's never
+  // sent or searched, and the field says what to ask for instead.
+  const looksLikeEmail = term.includes('@');
 
   useImperativeHandle(
     ref,
@@ -146,7 +154,7 @@ export default function InviteMemberForm({
   // cleared) is dropped, as `GlobalSearch` does, and a failed search is
   // shown as one, never as "No people match".
   useEffect(() => {
-    if (term.length < INVITE_SEARCH_MIN_CHARS) {
+    if (term.length < INVITE_SEARCH_MIN_CHARS || looksLikeEmail) {
       setSuggestions([]);
       return;
     }
@@ -174,7 +182,7 @@ export default function InviteMemberForm({
       current = false;
       clearTimeout(t);
     };
-  }, [term]);
+  }, [term, looksLikeEmail]);
 
   // The options in list order: each person, then a member's promotion.
   const options = useMemo(() => {
@@ -195,9 +203,10 @@ export default function InviteMemberForm({
   // A disabled field can't take keys, and can lose focus without a blur.
   if (isInviting && open) setOpen(false);
 
-  const popoverShown = open && term.length > 0;
+  const popoverShown = open && term.length > 0 && !looksLikeEmail;
   // Options to show, open or not: the list has a term long enough to search.
-  const hasOptions = term.length >= INVITE_SEARCH_MIN_CHARS && options.length > 0;
+  const hasOptions =
+    term.length >= INVITE_SEARCH_MIN_CHARS && !looksLikeEmail && options.length > 0;
   const listShown = popoverShown && hasOptions;
   const activeOption = listShown ? options[active] : undefined;
 
@@ -282,8 +291,14 @@ export default function InviteMemberForm({
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!term) return;
-    await onInvite({ username: term, role });
+    if (!term || looksLikeEmail) return;
+    const sent = await onInvite({ username: term, role });
+    // regression (WIS-307): a refused invite keeps what was typed and the
+    // role, with focus in the field, so it can be fixed instead of retyped.
+    if (!sent) {
+      inputRef.current?.focus();
+      return;
+    }
     setValue('');
     setRole('member');
     setSuggestions([]);
@@ -339,7 +354,13 @@ export default function InviteMemberForm({
             autoComplete="off"
             autoCapitalize="none"
             spellCheck={false}
+            aria-describedby={looksLikeEmail ? emailHintId : undefined}
           />
+          {looksLikeEmail && (
+            <p id={emailHintId} role="status" className="mt-1.5 text-xs text-muted-foreground">
+              {EMAIL_HINT}
+            </p>
+          )}
 
           {popoverShown && (
             <div

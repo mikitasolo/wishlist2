@@ -829,7 +829,7 @@ export default function WishlistDetail() {
 
   const handleInvite = useCallback(
     async (payload: { username: string; role: 'owner' | 'member' }) => {
-      if (!wishlistId) return;
+      if (!wishlistId) return false;
 
       setIsInviting(true);
       try {
@@ -847,12 +847,15 @@ export default function WishlistDetail() {
           showToast('Invitation sent', 'success');
           // Membership is created only when they accept — refresh pending invites.
           await refreshInvites();
+          return true;
         } else {
           showToast(result.error || 'Failed to send invitation', 'error');
+          return false;
         }
       } catch (error) {
         console.error('Error inviting user:', error);
         showToast('Failed to send invitation', 'error');
+        return false;
       } finally {
         setIsInviting(false);
       }
