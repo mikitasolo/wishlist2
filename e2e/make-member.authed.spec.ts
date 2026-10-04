@@ -17,7 +17,9 @@ const SECOND_ANSWER = 'Already done';
  * owner, the way the server answers after a demotion.
  */
 async function addCoOwner(page: Page, isDemoted: () => boolean) {
-  await page.route('**/api/wishlists/e2e-birthday', async (route) => {
+  // The list's own read, by slug or (once loaded) by id: the page addresses it by
+  // its id after the first read (WIS-285).
+  await page.route(/\/api\/wishlists\/[^/?]+(\?.*)?$/, async (route) => {
     if (route.request().method() !== 'GET') return route.fallback();
     const response = await route.fetch();
     const body = await response.json();
