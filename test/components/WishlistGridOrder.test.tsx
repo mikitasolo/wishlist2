@@ -98,7 +98,6 @@ const shared = [
 
 const BY_OCCASION = ['Birthday', 'Anniversary', 'Christmas', 'Housewarming', 'Wedding', 'Books'];
 const ARCHIVED_BY_OCCASION = ['Last year', 'Old notes'];
-const SHARED_AS_SENT = ['Friend’s wedding', 'Friend’s books', 'Friend’s birthday'];
 const SHARED_BY_OCCASION = ['Friend’s birthday', 'Friend’s wedding', 'Friend’s books'];
 
 function json(body: unknown) {
@@ -261,10 +260,11 @@ describe("other people's lists — order", () => {
     ]);
   });
 
-  it('keeps the API’s order on a profile, occasion or not', async () => {
+  // WIS-272: a profile sorts by the nearest occasion too, as the dashboard does.
+  it('sorts a profile by the nearest occasion, by your local date', async () => {
     render(<UserProfile />);
     await screen.findByText('Birthday · tomorrow');
-    expect(cardNames(document.body)).toEqual(SHARED_AS_SENT);
+    expect(cardNames(document.body)).toEqual(SHARED_BY_OCCASION);
   });
 });
 

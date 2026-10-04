@@ -13,6 +13,7 @@ import {
 } from '@/lib/utils/wishlistOwners';
 import { isObjectIdParam } from '@/lib/utils/objectId';
 import { countWishlistItems, countsFor } from '@/lib/utils/wishlistItemCounts';
+import { getWishlistViewAccess } from '@/lib/utils/wishlistAccess';
 
 // GET /api/users/[id]/wishlists - Get wishlists for a specific user
 // Returns: public wishlists + wishlists the current user has access to
@@ -131,12 +132,33 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       };
     });
 
-    // Sort by creation date (newest first)
+    // Newest first. The page puts the nearest occasion first on top of this in
+    // the viewer's local date (`sortByUpcomingOccasion`), and keeps this order
+    // while that date isn't known yet, and among lists that tie.
     wishlistsWithMembership.sort((a, b) => {
       const dateA = a.createdAt?.getTime() || 0;
       const dateB = b.createdAt?.getTime() || 0;
       return dateB - dateA;
     });
+
+    // On your own profile only: how many of your lists a signed-out visitor
+    // could open ("Visitors see 3 of your 5 lists"), by the same rule as
+    // opening one (`getWishlistViewAccess` with no viewer, which asks nothing
+    // of the database). Anyone else's answer carries no count or flag about
+    // lists they can't see. Archived lists aren't on the profile, so they're
+    // in neither number. A friends-only profile still counts its public lists:
+    // a visitor can't browse them here, but each one's own link opens for
+    // them, so a lower count would understate what they can see.
+    if (isSelf) {
+      const admitted = await Promise.all(
+        uniqueWishlists.map(async (w) => (await getWishlistViewAccess(w, null)).allowed)
+      );
+      const visitorCount = admitted.filter(Boolean).length;
+      return NextResponse.json(
+        { success: true, data: wishlistsWithMembership, visitorCount },
+        { status: 200 }
+      );
+    }
 
     return NextResponse.json({ success: true, data: wishlistsWithMembership }, { status: 200 });
   } catch (error) {

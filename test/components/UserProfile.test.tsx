@@ -76,10 +76,15 @@ function json(body: unknown) {
 }
 
 /** Answers the profile's two reads: the user, then their lists. */
-function stubFetch(user = profile(), wishlists: unknown[] = []) {
+function stubFetch(
+  user = profile(),
+  wishlists: unknown[] = [],
+  extra: Record<string, unknown> = {}
+) {
   const fetchMock = vi.fn(async (url: string) => {
     if (url === '/api/users/by-username/friend') return json({ success: true, data: user });
-    if (url === '/api/users/friend-id/wishlists') return json({ success: true, data: wishlists });
+    if (url === '/api/users/friend-id/wishlists')
+      return json({ success: true, data: wishlists, ...extra });
     throw new Error(`unexpected fetch ${url}`);
   });
   vi.stubGlobal('fetch', fetchMock);
@@ -384,5 +389,98 @@ describe('UserProfile — following', () => {
     expect(signIn).toHaveBeenCalledWith(undefined, { redirectTo: window.location.href });
     expect(showToast).not.toHaveBeenCalled();
     expect(follows(fetchMock)).toHaveLength(0);
+  });
+});
+
+/** A list as `GET /api/users/[id]/wishlists` sends it. */
+function list(id: string, fields: Record<string, unknown> = {}) {
+  return {
+    _id: id,
+    name: `List ${id}`,
+    slug: id,
+    visibility: 'everyone',
+    owners: ['friend-id'],
+    ownerUsername: 'friend',
+    ownerUsernames: ['friend'],
+    itemCount: 0,
+    occasion: null,
+    ...fields,
+  };
+}
+
+/** The list cards' names, in the order they're shown. */
+const cardNames = () =>
+  screen.getAllByRole('heading', { level: 3 }).map((heading) => heading.textContent);
+
+describe('UserProfile — the lists', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('puts the nearest occasion first, in the viewer’s local date', async () => {
+    // Only the clock is faked, so the page's own waits still run.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 9, 4, 12)); // 4 Oct 2026, local
+    session.current = signedIn('me');
+    // Newest first, as the API sends them.
+    stubFetch(profile(), [
+      list('none'),
+      list('christmas', { occasion: { kind: 'holiday', date: '2026-12-25', recurrence: null } }),
+      list('passed', { occasion: { kind: 'other', date: '2026-01-01', recurrence: null } }),
+      list('birthday', {
+        occasion: { kind: 'birthday', date: '2000-10-18', recurrence: 'yearly' },
+      }),
+    ]);
+    render(<UserProfile />);
+    await screen.findByRole('heading', { name: 'List birthday' });
+
+    // The birthday in 14 days, then Christmas, then the rest in the API's order.
+    expect(cardNames()).toEqual(['List birthday', 'List christmas', 'List none', 'List passed']);
+  });
+
+  it('names the other owners only on a co-owned list, never the profile’s own person', async () => {
+    session.current = signedIn('me');
+    stubFetch(profile(), [
+      list('solo'),
+      list('shared', {
+        owners: ['friend-id', 'chloe-id'],
+        ownerUsernames: ['friend', 'chloe_r'],
+      }),
+      // The profile's person needn't be the primary owner.
+      list('theirs', {
+        owners: ['dan-id', 'friend-id'],
+        ownerUsername: 'dan_w',
+        ownerUsernames: ['dan_w', 'friend'],
+      }),
+    ]);
+    render(<UserProfile />);
+
+    const card = async (name: string) =>
+      (await screen.findByRole('heading', { name })).closest('a') as HTMLElement;
+    expect(await card('List shared')).toHaveTextContent('with @chloe_r');
+    expect(await card('List shared')).not.toHaveTextContent('@friend');
+    expect(await card('List theirs')).toHaveTextContent('with @dan_w');
+    expect(await card('List solo')).not.toHaveTextContent(/with |@friend/);
+  });
+
+  it('tells you on your own profile how many of your lists visitors see', async () => {
+    session.current = signedIn('friend');
+    stubFetch(
+      profile({ isSelf: true }),
+      [list('a'), list('b', { visibility: 'friends' }), list('c', { visibility: 'private' })],
+      { visitorCount: 1 }
+    );
+    render(<UserProfile />);
+
+    expect(await screen.findByText('Visitors see 1 of your 3 lists')).toBeInTheDocument();
+  });
+
+  it('says nothing about visitors on anyone else’s profile, even if a count were sent', async () => {
+    session.current = signedIn('me');
+    stubFetch(profile(), [list('a')], { visitorCount: 1 });
+    render(<UserProfile />);
+
+    await screen.findByRole('heading', { name: 'List a' });
+    expect(screen.queryByText(/visitors/i)).toBeNull();
   });
 });

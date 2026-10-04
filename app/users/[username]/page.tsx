@@ -1,12 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams, usePathname, useSearchParams } from 'next/navigation';
 import { signIn, useSession } from 'next-auth/react';
 import Link from 'next/link';
 import AuthButton from '@/components/AuthButton';
 import AppHeader from '@/components/AppHeader';
-import WishlistCard from '@/components/WishlistCard';
+import WishlistCard, { type WishlistSummary } from '@/components/WishlistCard';
 import Avatar from '@/components/Avatar';
 import Icon from '@/components/Icon';
 import ShareButton from '@/components/ShareButton';
@@ -23,14 +23,10 @@ import { Skeleton, SkeletonGrid, WISHLIST_GRID_CLASSES } from '@/components/Skel
 import { useToast } from '@/components/ToastProvider';
 import { pluralNoun } from '@/lib/utils/plural';
 import { readResource } from '@/lib/utils/resourceRead';
-import { IWishlist } from '@/models/Wishlist';
 import { FOLLOWERS_PARAM } from '@/lib/utils/profileLinks';
-
-interface WishlistWithMembership extends IWishlist {
-  isMember?: boolean;
-  ownerUsername?: string | null;
-  itemCount?: number;
-}
+import { sortByUpcomingOccasion } from '@/lib/utils/occasion';
+import { useLocalToday } from '@/lib/hooks/useLocalToday';
+import { profileCoOwnerLabel, visitorLine } from '@/lib/utils/profileLists';
 
 interface Profile {
   _id: string;
@@ -52,7 +48,17 @@ export default function UserProfile() {
   const username = typeof params?.username === 'string' ? params.username : null;
 
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [wishlists, setWishlists] = useState<WishlistWithMembership[]>([]);
+  const [wishlists, setWishlists] = useState<WishlistSummary[]>([]);
+  // On your own profile only: how many of your lists a signed-out visitor
+  // could open. The API sends it to no one else.
+  const [visitorCount, setVisitorCount] = useState<number | null>(null);
+  // The nearest occasion first, in the viewer's local date; until that's
+  // known, the API's order (newest first), which doesn't depend on it.
+  const today = useLocalToday();
+  const sortedWishlists = useMemo(
+    () => sortByUpcomingOccasion(wishlists, today),
+    [wishlists, today]
+  );
   const [loading, setLoading] = useState(true);
   // The profile couldn't be shown: no one goes by this username (`missing`), or
   // reading it failed in a way Try again may fix (`failed`, `attempt`). Either
@@ -106,6 +112,7 @@ export default function UserProfile() {
         setLoading(true);
         setRestricted(false);
         setListsFailed(false);
+        setVisitorCount(null);
         setProfileLoad('shown');
 
         const read = await readResource<Profile>(
@@ -135,6 +142,11 @@ export default function UserProfile() {
         if (!current) return;
         if (!wishlistsResult.success) throw new Error('Failed to fetch wishlists');
         setWishlists(wishlistsResult.data || []);
+        setVisitorCount(
+          user.isSelf && typeof wishlistsResult.visitorCount === 'number'
+            ? wishlistsResult.visitorCount
+            : null
+        );
       } catch (error) {
         if (!current) return;
         console.error('Error fetching profile:', error);
@@ -219,7 +231,7 @@ export default function UserProfile() {
               <Skeleton className="h-9 w-28 rounded-full" />
             </div>
           </div>
-          <SkeletonGrid count={8} variant="wishlist" showOwner />
+          <SkeletonGrid count={8} variant="wishlist" />
         </main>
       </div>
     );
@@ -256,6 +268,9 @@ export default function UserProfile() {
       </div>
     );
   }
+
+  // "Visitors see 3 of your 5 lists", on your own profile only.
+  const visitorNote = profile?.isSelf ? visitorLine(visitorCount, wishlists.length) : null;
 
   return (
     <div className="min-h-screen">
@@ -401,11 +416,20 @@ export default function UserProfile() {
                 })}
           />
         ) : (
-          <div className={WISHLIST_GRID_CLASSES}>
-            {wishlists.map((wishlist) => (
-              <WishlistCard key={wishlist._id.toString()} wishlist={wishlist} showOwner />
-            ))}
-          </div>
+          <>
+            {visitorNote ? (
+              <p className="mb-4 text-sm text-muted-foreground">{visitorNote}</p>
+            ) : null}
+            <div className={WISHLIST_GRID_CLASSES}>
+              {sortedWishlists.map((wishlist) => (
+                <WishlistCard
+                  key={wishlist._id.toString()}
+                  wishlist={wishlist}
+                  ownerNote={profile ? profileCoOwnerLabel(wishlist, profile._id) : null}
+                />
+              ))}
+            </div>
+          </>
         )}
       </main>
 

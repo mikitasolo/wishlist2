@@ -57,6 +57,12 @@ interface WishlistCardProps {
   pin?: PinControl;
   showOwner?: boolean;
   /**
+   * Text in the owner's place, with no avatar, instead of `showOwner`'s: a
+   * profile's "with @chloe_r" on a co-owned list (`profileCoOwnerLabel`),
+   * where the profile already says whose lists these are.
+   */
+  ownerNote?: string | null;
+  /**
    * Whether the viewer's role ("Member", "Owner") shows over the cover. Off
    * where the page or section already says it ("Shared with you"), where it
    * would be the same on every card.
@@ -78,6 +84,7 @@ export default function WishlistCard({
   wishlist,
   pin,
   showOwner = false,
+  ownerNote = null,
   showRole = true,
 }: WishlistCardProps) {
   // The primary owner and how many co-owners, named as the list's phone row
@@ -144,7 +151,9 @@ export default function WishlistCard({
         <ReservedByYouChip count={wishlist.reservedByYou} className="mt-2 self-start" />
 
         <div className="mt-auto flex items-center justify-between gap-2 pt-3">
-          {showOwner ? (
+          {ownerNote ? (
+            <span className="truncate text-meta text-muted-foreground">{ownerNote}</span>
+          ) : showOwner ? (
             <span className="flex min-w-0 items-center gap-2">
               <Avatar name={ownerName} src={wishlist.ownerImage} size="sm" />
               <span className="truncate text-meta text-muted-foreground">{ownerLabel}</span>
