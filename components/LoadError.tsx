@@ -3,6 +3,7 @@
 import type { ReactNode } from 'react';
 import Button from '@/components/Button';
 import EmptyState from '@/components/EmptyState';
+import { focusPageFallback } from '@/lib/utils/focusFallback';
 
 interface LoadErrorProps {
   /** What couldn't be loaded: "Couldn’t load this wishlist". */
@@ -43,7 +44,16 @@ export default function LoadError({
       body={body}
       compact={compact}
       actions={
-        <Button size={compact ? 'sm' : 'lg'} onClick={onRetry}>
+        <Button
+          size={compact ? 'sm' : 'lg'}
+          onClick={() => {
+            // Retrying swaps this panel for a skeleton, unmounting the button
+            // that has focus: move focus onto the page first so it doesn't
+            // drop to <body>. (In a dialog, the dialog keeps it.)
+            if (!compact) focusPageFallback();
+            onRetry();
+          }}
+        >
           Try again
         </Button>
       }

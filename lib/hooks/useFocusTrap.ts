@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, type RefObject } from 'react';
+import { focusPageFallback } from '@/lib/utils/focusFallback';
 
 /**
  * Keyboard focus for a modal dialog (`ConfirmDialog`, and `BaseModal`, which
@@ -28,7 +29,9 @@ import { useEffect, useRef, useState, type RefObject } from 'react';
  *   alone, and so is focus in a dialog stacked over this one (that's its own).
  * - On close, focus goes back to the element that had it when the dialog
  *   opened, if that's still in the document and focus hasn't since been moved
- *   somewhere outside the dialog on purpose. If the dialog's action disabled
+ *   somewhere outside the dialog on purpose. If that element is gone (the
+ *   dialog's action removed it: an add that ends the empty state, a delete
+ *   that takes the card), focus goes to `focusPageFallback`, not <body>. If the dialog's action disabled
  *   that element, focus goes back once it's re-enabled.
  *
  * Tab order is taken to be DOM order, which holds without positive
@@ -191,13 +194,18 @@ export function useFocusTrap(
         // Focus that was inside the dialog has dropped to <body> with it; if
         // it's anywhere else now, something put it there on purpose.
         const focusWasOurs = focusIsLost() || container.contains(document.activeElement);
-        if (
-          focusWasOurs &&
+        if (!focusWasOurs) return;
+        if (opener instanceof HTMLElement && opener !== document.body && opener.isConnected) {
+          returnFocus(opener);
+        } else if (
           opener instanceof HTMLElement &&
           opener !== document.body &&
-          opener.isConnected
+          focusIsLost() &&
+          openTraps.length === 0
         ) {
-          returnFocus(opener);
+          // The opener is gone (its action removed it), and no other dialog is
+          // open to hold focus: the page's fallback, not <body>.
+          focusPageFallback();
         }
       });
     };
