@@ -527,3 +527,68 @@ describe('Select — a second press on the trigger', () => {
     expect(screen.queryByRole('listbox')).toBeNull();
   });
 });
+
+describe('Select menu placement (WIS-214)', () => {
+  const rectAt = (top: number): DOMRect =>
+    ({
+      top,
+      bottom: top + 36,
+      left: 20,
+      right: 220,
+      width: 200,
+      height: 36,
+      x: 20,
+      y: top,
+    }) as DOMRect;
+  const many = Array.from({ length: 12 }, (_, i) => ({ value: `o${i}`, label: `Option ${i}` }));
+  let triggerTop = 0;
+
+  beforeEach(() => {
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 720 });
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(() =>
+      rectAt(triggerTop)
+    );
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it('opens below the trigger when there is room', async () => {
+    triggerTop = 100;
+    render(<SortPage />);
+    await userEvent.click(screen.getByRole('combobox', { name: 'Sort by' }));
+    const menu = screen.getByRole('listbox', { name: 'Sort by' });
+    expect(menu.style.top).toBe('142px');
+    expect(menu.style.bottom).toBe('');
+  });
+
+  it('flips above the trigger, capped to the room there, when there is none below', async () => {
+    triggerTop = 650;
+    render(<SortPage choices={many} initial="o0" />);
+    await userEvent.click(screen.getByRole('combobox', { name: 'Sort by' }));
+    const menu = screen.getByRole('listbox', { name: 'Sort by' });
+    expect(menu.style.top).toBe('');
+    expect(menu.style.bottom).toBe(`${720 - 650 + 6}px`);
+    expect(menu.style.maxHeight).toBe('288px');
+  });
+
+  it('caps the height to the room on the roomier side when neither fits', async () => {
+    triggerTop = 200;
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 300 });
+    render(<SortPage choices={many} initial="o0" />);
+    await userEvent.click(screen.getByRole('combobox', { name: 'Sort by' }));
+    const menu = screen.getByRole('listbox', { name: 'Sort by' });
+    // 300 - 236 - 14 = 50 below, 200 - 14 = 186 above.
+    expect(menu.style.bottom).toBe('106px');
+    expect(menu.style.maxHeight).toBe('186px');
+  });
+
+  it('keeps following the trigger on scroll, flipping as the room changes', async () => {
+    triggerTop = 100;
+    render(<SortPage choices={many} initial="o0" />);
+    await userEvent.click(screen.getByRole('combobox', { name: 'Sort by' }));
+    const menu = screen.getByRole('listbox', { name: 'Sort by' });
+    expect(menu.style.top).toBe('142px');
+    triggerTop = 650;
+    fireEvent.scroll(window);
+    expect(screen.getByRole('listbox', { name: 'Sort by' }).style.bottom).toBe('76px');
+  });
+});

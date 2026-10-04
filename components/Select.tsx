@@ -31,6 +31,32 @@ interface SelectProps {
   valueLabel?: string;
 }
 
+/** The gap between the trigger and its menu, and the margin kept to the viewport's edge. */
+const MENU_GAP = 6;
+const VIEWPORT_MARGIN = 8;
+/** The menu's tallest (`max-h-72`), and what one option row (36px) and the surface's padding and border add up to. */
+const MENU_MAX_HEIGHT = 288;
+const OPTION_ROW_HEIGHT = 36;
+const MENU_CHROME = 14;
+
+/**
+ * Where a menu of `count` options goes for a trigger at `rect`: below it if
+ * the whole menu fits there, else on whichever side has more room (above it,
+ * measured up from the viewport's bottom), with its height capped to that room
+ * so every option can be scrolled to without scrolling the page.
+ */
+function menuPlacement(rect: DOMRect, count: number, viewportHeight: number) {
+  const below = viewportHeight - rect.bottom - MENU_GAP - VIEWPORT_MARGIN;
+  const above = rect.top - MENU_GAP - VIEWPORT_MARGIN;
+  const wanted = Math.min(MENU_MAX_HEIGHT, count * OPTION_ROW_HEIGHT + MENU_CHROME);
+  const flip = wanted > below && above > below;
+  const room = flip ? above : below;
+  return {
+    flip,
+    maxHeight: Math.max(Math.min(MENU_MAX_HEIGHT, room), OPTION_ROW_HEIGHT + MENU_CHROME),
+  };
+}
+
 /** How long a pause ends a type-ahead search, as in a native select. */
 const TYPEAHEAD_RESET_MS = 500;
 
@@ -249,6 +275,8 @@ export default function Select({
     }
   };
 
+  const placement = menuShown ? menuPlacement(rect, options.length, window.innerHeight) : null;
+
   return (
     <>
       <button
@@ -307,9 +335,11 @@ export default function Select({
             // move it to <body>, and the blur would close the menu before the
             // click lands.
             onMouseDown={(e) => e.preventDefault()}
-            className={`animate-fade-in fixed z-[70] max-h-72 overflow-auto ${POPOVER_SURFACE}`}
+            className={`animate-fade-in fixed z-[70] overflow-auto ${POPOVER_SURFACE}`}
             style={{
-              top: rect.bottom + 6,
+              top: placement!.flip ? undefined : rect.bottom + MENU_GAP,
+              bottom: placement!.flip ? window.innerHeight - rect.top + MENU_GAP : undefined,
+              maxHeight: placement!.maxHeight,
               left: menuAlign === 'right' ? undefined : rect.left,
               right: menuAlign === 'right' ? window.innerWidth - rect.right : undefined,
               minWidth: rect.width,
