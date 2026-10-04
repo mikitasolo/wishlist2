@@ -21,6 +21,7 @@ import {
   isOwnBlob,
 } from '@/lib/utils/blob';
 import { isObjectIdParam } from '@/lib/utils/objectId';
+import { errorKind } from '@/lib/utils/errorKind';
 import {
   canCopyItem,
   COPY_IMAGE_FAILED_NOTICE,
@@ -34,6 +35,53 @@ import {
   readIdempotencyKey,
   scopedIdempotencyKey,
 } from '@/lib/utils/itemIdempotency';
+
+const wishlistGone = () =>
+  NextResponse.json({ success: false, error: 'This wishlist no longer exists' }, { status: 404 });
+
+/**
+ * Whether the list is gone now, read once its new item is written (WIS-182).
+ * Deleting a list removes the list before its items, so a create that read
+ * the list before a delete and writes after the delete's item cleanup would
+ * leave an item nothing can reach or free. Re-reading the list after the write
+ * closes that, as `dropIfWishlistGone` does for notifications: a list that's
+ * still there now can only be deleted later, and that delete's cleanup takes
+ * the item. A failed read counts as the list being there (the item stays, as
+ * it did before this check), so it never turns a saved item into an error.
+ */
+async function isWishlistGone(wishlistId: string): Promise<boolean> {
+  try {
+    return !(await Wishlist.exists({ _id: wishlistId }));
+  } catch (err) {
+    console.error('Failed to re-check the wishlist of a new item:', errorKind(err));
+    return false;
+  }
+}
+
+/**
+ * Take back an item written onto a list deleted meanwhile, and free its image:
+ * the one on the item this delete took, or, when the list delete's own cleanup
+ * took the item first, the one this request wrote (`storedImageUrl`). That
+ * cleanup frees only the images it read before its delete, so an item written
+ * between the two would leak its image otherwise. Freeing one twice is
+ * harmless; leaking it isn't (it counts against the uploader's quota). A
+ * copy's blob (`copiedImageUrl`) was made for this item alone, so it's freed
+ * whatever the item holds by now.
+ */
+async function undoCreate(
+  itemId: mongoose.Types.ObjectId,
+  storedImageUrl: string | undefined,
+  copiedImageUrl: string | undefined
+): Promise<void> {
+  try {
+    const deleted = await Item.findOneAndDelete({ _id: itemId });
+    const held = deleted ? deleted.imageUrl : storedImageUrl;
+    await deleteOwnBlob(held);
+    if (copiedImageUrl && copiedImageUrl !== held) await deleteOwnBlob(copiedImageUrl);
+  } catch (err) {
+    console.error('Failed to take back an item on a deleted wishlist:', errorKind(err));
+  }
+}
 
 /**
  * The item a "Save to my list" copy is made from, if `viewerId` may copy it:
@@ -75,6 +123,10 @@ async function replayCreate(
 ): Promise<NextResponse | null> {
   const existing = await Item.findOne({ wishlist: wishlistId, idempotencyKey: scopedKey });
   if (!existing) return null;
+  // The list was deleted after this request read it: the item found is one its
+  // delete (or the attempt that made it, see `isWishlistGone`) is taking away,
+  // so it's never answered with.
+  if (await isWishlistGone(wishlistId)) return wishlistGone();
   if (!isOwner && existing.status === 'draft') {
     return NextResponse.json(
       { success: false, error: 'This item has already been added' },
@@ -387,6 +439,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         if (replayed) return replayed;
       }
       throw err;
+    }
+
+    // The list may have been deleted since it was read, its items already
+    // cleaned up: take this one back rather than leave it behind (WIS-182).
+    if (await isWishlistGone(wishlistId)) {
+      await undoCreate(item._id, storedImageUrl, copiedImageUrl);
+      return wishlistGone();
     }
 
     // A visible new item changes the count on the list's share card.
