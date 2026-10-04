@@ -470,8 +470,8 @@ export default function BookedPage() {
         {loading ? (
           <div className="mt-8">
             <Skeleton className="mb-4 ml-1 h-6 w-24" />
-            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-              {Array.from({ length: 6 }).map((_, i) => (
+            <div className="grid grid-cols-1 gap-5">
+              {Array.from({ length: 3 }).map((_, i) => (
                 <div
                   key={i}
                   className="flex flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-sm"
@@ -797,7 +797,7 @@ function ReservationCard({
             href={link}
             target="_blank"
             rel="noopener noreferrer"
-            className={`${buttonClassName({ size: 'sm' })} min-w-0 flex-1`}
+            className={`${buttonClassName({ size: 'sm' })} flex-1 sm:flex-none`}
           >
             Open link
             <Icon name="external-link" size={16} />
@@ -809,13 +809,14 @@ function ReservationCard({
           variant={link ? 'secondary' : 'primary'}
           disabled={busy}
           onClick={onGift}
-          className={link ? undefined : 'flex-1'}
+          className="flex-1 sm:flex-none"
         >
           Mark as given
         </Button>
         <Menu
           label="More actions"
           icon="more"
+          className="relative flex sm:ml-auto"
           triggerClassName={MENU_TRIGGER}
           items={[
             {
@@ -957,7 +958,8 @@ function ReservationGroup({
           )}
         </h3>
       )}
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">{children}</div>
+      {/* One column: a card carries its notes and up to three actions. */}
+      <div className="grid grid-cols-1 gap-4">{children}</div>
     </section>
   );
 }
