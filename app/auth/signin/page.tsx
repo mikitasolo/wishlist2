@@ -4,6 +4,7 @@ import { connection } from 'next/server';
 import { auth } from '@/lib/auth';
 import { getEnvVars, getTurnstileKeys } from '@/lib/env';
 import { safeCallbackPath } from '@/lib/utils/callbackUrl';
+import { signInDestination } from '@/lib/utils/signInForm';
 import Spinner from '@/components/Spinner';
 import SignInForm from './SignInForm';
 
@@ -26,11 +27,12 @@ export default async function SignIn({ searchParams }: SignInProps) {
   // and Auth.js builds its callback URLs on), and for an auth page, which
   // would loop. Signing in as someone else means signing out first. Without a
   // session cookie this reads nothing from the database.
+  const { callbackUrl } = await searchParams;
+  const raw = Array.isArray(callbackUrl) ? callbackUrl[0] : callbackUrl;
+  const origin = new URL(getEnvVars().NEXTAUTH_URL).origin;
   const session = await auth();
   if (session?.user?.id) {
-    const { callbackUrl } = await searchParams;
-    const raw = Array.isArray(callbackUrl) ? callbackUrl[0] : callbackUrl;
-    redirect(safeCallbackPath(raw, new URL(getEnvVars().NEXTAUTH_URL).origin, '/auth'));
+    redirect(safeCallbackPath(raw, origin, '/auth'));
   }
 
   return (
@@ -43,7 +45,12 @@ export default async function SignIn({ searchParams }: SignInProps) {
         </div>
       }
     >
-      <SignInForm turnstileSiteKey={turnstileSiteKey} />
+      {/* From the callback's path alone: never a read of the list or profile,
+          so the page can't name a private list or say whether it exists. */}
+      <SignInForm
+        turnstileSiteKey={turnstileSiteKey}
+        destination={signInDestination(raw, origin)}
+      />
     </Suspense>
   );
 }

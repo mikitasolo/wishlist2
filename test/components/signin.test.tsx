@@ -14,6 +14,13 @@ vi.mock('next/navigation', () => ({
   redirect: vi.fn(),
 }));
 
+// The page reads NEXTAUTH_URL's origin, which `getEnvVars` refuses to give a
+// browser (jsdom has a `window`); the Turnstile keys stay real.
+vi.mock('@/lib/env', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/env')>()),
+  getEnvVars: () => ({ NEXTAUTH_URL: 'http://localhost:3000' }),
+}));
+
 const connection = vi.hoisted(() => vi.fn(async () => {}));
 vi.mock('next/server', () => ({ connection }));
 
@@ -29,6 +36,8 @@ import { requestMagicLink } from '@/app/auth/signin/actions';
 import SignInForm, {
   CHALLENGE_FAILED_MESSAGE,
   CHALLENGE_LOAD_FAILED_MESSAGE,
+  RESENT_MESSAGE,
+  SEND_FAILED_MESSAGE,
   TOKEN_WAIT_MS,
 } from '@/app/auth/signin/SignInForm';
 import SignInPage from '@/app/auth/signin/page';
@@ -457,6 +466,167 @@ describe('SignInForm — Turnstile widget', () => {
   });
 });
 
+describe('SignInForm — copy and inline validation', () => {
+  it('greets new and returning people alike, with no footer line', () => {
+    render(<SignInForm />);
+
+    expect(
+      screen.getByRole('heading', { name: 'Sign in or create an account' })
+    ).toBeInTheDocument();
+    expect(screen.getByText("We'll email you a link — no password.")).toBeInTheDocument();
+    expect(screen.queryByText(/welcome back/i)).toBeNull();
+    expect(screen.queryByText(/new users will automatically/i)).toBeNull();
+    expect(screen.queryByText(/continue to the/i)).toBeNull();
+  });
+
+  it.each([
+    ['wishlist', "We'll email you a link to continue to the wishlist you opened — no password."],
+    ['profile', "We'll email you a link to continue to the profile you opened — no password."],
+  ] as const)('says where a %s link continues to', (destination, hint) => {
+    render(<SignInForm destination={destination} />);
+    expect(screen.getByText(hint)).toBeInTheDocument();
+  });
+
+  it('shows an inline error for an invalid email and sends nothing', async () => {
+    render(<SignInForm />);
+    const field = screen.getByLabelText(/email address/i);
+
+    await userEvent.type(field, 'me.example.com');
+    await userEvent.click(sendButton());
+
+    expect(mockedRequest).not.toHaveBeenCalled();
+    expect(field).toHaveAttribute('aria-invalid', 'true');
+    expect(field).toHaveAccessibleDescription('Enter an email address like you@example.com');
+    expect(field).toHaveFocus();
+    // The browser's own bubble is off: the form validates inline.
+    expect(field.closest('form')).toHaveAttribute('novalidate');
+
+    // Fixing it clears the error as you type.
+    await userEvent.clear(field);
+    await userEvent.type(field, 'me@example.com');
+    expect(field).not.toHaveAttribute('aria-invalid');
+  });
+
+  it('asks for an address when the field is empty', async () => {
+    render(<SignInForm />);
+    await userEvent.click(sendButton());
+
+    expect(mockedRequest).not.toHaveBeenCalled();
+    expect(screen.getByLabelText(/email address/i)).toHaveAccessibleDescription(
+      'Enter your email address'
+    );
+  });
+});
+
+describe('SignInForm — the link-sent card', () => {
+  const resendButton = () => screen.getByRole('button', { name: /resend link/i });
+
+  async function sendLink(email = 'me@example.com') {
+    await userEvent.type(screen.getByLabelText(/email address/i), email);
+    await userEvent.click(sendButton());
+    await screen.findByRole('heading', { name: 'Check your email' });
+  }
+
+  it('says where the link went, and suggests the spam folder', async () => {
+    mockedRequest.mockResolvedValue({ ok: true });
+    render(<SignInForm />);
+    await sendLink('  me@example.com ');
+
+    expect(screen.getByText('me@example.com').closest('p')).toHaveTextContent(
+      'Sent to me@example.com'
+    );
+    expect(screen.getByText("Can't find it? Check your spam folder.")).toBeInTheDocument();
+  });
+
+  it('goes back to the form with the address kept on Use a different email', async () => {
+    mockedRequest.mockResolvedValue({ ok: true });
+    render(<SignInForm />);
+    await sendLink();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Use a different email' }));
+
+    const field = screen.getByLabelText(/email address/i);
+    expect(field).toHaveValue('me@example.com');
+    expect(field).toHaveFocus();
+    expect(sendButton()).toBeEnabled();
+  });
+
+  describe('Resend link', () => {
+    beforeEach(() => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    const advance = (ms: number) =>
+      act(async () => {
+        await vi.advanceTimersByTimeAsync(ms);
+      });
+
+    /** Turnstile on, a link sent with `TOKEN`. */
+    async function sentWithWidget() {
+      const turnstile = fakeTurnstile();
+      window.turnstile = turnstile.api;
+      render(<SignInForm turnstileSiteKey={SITE_KEY} />);
+      await vi.waitFor(() => expect(turnstile.api.render).toHaveBeenCalledTimes(1));
+      await turnstile.pass();
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      await user.type(screen.getByLabelText(/email address/i), 'me@example.com');
+      await user.click(sendButton());
+      await screen.findByRole('heading', { name: 'Check your email' });
+      return { turnstile, user };
+    }
+
+    it('is held for 30 seconds, then sends again with a fresh Turnstile token', async () => {
+      mockedRequest.mockResolvedValue({ ok: true });
+      const { turnstile, user } = await sentWithWidget();
+      // The first send spent its token: the widget is reset for the next one.
+      expect(turnstile.api.reset).toHaveBeenCalledTimes(1);
+
+      expect(resendButton()).toBeDisabled();
+      expect(resendButton()).toHaveTextContent('Resend link in 30s');
+      await advance(29_000);
+      expect(resendButton()).toBeDisabled();
+      await advance(1_000);
+      expect(resendButton()).toBeEnabled();
+      expect(resendButton()).toHaveTextContent(/^Resend link$/);
+
+      await user.click(resendButton());
+      // It waits for the token the reset asked for rather than reusing the spent one.
+      expect(mockedRequest).toHaveBeenCalledTimes(1);
+      await turnstile.pass('fresh-token');
+
+      await vi.waitFor(() => expect(mockedRequest).toHaveBeenCalledTimes(2));
+      expect(mockedRequest).toHaveBeenLastCalledWith({
+        email: 'me@example.com',
+        callbackUrl: '/',
+        turnstileToken: 'fresh-token',
+      });
+      expect(await screen.findByRole('status')).toHaveTextContent(RESENT_MESSAGE);
+      expect(turnstile.api.reset).toHaveBeenCalledTimes(2);
+      // And it's held again.
+      expect(resendButton()).toBeDisabled();
+    });
+
+    // A resend spends the same fail-closed sign-in limits as the first send.
+    it("shows the send's error when the resend is refused (e.g. rate-limited)", async () => {
+      mockedRequest.mockResolvedValue({ ok: true });
+      const { turnstile, user } = await sentWithWidget();
+      await advance(30_000);
+
+      mockedRequest.mockResolvedValue({ ok: false, error: 'send_failed' });
+      await user.click(resendButton());
+      await turnstile.pass('fresh-token');
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(SEND_FAILED_MESSAGE);
+      expect(screen.getByRole('heading', { name: 'Check your email' })).toBeInTheDocument();
+      expect(screen.getByRole('status')).toHaveTextContent('');
+      expect(resendButton()).toBeEnabled();
+    });
+  });
+});
+
 // The page decides whether the widget is shown, per request, from the same
 // reading of the environment the server action checks tokens against.
 describe('the sign-in page', () => {
@@ -468,6 +638,32 @@ describe('the sign-in page', () => {
     // The form's widget renders only with a key: count Cloudflare's script tag.
     return document.querySelectorAll(`script[src="${TURNSTILE_SCRIPT_URL}"]`).length;
   }
+
+  // The hint comes from the callback's path alone: the page reads no list, so a
+  // private list's name (or whether it exists) can't reach whoever opens the link.
+  it.each([
+    [
+      '/wishlists/anna-secret-surprise',
+      "We'll email you a link to continue to the wishlist you opened — no password.",
+    ],
+    [
+      'http://localhost:3000/users/anna',
+      "We'll email you a link to continue to the profile you opened — no password.",
+    ],
+  ])('keeps the callbackUrl hint generic for %s', async (callbackUrl, hint) => {
+    render(await SignInPage({ searchParams: Promise.resolve({ callbackUrl }) }));
+
+    expect(screen.getByText(hint)).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent(/secret|anna/i);
+  });
+
+  it.each(['/notifications', 'https://evil.example/wishlists/abc'])(
+    'adds no hint for %s',
+    async (callbackUrl) => {
+      render(await SignInPage({ searchParams: Promise.resolve({ callbackUrl }) }));
+      expect(screen.queryByText(/continue to the/i)).toBeNull();
+    }
+  );
 
   it('shows the widget when both keys are set, rendering per request', async () => {
     vi.stubEnv('NEXT_PUBLIC_TURNSTILE_SITE_KEY', SITE_KEY);
