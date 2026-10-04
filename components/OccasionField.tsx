@@ -98,7 +98,7 @@ export default function OccasionField({
           onChange={pickKind}
           options={KIND_OPTIONS}
           ariaLabel="Occasion"
-          size="md"
+          size="lg"
           triggerClassName="w-full sm:w-44"
           disabled={disabled}
         />
@@ -112,7 +112,7 @@ export default function OccasionField({
                   options={MONTH_OPTIONS}
                   ariaLabel="Occasion month"
                   placeholder="Month"
-                  size="md"
+                  size="lg"
                   triggerClassName="min-w-0 flex-1 sm:w-40 sm:flex-none"
                   disabled={disabled}
                 />
@@ -122,7 +122,7 @@ export default function OccasionField({
                   options={dayOptions(value.month)}
                   ariaLabel="Occasion day"
                   placeholder="Day"
-                  size="md"
+                  size="lg"
                   triggerClassName="w-24"
                   disabled={disabled}
                 />

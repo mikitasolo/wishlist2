@@ -256,7 +256,7 @@ export default function CreateWishlistModal({
                   onChange={(v) => setFormData({ ...formData, currency: v })}
                   options={currencySelectOptions}
                   ariaLabel="Wishlist currency"
-                  size="md"
+                  size="lg"
                   triggerClassName="w-full"
                   disabled={isSubmitting}
                 />

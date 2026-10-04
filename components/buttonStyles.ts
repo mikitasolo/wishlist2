@@ -23,7 +23,8 @@ export type ButtonVariant =
   | 'destructive'
   | 'warning'
   | 'cancel'
-  | 'ghost';
+  | 'ghost'
+  | 'scrim';
 export type ButtonSize = 'sm' | 'md' | 'lg' | 'xl';
 /** `rounded` (`rounded-xl`) by default; `pill` for page chrome and header actions. */
 export type ButtonShape = 'rounded' | 'pill';
@@ -54,6 +55,9 @@ const variantStyles: Record<ButtonVariant, string> = {
     'bg-warning-fill text-white shadow-sm hover:bg-warning-fill-hover active:scale-[0.98] disabled:hover:bg-warning-fill',
   cancel: 'bg-muted text-foreground hover:bg-surface-2 active:scale-[0.98] disabled:hover:bg-muted',
   ghost: 'text-foreground hover:bg-muted active:scale-[0.98] disabled:hover:bg-transparent',
+  /** Over a photo (the preview's Replace and Remove): white on a dark, blurred scrim. */
+  scrim:
+    'bg-black/45 text-white backdrop-blur-md hover:bg-black/60 active:scale-[0.98] disabled:hover:bg-black/45',
 };
 
 const sizeStyles: Record<ButtonSize, string> = {

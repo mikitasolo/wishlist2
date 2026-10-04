@@ -187,7 +187,7 @@ function Welcome() {
                   options={currencySelectOptions}
                   disabled={saving}
                   ariaLabel="Currency"
-                  size="md"
+                  size="lg"
                   triggerClassName="w-full sm:w-80"
                 />
               </Field>

@@ -400,7 +400,7 @@ export default function ItemForm({
           />
           <Select
             ariaLabel="Currency"
-            size="md"
+            size="lg"
             value={formData.currency}
             onChange={(currency) => setFormData((f) => ({ ...f, currency }))}
             options={currencySelectOptions}

@@ -289,23 +289,25 @@ export default function ImageUpload({
         >
           <BannerImage src={value} alt="Uploaded image" sizes="(max-width: 640px) 100vw, 40rem" />
           <div className="absolute right-2 top-2 flex gap-1.5">
-            <button
+            <Button
               ref={replaceRef}
               type="button"
+              variant="scrim"
+              size="sm"
               onClick={openPicker}
               disabled={disabled || uploading}
-              className="rounded-lg bg-black/45 px-2.5 py-1 text-xs font-semibold text-white backdrop-blur-md transition-colors hover:bg-black/60 disabled:opacity-50"
             >
               Replace
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              variant="scrim"
+              size="sm"
               onClick={() => onChange(null)}
               disabled={disabled || uploading}
-              className="rounded-lg bg-black/45 px-2.5 py-1 text-xs font-semibold text-white backdrop-blur-md transition-colors hover:bg-black/60 disabled:opacity-50"
             >
               Remove
-            </button>
+            </Button>
           </div>
           {uploading && (
             <div className="absolute inset-0 flex items-center justify-center bg-black/40 text-white">
