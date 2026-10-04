@@ -379,7 +379,7 @@ describe('POST /api/wishlists/[id]/items with sourceItemId — nothing about boo
     };
     expect(comparable(fromBooked)).toEqual(comparable(fromAvailable));
     expect(fromBooked.data.status).toBe('available');
-    expect(fromBooked.data.bookedBy).toBeNull();
+    expect(fromBooked.data.bookedBy ?? null).toBeNull();
     expect(fromBooked.data.proposedBy).toBeUndefined();
 
     const stored = await Item.findById(fromBooked.data._id).lean();
@@ -405,7 +405,7 @@ describe('POST /api/wishlists/[id]/items with sourceItemId — nothing about boo
     expect(text).not.toContain(carol);
     const { data } = JSON.parse(text);
     expect(data.status).toBe('available');
-    expect(data.bookedBy).toBeNull();
+    expect(data.bookedBy ?? null).toBeNull();
   });
 
   it('ignores a bookedBy, proposedBy or booked status sent with a copy', async () => {

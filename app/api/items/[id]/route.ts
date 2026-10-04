@@ -9,7 +9,7 @@ import Wishlist from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
 import { updateItemSchema, validateRequestBody } from '@/lib/validations';
 import { ensureCurrencyRatesUpToDate } from '@/lib/utils/currencyRates';
-import { itemPriceInUsdCents } from '@/lib/utils/itemPrice';
+import { readGivenByViewer, serializeItem, type ItemViewer } from '@/lib/utils/itemSerializer';
 import {
   canAttachImage,
   deleteOwnBlob,
@@ -26,7 +26,6 @@ import { createNotification } from '@/lib/notifications';
 import { isWishlistOwner } from '@/lib/utils/wishlistOwners';
 import { isHiddenByArchive } from '@/lib/utils/wishlistAccess';
 import { isObjectIdParam } from '@/lib/utils/objectId';
-import { itemsGivenBy } from '@/lib/utils/giftHistory';
 import { undoBookingUnlessMember, type LostBookingReason } from '@/lib/utils/lateBooking';
 import { isCountedOnShareCard } from '@/lib/og/data';
 import { purgeShareCards } from '@/lib/og/purge';
@@ -469,48 +468,26 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       });
     }
 
-    // Sanitize the reply with the SAME privacy rules as GET /items so a PATCH
-    // can never leak what the list endpoint hides:
-    //  - proposals are anonymous to the owner (never return `proposedBy` to
-    //    anyone but the proposer themselves), and
-    //  - owners never see booking status (booked folds into available).
-    // Also carries the list read's `priceInUsdCents`, so a re-priced item sorts
-    // by its new price without waiting for the next poll.
-    const itemObj = { ...item.toObject(), priceInUsdCents: itemPriceInUsdCents(item.price, rates) };
-    const isProposedByMe = itemObj.proposedBy?.toString() === session.user.id;
-    const isBookedByMe = itemObj.bookedBy?.toString() === session.user.id;
+    // Shaped exactly as GET /items shapes it (serializeItem), so a PATCH can
+    // never show what the list read hides: owners never see a booking or a
+    // proposer, and nobody gets anyone else's id. It also carries the list
+    // read's `priceInUsdCents`, so a re-priced item sorts by its new price
+    // without waiting for the next poll. Anyone else who got this far is a
+    // proposer who isn't a member, editing their own proposal.
+    const viewer: ItemViewer = isOwner
+      ? { role: 'owner' }
+      : isMember
+        ? {
+            role: 'member',
+            id: session.user.id,
+            givenByViewer: await readGivenByViewer(session.user.id, [item]),
+          }
+        : { role: 'proposer', id: session.user.id };
 
-    let responseData;
-    if (isOwner) {
-      // Owner: hide the proposer and any booking.
-      responseData = {
-        ...itemObj,
-        status: itemObj.status === 'booked' ? 'available' : itemObj.status,
-        bookedBy: undefined,
-        proposedBy: undefined,
-      };
-    } else if (isMember) {
-      // Members may see booking status, but only their own booking/proposal id,
-      // and, as the list read gives it, whether a gift they hold the booking of
-      // is one they've marked as given (`givenByMe`).
-      const givenByMe = isBookedByMe && (await itemsGivenBy(session.user.id, [item._id])).size > 0;
-      responseData = {
-        ...itemObj,
-        bookedBy: isBookedByMe ? session.user.id : undefined,
-        proposedBy: isProposedByMe ? session.user.id : undefined,
-        givenByMe,
-      };
-    } else {
-      // Any other authorized viewer (e.g. a proposer who isn't a member).
-      responseData = {
-        ...itemObj,
-        status: itemObj.status === 'booked' ? 'available' : itemObj.status,
-        bookedBy: undefined,
-        proposedBy: isProposedByMe ? session.user.id : undefined,
-      };
-    }
-
-    return NextResponse.json({ success: true, data: responseData }, { status: 200 });
+    return NextResponse.json(
+      { success: true, data: serializeItem(item, viewer, rates) },
+      { status: 200 }
+    );
   } catch (error) {
     console.error('Error updating item:', error);
     return NextResponse.json({ success: false, error: 'Failed to update item' }, { status: 500 });

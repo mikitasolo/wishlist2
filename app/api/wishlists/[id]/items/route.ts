@@ -8,7 +8,7 @@ import Wishlist from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
 import { createItemSchema, validateRequestBody } from '@/lib/validations';
 import { ensureCurrencyRatesUpToDate } from '@/lib/utils/currencyRates';
-import { itemPriceInUsdCents } from '@/lib/utils/itemPrice';
+import { readGivenByViewer, serializeItem, type ItemViewer } from '@/lib/utils/itemSerializer';
 import { resolveWishlistId } from '@/lib/utils/wishlistSlug';
 import { createNotifications } from '@/lib/notifications';
 import { isWishlistOwner, ownerIds } from '@/lib/utils/wishlistOwners';
@@ -21,7 +21,6 @@ import {
   isOwnBlob,
 } from '@/lib/utils/blob';
 import { isObjectIdParam } from '@/lib/utils/objectId';
-import { itemsGivenBy } from '@/lib/utils/giftHistory';
 import {
   canCopyItem,
   COPY_IMAGE_FAILED_NOTICE,
@@ -49,7 +48,8 @@ async function findCopySource(sourceItemId: string, viewerId: string) {
 }
 
 // GET /api/wishlists/[id]/items - Get all items for a wishlist
-// Owners and public users don't see bookedBy to avoid spoiling surprises
+// Each item is shaped for its viewer by serializeItem: owners and visitors never
+// see a booking, and nobody sees anyone else's id.
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth();
@@ -103,94 +103,19 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // gift already given back up for someone else to buy. Read only for a member
     // who isn't an owner, and only for their own bookings: nothing of it reaches
     // an owner (booking-blind; `isMember` never includes one), a visitor, or
-    // anyone else's bookings.
+    // anyone else's bookings. serializeItem then shapes each item for the viewer.
     const viewerId = session?.user?.id;
-    const givenByViewer =
-      viewerId && isMember
-        ? await itemsGivenBy(
-            viewerId,
-            visibleItems
-              .filter((item) => item.status === 'booked' && item.bookedBy?.toString() === viewerId)
-              .map((item) => item._id)
-          )
-        : new Set<string>();
+    const viewer: ItemViewer = isOwner
+      ? { role: 'owner' }
+      : viewerId && isMember
+        ? {
+            role: 'member',
+            id: viewerId,
+            givenByViewer: await readGivenByViewer(viewerId, visibleItems),
+          }
+        : { role: 'visitor' };
 
-    // Filter items based on user role and enrich with priceInUsdCents
-    const filteredItems = visibleItems.map((item) => {
-      const itemObj = item.toObject();
-
-      const enrichedItem = {
-        ...itemObj,
-        priceInUsdCents: itemPriceInUsdCents(itemObj.price, rates),
-      };
-
-      if (!session?.user) {
-        // Public users: hide booking details completely
-        // Public users: hide proposedBy completely
-        if (itemObj.status === 'booked') {
-          return {
-            ...enrichedItem,
-            status: 'available', // Show as available to avoid spoiling
-            bookedBy: undefined,
-            proposedBy: undefined,
-          };
-        }
-        return {
-          ...enrichedItem,
-          bookedBy: undefined,
-          proposedBy: undefined,
-        };
-      }
-
-      if (isOwner) {
-        // Owners CANNOT see which items are booked (hide booking info)
-        // Owners CANNOT see who proposed items (hide proposedBy info)
-        if (itemObj.status === 'booked') {
-          return {
-            ...enrichedItem,
-            status: 'available', // Show as available
-            bookedBy: undefined,
-            proposedBy: undefined, // Hide who proposed the item
-          };
-        }
-        return {
-          ...enrichedItem,
-          bookedBy: undefined,
-          proposedBy: undefined, // Hide who proposed the item
-        };
-      }
-
-      if (isMember) {
-        // Member: CAN see which items are booked (status shows as 'booked')
-        // Can see if THEY booked it (bookedBy shows their ID)
-        // Can see if THEY proposed it (proposedBy shows their ID)
-        const isBookedByMe = itemObj.bookedBy?.toString() === session.user.id;
-        const isProposedByMe = itemObj.proposedBy?.toString() === session.user.id;
-        return {
-          ...enrichedItem,
-          // Keep status as 'booked' so members can see which items are booked
-          bookedBy: isBookedByMe ? session.user.id : undefined, // Only show if current user booked it
-          proposedBy: isProposedByMe ? session.user.id : undefined, // Only show if current user proposed it
-          // Only ever true on an item they booked themselves (see givenByViewer).
-          givenByMe: isBookedByMe && givenByViewer.has(itemObj._id.toString()),
-        };
-      }
-
-      // Not a member: hide booking details and proposedBy
-      if (itemObj.status === 'booked') {
-        return {
-          ...enrichedItem,
-          status: 'available',
-          bookedBy: undefined,
-          proposedBy: undefined,
-        };
-      }
-      return {
-        ...enrichedItem,
-        bookedBy: undefined,
-        proposedBy: undefined,
-      };
-    });
+    const filteredItems = visibleItems.map((item) => serializeItem(item, viewer, rates));
 
     return NextResponse.json({ success: true, data: filteredItems }, { status: 200 });
   } catch (error) {
@@ -409,13 +334,19 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       });
     }
 
-    // Carries the list read's `priceInUsdCents`, so the page can sort the new
-    // item by price before the next poll brings it in. A copy's reply describes
-    // only the copy: nothing in it depends on the source's status or bookings.
+    // Shaped as the list read shapes it (serializeItem), so the page can sort
+    // the new item by price before the next poll brings it in, and a proposal's
+    // answer carries only its proposer's own id, as their read of the list does.
+    // A new item is never booked, so a member's `givenByMe` is false without a
+    // read. A copy's reply describes only the copy: nothing in it depends on the
+    // source's status or bookings.
+    const viewer: ItemViewer = isOwner
+      ? { role: 'owner' }
+      : { role: 'member', id: session.user.id, givenByViewer: new Set() };
     return NextResponse.json(
       {
         success: true,
-        data: { ...item.toObject(), priceInUsdCents: itemPriceInUsdCents(item.price, rates) },
+        data: serializeItem(item, viewer, rates),
         ...(notice ? { notice } : {}),
       },
       { status: 201 }
