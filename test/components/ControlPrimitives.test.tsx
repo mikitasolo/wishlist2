@@ -55,6 +55,16 @@ describe('Button', () => {
     expect(container.querySelector('svg')).toHaveAttribute('width', '18');
   });
 
+  it("has a scrim look for buttons over a photo, at the scale's sm height", () => {
+    render(
+      <Button variant="scrim" size="sm">
+        Replace
+      </Button>
+    );
+    const b = screen.getByRole('button', { name: 'Replace' });
+    expect(b).toHaveClass('bg-black/45', 'text-white', 'h-9');
+  });
+
   it("doesn't submit the form it's in unless it says it's the submit button", async () => {
     const onSubmit = vi.fn((e: React.FormEvent) => e.preventDefault());
     render(

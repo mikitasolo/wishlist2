@@ -501,7 +501,7 @@ export default function SettingsPage() {
               onChange={(defaultCurrency) => changeInstant('defaultCurrency', defaultCurrency)}
               options={currencySelectOptions}
               ariaLabel="Default currency"
-              size="md"
+              size="lg"
               triggerClassName="w-full sm:w-80"
             />
             <p className={FIELD_HELPER}>

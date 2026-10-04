@@ -150,7 +150,7 @@ export default function WishlistSettingsTab({
                 onChange={(v) => onEdit({ currency: v })}
                 options={currencySelectOptions}
                 ariaLabel="Wishlist currency"
-                size="md"
+                size="lg"
                 triggerClassName="w-full"
                 disabled={saving}
               />

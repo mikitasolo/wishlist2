@@ -19,8 +19,8 @@ interface SelectProps {
   /** Extra classes for the trigger button (width, min-width, etc.). */
   triggerClassName?: string;
   menuAlign?: 'left' | 'right';
-  /** Trigger height. 'sm' (h-9) for toolbars, 'md' (h-11) to sit beside inputs. */
-  size?: 'sm' | 'md';
+  /** Trigger height. the control scale's `sm` (h-9) for toolbars, `lg` (h-11) to sit beside inputs. */
+  size?: 'sm' | 'lg';
   /** Shown, muted, on the trigger while `value` matches no option (nothing picked yet). */
   placeholder?: string;
   /**
@@ -32,7 +32,7 @@ interface SelectProps {
 
 const sizeStyles = {
   sm: 'h-9 text-sm',
-  md: 'h-11 text-body',
+  lg: 'h-11 text-body',
 };
 
 /** How long a pause ends a type-ahead search, as in a native select. */
