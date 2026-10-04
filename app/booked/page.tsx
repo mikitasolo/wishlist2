@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useSession } from 'next-auth/react';
+import { useKnownSession } from '@/lib/hooks/useKnownSession';
 import AppHeader from '@/components/AppHeader';
 import AuthButton from '@/components/AuthButton';
 import Icon from '@/components/Icon';
@@ -128,7 +128,7 @@ async function readList<T>(url: string): Promise<T[] | null> {
 }
 
 export default function BookedPage() {
-  const { data: session, status } = useSession();
+  const { data: session, status } = useKnownSession();
   const userId = session?.user?.id;
   const router = useRouter();
   const { showToast } = useToast();

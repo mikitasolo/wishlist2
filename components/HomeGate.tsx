@@ -1,7 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import { useSession } from 'next-auth/react';
+import { useKnownSession } from '@/lib/hooks/useKnownSession';
 import Dashboard from '@/components/Dashboard';
 import Landing from '@/components/Landing';
 
@@ -18,7 +18,7 @@ import Landing from '@/components/Landing';
  * instead: a page with Sign in on it, never a skeleton that waits for good.
  */
 export default function HomeGate({ landing }: { landing: ReactNode | null }) {
-  const { status } = useSession();
+  const { status } = useKnownSession();
   if (status !== 'unauthenticated') return <Dashboard />;
   return landing ?? <Landing />;
 }

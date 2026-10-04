@@ -1,7 +1,7 @@
 'use client';
 
 import { ReactNode, useState } from 'react';
-import { useSession } from 'next-auth/react';
+import { useKnownSession } from '@/lib/hooks/useKnownSession';
 import BrandLink from '@/components/BrandLink';
 import GlobalSearch from '@/components/GlobalSearch';
 import { HeaderNav, TabBar } from '@/components/AppNav';
@@ -48,7 +48,7 @@ interface AppHeaderProps {
  * moves anything else.
  */
 export default function AppHeader({ actions, search = true, minimal = false }: AppHeaderProps) {
-  const { data: session, status } = useSession();
+  const { data: session, status } = useKnownSession();
   const [searchOpen, setSearchOpen] = useState(false);
   // An `update()` puts a known session back through loading: it's still signed in.
   const signedIn = !!session?.user;

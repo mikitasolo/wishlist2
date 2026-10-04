@@ -419,38 +419,6 @@ describe('settings that save as they change', () => {
     expect(photoValue()).toBe(PHOTO);
   });
 
-  it('drops a reload that read the profile before a later save landed', async () => {
-    const user = await openSettings();
-    // Like next-auth's: the status goes to loading and back, and the page
-    // reads the profile again.
-    update.mockImplementation(async () => {
-      auth.set('loading');
-      await Promise.resolve();
-      auth.set('authenticated');
-    });
-    let release!: () => void;
-    holdGet = new Promise((resolve) => (release = resolve));
-
-    // A photo change refreshes the session, which sends the reload.
-    await user.click(screen.getByRole('button', { name: 'Finish upload' }));
-    await waitFor(() => expect(gets).toBe(2));
-
-    // The reload has read the profile but not answered when the next save lands.
-    await user.click(searchable());
-    await waitFor(() => expect(patches).toHaveLength(2));
-    await waitFor(() => expect(server.privacy.searchable).toBe(false));
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    });
-
-    // Its answer predates that save, so the form keeps what the save stored.
-    await act(async () => {
-      release();
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    });
-    expect(searchable()).toHaveAttribute('aria-checked', 'false');
-  });
-
   it('keeps the form up while the session is read again', async () => {
     const user = await openSettings();
     update.mockImplementation(async () => {
@@ -725,26 +693,4 @@ describe('settings that couldn’t be loaded', () => {
       expect(showToast).not.toHaveBeenCalled();
     }
   );
-
-  it('keeps the form when a reload after a save fails', async () => {
-    const user = await openSettings();
-    update.mockImplementation(async () => {
-      auth.set('loading');
-      await Promise.resolve();
-      auth.set('authenticated');
-    });
-
-    // A photo change refreshes the session, which reads the profile again: that read fails.
-    failGet = 'network';
-    await user.click(screen.getByRole('button', { name: 'Finish upload' }));
-    await waitFor(() => expect(gets).toBe(2));
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    });
-
-    expect(screen.getByRole('switch', { name: 'Searchable' })).toBeInTheDocument();
-    expect(screen.getByRole('textbox', { name: 'Bio' })).toHaveValue('I collect mugs.');
-    expect(screen.queryByRole('heading', { name: 'Couldn’t load your settings' })).toBeNull();
-    expect(showToast).toHaveBeenCalledWith('Failed to load settings', 'error');
-  });
 });

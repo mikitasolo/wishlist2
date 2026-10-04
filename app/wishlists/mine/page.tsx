@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useSession } from 'next-auth/react';
+import { useKnownSession } from '@/lib/hooks/useKnownSession';
 import AppHeader from '@/components/AppHeader';
 import AuthButton from '@/components/AuthButton';
 import Button from '@/components/Button';
@@ -25,7 +25,7 @@ type Wishlist = IWishlist & {
 };
 
 export default function MyWishlistsPage() {
-  const { data: session, status } = useSession();
+  const { data: session, status } = useKnownSession();
   const viewerId = session?.user?.id ?? null;
   const router = useRouter();
   const { showToast } = useToast();

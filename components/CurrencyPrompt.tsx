@@ -1,7 +1,7 @@
 'use client';
 
 import { useId, useRef, useState } from 'react';
-import { useSession } from 'next-auth/react';
+import { useKnownSession } from '@/lib/hooks/useKnownSession';
 import Button from './Button';
 import Icon from './Icon';
 import { ACTION_CARD_SURFACE } from './InviteCard';
@@ -47,7 +47,7 @@ export interface CurrencyOffer {
  * rows before it renders any; `CurrencyPrompt` draws it.
  */
 export function useCurrencyOffer(): CurrencyOffer | null {
-  const { data: session, status, update } = useSession();
+  const { data: session, status, update } = useKnownSession();
   const { showToast } = useToast();
   const suggestion = useCurrencySuggestion();
   const [answered, setAnswered] = useState(false);

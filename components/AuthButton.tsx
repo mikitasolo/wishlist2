@@ -1,6 +1,7 @@
 'use client';
 
-import { signIn, signOut, useSession } from 'next-auth/react';
+import { signIn, signOut } from 'next-auth/react';
+import { useKnownSession } from '@/lib/hooks/useKnownSession';
 import Avatar from '@/components/Avatar';
 import Icon from '@/components/Icon';
 import Button from '@/components/Button';
@@ -27,7 +28,7 @@ const ACCOUNT_TRIGGER_BOX = 'items-center gap-1.5 rounded-full p-1 sm:pr-2';
  * something new is waiting.
  */
 export default function AuthButton() {
-  const { data: session, status } = useSession();
+  const { data: session, status } = useKnownSession();
   const { theme, setTheme } = useTheme();
   const user = session?.user;
 

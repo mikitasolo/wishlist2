@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useSession } from 'next-auth/react';
+import { useKnownSession } from '@/lib/hooks/useKnownSession';
 import AppHeader from '@/components/AppHeader';
 import AuthButton from '@/components/AuthButton';
 import Badge from '@/components/Badge';
@@ -66,7 +66,7 @@ const LS_LISTS = 'items-wishlist-filters';
 const LS_SORT = 'items-sort';
 
 export default function MyItemsPage() {
-  const { status } = useSession();
+  const { status } = useKnownSession();
   const router = useRouter();
   const { showToast } = useToast();
   const locale = useViewerLocale();

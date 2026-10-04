@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, usePathname, useSearchParams } from 'next/navigation';
-import { signIn, useSession } from 'next-auth/react';
+import { signIn } from 'next-auth/react';
+import { useKnownSession } from '@/lib/hooks/useKnownSession';
 import Link from 'next/link';
 import AuthButton from '@/components/AuthButton';
 import AppHeader from '@/components/AppHeader';
@@ -42,7 +43,7 @@ interface Profile {
 }
 
 export default function UserProfile() {
-  const { data: session, status } = useSession();
+  const { data: session, status } = useKnownSession();
   const params = useParams();
   const { showToast } = useToast();
   const username = typeof params?.username === 'string' ? params.username : null;

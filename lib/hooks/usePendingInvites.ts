@@ -3,7 +3,7 @@
 import { withWelcomeMarker } from '@/lib/utils/memberWelcome';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useSession } from 'next-auth/react';
+import { useKnownSession } from '@/lib/hooks/useKnownSession';
 import { useToast } from '@/components/ToastProvider';
 import type { PendingInvite } from '@/components/InviteCard';
 import { useBusyIds } from '@/lib/hooks/useBusyIds';
@@ -43,7 +43,7 @@ interface PendingInvitesOptions {
  * that fails keeps the cards.
  */
 export function usePendingInvites({ onAnswered }: PendingInvitesOptions = {}) {
-  const { data: session, status } = useSession();
+  const { data: session, status } = useKnownSession();
   const userId = session?.user?.id;
   const router = useRouter();
   const { showToast } = useToast();
