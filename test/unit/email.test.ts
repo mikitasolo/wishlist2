@@ -320,7 +320,7 @@ describe('user-controlled values in email HTML', () => {
     const { html, text, subject } = sentMessage();
     expect(html).not.toContain('<a href="https://evil.example"');
     expect(html).toContain(`their wishlist <strong>${MARKUP_NAME_HTML}</strong>.`);
-    expect(text).toContain(`their wishlist “${MARKUP_NAME}”.`);
+    expect(text).toContain(`their wishlist “\u2068${MARKUP_NAME}\u2069”.`);
     expect(subject).toBe('@alice invited you to a wishlist');
   });
 
@@ -339,7 +339,7 @@ describe('user-controlled values in email HTML', () => {
     expect(html).not.toContain('<img src=x');
     expect(html).toContain('<strong>&lt;img src=x onerror=alert(1)&gt;</strong> invited you');
     expect(html).toContain('Invitation sent to <strong>o&#39;brien@example.com</strong>');
-    expect(text).toContain('<img src=x onerror=alert(1)> invited you');
+    expect(text).toContain('\u2068<img src=x onerror=alert(1)>\u2069 invited you');
   });
 
   it('escapes the magic link in the button and the paste-this-link fallback', async () => {
@@ -415,7 +415,7 @@ describe('the invite email subject', () => {
     const { subject, html, text } = sentMessage();
     expect(subject).toBe('Someone invited you to co-own a wishlist');
     expect(html).toContain('<strong>evil.example/login</strong> invited you to co-own');
-    expect(text).toContain('evil.example/login invited you to co-own');
+    expect(text).toContain('\u2068evil.example/login\u2069 invited you to co-own');
   });
 
   it("prints the same subject in the console transport's log", async () => {
@@ -442,10 +442,34 @@ describe('the invite email body', () => {
     await sendWishlistInvitationEmail(RECIPIENT, invite({ wishlistName: URL_NAME, role }));
 
     const { text, html } = sentMessage();
-    const line = `@alice ${invited} “${URL_NAME}”.`;
+    const line = `\u2068@alice\u2069 ${invited} “\u2068${URL_NAME}\u2069”.`;
     // Nor is it the heading, which an inbox shows as the preview beside the subject.
     expect(html.match(/<h2>(.*)<\/h2>/)![1]).not.toContain('evil.example');
     expect(text.split('\n').filter((l) => l.includes(URL_NAME))).toEqual([line]);
     expect(html).toContain(`<strong>@alice</strong> ${invited} <strong>${URL_NAME}</strong>.`);
+  });
+});
+
+describe('user-controlled values in the invite email text', () => {
+  // regression: a wishlist saved before its schema refused line breaks and bidi
+  // controls (WIS-293, WIS-118) went raw into the plain-text part, where U+202E
+  // reverses the rest of the line and a line break starts a line of our own.
+  it('puts a legacy name on one line, isolated, with its bidi controls gone', async () => {
+    const { sendWishlistInvitationEmail } = await loadEmail('smtp');
+
+    await sendWishlistInvitationEmail(
+      RECIPIENT,
+      invite({
+        wishlistName: 'Gift\u202E\r\nClaim it now\u2028here',
+        inviterName: 'x',
+        inviterUsername: null,
+      })
+    );
+
+    const { text, subject } = sentMessage();
+    expect(text).toContain('“\u2068Gift Claim it now here\u2069”.');
+    expect(text).not.toMatch(/[\u202A-\u202E\r\u2028\u2029]/);
+    expect(text.split('\n')).toHaveLength(5);
+    expect(subject).toBe('Someone invited you to a wishlist');
   });
 });
