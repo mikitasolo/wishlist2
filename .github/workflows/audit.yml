@@ -45,7 +45,7 @@ jobs:
           node-version: 24
 
       # Informational only, never fails the job: dev-only findings don't ship,
-      # and the known ones are listed (with their follow-ups) in AGENTS.md.
+      # and the known ones are listed (with their follow-ups) in docs/agents/backend.md.
       - name: Full audit report (all dependencies, dev included)
         run: |
           report=$(npm audit --package-lock-only) || true
@@ -61,6 +61,6 @@ jobs:
       # The gate: fails on any high or critical advisory in the runtime tree,
       # i.e. in code that ships to production. Moderate/low findings and
       # dev-only ones (eslint, vitest, ...) are left to the report above and
-      # the exceptions list in AGENTS.md. A registry outage fails it too: re-run.
+      # the exceptions list in docs/agents/backend.md. A registry outage fails it too: re-run.
       - name: Fail on a high or critical runtime advisory
         run: npm audit --package-lock-only --omit=dev --audit-level=high
