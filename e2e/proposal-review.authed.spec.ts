@@ -13,7 +13,7 @@ const proposal: ApiItem = {
 };
 const RATE_LIMITED = 'Too many requests. Please slow down.';
 
-// regression: handleReviewItem toasted "Item approved successfully" and closed
+// regression: handleReviewItem toasted its success (now "Added to the list") and closed
 // the review modal whatever the PATCH returned, and left the optimistic approve
 // in the list, so the owner believed a proposal was published when it wasn't.
 test('regression: a failed approve shows the error and leaves the item proposed', async ({
@@ -54,14 +54,14 @@ test('regression: a failed approve shows the error and leaves the item proposed'
   const proposedCard = page.getByRole('article', { name: `Item: ${proposal.name}` });
   await proposedCard.getByRole('button', { name: 'Review proposed item' }).click();
 
-  const dialog = page.getByRole('dialog', { name: 'Review proposed item' });
+  const dialog = page.getByRole('dialog', { name: 'Someone proposed an item' });
   await dialog.getByLabel('Item name').fill('E2E Desk Lamp');
-  await dialog.getByRole('button', { name: 'Approve item' }).click();
+  await dialog.getByRole('button', { name: 'Add to list' }).click();
 
   // The API's error, not a success, and the modal keeps the owner's edits.
   await expect(page.getByRole('status').getByText(RATE_LIMITED)).toBeVisible();
-  await expect(dialog.getByRole('button', { name: 'Approve item' })).toBeEnabled();
-  await expect(page.getByText('Item approved successfully')).toHaveCount(0);
+  await expect(dialog.getByRole('button', { name: 'Add to list' })).toBeEnabled();
+  await expect(page.getByText('Added to the list')).toHaveCount(0);
   await expect(dialog.getByLabel('Item name')).toHaveValue('E2E Desk Lamp');
 
   // The optimistic approve was rolled back: the card is the proposal again.
@@ -69,8 +69,8 @@ test('regression: a failed approve shows the error and leaves the item proposed'
   await expect(page.getByRole('article', { name: 'Item: E2E Desk Lamp' })).toHaveCount(0);
 
   // A retry that succeeds approves it and closes the modal.
-  await dialog.getByRole('button', { name: 'Approve item' }).click();
-  await expect(page.getByRole('status').getByText('Item approved successfully')).toBeVisible();
+  await dialog.getByRole('button', { name: 'Add to list' }).click();
+  await expect(page.getByRole('status').getByText('Added to the list')).toBeVisible();
   await expect(dialog).toBeHidden();
   const approvedCard = page.getByRole('article', { name: 'Item: E2E Desk Lamp' });
   await expect(approvedCard).toBeVisible();

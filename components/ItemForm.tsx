@@ -5,7 +5,6 @@ import ImageUpload from './ImageUpload';
 import Toggle from './Toggle';
 import Field from './Field';
 import Input from './Input';
-import SegmentedControl from './SegmentedControl';
 import Textarea from './Textarea';
 import Select from './Select';
 import { FIELD_LABEL } from './fieldStyles';
@@ -93,6 +92,12 @@ export function submitItemFormAs(formId: string, status: 'draft' | 'available') 
   form.requestSubmit();
 }
 
+// Whether `form` opens on a link the item schema would refuse (see linkError).
+function hasUnacceptedLink(form: ItemFormData | undefined): boolean {
+  const link = form ? normalizeItemLink(form.link) : '';
+  return !!link && !isHttpUrl(link);
+}
+
 export default function ItemForm({
   initialData,
   onSubmit,
@@ -129,12 +134,14 @@ export default function ItemForm({
   // Errors show under the fields once a save has been tried (the name's and
   // the link's), or once the field has been left (the link's, the price's).
   const [attempted, setAttempted] = useState(false);
-  const [linkLeft, setLinkLeft] = useState(false);
+  // A link the item already holds that the schema now refuses (an older item's
+  // or proposal's, from before only http(s) was accepted) says so as the form
+  // opens, so the owner fixes or clears it rather than meeting it on save. The
+  // form never sends it back as it was: it refuses to submit until it's fixed.
+  const [linkLeft, setLinkLeft] = useState(() => hasUnacceptedLink(initialData));
   const linkInputRef = useRef<HTMLInputElement>(null);
   const internalFirstInputRef = useRef<HTMLInputElement>(null);
   const firstInputRef = externalFirstInputRef || internalFirstInputRef;
-  const statusLabelId = useId();
-  const statusHelperId = useId();
   const submitting = externalIsSubmitting !== undefined ? externalIsSubmitting : isSubmitting;
   // A new item's form that stays open after a save (Keep adding) starts the
   // next item from Name. Set by the save, acted on once the form is enabled
@@ -259,13 +266,16 @@ export default function ItemForm({
       // Trimmed, the price in cents and its currency lowercase (to match rates).
       const content = itemFormContent(formData, locale);
 
-      // Status is only chosen in the form when creating or reviewing. When
+      // Status is only chosen when creating or reviewing, by the button that
+      // submitted the form (see submitItemFormAs). When
       // editing an existing item, status is managed separately (publish / move
       // to draft actions) so a content edit never disturbs booking state.
       let status: 'draft' | 'available' | 'proposed';
       if (mode === 'propose') {
         status = 'proposed';
-      } else if (mode === 'create') {
+      } else if (mode === 'create' || mode === 'review') {
+        // The button pressed says which: a footer's draft action, or the
+        // primary (Add to list).
         status = asked === 'draft' ? 'draft' : 'available';
       } else {
         status = formData.isDraft ? 'draft' : 'available';
@@ -443,30 +453,6 @@ export default function ItemForm({
           onChange={(mostWanted) => setFormData({ ...formData, mostWanted })}
           disabled={submitting}
         />
-      )}
-
-      {/* Reviewing a proposal is the one place the status is chosen in the form:
-          an add has Save as draft, and an edit never changes it. */}
-      {mode === 'review' && (
-        <div>
-          <span id={statusLabelId} className={FIELD_LABEL}>
-            Status
-          </span>
-          <p id={statusHelperId} className="mb-1.5 text-xs text-muted-foreground">
-            Select the status for this item after review
-          </p>
-          <SegmentedControl
-            ariaLabelledBy={statusLabelId}
-            ariaDescribedBy={statusHelperId}
-            value={formData.isDraft ? 'draft' : 'published'}
-            onChange={(v) => setFormData({ ...formData, isDraft: v === 'draft' })}
-            disabled={submitting}
-            options={[
-              { value: 'published', label: 'Published' },
-              { value: 'draft', label: 'Draft' },
-            ]}
-          />
-        </div>
       )}
 
       {renderButtons?.({ submitting, onCancel, submitLabel, submittingLabel })}

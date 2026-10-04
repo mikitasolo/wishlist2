@@ -68,8 +68,8 @@ const modals = [
   },
   {
     name: 'ReviewItemModal',
-    submitLabel: 'Approve item',
-    submittingLabel: 'Approving…',
+    submitLabel: 'Add to list',
+    submittingLabel: 'Adding…',
     needsName: false,
     renderModal: (onSubmit: Submit) =>
       render(
@@ -188,6 +188,8 @@ describe.each(modals)(
 describe.each([
   {
     name: 'EditItemModal',
+    deleteLabel: 'Delete item',
+    confirmLabel: 'Delete',
     renderModal: (onDelete: Submit) =>
       render(
         <EditItemModal
@@ -202,6 +204,8 @@ describe.each([
   },
   {
     name: 'ReviewItemModal',
+    deleteLabel: 'Decline',
+    confirmLabel: 'Decline',
     renderModal: (onDelete: Submit) =>
       render(
         <ReviewItemModal
@@ -214,18 +218,18 @@ describe.each([
         />
       ),
   },
-])('$name — keyboard focus while a delete runs', ({ renderModal }) => {
+])('$name — keyboard focus while a delete runs', ({ renderModal, deleteLabel, confirmLabel }) => {
   beforeEach(() => expectOnlyLogged('Error deleting item:'));
 
   it('leaves focus on the confirmation, not the modal behind it', async () => {
     const user = userEvent.setup();
     const { onSubmit: onDelete, fail } = pendingSubmit();
     renderModal(onDelete);
-    const deleteItem = screen.getByRole('button', { name: /^delete item$/i });
+    const deleteItem = screen.getByRole('button', { name: deleteLabel });
 
     await user.click(deleteItem);
     const confirmation = screen.getByRole('alertdialog');
-    await user.click(within(confirmation).getByRole('button', { name: /^delete$/i }));
+    await user.click(within(confirmation).getByRole('button', { name: confirmLabel }));
     expect(deleteItem).toBeDisabled();
     expect(confirmation).toHaveFocus();
     await user.tab();

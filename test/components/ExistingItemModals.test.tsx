@@ -33,7 +33,7 @@ type Submit = (updates: Partial<ApiItem>) => Promise<void>;
 
 // Every form that opens on an existing item maps its price the same way and gets
 // the same currency default; run every case on each. An edit sends only the
-// fields that changed (see itemChanges), the review every one (WIS-199).
+// fields that changed (see itemChanges), and so does the review, with its status.
 const modals = [
   {
     name: 'EditItemModal',
@@ -54,8 +54,8 @@ const modals = [
   {
     name: 'ReviewItemModal',
     status: 'proposed' as const,
-    submitLabel: /^approve item$/i,
-    sendsOnlyChanges: false,
+    submitLabel: /^add to list$/i,
+    sendsOnlyChanges: true,
     renderModal: (it: ApiItem, onSubmit: Submit, onClose: () => void, c: Currencies) =>
       render(<ReviewItemModal isOpen onClose={onClose} onApprove={onSubmit} item={it} {...c} />),
   },

@@ -1,21 +1,23 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useId } from 'react';
 import { ApiItem } from '@/types/api';
 import BaseModal from './BaseModal';
-import Button from './Button';
-import Callout from './Callout';
 import ItemForm, { itemToFormData } from './ItemForm';
+import ItemFormFooter from './ItemFormFooter';
 import ConfirmDialog from './ConfirmDialog';
 import { defaultItemCurrency } from '@/lib/utils/currencies';
+import type { ItemContentChanges } from '@/lib/utils/itemForm';
 import { useViewerLocale } from '@/lib/hooks/useViewerLocale';
 
 interface ReviewItemModalProps {
   isOpen: boolean;
   onClose: () => void;
-  // Must reject when the request fails: the modal only closes on success, so
-  // the owner's edits survive a failure.
+  // Given the status of the button pressed and only the content the owner
+  // changed. Must reject when the request fails: the modal only closes on
+  // success, so the owner's edits survive a failure.
   onApprove: (updates: Partial<ApiItem> & { status: 'draft' | 'available' }) => Promise<void>;
+  // Declines the proposal: deletes it. Must reject when that fails.
   onDelete?: () => Promise<void>;
   item: ApiItem;
   // A priceless proposal's currency starts on the wishlist's, else the viewer's
@@ -35,6 +37,9 @@ export default function ReviewItemModal({
   userCurrency,
 }: ReviewItemModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Whether the approve running is Add as draft's, which then reads "Adding…".
+  const [savingDraft, setSavingDraft] = useState(false);
+  const formId = useId();
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -56,34 +61,29 @@ export default function ReviewItemModal({
   // This ensures form state is reset when switching between items
   const itemFormKey = isOpen ? `review-item-${item._id}` : undefined;
 
-  const handleSubmit = async (data: {
-    name: string;
-    imageUrl?: string | null;
-    price?: { value: number; currency: string } | null;
-    link?: string | null;
-    notes?: string | null;
-    mostWanted?: boolean;
-    status: 'draft' | 'available' | 'proposed';
-  }) => {
+  // Approves the proposal as the button pressed says: Add to list makes it
+  // live, Add as draft a draft. It sends that status and only the content the
+  // owner changed from the proposal as the dialog opened on it (see
+  // itemChanges), as an edit does: a field they didn't touch stays out of the
+  // write, so it can't put back what the proposer (or a co-owner) changed since.
+  // The server clears the proposer when it approves.
+  const handleSubmit = async (
+    data: { status: 'draft' | 'available' | 'proposed' },
+    changes: ItemContentChanges
+  ) => {
+    // In review mode the status is always 'draft' or 'available'.
+    if (data.status === 'proposed') throw new Error('Cannot approve item with proposed status');
+    // A name emptied to blanks isn't sent (the form refuses it anyway).
+    const { name, ...rest } = changes;
+    const updates: Partial<ApiItem> & { status: 'draft' | 'available' } = {
+      ...(name ? changes : rest),
+      status: data.status,
+    };
+    setSavingDraft(data.status === 'draft');
     setIsSubmitting(true);
     // No catch: a failed approve must reject through to ItemForm, so it keeps
     // the proposal as its unsaved-changes baseline. Only a success closes the modal.
     try {
-      // In review mode, status will always be 'draft' or 'available', never 'proposed'
-      if (data.status === 'proposed') {
-        throw new Error('Cannot approve item with proposed status');
-      }
-      const updates: Partial<ApiItem> & { status: 'draft' | 'available' } = {
-        name: data.name || undefined,
-        // Include fields even if null to clear them
-        imageUrl: data.imageUrl !== undefined ? data.imageUrl : undefined,
-        price: data.price !== undefined ? data.price : undefined,
-        link: data.link !== undefined ? data.link : undefined,
-        notes: data.notes !== undefined ? data.notes : undefined,
-        mostWanted: data.mostWanted,
-        status: data.status,
-        proposedBy: null, // Clear proposedBy when approving
-      };
       await onApprove(updates);
       setHasUnsavedChanges(false);
       onClose();
@@ -125,84 +125,66 @@ export default function ReviewItemModal({
     onClose();
   };
 
-  // Convert proposed item to form data (status will be set to available by default)
-  // The price field is filled in the format the item's card shows it in.
+  // The form is filled from the proposal, in the format its card shows the price in.
   const formData = itemToFormData(
     item,
     defaultItemCurrency(wishlistCurrency, userCurrency),
     locale
   );
-  formData.isDraft = false; // Default to published when reviewing
 
+  // The title never names the proposer: proposals are anonymous to the owners.
   return (
     <>
       <BaseModal
         isOpen={isOpen}
         onClose={handleClose}
-        title="Review proposed item"
+        title="Someone proposed an item"
         titleId="review-item-title"
         isSubmitting={isSubmitting || isDeleting}
         shouldInterceptClose={() => hasUnsavedChanges}
         onInterceptClose={() => setShowConfirmClose(true)}
+        footer={
+          <ItemFormFooter
+            formId={formId}
+            busy={isSubmitting || isDeleting}
+            // A decline holds the buttons too, but only an approve reads "Adding…".
+            saving={isSubmitting}
+            savingDraft={savingDraft}
+            onCancel={handleClose}
+            submitLabel="Add to list"
+            submittingLabel="Adding…"
+            saveAsDraft
+            draftLabel="Add as draft"
+            draftSubmittingLabel="Adding…"
+            onDelete={onDelete ? () => setShowDeleteConfirm(true) : undefined}
+            deleteLabel="Decline"
+          />
+        }
       >
-        <Callout tone="info" className="mb-4">
-          Review this proposed item. You can edit any fields, select the status (Published or
-          Draft), and then approve or delete it.
-        </Callout>
         <ItemForm
           key={itemFormKey}
           initialData={formData}
           onSubmit={handleSubmit}
           onCancel={handleClose}
-          submitLabel="Approve item"
-          submittingLabel="Approving…"
           isSubmitting={isSubmitting || isDeleting}
           mode="review"
           itemId={item._id}
           onFormChange={setHasUnsavedChanges}
-          renderButtons={({ submitting, onCancel, submitLabel, submittingLabel }) => (
-            <div className="flex flex-col gap-3 pt-4">
-              <div className="flex gap-3">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={onCancel}
-                  disabled={submitting}
-                  className="flex-1"
-                >
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={submitting} className="flex-1">
-                  {/* A delete disables the form too, but only an approve reads "Approving…". */}
-                  {isSubmitting ? submittingLabel : submitLabel}
-                </Button>
-              </div>
-              {onDelete && (
-                <Button
-                  type="button"
-                  variant="danger"
-                  onClick={() => setShowDeleteConfirm(true)}
-                  disabled={submitting}
-                  fullWidth
-                >
-                  Delete item
-                </Button>
-              )}
-            </div>
-          )}
+          formId={formId}
         />
       </BaseModal>
 
-      {/* Delete Confirmation Dialog */}
+      {/* Decline confirmation. Declining deletes the proposal, as an owner's
+          delete of any item does, and tells the proposer nothing (D12). */}
       {onDelete && (
         <ConfirmDialog
           isOpen={showDeleteConfirm}
-          title="Delete proposed item"
-          message="Are you sure you want to delete this proposed item? This action cannot be undone."
+          title="Decline this proposal?"
+          message="It's removed from the list."
           onConfirm={handleDelete}
           onCancel={() => setShowDeleteConfirm(false)}
-          confirmText="Delete"
-          pendingText="Deleting…"
+          confirmText="Decline"
+          pendingText="Declining…"
           cancelText="Cancel"
           type="danger"
         />
