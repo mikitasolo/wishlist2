@@ -142,7 +142,7 @@ describe('Needs you', () => {
     expect(rows()).toHaveLength(1);
     const [row] = rows();
     expect(row).toHaveTextContent('List 1');
-    expect(row).toHaveTextContent('@alice invited you');
+    expect(row).toHaveTextContent('from @alice');
     expect(within(row).getByRole('button', { name: 'Accept' })).toBeInTheDocument();
     expect(within(row).getByRole('button', { name: 'Decline' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'See all in Activity' })).toHaveAttribute(
@@ -152,14 +152,14 @@ describe('Needs you', () => {
   });
 
   it('keeps the co-owner consent warning on an owner invite, and answers it in place', async () => {
-    pending = [invite('1', { role: 'owner' })];
+    pending = [invite('1', { role: 'owner', yourReservations: 2 })];
     render(<NeedsYou ownLists={[]} />);
     await waitFor(() => expect(block()).not.toBeNull());
 
     const [row] = rows();
-    expect(row).toHaveTextContent('invited you as a co-owner');
+    expect(row).toHaveTextContent('Co-owner');
     expect(row).toHaveTextContent(
-      'Owners never see reservations, so anything you’ve reserved here will be released.'
+      'You’ve reserved 2 gifts here. Co-owners can’t see reservations, so accepting releases them.'
     );
 
     await userEvent.setup().click(within(row).getByRole('button', { name: 'Accept' }));

@@ -46,7 +46,7 @@ const invites = [
     invitedByImage: null,
   },
 ];
-type Invite = (typeof invites)[number];
+type Invite = (typeof invites)[number] & { yourReservations?: number };
 const [, housewarming] = invites;
 const anniversary: Invite = {
   _id: 'inv-anniversary',
@@ -904,6 +904,7 @@ describe('Activity, pinned invites — on the page', () => {
     wishlistSlug: 'garden',
     invitedByUsername: 'chloe',
     invitedByImage: null,
+    yourReservations: 1,
   };
   const inviteRow = (wishlistId: string, wishlistName: string, actorUsername: string) =>
     ({
@@ -980,10 +981,9 @@ describe('Activity, pinned invites — on the page', () => {
     render(<ActivityPage />);
     const card = within((await screen.findByText('Garden')).closest('li')!);
 
-    const warning =
-      /Owners never see reservations, so anything you’ve reserved here will be released/;
+    const warning = /Co-owners can’t see reservations, so accepting releases/;
     expect(card.getByText(warning)).toBeVisible();
-    expect(card.getByText(/as a co-owner/)).toBeVisible();
+    expect(card.getByText('Co-owner')).toBeVisible();
     expect(screen.getAllByText(warning)).toHaveLength(1);
   });
 

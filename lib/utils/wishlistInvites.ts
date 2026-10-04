@@ -89,6 +89,7 @@ export async function issueWishlistInvite(args: IssueInviteArgs): Promise<IWishl
     actor: args.invitedBy,
     wishlist: args.wishlistId,
     wishlistName: args.wishlistName,
+    inviteRole: args.role,
   });
 
   if (args.invitedUserEmail) {

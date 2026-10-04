@@ -1,8 +1,10 @@
 import mongoose, { Schema, Document } from 'mongoose';
 import {
   INVITE_ANSWERS,
+  INVITE_ROLES,
   NOTIFICATION_TYPES,
   type InviteAnswer,
+  type InviteRole,
   type NotificationType,
 } from '@/lib/utils/notifications';
 
@@ -41,6 +43,10 @@ export interface INotification extends Document {
   // `read: true` in the one write that records it (`recordInviteAnswer`), so
   // the row stops reading as a pending invite. Absent while it's pending.
   inviteAnswer?: InviteAnswer | null;
+  // `wishlist_invite` only: the role the invite offers, so an owner invite reads
+  // "invited you to co-own …". Absent on rows written before it (WIS-273), which
+  // read as a plain invite.
+  inviteRole?: InviteRole | null;
   read: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -66,6 +72,8 @@ const NotificationSchema = new Schema<INotification>(
     itemName: { type: String, default: null },
     // No default: only an answered invite has one.
     inviteAnswer: { type: String, enum: INVITE_ANSWERS, default: undefined },
+    // No default: only an invite carries one.
+    inviteRole: { type: String, enum: INVITE_ROLES, default: undefined },
     read: { type: Boolean, default: false },
     // Immutable, as the timestamps plugin would declare it, except for a query
     // that opts in with `overwriteImmutable: true`: a coalesced row bumps it to
