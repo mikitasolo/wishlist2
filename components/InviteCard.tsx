@@ -101,9 +101,7 @@ export default function InviteCard({
               {inviteRoleLabel(invite.role)}
             </Badge>
           </div>
-          <p className="text-meta text-muted-foreground">
-            {inviteMetaLine(invite, today)}
-          </p>
+          <p className="text-meta text-muted-foreground">{inviteMetaLine(invite, today)}</p>
           <p className="mt-1 text-sm text-foreground">{inviteRoleLine(invite)}</p>
           {/* Accepting co-ownership releases the invitee's reservations here:
               say so before they tap Accept, not after, and only when it does. */}
