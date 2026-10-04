@@ -155,7 +155,14 @@ curl -X POST -H "X-Migration-Secret: $MIGRATION_SECRET" \
   https://<your-host>/api/migrations/<name>
 ```
 
-None are currently in the tree. These have been applied to every environment and removed; recover any
+In the tree now:
+
+- `relabel-answered-invite-notifications` (WIS-255): writes the answer onto invite notifications whose
+  invite was accepted or declined before answers were recorded on them, so they stop reading as
+  waiting invites. Additive and idempotent: run it on staging, then production, after the deploy that
+  ships it, and delete it once it has run everywhere.
+
+These have been applied to every environment and removed; recover any
 of them from git history if you ever need to replay one against a restored backup:
 
 - the co-ownership set: `wishlist-owners`, `remove-admin-role`, `drop-legacy-owner-fields`;
