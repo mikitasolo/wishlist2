@@ -98,6 +98,7 @@ function gate() {
 
 beforeEach(() => {
   fetchMock.mockReset();
+  showToast.mockClear();
   server = { owners: ['alice', 'bob'], members: [], description: 'Things I would like' };
   held = {};
   listReads = 0;
@@ -302,6 +303,32 @@ describe('the wishlist page after an owner is demoted or removed', () => {
     expect(credited('bob')).not.toBeInTheDocument();
     await expectCanLeave(user);
   });
+
+  // regression: a refused Make member / Remove (the server had already taken
+  // them off the owners) only toasted, so the page kept counting them as an
+  // owner and still offered a sole owner Leave.
+  it.each([
+    ['Make member', 'Make @bob a member?', 'Make member'],
+    ['Remove', 'Remove @bob as an owner?', 'Remove'],
+  ])(
+    'regression: a %s refused because they are no longer an owner moves them off the owners',
+    async (action, title, confirm) => {
+      const user = await openPeople();
+      // A co-owner already made Bob a member, in another tab.
+      server.owners = ['alice'];
+      server.members = ['bob'];
+
+      await pickRowAction(user, 'bob', action);
+      const dialog = await screen.findByRole('alertdialog', { name: title });
+      await user.click(within(dialog).getByRole('button', { name: confirm }));
+      await waitFor(() =>
+        expect(showToast).toHaveBeenCalledWith('This person is not an owner', 'error')
+      );
+      await waitFor(() => expect(captionOf('bob')).toBe('Member'));
+      await waitFor(() => expect(credited('bob')).not.toBeInTheDocument());
+      await expectSoleOwner(user);
+    }
+  );
 
   it('keeps the owners as they were when the demotion fails', async () => {
     const user = await openPeople();
