@@ -17,9 +17,9 @@ import WishlistInvite from '@/models/WishlistInvite';
 import Follow from '@/models/Follow';
 
 /**
- * WIS-42: an account whose first verified sign-in is under 24h old gets the
- * stricter tier on the surfaces that reach other people. The session is built
- * by the real `sessionPayload` from the account's `emailVerified`, as the
+ * WIS-42: an account whose first verified sign-in (its creation) is under 24h
+ * old gets the stricter tier on the surfaces that reach other people. The
+ * session is built by the real `sessionPayload` from the account's row, as the
  * session callback builds it, so this runs from the row to the 429.
  */
 
@@ -47,12 +47,16 @@ let ownerId: string;
 let wishlistId: string;
 let invitees: string[];
 
-/** Sign in as the owner, whose first verified sign-in was `verifiedAgoMs` ago (or never). */
-async function signInVerified(verifiedAgoMs: number | null) {
-  const emailVerified = verifiedAgoMs === null ? null : new Date(Date.now() - verifiedAgoMs);
-  await User.updateOne({ _id: ownerId }, { $set: { emailVerified } });
-  const row = { id: ownerId, email: 'owner@x.com', username: 'owner', emailVerified };
-  session.mockResolvedValue(sessionPayload(row, null, new Date(Date.now() + HOUR)));
+/**
+ * Sign in as the owner, whose account was created `createdAgoMs` ago (or has no
+ * timestamps), signing in just now: Auth.js sets `emailVerified` to now on every
+ * sign-in.
+ */
+async function signInVerified(createdAgoMs: number | null) {
+  const createdAt = createdAgoMs === null ? undefined : new Date(Date.now() - createdAgoMs);
+  const emailVerified = createdAgoMs === null ? null : new Date();
+  const row = { id: ownerId, email: 'owner@x.com', username: 'owner', createdAt, emailVerified };
+  session.mockResolvedValue(sessionPayload(row, null, new Date(Date.now() + HOUR)) as never);
 }
 
 function invite(username: string) {
@@ -117,7 +121,7 @@ describe('the new-account invite limit', () => {
     expect(await WishlistInvite.countDocuments({ wishlist: wishlistId })).toBe(budget);
   });
 
-  it('treats an account with no emailVerified as new', async () => {
+  it('treats an account with neither createdAt nor emailVerified as new', async () => {
     await signInVerified(null);
     const statuses = await inviteEveryone();
     expect(statuses.at(-1)).toBe(429);

@@ -17,7 +17,7 @@ import { isNewAccount } from './accountAge';
  *   old (`isNewAccount`), which picks the stricter rate-limit tier on the
  *   routes that pass it to `enforce` (WIS-42). A yes or no about the caller's
  *   own account, worked out on every check, so no route reads the account
- *   again for it and `User.emailVerified` itself isn't sent.
+ *   again for it and the account's timestamps themselves aren't sent.
  * Add a field only together with what reads it.
  */
 export const SESSION_USER_FIELDS = [
@@ -40,7 +40,8 @@ function text(value: unknown): string | undefined {
 export type SessionDbUser = Pick<
   IUser,
   '_id' | 'username' | 'image' | 'defaultCurrency' | 'currencyChosenAt' | 'emailVerified'
->;
+> &
+  Partial<Pick<IUser, 'createdAt'>>;
 
 /**
  * The session callback's result (lib/auth.ts): an explicit allowlist, built
@@ -56,7 +57,7 @@ export type SessionDbUser = Pick<
  * case the row stands in. A raw row has no schema defaults, hence the
  * fallbacks below (`defaultCurrency` 'USD'; `image` is null by default; an
  * account without `currencyChosenAt` hasn't answered the prompt; one
- * without `emailVerified` is new). `now` is for tests.
+ * without `createdAt` or `emailVerified` is new). `now` is for tests.
  */
 export function sessionPayload(
   row: Record<string, unknown> | null | undefined,
@@ -78,7 +79,7 @@ export function sessionPayload(
     image: (dbUser ? dbUser.image : text(row?.image)) || undefined,
     defaultCurrency: (dbUser ? dbUser.defaultCurrency : text(row?.defaultCurrency)) || 'USD',
     currencyChosen: (dbUser ? dbUser.currencyChosenAt : row?.currencyChosenAt) instanceof Date,
-    newAccount: isNewAccount(dbUser ? dbUser.emailVerified : row?.emailVerified, now),
+    newAccount: isNewAccount(dbUser ?? row ?? {}, now),
   } satisfies Record<(typeof SESSION_USER_FIELDS)[number], unknown>;
   return {
     user,

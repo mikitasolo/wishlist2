@@ -335,6 +335,7 @@ describe('lib/auth: the session payload', () => {
         image: 'https://blob.example/uploads/me/a.webp',
         defaultCurrency: 'EUR',
         currencyChosen: false,
+        newAccount: false,
       },
       expires: '2026-10-31T12:00:00.000Z',
     });
@@ -377,6 +378,7 @@ describe('lib/auth: the session payload', () => {
       image: 'https://blob.example/uploads/me/a.webp',
       defaultCurrency: 'EUR',
       currencyChosen: false,
+      newAccount: false,
     });
   });
 
@@ -446,6 +448,7 @@ describe('lib/auth: the session payload', () => {
           image: 'https://blob.example/uploads/me/a.webp',
           defaultCurrency: 'EUR',
           currencyChosen: false,
+          newAccount: false,
         },
         expires: '2026-10-31T12:00:00.000Z',
       });
@@ -499,6 +502,7 @@ describe('lib/auth: the session payload', () => {
         image: 'https://blob.example/uploads/me/a.webp',
         defaultCurrency: 'EUR',
         currencyChosen: false,
+        newAccount: false,
       },
       expires: '2026-10-31T12:00:00.000Z',
     });
