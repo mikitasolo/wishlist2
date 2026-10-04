@@ -58,13 +58,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        {/* Apply the saved theme before paint to avoid a flash. Light is default.
+        {/* Apply the saved theme before paint to avoid a flash; System (the default,
+            and any unrecognised value) follows the OS's prefers-color-scheme.
             Then the session hint, so the header holds the shape it's likely
             to take while the session loads (lib/utils/sessionHint.ts). */}
         <script
           dangerouslySetInnerHTML={{
             __html:
-              "(function(){try{var t=localStorage.getItem('theme');document.documentElement.setAttribute('data-theme',t==='dark'?'dark':'light');}catch(e){document.documentElement.setAttribute('data-theme','light');}})();" +
+              "(function(){var d=false;try{d=matchMedia('(prefers-color-scheme: dark)').matches;}catch(e){}var t='system';try{t=localStorage.getItem('theme')||'system';}catch(e){}document.documentElement.setAttribute('data-theme',t==='dark'||(t!=='light'&&d)?'dark':'light');})();" +
               SESSION_HINT_SCRIPT,
           }}
         />

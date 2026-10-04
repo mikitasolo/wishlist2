@@ -47,7 +47,9 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ push, replace: vi.fn() }
 vi.mock('@/components/AppHeader', () => ({ default: () => null }));
 vi.mock('@/components/AuthButton', () => ({ default: () => null }));
 vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }));
-vi.mock('@/components/ThemeProvider', () => ({ useTheme: () => ({ theme: 'light', setTheme }) }));
+vi.mock('@/components/ThemeProvider', () => ({
+  useTheme: () => ({ theme: 'system', resolvedTheme: 'light', setTheme }),
+}));
 // An upload that finishes, and Remove: the real control crops and posts the
 // file first. It ignores `disabled`, like an upload that finishes while a save
 // is in flight.
@@ -468,6 +470,8 @@ describe('settings that save as they change', () => {
     const user = await openSettings();
     await user.click(radio('Theme', 'Dark'));
     expect(setTheme).toHaveBeenCalledWith('dark');
+    await user.click(radio('Theme', 'Light'));
+    expect(setTheme).toHaveBeenLastCalledWith('light');
     expect(patches).toHaveLength(0);
   });
 });
