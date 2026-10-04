@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Project conventions, testing policy, and domain invariants live in @AGENTS.md — follow them.
+Project conventions and testing policy live in @AGENTS.md — follow them. The domain invariants are loaded in full, since they cut across every area: @docs/agents/invariants.md. The other topic files under `docs/agents/` aren't loaded; read the one for the area you touch.
 
 ## Claude Code specifics
 

@@ -1,7 +1,7 @@
 /**
  * What leaving, removing and deleting say they do, in one place, so each
  * confirmation and the toast after it describe what the server actually keeps
- * (AGENTS.md, "Domain invariants"):
+ * (docs/agents/invariants.md):
  *
  *  - Leaving a list, or being removed from it, frees the items that person
  *    reserved there and keeps their reservations, so the gift stays on their
