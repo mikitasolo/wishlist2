@@ -31,6 +31,12 @@ interface ItemCardViewProps {
   highlighted?: boolean;
   /** The row under the body (one line of actions, or the list's name). */
   actions?: ReactNode;
+  /**
+   * The title's `::after` stretches over the whole card, cover included, not
+   * just the body (the All items page, where the card is one link). Whatever
+   * else is clickable in `actions` then needs `relative`.
+   */
+  titleCoversCard?: boolean;
   /** Anything else that belongs to the card (its sheet, its dialogs). */
   children?: ReactNode;
 }
@@ -52,6 +58,7 @@ export default function ItemCardView({
   dimmed,
   highlighted,
   actions,
+  titleCoversCard,
   children,
 }: ItemCardViewProps) {
   return (
@@ -109,7 +116,7 @@ export default function ItemCardView({
       <div className="flex flex-col flex-grow">
         {/* The card's body (its name, price and notes): the name's `::after`
             stretches over the rest of it. */}
-        <div className="relative flex flex-grow flex-col">
+        <div className={`flex flex-grow flex-col ${titleCoversCard ? '' : 'relative'}`}>
           <div className="flex-grow">
             <h3 className="mb-1.5 text-body font-semibold text-foreground sm:mb-3 sm:text-title">
               {title}

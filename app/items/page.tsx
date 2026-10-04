@@ -359,7 +359,7 @@ export default function MyItemsPage() {
                         chip === 'all' && isDimmedInAll(it as unknown as ChipItem, 'owner', null)
                       }
                       priceText={it.price ? formatPrice(it.price, locale) : null}
-                      coverLink={{ href, label: `Open ${it.name} on ${it.wishlistName}` }}
+                      titleCoversCard
                       // Opens the item on its list; actions stay there.
                       title={
                         <Link
@@ -374,7 +374,7 @@ export default function MyItemsPage() {
                         <div className="mt-auto flex min-h-10 items-center">
                           <Link
                             href={`/wishlists/${encodeURIComponent(listPath)}`}
-                            className="inline-flex min-w-0 items-center gap-1.5 text-sm font-medium text-accent hover:underline"
+                            className="relative inline-flex min-w-0 items-center gap-1.5 text-sm font-medium text-accent hover:underline"
                           >
                             <Icon name="gift" size={16} className="flex-shrink-0" />
                             <span className="truncate">
