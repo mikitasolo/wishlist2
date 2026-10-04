@@ -17,6 +17,7 @@ const ITEM = {
 
 const fetchMock = vi.fn();
 const onError = vi.fn();
+const NOT_A_REVIEW = { proposalReviewed: false };
 
 function reply(status: number, body: unknown) {
   return new Response(JSON.stringify(body), {
@@ -43,17 +44,21 @@ const hooks = [
   {
     name: 'useUpdateItem',
     failed: null,
+    // What onError is told besides the message (none for a create).
+    failure: [NOT_A_REVIEW],
     send: () => renderHook(() => useUpdateItem(undefined, onError)).result.current('i1', {}),
   },
   {
     name: 'useCreateItem',
     failed: null,
+    failure: [],
     send: () =>
       renderHook(() => useCreateItem(undefined, onError)).result.current('w1', { name: 'Bike' }),
   },
   {
     name: 'useDeleteItem',
     failed: false,
+    failure: [NOT_A_REVIEW],
     send: () => renderHook(() => useDeleteItem(undefined, onError)).result.current('i1'),
   },
 ];
@@ -74,7 +79,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe.each(hooks)('$name', ({ send, failed }) => {
+describe.each(hooks)('$name', ({ send, failed, failure }) => {
   // regression: the item hooks sent their request with no timeout, so one that
   // stalled kept the card or modal busy, and the wishlist page's polls held
   // off, until the browser gave up on it minutes later.
@@ -86,7 +91,7 @@ describe.each(hooks)('$name', ({ send, failed }) => {
     expect(onError).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(1);
-    expect(onError).toHaveBeenCalledExactlyOnceWith(REQUEST_TIMEOUT_MESSAGE);
+    expect(onError).toHaveBeenCalledExactlyOnceWith(REQUEST_TIMEOUT_MESSAGE, ...failure);
     await expect(result).resolves.toBe(failed);
     // So the browser drops the connection too.
     const init: RequestInit = fetchMock.mock.calls[0][1];
@@ -119,7 +124,7 @@ describe.each(hooks)('$name', ({ send, failed }) => {
     fetchMock.mockResolvedValueOnce(reply(403, { success: false, error: 'Not allowed' }));
 
     await expect(send()).resolves.toBe(failed);
-    expect(onError).toHaveBeenCalledExactlyOnceWith('Not allowed');
+    expect(onError).toHaveBeenCalledExactlyOnceWith('Not allowed', ...failure);
   });
 });
 
@@ -148,7 +153,7 @@ describe('a retry whose first attempt went through (WIS-158)', () => {
     const result = renderHook(() => useDeleteItem(undefined, onError)).result.current('i1');
 
     await expect(result).resolves.toBe(false);
-    expect(onError).toHaveBeenCalledExactlyOnceWith('Item not found');
+    expect(onError).toHaveBeenCalledExactlyOnceWith('Item not found', NOT_A_REVIEW);
   });
 
   it('sends a create with its idempotency key, and none without one', async () => {
@@ -174,6 +179,6 @@ it('gives up on a response whose body never finishes arriving', async () => {
   const result = renderHook(() => useUpdateItem(undefined, onError)).result.current('i1', {});
 
   await vi.advanceTimersByTimeAsync(ITEM_REQUEST_TIMEOUT_MS);
-  expect(onError).toHaveBeenCalledExactlyOnceWith(REQUEST_TIMEOUT_MESSAGE);
+  expect(onError).toHaveBeenCalledExactlyOnceWith(REQUEST_TIMEOUT_MESSAGE, NOT_A_REVIEW);
   await expect(result).resolves.toBeNull();
 });

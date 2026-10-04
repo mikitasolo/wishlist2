@@ -17,17 +17,54 @@ import { deduplicateRequest, createRequestKey } from '@/lib/utils/requestDedupli
 import { withRequestTimeout } from '@/lib/utils/requestTimeout';
 import { IDEMPOTENCY_HEADER } from '@/lib/utils/submissionKey';
 import { isRefusal, ReadRefusedError } from '@/lib/utils/resourceRead';
+import { EXPECTED_PROPOSAL, EXPECTED_STATUS_PARAM } from '@/lib/utils/proposalReview';
+
+/**
+ * Sent by the review dialog's approve and Decline (WIS-199): the request
+ * expects the item to still be a proposal, and the route answers 409 when it
+ * isn't one any more (`lib/utils/proposalReview.ts`).
+ */
+export interface ReviewRequestOptions {
+  expectProposal?: boolean;
+}
+
+/** What `onError` is told besides the message. */
+export interface ItemRequestFailure {
+  /** A review request (`expectProposal`) refused because the item is no longer a proposal. */
+  proposalReviewed: boolean;
+}
+
+/** A failed item request, with its HTTP status when the server answered. */
+class ItemRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number
+  ) {
+    super(message);
+  }
+}
+
+const failureOf = (error: unknown, expectProposal: boolean): ItemRequestFailure => ({
+  proposalReviewed: expectProposal && error instanceof ItemRequestError && error.status === 409,
+});
 
 /**
  * Hook for updating an item
  */
 export function useUpdateItem(
   onSuccess?: (updatedItem: ApiItem) => void,
-  onError?: (error: string) => void
+  onError?: (error: string, failure: ItemRequestFailure) => void
 ) {
   return useCallback(
-    async (id: string, updates: Partial<ApiItem>): Promise<ApiItem | null> => {
-      const requestKey = createRequestKey(`/api/items/${id}`, 'PATCH', updates);
+    async (
+      id: string,
+      updates: Partial<ApiItem>,
+      { expectProposal = false }: ReviewRequestOptions = {}
+    ): Promise<ApiItem | null> => {
+      const body = expectProposal
+        ? { ...updates, [EXPECTED_STATUS_PARAM]: EXPECTED_PROPOSAL }
+        : updates;
+      const requestKey = createRequestKey(`/api/items/${id}`, 'PATCH', body);
 
       try {
         const data = await deduplicateRequest(requestKey, () =>
@@ -37,17 +74,14 @@ export function useUpdateItem(
               headers: {
                 'Content-Type': 'application/json',
               },
-              body: JSON.stringify(updates),
+              body: JSON.stringify(body),
               signal,
             });
 
             const result: ApiResponse<ApiItem> = await response.json();
 
             if (!result.success) {
-              if (response.status === 403 && result.error?.includes('archived')) {
-                throw new Error(result.error);
-              }
-              throw new Error(result.error || 'Failed to update item');
+              throw new ItemRequestError(result.error || 'Failed to update item', response.status);
             }
 
             return result.data!;
@@ -58,7 +92,7 @@ export function useUpdateItem(
         return data;
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Failed to update item';
-        onError?.(errorMessage);
+        onError?.(errorMessage, failureOf(error, expectProposal));
         console.error('Error updating item:', error);
         return null;
       }
@@ -130,13 +164,17 @@ export function useCreateItem(
 /**
  * Hook for deleting an item
  */
-export function useDeleteItem(onSuccess?: () => void, onError?: (error: string) => void) {
+export function useDeleteItem(
+  onSuccess?: () => void,
+  onError?: (error: string, failure: ItemRequestFailure) => void
+) {
   return useCallback(
     async (
       id: string,
       {
         notFoundIsDone = false,
-      }: {
+        expectProposal = false,
+      }: ReviewRequestOptions & {
         /**
          * Count a 404 as already deleted (WIS-158): a retry whose first attempt
          * went through, or a co-owner's delete. Only for an owner: the route
@@ -146,12 +184,15 @@ export function useDeleteItem(onSuccess?: () => void, onError?: (error: string) 
         notFoundIsDone?: boolean;
       } = {}
     ): Promise<boolean> => {
-      const requestKey = createRequestKey(`/api/items/${id}`, 'DELETE');
+      const url = expectProposal
+        ? `/api/items/${id}?${EXPECTED_STATUS_PARAM}=${EXPECTED_PROPOSAL}`
+        : `/api/items/${id}`;
+      const requestKey = createRequestKey(url, 'DELETE');
 
       try {
         await deduplicateRequest(requestKey, () =>
           withRequestTimeout(async (signal) => {
-            const response = await fetch(`/api/items/${id}`, {
+            const response = await fetch(url, {
               method: 'DELETE',
               signal,
             });
@@ -161,7 +202,7 @@ export function useDeleteItem(onSuccess?: () => void, onError?: (error: string) 
             const result: ApiResponse<void> = await response.json();
 
             if (!result.success) {
-              throw new Error(result.error || 'Failed to delete item');
+              throw new ItemRequestError(result.error || 'Failed to delete item', response.status);
             }
           })
         );
@@ -170,7 +211,7 @@ export function useDeleteItem(onSuccess?: () => void, onError?: (error: string) 
         return true;
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Failed to delete item';
-        onError?.(errorMessage);
+        onError?.(errorMessage, failureOf(error, expectProposal));
         console.error('Error deleting item:', error);
         return false;
       }
