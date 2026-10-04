@@ -58,7 +58,9 @@ function item(name: string, fields: Partial<ApiItem>, day: number): ApiItem {
 /** What the items API gives Carol: an owner never gets a booking. */
 const readItems = () =>
   serverItems.map((i) =>
-    userRole === 'owner' && i.status === 'booked' ? { ...i, status: 'available', bookedBy: null } : i
+    userRole === 'owner' && i.status === 'booked'
+      ? { ...i, status: 'available', bookedBy: null }
+      : i
   );
 
 const fetchMock = vi.fn();
@@ -169,7 +171,7 @@ describe('a member', () => {
     expect(shown()).toEqual(['Lamp']);
   });
 
-  it("keeps a card they reserve under All in its slot instead of moving it to the reserved group, until they change the sort", async () => {
+  it('keeps a card they reserve under All in its slot instead of moving it to the reserved group, until they change the sort', async () => {
     await open();
     expect(shown()).toEqual(['Mug', 'Lamp', 'Kettle']);
     const user = userEvent.setup();
