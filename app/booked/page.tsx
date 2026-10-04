@@ -14,6 +14,7 @@ import { Skeleton } from '@/components/Skeleton';
 import OccasionLabel from '@/components/OccasionLabel';
 import { useToast } from '@/components/ToastProvider';
 import SnapshotThumb from '@/components/SnapshotThumb';
+import GiftHistory, { type GiftEntry } from '@/components/GiftHistory';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import { useBusyIds } from '@/lib/hooks/useBusyIds';
 import { useLocalToday } from '@/lib/hooks/useLocalToday';
@@ -32,7 +33,6 @@ import {
   type OccasionGroup,
 } from '@/lib/utils/reservations';
 import Button from '@/components/Button';
-import IconButton from '@/components/IconButton';
 
 interface Price {
   value: number;
@@ -73,16 +73,7 @@ interface Reservation {
   listArchived: boolean;
 }
 
-interface Gift {
-  _id: string;
-  itemName: string;
-  itemImage: string | null;
-  itemPrice: Price | null;
-  recipientUsername: string | null;
-  wishlistName: string | null;
-  wishlistId: string | null;
-  giftedAt: string;
-}
+type Gift = GiftEntry;
 
 /**
  * The item route's answers refusing a Release's unbook, which retrying won't
@@ -127,7 +118,6 @@ export default function BookedPage() {
   // The viewer's local date, which "To give" is grouped by: `null` until it's
   // known (see `useLocalToday`), and until then the cards aren't grouped.
   const today = useLocalToday();
-  const locale = useViewerLocale();
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [gifts, setGifts] = useState<Gift[]>([]);
   const [loading, setLoading] = useState(true);
@@ -541,46 +531,7 @@ export default function BookedPage() {
 
             {/* Gift history */}
             {gifts.length > 0 && (
-              <section>
-                <SectionHeading title="Gift history" count={gifts.length} />
-                <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-sm">
-                  <ul className="divide-y divide-border">
-                    {gifts.map((g) => (
-                      <li key={g._id} className="flex items-center gap-3 p-3 sm:px-4">
-                        <SnapshotThumb src={g.itemImage} alt={g.itemName} seed={g._id} small />
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-semibold text-foreground">
-                            {g.itemName}
-                          </p>
-                          <p className="truncate text-xs text-muted-foreground">
-                            {/* What isn't known (a recipient, say) is left out, not stood in for. */}
-                            {[
-                              g.itemPrice ? formatPrice(g.itemPrice, locale) : null,
-                              g.recipientUsername ? `to @${g.recipientUsername}` : null,
-                              g.wishlistName,
-                              new Date(g.giftedAt).toLocaleDateString(undefined, {
-                                year: 'numeric',
-                                month: 'short',
-                                day: 'numeric',
-                              }),
-                            ]
-                              .filter(Boolean)
-                              .join(' · ')}
-                          </p>
-                        </div>
-                        <IconButton
-                          icon="trash"
-                          label="Delete from gift history"
-                          title="Delete from gift history"
-                          variant="danger-ghost"
-                          disabled={busy(g._id)}
-                          onClick={() => setDeleteGiftConfirm(g._id)}
-                        />
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </section>
+              <GiftHistory gifts={gifts} busy={busy} onDelete={setDeleteGiftConfirm} />
             )}
           </div>
         )}
