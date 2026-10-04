@@ -11,7 +11,7 @@ import {
 } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useSession } from 'next-auth/react';
+import { useKnownSession } from '@/lib/hooks/useKnownSession';
 import AppHeader from '@/components/AppHeader';
 import AuthButton from '@/components/AuthButton';
 import Avatar from '@/components/Avatar';
@@ -94,7 +94,7 @@ function RowLeading({ n }: { n: NotificationView }) {
 const STRETCHED = 'text-left after:absolute after:inset-0 after:rounded-2xl';
 
 export default function ActivityPage() {
-  const { data: session, status } = useSession();
+  const { data: session, status } = useKnownSession();
   const viewerUsername = session?.user?.username ?? null;
   const viewerId = session?.user?.id ?? null;
   const router = useRouter();

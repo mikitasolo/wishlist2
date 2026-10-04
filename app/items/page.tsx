@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useSession } from 'next-auth/react';
+import { useKnownSession } from '@/lib/hooks/useKnownSession';
 import AppHeader from '@/components/AppHeader';
 import AuthButton from '@/components/AuthButton';
 import EmptyState from '@/components/EmptyState';
@@ -70,7 +70,7 @@ const LS_SORT = 'items-sort';
 const OWNER_CHIPS = listChips('owner');
 
 export default function MyItemsPage() {
-  const { status } = useSession();
+  const { status } = useKnownSession();
   const router = useRouter();
   const { showToast } = useToast();
   const locale = useViewerLocale();

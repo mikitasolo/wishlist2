@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { signOut, useSession } from 'next-auth/react';
+import { signOut } from 'next-auth/react';
+import { useKnownSession } from '@/lib/hooks/useKnownSession';
 import AppHeader from '@/components/AppHeader';
 import AuthButton from '@/components/AuthButton';
 import Button from '@/components/Button';
@@ -68,7 +69,7 @@ type PatchResult =
   { ok: true; profile: ProfileSettings; email: string } | { ok: false; error?: string };
 
 export default function SettingsPage() {
-  const { status, update } = useSession();
+  const { status, update } = useKnownSession();
   const router = useRouter();
   const { showToast } = useToast();
   // Which of the username and bio's two Save rows is on screen: CSS picks it on

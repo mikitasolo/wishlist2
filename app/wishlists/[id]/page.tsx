@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useMemo, useCallback, useRef, useId, type FormEvent } from 'react';
-import { useSession } from 'next-auth/react';
+import { useKnownSession } from '@/lib/hooks/useKnownSession';
 import { useRouter, useParams } from 'next/navigation';
 import WishlistItem from '@/components/WishlistItem';
 import AddItemTile from '@/components/AddItemTile';
@@ -109,7 +109,7 @@ import { useFetchItems, useUpdateItem, useCreateItem, useDeleteItem } from '@/li
 type PageLoad = 'loading' | 'ready' | 'unavailable' | 'failed';
 
 export default function WishlistDetail() {
-  const { data: session, status } = useSession();
+  const { data: session, status } = useKnownSession();
   const router = useRouter();
   const params = useParams();
   const { showToast } = useToast();

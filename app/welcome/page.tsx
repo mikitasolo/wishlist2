@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useSession } from 'next-auth/react';
+import { useKnownSession } from '@/lib/hooks/useKnownSession';
 import AppHeader from '@/components/AppHeader';
 import AuthButton from '@/components/AuthButton';
 import Button from '@/components/Button';
@@ -62,7 +62,7 @@ function Loading() {
  * generated name (and leaves the currency question for Home).
  */
 function Welcome() {
-  const { data: session, status, update } = useSession();
+  const { data: session, status, update } = useKnownSession();
   const router = useRouter();
   const searchParams = useSearchParams();
   const { showToast } = useToast();

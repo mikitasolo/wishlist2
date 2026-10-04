@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useSession } from 'next-auth/react';
+import { useKnownSession } from '@/lib/hooks/useKnownSession';
 import AppHeader from '@/components/AppHeader';
 import AuthButton from '@/components/AuthButton';
 import OwnHandle from '@/components/OwnHandle';
@@ -24,7 +24,7 @@ type Wishlist = IWishlist & {
 };
 
 export default function SharedWishlistsPage() {
-  const { data: session, status } = useSession();
+  const { data: session, status } = useKnownSession();
   const username = session?.user?.username ?? null;
   const router = useRouter();
   const [member, setMember] = useState<Wishlist[]>([]);

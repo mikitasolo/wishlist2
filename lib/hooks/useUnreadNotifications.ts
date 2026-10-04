@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { useSession } from 'next-auth/react';
+import { useKnownSession } from '@/lib/hooks/useKnownSession';
 
 /**
  * Window events that have the count read again, besides a return to the tab:
@@ -32,7 +32,7 @@ export const UNREAD_REFRESH_EVENTS = ['notifications-changed', 'invites-changed'
  * `loading` but stays known) the count stays up until the next read.
  */
 export function useUnreadNotifications(): number {
-  const { data: session, status } = useSession();
+  const { data: session, status } = useKnownSession();
   const userId = session?.user?.id ?? null;
   const [unread, setUnread] = useState<{ account: string | null; count: number }>({
     account: null,

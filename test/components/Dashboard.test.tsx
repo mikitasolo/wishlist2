@@ -422,21 +422,20 @@ describe('dashboard — lists that couldn’t be loaded', () => {
     expect(screen.queryByText('2 proposals to review')).toBeNull();
   });
 
-  it('keeps the lists on screen when a later read of them fails', async () => {
+  it('keeps the page and does not read it again while the session is updated', async () => {
+    // regression: WIS-301, `update()` (the currency prompt's answer) puts a known
+    // session through `loading`, which swapped the page for its skeleton and
+    // read every list and count again.
     render(<Home />);
     await screen.findByRole('heading', { name: 'Your wishlists' });
 
-    // The session refreshes (the currency prompt's answer), and the lists are
-    // read again: that read fails.
-    answers.lists = () => serverError('Failed to fetch wishlists');
     const reads = requested('/api/wishlists');
     act(() => auth.set('loading'));
+    expect(screen.getByRole('heading', { name: 'Your wishlists' })).toBeInTheDocument();
     act(() => auth.set('authenticated'));
     await settle();
 
-    expect(requested('/api/wishlists')).toBe(reads + 1);
+    expect(requested('/api/wishlists')).toBe(reads);
     expect(screen.getByRole('heading', { name: 'Your wishlists' })).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'Couldn’t load your wishlists' })).toBeNull();
-    expect(showToast).toHaveBeenCalledWith('Failed to load wishlists', 'error');
   });
 });

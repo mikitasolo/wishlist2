@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useSession } from 'next-auth/react';
+import { useKnownSession } from '@/lib/hooks/useKnownSession';
 import AuthButton from '@/components/AuthButton';
 import AppHeader from '@/components/AppHeader';
 import CreateWishlistModal from '@/components/CreateWishlistModal';
@@ -48,7 +48,7 @@ function greetingWord(): string {
 }
 
 export default function Dashboard() {
-  const { data: session, status } = useSession();
+  const { data: session, status } = useKnownSession();
   const { showToast } = useToast();
   const [owned, setOwned] = useState<Wishlist[]>([]);
   const [member, setMember] = useState<Wishlist[]>([]);

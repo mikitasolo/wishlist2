@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useSession } from 'next-auth/react';
+import { useKnownSession } from '@/lib/hooks/useKnownSession';
 import { withRequestTimeout } from '@/lib/utils/requestTimeout';
 
 /**
@@ -24,7 +24,7 @@ export const SUMMARY_TIMEOUT_MS = 10_000;
  * is dropped.
  */
 export function useChangedReservations(): number | null {
-  const { data: session, status } = useSession();
+  const { data: session, status } = useKnownSession();
   const userId = status === 'authenticated' ? (session?.user?.id ?? null) : null;
   const [read, setRead] = useState<{ userId: string; changed: number } | null>(null);
 
