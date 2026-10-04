@@ -67,9 +67,9 @@ test('two cards sit side by side at 390px, the link in each card’s menu', asyn
     expect(moreBox!.y).toBeCloseTo(editBox!.y, 0);
     expect(moreBox!.x).toBeGreaterThan(editBox!.x + editBox!.width);
   }
-  // The cover is the card's one link to the product page.
+  // The cover opens the item's sheet, so it's no link to the product page here.
   await expect(linked.getByRole('link', { name: 'View E2E Linked Gift product page' })).toHaveCount(
-    1
+    0
   );
 
   // ⋯ → Open product page, first in the menu, from the keyboard too.

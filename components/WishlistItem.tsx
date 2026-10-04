@@ -624,9 +624,7 @@ function WishlistItem({
       highlighted={highlighted}
       priceText={priceText}
       originalPriceText={originalPriceText}
-      coverLink={
-        productLink ? { href: productLink, label: `View ${item.name} product page` } : undefined
-      }
+      onCoverClick={() => setSheetOpen(true)}
       statusBadge={
         isBookedByCurrentUser && !isOwner && item.status === 'booked' ? (
           // Your own reservation's badge leads to Reserved (WIS-260).
@@ -641,8 +639,9 @@ function WishlistItem({
       }
       // The card's body (its name, price and notes) opens the item's details:
       // the name is the button, and its ::after stretches over the rest of the
-      // body. The cover still opens the product page, and the actions sit
-      // outside it.
+      // body. The cover opens it too (a pointer target only), and the
+      // actions sit outside it. The product link is in the action row, the
+      // menu and the sheet.
       title={
         <button
           type="button"

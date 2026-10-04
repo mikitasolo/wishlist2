@@ -18,8 +18,12 @@ interface ItemCardViewProps {
   status: ReturnType<typeof statusMeta>;
   /** Replaces the status badge (a link to Reserved on your own reservation). */
   statusBadge?: ReactNode;
-  /** What the cover opens: the product page, or the item on its list. */
-  coverLink?: { href: string; label: string };
+  /**
+   * Makes the cover open the item's details, like the body does. A pointer
+   * target only: it's out of the Tab order and hidden from assistive tech,
+   * since the title is the card's one named way in.
+   */
+  onCoverClick?: () => void;
   /** The item's name, as a button or link whose `::after` stretches over the body. */
   title: ReactNode;
   /** Formatted price, and the original it was converted from. */
@@ -51,7 +55,7 @@ export default function ItemCardView({
   item,
   status,
   statusBadge,
-  coverLink,
+  onCoverClick,
   title,
   priceText,
   originalPriceText,
@@ -101,7 +105,6 @@ export default function ItemCardView({
           seed={item._id}
           alt={item.name}
           sizes="(max-width: 1200px) 50vw, 33vw"
-          link={coverLink}
           placeholder={
             <span className="text-4xl font-semibold text-white/90 [text-shadow:0_1px_3px_rgba(0,0,0,0.25)] sm:hidden">
               {coverInitial(item.name)}
@@ -109,8 +112,18 @@ export default function ItemCardView({
           }
           className={`relative block w-full overflow-hidden rounded-2xl bg-surface-2 ${
             item.imageUrl ? 'aspect-square' : 'aspect-[4/3] sm:aspect-square'
-          } ${coverLink ? 'transition-opacity duration-200 hover:opacity-90' : ''}`}
-        />
+          } ${onCoverClick ? 'transition-opacity duration-200 hover:opacity-90' : ''}`}
+        >
+          {onCoverClick && (
+            <button
+              type="button"
+              tabIndex={-1}
+              aria-hidden
+              onClick={onCoverClick}
+              className="absolute inset-0 cursor-pointer"
+            />
+          )}
+        </Cover>
       </div>
 
       <div className="flex flex-col flex-grow">
