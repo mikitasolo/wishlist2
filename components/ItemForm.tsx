@@ -425,7 +425,7 @@ export default function ItemForm({
           value={formData.notes}
           onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
           className="resize-none"
-          placeholder="Size, colour, model…"
+          placeholder="e.g. size, colour or model"
           rows={3}
           maxLength={ITEM_NOTES_MAX}
           disabled={submitting}
