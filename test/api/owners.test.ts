@@ -731,10 +731,10 @@ describe('racing removals still leave the wishlist an owner', () => {
     await Wishlist.updateOne({ _id: wid }, { $pull: { owners: bob } });
 
     // The stale read still lists bob, but the write only acts on the list as it is.
-    // Only the refusal is pinned here: this miss still reports the last-owner reason,
-    // and telling "already removed" apart from it is a separate change.
-    expect(await removeWishlistOwner(stale, bob, { actorId: alice, keepAsMember: true })).not.toBe(
-      'removed'
+    // regression (WIS-61): this miss used to report 'last-owner', though bob had
+    // simply stopped being an owner already.
+    expect(await removeWishlistOwner(stale, bob, { actorId: alice, keepAsMember: true })).toBe(
+      'target-not-owner'
     );
     expect(await WishlistMember.findOne({ wishlist: wid, user: bob })).toBeNull();
     expect((await Wishlist.findById(wid))!.owners.map(String)).toEqual([alice]);
@@ -931,6 +931,121 @@ describe('racing removals still leave the wishlist an owner', () => {
     expect(!!(await WishlistMember.exists({ wishlist: wid, user: loser }))).toBe(
       winningOp === 'demote'
     );
+  });
+
+  // regression (WIS-61): a removal that lost its race to another removal of the same
+  // owner was answered as if that owner were the last one ("You are the only
+  // owner…", "A wishlist needs at least one owner…"), while the list still had
+  // owners. The write's miss now tells "already off the owners" from "last owner".
+  describe('a removal that loses to another removal of the same owner', () => {
+    let erin: string;
+    beforeEach(async () => {
+      erin = (await User.create({ email: 'e@x.com', username: 'erin' }))._id.toString();
+      await Wishlist.updateOne(
+        { _id: wid },
+        { $set: { owners: [alice, bob, erin], featuredBy: [alice, bob, erin] } }
+      );
+    });
+
+    /**
+     * Runs `loser` with its owner write held until `winner` has run to completion,
+     * so `loser` passed every pre-check against the list as it was before.
+     */
+    async function lose(loser: () => Promise<Raced>, winner: () => Promise<Raced>) {
+      const held = holdFirstCall(Wishlist, 'updateOne', winner);
+      let refused: Raced;
+      try {
+        refused = await loser();
+      } finally {
+        held.restore();
+      }
+      expect(held.held()).toBe(true);
+      return { won: held.outcome()!, refused };
+    }
+
+    it.each([
+      ['three', () => [alice, bob, erin]],
+      ['two', () => [alice, bob]],
+    ])(
+      'regression: an owner leaving twice at once on a %s-owner list never reads as the last owner',
+      async (_, owners) => {
+        await Wishlist.updateOne({ _id: wid }, { $set: { owners: owners() } });
+        const item = await makeItem('booked', bob);
+
+        const { won, refused } = await lose(
+          () => leaveAs(bob),
+          () => leaveAs(bob)
+        );
+
+        expect(won.res.status).toBe(200);
+        // The second leave finds them already gone: not on the list, as anyone else.
+        expect(refused.res.status).toBe(404);
+        const body = await refused.res.json();
+        expect(body.error).toBe('You are not a member of this wishlist');
+        expect(body.error).not.toMatch(/only owner|at least one owner/i);
+
+        const wl = await Wishlist.findById(wid);
+        expect(wl!.owners.map(String)).toEqual(owners().filter((o) => o !== bob));
+        expect(await WishlistMember.findOne({ wishlist: wid, user: bob })).toBeNull();
+        expect((await Item.findById(item))?.bookedBy ?? null).toBeNull();
+      }
+    );
+
+    it.each([
+      ['demotes', demoteAs],
+      ['removes', removeAs],
+    ])(
+      'regression: an owner who %s a co-owner as they leave gets the not-an-owner 404',
+      async (_, act) => {
+        const { won, refused } = await lose(
+          () => act(alice, bob),
+          () => leaveAs(bob)
+        );
+
+        expect(won.res.status).toBe(200);
+        expect(refused.res.status).toBe(404);
+        expect((await refused.res.json()).error).toBe(
+          'This person is not an owner of this wishlist'
+        );
+
+        // Bob left: the refused request brought nothing back (no member row from a
+        // demotion) and told him nothing.
+        const wl = await Wishlist.findById(wid);
+        expect(wl!.owners.map(String)).toEqual([alice, erin]);
+        expect(wl!.featuredBy.map(String)).toEqual([alice, erin]);
+        expect(await WishlistMember.findOne({ wishlist: wid, user: bob })).toBeNull();
+        expect(
+          await Notification.countDocuments({
+            user: bob,
+            type: { $in: ['role_changed', 'removed_from_wishlist'] },
+          })
+        ).toBe(0);
+      }
+    );
+
+    it('a co-owner whose leave loses to their demotion leaves as the member it made them', async () => {
+      const { won, refused } = await lose(
+        () => leaveAs(bob),
+        () => demoteAs(alice, bob)
+      );
+
+      expect(won.res.status).toBe(200);
+      // Not refused: they're a member by the time their write runs, so they leave as one.
+      expect(refused.res.status).toBe(200);
+      expect((await Wishlist.findById(wid))!.owners.map(String)).toEqual([alice, erin]);
+      expect(await WishlistMember.findOne({ wishlist: wid, user: bob })).toBeNull();
+    });
+
+    it('a real last owner is still refused with the 400', async () => {
+      await Wishlist.updateOne({ _id: wid }, { $set: { owners: [alice, bob] } });
+      const stale = (await Wishlist.findById(wid))!;
+      await Wishlist.updateOne({ _id: wid }, { $pull: { owners: alice } });
+
+      expect(await removeWishlistOwner(stale, bob, { actorId: bob, keepAsMember: false })).toBe(
+        'last-owner'
+      );
+      expect((await Wishlist.findById(wid))!.owners.map(String)).toEqual([bob]);
+    });
   });
 
   describe('an owner-only write re-checks the caller at the write', () => {
@@ -1442,8 +1557,9 @@ describe('a demotion never leaves its owner off the list', () => {
 
     expect(race.held()).toBe(true);
     expect(race.outcome()?.status).toBe(200);
-    // Refused: bob is no longer an owner (still answered as the last-owner case).
-    expect(res.status).toBe(400);
+    // Refused: bob is no longer an owner. regression (WIS-61): this was answered
+    // with the last-owner 400.
+    expect(res.status).toBe(404);
     expect(await standing(bob)).toEqual({ owner: false, pinned: false, members: 0 });
   });
 
@@ -1494,8 +1610,9 @@ describe('a demotion never leaves its owner off the list', () => {
 
     expect(race.outcome()?.res.status).toBe(200);
     // Refused (carol is no longer an owner), and the membership alice's demotion
-    // gave her isn't the refused one's to take back.
-    expect(res.status).toBe(400);
+    // gave her isn't the refused one's to take back. regression (WIS-61): answered
+    // as not an owner, no longer as the last owner.
+    expect(res.status).toBe(404);
     const row = await WishlistMember.findOne({ wishlist: wid, user: carol });
     expect(row?._id.toString()).toBe(race.outcome()?.row?._id.toString());
     expect(await standing(carol)).toEqual({ owner: false, pinned: false, members: 1 });
@@ -1510,7 +1627,9 @@ describe('a demotion never leaves its owner off the list', () => {
     const res = await demote(alice, bob);
 
     expect(race.outcome()?.status).toBe(200);
-    expect(res.status).toBe(400);
+    // regression (WIS-61): bob is no longer an owner, not the last one.
+    expect(res.status).toBe(404);
+    expect((await res.json()).error).toBe('This person is not an owner of this wishlist');
     // The row alice's request created is what erin's demotion left bob with.
     expect(await standing(bob)).toEqual({ owner: false, pinned: false, members: 1 });
   });
