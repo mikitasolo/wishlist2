@@ -17,6 +17,8 @@ import {
   matchesDeletionConfirmation,
 } from '@/lib/utils/deletionConfirmation';
 
+const UNFINISHED = 'Couldn’t finish deleting your account. Sign in again to finish it.';
+
 type SoleOwnedLists =
   | { state: 'loading' }
   | { state: 'failed' }
@@ -35,10 +37,13 @@ export default function DeleteAccount({
   username,
   email,
   onDeleted,
+  onSignInAgain,
 }: {
   username: string;
   email: string;
   onDeleted: () => void;
+  /** Sign out to sign-in, coming back here, to finish a deletion that stopped part-way. */
+  onSignInAgain: () => void;
 }) {
   const { showToast } = useToast();
   const [open, setOpen] = useState(false);
@@ -47,10 +52,8 @@ export default function DeleteAccount({
   const target = deletionConfirmationTarget({ username, email });
   const confirmed = matchesDeletionConfirmation(typed, target);
 
-  async function openDialog() {
-    setTyped('');
+  async function loadLists() {
     setLists({ state: 'loading' });
-    setOpen(true);
     try {
       const res = await fetch('/api/users/me/deletion');
       const json = await res.json();
@@ -61,22 +64,48 @@ export default function DeleteAccount({
     }
   }
 
+  function openDialog() {
+    setTyped('');
+    setOpen(true);
+    void loadLists();
+  }
+
+  /**
+   * The deletion may have stopped part-way, after the server ended this
+   * account's sessions: the account is still there, but only signing in again
+   * lets them finish, so that's what the toast offers.
+   */
+  function stoppedPartWay() {
+    setOpen(false);
+    showToast(UNFINISHED, 'error', { action: { label: 'Sign in', onClick: onSignInAgain } });
+  }
+
   async function deleteNow() {
+    if (lists.state !== 'loaded') return;
+    let res: Response;
     try {
-      const res = await fetch('/api/users/me', {
+      res = await fetch('/api/users/me', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ confirm: typed }),
+        body: JSON.stringify({ confirm: typed, lists: lists.lists.map((l) => l._id) }),
       });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok || !json.success) {
-        showToast(json.error || 'Couldn’t delete your account. Try again.', 'error');
-        return;
-      }
-      onDeleted();
     } catch {
-      showToast('Couldn’t delete your account. Try again.', 'error');
+      stoppedPartWay();
+      return;
     }
+    const json = await res.json().catch(() => ({}));
+    if (res.ok && json.success) {
+      onDeleted();
+      return;
+    }
+    // Refused before anything changed: the wrong confirmation, too many tries,
+    // or a list that has become theirs alone since (read again, to be named).
+    if (res.status === 409) void loadLists();
+    if (res.status === 400 || res.status === 409 || res.status === 429) {
+      showToast(json.error || 'Couldn’t delete your account. Try again.', 'error');
+      return;
+    }
+    stoppedPartWay();
   }
 
   return (

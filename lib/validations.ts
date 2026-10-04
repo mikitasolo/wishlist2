@@ -290,6 +290,9 @@ export const updateItemSchema = z
  */
 export const deleteAccountSchema = z.object({
   confirm: z.string().max(320),
+  // The ids of the lists the confirmation named as going with the account: none
+  // other is deleted (`deleteAccount`).
+  lists: z.array(z.string().max(64)).max(1000).default([]),
 });
 
 // Helper function to validate request body

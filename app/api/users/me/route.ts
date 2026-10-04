@@ -254,7 +254,19 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    await deleteAccount(session.user.id);
+    const result = await deleteAccount(session.user.id, {
+      agreedListIds: validation.data.lists,
+    });
+    if (result === 'lists-changed') {
+      // Nothing was changed: a list became theirs alone since the dialog opened.
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Your lists have changed. Check which ones will be deleted, then confirm again.',
+        },
+        { status: 409 }
+      );
+    }
     return NextResponse.json({ success: true, data: {} }, { status: 200 });
   } catch (error) {
     // Its kind only: an error here can quote a record of the account's.

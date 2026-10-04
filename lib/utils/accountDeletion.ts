@@ -27,6 +27,8 @@ import { purgeShareCards } from '@/lib/og/purge';
  *
  *   1. Sessions end first, so none of the account's other devices can start a
  *      request while the rest runs.
+ *   0. Nothing changes unless the lists it owns alone are exactly the ones the
+ *      confirmation named (`agreedListIds`), or fewer.
  *   2. Lists it owns alone are deleted through the normal list delete
  *      (`deleteOwnedWishlist`, which clears their notifications and purges their
  *      share cards; gifters keep their own records, as with any list delete).
@@ -41,7 +43,7 @@ import { purgeShareCards } from '@/lib/og/purge';
  *      their actor), its proposals' link back to it, and its dashboard pins.
  *   6. Its uploads, once nothing points at them any more.
  *   7. Its sign-in accounts and verification tokens, and its sessions again.
- *   8. Steps 2–5 once more, for anything a request already in flight when the
+ *   8. Steps 2–6 once more, for anything a request already in flight when the
  *      sessions ended wrote meanwhile, then the user row, then its profile card.
  *
  * The user row goes last, so a deletion that fails part-way leaves the account
@@ -54,19 +56,31 @@ import { purgeShareCards } from '@/lib/og/purge';
  * Nobody is notified: deleting a list notifies nobody, and neither does leaving.
  * Nothing here logs: a failure propagates, as its kind, to the route.
  */
-export async function deleteAccount(userId: string): Promise<void> {
+export async function deleteAccount(
+  userId: string,
+  { agreedListIds }: { agreedListIds: readonly string[] }
+): Promise<'deleted' | 'lists-changed'> {
   await connectDB();
   const uid = new mongoose.Types.ObjectId(userId);
   const user = await User.findById(uid).select('email').lean();
 
+  // Only the lists the confirmation named may be deleted. A list that has become
+  // the account's alone since (a co-owner left) stops the deletion before
+  // anything changes, so the person can confirm it again with that list named.
+  const agreed = new Set(agreedListIds);
+  const sole = await soleOwnedWishlists(userId);
+  if (sole.some((l) => !agreed.has(l._id.toString()))) return 'lists-changed';
+
   await endSessions(uid);
-  await eraseHoldings(userId);
+  await eraseHoldings(userId, agreed);
   await eraseUploads(userId);
   await eraseSignIn(uid, user?.email);
-  await eraseHoldings(userId);
+  await eraseHoldings(userId, agreed);
+  await eraseUploads(userId);
 
   await User.deleteOne({ _id: uid });
   await purgeShareCards({ userIds: [userId] });
+  return 'deleted';
 }
 
 /** The lists `userId` owns alone, which deleting the account deletes with it. */
@@ -84,12 +98,12 @@ export async function soleOwnedWishlists(
 const MAX_LIST_ATTEMPTS = 5;
 
 /** Steps 2–5: everything the account holds on lists and other people. Repeatable. */
-async function eraseHoldings(userId: string): Promise<void> {
+async function eraseHoldings(userId: string, agreed: ReadonlySet<string>): Promise<void> {
   const uid = new mongoose.Types.ObjectId(userId);
 
   // 2. Lists it owns.
   const owned = await Wishlist.find(ownedByFilter(userId)).select('_id').lean();
-  for (const { _id } of owned) await giveUpOwnedList(_id.toString(), userId);
+  for (const { _id } of owned) await giveUpOwnedList(_id.toString(), userId, agreed);
 
   // 3. Lists it's a member of, then anything it still has booked anywhere.
   const memberships = await WishlistMember.find({ user: uid }).select('_id wishlist').lean();
@@ -136,7 +150,11 @@ async function eraseHoldings(userId: string): Promise<void> {
  * leaving or joining at the same moment can neither leave it ownerless nor have
  * it deleted from under them.
  */
-async function giveUpOwnedList(wishlistId: string, userId: string): Promise<void> {
+async function giveUpOwnedList(
+  wishlistId: string,
+  userId: string,
+  agreed: ReadonlySet<string>
+): Promise<void> {
   for (let attempt = 0; attempt < MAX_LIST_ATTEMPTS; attempt++) {
     const list = await Wishlist.findOne({ _id: wishlistId, ...ownedByFilter(userId) })
       .select('_id owners featuredBy')
@@ -144,6 +162,10 @@ async function giveUpOwnedList(wishlistId: string, userId: string): Promise<void
     if (!list) return; // gone, or no longer theirs
 
     if (isLastOwner(list, userId)) {
+      // A list the confirmation didn't name became the account's alone during
+      // the deletion: stop, rather than delete it unasked. The account is still
+      // there, so confirming again (with it named) finishes the job.
+      if (!agreed.has(wishlistId)) throw new Error('A wishlist became solely owned mid-deletion');
       if (await deleteOwnedWishlist(wishlistId, userId, { soleOwner: true })) return;
       continue; // someone became a co-owner meanwhile (or it went): read it again
     }

@@ -52,11 +52,17 @@ let annOid: mongoose.Types.ObjectId;
 
 const db = () => mongoose.connection;
 
-function deleteRequest(confirm: unknown) {
+function deleteRequest(confirm: unknown, lists: string[] = []) {
   return new NextRequest('http://localhost/api/users/me', {
     method: 'DELETE',
-    body: JSON.stringify({ confirm }),
+    body: JSON.stringify({ confirm, lists }),
   });
+}
+
+/** Delete ann's account, agreeing to delete every list she owns as it stands now. */
+async function eraseAnn(agreed?: string[]) {
+  const owned = await Wishlist.find({ owners: ann }).select('_id').lean();
+  return deleteAccount(ann, { agreedListIds: agreed ?? owned.map((l) => l._id.toString()) });
 }
 
 function signIn(id: string) {
@@ -147,6 +153,28 @@ describe('DELETE /api/users/me: the request', () => {
     expect(await User.exists({ _id: ann })).toBeTruthy();
   });
 
+  it('deletes the lists the confirmation named', async () => {
+    const mine = await Wishlist.create({ name: 'Mine', owners: [ann] });
+    signIn(ann);
+    const res = await DELETE_ME(deleteRequest('ann', [mine._id.toString()]));
+    expect(res.status).toBe(200);
+    expect(await Wishlist.exists({ _id: mine._id })).toBeNull();
+    expect(await User.exists({ _id: ann })).toBeNull();
+  });
+
+  it('regression: refuses, changing nothing, when a list became its alone after the confirmation', async () => {
+    // The dialog named no list; since then a co-owner left `later`, so deleting
+    // the account would now delete it too, unasked.
+    const later = await Wishlist.create({ name: 'Later', owners: [ann] });
+    await db().collection('sessions').insertOne({ sessionToken: 't', userId: annOid });
+    signIn(ann);
+    const res = await DELETE_ME(deleteRequest('ann', []));
+    expect(res.status).toBe(409);
+    expect(await Wishlist.exists({ _id: later._id })).toBeTruthy();
+    expect(await User.exists({ _id: ann })).toBeTruthy();
+    expect(await db().collection('sessions').countDocuments({ userId: annOid })).toBe(1);
+  });
+
   it('logs no personal data when the cascade fails', async () => {
     signIn(ann);
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -196,7 +224,7 @@ describe('deleteAccount: the cascade', () => {
     );
     const catsGift = await GiftLog.create({ gifter: cat, giftedAt: new Date(), itemName: 'Old' });
 
-    await deleteAccount(ann);
+    await eraseAnn();
 
     expect(await Wishlist.exists({ _id: list._id })).toBeNull();
     expect(await Item.exists({ wishlist: list._id })).toBeNull();
@@ -215,7 +243,7 @@ describe('deleteAccount: the cascade', () => {
     // An invite ann sent for it, and one she was sent elsewhere.
     await WishlistInvite.create({ wishlist: list._id, invitedBy: ann, invitedUser: cat });
 
-    await deleteAccount(ann);
+    await eraseAnn();
 
     const after = await Wishlist.findById(list._id).lean();
     expect(after?.owners.map(String)).toEqual([bob]);
@@ -243,7 +271,7 @@ describe('deleteAccount: the cascade', () => {
     });
     await WishlistInvite.create({ wishlist: elsewhere._id, invitedBy: bob, invitedUser: ann });
 
-    await deleteAccount(ann);
+    await eraseAnn();
 
     expect((await Item.findById(item._id).lean())?.status).toBe('available');
     expect((await Item.findById(item._id).lean())?.bookedBy).toBeNull();
@@ -274,7 +302,7 @@ describe('deleteAccount: the cascade', () => {
       itemImage: snapshot('cats.jpg'),
     });
 
-    await deleteAccount(ann);
+    await eraseAnn();
 
     expect(await Reservation.exists({ gifter: ann })).toBeNull();
     expect(await GiftLog.exists({ gifter: ann })).toBeNull();
@@ -306,9 +334,11 @@ describe('deleteAccount: the cascade', () => {
       cursor: undefined,
     });
 
-    await deleteAccount(ann);
+    await eraseAnn();
 
     expect(list).toHaveBeenCalledWith(expect.objectContaining({ prefix: `uploads/${ann}/` }));
+    // Read again in the second pass, for an upload already in flight.
+    expect(list).toHaveBeenCalledTimes(2);
     expect((await Item.findById(item._id).lean())?.imageUrl).toBeUndefined();
     expect((await Item.findById(bobsItem._id).lean())?.imageUrl).toBe(upload(bob, 'kettle.jpg'));
     expect((await Wishlist.findById(shared._id).lean())?.bannerUrl).toBeNull();
@@ -339,7 +369,7 @@ describe('deleteAccount: the cascade', () => {
       .collection('sessions')
       .insertOne({ sessionToken: 'b', userId: new mongoose.Types.ObjectId(bob) });
 
-    await deleteAccount(ann);
+    await eraseAnn();
 
     expect(await Follow.exists({ $or: [{ follower: ann }, { following: ann }] })).toBeNull();
     expect(await Follow.exists({ _id: bobFollowsCat._id })).toBeTruthy();
@@ -364,19 +394,19 @@ describe('deleteAccount: the cascade', () => {
     await Follow.create({ follower: ann, following: bob });
     vi.spyOn(Follow, 'deleteMany').mockRejectedValueOnce(new Error('down'));
 
-    await expect(deleteAccount(ann)).rejects.toThrow('down');
+    await expect(eraseAnn()).rejects.toThrow('down');
     // Lists were settled before the failure; the account is still there.
     expect(await Wishlist.exists({ _id: mine._id })).toBeNull();
     expect((await Wishlist.findById(shared._id).lean())?.owners.map(String)).toEqual([bob]);
     expect(await User.exists({ _id: ann })).toBeTruthy();
 
-    await deleteAccount(ann);
+    await eraseAnn();
     expect(await Follow.exists({ follower: ann })).toBeNull();
     expect(await User.exists({ _id: ann })).toBeNull();
 
     // Once more: nothing left to do, and nobody else's data moves.
     const before = await Wishlist.find({}).lean();
-    await expect(deleteAccount(ann)).resolves.toBeUndefined();
+    await expect(eraseAnn()).resolves.toBe('deleted');
     expect(await Wishlist.find({}).lean()).toEqual(before);
   });
 });
@@ -395,7 +425,7 @@ describe('deleteAccount: races on a list it owns', () => {
       );
     }) as never);
 
-    await deleteAccount(ann);
+    await eraseAnn();
 
     const after = await Wishlist.findById(list._id).lean();
     expect(after?.owners.map(String)).toEqual([bob]);
@@ -415,10 +445,31 @@ describe('deleteAccount: races on a list it owns', () => {
       ).then(() => original(...args));
     }) as never);
 
-    await deleteAccount(ann);
+    await eraseAnn();
 
     expect(await Wishlist.exists({ _id: list._id })).toBeNull();
     expect(await Wishlist.exists({ owners: { $size: 0 } })).toBeNull();
+  });
+
+  it('regression: never deletes a list the confirmation did not name, even one left to it mid-deletion', async () => {
+    // The confirmation named no list (this one was shared then). Bob leaves while
+    // the deletion runs, so the account becomes its only owner: it stops, with the
+    // list kept and still owned, and the account there to confirm again.
+    const list = await Wishlist.create({ name: 'Ours', owners: [ann, bob] });
+    const original = Wishlist.updateOne.bind(Wishlist);
+    vi.spyOn(Wishlist, 'updateOne').mockImplementationOnce(((
+      ...args: Parameters<typeof Wishlist.updateOne>
+    ) => {
+      return original(
+        { _id: list._id },
+        { $pull: { owners: new mongoose.Types.ObjectId(bob) } }
+      ).then(() => original(...args));
+    }) as never);
+
+    await expect(eraseAnn([])).rejects.toThrow();
+
+    expect((await Wishlist.findById(list._id).lean())?.owners.map(String)).toEqual([ann]);
+    expect(await User.exists({ _id: ann })).toBeTruthy();
   });
 
   it('regression: a booking that lands while it leaves as a member is freed by the second pass', async () => {
@@ -438,7 +489,7 @@ describe('deleteAccount: races on a list it owns', () => {
       );
     }) as never);
 
-    await deleteAccount(ann);
+    await eraseAnn();
 
     const after = await Item.findById(item._id).lean();
     expect(after?.status).toBe('available');

@@ -537,6 +537,11 @@ export default function SettingsPage() {
               discardText();
               signOutNow();
             }}
+            onSignInAgain={() => {
+              discardText();
+              rememberSessionHint(false);
+              signOut({ redirectTo: signInPath('/settings') });
+            }}
           />
         </Panel>
 
