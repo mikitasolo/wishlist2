@@ -51,9 +51,9 @@ describe('scopedIdempotencyKey', () => {
 
 describe('isIdempotencyKeyClash', () => {
   it("only matches the key index's duplicate-key error", () => {
-    expect(isIdempotencyKeyClash({ code: 11000, keyPattern: { wishlist: 1, idempotencyKey: 1 } })).toBe(
-      true
-    );
+    expect(
+      isIdempotencyKeyClash({ code: 11000, keyPattern: { wishlist: 1, idempotencyKey: 1 } })
+    ).toBe(true);
     expect(isIdempotencyKeyClash({ code: 11000, keyPattern: { slug: 1 } })).toBe(false);
     expect(isIdempotencyKeyClash(new Error('boom'))).toBe(false);
     expect(isIdempotencyKeyClash(null)).toBe(false);
