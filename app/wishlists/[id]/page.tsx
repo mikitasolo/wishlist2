@@ -1052,10 +1052,16 @@ export default function WishlistDetail() {
             }
           } else {
             showToast(result.error || 'Failed to remove member', 'error');
+            // A refusal may be because the server already did it (a co-owner
+            // got there first): read the people again so the page agrees.
+            if (type === 'owner') {
+              await Promise.all([refreshMembers(), refreshOwners()]);
+            }
           }
         } catch (error) {
           console.error('Error removing member:', error);
           showToast('Failed to remove member', 'error');
+          if (type === 'owner') await Promise.all([refreshMembers(), refreshOwners()]);
         }
       });
     } finally {
@@ -1126,10 +1132,14 @@ export default function WishlistDetail() {
             await Promise.all([refreshMembers(), refreshInvites(), refreshOwners()]);
           } else {
             showToast(result.error || 'Failed to update owner', 'error');
+            // Refused (404/400) because they're no longer an owner, say: read
+            // the people and owners again so the page agrees with the server.
+            await Promise.all([refreshMembers(), refreshOwners()]);
           }
         } catch (error) {
           console.error('Error demoting owner:', error);
           showToast('Failed to update owner', 'error');
+          await Promise.all([refreshMembers(), refreshOwners()]);
         }
       }),
     [
