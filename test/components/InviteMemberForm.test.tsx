@@ -61,7 +61,7 @@ describe('InviteMemberForm — role', () => {
   });
 
   it('sends the same role values as before: owner for Co-owner', async () => {
-    const onInvite = vi.fn().mockResolvedValue(undefined);
+    const onInvite = vi.fn().mockResolvedValue(true);
     const user = userEvent.setup();
     render(<InviteMemberForm onInvite={onInvite} isInviting={false} />);
 
@@ -75,7 +75,7 @@ describe('InviteMemberForm — role', () => {
   });
 
   it('picks the role with the arrow keys too', async () => {
-    const onInvite = vi.fn().mockResolvedValue(undefined);
+    const onInvite = vi.fn().mockResolvedValue(true);
     const user = userEvent.setup();
     render(<InviteMemberForm onInvite={onInvite} isInviting={false} />);
 
@@ -90,7 +90,7 @@ describe('InviteMemberForm — role', () => {
   });
 
   it('defaults to member', async () => {
-    const onInvite = vi.fn().mockResolvedValue(undefined);
+    const onInvite = vi.fn().mockResolvedValue(true);
     render(<InviteMemberForm onInvite={onInvite} isInviting={false} />);
 
     type('bob');
@@ -196,7 +196,7 @@ describe('InviteMemberForm — username suggestions', () => {
 
   it('sends the invite as typed on Enter with no suggestion active', async () => {
     stubSearch(people('alice'));
-    const onInvite = vi.fn().mockResolvedValue(undefined);
+    const onInvite = vi.fn().mockResolvedValue(true);
     const user = userEvent.setup();
     render(<InviteMemberForm onInvite={onInvite} isInviting={false} />);
 
@@ -212,7 +212,7 @@ describe('InviteMemberForm — username suggestions', () => {
 
   it('forgets the active suggestion once the list closes, so Enter then sends what was typed', async () => {
     stubSearch(people('alice'));
-    const onInvite = vi.fn().mockResolvedValue(undefined);
+    const onInvite = vi.fn().mockResolvedValue(true);
     const user = userEvent.setup();
     render(
       <>
@@ -240,7 +240,7 @@ describe('InviteMemberForm — username suggestions', () => {
   });
 
   it('sends the username the way the search reads it', async () => {
-    const onInvite = vi.fn().mockResolvedValue(undefined);
+    const onInvite = vi.fn().mockResolvedValue(true);
     render(<InviteMemberForm onInvite={onInvite} isInviting={false} />);
 
     type(' @ Bob ');
@@ -402,7 +402,7 @@ describe('InviteMemberForm — a stale or failed search (WIS-186)', () => {
   it('drops an answer that lands after the field was cleared', async () => {
     const d = deferred();
     fetchMock.mockImplementation(() => d.promise);
-    const onInvite = vi.fn().mockResolvedValue(undefined);
+    const onInvite = vi.fn().mockResolvedValue(true);
     render(<InviteMemberForm onInvite={onInvite} isInviting={false} />);
 
     type('alice');
@@ -426,7 +426,7 @@ describe('InviteMemberForm — a stale or failed search (WIS-186)', () => {
     ],
     ['a rejected fetch', () => Promise.reject(new TypeError('Failed to fetch'))],
   ])('says the search failed, not that nobody matches, after %s', async (_label, answer) => {
-    const onInvite = vi.fn().mockResolvedValue(undefined);
+    const onInvite = vi.fn().mockResolvedValue(true);
     fetchMock.mockImplementation(answer);
     render(<InviteMemberForm onInvite={onInvite} isInviting={false} />);
 
@@ -482,7 +482,7 @@ describe('InviteMemberForm — startOwnerInvite', () => {
     delete (Element.prototype as Partial<Element>).scrollIntoView;
   });
 
-  function renderWithHandle(onInvite = vi.fn().mockResolvedValue(undefined)) {
+  function renderWithHandle(onInvite = vi.fn().mockResolvedValue(true)) {
     const handle = createRef<InviteMemberFormHandle>();
     render(<InviteMemberForm ref={handle} onInvite={onInvite} isInviting={false} />);
     return { handle, onInvite };
@@ -515,5 +515,57 @@ describe('InviteMemberForm — startOwnerInvite', () => {
     fireEvent.click(screen.getByRole('button', { name: /^invite$/i }));
 
     await waitFor(() => expect(onInvite).toHaveBeenCalledWith({ username: 'bob', role: 'owner' }));
+  });
+});
+
+describe('InviteMemberForm — refused invites and emails (WIS-307)', () => {
+  it('keeps the text and the role, and focus, when the invite is refused', async () => {
+    // regression: submit cleared the field whatever onInvite's outcome, so a
+    // refused invite (the page only toasts) made the person retype it.
+    const onInvite = vi.fn().mockResolvedValue(false);
+    const user = userEvent.setup();
+    render(<InviteMemberForm onInvite={onInvite} isInviting={false} />);
+
+    type('@Bobby');
+    await user.click(screen.getByRole('radio', { name: 'Co-owner' }));
+    await user.click(screen.getByRole('button', { name: /^invite$/i }));
+
+    await waitFor(() => expect(onInvite).toHaveBeenCalledTimes(1));
+    expect(field()).toHaveValue('@Bobby');
+    expect(screen.getByRole('radio', { name: 'Co-owner' })).toBeChecked();
+    await waitFor(() => expect(field()).toHaveFocus());
+  });
+
+  it('clears the form once the invite is sent', async () => {
+    const onInvite = vi.fn().mockResolvedValue(true);
+    const user = userEvent.setup();
+    render(<InviteMemberForm onInvite={onInvite} isInviting={false} />);
+
+    type('bobby');
+    await user.click(screen.getByRole('radio', { name: 'Co-owner' }));
+    await user.click(screen.getByRole('button', { name: /^invite$/i }));
+
+    await waitFor(() => expect(field()).toHaveValue(''));
+    expect(screen.getByRole('radio', { name: 'Member' })).toBeChecked();
+  });
+
+  it('hints at usernames for an email, keeps it as typed, and sends and searches nothing', async () => {
+    const onInvite = vi.fn().mockResolvedValue(true);
+    const user = userEvent.setup();
+    render(<InviteMemberForm onInvite={onInvite} isInviting={false} />);
+
+    type('ann+x@example.com');
+    expect(
+      screen.getByText('Invite people by their username. Ask them for their @handle.')
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /^invite$/i }));
+    await new Promise((r) => setTimeout(r, 300));
+
+    expect(onInvite).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(field()).toHaveValue('ann+x@example.com');
+
+    type('ann');
+    expect(screen.queryByText(/Ask them for their @handle/)).toBeNull();
   });
 });
