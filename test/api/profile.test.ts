@@ -163,6 +163,14 @@ describe('users/[id]/wishlists — what visitors see, told to the owner alone', 
     expect(json.visitorCount).toBe(2);
   });
 
+  it('tells the owner, and only the owner, how many of their lists are archived', async () => {
+    const own = await (await wishlists(targetId)).json();
+    expect(own.archivedCount).toBe(1);
+    for (const viewer of [undefined, friendId, strangerId]) {
+      expect(await (await wishlists(viewer)).json()).not.toHaveProperty('archivedCount');
+    }
+  });
+
   it('sends no count to anyone else: signed out, a friend, a co-owner or a member', async () => {
     for (const viewer of [undefined, friendId, strangerId]) {
       const json = await (await wishlists(viewer)).json();

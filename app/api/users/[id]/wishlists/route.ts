@@ -154,8 +154,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         uniqueWishlists.map(async (w) => (await getWishlistViewAccess(w, null)).allowed)
       );
       const visitorCount = admitted.filter(Boolean).length;
+      // How many of your own lists are archived (and so off the profile), so
+      // an empty profile doesn't say you've never made one. Self only.
+      const archivedCount = await Wishlist.countDocuments({
+        $and: [ownedByFilter(userId), { archived: true }],
+      });
       return NextResponse.json(
-        { success: true, data: wishlistsWithMembership, visitorCount },
+        { success: true, data: wishlistsWithMembership, visitorCount, archivedCount },
         { status: 200 }
       );
     }

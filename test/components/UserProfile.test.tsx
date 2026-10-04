@@ -254,6 +254,22 @@ describe('UserProfile — with no wishlists to show', () => {
     expect(screen.getByRole('dialog', { name: 'Create new wishlist' })).toBeInTheDocument();
   });
 
+  // regression: the profile leaves archived lists out, so an owner whose lists
+  // were all archived was told they hadn't made a wishlist yet.
+  it('regression: on your own profile, does not say you never made one when all your lists are archived', async () => {
+    session.current = signedIn('friend');
+    stubFetch(profile({ isSelf: true }), [], { archivedCount: 2 });
+    render(<UserProfile />);
+
+    const empty = await emptyState();
+    expect(within(empty).getByRole('heading', { level: 3 })).toHaveTextContent(
+      'No wishlists on your profile'
+    );
+    expect(empty).toHaveTextContent('Archived lists aren’t shown on your profile.');
+    expect(empty).not.toHaveTextContent(/haven.t made/i);
+    expect(within(empty).getByRole('button', { name: 'New list' })).toBeInTheDocument();
+  });
+
   it("on someone else's, says they haven't shared any with you, and offers nothing to do", async () => {
     session.current = signedIn('me');
     stubFetch();
