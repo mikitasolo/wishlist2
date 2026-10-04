@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ITEM_PARAM, itemAnchorId } from '@/lib/utils/itemDeepLink';
 
 interface ItemDeepLinkInput {
@@ -37,10 +37,13 @@ export function useItemDeepLink({
   // The item the URL asked for, until it's been acted on, keyed on the list.
   const [target, setTarget] = useState<{ listKey: string; itemId: string } | null>(null);
   const [highlighted, setHighlighted] = useState<string | null>(null);
+  // The card still to scroll to, once it's on the page.
+  const scrollTo = useRef<string | null>(null);
 
   // Read once per list (the browser's URL, so never in a server render).
   useEffect(() => {
     setHighlighted(null);
+    scrollTo.current = null;
     if (!listKey) {
       setTarget(null);
       return;
@@ -67,10 +70,20 @@ export function useItemDeepLink({
     }
     setTarget(null);
     setHighlighted(pending);
-    document
-      .getElementById(itemAnchorId(pending))
-      ?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+    scrollTo.current = pending;
   }, [pending, ready, known, shown, reveal]);
+
+  // Scrolled to once its card is on the page, which may be a render or two
+  // after the items are read (the grid replaces the skeleton). Checked after
+  // every render of the page, which is cheap: one lookup by id, until it lands.
+  useEffect(() => {
+    if (!scrollTo.current) return;
+    const card = document.getElementById(itemAnchorId(scrollTo.current));
+    if (!card) return;
+    scrollTo.current = null;
+    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    card.scrollIntoView?.({ block: 'center', behavior: reduce ? 'auto' : 'smooth' });
+  });
 
   // The highlight has done its job once the viewer does something.
   useEffect(() => {

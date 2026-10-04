@@ -14,9 +14,12 @@ function ListPage({
   items,
   ready = true,
   startOn = 'all',
+  grid = true,
 }: {
   items: { id: string; received?: boolean }[];
   ready?: boolean;
+  /** The grid is on the page (false: its skeleton still is). */
+  grid?: boolean;
   startOn?: 'all' | 'live';
 }) {
   const [chip, setChip] = useState(startOn);
@@ -28,7 +31,7 @@ function ListPage({
   return (
     <div>
       <p data-testid="chip">{chip}</p>
-      {shown.map((i) => (
+      {(grid ? shown : []).map((i) => (
         <div
           key={i.id}
           id={itemAnchorId(i.id)}
@@ -81,6 +84,16 @@ describe('?item= on a list (WIS-263)', () => {
     const { rerender } = render(<ListPage items={[]} ready={false} />);
     expect(scrollIntoView).not.toHaveBeenCalled();
     rerender(<ListPage items={[{ id: 'a' }, { id: 'b' }]} />);
+    expect(screen.getByTestId('b')).toHaveAttribute('data-highlighted', 'true');
+  });
+
+  it('scrolls once the card is on the page, a render after the items are read', () => {
+    at('/wishlists/birthday?item=b');
+    const items = [{ id: 'a' }, { id: 'b' }];
+    const { rerender } = render(<ListPage items={items} grid={false} />);
+    expect(scrollIntoView).not.toHaveBeenCalled();
+    rerender(<ListPage items={items} />);
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId('b')).toHaveAttribute('data-highlighted', 'true');
   });
 
