@@ -342,6 +342,9 @@ describe('WishlistItem — owner status actions', () => {
     pick('Mark as received');
     expect(onUpdate).not.toHaveBeenCalled();
     expect(screen.getByRole('dialog')).toHaveTextContent('Mark as received?');
+    expect(screen.getByRole('dialog')).toHaveTextContent(
+      "It stays on the list with a ✓ so people know it's taken care of, and nobody can reserve it. You can undo this."
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Mark as received' }));
     expect(onUpdate).toHaveBeenCalledWith('item-1', { status: 'completed' });
     await act(async () => {});

@@ -99,6 +99,7 @@ import {
 import { useListChip } from '@/lib/hooks/useListChip';
 import { useListPrices } from '@/lib/hooks/useListPrices';
 import { TONE_CLASSES } from '@/lib/utils/statusTones';
+import { useReceivedToast } from '@/lib/hooks/useReceivedToast';
 import { useReserveToast } from '@/lib/hooks/useReserveToast';
 import { useFetchItems, useUpdateItem, useCreateItem, useDeleteItem } from '@/lib/hooks/useItems';
 
@@ -678,10 +679,11 @@ export default function WishlistDetail() {
     () => (owners.ids.length === 1 ? owners.usernames : []),
     [owners]
   );
-  const handleCardUpdate = useReserveToast<ApiItem>(
+  const handleReservableUpdate = useReserveToast<ApiItem>(
     (id, updates) => handleUpdateItem(id, updates as Partial<ApiItem>),
     { isOwner, ownerUsernames: reserveOwnerNames }
   );
+  const handleCardUpdate = useReceivedToast<ApiItem>(handleReservableUpdate);
 
   const handleProposeItem = useCallback(
     async (itemData: {
