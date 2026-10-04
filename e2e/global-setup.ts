@@ -5,6 +5,7 @@ import { spawn, type ChildProcess } from 'child_process';
 import { createHash, randomUUID } from 'crypto';
 import { mkdir, writeFile } from 'fs/promises';
 import path from 'path';
+import { E2E_BLOB_ENV } from './blobEnv';
 import { E2E_PORT } from '../playwright.config';
 import User from '../models/User';
 import Wishlist from '../models/Wishlist';
@@ -149,6 +150,8 @@ export default async function globalSetup(_config: FullConfig) {
     UPSTASH_REDIS_REST_TOKEN: '',
     KV_REST_API_URL: '',
     KV_REST_API_TOKEN: '',
+    // Never the real Blob store, whatever a local .env holds (WIS-221).
+    ...E2E_BLOB_ENV,
   };
 
   // Call the local next binary directly (package-manager agnostic).
