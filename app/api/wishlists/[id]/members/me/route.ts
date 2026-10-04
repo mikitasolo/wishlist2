@@ -8,7 +8,7 @@ import { isWishlistOwner } from '@/lib/utils/wishlistOwners';
 import { getOwnerAccess } from '@/lib/utils/wishlistAccess';
 import {
   isLastOwner,
-  releaseLateBookings,
+  leaveAsMember,
   releaseUserBookings,
   removeWishlistOwner,
 } from '@/lib/utils/wishlistOwnership';
@@ -107,32 +107,24 @@ export async function DELETE(
     // A member may leave an archived list too, as from any other: it only takes
     // their access away, and the list may be unarchived later with them still on it.
 
-    // Free the items they had booked. Their durable reservations survive so they
-    // can still log a gift they went on to give.
-    const unbookedCount = await releaseUserBookings(wishlistId, session.user.id);
-
-    // Leaving means no way back in through an invite that was already pending.
-    // Cancelled before the membership goes and again after it, as a kick does
-    // (see `cancelPendingInvites`).
-    await cancelPendingInvites(wishlistId, session.user.id);
-
-    const { deletedCount } = await WishlistMember.deleteOne({ _id: membership._id });
-    if (!deletedCount) {
+    // Free the items they had booked (their durable reservations survive so they
+    // can still log a gift they went on to give), and cancel their pending
+    // invites: leaving means no way back in through one (see `leaveAsMember`).
+    const { removed, unbookedItems } = await leaveAsMember(
+      wishlistId,
+      session.user.id,
+      membership._id
+    );
+    if (!removed) {
       // A concurrent request took the row first: another leave, a kick, or their
       // own accept of a promotion. This request didn't take them off the list.
       return await notOnListError(wishlistId, session.user.id);
     }
 
-    // And free their items once more, now that they're off the list, for a
-    // booking that checked their membership before the delete.
-    const lateCount = await releaseLateBookings(wishlistId, session.user.id);
-
-    await cancelPendingInvites(wishlistId, session.user.id);
-
     return NextResponse.json(
       {
         success: true,
-        data: { unbookedItemsCount: unbookedCount + lateCount },
+        data: { unbookedItemsCount: unbookedItems },
       },
       { status: 200 }
     );

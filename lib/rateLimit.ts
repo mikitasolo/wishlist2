@@ -94,6 +94,9 @@ const SPECS = {
   // (the one kind no other answer confirms): a budget for a person renaming a
   // URL, not for trying slugs in bulk from a list of their own.
   wishlistSlug: { tokens: 10, window: '10 m', policy: 'fail-open', keyKind: 'user' },
+  // Deleting an account: a few tries for a person whose deletion failed part-way
+  // and is finishing it, not a loop hammering the heaviest write there is.
+  accountDelete: { tokens: 5, window: '1 h', policy: 'fail-open', keyKind: 'user' },
   // Public read/scraping surfaces — keyed on IP.
   search: { tokens: 60, window: '1 m', policy: 'fail-open', keyKind: 'ip' },
 } satisfies Record<string, LimiterSpec>;

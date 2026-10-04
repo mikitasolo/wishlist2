@@ -96,6 +96,30 @@ export function deleteListCopy(listName: string, itemCount: number | null): Conf
 export const DELETE_LIST_WARNING =
   "Deleting this wishlist takes its items and everyone's access with it. This can't be undone.";
 
+/** Settings' Danger zone line next to Delete account (WIS-276). */
+export const DELETE_ACCOUNT_WARNING =
+  "Erases your account and everything in it at once, including the lists you own alone. This can't be undone.";
+
+/**
+ * The account deletion's confirmation. It's the person's own data, so it says
+ * plainly that their reservations go (they're the gifter), and that the lists
+ * they own alone go with everyone's access. Of anyone else's records it only
+ * says, in general, that they stay: never whether there are any.
+ */
+export const DELETE_ACCOUNT_COPY: ConfirmationCopy = {
+  title: 'Delete your account?',
+  message:
+    "Your profile, photos, follows, notifications, reservations and gift history are erased at once. Items you reserved on other people's lists become available again, and you leave every list you're on or share with other owners. This can't be undone.",
+};
+
+/** What the confirmation says about the lists that go with the account. */
+export function soleOwnedListsNote(count: number): string {
+  if (count === 0) return "You don't own any lists alone, so no list is deleted.";
+  return count === 1
+    ? 'This list is deleted with it, since you own it alone. Everyone on it loses access, and anyone who reserved something on it keeps their own record:'
+    : 'These lists are deleted with it, since you own them alone. Everyone on them loses access, and anyone who reserved something on them keeps their own record:';
+}
+
 /**
  * " · 2 gifts you'd reserved here were released", or nothing for none. Only for
  * the gifter's own toast: never append it to anything an owner sees.

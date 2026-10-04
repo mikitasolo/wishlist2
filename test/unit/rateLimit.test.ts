@@ -109,6 +109,7 @@ const KEY_KINDS: Record<LimiterName, KeyKind> = {
   joinRequest: 'user',
   usernameCheck: 'user',
   wishlistSlug: 'user',
+  accountDelete: 'user',
   search: 'ip',
 };
 const LIMITERS = Object.entries(KEY_KINDS) as [LimiterName, KeyKind][];

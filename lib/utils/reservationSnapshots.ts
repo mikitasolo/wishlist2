@@ -1,6 +1,6 @@
 import type { FilterQuery, Types } from 'mongoose';
 import Reservation, { IReservation } from '@/models/Reservation';
-import GiftLog from '@/models/GiftLog';
+import GiftLog, { type IGiftLog } from '@/models/GiftLog';
 import { deleteOwnBlob, isSnapshotBlob, snapshotBlob } from '@/lib/utils/blob';
 
 /**
@@ -106,5 +106,28 @@ export async function deleteReservations(filter: FilterQuery<IReservation>): Pro
     ended.push(r);
   }
   await Promise.all(ended.map((r) => releaseSnapshots(r.gifter, [r.itemImage])));
+  return ended.length;
+}
+
+/**
+ * Delete the gift-log entries matching `filter` and free their snapshot images,
+ * as deleting one entry from the gift history does. Returns how many went.
+ *
+ * One at a time, each in a single atomic step that returns the image it held,
+ * for the reason `deleteReservations` gives: an entry written meanwhile (a gift
+ * being marked, which hands its reservation's snapshot on) is caught by looping
+ * until nothing matches, and its snapshot is never missed.
+ */
+export async function deleteGiftLogs(filter: FilterQuery<IGiftLog>): Promise<number> {
+  const ended: Array<Pick<IGiftLog, 'gifter' | 'itemImage'>> = [];
+  for (;;) {
+    const g = await GiftLog.findOneAndDelete(filter, {
+      projection: { gifter: 1, itemImage: 1 },
+      lean: true,
+    });
+    if (!g) break;
+    ended.push(g);
+  }
+  await Promise.all(ended.map((g) => releaseSnapshots(g.gifter, [g.itemImage])));
   return ended.length;
 }

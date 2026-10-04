@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useId, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useId, useRef, useState } from 'react';
 import Icon, { IconName } from '@/components/Icon';
 import Button from '@/components/Button';
 import type { ButtonVariant } from '@/components/buttonStyles';
@@ -31,6 +31,14 @@ interface ConfirmDialogProps {
    * removing someone (`user-minus`), where nothing is deleted.
    */
   icon?: IconName;
+  /**
+   * More under the message, inside the dialog: what deleting an account takes
+   * with it, and the field that confirms it. Kept out of the description, which
+   * is the message alone.
+   */
+  children?: ReactNode;
+  /** Holds Confirm until the content above says it may (a typed confirmation). */
+  confirmDisabled?: boolean;
 }
 
 export default function ConfirmDialog({
@@ -44,6 +52,8 @@ export default function ConfirmDialog({
   cancelText = 'Cancel',
   type = 'warning',
   icon: iconOverride,
+  children,
+  confirmDisabled = false,
 }: ConfirmDialogProps) {
   // The ref blocks a second click synchronously, before the disabled state renders.
   const [isPending, setIsPending] = useState(false);
@@ -57,7 +67,7 @@ export default function ConfirmDialog({
   const messageId = useId();
 
   const handleConfirm = async () => {
-    if (pendingRef.current) return;
+    if (pendingRef.current || confirmDisabled) return;
     const result = onConfirm();
     if (!(result instanceof Promise)) return;
     pendingRef.current = true;
@@ -162,6 +172,7 @@ export default function ConfirmDialog({
             <p id={messageId} className="mt-1.5 text-sm text-muted-foreground">
               {message}
             </p>
+            {children}
           </div>
         </div>
 
@@ -180,7 +191,7 @@ export default function ConfirmDialog({
             variant={button}
             size="md"
             onClick={handleConfirm}
-            disabled={isPending}
+            disabled={isPending || confirmDisabled}
             className="order-1 sm:order-2"
           >
             {isPending ? pendingText : confirmText}
