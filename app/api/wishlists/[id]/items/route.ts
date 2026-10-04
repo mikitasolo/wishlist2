@@ -184,7 +184,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     // Throttle content creation (owner items + member proposals) to stop bulk junk.
-    const limited = await enforce('content', userKey(session.user.id));
+    const limited = await enforce('content', userKey(session.user.id), {
+      newAccount: session.user.newAccount,
+    });
     if (limited) return limited;
 
     await connectDB();

@@ -16,7 +16,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     // Curb follow/unfollow churn and the notification spam it produces.
-    const limited = await enforce('follow', userKey(session.user.id));
+    const limited = await enforce('follow', userKey(session.user.id), {
+      newAccount: session.user.newAccount,
+    });
     if (limited) return limited;
 
     const { id: targetId } = await params;

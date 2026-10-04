@@ -28,6 +28,14 @@ import { Redis } from '@upstash/redis';
  * counter's key, ever includes the limiter key — it's an email, an IP or a user
  * id — so a key's *kind* is declared per limiter and enforced at compile time
  * (see `RateLimitKey`) rather than read from the key.
+ *
+ * New accounts (WIS-42): a few surfaces that reach other people or cost money
+ * have a stricter tier, `NEW_ACCOUNT_SPECS`, for an account whose first verified
+ * sign-in is under 24h old (`isNewAccount`, carried as the session's
+ * `newAccount`). The route passes `{ newAccount }` to `enforce`, which then uses
+ * that tier's limiter, counted under its own Redis prefix (`rl:<name>:new`) so an
+ * account that ages out starts on a clean standard bucket. A block on it logs and
+ * counts with `tier: 'new'`.
  */
 
 export interface RateLimitResult {
@@ -103,6 +111,69 @@ const SPECS = {
 
 export type LimiterName = keyof typeof SPECS;
 
+/**
+ * The stricter tier for an account under 24h old (WIS-42, values the operator
+ * accepted on 2026-10-04): only the surfaces that reach other people (invites,
+ * follows, new lists and items) or cost money (uploads). Booking, search and
+ * sign-in have none. Policy and key kind are the standard entry's.
+ */
+const NEW_ACCOUNT_SPECS = {
+  upload: { tokens: 5, window: '10 m' },
+  invite: { tokens: 5, window: '1 h' },
+  follow: { tokens: 20, window: '1 h' },
+  content: { tokens: 20, window: '1 h' },
+} satisfies Partial<Record<LimiterName, Pick<LimiterSpec, 'tokens' | 'window'>>>;
+
+/** The limiters that have a new-account tier. */
+export type NewAccountLimiterName = keyof typeof NEW_ACCOUNT_SPECS;
+
+/** A limiter in the registry: a standard one by its name, a new-account one as `<name>:new`. */
+export type RegistryName = LimiterName | `${NewAccountLimiterName}:new`;
+
+/** Which of a limiter's tiers a request is counted against. */
+interface Tier {
+  name: LimiterName;
+  /** `true` for the new-account tier (ignored by a limiter that has none). */
+  newAccount: boolean;
+}
+
+function hasNewAccountTier(name: LimiterName): name is NewAccountLimiterName {
+  return Object.hasOwn(NEW_ACCOUNT_SPECS, name);
+}
+
+/** The registry entry, tokens and window a request is counted against. */
+function tierSpec(tier: Tier): {
+  id: RegistryName;
+  tokens: number;
+  window: LimiterSpec['window'];
+} {
+  const { name } = tier;
+  if (tier.newAccount && hasNewAccountTier(name)) {
+    return { id: `${name}:new`, ...NEW_ACCOUNT_SPECS[name] };
+  }
+  return { id: name, tokens: SPECS[name].tokens, window: SPECS[name].window };
+}
+
+/**
+ * A limiter's budget for one tier, the standard one or (for a limiter that has
+ * one) the new-account one: what the registry builds, and what tests pin.
+ */
+export function tierLimits(
+  name: LimiterName,
+  newAccount: boolean
+): { tokens: number; window: LimiterSpec['window'] } {
+  const { tokens, window } = tierSpec({ name, newAccount });
+  return { tokens, window };
+}
+
+/**
+ * `enforce` / `checkRateLimit`'s options: `newAccount` (the session's) picks the
+ * stricter tier, and only a limiter that has one takes it.
+ */
+export type EnforceOptions<N extends LimiterName> = N extends NewAccountLimiterName
+  ? { newAccount: boolean | undefined }
+  : never;
+
 type IsUnion<T, U = T> = T extends unknown ? ([U] extends [T] ? false : true) : never;
 
 /**
@@ -112,6 +183,14 @@ type IsUnion<T, U = T> = T extends unknown ? ([U] extends [T] ? false : true) : 
  */
 type KeyFor<N extends LimiterName> =
   IsUnion<N> extends true ? never : RateLimitKey<(typeof SPECS)[N]['keyKind']>;
+
+/**
+ * The rest of `enforce` / `checkRateLimit`'s arguments: `[options]`, required,
+ * for a limiter with a new-account tier, and nothing for any other.
+ */
+type OptionsArg<N extends LimiterName> = [N] extends [NewAccountLimiterName]
+  ? [options: EnforceOptions<N>]
+  : [];
 
 /** Key an authenticated surface on the caller's user id. */
 export function userKey(userId: string): RateLimitKey<'user'> {
@@ -168,7 +247,7 @@ export interface BlockStatsPipeline {
   exec(): Promise<unknown>;
 }
 
-let registry: Partial<Record<LimiterName, RateLimiter>> | null = null;
+let registry: Partial<Record<RegistryName, RateLimiter>> | null = null;
 /** Where blocks are counted — the limiters' Redis; `null` while limiting is disabled. */
 let statsStore: BlockStatsStore | null = null;
 let warned = false;
@@ -184,7 +263,7 @@ function redisCreds(): { url: string; token: string } | null {
   return url && token ? { url, token } : null;
 }
 
-function getRegistry(): Partial<Record<LimiterName, RateLimiter>> {
+function getRegistry(): Partial<Record<RegistryName, RateLimiter>> {
   if (registry) return registry;
 
   const creds = redisCreds();
@@ -201,13 +280,18 @@ function getRegistry(): Partial<Record<LimiterName, RateLimiter>> {
   }
 
   const redis = new Redis({ url: creds.url, token: creds.token });
-  const built: Partial<Record<LimiterName, RateLimiter>> = {};
-  for (const name of Object.keys(SPECS) as LimiterName[]) {
-    const spec = SPECS[name];
-    built[name] = new Ratelimit({
+  const built: Partial<Record<RegistryName, RateLimiter>> = {};
+  const tiers: Tier[] = (Object.keys(SPECS) as LimiterName[]).flatMap((name) => [
+    { name, newAccount: false },
+    ...(hasNewAccountTier(name) ? [{ name, newAccount: true }] : []),
+  ]);
+  for (const tier of tiers) {
+    const spec = tierSpec(tier);
+    built[spec.id] = new Ratelimit({
       redis,
       limiter: Ratelimit.slidingWindow(spec.tokens, spec.window),
-      prefix: `rl:${name}`,
+      // `rl:<name>`, or `rl:<name>:new` for the new-account tier.
+      prefix: `rl:${spec.id}`,
       timeout: STORE_TIMEOUT_MS,
       // Off: `countBlockAfterResponse` already counts blocks per surface.
       // Upstash analytics would add a ZINCRBY to every `limit()` call, allowed
@@ -240,15 +324,16 @@ function describeStoreError(error: unknown, key = ''): string {
  * `op: 'count'` instead, since the request had already been turned away.
  */
 function logStoreError(
-  name: LimiterName,
+  tier: Tier,
   detail: { policy: Policy } | { op: 'count' },
   error: string
 ): void {
   console.error(
     JSON.stringify({
       event: 'rate_limit_store_error',
-      name,
-      keyKind: SPECS[name].keyKind,
+      name: tier.name,
+      keyKind: SPECS[tier.name].keyKind,
+      ...tierField(tier),
       ...detail,
       error,
     })
@@ -259,20 +344,29 @@ function logStoreError(
  * The store failed to answer (it threw or timed out): log one line — `error`
  * must already be free of the key — and apply the limiter's failure policy.
  */
-function storeFailure(name: LimiterName, error: string): RateLimitResult {
-  const spec = SPECS[name];
-  logStoreError(name, { policy: spec.policy }, error);
+function storeFailure(tier: Tier, error: string): RateLimitResult {
+  const { policy } = SPECS[tier.name];
+  logStoreError(tier, { policy }, error);
   return {
-    success: spec.policy === 'fail-open',
+    success: policy === 'fail-open',
     reset: Date.now() + 60_000,
-    limit: spec.tokens,
+    limit: tierSpec(tier).tokens,
     remaining: 0,
   };
 }
 
-async function run(name: LimiterName, key: string): Promise<RateLimitResult> {
-  const spec = SPECS[name];
-  const limiter = getRegistry()[name];
+/**
+ * What a log line adds for the tier: `tier: 'new'` on the new-account tier,
+ * nothing on the standard one (whose lines keep their shape).
+ */
+function tierField(tier: Tier): { tier?: 'new' } {
+  return tierSpec(tier).id === tier.name ? {} : { tier: 'new' };
+}
+
+async function run(tier: Tier, key: string): Promise<RateLimitResult> {
+  const { name } = tier;
+  const spec = tierSpec(tier);
+  const limiter = getRegistry()[spec.id];
 
   // Not configured → allow (limiting disabled).
   if (!limiter) {
@@ -283,38 +377,45 @@ async function run(name: LimiterName, key: string): Promise<RateLimitResult> {
   try {
     result = await limiter.limit(key);
   } catch (error) {
-    return storeFailure(name, describeStoreError(error, key));
+    return storeFailure(tier, describeStoreError(error, key));
   }
 
   // Not a verdict: the SDK gave up waiting on Redis and defaulted to allow (see
   // `STORE_TIMEOUT_MS`). Taking its `success` would fail the sign-in limiters open.
   if (result.reason === 'timeout') {
-    return storeFailure(name, STORE_TIMEOUT_ERROR);
+    return storeFailure(tier, STORE_TIMEOUT_ERROR);
   }
 
   if (!result.success) {
     // One line per block, for tuning SPECS from real traffic. Never the key.
-    console.warn(JSON.stringify({ event: 'rate_limited', name, keyKind: spec.keyKind }));
+    console.warn(
+      JSON.stringify({
+        event: 'rate_limited',
+        name,
+        keyKind: SPECS[name].keyKind,
+        ...tierField(tier),
+      })
+    );
     // And one count per block Redis answered. A repeat block the SDK answers from
     // its in-memory cache (`cacheBlock`) costs no Redis command; counting it would
     // let a flood from one source spend the store's command quota, which every
     // limiter depends on (sign-in fails closed without it).
-    if (result.reason !== 'cacheBlock') countBlockAfterResponse(name);
+    if (result.reason !== 'cacheBlock') countBlockAfterResponse(tier);
   }
   return result;
 }
 
 /**
  * The counter a block is added to: `rl:stats:<env>:<name>:<YYYY-MM-DD>`, the UTC
- * day. `env` is `VERCEL_ENV` (`'local'` when unset), so dev and preview traffic
+ * day (`<name>:new` for the new-account tier). `env` is `VERCEL_ENV` (`'local'` when unset), so dev and preview traffic
  * sharing the store never mixes with production's. Built from the limiter's name
  * alone — never from its key, nor anything derived from it. (It shares the
  * limiters' `rl:<name>` prefix space, so `stats` can't be a limiter name.)
  */
-function blockStatsKey(name: LimiterName): string {
+function blockStatsKey(tier: Tier): string {
   const env = process.env.VERCEL_ENV || 'local';
   const day = new Date().toISOString().slice(0, 10);
-  return `rl:stats:${env}:${name}:${day}`;
+  return `rl:stats:${env}:${tierSpec(tier).id}:${day}`;
 }
 
 /**
@@ -328,11 +429,11 @@ function blockStatsKey(name: LimiterName): string {
  * wait on it), `after()` throws and the count is fired and forgotten. Either way
  * it can't slow down or fail the request: `countBlock` never rejects.
  */
-function countBlockAfterResponse(name: LimiterName): void {
+function countBlockAfterResponse(tier: Tier): void {
   const store = statsStore;
   if (!store) return;
-  const statsKey = blockStatsKey(name); // now, so a block just before midnight counts that day
-  const task = () => countBlock(store, name, statsKey);
+  const statsKey = blockStatsKey(tier); // now, so a block just before midnight counts that day
+  const task = () => countBlock(store, tier, statsKey);
   try {
     after(task);
   } catch {
@@ -345,11 +446,7 @@ function countBlockAfterResponse(name: LimiterName): void {
  * `STORE_TIMEOUT_MS` (a hung store would otherwise keep the function alive via
  * `after()`) — logs one `rate_limit_store_error` line and is otherwise ignored.
  */
-async function countBlock(
-  store: BlockStatsStore,
-  name: LimiterName,
-  statsKey: string
-): Promise<void> {
+async function countBlock(store: BlockStatsStore, tier: Tier, statsKey: string): Promise<void> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     const answered = await Promise.race([
@@ -363,10 +460,10 @@ async function countBlock(
         timer = setTimeout(resolve, STORE_TIMEOUT_MS, false);
       }),
     ]);
-    if (!answered) logStoreError(name, { op: 'count' }, STORE_TIMEOUT_ERROR);
+    if (!answered) logStoreError(tier, { op: 'count' }, STORE_TIMEOUT_ERROR);
   } catch (error) {
     // The command carries only the counter key, but cut it like any other.
-    logStoreError(name, { op: 'count' }, describeStoreError(error));
+    logStoreError(tier, { op: 'count' }, describeStoreError(error));
   } finally {
     clearTimeout(timer);
   }
@@ -377,14 +474,21 @@ async function countBlock(
  * `NextResponse` (with `Retry-After`) when over the limit, or `null` when the
  * request may proceed.
  *
- *   const limited = await enforce('upload', userKey(session.user.id));
+ *   const limited = await enforce('upload', userKey(session.user.id), {
+ *     newAccount: session.user.newAccount,
+ *   });
  *   if (limited) return limited;
+ *
+ * A limiter with a new-account tier (`NEW_ACCOUNT_SPECS`) requires
+ * `{ newAccount }`, the session's, so a route can't forget it; only `true`
+ * picks that tier. Any other limiter takes no options.
  */
 export async function enforce<N extends LimiterName>(
   name: N,
-  key: KeyFor<N>
+  key: KeyFor<N>,
+  ...[options]: OptionsArg<N>
 ): Promise<NextResponse | null> {
-  const result = await run(name, key);
+  const result = await run({ name, newAccount: options?.newAccount === true }, key);
   if (result.success) return null;
 
   const retryAfter = Math.max(1, Math.ceil((result.reset - Date.now()) / 1000));
@@ -400,9 +504,10 @@ export async function enforce<N extends LimiterName>(
  */
 export async function checkRateLimit<N extends LimiterName>(
   name: N,
-  key: KeyFor<N>
+  key: KeyFor<N>,
+  ...[options]: OptionsArg<N>
 ): Promise<boolean> {
-  return (await run(name, key)).success;
+  return (await run({ name, newAccount: options?.newAccount === true }, key)).success;
 }
 
 /** What `clientIp` answers when the request carries no client IP. */
@@ -416,11 +521,11 @@ export function clientIp(headers: Headers): string {
 }
 
 /**
- * Test-only: inject a fake limiter registry, and optionally a fake store to count
+ * Test-only: inject a fake limiter registry (a new-account tier as `<name>:new`), and optionally a fake store to count
  * blocks in (none by default, so nothing is counted), or `null` to reset both to real.
  */
 export function __setRateLimiters(
-  r: Partial<Record<LimiterName, RateLimiter>> | null,
+  r: Partial<Record<RegistryName, RateLimiter>> | null,
   stats: BlockStatsStore | null = null
 ): void {
   registry = r;

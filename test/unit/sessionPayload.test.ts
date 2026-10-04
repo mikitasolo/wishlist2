@@ -22,6 +22,7 @@ describe('sessionPayload', () => {
         image: undefined,
         defaultCurrency: 'GBP',
         currencyChosen: false,
+        newAccount: true,
       },
       expires: '2026-10-31T12:00:00.000Z',
     });
@@ -42,6 +43,7 @@ describe('sessionPayload', () => {
       image: 'a.webp',
       defaultCurrency: 'USD',
       currencyChosen: false,
+      newAccount: true,
     });
   });
 
@@ -82,6 +84,7 @@ describe('sessionPayload', () => {
         image: undefined,
         defaultCurrency: 'USD',
         currencyChosen: false,
+        newAccount: true,
       },
       expires: 'not-a-date-object',
     });
@@ -113,6 +116,71 @@ describe('sessionPayload', () => {
           .currencyChosen
       ).toBe(false);
     }
+  });
+
+  // WIS-42: the stricter rate-limit tier reads it; the timestamps themselves stay put.
+  describe('newAccount', () => {
+    const NOW = new Date('2026-10-04T12:00:00.000Z').getTime();
+    const HOUR = 60 * 60 * 1000;
+    const ago = (ms: number) => new Date(NOW - ms);
+    const fromRead = { _id: id, username: 'me', image: null, defaultCurrency: 'USD' };
+    const newAccount = (row: Record<string, unknown>) =>
+      sessionPayload({ id: 'row-id', ...row }, null, EXPIRES, NOW).user.newAccount;
+
+    it('is true for an account created (first signed in) under 24h ago', () => {
+      const createdAt = ago(HOUR);
+      const payload = sessionPayload({ id: 'row-id', createdAt }, null, EXPIRES, NOW);
+      expect(payload.user.newAccount).toBe(true);
+      expect(JSON.stringify(payload)).not.toContain(createdAt.toISOString().slice(0, 13));
+    });
+
+    it('is false once the account is 24h old', () => {
+      expect(newAccount({ createdAt: ago(25 * HOUR) })).toBe(false);
+      expect(newAccount({ createdAt: ago(24 * HOUR) })).toBe(false);
+      expect(newAccount({ createdAt: ago(24 * HOUR - 1) })).toBe(true);
+    });
+
+    // regression: Auth.js sets `emailVerified` to "now" on every magic-link
+    // sign-in of an existing account, so reading it put an old account back on
+    // the new-account limits for a day after each sign-in.
+    it('regression: an old account that has just signed in again is not new', () => {
+      expect(newAccount({ createdAt: ago(365 * 24 * HOUR), emailVerified: ago(60_000) })).toBe(
+        false
+      );
+    });
+
+    it('falls back to emailVerified only for a row without createdAt', () => {
+      expect(newAccount({ emailVerified: ago(HOUR) })).toBe(true);
+      expect(newAccount({ emailVerified: ago(25 * HOUR) })).toBe(false);
+      expect(newAccount({ createdAt: 'not a date', emailVerified: ago(25 * HOUR) })).toBe(false);
+    });
+
+    it('is true with neither, or neither readable as a date', () => {
+      for (const value of [undefined, null, '2020-01-01T00:00:00.000Z', new Date('x')]) {
+        expect(newAccount({ createdAt: value, emailVerified: value })).toBe(true);
+      }
+    });
+
+    it('reads the account’s own read over the row, as every other field', () => {
+      const old = ago(30 * 24 * HOUR);
+      const fresh = ago(HOUR);
+      expect(
+        sessionPayload(
+          { id: 'row-id', createdAt: fresh },
+          { ...fromRead, createdAt: old },
+          EXPIRES,
+          NOW
+        ).user.newAccount
+      ).toBe(false);
+      expect(
+        sessionPayload(
+          { id: 'row-id', createdAt: old },
+          { ...fromRead, createdAt: fresh },
+          EXPIRES,
+          NOW
+        ).user.newAccount
+      ).toBe(true);
+    });
   });
 
   it('gives an empty expiry when there is none', () => {

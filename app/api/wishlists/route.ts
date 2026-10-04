@@ -149,7 +149,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Throttle content creation to stop bulk junk.
-    const limited = await enforce('content', userKey(session.user.id));
+    const limited = await enforce('content', userKey(session.user.id), {
+      newAccount: session.user.newAccount,
+    });
     if (limited) return limited;
 
     await connectDB();
