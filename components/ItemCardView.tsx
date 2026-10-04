@@ -85,7 +85,7 @@ export default function ItemCardView({
         <div className="absolute right-1.5 top-1.5 z-10 flex flex-col items-end gap-1 sm:-right-2 sm:-top-2 sm:gap-2">
           {item.mostWanted && (
             <Badge className="shadow-sm max-sm:px-1.5">
-              <Icon name="star" size={12} className="fill-amber-400 text-amber-500" />
+              <Icon name="star" size={12} className="fill-star text-star-edge" />
               <span className="max-sm:sr-only">Most wanted</span>
             </Badge>
           )}

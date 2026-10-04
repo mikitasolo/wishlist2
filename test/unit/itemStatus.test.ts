@@ -131,11 +131,11 @@ describe('statusMeta', () => {
 // regression: every status surface used to pick its own raw palette class,
 // so one status had several colours and several badges failed contrast.
 describe('raw status palette classes', () => {
-  // Not statuses: the "Most wanted" star (WIS-290) and Avatar's gradients.
-  const ALLOWED = [/fill-amber-400 text-amber-500/g];
+  // Not statuses: Avatar's gradients. (The "Most wanted" star has its own
+  // tokens, `fill-star text-star-edge`; red is `danger`, WIS-290.)
   const EXEMPT_FILES = new Set([path.join('components', 'Avatar.tsx')]);
   const RAW =
-    /\b(?:bg|text|border|ring|fill|stroke|from|to|via|outline|divide|shadow)-(?:emerald|amber|green|blue|yellow|teal)-\d/;
+    /\b(?:bg|text|border|ring|fill|stroke|from|to|via|outline|divide|shadow)-(?:emerald|amber|green|blue|yellow|teal|red|orange|rose)-\d/;
 
   it('are used nowhere in the app: status colours come from the tokens', () => {
     const offenders: string[] = [];
@@ -148,8 +148,7 @@ describe('raw status palette classes', () => {
         readFileSync(file, 'utf8')
           .split('\n')
           .forEach((line, i) => {
-            const rest = ALLOWED.reduce((l, re) => l.replace(re, ''), line);
-            if (RAW.test(rest)) offenders.push(`${rel}:${i + 1}`);
+            if (RAW.test(line)) offenders.push(`${rel}:${i + 1}`);
           });
       }
     }
@@ -161,7 +160,10 @@ describe('raw status palette classes', () => {
   it('catches one', () => {
     expect(RAW.test('className="bg-emerald-500 text-white"')).toBe(true);
     expect(RAW.test('className="dark:text-amber-400"')).toBe(true);
+    expect(RAW.test('className="hover:bg-red-50 text-red-600"')).toBe(true);
+    expect(RAW.test('className="fill-amber-400 text-amber-500"')).toBe(true);
     expect(RAW.test('className="bg-success-fill text-white"')).toBe(false);
+    expect(RAW.test('className="fill-star text-star-edge text-danger"')).toBe(false);
   });
 });
 
