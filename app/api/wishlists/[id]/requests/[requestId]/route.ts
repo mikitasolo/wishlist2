@@ -94,6 +94,12 @@ export async function PATCH(
     const { action } = validation.data;
 
     if (action === 'decline') {
+      // The owner check above read the list before the body was parsed:
+      // re-read it right before the write, which lives on another collection
+      // and so can't carry the check itself.
+      const stillOwner = await getOwnerAccess(id, callerId);
+      if (!stillOwner.wishlist) return wishlistNotFound();
+      if (!stillOwner.isOwner) return notOwnerError();
       // Silent: the requester's page keeps reading "Requested" until they may
       // ask again (see `WishlistJoinRequest`), and nobody is notified.
       const declined = await WishlistJoinRequest.findOneAndUpdate(
@@ -117,9 +123,15 @@ export async function PATCH(
     if (!pending) return requestNotFound();
     const requesterId = pending.user.toString();
 
+    // Re-read the caller's ownership right before any write, as the invite
+    // routes do: a co-owner may have removed them (or deleted the list) since.
+    const current = await getOwnerAccess(id, callerId);
+    if (!current.wishlist) return wishlistNotFound();
+    if (!current.isOwner) return notOwnerError();
+
     const requester = await User.findById(requesterId).select('email');
     const onList =
-      isWishlistOwner(wishlist, requesterId) ||
+      isWishlistOwner(current.wishlist, requesterId) ||
       !!(await WishlistMember.exists({ wishlist: id, user: requesterId }));
     if (!requester || onList) {
       // Nothing to invite them to: the request is over either way.
@@ -132,11 +144,6 @@ export async function PATCH(
       );
     }
 
-    // Re-read the caller's ownership right before the invite, as the invite
-    // routes do: a co-owner may have removed them (or deleted the list) since.
-    const current = await getOwnerAccess(id, callerId);
-    if (!current.wishlist) return wishlistNotFound();
-    if (!current.isOwner) return notOwnerError();
     // A member invite to an archived list would only wait, paused.
     if (isInvitePaused({ role: 'member' }, current.wishlist)) {
       return NextResponse.json(

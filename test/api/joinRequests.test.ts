@@ -235,8 +235,11 @@ describe('a list the caller can’t open answers exactly like a missing one', ()
       expect(missing.status).toBe(404);
       expect(await hidden.json()).toEqual(await missing.json());
     }
-    // The hidden list's cancel touched nothing.
-    expect(await WishlistJoinRequest.countDocuments({ status: 'pending' })).toBe(1);
+    // regression: a list hidden after they asked still lets them take their
+    // own request back (it would otherwise sit in front of the owners), though
+    // the answer stays the missing list's.
+    expect(await WishlistJoinRequest.countDocuments({})).toBe(0);
+    expect(await ownerAlerts()).toHaveLength(0);
   });
 
   it('archived: the owners’ list of requests is a missing list to anyone else', async () => {
@@ -360,6 +363,27 @@ describe('PATCH /api/wishlists/[id]/requests/[requestId] (Invite / Decline)', ()
     expect((await askAs(ivanId, 'ivan_petrov')).status).toBe(201);
     expect(await WishlistJoinRequest.countDocuments({ status: 'pending' })).toBe(1);
     expect(await ownerAlerts()).toHaveLength(2);
+  });
+
+  // regression: Decline re-reads the caller's ownership right before its write,
+  // so an owner removed while it was on its way can't hold anyone off.
+  it('a Decline from an owner removed mid-request changes nothing', async () => {
+    await askAs(ivanId, 'ivan_petrov');
+    const id = await requestIdOf();
+    as(coOwnerId, 'chloe');
+    const declineReq = req(`/api/wishlists/${listId}/requests/${id}`, 'PATCH', {
+      action: 'decline',
+    });
+    // A co-owner removes them while the body is being read, after the first owner check.
+    vi.spyOn(declineReq, 'json').mockImplementation(async () => {
+      await Wishlist.updateOne({ _id: listId }, { $pull: { owners: coOwnerId } });
+      return { action: 'decline' };
+    });
+    const res = await answer(declineReq, {
+      params: Promise.resolve({ id: listId, requestId: id }),
+    });
+    expect(res.status).toBe(403);
+    expect(await WishlistJoinRequest.countDocuments({ status: 'pending' })).toBe(1);
   });
 
   it('refuses a member (403), and a malformed or unknown request is not found', async () => {
@@ -486,6 +510,28 @@ describe('no request outlives the list or a membership', () => {
     expect(res.status).toBe(200);
     expect(await WishlistJoinRequest.countDocuments({})).toBe(0);
     expect((await (await listAs(ownerId)).json()).data).toEqual([]);
+  });
+
+  // regression: a declined request mustn't read as Requested again once they've
+  // been on the list and left it.
+  it('joining answers a declined request too: off the list again, it isn’t Requested', async () => {
+    await askAs(ivanId, 'ivan_petrov');
+    await answerAs(ownerId, await requestIdOf(), 'decline');
+    const invite = await WishlistInvite.create({
+      wishlist: listId,
+      invitedBy: coOwnerId,
+      invitedUser: ivanId,
+      role: 'member',
+    });
+    as(ivanId, 'ivan_petrov');
+    await respondInvite(req(`/api/invites/${invite._id}`, 'PATCH', { action: 'accept' }), {
+      params: Promise.resolve({ inviteId: invite._id.toString() }),
+    });
+    as(ivanId);
+    expect((await leave(req(`/api/wishlists/${listId}/members/me`, 'DELETE'), ctx())).status).toBe(
+      200
+    );
+    expect((await (await readMine(ivanId)).json()).data).toEqual({ requested: false });
   });
 
   it('leaving ends a request they still had', async () => {

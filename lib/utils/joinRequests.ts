@@ -54,7 +54,8 @@ export async function clearJoinRequestNotifications(wishlistId: Id, userId: Id):
  * but it would show the owners a request from someone who's already a member,
  * or bring an old one back the moment they're removed.
  *
- * Declined rows stay: the wait before asking again still holds. Best-effort,
+ * Declined rows stay, marked `withdrawn` so they no longer read as Requested:
+ * the wait before asking again still holds. Best-effort,
  * like the notification cleanup: a failure is logged by its kind and swallowed,
  * and the owners' Requests list leaves out anyone already on the list anyway.
  */
@@ -66,6 +67,13 @@ export async function endPendingJoinRequest(wishlistId: Id, userId: Id): Promise
       status: 'pending',
     });
     if (deletedCount) await clearJoinRequestNotifications(wishlistId, userId);
+    // A declined one is answered by their being on the list too: off it again,
+    // they mustn't find "Requested" for something they didn't ask again. It
+    // still holds them off (asking within the wait stays silent).
+    await WishlistJoinRequest.updateMany(
+      { wishlist: wishlistId, user: userId, status: 'declined' },
+      { $set: { withdrawn: true } }
+    );
   } catch (err) {
     console.error('Join request cleanup failed:', errorKind(err));
   }
