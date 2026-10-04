@@ -6,6 +6,7 @@ import BannerImage from './BannerImage';
 import ImageCropModal from './ImageCropModal';
 import Button from './Button';
 import Spinner from './Spinner';
+import type { FreshUploads } from '@/lib/utils/freshUploads';
 
 interface ImageUploadProps {
   value: string | null;
@@ -21,6 +22,12 @@ interface ImageUploadProps {
    * item form). An image dropped anywhere on the page, or pasted, is taken too.
    */
   compact?: boolean;
+  /**
+   * The form's unsaved uploads (`useFreshUploads`), so one this control lets go
+   * of before a save (replaced, removed) is handed back to the server, and one
+   * that lands once the form has closed never reaches it.
+   */
+  uploads?: FreshUploads;
 }
 
 /**
@@ -35,6 +42,7 @@ export default function ImageUpload({
   aspect = 16 / 9,
   circle = false,
   compact = false,
+  uploads,
 }: ImageUploadProps) {
   // Avatars crop square and display round.
   const effectiveAspect = circle ? 1 : aspect;
@@ -75,7 +83,11 @@ export default function ImageUpload({
         const res = await fetch('/api/upload', { method: 'POST', body: fd });
         const result = await res.json();
         if (result.success) {
+          // Landed after its form closed: handed back, and never shown.
+          if (uploads && !uploads.add(result.url)) return;
           focusPreview.current = !value;
+          // The one it replaces, if no save has taken it, goes back.
+          uploads?.discard(value);
           onChange(result.url);
         } else setError(result.error || 'Upload failed.');
       } catch {
@@ -85,8 +97,13 @@ export default function ImageUpload({
         setUploading(false);
       }
     },
-    [onChange, value]
+    [onChange, value, uploads]
   );
+
+  const remove = () => {
+    uploads?.discard(value);
+    onChange(null);
+  };
 
   // The crop dialog hands focus back to the drop zone that opened it, but an
   // upload into it swaps the drop zone for the preview, and focus would drop
@@ -208,7 +225,7 @@ export default function ImageUpload({
                 type="button"
                 variant="danger-ghost"
                 size="sm"
-                onClick={() => onChange(null)}
+                onClick={remove}
                 disabled={disabled || uploading}
               >
                 Remove
@@ -274,7 +291,7 @@ export default function ImageUpload({
                   type="button"
                   variant="danger-ghost"
                   size="sm"
-                  onClick={() => onChange(null)}
+                  onClick={remove}
                   disabled={disabled || uploading}
                 >
                   Remove
@@ -311,7 +328,7 @@ export default function ImageUpload({
               type="button"
               variant="scrim"
               size="sm"
-              onClick={() => onChange(null)}
+              onClick={remove}
               disabled={disabled || uploading}
             >
               Remove

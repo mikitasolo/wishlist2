@@ -120,6 +120,7 @@ import {
   PROPOSAL_REVIEWED_ERROR,
   proposalReviewState,
 } from '@/lib/utils/proposalReview';
+import { useFreshUploads } from '@/lib/hooks/useFreshUploads';
 
 type PageLoad = 'loading' | 'ready' | 'unavailable' | 'failed';
 
@@ -227,6 +228,10 @@ export default function WishlistDetail() {
     }));
   }, []);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
+  // Cover photos uploaded in Settings that no save has taken: one replaced or
+  // removed, one discarded, and any left when the page goes are handed back
+  // (WIS-181). The page's, not the tab's, as the form outlives the tab.
+  const bannerUploads = useFreshUploads();
   const [deleteConfirm, setDeleteConfirm] = useState<{
     type: 'member' | 'owner' | 'leave' | 'wishlist';
     /** What the removal's route takes: an owner's user id, a member's membership id. */
@@ -1447,7 +1452,8 @@ export default function WishlistDetail() {
   // Discard: the form as it was last filled from the list.
   const discardSettings = useCallback(() => {
     setSettings((s) => ({ ...s, form: settingsFormFor(s.saved) }));
-  }, []);
+    bannerUploads.discardAll();
+  }, [bannerUploads]);
 
   const saveSettings = useCallback(
     async (e: FormEvent<HTMLFormElement>) => {
@@ -1467,6 +1473,10 @@ export default function WishlistDetail() {
       const changes = settingsChanges(sent, settingsBaseline);
       if (Object.keys(changes).length === 0) return;
       setIsSavingSettings(true);
+      // Any answer means the save is over, so a refused one leaves the photo
+      // the form's; with none, it may have landed, and it's never handed back.
+      const settleUpload = bannerUploads.saving(changes.bannerUrl);
+      let outcome: 'saved' | 'refused' | 'unknown' = 'unknown';
 
       try {
         const response = await fetch(`/api/wishlists/${apiId()}`, {
@@ -1478,6 +1488,7 @@ export default function WishlistDetail() {
         });
 
         const result = await response.json();
+        outcome = result.success ? 'saved' : 'refused';
 
         if (result.success) {
           // The caller's pin isn't a setting: a save never changes it, and its
@@ -1505,10 +1516,20 @@ export default function WishlistDetail() {
         console.error('Error updating wishlist:', error);
         showToast('Failed to update wishlist', 'error');
       } finally {
+        settleUpload(outcome);
         setIsSavingSettings(false);
       }
     },
-    [apiId, settingsForm, settingsBaseline, wishlistId, refillSettings, router, showToast]
+    [
+      apiId,
+      settingsForm,
+      settingsBaseline,
+      wishlistId,
+      refillSettings,
+      router,
+      showToast,
+      bannerUploads,
+    ]
   );
   // Who each username suggestion in the invite form already is on the list.
   const inviteStatuses = useMemo(
@@ -2024,6 +2045,7 @@ export default function WishlistDetail() {
               onEdit={editSettings}
               onSubmit={saveSettings}
               onDiscard={discardSettings}
+              uploads={bannerUploads}
               archived={!!wishlist.archived}
               archiving={isArchiving}
               onArchive={() => setArchiveConfirm(true)}

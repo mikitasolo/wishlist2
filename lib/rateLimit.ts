@@ -89,6 +89,10 @@ const SPECS = {
   signinIp: { tokens: 10, window: '15 m', policy: 'fail-closed', keyKind: 'ip' },
   // Authenticated, cost-bearing or spammy write surfaces — keyed on user id.
   upload: { tokens: 20, window: '10 m', policy: 'fail-open', keyKind: 'user' },
+  // Giving back an upload no form saved (WIS-181): its own budget, so a
+  // cancelled form never spends an upload, and twice the upload's, since each
+  // upload is handed back at most once.
+  uploadRelease: { tokens: 40, window: '10 m', policy: 'fail-open', keyKind: 'user' },
   invite: { tokens: 30, window: '1 h', policy: 'fail-open', keyKind: 'user' },
   follow: { tokens: 60, window: '1 h', policy: 'fail-open', keyKind: 'user' },
   content: { tokens: 60, window: '1 h', policy: 'fail-open', keyKind: 'user' },

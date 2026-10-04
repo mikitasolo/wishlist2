@@ -9,6 +9,7 @@ import BaseModal from './BaseModal';
 import ConfirmDialog from './ConfirmDialog';
 import SegmentedControl from './SegmentedControl';
 import ImageUpload from './ImageUpload';
+import { useFreshUploads } from '@/lib/hooks/useFreshUploads';
 import Select from './Select';
 import Button from './Button';
 import Icon from './Icon';
@@ -77,6 +78,9 @@ export default function CreateWishlistModal({
   const moreId = useId();
   const visibilityLabelId = useId();
   const visibilityHelperId = useId();
+  // A cover photo uploaded here that no create took is handed back when it's
+  // replaced or removed, and when the modal closes (WIS-181).
+  const uploads = useFreshUploads(isOpen);
 
   // Reset form when modal closes
   useEffect(() => {
@@ -115,6 +119,10 @@ export default function CreateWishlistModal({
       return;
     }
     setIsSubmitting(true);
+    // An answered refusal leaves the photo the form's; anything else may have
+    // created the list with it, so it's never handed back.
+    const settleUpload = uploads.saving(formData.bannerUrl);
+    let outcome: 'saved' | 'refused' | 'unknown' = 'unknown';
 
     try {
       const response = await fetch('/api/wishlists', {
@@ -127,6 +135,7 @@ export default function CreateWishlistModal({
 
       const result = await response.json();
 
+      outcome = result.success ? 'saved' : 'refused';
       if (result.success) {
         showToast('Wishlist created successfully', 'success');
         setHasUnsavedChanges(false);
@@ -141,6 +150,7 @@ export default function CreateWishlistModal({
       console.error('Error creating wishlist:', error);
       showToast('Failed to create wishlist', 'error');
     } finally {
+      settleUpload(outcome);
       setIsSubmitting(false);
     }
   };
@@ -271,6 +281,7 @@ export default function CreateWishlistModal({
                 <ImageUpload
                   value={formData.bannerUrl || null}
                   onChange={(url) => setFormData((f) => ({ ...f, bannerUrl: url ?? '' }))}
+                  uploads={uploads}
                   disabled={isSubmitting}
                 />
                 <p className={FIELD_HELPER}>Shown across the top of the list, and on its card.</p>

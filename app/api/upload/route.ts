@@ -3,7 +3,9 @@ import { put } from '@vercel/blob';
 import sharp from 'sharp';
 import { auth } from '@/lib/auth';
 import { enforce, userKey } from '@/lib/rateLimit';
+import connectDB from '@/lib/mongodb';
 import { getUserUploadBytes, USER_UPLOAD_QUOTA_BYTES } from '@/lib/utils/blob';
+import { releaseUnsavedUpload } from '@/lib/utils/unsavedUploads';
 import {
   decodedAsDeclared,
   hasDeclaredSignature,
@@ -150,6 +152,42 @@ export async function POST(request: NextRequest) {
     // Most common cause: BLOB_READ_WRITE_TOKEN not configured.
     return NextResponse.json(
       { success: false, error: 'Upload failed. Please try again.' },
+      { status: 500 }
+    );
+  }
+}
+
+// DELETE /api/upload - give back an upload no form ended up saving (WIS-181).
+// Body: { url }. Frees it only when it's in the caller's own uploads folder and
+// nothing shows it (`releaseUnsavedUpload`). Any URL of theirs gets the same
+// answer, freed or not, so it never says whether a record shows the image.
+export async function DELETE(request: NextRequest) {
+  try {
+    const session = await auth();
+    if (!session?.user) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const limited = await enforce('uploadRelease', userKey(session.user.id));
+    if (limited) return limited;
+
+    const body: unknown = await request.json().catch(() => null);
+    const url =
+      body && typeof body === 'object' && 'url' in body && typeof body.url === 'string'
+        ? body.url
+        : null;
+    if (!url) {
+      return NextResponse.json({ success: false, error: 'No image given' }, { status: 400 });
+    }
+
+    await connectDB();
+    await releaseUnsavedUpload(url, session.user.id);
+    return NextResponse.json({ success: true }, { status: 200 });
+  } catch (error) {
+    // No URL in the line: an uploads folder names its user.
+    console.error('Releasing an upload failed:', error instanceof Error ? error.name : 'unknown');
+    return NextResponse.json(
+      { success: false, error: 'Could not release the image.' },
       { status: 500 }
     );
   }
