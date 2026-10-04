@@ -226,6 +226,16 @@ describe('an owner', () => {
     expect(screen.queryAllByRole('article')).toEqual([]);
   });
 
+  it('pins nothing for a content edit: Most wanted moves the card by the sort, as before', async () => {
+    await open();
+    const user = userEvent.setup();
+    await user.click(chip('Live'));
+    const last = shown().at(-1)!;
+    await user.click(within(card(last)).getByRole('button', { name: 'More actions' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Mark as most wanted' }));
+    await waitFor(() => expect(shown()[0]).toBe(last));
+  });
+
   // regression: pinning only keeps a card in view: its badge is its own status
   // as the owner reads it, never a booking.
   it('regression: keeps a card they mark as received on Live in its slot, showing Received and nothing of a booking', async () => {
