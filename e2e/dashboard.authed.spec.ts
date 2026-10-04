@@ -121,8 +121,39 @@ test('the dashboard opens on the greeting, what needs you and what is coming up'
     )
   ).toBe(0);
 
+  // regression: the member's list (e2e-friend) is seeded with no items, and a
+  // list with none sends its chip back to All (which takes `?show=` out of the
+  // URL) once both its read and its empty items read have landed. Whether that
+  // came before the page put the chip in the URL depended on which read
+  // answered first, so the check failed in some runs (WIS-304). Give the list
+  // an item the way the items API gives it to a member, so it isn't empty.
+  const at = '2026-01-01T00:00:00.000Z';
+  await page.route('**/api/wishlists/e2e-friend/items', (route) =>
+    route.request().method() === 'GET'
+      ? route.fulfill({
+          json: {
+            success: true,
+            data: [
+              {
+                _id: 'e2e-find-a-gift-1',
+                wishlist: 'e2e-friend',
+                name: 'E2E Lamp',
+                status: 'available',
+                price: null,
+                priceInUsdCents: null,
+                createdAt: at,
+                updatedAt: at,
+              },
+            ],
+          },
+        })
+      : route.fallback()
+  );
   await comingUp.getByRole('link', { name: 'Find a gift on E2E Friend List' }).click();
   await expect(page).toHaveURL('/wishlists/e2e-friend?show=available');
+  await expect(
+    page.getByRole('radiogroup', { name: 'Show items' }).getByRole('radio', { name: /^Available/ })
+  ).toBeChecked();
 });
 
 test('Pin to top pins your list, and Unpin takes it off again', async ({ page }) => {
