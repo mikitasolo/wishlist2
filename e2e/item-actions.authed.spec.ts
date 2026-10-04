@@ -119,10 +119,13 @@ for (const width of [390, 1280]) {
     await expect(sheet).toBeVisible();
     await expect(sheet.getByRole('button', { name: 'Edit item' })).toBeVisible();
     if (width < 640) {
-      // Flush with the screen's bottom.
-      const box = (await sheet.boundingBox())!;
-      expect(box.y + box.height).toBeCloseTo(900, 0);
-      expect(box.width).toBeCloseTo(width, 0);
+      // Flush with the screen's bottom, once it has risen into place.
+      await expect
+        .poll(async () => {
+          const box = (await sheet.boundingBox())!;
+          return [Math.round(box.y + box.height), Math.round(box.width)];
+        })
+        .toEqual([900, width]);
     }
 
     await page.keyboard.press('Escape');
