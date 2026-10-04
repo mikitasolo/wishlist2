@@ -491,7 +491,7 @@ describe('SignInForm — copy and inline validation', () => {
     render(<SignInForm />);
     const field = screen.getByLabelText(/email address/i);
 
-    await userEvent.type(field, 'me@example');
+    await userEvent.type(field, 'me.example.com');
     await userEvent.click(sendButton());
 
     expect(mockedRequest).not.toHaveBeenCalled();
@@ -502,7 +502,8 @@ describe('SignInForm — copy and inline validation', () => {
     expect(field.closest('form')).toHaveAttribute('novalidate');
 
     // Fixing it clears the error as you type.
-    await userEvent.type(field, '.com');
+    await userEvent.clear(field);
+    await userEvent.type(field, 'me@example.com');
     expect(field).not.toHaveAttribute('aria-invalid');
   });
 

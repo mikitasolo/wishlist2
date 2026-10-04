@@ -23,7 +23,8 @@ export function signInDestination(
   const path = safeCallbackPath(raw, origin, '/auth');
   const { pathname } = new URL(path, origin);
   const list = WISHLIST_PAGE.exec(pathname);
-  if (list && !NOT_A_LIST.has(decodeURIComponent(list[1]!))) return 'wishlist';
+  // The raw segment: decoding a malformed escape (`%zz`) would throw mid-render.
+  if (list && !NOT_A_LIST.has(list[1]!)) return 'wishlist';
   if (PROFILE_PAGE.test(pathname)) return 'profile';
   return null;
 }
@@ -49,7 +50,10 @@ export function signInRetryPath(raw: string | null | undefined, origin: string):
   return path === '/' ? SIGN_IN_PATH : `${SIGN_IN_PATH}?callbackUrl=${encodeURIComponent(path)}`;
 }
 
-const emailSchema = z.email();
+// The browser's own `type=email` rule (which `noValidate` turns off), no
+// stricter: Zod's default pattern refuses real addresses (`a&b@…`, punycode
+// TLDs) that the server and Auth.js accept.
+const emailSchema = z.email({ pattern: z.regexes.html5Email });
 
 /**
  * The sign-in form's inline check of the address typed: a hint, not a gate the

@@ -17,6 +17,9 @@ describe('signInDestination', () => {
     ['/wishlists/mine', null],
     ['/wishlists/shared', null],
     ['/wishlists/abc/edit', null],
+    // regression: a malformed escape threw while decoding, a 500 for the page.
+    ['/wishlists/%zz', 'wishlist'],
+    ['/wishlists/%E0', 'wishlist'],
     ['/notifications', null],
     ['/', null],
     ['', null],
@@ -71,14 +74,22 @@ describe('emailInputError', () => {
     expect(emailInputError('   ')).toBe('Enter your email address');
   });
 
-  it.each(['me', 'me@', '@example.com', 'me@example', 'me @example.com'])('refuses %s', (value) => {
-    expect(emailInputError(value)).toBe('Enter an email address like you@example.com');
-  });
-
-  it.each(['me@example.com', '  me@example.com  ', 'first.last+tag@sub.example.co.uk'])(
-    'accepts %s',
+  it.each(['me', 'me@', '@example.com', 'me @example.com', 'me@@example.com'])(
+    'refuses %s',
     (value) => {
-      expect(emailInputError(value)).toBeNull();
+      expect(emailInputError(value)).toBe('Enter an email address like you@example.com');
     }
   );
+
+  it.each([
+    'me@example.com',
+    '  me@example.com  ',
+    'first.last+tag@sub.example.co.uk',
+    // regression: Zod's default email pattern refused these, which the server accepts.
+    'a&b@example.com',
+    "o'@example.com",
+    'user@example.xn--p1ai',
+  ])('accepts %s', (value) => {
+    expect(emailInputError(value)).toBeNull();
+  });
 });
