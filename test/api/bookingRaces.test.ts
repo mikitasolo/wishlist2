@@ -255,6 +255,56 @@ describe('PATCH /api/items/[id] — a book or unbook racing another change', () 
   });
 });
 
+describe("PATCH /api/items/[id] — an owner's publish or reopen racing a booking", () => {
+  // regression (WIS-108): the owner's `available` was decided on a stale view
+  // (the item read as a draft or received) and written unconditionally, so it
+  // released a booking made since, while its gifter kept the Reservation: the
+  // item was bookable again, and a second member could book it too.
+  it.each(['draft', 'completed'])(
+    'regression: a publish or reopen of a %s item that lands after a co-owner published it and a member booked it keeps the booking',
+    async (from) => {
+      await Item.updateOne({ _id: itemId }, { status: from });
+      const race = whileItemWriteHeld(async () => {
+        await Item.updateOne({ _id: itemId }, { status: 'available' }); // a co-owner's publish
+        return patchAs(alice, { status: 'booked' });
+      });
+      const publish = await patchAs(owner, { status: 'available' });
+
+      expect(race.held()).toBe(true);
+      expect(race.outcome()?.status).toBe(200);
+      expect(publish.status).toBe(200);
+      // Answered as on an unbooked item: an owner never learns of the booking.
+      const { data } = await publish.json();
+      expect([data.status, data.bookedBy]).toEqual(['available', undefined]);
+
+      const item = await Item.findById(itemId);
+      expect(item?.status).toBe('booked');
+      expect(item?.bookedBy?.toString()).toBe(alice);
+      expect(await Reservation.countDocuments({ gifter: alice, item: itemId })).toBe(1);
+      // Nobody else can book it now.
+      expect((await patchAs(bob, { status: 'booked' })).status).toBe(400);
+      expect(await Reservation.countDocuments({ gifter: bob })).toBe(0);
+    }
+  );
+
+  it('a move to draft or mark as received landing after a booking still releases it and keeps the Reservation', async () => {
+    for (const status of ['draft', 'completed']) {
+      await Item.updateOne({ _id: itemId }, { status: 'available', bookedBy: null });
+      await Reservation.deleteMany({});
+      const race = whileItemWriteHeld(() => patchAs(alice, { status: 'booked' }));
+      const change = await patchAs(owner, { status });
+      race.restore();
+
+      expect(race.outcome()?.status).toBe(200);
+      expect(change.status).toBe(200);
+      const item = await Item.findById(itemId);
+      expect(item?.status).toBe(status);
+      expect(item?.bookedBy).toBeNull();
+      expect(await Reservation.countDocuments({ gifter: alice, item: itemId })).toBe(1);
+    }
+  });
+});
+
 // The checks against the route's first read answer as they always have. Only a
 // request that passed them and then lost a race gets the 409.
 describe('PATCH /api/items/[id] — a book or unbook already refused on the first read', () => {
