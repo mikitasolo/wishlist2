@@ -1,5 +1,6 @@
 'use client';
 
+import { withWelcomeMarker } from '@/lib/utils/memberWelcome';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
@@ -220,9 +221,11 @@ export function usePendingInvites({ onAnswered }: PendingInvitesOptions = {}) {
             );
             // Only the last accept clicked opens its list: one clicked earlier
             // just says it joined.
+            // A new member's list opens with the one-shot welcome marker (WIS-262).
+            const listPath = `/wishlists/${result.data.wishlistSlug ?? result.data.wishlistId}`;
             const path = landings.joined(
               invite._id,
-              `/wishlists/${result.data.wishlistSlug ?? result.data.wishlistId}`
+              invite.role === 'member' ? withWelcomeMarker(listPath) : listPath
             );
             if (path) router.push(path);
           } else {
