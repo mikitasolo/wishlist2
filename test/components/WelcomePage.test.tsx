@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
 
-const { replace, showToast, update, auth, params } = vi.hoisted(() => ({
+const { replace, showToast, update, auth, params, zone } = vi.hoisted(() => ({
   replace: vi.fn(),
   showToast: vi.fn(),
   update: vi.fn(),
@@ -10,7 +10,10 @@ const { replace, showToast, update, auth, params } = vi.hoisted(() => ({
   auth: {
     status: 'authenticated' as 'authenticated' | 'unauthenticated' | 'loading',
     username: 'user_4f9k2x7q' as string | undefined,
+    defaultCurrency: 'USD',
+    currencyChosen: false,
   },
+  zone: { value: null as string | null },
   params: { search: '' },
 }));
 
@@ -18,7 +21,15 @@ vi.mock('next-auth/react', () => ({
   useSession: () => ({
     data:
       auth.status === 'authenticated'
-        ? { user: { id: 'me', email: 'jane.doe@example.com', username: auth.username } }
+        ? {
+            user: {
+              id: 'me',
+              email: 'jane.doe@example.com',
+              username: auth.username,
+              defaultCurrency: auth.defaultCurrency,
+              currencyChosen: auth.currencyChosen,
+            },
+          }
         : null,
     status: auth.status,
     update,
@@ -31,6 +42,9 @@ vi.mock('next/navigation', () => ({
 // The header has its own fetches and tests; this file is about the page.
 vi.mock('@/components/AppHeader', () => ({ default: () => null }));
 vi.mock('@/components/AuthButton', () => ({ default: () => null }));
+vi.mock('@/lib/hooks/useCurrencySuggestion', () => ({
+  useCurrencySuggestion: () => zone.value,
+}));
 vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }));
 
 import WelcomePage from '@/app/welcome/page';
@@ -72,6 +86,9 @@ beforeEach(() => {
   global.fetch = fetchMock as unknown as typeof fetch;
   auth.status = 'authenticated';
   auth.username = 'user_4f9k2x7q';
+  auth.defaultCurrency = 'USD';
+  auth.currencyChosen = false;
+  zone.value = null;
   params.search = 'callbackUrl=%2Finvites';
   available = true;
   patchReply = {
@@ -81,12 +98,14 @@ beforeEach(() => {
 });
 
 describe('Welcome page', () => {
-  it('offers to replace the generated username, starting from it', () => {
+  it('offers a username with an empty field, the generated one only on Keep', () => {
     render(<WelcomePage />);
 
     expect(screen.getByRole('heading', { name: 'Welcome to Wishlist' })).toBeInTheDocument();
-    expect(screen.getByText('@user_4f9k2x7q')).toBeInTheDocument();
-    expect(screen.getByLabelText('Username')).toHaveValue('user_4f9k2x7q');
+    const field = screen.getByLabelText('Username');
+    expect(field).toHaveValue('');
+    expect(field).toHaveAttribute('placeholder', 'e.g. maria_nowak');
+    expect(screen.queryByDisplayValue('user_4f9k2x7q')).toBeNull();
     // Nothing to save until it's changed to something free.
     expect(save()).toBeDisabled();
     expect(keep()).toBeEnabled();
@@ -157,7 +176,6 @@ describe('Welcome page', () => {
     await waitFor(() => expect(replace).toHaveBeenCalledWith('/invites'));
     rerender(<WelcomePage />); // what the session change does
 
-    expect(screen.getByText('@user_4f9k2x7q')).toBeInTheDocument();
     expect(keep()).toBeDisabled();
     expect(save()).toBeDisabled();
   });
@@ -212,6 +230,72 @@ describe('Welcome page', () => {
     expect(screen.getByLabelText('Username')).toHaveValue('');
     fireEvent.click(screen.getByRole('button', { name: 'Skip for now' }));
     expect(replace).toHaveBeenCalledWith('/invites');
+  });
+
+  describe('the currency question', () => {
+    const currencyRow = () => screen.queryByRole('combobox', { name: 'Currency' });
+
+    it('is shown, set to the browser’s suggestion, only when Home would ask it', () => {
+      zone.value = 'PLN';
+      render(<WelcomePage />);
+      expect(currencyRow()).toHaveTextContent('PLN');
+
+      for (const change of [
+        () => (zone.value = 'USD'),
+        () => (zone.value = null),
+        () => (auth.currencyChosen = true),
+        () => (auth.defaultCurrency = 'EUR'),
+      ]) {
+        cleanup();
+        zone.value = 'PLN';
+        auth.currencyChosen = false;
+        auth.defaultCurrency = 'USD';
+        change();
+        render(<WelcomePage />);
+        expect(currencyRow()).toBeNull();
+      }
+    });
+
+    it('saves the suggestion with the answer, and the username', async () => {
+      zone.value = 'PLN';
+      render(<WelcomePage />);
+      await chooseAvailable('jane_d');
+
+      fireEvent.click(save());
+
+      await waitFor(() => expect(replace).toHaveBeenCalledWith('/invites'));
+      expect(patches()).toEqual([
+        { username: 'jane_d', currencyChosen: true, defaultCurrency: 'PLN' },
+      ]);
+    });
+
+    it('Keep still sends the currency answer, without a username', async () => {
+      zone.value = 'PLN';
+      render(<WelcomePage />);
+
+      fireEvent.click(keep());
+
+      await waitFor(() => expect(replace).toHaveBeenCalledWith('/invites'));
+      expect(patches()).toEqual([{ currencyChosen: true, defaultCurrency: 'PLN' }]);
+    });
+
+    it('sends only the answer when they pick USD, and stays when it can’t be saved', async () => {
+      zone.value = 'PLN';
+      render(<WelcomePage />);
+      fireEvent.click(currencyRow()!);
+      fireEvent.click(await screen.findByRole('option', { name: /^USD/ }));
+      fireEvent.click(keep());
+      await waitFor(() => expect(replace).toHaveBeenCalledWith('/invites'));
+      expect(patches()).toEqual([{ currencyChosen: true }]);
+
+      cleanup();
+      replace.mockReset();
+      patchReply = { status: 500, body: { success: false, error: 'nope' } };
+      render(<WelcomePage />);
+      fireEvent.click(keep());
+      await waitFor(() => expect(showToast).toHaveBeenCalledWith('nope', 'error'));
+      expect(replace).not.toHaveBeenCalled();
+    });
   });
 
   it('sends a signed-out visitor home', () => {

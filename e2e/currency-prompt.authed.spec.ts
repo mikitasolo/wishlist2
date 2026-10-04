@@ -30,7 +30,7 @@ const crampedButtons = (page: Page) =>
       .map((button) => button.textContent)
   );
 
-test('the dashboard offers a USD user their time zone’s currency once, and “Choose another currency” opens the picker', async ({
+test('the dashboard offers a USD user their time zone’s currency once, and “Keep USD” answers it without leaving', async ({
   page,
 }) => {
   // regression: the second button read "Choose another…", whose ellipsis looked
@@ -49,9 +49,9 @@ test('the dashboard offers a USD user their time zone’s currency once, and “
   expect(await sidewaysScroll(page)).toBe(0);
   expect(await crampedButtons(page)).toEqual([]);
 
-  await prompt(page).getByRole('button', { name: 'Choose another currency' }).click();
-  await expect(page).toHaveURL(/\/settings#currency$/);
-  await expect(page.getByRole('combobox', { name: 'Default currency' })).toBeFocused();
+  await prompt(page).getByRole('button', { name: 'Keep USD' }).click();
+  await expect(prompt(page)).toHaveCount(0);
+  await expect(page).toHaveURL(/\/$/);
 
   // Answered, so a fresh session no longer offers it.
   await page.goto('/');

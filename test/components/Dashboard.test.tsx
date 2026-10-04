@@ -311,6 +311,40 @@ describe('dashboard — Pin to top', () => {
   });
 });
 
+describe('dashboard — a new account', () => {
+  it('shows the starter card with the user’s own handle when there are no lists', async () => {
+    answers.lists = () => json({ success: true, data: { owned: [], member: [] } });
+    render(<Home />);
+
+    await screen.findByRole('heading', { name: 'Get started' });
+    expect(screen.getByText('@me')).toBeInTheDocument();
+    expect(screen.getByText(/Friends invite you by username/)).toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Create wishlist' }));
+    expect(screen.getByRole('dialog', { name: 'Create new wishlist' })).toBeInTheDocument();
+  });
+
+  it('nudges a generated handle toward Settings, once dismissed not again', async () => {
+    localStorage.clear();
+    auth.signInAs('user_6okeewqv');
+    render(<Home />);
+
+    expect(await screen.findByText(/Pick a username friends will recognise/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Choose a username' })).toHaveAttribute(
+      'href',
+      '/settings'
+    );
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Dismiss' }));
+    expect(screen.queryByText(/Pick a username friends will recognise/)).toBeNull();
+  });
+
+  it('doesn’t nudge someone who chose their handle', async () => {
+    localStorage.clear();
+    render(<Home />);
+    await screen.findByRole('heading', { level: 2, name: 'Your wishlists' });
+    expect(screen.queryByText(/Pick a username friends will recognise/)).toBeNull();
+  });
+});
+
 describe('dashboard — lists that couldn’t be loaded', () => {
   // regression: a failed read of the lists fell through to the empty state, so
   // a user with lists read "No wishlists yet" and "Let's create your first

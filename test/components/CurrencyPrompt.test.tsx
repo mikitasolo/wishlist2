@@ -36,7 +36,6 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ push }) }));
 vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }));
 
 import CurrencyPromptRow, { useCurrencyOffer } from '@/components/CurrencyPrompt';
-import { SETTINGS_CURRENCY_PATH } from '@/lib/utils/currencies';
 
 /** The prompt as the dashboard's Needs you shows it: the row, whenever there's an offer. */
 function CurrencyPrompt() {
@@ -69,7 +68,8 @@ const realResolvedOptions = Intl.DateTimeFormat.prototype.resolvedOptions;
 
 const prompt = () => screen.queryByRole('region', { name: /Show prices in/ });
 const useButton = (code: string) => screen.getByRole('button', { name: `Use ${code}` });
-const chooseAnother = () => screen.getByRole('button', { name: 'Choose another currency' });
+const keepUsd = () => screen.getByRole('button', { name: 'Keep USD' });
+const otherCurrency = () => screen.getByRole('combobox', { name: 'Other currency' });
 
 beforeEach(() => {
   cleanup();
@@ -101,7 +101,8 @@ describe('CurrencyPrompt', () => {
     expect(screen.getByRole('heading', { name: 'Show prices in PLN?' })).toBeInTheDocument();
     expect(screen.getByText(/Polish Zloty would be the default/)).toBeInTheDocument();
     expect(useButton('PLN')).toBeEnabled();
-    expect(chooseAnother()).toBeEnabled();
+    expect(otherCurrency()).toBeEnabled();
+    expect(keepUsd()).toBeEnabled();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -129,18 +130,27 @@ describe('CurrencyPrompt', () => {
     expect(prompt()).not.toBeInTheDocument();
   });
 
-  it('“Choose another currency” records the answer, then takes them to Settings’ currency field', async () => {
+  it('picking another currency saves it with the answer, and stays on the page', async () => {
     render(<CurrencyPrompt />);
 
-    fireEvent.click(chooseAnother());
+    fireEvent.click(otherCurrency());
+    fireEvent.click(await screen.findByRole('option', { name: /^EUR/ }));
 
-    // Held until it's saved, so a click can't land twice.
-    expect(useButton('PLN')).toBeDisabled();
-    expect(chooseAnother()).toBeDisabled();
-    await waitFor(() => expect(push).toHaveBeenCalledWith(SETTINGS_CURRENCY_PATH));
-    expect(SETTINGS_CURRENCY_PATH).toBe('/settings#currency');
+    await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
+    expect(patches()).toEqual([{ defaultCurrency: 'EUR', currencyChosen: true }]);
+    expect(showToast).toHaveBeenCalledWith('Prices will show in EUR', 'success');
+    expect(push).not.toHaveBeenCalled();
+    expect(prompt()).not.toBeInTheDocument();
+  });
+
+  it('“Keep USD” sends only the answer, and stays on the page', async () => {
+    render(<CurrencyPrompt />);
+
+    fireEvent.click(keepUsd());
+
+    await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
     expect(patches()).toEqual([{ currencyChosen: true }]);
-    expect(update).toHaveBeenCalledTimes(1);
+    expect(push).not.toHaveBeenCalled();
     expect(prompt()).not.toBeInTheDocument();
   });
 
@@ -203,19 +213,19 @@ describe('CurrencyPrompt', () => {
     expect(useButton('PLN')).toBeEnabled();
   });
 
-  it('stays, with an error, when “Choose another currency” can’t be saved', async () => {
+  it('comes back, with an error, when “Keep USD” can’t be saved', async () => {
     patchReply = new Error('offline');
     render(<CurrencyPrompt />);
 
-    fireEvent.click(chooseAnother());
+    fireEvent.click(keepUsd());
 
     await waitFor(() =>
       expect(showToast).toHaveBeenCalledWith('Failed to save your currency choice', 'error')
     );
     expect(push).not.toHaveBeenCalled();
     expect(update).not.toHaveBeenCalled();
-    expect(prompt()).toBeInTheDocument();
-    expect(chooseAnother()).toBeEnabled();
+    expect(await screen.findByRole('region', { name: /Show prices in/ })).toBeInTheDocument();
+    expect(keepUsd()).toBeEnabled();
   });
 
   it('sends one answer however fast it’s clicked', async () => {
@@ -223,12 +233,14 @@ describe('CurrencyPrompt', () => {
     holdPatch = new Promise((resolve) => (release = resolve));
     render(<CurrencyPrompt />);
 
-    fireEvent.click(chooseAnother());
-    fireEvent.click(chooseAnother());
-    fireEvent.click(useButton('PLN'));
+    const keep = keepUsd();
+    const use = useButton('PLN');
+    fireEvent.click(keep);
+    fireEvent.click(keep);
+    fireEvent.click(use);
     release();
 
-    await waitFor(() => expect(push).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
     expect(patches()).toEqual([{ currencyChosen: true }]);
   });
 });

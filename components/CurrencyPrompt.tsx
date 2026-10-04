@@ -1,58 +1,55 @@
 'use client';
 
-import { useId, useRef, useState, useSyncExternalStore } from 'react';
-import { useRouter } from 'next/navigation';
+import { useId, useRef, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import Button from './Button';
 import Icon from './Icon';
 import { ACTION_CARD_SURFACE } from './InviteCard';
+import Select from './Select';
 import { useToast } from './ToastProvider';
-import { CURRENCY_OPTIONS, SETTINGS_CURRENCY_PATH } from '@/lib/utils/currencies';
-import { browserCurrencySuggestion, currencyToOffer } from '@/lib/utils/currencySuggestion';
+import { useCurrencySuggestion } from '@/lib/hooks/useCurrencySuggestion';
+import { CURRENCY_OPTIONS, currencySelectOptions } from '@/lib/utils/currencies';
+import { currencyToOffer } from '@/lib/utils/currencySuggestion';
 
 const SAVE_ERROR = 'Failed to save your currency choice';
 
-// The suggestion only changes with the browser's time zone or language, which
-// nothing here has to follow, so there's nothing to subscribe to.
-const subscribe = () => () => {};
-const getServerSnapshot = () => null;
-
-/** The currency on offer, and the two answers to it (`useCurrencyOffer`). */
+/** The currency on offer, and the three answers to it (`useCurrencyOffer`). */
 export interface CurrencyOffer {
   /** The suggested currency's code ("PLN") and name ("Polish Zloty"). */
   code: string;
   name: string;
-  /** "Choose another currency" is saving its answer: both buttons are held. */
+  /** An answer is being saved: every answer is held. */
   busy: boolean;
   /** "Use PLN": saves it as their currency, with the answer. */
   accept: () => void;
-  /** "Choose another currency": records the answer, then opens the currency picker in Settings. */
-  chooseAnother: () => void;
+  /** The other currency picked from the menu: saves it, with the answer. */
+  pick: (code: string) => void;
+  /** "Keep USD": records the answer and leaves the currency as it is. */
+  keep: () => void;
 }
 
 /**
  * The dashboard's one-time offer of a currency for someone still on the USD
- * every account starts on: "Show prices in PLN? [Use PLN] [Choose another currency]",
+ * every account starts on: "Show prices in PLN? [Use PLN] [Other currency ▾] [Keep USD]",
  * or `null` when there's nothing to offer. The suggestion is worked out in the
  * browser, from its time zone and language (`suggestCurrency`), and is null in
  * a server render and in the render that hydrates it, so the server, which
  * can't know it, never renders the prompt.
  *
- * Either answer records that they've answered (`currencyChosen`, which the
- * server stamps as `User.currencyChosenAt`), so it never shows again: "Use X"
- * saves X as their currency too, and "Choose another currency" takes them to the
- * currency picker in Settings. The offer goes once the answer is sent ("Use
- * X") or saved ("Choose another currency", which then leaves the page), and comes back,
- * with an error, if saving it fails. Who sees it is `currencyToOffer`.
+ * Each answer records that they've answered (`currencyChosen`, which the
+ * server stamps as `User.currencyChosenAt`), so it never shows again, and none
+ * of them navigates: "Use X" saves X as their currency, picking another one
+ * from the menu saves that, and "Keep USD" saves nothing but the answer. The
+ * offer goes once the answer is sent, and comes back, with an error, if saving
+ * it fails. Who sees it is `currencyToOffer`.
  *
  * A hook, so the dashboard's "Needs you" knows whether the prompt is one of its
  * rows before it renders any; `CurrencyPrompt` draws it.
  */
 export function useCurrencyOffer(): CurrencyOffer | null {
   const { data: session, status, update } = useSession();
-  const router = useRouter();
   const { showToast } = useToast();
-  const suggestion = useSyncExternalStore(subscribe, browserCurrencySuggestion, getServerSnapshot);
+  const suggestion = useCurrencySuggestion();
   const [answered, setAnswered] = useState(false);
   const [busy, setBusy] = useState(false);
   // Set as the click lands, so a second click before the re-render is ignored.
@@ -80,47 +77,41 @@ export function useCurrencyOffer(): CurrencyOffer | null {
     return false;
   }
 
-  async function acceptSuggestion(currency: string) {
+  /** Answer with `changes`: the offer goes at once, and comes back if it isn't saved. */
+  async function answer(changes: { defaultCurrency?: string }, message: string) {
     if (sending.current) return;
     sending.current = true;
     setAnswered(true);
-    const saved = await saveAnswer({ defaultCurrency: currency });
+    setBusy(true);
+    const saved = await saveAnswer(changes);
     sending.current = false;
+    setBusy(false);
     if (!saved) {
       setAnswered(false);
       return;
     }
-    showToast(`Prices will show in ${currency}`, 'success');
+    showToast(message, 'success');
     // The session carries their currency (new lists, others' prices) and the
     // answer, so it's read again.
     void update();
   }
 
-  async function chooseAnother() {
-    if (sending.current) return;
-    sending.current = true;
-    setBusy(true);
-    const saved = await saveAnswer({});
-    sending.current = false;
-    setBusy(false);
-    if (!saved) return;
-    setAnswered(true);
-    void update();
-    router.push(SETTINGS_CURRENCY_PATH);
-  }
+  const saveCurrency = (currency: string) =>
+    void answer({ defaultCurrency: currency }, `Prices will show in ${currency}`);
 
   return {
     code,
     name,
     busy,
-    accept: () => void acceptSuggestion(code),
-    chooseAnother: () => void chooseAnother(),
+    accept: () => saveCurrency(code),
+    pick: (other) => saveCurrency(other),
+    keep: () => void answer({}, 'Prices will stay in USD'),
   };
 }
 
 /**
  * The currency offer (`useCurrencyOffer`) as one of the dashboard's "Needs you"
- * rows: a region named by its question, with Use X and Choose another currency.
+ * rows: a region named by its question, with Use X, a menu of other currencies and Keep USD.
  */
 export default function CurrencyPrompt({
   offer,
@@ -131,6 +122,7 @@ export default function CurrencyPrompt({
 }) {
   const headingId = useId();
   const { code, name, busy } = offer;
+  const otherCurrencies = currencySelectOptions.filter((o) => o.value !== code);
   return (
     <section
       aria-labelledby={headingId}
@@ -151,20 +143,30 @@ export default function CurrencyPrompt({
         </div>
       </div>
       {/* Stacked and full width on a phone, side by side under the text from
-          `sm`, and next to it from `md`. A label never wraps: the buttons have
-          a fixed height, so a second line would spill out of them. */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:justify-end md:flex-shrink-0">
+          `sm`, and next to it from `md`. A label never wraps: the controls
+          have a fixed height, so a second line would spill out of them. */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end md:flex-shrink-0">
         <Button size="sm" onClick={offer.accept} disabled={busy} className="whitespace-nowrap">
           Use {code}
         </Button>
-        <Button
-          variant="secondary"
+        <Select
           size="sm"
-          onClick={offer.chooseAnother}
+          value=""
+          onChange={offer.pick}
+          options={otherCurrencies}
+          disabled={busy}
+          ariaLabel="Other currency"
+          placeholder="Other currency"
+          triggerClassName="w-full sm:w-44"
+        />
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={offer.keep}
           disabled={busy}
           className="whitespace-nowrap"
         >
-          Choose another currency
+          Keep USD
         </Button>
       </div>
     </section>

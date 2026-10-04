@@ -13,7 +13,8 @@ import WishlistList, { ArchivedLists } from '@/components/WishlistList';
 import Button from '@/components/Button';
 import { buttonClassName, CONTROL_ICON_SIZE } from '@/components/buttonStyles';
 import Icon, { IconName } from '@/components/Icon';
-import EmptyState from '@/components/EmptyState';
+import StarterCard from '@/components/StarterCard';
+import UsernameNudge from '@/components/UsernameNudge';
 import LoadError from '@/components/LoadError';
 import { Skeleton, WishlistListSkeleton } from '@/components/Skeleton';
 import { useToast } from '@/components/ToastProvider';
@@ -276,6 +277,7 @@ export default function Home() {
         <div className="space-y-12">
           {/* What's waiting on you: hidden when nothing is. Your proposals to
               review come from your lists, so they wait for them. */}
+          <UsernameNudge userId={session.user.id} username={profileUsername} />
           <NeedsYou ownLists={loading || loadFailed ? null : ownedInOrder} />
 
           {loading ? (
@@ -283,16 +285,7 @@ export default function Home() {
           ) : loadFailed ? (
             <LoadError title="Couldn’t load your wishlists" onRetry={retryLoad} />
           ) : !hasAny ? (
-            <EmptyState
-              icon="gift"
-              title="No wishlists yet"
-              body="Create your first wishlist to start collecting the things you love and share it with friends and family."
-              actions={
-                <Button icon="plus" onClick={() => setShowCreateModal(true)}>
-                  Create wishlist
-                </Button>
-              }
-            />
+            <StarterCard username={profileUsername} onCreate={() => setShowCreateModal(true)} />
           ) : (
             <>
               <ComingUp own={activeOwned} shared={member} viewerId={session.user.id} />
