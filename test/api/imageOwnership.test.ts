@@ -169,7 +169,7 @@ describe('Wishlist.bannerUrl — POST /api/wishlists and PATCH /api/wishlists/[i
 
   // regression: see above — the update path had the same hole.
   it('regression: rejects another user’s blob on update and changes nothing', async () => {
-    const wl = await Wishlist.create({ name: 'Mine', owners: [alice] });
+    const wl = await Wishlist.create({ name: 'Mine', owners: [alice], visibility: 'everyone' });
     const id = wl._id.toString();
     as(alice);
 
@@ -187,7 +187,12 @@ describe('Wishlist.bannerUrl — POST /api/wishlists and PATCH /api/wishlists/[i
 
   it('lets a co-owner edit a list whose banner the other co-owner uploaded', async () => {
     const banner = blobOf(bob);
-    const wl = await Wishlist.create({ name: 'Ours', owners: [bob, alice], bannerUrl: banner });
+    const wl = await Wishlist.create({
+      name: 'Ours',
+      owners: [bob, alice],
+      visibility: 'everyone',
+      bannerUrl: banner,
+    });
     const id = wl._id.toString();
     as(alice);
 
@@ -200,7 +205,12 @@ describe('Wishlist.bannerUrl — POST /api/wishlists and PATCH /api/wishlists/[i
 
   it('frees your own previous banner when you replace it', async () => {
     const first = blobOf(alice, 'banner-1.jpg');
-    const wl = await Wishlist.create({ name: 'Mine', owners: [alice], bannerUrl: first });
+    const wl = await Wishlist.create({
+      name: 'Mine',
+      owners: [alice],
+      visibility: 'everyone',
+      bannerUrl: first,
+    });
     as(alice);
 
     const res = await patchWishlist(wl._id.toString(), {
@@ -217,7 +227,11 @@ describe('Item.imageUrl — POST /api/wishlists/[id]/items and PATCH /api/items/
 
   beforeEach(async () => {
     member = (await User.create({ email: 'm@x.com', username: 'member' }))._id.toString();
-    const wl = await Wishlist.create({ name: 'Ours', owners: [alice, bob] });
+    const wl = await Wishlist.create({
+      name: 'Ours',
+      owners: [alice, bob],
+      visibility: 'everyone',
+    });
     wishlistId = wl._id.toString();
     await WishlistMember.create({ wishlist: wl._id, user: member });
   });

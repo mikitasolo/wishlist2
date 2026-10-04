@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import { NextRequest } from 'next/server';
+import mongoose from 'mongoose';
 import { connectTestDB, disconnectTestDB, clearTestDB } from '../db';
 
 vi.mock('@/lib/mongodb', () => ({ default: vi.fn().mockResolvedValue(undefined) }));
@@ -318,7 +319,12 @@ describe('POST /api/wishlists and PATCH /api/wishlists/[id] — name validation'
   });
 
   it('regression: refuses to rename a list to a name with a line break, and keeps the old name', async () => {
-    const wl = await Wishlist.create({ name: 'Birthday', owners: [ownerId], slug: 'birthday' });
+    const wl = await Wishlist.create({
+      name: 'Birthday',
+      owners: [ownerId],
+      visibility: 'everyone',
+      slug: 'birthday',
+    });
     const id = wl._id.toString();
 
     const res = await PATCH(
@@ -343,7 +349,12 @@ describe('POST /api/wishlists and PATCH /api/wishlists/[id] — name validation'
   });
 
   it('regression: refuses to rename a list to a name that is only spaces (400), and keeps the old name', async () => {
-    const wl = await Wishlist.create({ name: 'Birthday', owners: [ownerId], slug: 'birthday' });
+    const wl = await Wishlist.create({
+      name: 'Birthday',
+      owners: [ownerId],
+      visibility: 'everyone',
+      slug: 'birthday',
+    });
     const id = wl._id.toString();
 
     const res = await PATCH(
@@ -374,7 +385,12 @@ describe('POST /api/wishlists and PATCH /api/wishlists/[id] — name validation'
   });
 
   it('regression: refuses to rename a list to a name with a bidi isolate, and keeps the old name', async () => {
-    const wl = await Wishlist.create({ name: 'Birthday', owners: [ownerId], slug: 'birthday' });
+    const wl = await Wishlist.create({
+      name: 'Birthday',
+      owners: [ownerId],
+      visibility: 'everyone',
+      slug: 'birthday',
+    });
     const id = wl._id.toString();
 
     const res = await PATCH(
@@ -405,7 +421,12 @@ describe('POST /api/wishlists and PATCH /api/wishlists/[id] — name validation'
   // only the fields the owner changed, so such a list's other settings still save.
   it('still saves other settings of a list whose stored name has a bidi override', async () => {
     const legacyName = 'Birthday \u202Etsil';
-    const wl = await Wishlist.create({ name: legacyName, owners: [ownerId], slug: 'birthday' });
+    const wl = await Wishlist.create({
+      name: legacyName,
+      owners: [ownerId],
+      visibility: 'everyone',
+      slug: 'birthday',
+    });
     const id = wl._id.toString();
 
     const res = await PATCH(
@@ -483,5 +504,82 @@ describe('POST /api/wishlists — occasion', () => {
     const res = await create({ name: 'Bad', occasion });
     expect(res.status).toBe(400);
     expect(await Wishlist.countDocuments({ name: 'Bad' })).toBe(0);
+  });
+});
+
+describe('the legacy isPublic flag (WIS-184)', () => {
+  // `visibility` alone decides who sees a list (WIS-139), so `isPublic` was only
+  // ever written, kept in sync by every write path. It's gone from the schema:
+  // nothing writes it, and a list stored with it doesn't send it to clients.
+  beforeEach(() => {
+    session.mockResolvedValue({ user: { id: ownerId } } as never);
+  });
+
+  const send = (url: string, method: 'POST' | 'PATCH', body: unknown) =>
+    new NextRequest(url, {
+      method,
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+  it('creating a list stores its visibility and no isPublic', async () => {
+    for (const visibility of [undefined, 'everyone', 'friends', 'private'] as const) {
+      const res = await CREATE(
+        send('http://localhost/api/wishlists', 'POST', { name: 'Birthday', visibility })
+      );
+      expect(res.status).toBe(201);
+      const { data } = await res.json();
+      expect(data).not.toHaveProperty('isPublic');
+      const stored = await Wishlist.collection.findOne({
+        _id: new mongoose.Types.ObjectId(data._id as string),
+      });
+      // The route's own default for a create that names no tier, never the schema's.
+      expect(stored?.visibility).toBe(visibility ?? 'everyone');
+      expect(stored).not.toHaveProperty('isPublic');
+    }
+  });
+
+  it("changing a list's visibility writes no isPublic", async () => {
+    const { insertedId } = await Wishlist.collection.insertOne({
+      name: 'Old list',
+      slug: 'old-list',
+      owners: [new mongoose.Types.ObjectId(ownerId)],
+      featuredBy: [],
+      visibility: 'everyone',
+    });
+    const id = insertedId.toString();
+
+    const res = await PATCH(
+      send(`http://localhost/api/wishlists/${id}`, 'PATCH', { visibility: 'private' }),
+      { params: Promise.resolve({ id }) }
+    );
+    expect(res.status).toBe(200);
+    expect((await res.json()).data).not.toHaveProperty('isPublic');
+    const stored = await Wishlist.collection.findOne({ _id: insertedId });
+    expect(stored?.visibility).toBe('private');
+    expect(stored).not.toHaveProperty('isPublic');
+  });
+
+  it('a list stored with the flag reads without it, and its visibility still decides', async () => {
+    // Out of sync on purpose: the flag says public, the list is private.
+    const { insertedId } = await Wishlist.collection.insertOne({
+      name: 'Old list',
+      slug: 'old-private',
+      owners: [new mongoose.Types.ObjectId(ownerId)],
+      featuredBy: [],
+      visibility: 'private',
+      isPublic: true,
+    });
+
+    const res = await get('old-private', ownerId);
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    expect(data.visibility).toBe('private');
+    expect(data).not.toHaveProperty('isPublic');
+
+    expect((await get('old-private')).status).toBe(401);
+    expect((await get('old-private', otherId)).status).toBe(403);
+    // The read leaves what's stored alone.
+    expect(await Wishlist.collection.findOne({ _id: insertedId })).toHaveProperty('isPublic', true);
   });
 });

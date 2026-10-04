@@ -51,7 +51,6 @@ async function list(
     slug: name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
     owners,
     visibility,
-    isPublic: visibility === 'everyone',
     ...extra,
   });
   return wl._id.toString();

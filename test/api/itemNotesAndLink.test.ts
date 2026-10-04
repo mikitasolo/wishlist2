@@ -31,7 +31,9 @@ beforeEach(async () => {
   await clearTestDB();
   session.mockReset();
   alice = (await User.create({ email: 'a@x.com', username: 'alice' }))._id.toString();
-  wishlistId = (await Wishlist.create({ name: 'Birthday', owners: [alice] }))._id.toString();
+  wishlistId = (
+    await Wishlist.create({ name: 'Birthday', owners: [alice], visibility: 'everyone' })
+  )._id.toString();
   session.mockResolvedValue({ user: { id: alice } } as never);
 });
 

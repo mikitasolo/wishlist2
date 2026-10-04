@@ -116,7 +116,6 @@ beforeEach(() => {
           ownerUsernames: userRole === 'owner' ? ['carol'] : ['alice'],
           userRole,
           visibility: 'everyone',
-          isPublic: true,
           archived: false,
           featured: false,
           currency: 'EUR',

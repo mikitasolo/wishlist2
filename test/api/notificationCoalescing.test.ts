@@ -279,10 +279,20 @@ describe('proposal notifications coalesce per (owner, wishlist)', () => {
     mia = await makeUser('mia');
     max = await makeUser('max');
     kitchen = (
-      await Wishlist.create({ name: 'Kitchen', slug: 'kitchen', owners: [rita, otto] })
+      await Wishlist.create({
+        name: 'Kitchen',
+        slug: 'kitchen',
+        owners: [rita, otto],
+        visibility: 'everyone',
+      })
     )._id.toString();
     garden = (
-      await Wishlist.create({ name: 'Garden', slug: 'garden', owners: [rita, otto] })
+      await Wishlist.create({
+        name: 'Garden',
+        slug: 'garden',
+        owners: [rita, otto],
+        visibility: 'everyone',
+      })
     )._id.toString();
     for (const w of [kitchen, garden]) {
       for (const m of [mia, max]) await WishlistMember.create({ wishlist: w, user: m });
@@ -376,7 +386,8 @@ describe('actionable and one-off notifications are not coalesced', () => {
   it.each(['wishlist_invite', 'invite_accepted', 'proposal_approved'] as const)(
     '%s writes one row per event',
     async (type) => {
-      const list = (await Wishlist.create({ name: 'Trip', owners: [rita] }))._id;
+      const list = (await Wishlist.create({ name: 'Trip', owners: [rita], visibility: 'everyone' }))
+        ._id;
       for (const actor of ['ann', 'ann', 'ben']) {
         await createNotification({
           user: rita,

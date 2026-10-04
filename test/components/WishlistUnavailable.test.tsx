@@ -53,7 +53,6 @@ const LIST = {
   description: '',
   owners: ['owner'],
   visibility: 'everyone',
-  isPublic: true,
   archived: false,
   featured: false,
   currency: 'USD',

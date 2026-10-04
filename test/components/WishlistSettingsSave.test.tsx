@@ -38,7 +38,6 @@ const loaded = {
   description: 'Things I would like',
   owners: ['alice', 'bob'],
   visibility: 'everyone',
-  isPublic: true,
   archived: false,
   featured: false,
   currency: 'EUR',
@@ -110,7 +109,7 @@ describe('the wishlist settings form', () => {
   it('regression: a description-only save sends only the description, leaving a co-owner’s visibility change alone', async () => {
     const user = await openSettings();
     // Bob makes the list private while Alice's form is open.
-    server = { ...server, visibility: 'private', isPublic: false };
+    server = { ...server, visibility: 'private' };
 
     await user.clear(description());
     await user.type(description(), 'Updated');
@@ -126,7 +125,7 @@ describe('the wishlist settings form', () => {
 
   it("refills the form from the list as saved, so the next save doesn't send a co-owner's change back", async () => {
     const user = await openSettings();
-    server = { ...server, visibility: 'private', isPublic: false };
+    server = { ...server, visibility: 'private' };
 
     await user.type(description(), '!');
     await user.click(save());

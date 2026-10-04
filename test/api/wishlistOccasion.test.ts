@@ -265,17 +265,17 @@ describe('Wishlist model — occasion', () => {
       { ...BIRTHDAY, date: '2026-10-14T00:00:00.000Z' },
       { kind: 'birthday', recurrence: null },
     ]) {
-      await expect(Wishlist.create({ name: 'L', owners: [owner], occasion })).rejects.toThrow(
-        /occasion/
-      );
+      await expect(
+        Wishlist.create({ name: 'L', owners: [owner], visibility: 'everyone', occasion })
+      ).rejects.toThrow(/occasion/);
     }
   });
 
   it('refuses a yearly occasion stored with a real year, on create and on update', async () => {
     const real = { kind: 'birthday', date: '1990-10-14', recurrence: 'yearly' };
-    await expect(Wishlist.create({ name: 'L', owners: [owner], occasion: real })).rejects.toThrow(
-      /occasion/
-    );
+    await expect(
+      Wishlist.create({ name: 'L', owners: [owner], visibility: 'everyone', occasion: real })
+    ).rejects.toThrow(/occasion/);
     const id = await list();
     await expect(
       Wishlist.findOneAndUpdate(
@@ -288,9 +288,14 @@ describe('Wishlist model — occasion', () => {
   });
 
   it('stores a one-off with recurrence null, and a list with none as null', async () => {
-    const once = await Wishlist.create({ name: 'L', owners: [owner], occasion: WEDDING });
+    const once = await Wishlist.create({
+      name: 'L',
+      owners: [owner],
+      visibility: 'everyone',
+      occasion: WEDDING,
+    });
     expect((await Wishlist.findById(once._id).lean())?.occasion).toEqual(WEDDING);
-    const none = await Wishlist.create({ name: 'M', owners: [owner] });
+    const none = await Wishlist.create({ name: 'M', owners: [owner], visibility: 'everyone' });
     expect((await Wishlist.findById(none._id).lean())?.occasion).toBeNull();
   });
 });
@@ -346,7 +351,6 @@ describe('GET /api/wishlists/[id] — occasion', () => {
       slug: 'old-list',
       owners: [new mongoose.Types.ObjectId(owner)],
       visibility: 'everyone',
-      isPublic: true,
       featuredBy: [],
     });
     const res = await get(insertedId.toString(), stranger);
@@ -368,7 +372,12 @@ describe('GET /api/wishlists — occasion on the list cards', () => {
   it("returns each list's occasion to its owners and members, null where there's none", async () => {
     const withOne = await list({ occasion: BIRTHDAY });
     const without = (
-      await Wishlist.create({ name: 'Other', slug: 'other', owners: [owner] })
+      await Wishlist.create({
+        name: 'Other',
+        slug: 'other',
+        owners: [owner],
+        visibility: 'everyone',
+      })
     )._id.toString();
 
     const { owned } = await mine(owner);
@@ -405,6 +414,7 @@ describe('GET /api/users/[id]/wishlists — occasion on the profile cards', () =
       name: 'Put away',
       slug: 'put-away',
       owners: [owner],
+      visibility: 'everyone',
       archived: true,
       occasion: { kind: 'other', date: archivedDate, recurrence: null },
     });

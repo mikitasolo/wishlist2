@@ -8,8 +8,8 @@ describe('getVisibility', () => {
     expect(getVisibility({ visibility: 'private' })).toBe('private');
   });
 
-  // The legacy `isPublic` flag is still written next to `visibility`, but this
-  // no longer reads it, so it can't make a list without one look public.
+  // A list stored before WIS-184 may still carry the legacy `isPublic` flag,
+  // which nothing reads, so it can't make a list without a visibility look public.
   it('shows a missing visibility as private, whatever isPublic says', () => {
     const withoutVisibility = { visibility: undefined, isPublic: true };
     expect(getVisibility({})).toBe('private');

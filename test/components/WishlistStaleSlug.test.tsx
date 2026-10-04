@@ -35,7 +35,6 @@ const loaded = {
   description: 'Things I would like',
   owners: ['alice', 'bob'],
   visibility: 'everyone',
-  isPublic: true,
   archived: false,
   featured: false,
   currency: 'EUR',

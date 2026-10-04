@@ -184,7 +184,6 @@ export async function POST(request: NextRequest) {
       // others are being invited as one, or being promoted — both consented).
       owners: [user._id],
       visibility,
-      isPublic: visibility === 'everyone',
       bannerUrl: bannerUrl || null,
       ...(occasion ? { occasion } : {}),
       currency: currency || user.defaultCurrency || 'USD',

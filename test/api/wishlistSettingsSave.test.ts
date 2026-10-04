@@ -120,13 +120,12 @@ describe("saving the wishlist settings leaves a co-owner's change made meanwhile
 
     const { body, data } = await save(id, alice, alicesForm, { description: 'Updated' });
     expect(body).toEqual({ description: 'Updated' });
-    expect(data).toMatchObject({ description: 'Updated', visibility: 'private', isPublic: false });
+    expect(data).toMatchObject({ description: 'Updated', visibility: 'private' });
 
     const stored = await Wishlist.findById(id).lean();
     expect(stored).toMatchObject({
       description: 'Updated',
       visibility: 'private',
-      isPublic: false,
     });
   });
 
@@ -185,7 +184,6 @@ describe("saving the wishlist settings leaves a co-owner's change made meanwhile
     expect(stored).toMatchObject({
       name: 'Turning 37',
       visibility: 'friends',
-      isPublic: false,
       occasion: null,
       description: "Bob's notes",
     });

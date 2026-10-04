@@ -23,11 +23,18 @@ import { getWishlistViewAccess, viewableWishlistsFilter } from '@/lib/utils/wish
 const UNSET = Symbol('unset');
 type Maybe<T> = T | typeof UNSET;
 
-// Every list stores a `visibility` (the schema requires it), with the legacy
-// `isPublic` beside it in sync (everyone ⇔ true), as every write sets them. A
-// list with no stored `visibility` isn't a shape the database holds, so it's
-// not in the table: hydrating one would fill in the schema default.
-const VISIBILITIES = ['everyone', 'friends', 'private'] as const;
+// Every list stores a `visibility` (the schema requires it, and every write sets
+// it). A list without one isn't a shape the database holds, but it's in the
+// table anyway (UNSET), stored with the legacy `isPublic: true` the schema
+// dropped (WIS-184): `visibility` has no schema default, so hydrating it fills
+// nothing in, and both sides must fail closed on it rather than read it as
+// public.
+const VISIBILITIES: Maybe<'everyone' | 'friends' | 'private'>[] = [
+  'everyone',
+  'friends',
+  'private',
+  UNSET,
+];
 const ARCHIVED: Maybe<boolean>[] = [true, false, UNSET];
 
 const VIEWERS = [
@@ -67,9 +74,9 @@ beforeAll(async () => {
         name: 'List',
         owners: [ids.owner, ids.coOwner],
         featuredBy: [],
-        visibility,
-        isPublic: visibility === 'everyone',
       };
+      if (visibility !== UNSET) doc.visibility = visibility;
+      else doc.isPublic = true;
       if (archived !== UNSET) doc.archived = archived;
       docs.push(doc);
     }
@@ -79,7 +86,7 @@ beforeAll(async () => {
   lists = docs.map((d) => ({
     _id: d._id as mongoose.Types.ObjectId,
     shape: JSON.stringify({
-      visibility: d.visibility,
+      visibility: d.visibility ?? '(unset)',
       archived: d.archived ?? '(unset)',
     }),
   }));
@@ -141,5 +148,28 @@ describe('viewableWishlistsFilter matches exactly what getWishlistViewAccess ope
     const strangers = await openable(ids.stranger.toString());
     expect(strangers.length).toBeGreaterThan(0);
     expect(strangers.length).toBeLessThan(lists.length);
+  });
+
+  // regression: `visibility` defaulted to `everyone`, so a hydrated read
+  // (`findById`, as the list and items routes do) opened a list stored without
+  // one to anyone, while the query side matched it to no tier (WIS-184). With
+  // no default, both fail closed: only its owners and members open it.
+  it('regression: opens a list stored without a visibility to its owners and members only', async () => {
+    const unset = (shapes: string[]) => shapes.filter((s) => s.includes('"visibility":"(unset)"'));
+    // An owner opens it archived or not; a member only while it isn't archived.
+    for (const [viewer, count] of [
+      ['owner', ARCHIVED.length],
+      ['coOwner', ARCHIVED.length],
+      ['member', ARCHIVED.length - 1],
+    ] as const) {
+      const id = ids[viewer].toString();
+      expect(unset(await openable(id))).toHaveLength(count);
+      expect(unset(await matched(id))).toEqual(unset(await openable(id)));
+    }
+    for (const viewer of [null, ids.friendOfOwner, ids.follower, ids.stranger]) {
+      const id = viewer?.toString() ?? null;
+      expect(unset(await openable(id))).toEqual([]);
+      expect(unset(await matched(id))).toEqual([]);
+    }
   });
 });

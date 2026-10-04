@@ -75,7 +75,13 @@ beforeEach(async () => {
   frank = await user('frank');
   gina = await user('gina');
 
-  wid = (await Wishlist.create({ name: 'Family list', owners: [alice, bob, hank] }))._id.toString();
+  wid = (
+    await Wishlist.create({
+      name: 'Family list',
+      owners: [alice, bob, hank],
+      visibility: 'everyone',
+    })
+  )._id.toString();
   await WishlistMember.create({ wishlist: wid, user: carol });
 });
 

@@ -47,8 +47,7 @@ type ViewedWishlist = Pick<IWishlist, '_id' | 'owners' | 'visibility' | 'archive
  * `getWishlistViewAccess`'s `visibility === 'everyone'` as a query. Change the
  * two together. Every stored list has a `visibility` (the schema requires it
  * and every write sets it), so the hydrated document that check reads and the
- * stored one this matches agree. The legacy `isPublic` flag is still written
- * alongside it, but no view rule reads it.
+ * stored one this matches agree.
  */
 const EVERYONE_TIER: FilterQuery<IWishlist> = { visibility: 'everyone' };
 

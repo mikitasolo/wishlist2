@@ -78,7 +78,6 @@ beforeEach(() => {
           ownerUsernames: [...list.owners],
           userRole: list.userRole,
           visibility: 'everyone',
-          isPublic: true,
           archived: false,
           featured: list.featured,
           currency: 'EUR',
