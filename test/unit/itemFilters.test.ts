@@ -6,13 +6,10 @@ import {
   compareMostWanted,
   savedWishlistSort,
   isSortType,
-  toggleStatusFilter,
-  isEveryStatusSelected,
   forgetSavedListFilter,
   forgetSavedStatusFilters,
   SORT_OPTIONS,
   WISHLIST_SORT_STORAGE_KEY,
-  type FilterOption,
   type SortType,
   type SortableItem,
 } from '@/lib/utils/itemFilters';
@@ -32,74 +29,6 @@ function item(overrides: Partial<ApiItem>): ApiItem {
     ...overrides,
   } as ApiItem;
 }
-
-// A status filter's options and the selection it starts on, as a caller
-// (the All items page) hands them in.
-const OWNER_OPTIONS: FilterOption[] = ['all', 'draft', 'proposed', 'available', 'completed'];
-const MEMBER_OPTIONS: FilterOption[] = [
-  'all',
-  'available',
-  'bookedByMe',
-  'bookedByOthers',
-  'proposedByMe',
-  'completed',
-];
-const MEMBER_DEFAULTS: FilterOption[] = ['available', 'bookedByMe', 'proposedByMe'];
-
-describe('isEveryStatusSelected', () => {
-  const options = OWNER_OPTIONS;
-
-  it('is true for All, for every option ticked, and for no selection (which filters nothing)', () => {
-    expect(isEveryStatusSelected(['all'], options)).toBe(true);
-    expect(isEveryStatusSelected(['draft', 'proposed', 'available', 'completed'], options)).toBe(
-      true
-    );
-    expect(isEveryStatusSelected([], options)).toBe(true);
-  });
-
-  it('is false for anything narrower', () => {
-    expect(isEveryStatusSelected(['draft', 'available', 'proposed'], options)).toBe(false);
-    expect(isEveryStatusSelected(['completed'], options)).toBe(false);
-  });
-});
-
-describe('toggleStatusFilter', () => {
-  const options = MEMBER_OPTIONS;
-  const defaults = MEMBER_DEFAULTS;
-  const toggle = (selected: FilterOption[], option: FilterOption) =>
-    toggleStatusFilter(selected, option, options, defaults);
-
-  // regression: unticking All left an empty selection, labelled "None
-  // selected", which filterItemsMulti reads as no filter and shows every item.
-  it('regression: goes back to the defaults when All is unticked, never to nothing', () => {
-    expect(toggle([...options], 'all')).toEqual(defaults);
-    expect(toggle(['all'], 'all')).toEqual(defaults);
-  });
-
-  it('regression: goes back to the defaults when the last option ticked is unticked', () => {
-    expect(toggle(['bookedByOthers'], 'bookedByOthers')).toEqual(defaults);
-  });
-
-  it('selects every option when All is ticked', () => {
-    expect(toggle(['completed'], 'all')).toEqual(options);
-  });
-
-  it('selects All once every other option is ticked', () => {
-    expect(
-      toggle(['available', 'bookedByMe', 'bookedByOthers', 'proposedByMe'], 'completed')
-    ).toEqual(options);
-  });
-
-  it('ticks and unticks one option, dropping All', () => {
-    expect(toggle(['available'], 'completed')).toEqual(['available', 'completed']);
-    expect(toggle([...options], 'bookedByOthers')).toEqual([
-      'available',
-      'bookedByMe',
-      'proposedByMe',
-      'completed',
-    ]);
-  });
-});
 
 describe('forgetSavedStatusFilters', () => {
   // regression: the wishlist page saved the status filter under one key per

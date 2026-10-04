@@ -78,8 +78,8 @@ afterEach(() => {
 
 const requested = () => fetchMock.mock.calls.map(([url]) => url);
 const subtitle = () => screen.getByText(/across the wishlists you own/i);
-const shown = (name: string) => screen.queryByText(name, { selector: 'p' });
-const allTile = () => screen.getByRole('button', { name: /^All \d+$/ });
+const shown = (name: string) => screen.queryByRole('heading', { name });
+const allTile = () => screen.getByRole('radio', { name: /^All \d+$/ });
 
 async function openListFilter() {
   fireEvent.click(await screen.findByRole('button', { name: 'All lists' }));
@@ -92,14 +92,14 @@ describe('/items — counts and archived lists', () => {
   it('regression: leaves archived lists out by default, counting as the dashboard does', async () => {
     render(<MyItemsPage />);
 
-    expect(await screen.findByText('Bike', { selector: 'p' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Bike' })).toBeInTheDocument();
     expect(requested()).toEqual([BASE]);
     expect(shown('Boxes')).toBeNull();
     expect(subtitle()).toHaveTextContent(
       'Across the wishlists you own: 2 items · 1 draft · 1 to review'
     );
     // "All" takes in the drafts and proposals, so it isn't called a total.
-    expect(allTile()).toHaveTextContent('All4');
+    expect(allTile()).toHaveTextContent('All 4');
     expect(screen.queryByText('Total')).toBeNull();
   });
 
@@ -109,7 +109,7 @@ describe('/items — counts and archived lists', () => {
     expect(toggle).not.toBeChecked();
 
     fireEvent.click(toggle);
-    expect(await screen.findByText('Boxes', { selector: 'p' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Boxes' })).toBeInTheDocument();
     expect(requested()).toEqual([BASE, WITH_ARCHIVED]);
     expect(subtitle()).toHaveTextContent(
       'Across the wishlists you own, archived ones too: 3 items · 2 drafts · 1 to review'
@@ -130,13 +130,13 @@ describe('/items — counts and archived lists', () => {
     replies[WITH_ARCHIVED] = reply([...ACTIVE, item('Rug', 'available', 'flat'), ...ARCHIVED]);
     render(<MyItemsPage />);
 
-    expect(await screen.findByText('Rug', { selector: 'p' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Rug' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'All lists' }));
     fireEvent.click(screen.getByRole('checkbox', { name: 'Birthday' }));
     expect(shown('Bike')).toBeNull();
 
     fireEvent.click(screen.getByRole('checkbox', { name: 'Include archived' }));
-    expect(await screen.findByText('Boxes', { selector: 'p' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Boxes' })).toBeInTheDocument();
     expect(shown('Rug')).toBeInTheDocument();
     expect(shown('Bike')).toBeNull();
   });
@@ -184,13 +184,13 @@ describe('/items — counts and archived lists', () => {
   it('goes back to every list when the archived lists were the only ones picked', async () => {
     render(<MyItemsPage />);
     fireEvent.click(await openListFilter());
-    expect(await screen.findByText('Boxes', { selector: 'p' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Boxes' })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('checkbox', { name: 'Birthday' }));
     expect(shown('Bike')).toBeNull();
     fireEvent.click(screen.getByRole('checkbox', { name: 'Include archived' }));
 
-    expect(await screen.findByText('Bike', { selector: 'p' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Bike' })).toBeInTheDocument();
     expect(shown('Boxes')).toBeNull();
     expect(screen.getByRole('checkbox', { name: 'Birthday' })).toBeChecked();
   });
@@ -201,7 +201,7 @@ describe('/items — counts and archived lists', () => {
     render(<MyItemsPage />);
 
     fireEvent.click(await screen.findByRole('button', { name: 'Include archived lists' }));
-    expect(await screen.findByText('Boxes', { selector: 'p' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Boxes' })).toBeInTheDocument();
     expect(requested()).toEqual([BASE, WITH_ARCHIVED]);
   });
 
@@ -236,13 +236,13 @@ describe('/items — a first load that fails', () => {
       await screen.findByRole('heading', { name: 'Couldn’t load your items' })
     ).toBeInTheDocument();
     expect(screen.queryByText('No items yet')).toBeNull();
-    expect(screen.queryByRole('button', { name: /^All \d+$/ })).toBeNull();
+    expect(screen.queryByRole('radio', { name: /^All \d+$/ })).toBeNull();
     expect(showToast).not.toHaveBeenCalled();
 
     replies[BASE] = reply(ACTIVE);
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
 
-    expect(await screen.findByText('Bike', { selector: 'p' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Bike' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Couldn’t load your items' })).toBeNull();
     expect(requested()).toEqual([BASE, BASE]);
     expect(showToast).not.toHaveBeenCalled();
@@ -256,7 +256,7 @@ describe('/items — a first load that fails', () => {
     replies[BASE] = reply([...ACTIVE, item('Rug', 'available', 'flat')]);
     render(<MyItemsPage />);
 
-    expect(await screen.findByText('Rug', { selector: 'p' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Rug' })).toBeInTheDocument();
     expect(shown('Bike')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'All lists' })).toBeInTheDocument();
     expect(localStorage.getItem('items-wishlist-filters')).toBeNull();
@@ -265,7 +265,7 @@ describe('/items — a first load that fails', () => {
   it('regression: unticking every list goes back to all lists, not an empty grid', async () => {
     replies[BASE] = reply([...ACTIVE, item('Rug', 'available', 'flat')]);
     render(<MyItemsPage />);
-    expect(await screen.findByText('Rug', { selector: 'p' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Rug' })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'All lists' }));
     fireEvent.click(screen.getByRole('checkbox', { name: 'Birthday' }));

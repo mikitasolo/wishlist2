@@ -3,7 +3,6 @@ import { readFileSync } from 'fs';
 import path from 'path';
 import {
   displayStatus,
-  FILTER_META,
   STATUS_META,
   statusMeta,
   type DisplayStatus,
@@ -166,15 +165,7 @@ describe('raw status palette classes', () => {
   });
 });
 
-describe('FILTER_META', () => {
-  it('labels every stat card and filter option, in the status map’s tone', () => {
-    expect(FILTER_META.all).toEqual({ label: 'All', tone: 'neutral' });
-    expect(FILTER_META.bookedByMe).toEqual({ label: 'Reserved by you', tone: 'success' });
-    expect(FILTER_META.bookedByOthers).toEqual({ label: 'Reserved by others', tone: 'warning' });
-    expect(FILTER_META.proposedByMe).toEqual({ label: 'Proposed by you', tone: 'info' });
-    expect(FILTER_META.completed).toEqual({ label: 'Received', tone: 'done' });
-  });
-
+describe('owner status chips', () => {
   // regression: an owner's chips must never count or name booking.
   it('regression: gives an owner no booking chip', () => {
     for (const chip of listChips('owner')) {

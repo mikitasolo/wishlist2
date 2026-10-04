@@ -4,14 +4,13 @@ import { memo, useMemo, useCallback, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ApiItem } from '@/types/api';
 import { useSession } from 'next-auth/react';
-import { itemAnchorId } from '@/lib/utils/itemDeepLink';
 import { convertedPrice, formatApproxPrice, formatPrice } from '@/lib/utils/currency';
 import { useViewerLocale } from '@/lib/hooks/useViewerLocale';
 import Icon, { type IconName } from '@/components/Icon';
 import Link from 'next/link';
 import { RESERVED_PATH } from '@/lib/utils/reserveToast';
 import Badge from '@/components/Badge';
-import Cover from '@/components/Cover';
+import ItemCardView from '@/components/ItemCardView';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import Menu, { type MenuItem } from '@/components/Menu';
 import { statusMeta } from '@/lib/utils/itemStatus';
@@ -19,7 +18,6 @@ import { TONE_CLASSES } from '@/lib/utils/statusTones';
 import IconButton from '@/components/IconButton';
 import ItemSheet from '@/components/ItemSheet';
 import { iconButtonClassName } from '@/components/buttonStyles';
-import { coverInitial } from '@/lib/utils/cover';
 import {
   cardMenuActions,
   linkSlot,
@@ -566,160 +564,88 @@ function WishlistItem({
       </>
     ) : null;
 
-  return (
-    <div
-      id={itemAnchorId(item._id)}
-      className={`relative flex min-w-0 scroll-mt-24 flex-col rounded-3xl border bg-surface p-3 shadow-md transition-opacity sm:p-5 ${status.classes.card} ${
-        highlighted
-          ? 'ring-2 ring-ring ring-offset-2 ring-offset-background'
-          : dimmed
-            ? 'opacity-60 focus-within:opacity-100 hover:opacity-100'
-            : ''
-      }`}
-      role="article"
-      aria-label={`Item: ${item.name}`}
-      data-status={status.status}
-      data-dimmed={(dimmed && !highlighted) || undefined}
-      data-highlighted={highlighted || undefined}
-    >
-      {/* The cover and what sits on it. From `sm` up, the badges overhang its
-          top right corner, as they always have. On the narrow card below it
-          they sit inside it, so they never run into the card's corner (the
-          status first, then Most wanted as just its star). */}
-      <div className="relative mb-3 flex-shrink-0 sm:mb-4">
-        <div className="absolute right-1.5 top-1.5 z-10 flex flex-col items-end gap-1 sm:-right-2 sm:-top-2 sm:gap-2">
-          {item.mostWanted && (
-            <Badge className="shadow-sm max-sm:px-1.5">
-              <Icon name="star" size={12} className="fill-amber-400 text-amber-500" />
-              <span className="max-sm:sr-only">Most wanted</span>
-            </Badge>
-          )}
-          {/* From the status map, so an owner never gets a booking badge. */}
-          {status.badge &&
-            (isBookedByCurrentUser && !isOwner && item.status === 'booked' ? (
-              // Your own reservation's badge leads to Reserved (WIS-260).
-              <Link
-                href={RESERVED_PATH}
-                aria-label="Reserved by you, open Reserved"
-                className="max-sm:order-first rounded-full"
-              >
-                <Badge status={status} className="shadow-sm" />
-              </Link>
-            ) : (
-              <Badge status={status} className="shadow-sm max-sm:order-first" />
-            ))}
-        </div>
+  const actionsRow = (
+    <div className="mt-auto flex min-h-10 items-center gap-2">
+      {primary ? (
+        primaryButton(primary)
+      ) : productPage ? (
+        <a {...productPage} className={`${PRIMARY_BASE} ${PRIMARY_TONES.primary}`}>
+          <Icon name="external-link" size={16} className={PRIMARY_ICON} />
+          <span className="truncate">View item</span>
+        </a>
+      ) : null}
 
-        {/* The gradient shows through when there's no image (or it fails to
-            load), with the item's initial on it below `sm`, where an item with
-            no image at all gets a shorter, 4:3 frame. */}
-        <Cover
-          src={item.imageUrl}
-          seed={item._id}
-          alt={item.name}
-          sizes="(max-width: 1200px) 50vw, 33vw"
-          link={
-            productLink ? { href: productLink, label: `View ${item.name} product page` } : undefined
-          }
-          placeholder={
-            <span className="text-4xl font-semibold text-white/90 [text-shadow:0_1px_3px_rgba(0,0,0,0.25)] sm:hidden">
-              {coverInitial(item.name)}
-            </span>
-          }
-          className={`relative block w-full overflow-hidden rounded-2xl bg-surface-2 ${
-            item.imageUrl ? 'aspect-square' : 'aspect-[4/3] sm:aspect-square'
-          } ${productLink ? 'transition-opacity duration-200 hover:opacity-90' : ''}`}
+      {/* The product link, when the primary action isn't already it: from
+          `sm` up (below it, it's in the menu). */}
+      {showLinkSquare && slot === 'link' && productPage && (
+        <a {...productPage} className={`${ICON_BUTTON} ${SM_UP_ONLY}`} title="View product page">
+          <Icon name="external-link" size={18} />
+        </a>
+      )}
+      {showLinkSquare && slot === 'add-link' && onAddLink && (
+        <IconButton
+          icon="plus"
+          label="Add product link"
+          title="Add product link"
+          variant="secondary"
+          size="md"
+          onClick={() => onAddLink(item)}
+          className={SM_UP_ONLY}
         />
-      </div>
+      )}
 
-      {/* Content */}
-      <div className="flex flex-col flex-grow">
-        {/* The card's body (its name, price and notes) opens the item's
-            details: the name is the button, and its ::after stretches over the
-            rest of the body. The cover still opens the product page, and the
-            actions below sit outside it. */}
-        <div className="relative flex flex-grow flex-col">
-          {/* Item name - can vary in height */}
-          <div className="flex-grow">
-            <h3 className="mb-1.5 text-body font-semibold text-foreground sm:mb-3 sm:text-title">
-              <button
-                type="button"
-                ref={bodyButtonRef}
-                onClick={() => setSheetOpen(true)}
-                aria-haspopup="dialog"
-                title={item.name}
-                className="block w-full cursor-pointer rounded-md text-left after:absolute after:inset-0 after:content-['']"
-              >
-                <span className="line-clamp-2">{item.name}</span>
-              </button>
-            </h3>
-          </div>
+      {showMenu && (
+        <Menu
+          label="More actions"
+          items={rowMenuItems}
+          triggerClassName={ICON_BUTTON}
+          className={menuBelowSmOnly ? 'relative flex sm:hidden' : undefined}
+        />
+      )}
+    </div>
+  );
 
-          {/* Price - fixed position */}
-          <div className="mb-2 flex min-h-[28px] min-w-0 flex-col justify-center sm:mb-3 sm:min-h-[32px]">
-            {priceText && (
-              <p className="truncate text-lg font-semibold text-foreground sm:text-xl">
-                {priceText}
-              </p>
-            )}
-            {originalPriceText && (
-              <p className="truncate text-xs text-muted-foreground">{originalPriceText}</p>
-            )}
-          </div>
-
-          {/* A line of the notes; the sheet has them all. */}
-          {item.notes && (
-            <p className="mb-2 line-clamp-1 break-words text-meta text-muted-foreground sm:mb-3">
-              {item.notes}
-            </p>
-          )}
-        </div>
-
-        {/* Actions: one row, the same height on every card. */}
-        <div className="mt-auto flex min-h-10 items-center gap-2">
-          {primary ? (
-            primaryButton(primary)
-          ) : productPage ? (
-            <a {...productPage} className={`${PRIMARY_BASE} ${PRIMARY_TONES.primary}`}>
-              <Icon name="external-link" size={16} className={PRIMARY_ICON} />
-              <span className="truncate">View item</span>
-            </a>
-          ) : null}
-
-          {/* The product link, when the primary action isn't already it: from
-              `sm` up (below it, it's in the menu). */}
-          {showLinkSquare && slot === 'link' && productPage && (
-            <a
-              {...productPage}
-              className={`${ICON_BUTTON} ${SM_UP_ONLY}`}
-              title="View product page"
-            >
-              <Icon name="external-link" size={18} />
-            </a>
-          )}
-          {showLinkSquare && slot === 'add-link' && onAddLink && (
-            <IconButton
-              icon="plus"
-              label="Add product link"
-              title="Add product link"
-              variant="secondary"
-              size="md"
-              onClick={() => onAddLink(item)}
-              className={SM_UP_ONLY}
-            />
-          )}
-
-          {showMenu && (
-            <Menu
-              label="More actions"
-              items={rowMenuItems}
-              triggerClassName={ICON_BUTTON}
-              className={menuBelowSmOnly ? 'relative flex sm:hidden' : undefined}
-            />
-          )}
-        </div>
-      </div>
-
+  return (
+    <ItemCardView
+      item={item}
+      status={status}
+      dimmed={dimmed}
+      highlighted={highlighted}
+      priceText={priceText}
+      originalPriceText={originalPriceText}
+      coverLink={
+        productLink ? { href: productLink, label: `View ${item.name} product page` } : undefined
+      }
+      statusBadge={
+        isBookedByCurrentUser && !isOwner && item.status === 'booked' ? (
+          // Your own reservation's badge leads to Reserved (WIS-260).
+          <Link
+            href={RESERVED_PATH}
+            aria-label="Reserved by you, open Reserved"
+            className="max-sm:order-first rounded-full"
+          >
+            <Badge status={status} className="shadow-sm" />
+          </Link>
+        ) : undefined
+      }
+      // The card's body (its name, price and notes) opens the item's details:
+      // the name is the button, and its ::after stretches over the rest of the
+      // body. The cover still opens the product page, and the actions sit
+      // outside it.
+      title={
+        <button
+          type="button"
+          ref={bodyButtonRef}
+          onClick={() => setSheetOpen(true)}
+          aria-haspopup="dialog"
+          title={item.name}
+          className="block w-full cursor-pointer rounded-md text-left after:absolute after:inset-0 after:content-['']"
+        >
+          <span className="line-clamp-2">{item.name}</span>
+        </button>
+      }
+      actions={actionsRow}
+    >
       {/* The item's details. With the live item, so a poll's update shows in
           it, and it goes with the card when the item is deleted. */}
       {sheetOpen && (
@@ -812,7 +738,7 @@ function WishlistItem({
           </>,
           document.body
         )}
-    </div>
+    </ItemCardView>
   );
 }
 

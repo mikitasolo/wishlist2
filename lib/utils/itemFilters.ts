@@ -1,83 +1,9 @@
 /**
- * Filtering, searching and sorting item grids. The status filter here is the
- * All items page's (`/items`); a list's own page filters with its status chips
- * (`lib/utils/listChips.ts`).
+ * Searching and sorting item grids. Both item pages filter by status with the
+ * status chips (`lib/utils/listChips.ts`).
  */
 
 import { ApiItem } from '@/types/api';
-import { FILTER_META } from '@/lib/utils/itemStatus';
-import type { MultiSelectOption, MultiSelectRule } from '@/lib/utils/multiSelect';
-
-export type FilterOption =
-  | 'all'
-  | 'draft'
-  | 'available'
-  | 'bookedByMe'
-  | 'bookedByOthers'
-  | 'completed'
-  | 'proposed'
-  | 'proposedByMe';
-
-/**
- * The status filter's selection once `option` is ticked or unticked.
- * Ticking All, or every other option, selects everything. Unticking All, or
- * the last option ticked, goes back to `defaults` rather than to an empty
- * selection: a filter that said "None selected" while it showed every item
- * would say the opposite of what it does.
- */
-export function toggleStatusFilter(
-  selected: FilterOption[],
-  option: FilterOption,
-  options: FilterOption[],
-  defaults: FilterOption[]
-): FilterOption[] {
-  const others = options.filter((o) => o !== 'all');
-  if (option === 'all') {
-    return isEveryStatusSelected(selected, options) ? [...defaults] : [...options];
-  }
-  const next = selected.includes(option)
-    ? selected.filter((f) => f !== option && f !== 'all')
-    : [...selected.filter((f) => f !== 'all'), option];
-  if (others.every((o) => next.includes(o))) return [...options];
-  return next.length > 0 ? next : [...defaults];
-}
-
-/**
- * Whether a selection shows every item: All, every other option, or nothing
- * at all (which filters nothing).
- */
-export function isEveryStatusSelected(selected: FilterOption[], options: FilterOption[]): boolean {
-  return (
-    selected.length === 0 ||
-    selected.includes('all') ||
-    options.filter((o) => o !== 'all').every((o) => selected.includes(o))
-  );
-}
-
-/**
- * The status filter as `MultiSelectDropdown` takes it: a row per option but
- * All (which is its own row), labelled as the stat cards are, and the rule
- * above for what a click does, so it never ends up empty.
- */
-export function statusFilterPicker(
-  options: FilterOption[],
-  defaults: FilterOption[]
-): {
-  options: MultiSelectOption<FilterOption>[];
-  allLabel: string;
-  rule: MultiSelectRule<FilterOption>;
-} {
-  return {
-    options: options
-      .filter((o) => o !== 'all')
-      .map((o) => ({ value: o, label: FILTER_META[o].label })),
-    allLabel: FILTER_META.all.label,
-    rule: {
-      isAll: (selected) => isEveryStatusSelected(selected, options),
-      toggle: (selected, value) => toggleStatusFilter(selected, value ?? 'all', options, defaults),
-    },
-  };
-}
 
 /**
  * Where the status filter used to be saved: one key per role on the wishlist
