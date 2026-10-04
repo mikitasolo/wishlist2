@@ -96,15 +96,15 @@ export function useCurrencyOffer(): CurrencyOffer | null {
     void update();
   }
 
-  const use = (currency: string) =>
+  const saveCurrency = (currency: string) =>
     void answer({ defaultCurrency: currency }, `Prices will show in ${currency}`);
 
   return {
     code,
     name,
     busy,
-    accept: () => use(code),
-    pick: (other) => use(other),
+    accept: () => saveCurrency(code),
+    pick: (other) => saveCurrency(other),
     keep: () => void answer({}, 'Prices will stay in USD'),
   };
 }
