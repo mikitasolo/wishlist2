@@ -9,7 +9,7 @@ test('home page loads with the brand title', async ({ page }) => {
 
 test('sign-in page shows the magic-link email field', async ({ page }) => {
   await page.goto('/auth/signin');
-  await expect(page.getByText('Welcome back')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Sign in or create an account' })).toBeVisible();
   await expect(page.locator('input[type="email"]')).toBeVisible();
 });
 
@@ -19,8 +19,45 @@ test('the sign-in form sends a magic link', async ({ page }) => {
   await page.goto('/auth/signin?callbackUrl=%2Finvites');
   await page.getByLabel('Email address').fill('e2e-signin@example.com');
   await page.getByRole('button', { name: 'Send magic link' }).click();
-  await expect(page.getByText('Check your email')).toBeVisible();
-  await expect(page.getByText('e2e-signin@example.com')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Check your email' })).toBeVisible();
+  await expect(page.getByText('Sent to e2e-signin@example.com')).toBeVisible();
+  // Held back for 30 seconds after a send.
+  await expect(page.getByRole('button', { name: /^Resend link in \d+s$/ })).toBeDisabled();
+
+  // A typo needn't mean reloading the page: back to the form, address kept.
+  await page.getByRole('button', { name: 'Use a different email' }).click();
+  await expect(page.getByLabel('Email address')).toHaveValue('e2e-signin@example.com');
+});
+
+test('the sign-in form checks the email inline', async ({ page }) => {
+  await page.goto('/auth/signin');
+  const email = page.getByLabel('Email address');
+  await email.fill('not-an-email');
+  await page.getByRole('button', { name: 'Send magic link' }).click();
+  await expect(email).toHaveAttribute('aria-invalid', 'true');
+  await expect(page.getByText('Enter an email address like you@example.com')).toBeVisible();
+});
+
+test('sign-in from a list says where it continues to, without naming the list', async ({
+  page,
+}) => {
+  await page.goto('/auth/signin?callbackUrl=%2Fwishlists%2Fe2e-friend');
+  await expect(
+    page.getByText("We'll email you a link to continue to the wishlist you opened — no password.")
+  ).toBeVisible();
+  await expect(page.getByText(/E2E Friend/i)).toHaveCount(0);
+});
+
+// regression: Try again on the error page dropped the callbackUrl, so an
+// expired link from a shared list ended on the dashboard.
+test('regression: the auth error page keeps where sign-in was going', async ({ page }) => {
+  await page.goto('/auth/error?error=Verification&callbackUrl=%2Fwishlists%2Fe2e-friend');
+  await expect(page.getByRole('heading', { name: 'That sign-in link has expired' })).toBeVisible();
+  await page.getByRole('link', { name: 'Try again' }).click();
+  await expect(page).toHaveURL('/auth/signin?callbackUrl=%2Fwishlists%2Fe2e-friend');
+  await expect(
+    page.getByText("We'll email you a link to continue to the wishlist you opened — no password.")
+  ).toBeVisible();
 });
 
 // regression: the pages that need an account sent a signed-out visitor home,
@@ -35,7 +72,7 @@ for (const [path, back] of [
   }) => {
     await page.goto(path);
     await expect(page).toHaveURL(`/auth/signin?callbackUrl=${encodeURIComponent(back)}`);
-    await expect(page.getByText('Welcome back')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Sign in or create an account' })).toBeVisible();
   });
 }
 
