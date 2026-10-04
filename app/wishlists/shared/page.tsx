@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import AppHeader from '@/components/AppHeader';
@@ -8,8 +8,8 @@ import AuthButton from '@/components/AuthButton';
 import OwnHandle from '@/components/OwnHandle';
 import WishlistList from '@/components/WishlistList';
 import EmptyState from '@/components/EmptyState';
+import LoadError from '@/components/LoadError';
 import { WishlistListSkeleton } from '@/components/Skeleton';
-import { useToast } from '@/components/ToastProvider';
 import { useLocalToday } from '@/lib/hooks/useLocalToday';
 import { signInPath } from '@/lib/utils/callbackUrl';
 import { sortByUpcomingOccasion } from '@/lib/utils/occasion';
@@ -27,25 +27,36 @@ export default function SharedWishlistsPage() {
   const { data: session, status } = useSession();
   const username = session?.user?.username ?? null;
   const router = useRouter();
-  const { showToast } = useToast();
   const [member, setMember] = useState<Wishlist[]>([]);
   const [loading, setLoading] = useState(true);
+  // A failed first read is not an empty one: it gets LoadError, never the empty state.
+  const [loadFailed, setLoadFailed] = useState(false);
 
   useEffect(() => {
     if (status === 'unauthenticated') router.replace(signInPath('/wishlists/shared'));
   }, [status, router]);
 
-  useEffect(() => {
-    if (status !== 'authenticated') return;
+  const load = useCallback(() => {
     fetch('/api/wishlists', { cache: 'no-store' })
       .then((r) => r.json())
       .then((res) => {
-        if (res.success) setMember(res.data?.member || []);
-        else showToast('Failed to load wishlists', 'error');
+        if (!res.success) throw new Error('read failed');
+        setMember(res.data?.member || []);
+        setLoadFailed(false);
       })
-      .catch(() => showToast('Failed to load wishlists', 'error'))
+      .catch(() => setLoadFailed(true))
       .finally(() => setLoading(false));
-  }, [status, showToast]);
+  }, []);
+
+  useEffect(() => {
+    if (status === 'authenticated') load();
+  }, [status, load]);
+
+  const retryLoad = () => {
+    setLoadFailed(false);
+    setLoading(true);
+    load();
+  };
 
   // The lists with an occasion coming up go first, nearest first, by your own
   // local date; the rest keep the API's order (newest first), which is also
@@ -63,6 +74,10 @@ export default function SharedWishlistsPage() {
         {loading ? (
           <div className="mt-8">
             <WishlistListSkeleton count={8} showOwner />
+          </div>
+        ) : loadFailed ? (
+          <div className="mt-8">
+            <LoadError title="Couldn’t load your shared wishlists" onRetry={retryLoad} />
           </div>
         ) : member.length === 0 ? (
           <EmptyState

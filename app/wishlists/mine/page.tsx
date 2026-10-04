@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import AppHeader from '@/components/AppHeader';
@@ -9,8 +9,8 @@ import Button from '@/components/Button';
 import CreateWishlistModal from '@/components/CreateWishlistModal';
 import WishlistList, { ArchivedLists } from '@/components/WishlistList';
 import EmptyState from '@/components/EmptyState';
+import LoadError from '@/components/LoadError';
 import { WishlistListSkeleton } from '@/components/Skeleton';
-import { useToast } from '@/components/ToastProvider';
 import { useLocalToday } from '@/lib/hooks/useLocalToday';
 import { usePinToTop } from '@/lib/hooks/usePinToTop';
 import { signInPath } from '@/lib/utils/callbackUrl';
@@ -28,9 +28,10 @@ export default function MyWishlistsPage() {
   const { data: session, status } = useSession();
   const viewerId = session?.user?.id ?? null;
   const router = useRouter();
-  const { showToast } = useToast();
   const [owned, setOwned] = useState<Wishlist[]>([]);
   const [loading, setLoading] = useState(true);
+  // A failed first read is not an empty one: it gets LoadError, never the empty state.
+  const [loadFailed, setLoadFailed] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   // Pin to top: per-owner, one at a time (`usePinToTop`).
   const { pinning, toggle: togglePin } = usePinToTop(setOwned);
@@ -40,17 +41,27 @@ export default function MyWishlistsPage() {
     if (status === 'unauthenticated') router.replace(signInPath('/wishlists/mine'));
   }, [status, router]);
 
-  useEffect(() => {
-    if (status !== 'authenticated') return;
+  const load = useCallback(() => {
     fetch('/api/wishlists', { cache: 'no-store' })
       .then((r) => r.json())
       .then((res) => {
-        if (res.success) setOwned(res.data?.owned || []);
-        else showToast('Failed to load wishlists', 'error');
+        if (!res.success) throw new Error('read failed');
+        setOwned(res.data?.owned || []);
+        setLoadFailed(false);
       })
-      .catch(() => showToast('Failed to load wishlists', 'error'))
+      .catch(() => setLoadFailed(true))
       .finally(() => setLoading(false));
-  }, [status, showToast]);
+  }, []);
+
+  useEffect(() => {
+    if (status === 'authenticated') load();
+  }, [status, load]);
+
+  const retryLoad = () => {
+    setLoadFailed(false);
+    setLoading(true);
+    load();
+  };
 
   // In each section, the lists with an occasion coming up go first, nearest
   // first; the rest keep the API's order (newest first). Your pinned list goes
@@ -97,6 +108,10 @@ export default function MyWishlistsPage() {
         {loading ? (
           <div className="mt-8">
             <WishlistListSkeleton count={8} />
+          </div>
+        ) : loadFailed ? (
+          <div className="mt-8">
+            <LoadError title="Couldn’t load your wishlists" onRetry={retryLoad} />
           </div>
         ) : owned.length === 0 ? (
           <EmptyState
