@@ -29,7 +29,9 @@ interface ItemFormFooterProps {
 }
 
 // On a phone the buttons share the row's width; from `sm` up they keep their own.
-const BUTTON_CLASS = 'max-sm:flex-1 max-sm:px-3';
+// A label stays on one line, so a review's row of three (Decline, Cancel, Add as
+// draft) doesn't break "Add as draft" in two.
+const BUTTON_CLASS = 'max-sm:flex-1 max-sm:px-3 whitespace-nowrap';
 
 /**
  * The item dialogs' pinned footer (give it to `BaseModal`'s `footer`): Cancel,
@@ -77,7 +79,7 @@ export default function ItemFormFooter({
           variant="danger-ghost"
           onClick={onDelete}
           disabled={busy}
-          className="mr-auto"
+          className="mr-auto whitespace-nowrap max-sm:px-3"
         >
           {deleteLabel}
         </Button>
