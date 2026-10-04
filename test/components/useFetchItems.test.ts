@@ -4,6 +4,7 @@ import { renderHook, cleanup } from '@testing-library/react';
 import { useFetchItems } from '@/lib/hooks/useItems';
 import { clearPendingRequests } from '@/lib/utils/requestDeduplication';
 import { createMutationTracker } from '@/lib/utils/itemListMerge';
+import { ITEM_REQUEST_TIMEOUT_MS, RequestTimeoutError } from '@/lib/utils/requestTimeout';
 import { ReadRefusedError } from '@/lib/utils/resourceRead';
 import type { ApiItem } from '@/types/api';
 
@@ -53,7 +54,10 @@ describe('useFetchItems', () => {
     fetchMock.mockResolvedValue(reply(200, { success: true, data: ITEMS }));
 
     await expect(fetchItems()('w1')).resolves.toEqual({ items: ITEMS, sentAt: 1 });
-    expect(fetchMock).toHaveBeenCalledWith('/api/wishlists/w1/items', { cache: 'no-store' });
+    expect(fetchMock).toHaveBeenCalledWith('/api/wishlists/w1/items', {
+      cache: 'no-store',
+      signal: expect.any(AbortSignal),
+    });
   });
 
   it('resolves an empty list when the list really is empty', async () => {
@@ -187,6 +191,79 @@ describe('useFetchItems', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(second.sentAt).toBe(first.sentAt);
     expect(mutations.isStale(second.sentAt)).toBe(true);
+  });
+
+  describe('a stalled read', () => {
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => vi.useRealTimers());
+
+    // A fetch that never answers, and rejects once its signal is aborted.
+    function stall() {
+      fetchMock.mockImplementationOnce(
+        (_url: string, init: RequestInit) =>
+          new Promise((_, reject) => {
+            init.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+          })
+      );
+    }
+
+    // regression: the read had no timeout, so every poll joined the stalled
+    // request (until the dedup entry expired after 30 s) and a first load kept
+    // its skeleton until the browser gave up.
+    it('rejects with a timeout error, a plain failure rather than a refusal', async () => {
+      stall();
+      const read = fetchItems()('w1');
+      const outcome = expect(read).rejects.toBeInstanceOf(RequestTimeoutError);
+
+      await vi.advanceTimersByTimeAsync(ITEM_REQUEST_TIMEOUT_MS);
+
+      await outcome;
+      await expect(read).rejects.not.toBeInstanceOf(ReadRefusedError);
+    });
+
+    it('does not give up before the deadline', async () => {
+      stall();
+      const read = fetchItems()('w1');
+      const settled = vi.fn();
+      read.catch(settled);
+
+      await vi.advanceTimersByTimeAsync(ITEM_REQUEST_TIMEOUT_MS - 1);
+
+      expect(settled).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(settled).toHaveBeenCalledTimes(1);
+    });
+
+    it('releases every read that joined the stalled request together', async () => {
+      stall();
+      const fetch = fetchItems();
+      const first = fetch('w1');
+      const second = fetch('w1');
+      const outcomes = Promise.all([
+        expect(first).rejects.toBeInstanceOf(RequestTimeoutError),
+        expect(second).rejects.toBeInstanceOf(RequestTimeoutError),
+      ]);
+
+      await vi.advanceTimersByTimeAsync(ITEM_REQUEST_TIMEOUT_MS);
+
+      await outcomes;
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('sends a fresh request after a timeout instead of joining the abandoned one', async () => {
+      stall();
+      fetchMock.mockResolvedValueOnce(reply(200, { success: true, data: ITEMS }));
+      const fetch = fetchItems();
+      const stalled = fetch('w1');
+      const outcome = expect(stalled).rejects.toBeInstanceOf(RequestTimeoutError);
+
+      await vi.advanceTimersByTimeAsync(ITEM_REQUEST_TIMEOUT_MS);
+      await outcome;
+
+      await expect(fetch('w1')).resolves.toEqual({ items: ITEMS, sentAt: 2 });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(fetchMock.mock.calls[0][1].signal.aborted).toBe(true);
+    });
   });
 
   it('gives a read sent once the shared one has landed a stamp of its own', async () => {
