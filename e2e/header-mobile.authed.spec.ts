@@ -70,10 +70,10 @@ for (const width of [640, 768, 1024]) {
 // The account button is the avatar alone at every width (WIS-251: Me is the
 // avatar), so it's one width whoever is signed in and its loading placeholder
 // can hold that width.
-test('a wide screen still shows the wordmark, and the account button is its avatar', async ({
+test('a wide screen shows the wordmark (as a phone does), and the account button is its avatar', async ({
   page,
 }) => {
   await open(page, '/booked');
-  await expect(homeLink(page).getByText('Wishlist', { exact: true })).toBeVisible();
+  await expect(homeLink(page)).toHaveText('Wishlist.');
   await expect(accountButton(page)).not.toContainText('e2euser');
 });
