@@ -59,7 +59,9 @@ beforeEach(async () => {
   alice = (await User.create({ email: 'a@x.com', username: 'alice' }))._id.toString();
   carol = (await User.create({ email: 'c@x.com', username: 'carol' }))._id.toString();
   erin = (await User.create({ email: 'e@x.com', username: 'erin' }))._id.toString();
-  wid = (await Wishlist.create({ name: 'Family list', owners: [alice] }))._id.toString();
+  wid = (
+    await Wishlist.create({ name: 'Family list', owners: [alice], visibility: 'everyone' })
+  )._id.toString();
   await WishlistMember.create({ wishlist: wid, user: carol });
 });
 
