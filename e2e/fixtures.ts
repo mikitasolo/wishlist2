@@ -90,6 +90,15 @@ export const test = base.extend<{ consoleErrors: ConsoleErrors }>({
         unexpected: () => unexpectedProblems(problems, allowed),
       });
 
+      // A handler that calls `route.fetch()` can still be mid-request when the
+      // test ends (a poll landing just then), which Playwright reports as an
+      // error outside any test and fails the run (WIS-216). Drop the routes and
+      // let those fetches die quietly.
+      await Promise.all(
+        context.pages().map((page) => page.unrouteAll({ behavior: 'ignoreErrors' }))
+      );
+      await context.unrouteAll({ behavior: 'ignoreErrors' });
+
       const unexpected = unexpectedProblems(problems, allowed);
       if (unexpected.length > 0) throw new Error(reportProblems(unexpected));
     },
