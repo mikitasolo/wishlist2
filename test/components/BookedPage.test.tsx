@@ -27,7 +27,7 @@ vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }
 
 import BookedPage from '@/app/booked/page';
 import type { Occasion } from '@/lib/utils/occasion';
-import { ITEM_REQUEST_TIMEOUT_MS } from '@/lib/utils/requestTimeout';
+import { ITEM_REQUEST_TIMEOUT_MS, REQUEST_TIMEOUT_MESSAGE } from '@/lib/utils/requestTimeout';
 
 const reservation = {
   itemImage: null,
@@ -570,6 +570,71 @@ describe('BookedPage — acting on several cards at once', () => {
     await waitFor(() => expectReservationEnabled('Lego set'));
     expect(showToast).toHaveBeenCalledTimes(1);
     expect(sent(releaseKey('item-lego'))).toBe(0);
+  });
+});
+
+describe('BookedPage — a card action that stalls', () => {
+  // WIS-278: the actions ran with no bound, so a request that never answered
+  // kept its card disabled, silently, until the browser gave up.
+  const advance = (ms: number) =>
+    act(async () => {
+      await vi.advanceTimersByTimeAsync(ms);
+    });
+
+  it.each([
+    ['Mark as given', 'Lego set', markGifted],
+    ['Release', 'Lego set', release],
+    ['Dismiss', 'Scarf', dismiss],
+  ])(
+    '%s is given up on after the timeout, says so, and frees its card',
+    async (_name, card, start) => {
+      await renderHeld();
+      vi.useFakeTimers();
+      try {
+        start(card);
+        expectReservationDisabled(card);
+
+        await advance(ITEM_REQUEST_TIMEOUT_MS - 1);
+        expect(showToast).not.toHaveBeenCalled();
+        expectReservationDisabled(card);
+
+        await advance(1);
+        expect(showToast).toHaveBeenCalledWith(REQUEST_TIMEOUT_MESSAGE, 'error');
+        expectReservationEnabled(card);
+      } finally {
+        vi.useRealTimers();
+      }
+    }
+  );
+
+  it("frees only the card whose request timed out while another's is still in flight", async () => {
+    await renderHeld();
+    vi.useFakeTimers();
+    try {
+      markGifted('Lego set');
+      await advance(ITEM_REQUEST_TIMEOUT_MS - 1000);
+      dismiss('Scarf');
+      await advance(1000);
+      expect(showToast).toHaveBeenCalledWith(REQUEST_TIMEOUT_MESSAGE, 'error');
+      expectReservationEnabled('Lego set');
+      expectReservationDisabled('Scarf');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a gift-history delete is given up on after the timeout and re-enabled', async () => {
+    await renderHeld();
+    vi.useFakeTimers();
+    try {
+      deleteGift('Cookbook');
+      expect(deleteGiftButton('Cookbook')).toBeDisabled();
+      await advance(ITEM_REQUEST_TIMEOUT_MS);
+      expect(showToast).toHaveBeenCalledWith(REQUEST_TIMEOUT_MESSAGE, 'error');
+      expect(deleteGiftButton('Cookbook')).toBeEnabled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

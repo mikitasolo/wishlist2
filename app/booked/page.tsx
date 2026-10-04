@@ -29,7 +29,11 @@ import { buttonClassName, iconButtonClassName } from '@/components/buttonStyles'
 import { useViewerLocale } from '@/lib/hooks/useViewerLocale';
 import { createListChangeLog, mergeRefreshedList } from '@/lib/utils/listRefresh';
 import type { Occasion } from '@/lib/utils/occasion';
-import { withRequestTimeout } from '@/lib/utils/requestTimeout';
+import {
+  REQUEST_TIMEOUT_MESSAGE,
+  RequestTimeoutError,
+  withRequestTimeout,
+} from '@/lib/utils/requestTimeout';
 import { TONE_CLASSES } from '@/lib/utils/statusTones';
 import {
   changedCardPrimary,
@@ -299,14 +303,29 @@ export default function BookedPage() {
     load();
   }
 
+  // One card action's request, bounded so a stalled one lets go of its card
+  // (`run` holds it disabled until this settles) instead of waiting for the
+  // browser to give up. The body is read inside the bound. A timeout lands in
+  // the action's catch like any failure: it toasts and frees the card. The
+  // server may still have done the write, which the next read shows.
+  function send(url: string, init: RequestInit) {
+    return withRequestTimeout(async (signal) => {
+      const res = await fetch(url, { ...init, signal });
+      return { res, result: await res.json() };
+    });
+  }
+
+  function failureMessage(error: unknown) {
+    return error instanceof RequestTimeoutError ? REQUEST_TIMEOUT_MESSAGE : 'Something went wrong';
+  }
+
   function markGifted(id: string) {
     return run(id, async () => {
       const actedFor = account.current;
       try {
-        const res = await fetch(`/api/reservations/${id}/gift`, { method: 'POST' });
-        // Parsed first, so a 404 that isn't the route's own JSON answer (an HTML
+        // Parsed with it, so a 404 that isn't the route's own JSON answer (an HTML
         // page from the platform) lands in the catch below and keeps the card.
-        const result = await res.json();
+        const { res, result } = await send(`/api/reservations/${id}/gift`, { method: 'POST' });
         // Another account signed in while this was on its way. What came of it
         // belongs to the account that did it, here and in the catch below.
         if (account.current !== actedFor) return;
@@ -321,8 +340,8 @@ export default function BookedPage() {
         } else {
           showToast(result.error || 'Something went wrong', 'error');
         }
-      } catch {
-        if (account.current === actedFor) showToast('Something went wrong', 'error');
+      } catch (error) {
+        if (account.current === actedFor) showToast(failureMessage(error), 'error');
       }
     });
   }
@@ -331,9 +350,8 @@ export default function BookedPage() {
     return run(id, async () => {
       const actedFor = account.current;
       try {
-        const res = await fetch(`/api/reservations/${id}`, { method: 'DELETE' });
-        // Parsed first, and dropped after another account signs in, as in markGifted.
-        const result = await res.json();
+        // Parsed with it, and dropped after another account signs in, as in markGifted.
+        const { res, result } = await send(`/api/reservations/${id}`, { method: 'DELETE' });
         if (account.current !== actedFor) return;
         if (res.status === 404) {
           reservationGone(id);
@@ -345,8 +363,8 @@ export default function BookedPage() {
         } else {
           showToast(result.error || 'Something went wrong', 'error');
         }
-      } catch {
-        if (account.current === actedFor) showToast('Something went wrong', 'error');
+      } catch (error) {
+        if (account.current === actedFor) showToast(failureMessage(error), 'error');
       }
     });
   }
@@ -372,13 +390,12 @@ export default function BookedPage() {
     return run(id, async () => {
       const actedFor = account.current;
       try {
-        const res = await fetch(`/api/items/${r.itemId}`, {
+        // Parsed with it, and dropped after another account signs in, as in markGifted.
+        const { res, result } = await send(`/api/items/${r.itemId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ status: 'available' }),
         });
-        // Parsed first, and dropped after another account signs in, as in markGifted.
-        const result = await res.json();
         if (account.current !== actedFor) return;
         if (result.success) {
           dropReservation(id);
@@ -389,8 +406,8 @@ export default function BookedPage() {
         } else {
           showToast(result.error || 'Something went wrong', 'error');
         }
-      } catch {
-        if (account.current === actedFor) showToast('Something went wrong', 'error');
+      } catch (error) {
+        if (account.current === actedFor) showToast(failureMessage(error), 'error');
       }
     });
   }
@@ -399,9 +416,8 @@ export default function BookedPage() {
     return run(id, async () => {
       const actedFor = account.current;
       try {
-        const res = await fetch(`/api/gifts/${id}`, { method: 'DELETE' });
-        // Parsed first, and dropped after another account signs in, as in markGifted.
-        const result = await res.json();
+        // Parsed with it, and dropped after another account signs in, as in markGifted.
+        const { res, result } = await send(`/api/gifts/${id}`, { method: 'DELETE' });
         if (account.current !== actedFor) return;
         if (res.status === 404) {
           giftGone(id);
@@ -413,8 +429,8 @@ export default function BookedPage() {
         } else {
           showToast(result.error || 'Something went wrong', 'error');
         }
-      } catch {
-        if (account.current === actedFor) showToast('Something went wrong', 'error');
+      } catch (error) {
+        if (account.current === actedFor) showToast(failureMessage(error), 'error');
       }
     });
   }
