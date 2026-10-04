@@ -6,32 +6,41 @@ import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import AppHeader from '@/components/AppHeader';
 import AuthButton from '@/components/AuthButton';
-import Badge from '@/components/Badge';
 import EmptyState from '@/components/EmptyState';
+import FilterChips from '@/components/FilterChips';
 import Icon from '@/components/Icon';
+import ItemCardView from '@/components/ItemCardView';
 import LoadError from '@/components/LoadError';
 import Select from '@/components/Select';
 import MultiSelectDropdown from '@/components/MultiSelectDropdown';
-import Cover from '@/components/Cover';
-import { Skeleton } from '@/components/Skeleton';
+import SearchField from '@/components/SearchField';
+import { ITEM_GRID_CLASSES, ListControlsSkeleton, SkeletonGrid } from '@/components/Skeleton';
 import { useToast } from '@/components/ToastProvider';
 import { signInPath } from '@/lib/utils/callbackUrl';
 import { formatPrice } from '@/lib/utils/currency';
 import { useViewerLocale } from '@/lib/hooks/useViewerLocale';
+import { itemDeepLink } from '@/lib/utils/itemDeepLink';
 import {
   forgetSavedListFilter,
   forgetSavedStatusFilters,
-  isEveryStatusSelected,
   isSortType,
-  sortItems,
   SORT_OPTIONS,
-  statusFilterPicker,
-  type FilterOption,
+  SORT_SHORT_LABELS,
   type SortType,
 } from '@/lib/utils/itemFilters';
 import { formatOwnerItemSummary, tallyItems } from '@/lib/utils/itemCounts';
-import { FILTER_META, statusMeta } from '@/lib/utils/itemStatus';
-import { TONE_CLASSES } from '@/lib/utils/statusTones';
+import { statusMeta } from '@/lib/utils/itemStatus';
+import {
+  countListChips,
+  isDimmedInAll,
+  LIST_CHIP_LABELS,
+  LIST_CHIP_PARAM,
+  listChipFor,
+  listChips,
+  orderListItems,
+  type ChipItem,
+  type ListChip,
+} from '@/lib/utils/listChips';
 
 interface MyItem {
   _id: string;
@@ -49,22 +58,16 @@ interface MyItem {
   createdAt: string; // ISO date string
 }
 
-// Owner view: booked is folded into "available" by the API (never revealed).
-// Same order the stat cards render in, so cards ↔ dropdown line up.
-const STATUS_FILTER_OPTIONS: FilterOption[] = [
-  'all',
-  'draft',
-  'proposed',
-  'available',
-  'completed',
-];
-const STATUS_PICKER = statusFilterPicker(STATUS_FILTER_OPTIONS, STATUS_FILTER_OPTIONS);
-
 // localStorage keys — kept separate from the per-wishlist page's keys. The
-// status and list filters aren't saved: each starts on All every visit, so a
-// stat card clicked once, or the lists you had when you last picked, don't
-// narrow the page for good (a list created since would be missing).
+// status chip and list filter aren't saved: each starts on All every visit
+// (the chip lives in the URL's ?show= for back and refresh), so a chip picked
+// once, or the lists you had when you last picked, don't narrow the page for
+// good (a list created since would be missing).
 const LS_SORT = 'items-sort';
+
+// This page shows the items on lists you own, so it's the owner's view of a
+// list: the owner's chips, and booked already folded into available.
+const OWNER_CHIPS = listChips('owner');
 
 export default function MyItemsPage() {
   const { status } = useSession();
@@ -79,7 +82,8 @@ export default function MyItemsPage() {
   const [loadFailed, setLoadFailed] = useState(false);
   const loadedOnce = useRef(false);
   const [wishlistFilters, setWishlistFilters] = useState<string[]>([]);
-  const [statusFilters, setStatusFilters] = useState<FilterOption[]>([...STATUS_FILTER_OPTIONS]);
+  const [chip, setChip] = useState<ListChip>('all');
+  const [searchQuery, setSearchQuery] = useState('');
   const [sort, setSort] = useState<SortType>('date-desc');
   // Archived lists are left out unless asked for, so the counts here match the
   // dashboard's. Not saved: every visit starts without them. `includeArchived`
@@ -95,6 +99,21 @@ export default function MyItemsPage() {
   useEffect(() => {
     if (status === 'unauthenticated') router.replace(signInPath('/items'));
   }, [status, router]);
+
+  // The chip is read from the URL's ?show= once (so back and refresh keep it),
+  // and written back by replaceState when picked. Never saved.
+  useEffect(() => {
+    const fromUrl = new URLSearchParams(window.location.search).get(LIST_CHIP_PARAM);
+    setChip(listChipFor(fromUrl, 'owner'));
+  }, []);
+
+  const chooseChip = useCallback((next: ListChip) => {
+    setChip(next);
+    const url = new URL(window.location.href);
+    if (next === 'all') url.searchParams.delete(LIST_CHIP_PARAM);
+    else url.searchParams.set(LIST_CHIP_PARAM, next);
+    if (url.href !== window.location.href) window.history.replaceState(null, '', url);
+  }, []);
 
   const loadItems = useCallback(
     async (withArchived: boolean) => {
@@ -200,33 +219,28 @@ export default function MyItemsPage() {
   // "57 items · 3 drafts · 2 to review", counted as the dashboard counts them.
   const summary = useMemo(() => formatOwnerItemSummary(tallyItems(items)), [items]);
 
-  // Per-status counts across all owned items (cards show totals, ignore filters).
-  const counts = useMemo(() => {
-    const c = { all: items.length, draft: 0, proposed: 0, available: 0, completed: 0 };
-    for (const it of items) if (it.status in c) c[it.status as keyof typeof c]++;
-    return c;
-  }, [items]);
+  // The items on the lists picked in the Lists filter: what the chips count.
+  const scopedItems = useMemo(
+    () => items.filter((i) => wishlistFilters.includes(i.wishlistId)),
+    [items, wishlistFilters]
+  );
 
-  // Which status card reflects the current selection (for highlighting).
-  const activeStatusCard = useMemo<FilterOption | null>(() => {
-    if (isEveryStatusSelected(statusFilters, STATUS_FILTER_OPTIONS)) return 'all';
-    if (statusFilters.length === 1) return statusFilters[0];
-    return null;
-  }, [statusFilters]);
-
-  const applyStatusCard = (key: FilterOption) => {
-    setStatusFilters(key === 'all' ? [...STATUS_FILTER_OPTIONS] : [key]);
-  };
+  // The owner's chips and counts, as on a list's page (never a reservation).
+  const chips = useMemo(() => {
+    const counts = countListChips(scopedItems as unknown as ChipItem[], 'owner', null);
+    return OWNER_CHIPS.map((value) => ({
+      value,
+      label: LIST_CHIP_LABELS[value],
+      count: counts[value],
+    }));
+  }, [scopedItems]);
 
   const visibleItems = useMemo(() => {
-    const everyStatus = isEveryStatusSelected(statusFilters, STATUS_FILTER_OPTIONS);
-    const list = items.filter(
-      (i) =>
-        wishlistFilters.includes(i.wishlistId) && (everyStatus || statusFilters.includes(i.status))
-    );
-    // The wishlist page's sorter, so the two grids order items the same way.
-    return sortItems(list, sort);
-  }, [items, wishlistFilters, statusFilters, sort]);
+    const q = searchQuery.trim().toLowerCase();
+    const matching = q ? scopedItems.filter((i) => i.name.toLowerCase().includes(q)) : scopedItems;
+    // The list page's ordering: under All the actionable items come first.
+    return orderListItems(matching, chip, 'owner', null, sort);
+  }, [scopedItems, searchQuery, chip, sort]);
 
   return (
     <div className="min-h-screen">
@@ -242,33 +256,10 @@ export default function MyItemsPage() {
         </p>
 
         {loading ? (
-          <>
-            {/* Stat cards row */}
-            <div
-              className="mt-8 grid gap-3 sm:gap-4"
-              style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(8rem, 1fr))' }}
-            >
-              {Array.from({ length: 5 }).map((_, i) => (
-                <Skeleton key={i} className="h-[70px] rounded-xl sm:h-[78px]" />
-              ))}
-            </div>
-            {/* Item grid — square image + small body, matching the real cards */}
-            <div className="mt-6 grid grid-cols-2 gap-5 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-              {Array.from({ length: 10 }).map((_, i) => (
-                <div
-                  key={i}
-                  className="flex flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-sm"
-                >
-                  <Skeleton className="aspect-square w-full rounded-none" />
-                  <div className="flex flex-col gap-2 p-3">
-                    <Skeleton className="h-4 w-4/5" />
-                    <Skeleton className="h-3 w-1/3" />
-                    <Skeleton className="mt-1 h-3 w-1/2" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </>
+          <div className="mt-8">
+            <ListControlsSkeleton chips={OWNER_CHIPS.length} />
+            <SkeletonGrid count={8} variant="item" />
+          </div>
         ) : loadFailed ? (
           <div className="mt-8">
             <LoadError title="Couldn’t load your items" onRetry={retryLoad} />
@@ -296,57 +287,30 @@ export default function MyItemsPage() {
           />
         ) : (
           <>
-            {/* Stat cards — full-width row; click to filter by status */}
-            <div
-              className="mt-8 grid gap-3 sm:gap-4"
-              style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(8rem, 1fr))' }}
-            >
-              {STATUS_FILTER_OPTIONS.map((key) => {
-                // "All", not a total: it counts drafts and proposals too, and "N
-                // items" means published items only (lib/utils/itemCounts.ts).
-                const meta = FILTER_META[key];
-                const active = activeStatusCard === key;
-                return (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => applyStatusCard(key)}
-                    aria-pressed={active}
-                    title={`Show ${meta.label.toLowerCase()}`}
-                    className={`rounded-xl border bg-surface p-3 text-left shadow-sm transition-all sm:p-4 ${
-                      active
-                        ? 'border-accent ring-1 ring-accent'
-                        : 'border-border hover:border-border-strong hover:bg-surface-hover'
-                    }`}
-                  >
-                    <p className="mb-1 truncate text-xs text-muted-foreground sm:text-sm">
-                      {meta.label}
-                    </p>
-                    <p className={`text-2xl font-bold sm:text-3xl ${TONE_CLASSES[meta.tone].text}`}>
-                      {counts[key as keyof typeof counts]}
-                    </p>
-                  </button>
-                );
-              })}
-            </div>
+            {/* The owner's status chips, as on a list's page: one row, one choice */}
+            <FilterChips
+              chips={chips}
+              value={chip}
+              onChange={chooseChip}
+              ariaLabel="Show items"
+              className="mt-8 mb-4"
+            />
 
-            {/* Filters + sort */}
-            <div className="mt-6 flex flex-wrap items-end gap-3 sm:gap-4">
-              <div className="w-full sm:w-auto">
-                <label className="mb-2 block whitespace-nowrap text-xs font-medium text-foreground sm:text-sm">
-                  Status
-                </label>
-                <MultiSelectDropdown
-                  {...STATUS_PICKER}
-                  selected={statusFilters}
-                  onChange={setStatusFilters}
-                  ariaLabel="Filter by status"
-                  className="w-full sm:w-auto sm:min-w-[200px]"
-                />
-              </div>
+            {/* Toolbar, as on a list's page: search and Sort, one row from sm
+                up and on a phone the search on a row of its own. The Lists
+                filter sits beside them. */}
+            <div className="mb-6 flex flex-wrap items-center gap-2 sm:mb-8 sm:flex-nowrap sm:gap-3">
+              <SearchField
+                size="sm"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onClear={() => setSearchQuery('')}
+                placeholder="Search items…"
+                aria-label="Search items by name"
+                className="w-full sm:w-auto sm:min-w-0 sm:flex-1"
+              />
               <MultiSelectDropdown
-                label="List"
-                className="min-w-[200px]"
+                className="min-w-0 flex-1 sm:w-48 sm:flex-none"
                 options={wishlistOptions}
                 selected={wishlistFilters}
                 onChange={changeWishlistFilters}
@@ -357,86 +321,71 @@ export default function MyItemsPage() {
                   onChange: changeIncludeArchived,
                 }}
               />
-              <div className="ml-auto">
-                <label className="mb-2 block whitespace-nowrap text-xs font-medium text-foreground sm:text-sm">
-                  Sort by:
-                </label>
-                <Select
-                  ariaLabel="Sort items"
-                  value={sort}
-                  onChange={(v) => {
-                    // Saved only when picked, so the default can still change.
-                    setSort(v as SortType);
-                    localStorage.setItem(LS_SORT, v);
-                  }}
-                  options={SORT_OPTIONS}
-                  menuAlign="right"
-                  triggerClassName="w-full sm:w-auto sm:min-w-[13rem]"
-                />
-              </div>
+              <Select
+                ariaLabel="Sort items by"
+                value={sort}
+                onChange={(v) => {
+                  // Saved only when picked, so the default can still change.
+                  setSort(v as SortType);
+                  localStorage.setItem(LS_SORT, v);
+                }}
+                options={SORT_OPTIONS}
+                valueLabel={SORT_SHORT_LABELS[sort]}
+                menuAlign="right"
+                triggerClassName="min-w-0 flex-1 sm:flex-none sm:flex-shrink-0"
+              />
             </div>
 
             {visibleItems.length === 0 ? (
               <EmptyState
-                className="mt-8"
                 tone="muted"
                 icon="package"
                 title="No items found"
                 body="No items match these filters."
               />
             ) : (
-              <div className="mt-6 grid grid-cols-2 gap-5 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+              <div className={ITEM_GRID_CLASSES}>
                 {visibleItems.map((it) => {
                   // The owner's view: the API has already folded booked into available.
-                  const badge = statusMeta(it.status, 'owner');
+                  const status = statusMeta(it.status, 'owner');
+                  const listPath = it.wishlistSlug ?? it.wishlistId;
+                  const href = itemDeepLink(listPath, it._id);
                   return (
-                    <div
+                    <ItemCardView
                       key={it._id}
-                      className="flex flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-sm"
-                    >
-                      <Cover
-                        src={it.imageUrl}
-                        seed={it._id}
-                        alt={it.name}
-                        sizes="(max-width: 640px) 50vw, (max-width: 1024px) 25vw, 20vw"
-                        className="relative aspect-square w-full bg-surface-2"
-                      >
-                        {badge.badge && (
-                          <Badge
-                            status={badge}
-                            size="sm"
-                            className="absolute left-2 top-2 shadow-sm"
-                          />
-                        )}
-                        {it.mostWanted && (
-                          <span
-                            role="img"
-                            aria-label="Most wanted"
-                            title="Most wanted"
-                            className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full border border-border bg-surface/90 shadow-sm backdrop-blur"
-                          >
-                            <Icon name="star" size={12} className="fill-amber-400 text-amber-500" />
-                          </span>
-                        )}
-                      </Cover>
-                      <div className="flex flex-1 flex-col p-3">
-                        <p className="truncate text-body font-semibold text-foreground">
-                          {it.name}
-                        </p>
-                        {it.price && (
-                          <p className="text-sm text-muted-foreground">
-                            {formatPrice(it.price, locale)}
-                          </p>
-                        )}
+                      item={it}
+                      status={status}
+                      dimmed={
+                        chip === 'all' && isDimmedInAll(it as unknown as ChipItem, 'owner', null)
+                      }
+                      priceText={it.price ? formatPrice(it.price, locale) : null}
+                      coverLink={{ href, label: `Open ${it.name} on ${it.wishlistName}` }}
+                      // Opens the item on its list; actions stay there.
+                      title={
                         <Link
-                          href={`/wishlists/${it.wishlistSlug ?? it.wishlistId}`}
-                          className="mt-auto inline-flex items-center gap-1 pt-2 text-xs font-medium text-accent hover:underline"
+                          href={href}
+                          title={it.name}
+                          className="block w-full rounded-md text-left after:absolute after:inset-0 after:content-['']"
                         >
-                          <Icon name="gift" size={12} />
-                          <span className="truncate">{it.wishlistName}</span>
+                          <span className="line-clamp-2">{it.name}</span>
                         </Link>
-                      </div>
-                    </div>
+                      }
+                      actions={
+                        <div className="mt-auto flex min-h-10 items-center">
+                          <Link
+                            href={`/wishlists/${encodeURIComponent(listPath)}`}
+                            className="inline-flex min-w-0 items-center gap-1.5 text-sm font-medium text-accent hover:underline"
+                          >
+                            <Icon name="gift" size={16} className="flex-shrink-0" />
+                            <span className="truncate">
+                              {it.wishlistArchived
+                                ? `${it.wishlistName} (archived)`
+                                : it.wishlistName}
+                            </span>
+                          </Link>
+                        </div>
+                      }
+                    />
                   );
                 })}
               </div>
