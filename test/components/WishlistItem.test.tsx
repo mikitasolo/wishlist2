@@ -682,16 +682,35 @@ describe('WishlistItem — the action row, by role and state', () => {
     if (props.isOwner) expect(within(card).queryByText(/book|reserv/i)).toBeNull();
   });
 
-  it('still links the cover to the product page below sm', () => {
-    atWidth(390);
+  // WIS-316: the cover opens the item's sheet like the body does; it is no
+  // longer a link to the product page, which stays in the row, the menu and
+  // the sheet.
+  it.each([390, 1280])('opens the sheet from the cover, not the shop link, at %ipx', (width) => {
+    atWidth(width);
     render(
       <WishlistItem item={item({ link: LINK })} onUpdate={vi.fn()} isAuthenticated isMember />
     );
-    const cover = within(screen.getByRole('article'))
-      .getAllByRole('link', { name: PRODUCT_PAGE })
-      .find(isCover);
-    expect(cover).toHaveAttribute('href', LINK);
-    expect(cover).toHaveAttribute('target', '_blank');
+    const card = screen.getByRole('article');
+    const cover = card.querySelector('[class*="aspect-"]') as HTMLElement;
+    expect(cover.tagName).not.toBe('A');
+    expect(within(card).queryAllByRole('link', { name: PRODUCT_PAGE }).filter(isCover)).toEqual([]);
+    // One accessible way in: the cover's button is hidden from assistive tech.
+    expect(within(card).getAllByRole('button', { name: 'Cool Gift' })).toHaveLength(1);
+    expect(screen.queryByRole('dialog')).toBeNull();
+
+    fireEvent.click(cover.querySelector('button') as HTMLElement);
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    // The product link is still offered: the square from sm up, the menu below.
+    if (width >= 640) {
+      expect(within(card).getAllByRole('link', { name: PRODUCT_PAGE })).toHaveLength(1);
+    } else {
+      fireEvent.click(within(card).getByRole('button', { name: 'More actions' }));
+      expect(screen.getByRole('menuitem', { name: 'Open product page' })).toHaveAttribute(
+        'href',
+        LINK
+      );
+    }
   });
 
   // Before the width is known (the server render, and the render hydrating
@@ -1016,7 +1035,7 @@ describe('WishlistItem — cover image', () => {
   });
 
   // regression: same blank tile on the product-link variant of the cover.
-  it('regression: falls back to the placeholder on a linked item, keeping the link', () => {
+  it('regression: falls back to the placeholder on a linked item', () => {
     render(
       <WishlistItem
         item={item({ imageUrl: IMAGE, link: 'https://shop.example/gift' })}
@@ -1028,11 +1047,7 @@ describe('WishlistItem — cover image', () => {
 
     fireEvent.error(screen.getByTestId('banner-image'));
 
-    // The cover is one of two product links on the card (the other is the link button).
-    const link = screen
-      .getAllByRole('link', { name: 'View Cool Gift product page' })
-      .find((a) => a.classList.contains('aspect-square')) as HTMLElement;
-    expect(link).toHaveAttribute('href', 'https://shop.example/gift');
+    const link = screen.getByRole('article').querySelector('.aspect-square') as HTMLElement;
     expect(screen.queryByTestId('banner-image')).toBeNull();
     expect(link.style.background).toBe(placeholderOf('item-1'));
   });
