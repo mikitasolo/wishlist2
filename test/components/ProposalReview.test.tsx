@@ -217,3 +217,84 @@ describe('ReviewItemModal — answering a proposal', () => {
     expect(screen.getByRole('dialog', { name: 'Someone proposed an item' })).toBeInTheDocument();
   });
 });
+
+// The dialog is a snapshot of the proposal as it opened. Once the page's read
+// shows it's no longer a proposal, approving or declining from it would act on
+// an item the owner never reviewed (WIS-199).
+describe('ReviewItemModal — a proposal reviewed or removed meanwhile', () => {
+  type State = 'proposed' | 'reviewed' | 'gone';
+
+  function openWithState(
+    onApprove: () => Promise<void> = vi.fn().mockResolvedValue(undefined),
+    onDelete?: () => Promise<void>
+  ) {
+    const onClose = vi.fn();
+    const onProposalGone = vi.fn();
+    const ui = (proposalState: State) => (
+      <ReviewItemModal
+        isOpen
+        onClose={onClose}
+        onApprove={onApprove}
+        onDelete={onDelete}
+        proposalState={proposalState}
+        onProposalGone={onProposalGone}
+        item={proposal}
+        wishlistCurrency="USD"
+        userCurrency="USD"
+      />
+    );
+    const { rerender } = render(ui('proposed'));
+    return { onClose, onProposalGone, setState: (state: State) => rerender(ui(state)) };
+  }
+
+  // regression: the dialog stayed open over a proposal a co-owner had already
+  // approved, so its Add to list overwrote their review and its Decline
+  // deleted the live item.
+  it('regression: asks to be closed as soon as a read shows a co-owner reviewed it', () => {
+    const onApprove = vi.fn().mockResolvedValue(undefined);
+    const { onProposalGone, setState } = openWithState(onApprove);
+    fireEvent.change(nameInput(), { target: { value: 'Desk lamp' } });
+    expect(onProposalGone).not.toHaveBeenCalled();
+
+    setState('reviewed');
+
+    expect(onProposalGone).toHaveBeenCalledExactlyOnceWith('reviewed');
+    expect(onApprove).not.toHaveBeenCalled();
+  });
+
+  it('asks to be closed when the proposal has gone from the list', () => {
+    const { onProposalGone, setState } = openWithState();
+    setState('gone');
+    expect(onProposalGone).toHaveBeenCalledExactlyOnceWith('gone');
+  });
+
+  it('asks to be closed with the Decline confirmation open, before anything is deleted', () => {
+    const onDelete = vi.fn().mockResolvedValue(undefined);
+    const { onProposalGone, setState } = openWithState(undefined, onDelete);
+    fireEvent.click(screen.getByRole('button', { name: /^decline$/i }));
+    expect(screen.getByText(/decline this proposal\?/i)).toBeInTheDocument();
+
+    setState('reviewed');
+
+    expect(onProposalGone).toHaveBeenCalledExactlyOnceWith('reviewed');
+    expect(onDelete).not.toHaveBeenCalled();
+  });
+
+  // Its own approve updates the list optimistically, so the item reads as
+  // approved while the request runs: that's this dialog's doing, and it closes
+  // itself once the approve succeeds.
+  it("leaves its own approve alone: it closes on success, with no 'reviewed' note", async () => {
+    let finish: () => void = () => {};
+    const onApprove = vi.fn(() => new Promise<void>((resolve) => (finish = resolve)));
+    const { onClose, onProposalGone, setState } = openWithState(onApprove);
+
+    fireEvent.click(approveButton());
+    await waitFor(() => expect(onApprove).toHaveBeenCalledTimes(1));
+    setState('reviewed');
+    expect(onProposalGone).not.toHaveBeenCalled();
+
+    finish();
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(onProposalGone).not.toHaveBeenCalled();
+  });
+});

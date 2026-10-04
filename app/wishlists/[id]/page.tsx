@@ -107,7 +107,19 @@ import { useListPrices } from '@/lib/hooks/useListPrices';
 import { TONE_CLASSES } from '@/lib/utils/statusTones';
 import { useReceivedToast } from '@/lib/hooks/useReceivedToast';
 import { useReserveToast } from '@/lib/hooks/useReserveToast';
-import { useFetchItems, useUpdateItem, useCreateItem, useDeleteItem } from '@/lib/hooks/useItems';
+import {
+  useFetchItems,
+  useUpdateItem,
+  useCreateItem,
+  useDeleteItem,
+  type ItemRequestFailure,
+  type ReviewRequestOptions,
+} from '@/lib/hooks/useItems';
+import {
+  PROPOSAL_REMOVED_NOTE,
+  PROPOSAL_REVIEWED_ERROR,
+  proposalReviewState,
+} from '@/lib/utils/proposalReview';
 
 type PageLoad = 'loading' | 'ready' | 'unavailable' | 'failed';
 
@@ -661,15 +673,23 @@ export default function WishlistDetail() {
 
   // No success refetch here — handleUpdateItem merges the server response into
   // the single item, avoiding a full-list refetch that races with polling.
-  const updateItemHook = useUpdateItem(undefined, (error) => {
-    showToast(error, 'error');
-  });
+  // A review request refused because the item is no longer a proposal (a
+  // co-owner reviewed it meanwhile) closes the review dialog: what it shows is
+  // gone, and the toast (the server's PROPOSAL_REVIEWED_ERROR) says why. Its
+  // edits are dropped with it (WIS-199). Only one review dialog is ever open,
+  // and it can't be closed while its request runs.
+  const onItemRequestError = useCallback(
+    (error: string, failure: ItemRequestFailure) => {
+      showToast(error, 'error');
+      if (failure.proposalReviewed) setItemToReview(null);
+    },
+    [showToast]
+  );
+  const updateItemHook = useUpdateItem(undefined, onItemRequestError);
 
   // No success toast here — each delete handler says what it removed, and only
   // once the delete has succeeded.
-  const deleteItemHook = useDeleteItem(undefined, (error) => {
-    showToast(error, 'error');
-  });
+  const deleteItemHook = useDeleteItem(undefined, onItemRequestError);
 
   // Each dialog's Idempotency-Key: a retry of a submission whose answer was
   // lost (a timeout) sends the same one, so the server answers with the item
@@ -706,7 +726,7 @@ export default function WishlistDetail() {
   // change is undone at once, the list is reconciled with the server, and this
   // resolves null (see updateItemOptimistically).
   const handleUpdateItem = useCallback(
-    (id: string, updates: Partial<ApiItem>) =>
+    (id: string, updates: Partial<ApiItem>, options?: ReviewRequestOptions) =>
       updateItemOptimistically({
         id,
         apply: (item) => {
@@ -723,7 +743,7 @@ export default function WishlistDetail() {
           }
           return optimistic;
         },
-        request: () => updateItemHook(id, updates),
+        request: () => updateItemHook(id, updates, options),
         setItems,
         mutations,
         reconcile: () => fetchItems(true),
@@ -802,7 +822,12 @@ export default function WishlistDetail() {
       // handleUpdateItem. Reject so ReviewItemModal stays open with the edits
       // (it closes itself on success): the owner is told "approved" only once
       // the server agreed.
-      const approved = await handleUpdateItem(itemToReview._id, updates);
+      // It expects the item to still be the proposal the dialog opened on: one a
+      // co-owner has reviewed since is answered 409 and closes the dialog (see
+      // onItemRequestError), so it can't overwrite their review (WIS-199).
+      const approved = await handleUpdateItem(itemToReview._id, updates, {
+        expectProposal: true,
+      });
       if (!approved) throw new Error('Failed to approve item');
       showToast(updates.status === 'draft' ? 'Added as a draft' : 'Added to the list', 'success');
     },
@@ -817,11 +842,26 @@ export default function WishlistDetail() {
     // request is tracked, so a poll whose read started before the delete
     // settled is dropped instead of bringing the deleted item back.
     // Owner-only, so a 404 means it's already gone (see useDeleteItem).
-    const deleted = await mutations.track(() => deleteItemHook(itemId, { notFoundIsDone: true }));
+    // Decline expects a proposal too, so it never deletes a live item a
+    // co-owner approved meanwhile, possibly reserved (WIS-199).
+    const deleted = await mutations.track(() =>
+      deleteItemHook(itemId, { notFoundIsDone: true, expectProposal: true })
+    );
     if (!deleted) throw new Error('Failed to delete item');
     setItems((prevItems) => prevItems.filter((item) => item._id !== itemId));
     showToast('Proposal declined', 'success');
   }, [itemToReview, deleteItemHook, showToast, mutations]);
+
+  // A read shows the proposal under review isn't one any more: a co-owner
+  // reviewed it, or it was declined or withdrawn. The dialog closes and says
+  // why, never what it has become (WIS-199).
+  const handleProposalGone = useCallback(
+    (state: 'reviewed' | 'gone') => {
+      setItemToReview(null);
+      showToast(state === 'reviewed' ? PROPOSAL_REVIEWED_ERROR : PROPOSAL_REMOVED_NOTE, 'info');
+    },
+    [showToast]
+  );
 
   const handleEditItem = useCallback((item: ApiItem) => {
     setEditOnLink(false);
@@ -2041,6 +2081,8 @@ export default function WishlistDetail() {
           onClose={() => setItemToReview(null)}
           onApprove={handleReviewItem}
           onDelete={handleDeleteProposedItem}
+          proposalState={proposalReviewState(items, itemToReview._id)}
+          onProposalGone={handleProposalGone}
           item={itemToReview}
           wishlistCurrency={wishlist?.currency}
           userCurrency={session?.user?.defaultCurrency}

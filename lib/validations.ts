@@ -261,8 +261,12 @@ export const updateItemSchema = z
     // No `bookedBy` or `proposedBy`, so a client-sent one is dropped: the server
     // sets them (a member's booking, a member's proposal) and clears them.
     status: z.enum(['draft', 'available', 'booked', 'completed', 'proposed']).optional(),
+    // The review dialog's approve says it expects the item to still be a
+    // proposal (WIS-199, lib/utils/proposalReview.ts). Not a change, so it
+    // doesn't count as a field to update.
+    expectedStatus: z.literal('proposed').optional(),
   })
-  .refine((data) => Object.keys(data).length > 0, {
+  .refine((data) => Object.keys(data).some((key) => key !== 'expectedStatus'), {
     message: 'At least one field must be provided for update',
   });
 

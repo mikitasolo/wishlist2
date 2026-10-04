@@ -77,3 +77,46 @@ test('regression: a failed approve shows the error and leaves the item proposed'
   await expect(approvedCard.getByText('Proposed', { exact: true })).toHaveCount(0);
   expect(approveAttempts).toBe(2);
 });
+
+// regression (WIS-199): a review dialog left open while a co-owner approved the
+// proposal stayed open, and its Add to list then overwrote their review. The
+// approve now expects a proposal, and the 409 closes the dialog and says why.
+test('regression: an approve refused because the proposal was already reviewed closes the dialog', async ({
+  page,
+  consoleErrors,
+}) => {
+  const REVIEWED = 'This proposal has already been reviewed';
+  consoleErrors.allow(
+    failedRequest(new RegExp(`/api/items/${proposal._id}`)),
+    /^Error updating item: /,
+    /^Error submitting form: /
+  );
+  await page.route('**/api/wishlists/*/items', async (route) => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    const response = await route.fetch();
+    const body = await response.json();
+    await route.fulfill({ response, json: { ...body, data: [proposal, ...body.data] } });
+  });
+  let sent: Record<string, unknown> | null = null;
+  await page.route(`**/api/items/${proposal._id}`, async (route) => {
+    if (route.request().method() !== 'PATCH') return route.fallback();
+    sent = route.request().postDataJSON();
+    return route.fulfill({ status: 409, json: { success: false, error: REVIEWED } });
+  });
+
+  await page.goto('/wishlists/e2e-birthday');
+  const proposedCard = page.getByRole('article', { name: `Item: ${proposal.name}` });
+  await proposedCard.getByRole('button', { name: 'Review proposed item' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Someone proposed an item' });
+  await dialog.getByLabel('Item name').fill('E2E Desk Lamp');
+  await dialog.getByRole('button', { name: 'Add to list' }).click();
+
+  await expect(page.getByRole('status').getByText(REVIEWED)).toBeVisible();
+  await expect(dialog).toBeHidden();
+  await expect(page.getByText('Added to the list')).toHaveCount(0);
+  expect(sent).toMatchObject({
+    name: 'E2E Desk Lamp',
+    status: 'available',
+    expectedStatus: 'proposed',
+  });
+});

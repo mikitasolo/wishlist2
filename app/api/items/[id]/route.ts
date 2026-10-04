@@ -29,6 +29,11 @@ import { isObjectIdParam } from '@/lib/utils/objectId';
 import { undoBookingUnlessMember, type LostBookingReason } from '@/lib/utils/lateBooking';
 import { isCountedOnShareCard } from '@/lib/og/data';
 import { purgeShareCards } from '@/lib/og/purge';
+import {
+  EXPECTED_PROPOSAL,
+  EXPECTED_STATUS_PARAM,
+  PROPOSAL_REVIEWED_ERROR,
+} from '@/lib/utils/proposalReview';
 
 /** An owner's status change that isn't publish, draft or received (an owner can't reserve). */
 const OWNER_STATUS_ERROR =
@@ -144,6 +149,16 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     const validatedData = validation.data;
 
+    // The review dialog's approve expects a proposal (WIS-199): one that's been
+    // approved since the dialog opened, by a co-owner or in another tab, isn't
+    // the item it reviewed, and writing the dialog's form over it would replace
+    // that review (and unassign a booking made since). Refused whatever the item
+    // is now, with one answer that never says it's reserved.
+    const expectsProposal = validatedData.expectedStatus === EXPECTED_PROPOSAL;
+    if (expectsProposal && currentItem.status !== 'proposed') {
+      return NextResponse.json({ success: false, error: PROPOSAL_REVIEWED_ERROR }, { status: 409 });
+    }
+
     // Ensure currency rates are up to date for validation
     const currencyRate = await ensureCurrencyRatesUpToDate();
     const rates = currencyRate?.rates || new Map<string, number>();
@@ -230,7 +245,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
             // unassign a booking made since) and notify the proposer twice.
             proposalGuard = {
               filter: { status: 'proposed' },
-              conflict: 'This proposal has already been reviewed',
+              conflict: PROPOSAL_REVIEWED_ERROR,
             };
           } else {
             return NextResponse.json(
@@ -403,7 +418,13 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     // owner's approval only while the item is still a proposal. An owner's
     // other edits are written unconditionally, as on any item, but for a publish
     // or reopen's status change (below).
-    const writeGuard = bookingGuard ?? proposalGuard;
+    // A review request (above) is written only while the item is still a
+    // proposal, whatever else it changes: an approval's own guard already says
+    // so, and a proposer's says more.
+    const reviewGuard: ItemWriteGuard | null = expectsProposal
+      ? { filter: { status: 'proposed' }, conflict: PROPOSAL_REVIEWED_ERROR }
+      : null;
+    const writeGuard = bookingGuard ?? proposalGuard ?? reviewGuard;
     // An edit that replaces or clears the image frees the one it replaced, so its
     // write hands back the item as it was just before it landed.
     const replacesImage = updateData.imageUrl !== undefined;
@@ -565,7 +586,6 @@ export async function DELETE(
     const isOwner = isWishlistOwner(wishlist, session.user.id);
     const isProposer =
       item.status === 'proposed' && item.proposedBy?.toString() === session.user.id;
-
     // Only an owner, or the proposer of a still-pending proposal, may delete.
     if (!isOwner && !isProposer) {
       return NextResponse.json(
@@ -573,6 +593,16 @@ export async function DELETE(
         { status: 403 }
       );
     }
+
+    // The review dialog's Decline says it expects a proposal (WIS-199).
+    const expected = request.nextUrl.searchParams.get(EXPECTED_STATUS_PARAM);
+    if (expected !== null && expected !== EXPECTED_PROPOSAL) {
+      return NextResponse.json(
+        { success: false, error: `${EXPECTED_STATUS_PARAM} must be ${EXPECTED_PROPOSAL}` },
+        { status: 400 }
+      );
+    }
+    const expectsProposal = expected === EXPECTED_PROPOSAL;
 
     // The owner check above is already the last read before this delete, so
     // re-reading the list here wouldn't narrow the gap a co-owner's removal could
@@ -583,17 +613,30 @@ export async function DELETE(
     // still a proposal, and theirs. So, like their edit in PATCH, it's deleted
     // only while it still is. An owner approving it in between makes it a live
     // item, which only owners may delete.
-    const withdrawalGuard: ItemWriteGuard | null = isOwner
-      ? null
-      : {
+    //
+    // An owner's Decline from the review dialog rests on the item being the
+    // proposal it reviewed, too: one approved since (by a co-owner, say) is a
+    // live item the owner never meant to delete, and may be reserved, which
+    // they can't see. So it's refused once the item isn't a proposal, here and
+    // as a condition on the delete, with one answer whatever it has become.
+    // Any other owner delete goes on as before.
+    if (expectsProposal && item.status !== 'proposed') {
+      return NextResponse.json({ success: false, error: PROPOSAL_REVIEWED_ERROR }, { status: 409 });
+    }
+    const withdrawalGuard: ItemWriteGuard | null = !isOwner
+      ? {
           filter: { status: 'proposed', proposedBy: session.user.id },
           conflict: 'This item is no longer a proposal you can withdraw',
-        };
+        }
+      : expectsProposal
+        ? { filter: { status: 'proposed' }, conflict: PROPOSAL_REVIEWED_ERROR }
+        : null;
     const deleted = await Item.findOneAndDelete({ _id: id, ...withdrawalGuard?.filter });
     if (!deleted) {
-      // A withdrawal that lost to an approval gets the 409. An item another
-      // request deleted first (another owner's delete, a second tab) is a 404,
-      // for an owner too. Either way this deleted nothing, so frees nothing.
+      // A withdrawal that lost to an approval gets the 409, and so does a
+      // Decline that lost to one. An item another request deleted first
+      // (another owner's delete, a second tab) is a 404, for an owner too.
+      // Either way this deleted nothing, so frees nothing.
       return unmatchedItemResponse(id, withdrawalGuard);
     }
 

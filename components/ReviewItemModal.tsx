@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useId } from 'react';
+import { useState, useEffect, useId, useRef } from 'react';
 import { ApiItem } from '@/types/api';
 import BaseModal from './BaseModal';
 import ItemForm, { itemToFormData } from './ItemForm';
@@ -20,6 +20,13 @@ interface ReviewItemModalProps {
   // Declines the proposal: deletes it. Must reject when that fails.
   onDelete?: () => Promise<void>;
   item: ApiItem;
+  // Where the proposal stands in the list as last read (proposalReviewState).
+  // Once it isn't a proposal any more (a co-owner reviewed it, or it was
+  // declined or withdrawn), the dialog asks to be closed through
+  // onProposalGone, unless its own approve or Decline is running, which
+  // changes the item itself (WIS-199).
+  proposalState?: 'proposed' | 'reviewed' | 'gone';
+  onProposalGone?: (state: 'reviewed' | 'gone') => void;
   // A priceless proposal's currency starts on the wishlist's, else the viewer's
   // default, else USD. Required (though either may be empty) so a caller can't
   // silently drop them and fall back to USD.
@@ -33,6 +40,8 @@ export default function ReviewItemModal({
   onApprove,
   onDelete,
   item,
+  proposalState = 'proposed',
+  onProposalGone,
   wishlistCurrency,
   userCurrency,
 }: ReviewItemModalProps) {
@@ -45,10 +54,14 @@ export default function ReviewItemModal({
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showConfirmClose, setShowConfirmClose] = useState(false);
   const locale = useViewerLocale();
+  // Set once this dialog's own approve or Decline has landed: the item has
+  // changed because of it, so a read showing that isn't news to report.
+  const answeredRef = useRef(false);
 
   // Reset states when modal closes
   useEffect(() => {
     if (!isOpen) {
+      answeredRef.current = false;
       setIsSubmitting(false);
       setIsDeleting(false);
       setShowDeleteConfirm(false);
@@ -56,6 +69,19 @@ export default function ReviewItemModal({
       setShowConfirmClose(false);
     }
   }, [isOpen]);
+
+  // The dialog is a snapshot of the proposal as it opened. Once a read shows
+  // it's no longer one, approving or declining from here would act on an item
+  // the owner never reviewed, so the dialog goes, its edits with it, and the
+  // page says why. Not while this dialog's own request runs, nor once it has
+  // landed: its optimistic update already shows the item approved or gone, and
+  // it closes the dialog itself.
+  const busy = isSubmitting || isDeleting;
+  useEffect(() => {
+    if (isOpen && !busy && !answeredRef.current && proposalState !== 'proposed') {
+      onProposalGone?.(proposalState);
+    }
+  }, [isOpen, busy, proposalState, onProposalGone]);
 
   // Use key prop to force ItemForm to remount when modal opens with a different item
   // This ensures form state is reset when switching between items
@@ -85,6 +111,7 @@ export default function ReviewItemModal({
     // the proposal as its unsaved-changes baseline. Only a success closes the modal.
     try {
       await onApprove(updates);
+      answeredRef.current = true;
       setHasUnsavedChanges(false);
       onClose();
     } finally {
@@ -101,6 +128,7 @@ export default function ReviewItemModal({
     setIsDeleting(true);
     try {
       await onDelete();
+      answeredRef.current = true;
       setHasUnsavedChanges(false);
       onClose();
     } catch (error) {

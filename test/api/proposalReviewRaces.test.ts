@@ -105,11 +105,16 @@ function patchAs(user: string, body: unknown) {
   return PATCH(req, { params: Promise.resolve({ id: itemId }) });
 }
 
-function deleteAs(user: string) {
+function deleteAs(user: string, query = '') {
   session.mockResolvedValueOnce({ user: { id: user } } as never);
-  const req = new NextRequest(`http://localhost/api/items/${itemId}`, { method: 'DELETE' });
+  const req = new NextRequest(`http://localhost/api/items/${itemId}${query}`, {
+    method: 'DELETE',
+  });
   return DELETE(req, { params: Promise.resolve({ id: itemId }) });
 }
+
+/** The review dialog's Decline: a delete that expects a proposal (WIS-199). */
+const declineAs = (user: string) => deleteAs(user, '?expectedStatus=proposed');
 
 /**
  * Hold the next item write (the request under test's, after all its reads and
@@ -259,5 +264,137 @@ describe("PATCH /api/items/[id] — an owner's review with no race", () => {
     expect([item?.status, item?.name]).toEqual(['proposed', 'Blue Mug (large)']);
     expect(item?.proposedBy?.toString()).toBe(alice);
     expect(await approvalsSentToAlice()).toHaveLength(0);
+  });
+});
+
+// The review dialog is a snapshot of the proposal as it opened, so its approve
+// and Decline say they expect a proposal (WIS-199). Each case below is an owner
+// whose dialog opened before a co-owner approved the proposal.
+describe('/api/items/[id] — a review dialog that expects a proposal', () => {
+  const REVIEWED = { success: false, error: 'This proposal has already been reviewed' };
+  const stale = { ...lateReview, expectedStatus: 'proposed' } as const;
+
+  // regression: the dialog's approve, sent once a co-owner's approval had
+  // landed, read the item as live and took the owner's edit path: it answered
+  // 200, replaced the co-owner's review with the dialog's form, and its status
+  // change unassigned a member's booking made since.
+  it('regression: an approve sent after a co-owner approved it gets a 409 and changes nothing', async () => {
+    expect((await patchAs(coOwner, firstReview)).status).toBe(200);
+    expect((await patchAs(bob, { status: 'booked' })).status).toBe(200);
+
+    const late = await patchAs(owner, stale);
+
+    expect(late.status).toBe(409);
+    // The same answer as on an item nobody reserved: it says nothing of Bob's.
+    expect(await late.json()).toEqual(REVIEWED);
+    const item = await Item.findById(itemId).lean();
+    expect(item).toMatchObject({ name: firstReview.name, notes: firstReview.notes });
+    expect(item?.status).toBe('booked');
+    expect(item?.bookedBy?.toString()).toBe(bob);
+    expect(await approvalsSentToAlice()).toHaveLength(1);
+    expect(del).not.toHaveBeenCalled();
+  });
+
+  it('answers an unreserved approved item exactly as a reserved one', async () => {
+    expect((await patchAs(coOwner, firstReview)).status).toBe(200);
+    const late = await patchAs(owner, stale);
+    expect(late.status).toBe(409);
+    expect(await late.json()).toEqual(REVIEWED);
+  });
+
+  it('a content-only save from the dialog is refused once the item is live', async () => {
+    expect((await patchAs(coOwner, firstReview)).status).toBe(200);
+    const late = await patchAs(owner, { notes: 'Stale notes', expectedStatus: 'proposed' });
+    expect(late.status).toBe(409);
+    expect((await Item.findById(itemId))?.notes).toBe(firstReview.notes);
+  });
+
+  // The write's own condition: the co-owner's approval lands after this
+  // request's read, while its write is held.
+  it('a content-only save from the dialog that loses to an approval at the write gets a 409', async () => {
+    const race = whileItemWriteHeld(() => patchAs(coOwner, firstReview));
+    const late = await patchAs(owner, { notes: 'Stale notes', expectedStatus: 'proposed' });
+
+    expect(race.held()).toBe(true);
+    expect(race.outcome()?.status).toBe(200);
+    expect(late.status).toBe(409);
+    expect(await late.json()).toEqual(REVIEWED);
+    expect((await Item.findById(itemId))?.notes).toBe(firstReview.notes);
+  });
+
+  it('an approve that still finds a proposal lands as before', async () => {
+    const res = await patchAs(owner, { ...firstReview, expectedStatus: 'proposed' });
+    expect(res.status).toBe(200);
+    expect((await Item.findById(itemId))?.status).toBe('available');
+    expect(await approvalsSentToAlice()).toHaveLength(1);
+  });
+
+  it('refuses any other expected status, and an expectation with nothing to change', async () => {
+    const otherExpectation = await patchAs(owner, { ...firstReview, expectedStatus: 'available' });
+    expect(otherExpectation.status).toBe(400);
+    expect((await patchAs(owner, { expectedStatus: 'proposed' })).status).toBe(400);
+    expect((await deleteAs(owner, '?expectedStatus=available')).status).toBe(400);
+    expect(await Item.countDocuments({ status: 'proposed' })).toBe(1);
+  });
+
+  // regression: Decline (an owner's delete) went through on whatever the item
+  // was by then, so a dialog left open over a co-owner's approval deleted the
+  // live item, reserved or not, which the owner can't see.
+  it('regression: a Decline sent after a co-owner approved it gets a 409 and deletes nothing', async () => {
+    expect((await patchAs(coOwner, firstReview)).status).toBe(200);
+    expect((await patchAs(bob, { status: 'booked' })).status).toBe(200);
+
+    const late = await declineAs(owner);
+
+    expect(late.status).toBe(409);
+    expect(await late.json()).toEqual(REVIEWED);
+    const item = await Item.findById(itemId).lean();
+    expect(item?.status).toBe('booked');
+    expect(item?.bookedBy?.toString()).toBe(bob);
+    expect(await Reservation.countDocuments({ gifter: bob, item: itemId })).toBe(1);
+    expect(del).not.toHaveBeenCalled();
+  });
+
+  it('a Decline that loses to an approval at the delete gets a 409 and deletes nothing', async () => {
+    const race = holdFirstCall(Item, 'findOneAndDelete', () => patchAs(coOwner, firstReview));
+    const late = await declineAs(owner);
+
+    expect(race.held()).toBe(true);
+    expect(race.outcome()?.status).toBe(200);
+    expect(late.status).toBe(409);
+    expect(await late.json()).toEqual(REVIEWED);
+    expect((await Item.findById(itemId))?.status).toBe('available');
+    expect(del).not.toHaveBeenCalled();
+  });
+
+  it('a Decline that still finds a proposal deletes it', async () => {
+    const res = await declineAs(owner);
+    expect(res.status).toBe(200);
+    expect(await Item.countDocuments()).toBe(0);
+    expect(del.mock.calls).toEqual([[proposedImage]]);
+  });
+
+  it('a Decline of a proposal already deleted is a 404, as any owner delete is', async () => {
+    expect((await deleteAs(coOwner)).status).toBe(200);
+    expect((await declineAs(owner)).status).toBe(404);
+  });
+
+  // Only the dialog's requests carry the expectation: an owner's plain delete
+  // of a live item goes on as before.
+  it("an owner's plain delete of the approved item still deletes it", async () => {
+    expect((await patchAs(coOwner, firstReview)).status).toBe(200);
+    expect((await deleteAs(owner)).status).toBe(200);
+    expect(await Item.countDocuments()).toBe(0);
+  });
+
+  // The expectation is checked only once the caller may make the request, so
+  // it never answers someone who couldn't.
+  it('someone with no access to the list gets the 403, not the 409', async () => {
+    const eve = (await User.create({ email: 'e@x.com', username: 'eve' }))._id.toString();
+    await Wishlist.updateOne({}, { visibility: 'private' });
+    expect((await patchAs(coOwner, firstReview)).status).toBe(200);
+
+    expect((await patchAs(eve, stale)).status).toBe(403);
+    expect((await declineAs(eve)).status).toBe(403);
   });
 });
