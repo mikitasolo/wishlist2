@@ -68,7 +68,7 @@ export default function ItemSheet({
               {status.badge && <Badge status={status} className="shadow-sm" />}
               {item.mostWanted && (
                 <Badge className="shadow-sm">
-                  <Icon name="star" size={12} className="fill-amber-400 text-amber-500" />
+                  <Icon name="star" size={12} className="fill-star text-star-edge" />
                   Most wanted
                 </Badge>
               )}
