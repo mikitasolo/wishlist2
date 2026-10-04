@@ -11,6 +11,7 @@ import {
   matchesDeletionConfirmation,
 } from '@/lib/utils/deletionConfirmation';
 import { errorKind } from '@/lib/utils/errorKind';
+import { duplicateKeyField } from '@/lib/utils/mongoErrors';
 import { isReservedUsername } from '@/lib/utils/username';
 import {
   canAttachImage,
@@ -47,7 +48,7 @@ export async function GET() {
       { status: 200 }
     );
   } catch (error) {
-    console.error('Error fetching profile:', error);
+    console.error('Error fetching profile:', errorKind(error));
     return NextResponse.json({ success: false, error: 'Failed to fetch profile' }, { status: 500 });
   }
 }
@@ -101,13 +102,10 @@ export async function PATCH(request: NextRequest) {
           { status: 409 }
         );
       }
+      // Only a pre-check: two accounts claiming one free username at once both
+      // pass it, and the unique index refuses the second write (caught below).
       const taken = await User.exists({ username, _id: { $ne: user._id } });
-      if (taken) {
-        return NextResponse.json(
-          { success: false, error: 'That username is already taken.' },
-          { status: 409 }
-        );
-      }
+      if (taken) return usernameTaken();
       changes.username = username;
     }
 
@@ -151,11 +149,21 @@ export async function PATCH(request: NextRequest) {
     // so what follows works from what it replaced, not from the read above. Two
     // tabs replacing the avatar at once both read the same one, and freeing that
     // read leaves the other tab's upload behind, never freed.
-    const before = await User.findOneAndUpdate(
-      { _id: user._id },
-      { $set: changes, ...(answered && { $min: { currencyChosenAt: new Date() } }) },
-      { returnDocument: 'before', runValidators: true }
-    );
+    let before;
+    try {
+      before = await User.findOneAndUpdate(
+        { _id: user._id },
+        { $set: changes, ...(answered && { $min: { currencyChosenAt: new Date() } }) },
+        { returnDocument: 'before', runValidators: true }
+      );
+    } catch (error) {
+      // Another account took the username between the pre-check and this write:
+      // the same answer as the pre-check's (WIS-212).
+      if (changes.username !== undefined && duplicateKeyField(error) === 'username') {
+        return usernameTaken();
+      }
+      throw error;
+    }
     if (!before) {
       return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
     }
@@ -205,7 +213,9 @@ export async function PATCH(request: NextRequest) {
       { status: 200 }
     );
   } catch (error) {
-    console.error('Error updating profile:', error);
+    // Reduced to its kind: a duplicate-key or cast error quotes the value it
+    // refused (a username, an email, a user id).
+    console.error('Error updating profile:', errorKind(error));
     return NextResponse.json(
       { success: false, error: 'Failed to update profile' },
       { status: 500 }
@@ -276,4 +286,12 @@ export async function DELETE(request: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+/** The 409 for a username another account holds, from the pre-check or the write's unique index. */
+function usernameTaken() {
+  return NextResponse.json(
+    { success: false, error: 'That username is already taken.' },
+    { status: 409 }
+  );
 }
