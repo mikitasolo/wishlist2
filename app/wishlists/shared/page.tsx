@@ -88,8 +88,8 @@ export default function SharedWishlistsPage() {
             body={
               username ? (
                 <>
-                  Joining someone’s list? They invite you by username:{' '}
-                  <OwnHandle username={username} />
+                  Friends invite you by your username{' '}
+                  <OwnHandle username={username} className="justify-center align-middle" />
                 </>
               ) : (
                 'When someone invites you to their wishlist, it’ll show up here.'

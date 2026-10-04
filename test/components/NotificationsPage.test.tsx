@@ -96,6 +96,16 @@ describe('Activity', () => {
     expect(await screen.findByText('You’re all caught up')).toBeInTheDocument();
   });
 
+  // WIS-312: the handle call belongs on Shared with you, not in what happened.
+  it('has no username handle in its empty state', async () => {
+    serve([]);
+    render(<ActivityPage />);
+    expect(await screen.findByText('You’re all caught up')).toBeInTheDocument();
+    expect(screen.queryByText('@me')).toBeNull();
+    expect(screen.queryByText(/invite you by/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Copy your profile link' })).toBeNull();
+  });
+
   it('links a demotion to the list, but leaves a removal unlinked', async () => {
     serve([
       row({

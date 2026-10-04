@@ -20,7 +20,6 @@ import EmptyState from '@/components/EmptyState';
 import FollowListModal from '@/components/FollowListModal';
 import Icon from '@/components/Icon';
 import InviteCard, { InviteCardSkeleton, type PendingInvite } from '@/components/InviteCard';
-import OwnHandle from '@/components/OwnHandle';
 import LoadError from '@/components/LoadError';
 import { Skeleton } from '@/components/Skeleton';
 import { useToast } from '@/components/ToastProvider';
@@ -402,14 +401,7 @@ export default function ActivityPage() {
                   icon="bell"
                   title="You’re all caught up"
                   body="When someone follows you, invites you to a wishlist, or acts on a proposal, it’ll show up here."
-                >
-                  {viewerUsername && (
-                    <p className="text-sm text-muted-foreground">
-                      Joining someone’s list? They invite you by username:{' '}
-                      <OwnHandle username={viewerUsername} />
-                    </p>
-                  )}
-                </EmptyState>
+                ></EmptyState>
               )
             )}
           </div>
