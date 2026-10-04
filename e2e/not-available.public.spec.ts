@@ -44,7 +44,7 @@ test('a URL no route matches gets the branded not-found page', async ({ page, co
   // The app's own header and search, and a way home.
   await expect(page.getByRole('link', { name: 'Wishlist home' })).toBeVisible();
   await expect(
-    page.getByRole('main').getByRole('textbox', { name: 'Search people and wishlists' })
+    page.getByRole('main').getByRole('combobox', { name: 'Search people and wishlists' })
   ).toBeVisible();
   await expect(page.getByRole('link', { name: 'Go home' })).toHaveAttribute('href', '/');
 });

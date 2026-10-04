@@ -78,13 +78,12 @@ for (const [path, back] of [
 
 test('the landing search finds a public list and a person', async ({ page }) => {
   await page.goto('/');
-  const search = page.getByRole('textbox', { name: 'Search people and wishlists' });
+  const search = page.getByRole('combobox', { name: 'Search people and wishlists' });
   await search.fill('e2e friend');
-  await expect(page.getByRole('button', { name: /E2E Friend List/ })).toBeVisible();
+  await expect(page.getByRole('option', { name: 'E2E Friend List' })).toBeVisible();
 
   // A handle as it's shown and shared, @ included.
   await search.fill('@e2efriend');
-  // Exact: the list row's name ends in its owner's "@e2efriend" too.
-  await page.getByRole('button', { name: '@e2efriend', exact: true }).click();
+  await page.getByRole('option', { name: '@e2efriend', exact: true }).click();
   await expect(page).toHaveURL('/users/e2efriend');
 });
