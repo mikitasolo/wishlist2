@@ -15,6 +15,7 @@ import { GET as listMyInvites } from '@/app/api/users/me/invites/route';
 import { PATCH as answerInvite } from '@/app/api/invites/[inviteId]/route';
 import { POST as issueInvite } from '@/app/api/wishlists/[id]/members/route';
 import { DELETE as kick } from '@/app/api/wishlists/[id]/members/[memberId]/route';
+import { POST as promote } from '@/app/api/wishlists/[id]/owners/[userId]/route';
 import { GET as getNotifications, PATCH as markAllRead } from '@/app/api/notifications/route';
 import User from '@/models/User';
 import Wishlist from '@/models/Wishlist';
@@ -290,6 +291,81 @@ describe('PATCH /api/invites/[inviteId] racing an archive', () => {
     expect(await isMember(mia)).toBe(false);
     expect(await WishlistInvite.exists({ _id: memberInvite })).toBeNull();
     expect(await inviteNotification(mia)).toBeNull();
+  });
+
+  // regression: the archive and a promotion of the brief member both landed while
+  // the membership row existed. The promotion's pending owner invite took the one
+  // pending slot, so reopening the member invite hit the unique index, which was
+  // logged and swallowed: it stayed `accepted` with no membership, and its
+  // notification still read as an invite waiting for an answer (WIS-294).
+  it('regression: drops the claimed invite when a promotion takes its pending slot under the archive', async () => {
+    const promoteMia = async () => {
+      await setArchived(true);
+      session.mockResolvedValueOnce({ user: { id: alice, username: 'alice' } } as never);
+      const res = await promote(
+        new NextRequest(`http://localhost/api/wishlists/${wishlistId}/owners/${mia}`, {
+          method: 'POST',
+        }),
+        { params: Promise.resolve({ id: wishlistId, userId: mia }) }
+      );
+      return res.status;
+    };
+    const race = holdFirstCall(WishlistMember, 'findOneAndUpdate', promoteMia, { after: true });
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    expect(await answer(memberInvite, 'accept', mia)).toEqual(NOT_FOUND);
+
+    expect(race.outcome()).toBe(202);
+    expect(await isMember(mia)).toBe(false);
+    // No accepted invite without a membership is left behind.
+    expect(await WishlistInvite.exists({ _id: memberInvite })).toBeNull();
+    expect(await WishlistInvite.exists({ invitedUser: mia, status: 'accepted' })).toBeNull();
+    // The promotion was issued to the membership the accept took back, so it
+    // could only ever be refused: it goes too, with every invite notification.
+    expect(await WishlistInvite.exists({ invitedUser: mia })).toBeNull();
+    expect(await inviteNotification(mia)).toBeNull();
+    expect(errors).not.toHaveBeenCalled();
+    // Others' invites and notifications are untouched.
+    expect(await inviteStatus(ownerInvite)).toBe('pending');
+    expect(await inviteNotification(olly)).not.toBeNull();
+    // A later accept is told the invite is gone.
+    expect(await answer(memberInvite, 'accept', mia)).toEqual(NOT_FOUND);
+  });
+
+  it("keeps a newer invite that isn't a promotion, and its notification, when it supersedes the claim", async () => {
+    let newerInvite = '';
+    const reInvite = async () => {
+      await setArchived(true);
+      // As the owner invite POST /members would issue to a non-member.
+      newerInvite = (
+        await WishlistInvite.create({
+          wishlist: wishlistId,
+          invitedBy: alice,
+          invitedUser: mia,
+          role: 'owner',
+        })
+      )._id.toString();
+      await Notification.create({
+        user: mia,
+        type: 'wishlist_invite',
+        inviteRole: 'owner',
+        actorUsername: 'alice',
+        wishlist: wishlistId,
+        wishlistName: 'Party',
+      });
+    };
+    holdFirstCall(WishlistMember, 'findOneAndUpdate', reInvite, { after: true });
+
+    expect(await answer(memberInvite, 'accept', mia)).toEqual(NOT_FOUND);
+
+    expect(await isMember(mia)).toBe(false);
+    expect(await WishlistInvite.exists({ _id: memberInvite })).toBeNull();
+    expect(await inviteStatus(newerInvite)).toBe('pending');
+    // Only the newer invite's notification is left, unanswered.
+    const left = await Notification.find({ user: mia, type: 'wishlist_invite' }).lean();
+    expect(left).toHaveLength(1);
+    expect(left[0]).toMatchObject({ inviteRole: 'owner', read: false });
+    expect(left[0].inviteAnswer).toBeUndefined();
   });
 
   it("keeps a membership the invitee already held: it isn't the accept's to take", async () => {

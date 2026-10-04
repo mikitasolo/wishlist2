@@ -184,18 +184,44 @@ export async function recordInviteAnswer({
   answeredAt,
 }: RecordInviteAnswerArgs): Promise<void> {
   try {
-    await Notification.updateMany(
-      {
-        user: invite.invitedUser,
-        type: 'wishlist_invite',
-        wishlist: invite.wishlist,
-        createdAt: { $gte: invite.createdAt, $lte: answeredAt },
-      },
-      { $set: { read: true, inviteAnswer: answer } }
-    );
+    await Notification.updateMany(inviteNotificationFilter(invite, answeredAt), {
+      $set: { read: true, inviteAnswer: answer },
+    });
   } catch (err) {
     console.error('Failed to record an invite answer on its notification:', errorKind(err));
   }
+}
+
+/**
+ * Delete the invitee's own notification for an invite that an accept had
+ * claimed and then dropped, because a newer pending invite for them on the list
+ * took its place while it was claimed (WIS-294). There's no answer to record on
+ * it (they neither joined nor declined) and nothing left to accept, so it goes,
+ * as a cancelled invite's does. The newer invite keeps its own: it could only be
+ * issued once the claim had landed, so its row is newer than `answeredAt`, outside
+ * the window `recordInviteAnswer` uses, which this shares.
+ *
+ * Best-effort: a failure is logged by its kind only and swallowed.
+ */
+export async function clearSupersededInviteNotification({
+  invite,
+  answeredAt,
+}: Omit<RecordInviteAnswerArgs, 'answer'>): Promise<void> {
+  try {
+    await Notification.deleteMany(inviteNotificationFilter(invite, answeredAt));
+  } catch (err) {
+    console.error('Failed to clear a superseded invite notification:', errorKind(err));
+  }
+}
+
+/** The invitee's notification for one invite, told apart by its time (see above). */
+function inviteNotificationFilter(invite: RecordInviteAnswerArgs['invite'], answeredAt: Date) {
+  return {
+    user: invite.invitedUser,
+    type: 'wishlist_invite' as const,
+    wishlist: invite.wishlist,
+    createdAt: { $gte: invite.createdAt, $lte: answeredAt },
+  };
 }
 
 // One conditional upsert: fold into the newest matching row, or insert a fresh

@@ -5,7 +5,12 @@ import connectDB from '@/lib/mongodb';
 import Wishlist, { type IWishlist } from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
 import WishlistInvite, { type IWishlistInvite } from '@/models/WishlistInvite';
-import { createNotifications, recordInviteAnswer } from '@/lib/notifications';
+import {
+  clearSupersededInviteNotification,
+  createNotifications,
+  recordInviteAnswer,
+} from '@/lib/notifications';
+import { isDuplicateKeyError } from '@/lib/utils/mongoErrors';
 import { isWishlistOwner, ownerIds } from '@/lib/utils/wishlistOwners';
 import { errorKind } from '@/lib/utils/errorKind';
 import {
@@ -127,22 +132,67 @@ async function claimInvite(
  * owner, which only accepting again can finish. While it was claimed, a removal
  * or demotion of its sender skipped it (`cancelInvitesSentBy` only takes pending
  * invites), so reopening it would bring back an invite that removal cancels.
+ *
+ * With `superseded` (only a member invite whose list was archived under the
+ * accept, so the claim is put back to wait for the unarchive): while it was
+ * claimed, the invite didn't hold the one pending slot a person has per list,
+ * and a newer invite may have taken it, an owner promoting the brief member in
+ * the moment their membership row existed (WIS-294). Reopening then hits the
+ * unique pending index, and the claimed row would stay `accepted` with no
+ * membership. So it's dropped instead (`dropSupersededClaim`).
  */
 async function releaseClaim(
-  invite: Pick<IWishlistInvite, '_id' | 'wishlist' | 'invitedUser' | 'invitedBy'>
+  invite: Pick<IWishlistInvite, '_id' | 'wishlist' | 'invitedUser' | 'invitedBy' | 'createdAt'>,
+  superseded?: { answeredAt: Date }
 ): Promise<void> {
   try {
-    const { modifiedCount } = await WishlistInvite.updateOne(
-      { _id: invite._id, status: 'accepted' },
-      { $set: { status: 'pending' } }
-    );
-    if (!modifiedCount) return;
+    let reopened: boolean;
+    try {
+      const { modifiedCount } = await WishlistInvite.updateOne(
+        { _id: invite._id, status: 'accepted' },
+        { $set: { status: 'pending' } }
+      );
+      reopened = modifiedCount === 1;
+    } catch (err) {
+      if (!superseded || !isDuplicateKeyError(err)) throw err;
+      await dropSupersededClaim(invite, superseded.answeredAt);
+      return;
+    }
+    if (!reopened) return;
     const list = await Wishlist.findById(invite.wishlist).select('owners').lean();
     if (list && isWishlistOwner(list, invite.invitedUser.toString())) return;
     await withdrawUnlessInviterOwns(invite);
   } catch (err) {
-    console.error(`Could not reopen invite ${invite._id} after a failed accept:`, err);
+    console.error(`Could not reopen invite ${invite._id} after a failed accept:`, errorKind(err));
   }
+}
+
+/**
+ * Delete a claimed member invite that a newer pending invite for the same person
+ * and list has superseded (see `releaseClaim`). Its notification goes with it
+ * (`clearSupersededInviteNotification`), never through `withdrawInvite`, which
+ * takes every invite notification of theirs for the list, the newer invite's
+ * included. A newer invite that's a promotion was issued to the membership this
+ * accept has just taken back, so accepting it can only ever be refused: it's
+ * withdrawn, as a removal's cleanup would have withdrawn it.
+ */
+async function dropSupersededClaim(
+  invite: Pick<IWishlistInvite, '_id' | 'wishlist' | 'invitedUser' | 'createdAt'>,
+  answeredAt: Date
+): Promise<void> {
+  const { deletedCount } = await WishlistInvite.deleteOne({ _id: invite._id, status: 'accepted' });
+  if (!deletedCount) return;
+  await clearSupersededInviteNotification({ invite, answeredAt });
+  const [promotion, membership] = await Promise.all([
+    WishlistInvite.findOne({
+      wishlist: invite.wishlist,
+      invitedUser: invite.invitedUser,
+      status: 'pending',
+      promotion: true,
+    }).select('_id wishlist invitedUser'),
+    WishlistMember.exists({ wishlist: invite.wishlist, user: invite.invitedUser }),
+  ]);
+  if (promotion && !membership) await withdrawInvite(promotion, 'pending');
 }
 
 /**
@@ -304,8 +354,9 @@ export async function PATCH(
         if (joined === 'paused') {
           // The list was archived since the read above. The invite is paused, not
           // over, so the claim is put back, as a failed grant's is, and the answer
-          // is the one an accept that came after the archive gets.
-          await releaseClaim(invite);
+          // is the one an accept that came after the archive gets. Unless a newer
+          // invite took its pending slot meanwhile: then it's dropped instead.
+          await releaseClaim(invite, { answeredAt });
           return inviteNotFound();
         }
       } else if (promotion) {
