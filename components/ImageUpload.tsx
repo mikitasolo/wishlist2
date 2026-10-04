@@ -47,9 +47,15 @@ export default function ImageUpload({
   const replaceRef = useRef<HTMLButtonElement>(null);
   // Set by an upload into the empty drop zone, which the preview replaces.
   const focusPreview = useRef(false);
+  // Read by the paste and drop listeners, which can fire between the render
+  // that starts an upload and the one that shows it.
+  const uploadingRef = useRef(false);
 
-  // Open the cropper for a chosen file.
+  // Open the cropper for a chosen file. Nothing is taken while an upload runs
+  // (the picker is held then too): a second upload would race the first, and
+  // the field would keep whichever answered last, not the image picked last.
   const handleFile = useCallback((file: File) => {
+    if (uploadingRef.current) return;
     setError(null);
     if (!file.type.startsWith('image/')) {
       setError('Please choose an image file.');
@@ -61,6 +67,7 @@ export default function ImageUpload({
   const uploadBlob = useCallback(
     async (blob: Blob) => {
       setError(null);
+      uploadingRef.current = true;
       setUploading(true);
       try {
         const fd = new FormData();
@@ -74,6 +81,7 @@ export default function ImageUpload({
       } catch {
         setError('Upload failed.');
       } finally {
+        uploadingRef.current = false;
         setUploading(false);
       }
     },

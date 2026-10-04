@@ -47,6 +47,11 @@ export default function ImageCropModal({
   useEffect(() => {
     const url = URL.createObjectURL(file);
     setSrc(url);
+    // The previous image's crop doesn't fit this one: keep Crop & upload held
+    // until the cropper reports the new image's area.
+    setCrop({ x: 0, y: 0 });
+    setZoom(1);
+    setAreaPixels(null);
     return () => {
       URL.revokeObjectURL(url);
       endCrop();

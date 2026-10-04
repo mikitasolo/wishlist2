@@ -7,17 +7,23 @@ import { emulateFocusFixup } from '../focusFixup';
 // react-easy-crop needs real image loading and layout; a stand-in reports a
 // crop area as soon as it mounts, as the real one does once the image loads,
 // and is a Tab stop, as the real crop area is (it moves with the arrow keys).
+// A test sets `value` to keep the stand-in from reporting an area, as the real
+// one doesn't until its image has loaded.
+const cropperHeld = vi.hoisted(() => ({ value: false }));
 vi.mock('react-easy-crop', async () => {
   const { useEffect } = await import('react');
   return {
     default: function Cropper({
+      image,
       onCropComplete,
     }: {
+      image: string;
       onCropComplete: (area: unknown, pixels: unknown) => void;
     }) {
       useEffect(() => {
+        if (cropperHeld.value) return;
         onCropComplete({}, { x: 0, y: 0, width: 10, height: 10 });
-      }, [onCropComplete]);
+      }, [image, onCropComplete]);
       return <div tabIndex={0} aria-label="Crop area" data-testid="cropper" />;
     },
   };
@@ -36,13 +42,15 @@ beforeAll(() => {
   // useBodyScrollLock restores the scroll position on close; jsdom lacks
   // scrollTo, and the object URLs the crop dialog previews the file through.
   vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
-  URL.createObjectURL = vi.fn(() => 'blob:preview');
+  let previews = 0;
+  URL.createObjectURL = vi.fn(() => `blob:preview-${++previews}`);
   URL.revokeObjectURL = vi.fn();
 });
 afterAll(() => vi.restoreAllMocks());
 beforeEach(() => {
   cleanup();
   getCroppedBlob.mockReset();
+  cropperHeld.value = false;
   return () => vi.unstubAllGlobals();
 });
 // Fail on anything logged: a React warning, or an error while moving focus.
@@ -490,5 +498,75 @@ describe('ImageCropModal — cancelling while it crops', () => {
     await user.click(screen.getByRole('button', { name: 'Add to list' }));
     await waitFor(() => expect(onAdd).toHaveBeenCalledTimes(1));
     expect(onAdd.mock.calls[0][0].imageUrl).toBe(UPLOADED);
+  });
+});
+
+describe('ImageCropModal — a new file while it is open', () => {
+  // regression: handing the dialog another file (a paste while it's open) kept
+  // the previous image's crop area until the cropper reported the new one, so
+  // Crop & upload in that window cropped the new image with the old rectangle.
+  it('regression: holds Crop & upload until the new file reports its area', () => {
+    const props = { aspect: 1, onCancel: vi.fn(), onCropped: vi.fn() };
+    const { rerender } = render(
+      <ImageCropModal file={new File(['one'], 'one.png', { type: 'image/png' })} {...props} />
+    );
+    expect(cropButton()).toBeEnabled();
+
+    cropperHeld.value = true;
+    rerender(
+      <ImageCropModal file={new File(['two'], 'two.png', { type: 'image/png' })} {...props} />
+    );
+    expect(cropButton()).toBeDisabled();
+
+    cropperHeld.value = false;
+    rerender(
+      <ImageCropModal file={new File(['three'], 'three.png', { type: 'image/png' })} {...props} />
+    );
+    expect(cropButton()).toBeEnabled();
+  });
+});
+
+describe('ImageUpload — a paste while an upload runs', () => {
+  const paste = (file: File) => {
+    const e = new Event('paste', { bubbles: true, cancelable: true });
+    Object.defineProperty(e, 'clipboardData', {
+      value: { items: [{ type: file.type, getAsFile: () => file }] },
+    });
+    act(() => {
+      document.dispatchEvent(e);
+    });
+    return e;
+  };
+
+  // regression: a paste was only ignored while the form was disabled, so image
+  // B could start a second upload while A's ran: the control re-enabled when
+  // the first answered and the field kept whichever answered last.
+  it('regression: takes no second image while the first uploads, and re-enables once it answers', async () => {
+    const crop = pendingCrop();
+    let answer!: (body: unknown) => void;
+    const upload = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          answer = (body) => resolve({ json: async () => body });
+        })
+    );
+    vi.stubGlobal('fetch', upload);
+    const onChange = vi.fn();
+    render(<ImageUpload value={null} onChange={onChange} />);
+    paste(new File(['a'], 'a.png', { type: 'image/png' }));
+    const user = userEvent.setup();
+    await user.click(cropButton());
+    await crop.succeed(new Blob(['a']));
+    expect(upload).toHaveBeenCalledTimes(1);
+
+    paste(new File(['b'], 'b.png', { type: 'image/png' }));
+    expect(screen.queryByRole('dialog', { name: 'Crop image' })).toBeNull();
+    expect(screen.getByRole('button', { name: /uploading/i })).toBeDisabled();
+
+    await act(async () => answer({ success: true, url: UPLOADED }));
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenCalledWith(UPLOADED);
+    expect(upload).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button', { name: /click to upload/i })).toBeEnabled();
   });
 });
