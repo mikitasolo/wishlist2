@@ -1660,7 +1660,7 @@ export default function WishlistDetail() {
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         onClear={() => setSearchQuery('')}
-                        placeholder="Search items…"
+                        placeholder="Search items"
                         aria-label="Search items by name"
                         className="w-full sm:w-auto sm:min-w-0 sm:flex-1"
                       />

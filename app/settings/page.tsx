@@ -405,7 +405,7 @@ export default function SettingsPage() {
                 onChange={(e) => edit({ bio: e.target.value.slice(0, 300) })}
                 rows={3}
                 maxLength={300}
-                placeholder="Tell people about your hobbies, interests, and passions…"
+                placeholder="Tell people about your hobbies, interests and passions"
                 className="resize-none"
                 disabled={savingText}
               />

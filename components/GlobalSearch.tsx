@@ -311,7 +311,7 @@ export default function GlobalSearch({ variant = 'header', onOpenChange }: Globa
     : `animate-fade-in absolute left-4 right-4 top-[3.5rem] overflow-hidden ${POPOVER_SURFACE} sm:left-auto sm:right-0 sm:top-full sm:mt-2 sm:w-80`;
 
   let note: string | null = null;
-  if (term.length > 0 && term.length < 3) note = 'Type at least 3 characters…';
+  if (term.length > 0 && term.length < 3) note = 'Type at least 3 characters';
   else if (term.length >= 3 && !hasResults)
     note = loading ? 'Searching…' : `No matches for “${term}”.`;
   else if (suggesting && followed.length === 0)
@@ -367,7 +367,7 @@ export default function GlobalSearch({ variant = 'header', onOpenChange }: Globa
           onFocus={() => setOpen(true)}
           onClick={() => setOpen(true)}
           onKeyDown={onKeyDown}
-          placeholder="Search people & wishlists…"
+          placeholder="Search people & wishlists"
           aria-label="Search people and wishlists"
           className={`${inline ? 'h-11' : 'h-10'} min-w-0 flex-1 border-0 bg-transparent text-body outline-hidden`}
           autoComplete="off"
