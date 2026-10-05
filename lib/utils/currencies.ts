@@ -1,3 +1,5 @@
+import { normalizeCurrency } from '@/lib/utils/currency';
+
 /** Shared list of supported currencies (single source of truth for selects). */
 export const CURRENCY_OPTIONS: { code: string; name: string }[] = [
   { code: 'USD', name: 'US Dollar' },
@@ -51,9 +53,9 @@ export const SETTINGS_CURRENCY_PATH = `/settings#${SETTINGS_CURRENCY_FIELD_ID}`;
  * The currency a new or proposed item starts on: the wishlist's own currency,
  * else the viewer's default, else USD.
  *
- * Returns the uppercase code the item form's picker shows (the form lowercases
- * it on submit to match `Item.price.currency`). Candidates are uppercased before
- * comparing, since currency-code casing isn't uniform across the DB. A code the
+ * Returns the uppercase code the item form's picker shows, as
+ * `Item.price.currency` is stored. Candidates go through `normalizeCurrency`
+ * first. A code the
  * picker doesn't offer (the API accepts any three letters) is skipped, so a new
  * item never starts on a currency the user couldn't pick again.
  */
@@ -62,7 +64,7 @@ export function defaultItemCurrency(
   userCurrency?: string | null
 ): string {
   for (const candidate of [wishlistCurrency, userCurrency]) {
-    const code = candidate?.trim().toUpperCase();
+    const code = candidate?.trim() ? normalizeCurrency(candidate) : null;
     if (code && isOfferedCurrency(code)) return code;
   }
   return 'USD';

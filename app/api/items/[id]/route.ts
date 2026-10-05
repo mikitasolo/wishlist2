@@ -9,6 +9,7 @@ import Wishlist from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
 import { updateItemSchema, validateRequestBody } from '@/lib/validations';
 import { ensureCurrencyRatesUpToDate } from '@/lib/utils/currencyRates';
+import { hasRate, normalizeCurrency } from '@/lib/utils/currency';
 import { readGivenByViewer, serializeItem, type ItemViewer } from '@/lib/utils/itemSerializer';
 import {
   canAttachImage,
@@ -188,8 +189,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     // Validate currency exists in rates if price is being updated
     if (validatedData.price && validatedData.price.currency) {
-      const currencyLower = validatedData.price.currency.toLowerCase(); // Already lowercase from validation, but ensure it
-      if (!rates.has(currencyLower)) {
+      if (!hasRate(rates, validatedData.price.currency)) {
         return NextResponse.json(
           {
             success: false,
@@ -245,7 +245,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
           updateData.price = validatedData.price
             ? {
                 value: validatedData.price.value, // Already in cents (integer)
-                currency: validatedData.price.currency.toLowerCase(),
+                currency: normalizeCurrency(validatedData.price.currency),
               }
             : null;
         }
@@ -286,7 +286,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
           updateData.price = validatedData.price
             ? {
                 value: validatedData.price.value, // Already in cents (integer)
-                currency: validatedData.price.currency.toLowerCase(),
+                currency: normalizeCurrency(validatedData.price.currency),
               }
             : null;
         }
@@ -322,7 +322,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         updateData.price = validatedData.price
           ? {
               value: validatedData.price.value,
-              currency: (validatedData.price.currency || 'usd').toLowerCase(),
+              currency: normalizeCurrency(validatedData.price.currency),
             }
           : null;
       }

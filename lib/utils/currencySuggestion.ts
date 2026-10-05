@@ -1,4 +1,5 @@
 import { isOfferedCurrency } from './currencies';
+import { normalizeCurrency } from './currency';
 
 /**
  * The currency of each country whose currency we offer (`CURRENCY_OPTIONS`),
@@ -237,7 +238,7 @@ export function currencyToOffer(
   suggestion: string | null
 ): string | null {
   if (!user || user.currencyChosen) return null;
-  const current = user.defaultCurrency?.trim().toUpperCase() || 'USD';
+  const current = normalizeCurrency(user.defaultCurrency);
   if (current !== 'USD') return null;
   if (!suggestion || suggestion === 'USD' || !isOfferedCurrency(suggestion)) return null;
   return suggestion;

@@ -45,3 +45,16 @@ describe('convertCurrency (routes through USD)', () => {
     expect(convertCurrency(100, 'usd', 'jpy', rates)).toBeNull();
   });
 });
+
+// WIS-49: new prices are stored uppercase, older ones lowercase until the
+// `uppercase-currency-codes` migration has run; the rates map stays lowercase.
+describe('either casing of a currency code', () => {
+  it('converts an uppercase code as it does a lowercase one', () => {
+    expect(convertToUsdCents(400, 'PLN', rates)).toBe(100);
+    expect(convertToUsdCents(12345, 'USD', rates)).toBe(12345);
+    expect(convertCurrency(400, 'PLN', 'EUR', rates)).toBe(50);
+    expect(convertCurrency(400, 'pln', 'EUR', rates)).toBe(50);
+    expect(convertCurrency(100, 'USD', 'pln', rates)).toBe(400);
+    expect(convertCurrency(400, 'PLN', 'USD', rates)).toBe(100);
+  });
+});

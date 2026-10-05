@@ -1,5 +1,6 @@
 import type { InvitePolicy, ProfileVisibility } from '@/models/User';
 import { wantsNotification, type NotificationPrefs } from '@/lib/utils/notificationPrefs';
+import { normalizeCurrency } from '@/lib/utils/currency';
 
 /**
  * The account settings form (`app/settings/page.tsx`), and what a save of it
@@ -70,7 +71,7 @@ export function profileSettings(profile: ProfileSettingsSource): ProfileSettings
     username: profile.username || '',
     image: profile.image || null,
     bio: profile.bio || '',
-    defaultCurrency: (profile.defaultCurrency || 'USD').toUpperCase(),
+    defaultCurrency: normalizeCurrency(profile.defaultCurrency),
     searchable: profile.privacy?.searchable ?? true,
     whoCanInvite: profile.privacy?.whoCanInvite ?? 'everyone',
     profileVisibility: profile.privacy?.profileVisibility ?? 'everyone',

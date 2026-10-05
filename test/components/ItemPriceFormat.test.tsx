@@ -26,7 +26,7 @@ function item(overrides: Partial<ApiItem> = {}): ApiItem {
     wishlist: 'w1',
     name: 'Headphones',
     status: 'available',
-    price: { value: 34900, currency: 'eur' },
+    price: { value: 34900, currency: 'EUR' },
     createdAt: '2024-01-01T00:00:00Z',
     updatedAt: '2024-01-01T00:00:00Z',
     ...overrides,
@@ -91,14 +91,14 @@ describe('item prices — the card and the edit dialog agree', () => {
     'regression: saving "349,00" stores 34900 cents (%s)',
     async (locale) => {
       inLocale(locale);
-      const view = renderCardAndEdit(item({ price: { value: 5000, currency: 'eur' } }));
+      const view = renderCardAndEdit(item({ price: { value: 5000, currency: 'EUR' } }));
 
       fireEvent.change(view.price, { target: { value: '349,00' } });
       view.save();
 
       await waitFor(() => expect(view.onSave).toHaveBeenCalledTimes(1));
       // Only the price changed, so only the price is sent.
-      expect(view.onSave).toHaveBeenCalledWith({ price: { value: 34900, currency: 'eur' } });
+      expect(view.onSave).toHaveBeenCalledWith({ price: { value: 34900, currency: 'EUR' } });
     }
   );
 

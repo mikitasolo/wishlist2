@@ -262,7 +262,7 @@ describe('totalInCurrency (D9)', () => {
         'EUR',
         null
       )
-    ).toEqual({ price: { value: 1250, currency: 'eur' }, approx: false });
+    ).toEqual({ price: { value: 1250, currency: 'EUR' }, approx: false });
   });
 
   it('converts the others, and says the total is approximate', () => {
@@ -275,7 +275,7 @@ describe('totalInCurrency (D9)', () => {
         'EUR',
         rates
       )
-    ).toEqual({ price: { value: 14000, currency: 'eur' }, approx: true });
+    ).toEqual({ price: { value: 14000, currency: 'EUR' }, approx: true });
   });
 
   it('gives no total when nothing is priced, or when a price can’t be converted', () => {

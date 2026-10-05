@@ -329,7 +329,7 @@ describe('ItemForm — default currency', () => {
     // Shown uppercase, stored lowercase to match Item.price.currency.
     await waitFor(() =>
       expect(onSubmit).toHaveBeenCalledWith(
-        expect.objectContaining({ price: { value: 1250, currency: 'pln' } }),
+        expect.objectContaining({ price: { value: 1250, currency: 'PLN' } }),
         expect.anything()
       )
     );
@@ -489,7 +489,7 @@ describe('ItemForm — price field', () => {
     submit();
     await waitFor(() =>
       expect(onSubmit).toHaveBeenCalledWith(
-        expect.objectContaining({ price: { value: 34900, currency: 'eur' } }),
+        expect.objectContaining({ price: { value: 34900, currency: 'EUR' } }),
         expect.anything()
       )
     );
@@ -541,7 +541,7 @@ describe('ItemForm — price field', () => {
     submit();
     await waitFor(() =>
       expect(onSubmit).toHaveBeenCalledWith(
-        expect.objectContaining({ price: { value: 1250, currency: 'usd' } }),
+        expect.objectContaining({ price: { value: 1250, currency: 'USD' } }),
         expect.anything()
       )
     );
@@ -564,7 +564,7 @@ describe('ItemForm — price field', () => {
     submit();
     await waitFor(() =>
       expect(onSubmit).toHaveBeenCalledWith(
-        expect.objectContaining({ price: { value: 199900, currency: 'usd' } }),
+        expect.objectContaining({ price: { value: 199900, currency: 'USD' } }),
         expect.anything()
       )
     );

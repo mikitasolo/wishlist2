@@ -1,4 +1,5 @@
 import { getVisibility, type Visibility } from '@/lib/utils/visibility';
+import { normalizeCurrency } from '@/lib/utils/currency';
 import {
   occasionChange,
   occasionToDraft,
@@ -63,7 +64,7 @@ export function wishlistSettings(wishlist: WishlistSettingsSource): WishlistSett
     description: wishlist.description || '',
     visibility: getVisibility(wishlist),
     bannerUrl: wishlist.bannerUrl || '',
-    currency: (wishlist.currency || DEFAULT_CURRENCY).toUpperCase(),
+    currency: normalizeCurrency(wishlist.currency || DEFAULT_CURRENCY),
     occasion: wishlist.occasion ?? null,
   };
 }

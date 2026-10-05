@@ -87,7 +87,7 @@ describe.each(modals)('$name — default currency', ({ renderModal, submitLabel 
     fireEvent.click(screen.getByRole('button', { name: submitLabel }));
     await waitFor(() =>
       expect(onSubmit).toHaveBeenCalledWith(
-        expect.objectContaining({ price: { value: 2000, currency: 'pln' } })
+        expect.objectContaining({ price: { value: 2000, currency: 'PLN' } })
       )
     );
   });
@@ -175,7 +175,7 @@ describe.each(modals)('$name — submit outcome', ({ renderModal, submitLabel })
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     expect(onSubmit).toHaveBeenCalledTimes(2);
     expect(onSubmit).toHaveBeenLastCalledWith(
-      expect.objectContaining({ name: 'Bike', price: { value: 12050, currency: 'pln' } })
+      expect.objectContaining({ name: 'Bike', price: { value: 12050, currency: 'PLN' } })
     );
   });
 });

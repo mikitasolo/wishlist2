@@ -168,7 +168,7 @@ describe('ItemForm — editing while its image uploads', () => {
       expect(onSubmit.mock.calls[0][0]).toMatchObject({
         name: 'Bike',
         imageUrl: UPLOADED,
-        price: { value: 12000, currency: 'usd' },
+        price: { value: 12000, currency: 'USD' },
         link: 'https://example.com/bike',
         notes: 'Blue, please',
       });

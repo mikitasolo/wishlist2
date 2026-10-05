@@ -7,8 +7,52 @@ import {
   formatApproxPrice,
   formatPrice,
   formatPriceInput,
+  hasRate,
+  normalizeCurrency,
   parsePriceInput,
+  rateKey,
 } from '@/lib/utils/currency';
+
+// WIS-49: codes are stored uppercase, but item prices (and their snapshots)
+// written before it are lowercase until the `uppercase-currency-codes`
+// migration has run, so every helper takes either casing.
+describe('normalizeCurrency', () => {
+  it('trims and uppercases a code, whatever its casing', () => {
+    expect(normalizeCurrency('eur')).toBe('EUR');
+    expect(normalizeCurrency(' Pln ')).toBe('PLN');
+    expect(normalizeCurrency('USD')).toBe('USD');
+  });
+
+  it('falls back to USD when there is no code', () => {
+    expect(normalizeCurrency(null)).toBe('USD');
+    expect(normalizeCurrency(undefined)).toBe('USD');
+    expect(normalizeCurrency('')).toBe('USD');
+    expect(normalizeCurrency('   ')).toBe('USD');
+  });
+
+  it('makes both casings of a code compare equal', () => {
+    expect(normalizeCurrency('eur')).toBe(normalizeCurrency('EUR'));
+  });
+});
+
+describe('rates lookups take either casing', () => {
+  const rates = new Map([
+    ['usd', 1],
+    ['eur', 0.88],
+  ]);
+
+  it('keys a code the way the rates map does: lowercase', () => {
+    expect(rateKey('EUR')).toBe('eur');
+    expect(rateKey(' eur ')).toBe('eur');
+  });
+
+  it('finds a rate for an uppercase or a lowercase code', () => {
+    expect(hasRate(rates, 'EUR')).toBe(true);
+    expect(hasRate(rates, 'eur')).toBe(true);
+    expect(hasRate(rates, 'USD')).toBe(true);
+    expect(hasRate(rates, 'JPY')).toBe(false);
+  });
+});
 
 // Intl separates some locales' digits from their symbol with a no-break space
 // (U+00A0) or a narrow one (U+202F): compare with plain spaces.
@@ -97,8 +141,16 @@ describe('convertedPrice', () => {
   const rates = { eur: 0.88, pln: 4 };
   const usd279 = { value: 27900, currency: 'usd' };
 
+  // regression: with an uppercase pick and a lowercase stored price (or the
+  // reverse), the price is already in that currency, so it isn't "converted".
+  it('is null for a price already in the picked currency, in either casing', () => {
+    expect(convertedPrice({ value: 500, currency: 'eur' }, 'EUR', rates)).toBeNull();
+    expect(convertedPrice({ value: 500, currency: 'EUR' }, 'eur', rates)).toBeNull();
+    expect(convertedPrice({ value: 500, currency: 'EUR' }, 'EUR', rates)).toBeNull();
+  });
+
   it('converts to the picked currency', () => {
-    expect(convertedPrice(usd279, 'EUR', rates)).toEqual({ value: 24552, currency: 'eur' });
+    expect(convertedPrice(usd279, 'EUR', rates)).toEqual({ value: 24552, currency: 'EUR' });
   });
 
   it('is null for "original", without rates, or without a rate: the price shows as it is', () => {
@@ -255,7 +307,7 @@ describe('convertPrice (client-side, rates = units per USD)', () => {
   it('returns the same value when source === target', () => {
     expect(convertPrice({ value: 400, currency: 'pln' }, 'pln', rates)).toEqual({
       value: 400,
-      currency: 'pln',
+      currency: 'PLN',
     });
   });
 
@@ -263,7 +315,7 @@ describe('convertPrice (client-side, rates = units per USD)', () => {
     // 400 grosz (4 PLN) → 100 US cents ($1.00)
     expect(convertPrice({ value: 400, currency: 'pln' }, 'usd', rates)).toEqual({
       value: 100,
-      currency: 'usd',
+      currency: 'USD',
     });
   });
 
@@ -271,7 +323,7 @@ describe('convertPrice (client-side, rates = units per USD)', () => {
     // $1.00 → 4 PLN (400 grosz)
     expect(convertPrice({ value: 100, currency: 'usd' }, 'pln', rates)).toEqual({
       value: 400,
-      currency: 'pln',
+      currency: 'PLN',
     });
   });
 
@@ -279,14 +331,28 @@ describe('convertPrice (client-side, rates = units per USD)', () => {
     // 4 PLN → $1 → 0.5 EUR (50 euro cents)
     expect(convertPrice({ value: 400, currency: 'pln' }, 'eur', rates)).toEqual({
       value: 50,
-      currency: 'eur',
+      currency: 'EUR',
     });
+  });
+
+  it('converts the same with either casing of the input, and answers uppercase', () => {
+    for (const [from, to] of [
+      ['pln', 'eur'],
+      ['PLN', 'EUR'],
+      ['pln', 'EUR'],
+      ['PLN', 'eur'],
+    ]) {
+      expect(convertPrice({ value: 400, currency: from }, to, rates)).toEqual({
+        value: 50,
+        currency: 'EUR',
+      });
+    }
   });
 
   it('is case-insensitive on currency codes', () => {
     expect(convertPrice({ value: 400, currency: 'PLN' }, 'USD', rates)).toEqual({
       value: 100,
-      currency: 'usd',
+      currency: 'USD',
     });
   });
 

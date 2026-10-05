@@ -41,7 +41,7 @@ const source: ApiItem = {
   wishlist: 'w-source',
   name: 'Blue Mug',
   imageUrl: IMAGE,
-  price: { value: 2500, currency: 'eur' },
+  price: { value: 2500, currency: 'EUR' },
   link: 'https://shop.example.com/mug',
   notes: 'Size M, the dark blue one',
   mostWanted: true,
@@ -416,7 +416,7 @@ describe('SaveToListModal — the prefilled form', () => {
     expect(body).toEqual({
       name: 'Blue Mug, large',
       imageUrl: IMAGE,
-      price: { value: 2500, currency: 'eur' },
+      price: { value: 2500, currency: 'EUR' },
       link: source.link,
       mostWanted: false,
       status: 'available',

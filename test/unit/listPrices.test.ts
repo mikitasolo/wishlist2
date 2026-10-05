@@ -32,6 +32,7 @@ describe('needsPricesControl', () => {
   it("is false when every price is in the viewer's currency, whatever the case", () => {
     expect(needsPricesControl([{ price: { currency: 'pln' } }], 'PLN')).toBe(false);
     expect(needsPricesControl([{ price: { currency: 'PLN' } }], 'pln')).toBe(false);
+    expect(needsPricesControl([{ price: { currency: 'PLN' } }], 'PLN')).toBe(false);
   });
 
   it('is false with no prices at all', () => {

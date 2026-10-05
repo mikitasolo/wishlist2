@@ -131,7 +131,7 @@ async function makeItem(fields: Record<string, unknown> = {}, wishlist = aliceLi
     wishlist,
     name: 'Blue Mug',
     imageUrl: blobOf(alice),
-    price: { value: 2500, currency: 'eur' },
+    price: { value: 2500, currency: 'EUR' },
     link: 'https://shop.example.com/mug',
     notes: 'Size M, the dark blue one',
     mostWanted: true,
@@ -148,7 +148,7 @@ function copyBody(
   return {
     name: source.name,
     imageUrl: source.imageUrl ?? undefined,
-    price: { value: 2500, currency: 'eur' },
+    price: { value: 2500, currency: 'EUR' },
     link: 'https://shop.example.com/mug',
     status: 'available',
     sourceItemId: String(source._id),
@@ -169,7 +169,7 @@ describe('POST /api/wishlists/[id]/items with sourceItemId — saving a copy', (
     expect(data).toMatchObject({
       wishlist: bobList,
       name: 'Blue Mug',
-      price: { value: 2500, currency: 'eur' },
+      price: { value: 2500, currency: 'EUR' },
       link: 'https://shop.example.com/mug',
       status: 'available',
       mostWanted: false,
@@ -344,7 +344,7 @@ describe('POST /api/wishlists/[id]/items with sourceItemId — saving a copy', (
 
     const res = await createIn(
       bobList,
-      copyBody(source, { price: { value: 100, currency: 'xyz' } })
+      copyBody(source, { price: { value: 100, currency: 'XYZ' } })
     );
 
     expect(res.status).toBe(400);

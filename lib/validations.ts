@@ -213,6 +213,13 @@ const itemNotesSchema = z
   .trim()
   .max(ITEM_NOTES_MAX, `Notes must be ${ITEM_NOTES_MAX} characters or less`);
 
+/**
+ * An item price's currency code, stored uppercase like a list's and a user's
+ * (WIS-49; before it, item prices were lowercase). The route checks it against
+ * the day's rates (`hasRate`).
+ */
+const itemCurrencySchema = z.string().trim().toUpperCase().min(1, 'Currency code is required');
+
 export const createItemSchema = z.object({
   name: visibleLineName('Item name is required', 200),
   imageUrl: z.url('Invalid image URL').optional(),
@@ -222,7 +229,7 @@ export const createItemSchema = z.object({
         .number()
         .int('Price value must be an integer (cents)')
         .min(0, 'Price value must be non-negative'),
-      currency: z.string().min(1, 'Currency code is required').toLowerCase(),
+      currency: itemCurrencySchema,
     })
     .optional()
     .nullable(), // Price object is optional, but if provided, both value and currency are required
@@ -252,7 +259,7 @@ export const updateItemSchema = z
           .number()
           .int('Price value must be an integer (cents)')
           .min(0, 'Price value must be non-negative'),
-        currency: z.string().min(1, 'Currency code is required').toLowerCase(),
+        currency: itemCurrencySchema,
       })
       .optional()
       .nullable(), // Price object is optional, but if provided, both value and currency are required

@@ -8,6 +8,7 @@ import Wishlist from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
 import { createItemSchema, validateRequestBody } from '@/lib/validations';
 import { ensureCurrencyRatesUpToDate } from '@/lib/utils/currencyRates';
+import { hasRate, normalizeCurrency } from '@/lib/utils/currency';
 import { readGivenByViewer, serializeItem, type ItemViewer } from '@/lib/utils/itemSerializer';
 import { resolveWishlistId } from '@/lib/utils/wishlistSlug';
 import { createNotifications } from '@/lib/notifications';
@@ -306,8 +307,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     // Validate currency exists in rates if price is provided
     if (price && price.currency) {
-      const currencyLower = price.currency.toLowerCase(); // Already lowercase from validation, but ensure it
-      if (!rates.has(currencyLower)) {
+      if (!hasRate(rates, price.currency)) {
         return NextResponse.json(
           {
             success: false,
@@ -407,7 +407,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       price: price
         ? {
             value: price.value, // Already in cents (integer)
-            currency: price.currency.toLowerCase(),
+            currency: normalizeCurrency(price.currency),
           }
         : null,
       link,

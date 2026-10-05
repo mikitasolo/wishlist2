@@ -180,7 +180,7 @@ describe("saving an item edit leaves a co-owner's change made meanwhile alone", 
 
   it('keeps every other field a co-owner changed: price, link, notes, most wanted', async () => {
     const id = await item({
-      price: { value: 1250, currency: 'usd' },
+      price: { value: 1250, currency: 'USD' },
       link: 'https://shop.example.com/mug',
       notes: 'Any colour',
       mostWanted: false,
@@ -188,7 +188,7 @@ describe("saving an item edit leaves a co-owner's change made meanwhile alone", 
     const alicesForm = await openEdit(id, alice);
 
     const bobs = {
-      price: { value: 900, currency: 'eur' },
+      price: { value: 900, currency: 'EUR' },
       link: 'https://shop.example.com/red-mug',
       notes: 'Red, please',
       mostWanted: true,
@@ -202,20 +202,20 @@ describe("saving an item edit leaves a co-owner's change made meanwhile alone", 
   });
 
   it('still writes a field the owner did change, over the co-owner value for it', async () => {
-    const id = await item({ price: { value: 1250, currency: 'usd' } });
+    const id = await item({ price: { value: 1250, currency: 'USD' } });
     const alicesForm = await openEdit(id, alice);
 
     expect(
-      (await patch(id, bob, { name: 'Red Mug', price: { value: 900, currency: 'eur' } })).status
+      (await patch(id, bob, { name: 'Red Mug', price: { value: 900, currency: 'EUR' } })).status
     ).toBe(200);
 
     // The price is one field: Alice's new amount goes with the currency her form shows.
     const { body, res } = await save(id, alice, alicesForm, { price: '15' });
-    expect(body).toEqual({ price: { value: 1500, currency: 'usd' } });
+    expect(body).toEqual({ price: { value: 1500, currency: 'USD' } });
     expect(res.status).toBe(200);
     expect(await Item.findById(id).lean()).toMatchObject({
       name: 'Red Mug',
-      price: { value: 1500, currency: 'usd' },
+      price: { value: 1500, currency: 'USD' },
     });
   });
 

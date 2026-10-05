@@ -107,7 +107,7 @@ const whileItemWriteHeld = <T>(meanwhile: () => Promise<T>) =>
 // The owner's review: approve the proposal, with their own edits to it.
 const approval = {
   name: 'Blue Mug (large)',
-  price: { value: 2500, currency: 'usd' },
+  price: { value: 2500, currency: 'USD' },
   link: 'https://shop.example/blue-mug',
   notes: 'The large one',
 };

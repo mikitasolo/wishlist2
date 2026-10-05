@@ -15,7 +15,7 @@ const filledFrom: ItemFormData = itemToFormData(
   {
     name: 'Blue Mug',
     imageUrl: IMAGE,
-    price: { value: 1250, currency: 'eur' },
+    price: { value: 1250, currency: 'EUR' },
     link: 'https://shop.example.com/mug',
     notes: 'Size M',
     mostWanted: false,
@@ -47,7 +47,7 @@ describe('itemFormContent', () => {
     ).toEqual({
       name: 'Blue Mug',
       imageUrl: IMAGE,
-      price: { value: 1999, currency: 'pln' },
+      price: { value: 1999, currency: 'PLN' },
       link: 'https://shop.example.com/mug',
       notes: 'Size M',
       mostWanted: true,
@@ -76,15 +76,15 @@ describe('itemFormContent', () => {
       ['1,234.50', 123450],
       ['1.234,50', 123450],
     ] as const) {
-      expect(itemFormContent(edited({ price })).price).toEqual({ value, currency: 'eur' });
+      expect(itemFormContent(edited({ price })).price).toEqual({ value, currency: 'EUR' });
     }
   });
 
   it('keeps a zero price, and falls back to USD with no currency', () => {
-    expect(itemFormContent(edited({ price: '0' })).price).toEqual({ value: 0, currency: 'eur' });
+    expect(itemFormContent(edited({ price: '0' })).price).toEqual({ value: 0, currency: 'EUR' });
     expect(itemFormContent(edited({ price: '3', currency: '' })).price).toEqual({
       value: 300,
-      currency: 'usd',
+      currency: 'USD',
     });
   });
 });
@@ -143,13 +143,13 @@ describe('itemChanges', () => {
 
   it('sends the price as one field: the amount and currency together', () => {
     expect(itemChanges(edited({ price: '15' }), filledFrom)).toEqual({
-      price: { value: 1500, currency: 'eur' },
+      price: { value: 1500, currency: 'EUR' },
     });
     expect(itemChanges(edited({ price: '1 234,50' }), filledFrom)).toEqual({
-      price: { value: 123450, currency: 'eur' },
+      price: { value: 123450, currency: 'EUR' },
     });
     expect(itemChanges(edited({ currency: 'GBP' }), filledFrom)).toEqual({
-      price: { value: 1250, currency: 'gbp' },
+      price: { value: 1250, currency: 'GBP' },
     });
   });
 
@@ -157,14 +157,14 @@ describe('itemChanges', () => {
     const priceless = itemToFormData({ name: 'Blue Mug', price: null, status: 'available' }, 'PLN');
     expect(itemChanges({ ...priceless, currency: 'EUR' }, priceless)).toEqual({});
     expect(itemChanges({ ...priceless, price: '25' }, priceless)).toEqual({
-      price: { value: 2500, currency: 'pln' },
+      price: { value: 2500, currency: 'PLN' },
     });
   });
 
   // A zero price is a real one: saving another field neither clears nor sends it.
   it('keeps a zero price out of an edit of another field', () => {
     const free = itemToFormData(
-      { name: 'Blue Mug', price: { value: 0, currency: 'eur' }, status: 'available' },
+      { name: 'Blue Mug', price: { value: 0, currency: 'EUR' }, status: 'available' },
       'PLN'
     );
     expect(itemChanges({ ...free, notes: 'Free' }, free)).toEqual({ notes: 'Free' });
@@ -189,12 +189,31 @@ describe('itemToFormData — the price', () => {
     expect(itemToFormData(priced(123450, 'eur'), 'USD').price).toBe('1,234.50');
   });
 
+  // WIS-49: a price stored before it is lowercase until the migration runs.
+  it('fills a lowercase stored currency as the uppercase code, and sends it uppercase', () => {
+    const form = itemToFormData(priced(34900, 'eur'), 'USD');
+    expect(form.currency).toBe('EUR');
+    expect(itemFormContent(form).price).toEqual({ value: 34900, currency: 'EUR' });
+    // Only the casing differs, so saving another field leaves the price out.
+    expect(itemChanges({ ...form, notes: 'Blue' }, form)).toEqual({ notes: 'Blue' });
+  });
+
+  it('sends the currency uppercase, whatever casing the form holds', () => {
+    const form = itemToFormData(priced(500, 'EUR'), 'USD');
+    expect(itemFormContent({ ...form, currency: 'pln' }).price).toEqual({
+      value: 500,
+      currency: 'PLN',
+    });
+    // The same code in another casing isn't a change.
+    expect(itemChanges({ ...form, currency: 'eur' }, form)).toEqual({});
+  });
+
   it('reads back, unchanged, as the price it was filled from', () => {
     for (const locale of ['de-DE', 'en-US', 'fr-FR', 'de-CH', 'en-IN']) {
       // "1.234" in de-DE: a yen price has no decimals, so its one separator groups.
       for (const price of [
-        { value: 12345678, currency: 'eur' },
-        { value: 123400, currency: 'jpy' },
+        { value: 12345678, currency: 'EUR' },
+        { value: 123400, currency: 'JPY' },
       ]) {
         const form = itemToFormData(priced(price.value, price.currency), 'USD', locale);
         expect(itemFormContent(form, locale).price).toEqual(price);

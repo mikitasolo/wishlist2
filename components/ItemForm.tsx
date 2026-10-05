@@ -301,7 +301,7 @@ export default function ItemForm({
     }
 
     try {
-      // Trimmed, the price in cents and its currency lowercase (to match rates).
+      // Trimmed, the price in cents and its currency uppercase (as stored).
       const content = itemFormContent(formData, locale);
 
       // Status is only chosen when creating or reviewing, by the button that
