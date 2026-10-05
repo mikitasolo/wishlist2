@@ -2208,6 +2208,7 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
                 <ShareLinksSection
                   ref={shareLinksRef}
                   control={shareLinks}
+                  listName={wishlist.name}
                   archived={!!wishlist.archived}
                   visibility={getVisibility(wishlist)}
                   occasion={wishlist.occasion}

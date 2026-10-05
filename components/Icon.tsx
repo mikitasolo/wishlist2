@@ -58,7 +58,10 @@ export type IconName =
   | 'undo'
   | 'link-off'
   | 'share'
-  | 'pin';
+  | 'pin'
+  | 'qr-code'
+  | 'download'
+  | 'printer';
 
 const paths: Record<IconName, React.ReactNode> = {
   gift: (
@@ -281,6 +284,29 @@ const paths: Record<IconName, React.ReactNode> = {
     <>
       <path d="M12 17v5" />
       <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z" />
+    </>
+  ),
+  // Three finder squares and a few modules: a share link's QR code.
+  'qr-code': (
+    <>
+      <rect x="3" y="3" width="6" height="6" rx="1" />
+      <rect x="15" y="3" width="6" height="6" rx="1" />
+      <rect x="3" y="15" width="6" height="6" rx="1" />
+      <path d="M15 15h2v2h-2zM19 19h2v2h-2zM15 19v2M19 15h2M12 3v4M12 11v1M3 12h4M11 12h1M12 16v5M16 12h5" />
+    </>
+  ),
+  download: (
+    <>
+      <path d="M12 3v12" />
+      <path d="m7 10 5 5 5-5" />
+      <path d="M5 21h14" />
+    </>
+  ),
+  printer: (
+    <>
+      <path d="M6 9V3h12v6" />
+      <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+      <rect x="6" y="14" width="12" height="7" rx="1" />
     </>
   ),
 };

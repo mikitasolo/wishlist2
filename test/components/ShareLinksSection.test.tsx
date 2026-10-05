@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // The People tab's Share links section (WIS-335): rows, a failed read,
-// revoking, and an archived list's read-only section.
+// revoking, an archived list's read-only section, and QR codes (WIS-328).
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -13,6 +13,7 @@ import ShareLinksSection, {
   REVOKE_LINK_MESSAGE,
 } from '@/components/ShareLinksSection';
 import type { ShareLinkRow, ShareLinksControl } from '@/lib/hooks/useShareLinks';
+import { qrShape } from '@/lib/utils/qrCode';
 
 beforeEach(() => showToast.mockReset());
 afterEach(() => cleanup());
@@ -44,7 +45,15 @@ const control = (over: Partial<ShareLinksControl> = {}): ShareLinksControl => ({
 });
 
 function renderSection(c: ShareLinksControl, archived = false) {
-  render(<ShareLinksSection control={c} archived={archived} visibility="private" now={now} />);
+  render(
+    <ShareLinksSection
+      control={c}
+      listName="Anna’s birthday"
+      archived={archived}
+      visibility="private"
+      now={now}
+    />
+  );
 }
 
 describe('ShareLinksSection', () => {
@@ -136,5 +145,63 @@ describe('ShareLinksSection', () => {
     expect(screen.queryByRole('button', { name: 'Copy link Family chat' })).toBeNull();
     await user.click(screen.getByRole('button', { name: 'Actions for Family chat' }));
     expect(screen.getAllByRole('menuitem').map((i) => i.textContent)).toEqual(['Edit', 'Revoke']);
+    expect(screen.queryByRole('menuitem', { name: 'QR code' })).toBeNull();
+  });
+
+  it('shows a live link’s QR code, encoding exactly its full /l/ URL', async () => {
+    const user = userEvent.setup();
+    renderSection(control({ links: [row()] }));
+    await user.click(screen.getByRole('button', { name: 'Actions for Family chat' }));
+    await user.click(screen.getByRole('menuitem', { name: 'QR code' }));
+    const dialog = screen.getByRole('dialog', { name: 'QR code' });
+    const qr = within(dialog).getByRole('img', { name: 'QR code for Family chat' });
+    const url = `${window.location.origin}/l/${TOKEN}`;
+    expect(qr.querySelector('path')).toHaveAttribute('d', qrShape(url).path);
+    // The print card carries the list's name and the same code.
+    const card = screen.getByTestId('qr-print-card');
+    expect(card).toHaveTextContent('Anna’s birthday');
+    expect(card).toHaveTextContent(url);
+    expect(card.querySelector('path')).toHaveAttribute('d', qrShape(url).path);
+  });
+
+  it('offers no QR code for an expired link', async () => {
+    const user = userEvent.setup();
+    renderSection(
+      control({
+        links: [row({ expiresAt: new Date(2026, 4, 1).toISOString(), state: 'expired' })],
+      })
+    );
+    await user.click(screen.getByRole('button', { name: 'Actions for Family chat' }));
+    expect(screen.queryByRole('menuitem', { name: 'QR code' })).toBeNull();
+  });
+
+  it('creates a “Printed card” link with Create for print and opens its QR code', async () => {
+    const user = userEvent.setup();
+    const PRINT_TOKEN = 'PrintPrintPrintPrint12';
+    const create = vi
+      .fn()
+      .mockResolvedValue(row({ _id: 'l9', label: 'Printed card', token: PRINT_TOKEN }));
+    renderSection(control({ create }));
+    await user.click(screen.getByRole('button', { name: 'New link' }));
+    await user.click(screen.getByRole('button', { name: 'Create for print' }));
+    expect(create).toHaveBeenCalledWith({ level: 'view', label: 'Printed card', expiresAt: null });
+    const dialog = await screen.findByRole('dialog', { name: 'QR code' });
+    expect(screen.queryByRole('dialog', { name: 'New link' })).toBeNull();
+    const qr = within(dialog).getByRole('img', { name: 'QR code for Printed card' });
+    expect(qr.querySelector('path')).toHaveAttribute(
+      'd',
+      qrShape(`${window.location.origin}/l/${PRINT_TOKEN}`).path
+    );
+  });
+
+  it('opens no QR code when Create for print fails', async () => {
+    const user = userEvent.setup();
+    const c = control();
+    renderSection(c);
+    await user.click(screen.getByRole('button', { name: 'New link' }));
+    await user.click(screen.getByRole('button', { name: 'Create for print' }));
+    expect(c.create).toHaveBeenCalled();
+    expect(screen.getByRole('dialog', { name: 'New link' })).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'QR code' })).toBeNull();
   });
 });

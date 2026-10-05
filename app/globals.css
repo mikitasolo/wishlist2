@@ -310,6 +310,15 @@
       padding-bottom: var(--tab-bar-space);
     }
   }
+
+  /* A share link's print card (components/ShareLinkQrDialog.tsx, WIS-328):
+     while it's mounted, a print shows it alone. `!important` so the page's
+     own display utilities can't bring the rest back. */
+  @media print {
+    body:has(> .qr-print-root) > :not(.qr-print-root) {
+      display: none !important;
+    }
+  }
 }
 
 /* The focus style of a text field (and of a field-like trigger, such as
