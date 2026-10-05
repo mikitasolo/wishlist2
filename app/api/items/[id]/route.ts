@@ -33,6 +33,7 @@ import {
   EXPECTED_PROPOSAL,
   EXPECTED_STATUS_PARAM,
   PROPOSAL_REVIEWED_ERROR,
+  PROPOSAL_EDITED_ERROR,
 } from '@/lib/utils/proposalReview';
 
 /** An owner's status change that isn't publish, draft or received (an owner can't reserve). */
@@ -162,6 +163,28 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     // Ensure currency rates are up to date for validation
     const currencyRate = await ensureCurrencyRatesUpToDate();
     const rates = currencyRate?.rates || new Map<string, number>();
+
+    // An owner's approve also expects the version of the proposal its dialog
+    // shows (WIS-320). A proposer's edit landing since leaves it a proposal, so
+    // the check above lets it through, and the approval would put fields on the
+    // list that the owner never saw. Refused with the proposal as it is now,
+    // shaped for an owner (anonymous, no booking), so the dialog can refill.
+    const expectedVersion =
+      isOwner && expectsProposal && validatedData.expectedUpdatedAt
+        ? new Date(validatedData.expectedUpdatedAt)
+        : null;
+    const editedResponse = (edited: IItem) =>
+      NextResponse.json(
+        {
+          success: false,
+          error: PROPOSAL_EDITED_ERROR,
+          data: serializeItem(edited, { role: 'owner' }, rates),
+        },
+        { status: 409 }
+      );
+    if (expectedVersion && currentItem.updatedAt.getTime() !== expectedVersion.getTime()) {
+      return editedResponse(currentItem);
+    }
 
     // Validate currency exists in rates if price is being updated
     if (validatedData.price && validatedData.price.currency) {
@@ -435,8 +458,15 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     // An owner's publish or reopen is written only on an item that isn't booked
     // (see where it's set above): the filter, not the earlier read, decides, so a
     // member booking it in between keeps their booking.
+    // An approve's version (above) is a condition on its write too: an edit
+    // landing after the read is caught here.
     let written = await Item.findOneAndUpdate(
-      { _id: id, ...writeGuard?.filter, ...(publishesLiveItem && { status: { $ne: 'booked' } }) },
+      {
+        _id: id,
+        ...writeGuard?.filter,
+        ...(expectedVersion && { updatedAt: expectedVersion }),
+        ...(publishesLiveItem && { status: { $ne: 'booked' } }),
+      },
       { $set: updateData },
       writeOptions
     );
@@ -460,6 +490,11 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       // an unbook that lost leaves the gifter's in place. Nor is any image freed,
       // so an approved item keeps the one it has, and no proposer is told of an
       // approval that didn't land.
+      if (expectedVersion) {
+        // Still a proposal, so it lost to an edit; anything else was a review.
+        const now = await Item.findById(id);
+        if (now?.status === 'proposed') return editedResponse(now);
+      }
       return unmatchedItemResponse(id, writeGuard);
     }
 

@@ -6,6 +6,8 @@ import BaseModal from './BaseModal';
 import ItemForm, { itemToFormData } from './ItemForm';
 import ItemFormFooter from './ItemFormFooter';
 import ConfirmDialog from './ConfirmDialog';
+import Callout from './Callout';
+import { PROPOSAL_EDITED_ERROR } from '@/lib/utils/proposalReview';
 import { defaultItemCurrency } from '@/lib/utils/currencies';
 import type { ItemContentChanges } from '@/lib/utils/itemForm';
 import { useViewerLocale } from '@/lib/hooks/useViewerLocale';
@@ -19,6 +21,9 @@ interface ReviewItemModalProps {
   onApprove: (updates: Partial<ApiItem> & { status: 'draft' | 'available' }) => Promise<void>;
   // Declines the proposal: deletes it. Must reject when that fails.
   onDelete?: () => Promise<void>;
+  // The proposal as last read. A later version of it (the proposer edited it
+  // while the dialog was open, WIS-320) refills the fields the owner hasn't
+  // changed and shows a notice; the owner's own edits are kept.
   item: ApiItem;
   // Where the proposal stands in the list as last read (proposalReviewState).
   // Once it isn't a proposal any more (a co-owner reviewed it, or it was
@@ -57,6 +62,12 @@ export default function ReviewItemModal({
   // Set once this dialog's own approve or Decline has landed: the item has
   // changed because of it, so a read showing that isn't news to report.
   const answeredRef = useRef(false);
+  // The version of the proposal the dialog opened on: a later one shown means
+  // the proposer edited it while it was open (WIS-320).
+  const [openedVersion, setOpenedVersion] = useState<string | null>(null);
+  if (isOpen && openedVersion === null) setOpenedVersion(item.updatedAt);
+  if (!isOpen && openedVersion !== null) setOpenedVersion(null);
+  const editedWhileOpen = isOpen && openedVersion !== null && item.updatedAt !== openedVersion;
 
   // Reset states when modal closes
   useEffect(() => {
@@ -189,9 +200,16 @@ export default function ReviewItemModal({
           />
         }
       >
+        {editedWhileOpen && (
+          <Callout tone="warning" className="mb-4">
+            {PROPOSAL_EDITED_ERROR}
+          </Callout>
+        )}
         <ItemForm
           key={itemFormKey}
           initialData={formData}
+          // A new version of the proposal refills what the owner hasn't changed.
+          rebaseVersion={item.updatedAt}
           onSubmit={handleSubmit}
           onCancel={handleClose}
           isSubmitting={isSubmitting || isDeleting}

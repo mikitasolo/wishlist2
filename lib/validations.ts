@@ -265,9 +265,17 @@ export const updateItemSchema = z
     // proposal (WIS-199, lib/utils/proposalReview.ts). Not a change, so it
     // doesn't count as a field to update.
     expectedStatus: z.literal('proposed').optional(),
+    // And the version (`updatedAt`) of the proposal it shows (WIS-320). Only
+    // with `expectedStatus`; not a change either.
+    expectedUpdatedAt: z.string().datetime().optional(),
   })
-  .refine((data) => Object.keys(data).some((key) => key !== 'expectedStatus'), {
-    message: 'At least one field must be provided for update',
+  .refine(
+    (data) =>
+      Object.keys(data).some((key) => key !== 'expectedStatus' && key !== 'expectedUpdatedAt'),
+    { message: 'At least one field must be provided for update' }
+  )
+  .refine((data) => data.expectedUpdatedAt === undefined || data.expectedStatus === 'proposed', {
+    message: 'expectedUpdatedAt needs expectedStatus',
   });
 
 /**

@@ -3,6 +3,7 @@ import {
   itemChanges,
   itemFormContent,
   itemToFormData,
+  rebaseItemForm,
   type ItemFormData,
 } from '@/lib/utils/itemForm';
 
@@ -200,5 +201,34 @@ describe('itemToFormData — the price', () => {
         expect(itemChanges({ ...form, notes: 'Blue' }, form, locale)).toEqual({ notes: 'Blue' });
       }
     }
+  });
+});
+
+describe('rebaseItemForm', () => {
+  // The proposer's edit, landed while the owner had the review dialog open (WIS-320).
+  const next: ItemFormData = {
+    ...filledFrom,
+    link: 'https://shop.example.com/other-mug',
+    notes: 'Size L',
+    price: '15.00',
+  };
+
+  it('takes every untouched field from the newer version', () => {
+    expect(rebaseItemForm(filledFrom, filledFrom, next)).toEqual(next);
+  });
+
+  it('keeps the fields the person changed, and only those', () => {
+    const form = { ...filledFrom, notes: 'Owner notes', name: 'Big Blue Mug' };
+    expect(rebaseItemForm(form, filledFrom, next)).toEqual({
+      ...next,
+      notes: 'Owner notes',
+      name: 'Big Blue Mug',
+    });
+  });
+
+  it('keeps the price amount and currency together, as one field', () => {
+    const form = { ...filledFrom, currency: 'USD' };
+    const rebased = rebaseItemForm(form, filledFrom, next);
+    expect([rebased.price, rebased.currency]).toEqual([filledFrom.price, 'USD']);
   });
 });

@@ -75,6 +75,41 @@ describe('review requests', () => {
     expect(onError).toHaveBeenCalledExactlyOnceWith(REVIEWED, { proposalReviewed: true });
   });
 
+  it('an approve sends the version it shows, when given one', async () => {
+    fetchMock.mockImplementation(async () => reply(200, { success: true, data: { _id: 'i1' } }));
+    const update = renderHook(() => useUpdateItem()).result.current;
+
+    await update(
+      'i1',
+      { status: 'available' },
+      { expectProposal: true, expectedVersion: '2026-10-05T10:00:00.000Z' }
+    );
+
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+      status: 'available',
+      expectedStatus: 'proposed',
+      expectedUpdatedAt: '2026-10-05T10:00:00.000Z',
+    });
+  });
+
+  // WIS-320: the proposer edited it since the dialog was filled.
+  it("an approve's edited-proposal 409 hands over the proposal as it is now", async () => {
+    const EDITED =
+      'This proposal was edited while you were reviewing it. Check the changes, then add it again.';
+    const now = { _id: 'i1', status: 'proposed', notes: 'Size L' };
+    fetchMock.mockResolvedValue(reply(409, { success: false, error: EDITED, data: now }));
+    const onError = vi.fn();
+    const update = renderHook(() => useUpdateItem(undefined, onError)).result.current;
+
+    await expect(update('i1', { status: 'available' }, { expectProposal: true })).resolves.toBe(
+      null
+    );
+    expect(onError).toHaveBeenCalledExactlyOnceWith(EDITED, {
+      proposalReviewed: false,
+      editedProposal: now,
+    });
+  });
+
   it("any other failure of an approve isn't", async () => {
     fetchMock.mockResolvedValue(reply(500, { success: false, error: 'Failed to update item' }));
     const onError = vi.fn();

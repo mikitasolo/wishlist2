@@ -298,3 +298,63 @@ describe('ReviewItemModal — a proposal reviewed or removed meanwhile', () => {
     expect(onProposalGone).not.toHaveBeenCalled();
   });
 });
+
+describe('ReviewItemModal — a proposal the proposer edits while it is open (WIS-320)', () => {
+  const edited: ApiItem = {
+    ...proposal,
+    notes: 'Cold light',
+    link: 'https://shop.example.com/other-lamp',
+    updatedAt: '2024-01-02T00:00:00Z',
+  };
+  const EDITED_NOTE = /this proposal was edited while you were reviewing it/i;
+
+  function openThenEdit(onApprove: () => Promise<void>) {
+    const onClose = vi.fn();
+    const ui = (item: ApiItem) => (
+      <ReviewItemModal
+        isOpen
+        onClose={onClose}
+        onApprove={onApprove}
+        item={item}
+        wishlistCurrency="USD"
+        userCurrency="USD"
+      />
+    );
+    const { rerender } = render(ui(proposal));
+    return { onClose, edit: () => rerender(ui(edited)) };
+  }
+
+  // regression: the dialog kept the proposal as it opened, so a link or notes
+  // the proposer changed meanwhile were approved onto the list unseen.
+  it('regression: refills what the owner left alone, keeps their edits, and says so', async () => {
+    const onApprove = vi.fn().mockResolvedValue(undefined);
+    const { onClose, edit } = openThenEdit(onApprove);
+    fireEvent.change(nameInput(), { target: { value: 'Desk lamp' } });
+    expect(screen.queryByText(EDITED_NOTE)).not.toBeInTheDocument();
+
+    edit();
+
+    expect(screen.getByText(EDITED_NOTE)).toBeInTheDocument();
+    expect(notesInput()).toHaveValue('Cold light');
+    expect(screen.getByLabelText(/product link/i)).toHaveValue(edited.link);
+    expect(nameInput()).toHaveValue('Desk lamp');
+
+    fireEvent.click(approveButton());
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    // Only the owner's own change: the proposer's edit is already on the item.
+    expect(onApprove).toHaveBeenCalledWith({ name: 'Desk lamp', status: 'available' });
+  });
+
+  it("keeps a field both of them changed as the owner's", () => {
+    const { edit } = openThenEdit(vi.fn().mockResolvedValue(undefined));
+    fireEvent.change(notesInput(), { target: { value: 'Owner notes' } });
+    edit();
+    expect(notesInput()).toHaveValue('Owner notes');
+  });
+
+  it('regression: shows the proposer nowhere in the notice', () => {
+    const { edit } = openThenEdit(vi.fn().mockResolvedValue(undefined));
+    edit();
+    expect(screen.getByRole('dialog').textContent).not.toMatch(/proposer|anna|@/i);
+  });
+});

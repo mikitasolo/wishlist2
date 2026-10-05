@@ -17,7 +17,12 @@ import { deduplicateRequest, createRequestKey } from '@/lib/utils/requestDedupli
 import { withRequestTimeout } from '@/lib/utils/requestTimeout';
 import { IDEMPOTENCY_HEADER } from '@/lib/utils/submissionKey';
 import { isRefusal, ReadRefusedError } from '@/lib/utils/resourceRead';
-import { EXPECTED_PROPOSAL, EXPECTED_STATUS_PARAM } from '@/lib/utils/proposalReview';
+import {
+  EXPECTED_PROPOSAL,
+  EXPECTED_STATUS_PARAM,
+  EXPECTED_VERSION_PARAM,
+  PROPOSAL_EDITED_ERROR,
+} from '@/lib/utils/proposalReview';
 
 /**
  * Sent by the review dialog's approve and Decline (WIS-199): the request
@@ -26,27 +31,42 @@ import { EXPECTED_PROPOSAL, EXPECTED_STATUS_PARAM } from '@/lib/utils/proposalRe
  */
 export interface ReviewRequestOptions {
   expectProposal?: boolean;
+  /**
+   * An approve's version of the proposal it shows (its `updatedAt`, WIS-320):
+   * an edit landing since is answered 409 with the proposal as it is now.
+   */
+  expectedVersion?: string;
 }
 
 /** What `onError` is told besides the message. */
 export interface ItemRequestFailure {
   /** A review request (`expectProposal`) refused because the item is no longer a proposal. */
   proposalReviewed: boolean;
+  /**
+   * An approve refused because the proposal was edited since its dialog was
+   * filled: the proposal as it is now, for the dialog to refill from.
+   */
+  editedProposal?: ApiItem;
 }
 
 /** A failed item request, with its HTTP status when the server answered. */
 class ItemRequestError extends Error {
   constructor(
     message: string,
-    readonly status: number
+    readonly status: number,
+    readonly data?: ApiItem
   ) {
     super(message);
   }
 }
 
-const failureOf = (error: unknown, expectProposal: boolean): ItemRequestFailure => ({
-  proposalReviewed: expectProposal && error instanceof ItemRequestError && error.status === 409,
-});
+const failureOf = (error: unknown, expectProposal: boolean): ItemRequestFailure => {
+  const conflict = expectProposal && error instanceof ItemRequestError && error.status === 409;
+  const edited = conflict && error.message === PROPOSAL_EDITED_ERROR && error.data;
+  return edited
+    ? { proposalReviewed: false, editedProposal: error.data }
+    : { proposalReviewed: conflict };
+};
 
 /**
  * Hook for updating an item
@@ -59,10 +79,14 @@ export function useUpdateItem(
     async (
       id: string,
       updates: Partial<ApiItem>,
-      { expectProposal = false }: ReviewRequestOptions = {}
+      { expectProposal = false, expectedVersion }: ReviewRequestOptions = {}
     ): Promise<ApiItem | null> => {
       const body = expectProposal
-        ? { ...updates, [EXPECTED_STATUS_PARAM]: EXPECTED_PROPOSAL }
+        ? {
+            ...updates,
+            [EXPECTED_STATUS_PARAM]: EXPECTED_PROPOSAL,
+            ...(expectedVersion && { [EXPECTED_VERSION_PARAM]: expectedVersion }),
+          }
         : updates;
       const requestKey = createRequestKey(`/api/items/${id}`, 'PATCH', body);
 
@@ -81,7 +105,11 @@ export function useUpdateItem(
             const result: ApiResponse<ApiItem> = await response.json();
 
             if (!result.success) {
-              throw new ItemRequestError(result.error || 'Failed to update item', response.status);
+              throw new ItemRequestError(
+                result.error || 'Failed to update item',
+                response.status,
+                result.data
+              );
             }
 
             return result.data!;

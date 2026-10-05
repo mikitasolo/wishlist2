@@ -13,6 +13,7 @@ import { currencySelectOptions, defaultItemCurrency } from '@/lib/utils/currenci
 import { ITEM_NOTES_MAX, isHttpUrl, normalizeItemLink } from '@/lib/utils/itemFields';
 import {
   itemChanges,
+  rebaseItemForm,
   itemFormContent,
   type ItemContentChanges,
   type ItemFormData,
@@ -71,6 +72,11 @@ interface ItemFormProps {
   itemId?: string;
   // Callback to notify parent when form has unsaved changes
   onFormChange?: (hasChanges: boolean) => void;
+  // A newer version of the item the form was filled from (its `updatedAt`):
+  // when it changes, the fields the person hasn't touched take `initialData`'s
+  // values, the touched ones stay, and `initialData` becomes the baseline, so a
+  // save sends only what they changed from what they now see (WIS-320).
+  rebaseVersion?: string;
   // Currency a new item starts on (see defaultItemCurrency; USD if omitted).
   // Read once on mount so it never overwrites what the user picked; ignored when
   // initialData is given, which carries its own currency (see itemToFormData).
@@ -116,6 +122,7 @@ export default function ItemForm({
   mode = 'create',
   itemId,
   onFormChange,
+  rebaseVersion,
   defaultCurrency,
   formId: externalFormId,
 }: ItemFormProps) {
@@ -193,6 +200,18 @@ export default function ItemForm({
       initialDataRef.current = blankFormData;
     }
   }, [initialData, itemId, blankFormData]);
+
+  // Refill from a newer version of the same item (see rebaseVersion). Not on
+  // the first fill, which the effect above does.
+  const lastVersionRef = useRef(rebaseVersion);
+  useEffect(() => {
+    if (rebaseVersion === lastVersionRef.current) return;
+    lastVersionRef.current = rebaseVersion;
+    if (!initialData) return;
+    const baseline = initialDataRef.current;
+    initialDataRef.current = initialData;
+    setFormData((form) => rebaseItemForm(form, baseline, initialData));
+  }, [rebaseVersion, initialData]);
 
   // An amount that can't be read is refused, not saved as "no price": the
   // field says why under it, and handleSubmit won't send it.

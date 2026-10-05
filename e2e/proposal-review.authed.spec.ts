@@ -120,3 +120,97 @@ test('regression: an approve refused because the proposal was already reviewed c
     expectedStatus: 'proposed',
   });
 });
+
+// regression (WIS-320): a proposal the proposer edited while the review dialog
+// was open was approved with their new fields unseen. The approve sends the
+// version it shows; the 409 hands back the proposal as it is now, and the
+// dialog stays open, refilled, with the owner's own edit kept.
+test('regression: an approve refused because the proposal was edited refills the dialog', async ({
+  page,
+  consoleErrors,
+}) => {
+  const EDITED =
+    'This proposal was edited while you were reviewing it. Check the changes, then add it again.';
+  const edited: ApiItem = {
+    ...proposal,
+    notes: 'E2E now the cold-light one',
+    updatedAt: '2026-01-02T00:00:00.000Z',
+  };
+  consoleErrors.allow(
+    failedRequest(new RegExp(`/api/items/${proposal._id}`)),
+    /^Error updating item: /,
+    /^Error submitting form: /
+  );
+  await page.route('**/api/wishlists/*/items', async (route) => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    const response = await route.fetch();
+    const body = await response.json();
+    // Every read shows the version the dialog opened on: only the 409 tells.
+    await route.fulfill({ response, json: { ...body, data: [proposal, ...body.data] } });
+  });
+  const sent: Array<Record<string, unknown>> = [];
+  await page.route(`**/api/items/${proposal._id}`, async (route) => {
+    if (route.request().method() !== 'PATCH') return route.fallback();
+    const body = route.request().postDataJSON();
+    sent.push(body);
+    if (sent.length === 1) {
+      return route.fulfill({ status: 409, json: { success: false, error: EDITED, data: edited } });
+    }
+    return route.fulfill({
+      json: { success: true, data: { ...edited, name: body.name, status: body.status } },
+    });
+  });
+
+  await page.goto('/wishlists/e2e-birthday');
+  const proposedCard = page.getByRole('article', { name: `Item: ${proposal.name}` });
+  await proposedCard.getByRole('button', { name: 'Review proposed item' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Someone proposed an item' });
+  await dialog.getByLabel('Item name').fill('E2E Desk Lamp');
+  await dialog.getByRole('button', { name: 'Add to list' }).click();
+
+  await expect(dialog.getByText(EDITED)).toBeVisible();
+  await expect(dialog.getByLabel('Notes')).toHaveValue(edited.notes!);
+  await expect(dialog.getByLabel('Item name')).toHaveValue('E2E Desk Lamp');
+  await expect(page.getByText('Added to the list')).toHaveCount(0);
+
+  await dialog.getByRole('button', { name: 'Add to list' }).click();
+  await expect(page.getByRole('status').getByText('Added to the list')).toBeVisible();
+  await expect(dialog).toBeHidden();
+  expect(sent.map((body) => body.expectedUpdatedAt)).toEqual([
+    proposal.updatedAt,
+    edited.updatedAt,
+  ]);
+  // The retry sends only the owner's change, not the proposer's notes.
+  expect(sent[1]).not.toHaveProperty('notes');
+});
+
+// The poll brings the proposer's edit before the owner presses anything: the
+// dialog refills and says so (WIS-320).
+test('a poll bringing an edited proposal refills the open review dialog', async ({ page }) => {
+  const edited: ApiItem = {
+    ...proposal,
+    notes: 'E2E edited by the proposer',
+    updatedAt: '2026-01-02T00:00:00.000Z',
+  };
+  let reads = 0;
+  await page.route('**/api/wishlists/*/items', async (route) => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    const response = await route.fetch();
+    const body = await response.json();
+    reads += 1;
+    const shown = reads === 1 ? proposal : edited;
+    await route.fulfill({ response, json: { ...body, data: [shown, ...body.data] } });
+  });
+
+  await page.goto('/wishlists/e2e-birthday');
+  const proposedCard = page.getByRole('article', { name: `Item: ${proposal.name}` });
+  await proposedCard.getByRole('button', { name: 'Review proposed item' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Someone proposed an item' });
+  await dialog.getByLabel('Item name').fill('E2E Desk Lamp');
+
+  await expect(dialog.getByText(/was edited while you were reviewing it/)).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(dialog.getByLabel('Notes')).toHaveValue(edited.notes!);
+  await expect(dialog.getByLabel('Item name')).toHaveValue('E2E Desk Lamp');
+});

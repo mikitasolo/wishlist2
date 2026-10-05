@@ -10,6 +10,31 @@
  * see). Every other owner edit or delete goes on as before.
  */
 
+/**
+ * An approve also says which version of the proposal the dialog shows: its
+ * `updatedAt` as the dialog was filled (WIS-320). A proposer's edit landing
+ * while the dialog is open leaves the item a proposal, so the status check
+ * alone would let the owner approve fields they never saw. The route answers
+ * 409 `PROPOSAL_EDITED_ERROR` with the proposal as it is now, and the dialog
+ * refills from it.
+ */
+export const EXPECTED_VERSION_PARAM = 'expectedUpdatedAt';
+
+/** The 409 (and the dialog's notice) when the proposal changed under review. */
+export const PROPOSAL_EDITED_ERROR =
+  'This proposal was edited while you were reviewing it. Check the changes, then add it again.';
+
+/**
+ * Is `next` a later version of an item than `current` (by `updatedAt`)? A poll
+ * can answer with an older read than the one the dialog holds, which must
+ * never replace it.
+ */
+export function isNewerVersion(next: string | undefined, current: string | undefined): boolean {
+  const a = Date.parse(next ?? '');
+  const b = Date.parse(current ?? '');
+  return Number.isFinite(a) && (!Number.isFinite(b) || a > b);
+}
+
 /** The status a review request expects the item to have. */
 export const EXPECTED_PROPOSAL = 'proposed' as const;
 

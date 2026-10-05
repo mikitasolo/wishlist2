@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { proposalReviewState } from '@/lib/utils/proposalReview';
+import { isNewerVersion, proposalReviewState } from '@/lib/utils/proposalReview';
 
 describe('proposalReviewState', () => {
   const items = [
@@ -20,5 +20,22 @@ describe('proposalReviewState', () => {
 
   it('is gone once the list no longer has it', () => {
     expect(proposalReviewState(items, 'x')).toBe('gone');
+  });
+});
+
+describe('isNewerVersion', () => {
+  const at = (iso: string) => `2026-10-05T${iso}Z`;
+
+  it('is true only for a later updatedAt', () => {
+    expect(isNewerVersion(at('10:00:01.000'), at('10:00:00.000'))).toBe(true);
+    expect(isNewerVersion(at('10:00:00.000'), at('10:00:00.000'))).toBe(false);
+    // An older poll never replaces what the dialog holds.
+    expect(isNewerVersion(at('09:59:59.000'), at('10:00:00.000'))).toBe(false);
+  });
+
+  it('never takes a version it cannot read', () => {
+    expect(isNewerVersion(undefined, at('10:00:00.000'))).toBe(false);
+    expect(isNewerVersion('garbage', at('10:00:00.000'))).toBe(false);
+    expect(isNewerVersion(at('10:00:00.000'), undefined)).toBe(true);
   });
 });
