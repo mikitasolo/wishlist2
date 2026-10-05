@@ -22,8 +22,8 @@ npm run generate:email-logo    # re-render the email logo (lib/emailLogo.ts) fro
 npm run test:e2e     # Playwright end-to-end suite
 npm run test:watch   # watch mode
 npm test             # the same suite without coverage
-npm run release:preview  # list commits remote staging is ahead of remote main (dry run)
-npm run release          # promote: fast-forward remote main to remote staging — operator only
+npm run release:preview  # list commits remote staging is ahead of remote main, and the tag it would get (dry run)
+npm run release          # promote: fast-forward remote main to remote staging and tag it — operator only
 ```
 
 ## How work flows
@@ -33,7 +33,8 @@ Tasks live in **Linear** (workspace `mikitasolo`, team **Wishlist**, keys `WIS-<
 ### Branches
 
 - **`staging`** is the default and integration branch. Every change reaches it through a **PR**, which the operator **squash-merges**. CI (`ci.yml`, `e2e.yml`) runs on every PR; `audit.yml` only on a PR that changes `package.json` / `package-lock.json`, plus daily on `staging` and on demand. **Vercel builds only `staging` and `main`** (`git.deploymentEnabled` in `vercel.json`, pinned by `test/unit/vercelConfig.test.ts`): PR branches get no preview, since PR pushes used up the Hobby plan's daily deploy cap. Vercel matches those keys as minimatch globs (`*` stops at `/`), so the catch-all is `"**"` (WIS-185). A change's first real Vercel build is its `staging` deploy, so smoke `staging` after a merge that touches the build, env or runtime.
-- **`main` is production** (Vercel deploys on push). It only ever **fast-forwards to `staging`** (`npm run release`, i.e. `git push origin origin/staging:main`): never commit to it or open a PR into it.
+- **`main` is production** (Vercel deploys on push). It only ever **fast-forwards to `staging`** (`npm run release`, `scripts/release.mjs`): never commit to it or open a PR into it.
+- **Every release is tagged.** `npm run release` pins `origin/staging`'s commit, tags it `release-YYYY-MM-DD` (UTC; `.2`, `.3`… for later releases that day, annotated with the commits it ships) and pushes `main` and the tag in one `git push --atomic`, so a tag exists exactly when its release happened. The newest `release-*` tag is what production runs. **To roll back**, the tag before it is the last good release: promote that commit's deployment with Vercel's Instant Rollback, then fix forward with a revert PR into `staging` (`main` never moves backwards).
 - **A push to `main` is a release.** `.github/workflows/release-notify.yml` posts the changelog (commit subjects in the pushed range, `.github/scripts/telegram-release-notes.py`) to Telegram and moves the Linear issues those commits close from **On Staging** to **Done** (`.github/scripts/linear-mark-released.py`). Secrets `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` / `LINEAR_API_KEY`; without them each job prints a preview and changes nothing.
 
 ### Issue statuses

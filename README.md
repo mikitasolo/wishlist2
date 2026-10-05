@@ -117,13 +117,13 @@ npm run test:cov     # tests + the coverage floor (what CI runs)
 npm run format       # prettier --write
 npm run format:check # prettier --check (what CI runs)
 npm run vercel:env   # pull Vercel env vars into .env
-npm run release:preview  # list commits staging is ahead of main (dry run)
-npm run release          # fast-forward remote main to remote staging (operator only)
+npm run release:preview  # list commits staging is ahead of main and the tag a release would get (dry run)
+npm run release          # fast-forward remote main to remote staging and tag it release-YYYY-MM-DD (operator only)
 ```
 
 ## 🗂️ Development workflow
 
-Tasks live in [Linear](https://linear.app/mikitasolo) (team **Wishlist**, issue keys `WIS-…`). Each issue is worked in its own **Orca** workspace — a git worktree and branch cut from `staging`, prepared by `scripts/workspace-setup.sh` — usually by an AI agent, and lands as a pull request into `staging` that gets squash-merged. `main` is production and only ever fast-forwards to `staging` via `npm run release`. The full lifecycle, status meanings, and PR conventions are in [AGENTS.md](AGENTS.md).
+Tasks live in [Linear](https://linear.app/mikitasolo) (team **Wishlist**, issue keys `WIS-…`). Each issue is worked in its own **Orca** workspace — a git worktree and branch cut from `staging`, prepared by `scripts/workspace-setup.sh` — usually by an AI agent, and lands as a pull request into `staging` that gets squash-merged. `main` is production and only ever fast-forwards to `staging` via `npm run release`, which also tags each release `release-YYYY-MM-DD` (the tag before the newest is the rollback target). The full lifecycle, status meanings, and PR conventions are in [AGENTS.md](AGENTS.md).
 
 ## 🧪 Testing
 
