@@ -166,6 +166,15 @@ of them from git history if you ever need to replay one against a restored backu
 
 See [docs/agents/backend.md](docs/agents/backend.md) for the rules a new migration should follow.
 
+The same secret guards read-only **maintenance** endpoints under `app/api/maintenance/<name>`, which stay in
+the tree. `orphan-snapshots` lists the booking snapshot images (`snapshots/` in Blob) that no reservation or
+gift log holds any more, older than a day, with their sizes. It deletes nothing:
+
+```bash
+curl -X POST -H "X-Migration-Secret: $MIGRATION_SECRET" \
+  https://<your-host>/api/maintenance/orphan-snapshots
+```
+
 ## 📁 Project structure
 
 ```
