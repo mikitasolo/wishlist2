@@ -7,7 +7,7 @@
 export const E2E_VIEW_LINK_TOKEN = 'E2eViewLink0000000000a';
 
 /**
- * A live Join link to `e2e-joinable`, an Invite only list of the E2E user's
+ * A live Join link to `e2e-joinable`, an Invite only list of a third user's (`e2ehost`)
  * that the friend isn't on (WIS-337): one spec has the friend join through it.
  */
 export const E2E_JOIN_LINK_TOKEN = 'E2eJoinLink0000000000c';

@@ -26,10 +26,10 @@ test('the friend joins through a Join link and reserves a gift', async ({ page }
   await page.goto(magicLinkPath(MAGIC_LINKS.friendJoins, `${back!.pathname}${back!.search}`));
 
   // The confirmation is open at once, `then` is gone, and nothing has joined yet.
-  const dialog = page.getByRole('alertdialog', { name: 'Join @e2euser’s list?' });
+  const dialog = page.getByRole('alertdialog', { name: 'Join @e2ehost’s list?' });
   await expect(dialog).toBeVisible();
   await expect(dialog).toContainText(
-    'You’ll be able to reserve gifts. @e2euser won’t see what you reserve.'
+    'You’ll be able to reserve gifts. @e2ehost won’t see what you reserve.'
   );
   await expect(page).toHaveURL(linkPath);
 
