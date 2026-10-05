@@ -410,6 +410,34 @@ describe('POST /api/wishlists/[id]/links', () => {
   });
 });
 
+describe('POST /api/wishlists/[id]/links: the create limit', () => {
+  // regression: the limit was spent before the body, the cap and the archived
+  // check, so a fresh account's few creates went on requests that made nothing.
+  it('is spent only by a request that makes a link', async () => {
+    const limit = vi.fn<RateLimiter['limit']>().mockResolvedValue({
+      success: true,
+      reset: Date.now() + 60_000,
+      limit: 30,
+      remaining: 29,
+    });
+    __setRateLimiters({ shareLink: { limit } });
+
+    expect((await create(alice, { level: 'nope' })).status).toBe(400);
+    await Wishlist.updateOne({ _id: listId }, { archived: true });
+    expect((await create(alice, { level: 'view' })).status).toBe(409);
+    await Wishlist.updateOne({ _id: listId }, { archived: false });
+    for (let i = 0; i < SHARE_LINK_CAP; i++) {
+      await makeLink({ token: `${'z'.repeat(20)}${String(i).padStart(2, '0')}` });
+    }
+    expect((await create(alice, { level: 'view' })).status).toBe(409);
+    expect(limit).not.toHaveBeenCalled();
+
+    await ShareLink.deleteOne({});
+    expect((await create(alice, { level: 'view' })).status).toBe(201);
+    expect(limit).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('insertShareLink', () => {
   it('retries a real duplicate token with a new one', async () => {
     await makeLink();

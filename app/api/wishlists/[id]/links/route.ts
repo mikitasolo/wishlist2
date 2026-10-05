@@ -88,13 +88,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const access = await getOwnerAccess(id, session.user.id);
     if (!access.wishlist || !access.isOwner) return notFound();
 
-    // Only once the caller is known to own the list: a 429 that only an
-    // existing list could answer with would give away an archived one.
-    const limited = await enforce('shareLink', userKey(session.user.id), {
-      newAccount: session.user.newAccount,
-    });
-    if (limited) return limited;
-
     const validation = await validateRequestBody(request, createShareLinkSchema);
     if (!validation.success) {
       return NextResponse.json(
@@ -117,6 +110,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // Checked last, against the fresh read, so a link that couldn't be made
     // anyway gets that answer instead.
     if (current.wishlist.archived) return archivedError();
+
+    // Spent only by a request about to make a link (a refused one costs
+    // nothing), and only once the caller is known to own the list: a 429 that
+    // only an existing list could answer with would give away an archived one.
+    const limited = await enforce('shareLink', userKey(session.user.id), {
+      newAccount: session.user.newAccount,
+    });
+    if (limited) return limited;
 
     const link = await insertShareLink({
       wishlistId: id,
