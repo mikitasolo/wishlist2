@@ -318,6 +318,16 @@
     body:has(> .qr-print-root) > :not(.qr-print-root) {
       display: none !important;
     }
+    /* An open dialog pins the page (useBodyScrollLock: `position: fixed`,
+       `top: -scrollY`), which would print the card above the paper, so a
+       print from further down the page came out blank (WIS-340). */
+    html:has(> body > .qr-print-root),
+    body:has(> .qr-print-root) {
+      position: static !important;
+      top: auto !important;
+      overflow: visible !important;
+      height: auto !important;
+    }
   }
 }
 
