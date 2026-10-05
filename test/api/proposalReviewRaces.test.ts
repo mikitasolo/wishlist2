@@ -398,3 +398,99 @@ describe('/api/items/[id] — a review dialog that expects a proposal', () => {
     expect((await declineAs(eve)).status).toBe(403);
   });
 });
+
+describe("/api/items/[id] — an approve that expects the proposal's version (WIS-320)", () => {
+  const EDITED_ERROR =
+    'This proposal was edited while you were reviewing it. Check the changes, then add it again.';
+  // The version the owner's dialog was filled from, set apart from any later
+  // write so a same-millisecond edit can't look unchanged.
+  const FILLED = new Date('2026-01-01T00:00:00.000Z');
+  const approve = {
+    name: 'Blue Mug',
+    status: 'available',
+    expectedStatus: 'proposed',
+    expectedUpdatedAt: FILLED.toISOString(),
+  } as const;
+  const aliceEdit = { link: 'https://shop.example.com/other-mug', notes: 'Actually size L' };
+
+  beforeEach(async () => {
+    await Item.updateOne({ _id: itemId }, { $set: { updatedAt: FILLED } }, { timestamps: false });
+  });
+
+  // regression: a proposal the proposer edited while the review dialog was open
+  // stayed `proposed`, so the approve went through and put the new link and
+  // notes on the list without the owner ever seeing them.
+  it('regression: an approve sent after the proposer edited it gets a 409 with the proposal as it is now', async () => {
+    expect((await patchAs(alice, aliceEdit)).status).toBe(200);
+
+    const res = await patchAs(owner, approve);
+
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body).toMatchObject({ success: false, error: EDITED_ERROR });
+    expect(body.data).toMatchObject({ _id: itemId, status: 'proposed', ...aliceEdit });
+    // Anonymous to the owners, as every item answer is.
+    expect(body.data.proposedBy).toBeUndefined();
+    expect(Date.parse(body.data.updatedAt)).toBeGreaterThan(FILLED.getTime());
+    const item = await Item.findById(itemId).lean();
+    expect(item?.status).toBe('proposed');
+    expect(await approvalsSentToAlice()).toHaveLength(0);
+
+    // Refilled from that version, the approve lands.
+    const retry = await patchAs(owner, { ...approve, expectedUpdatedAt: body.data.updatedAt });
+    expect(retry.status).toBe(200);
+    expect(await Item.findById(itemId).lean()).toMatchObject({
+      status: 'available',
+      ...aliceEdit,
+    });
+    expect(await approvalsSentToAlice()).toHaveLength(1);
+  });
+
+  // The write's own condition: the proposer's edit lands after the approve's
+  // read, while its write is held.
+  it("an approve that loses to the proposer's edit at the write gets the same 409", async () => {
+    const race = whileItemWriteHeld(() => patchAs(alice, aliceEdit));
+    const res = await patchAs(owner, approve);
+
+    expect(race.held()).toBe(true);
+    expect(race.outcome()?.status).toBe(200);
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.error).toBe(EDITED_ERROR);
+    expect(body.data).toMatchObject(aliceEdit);
+    expect((await Item.findById(itemId).lean())?.status).toBe('proposed');
+    expect(await approvalsSentToAlice()).toHaveLength(0);
+  });
+
+  it("an approve that loses to a co-owner's approval at the write is still answered as reviewed", async () => {
+    const race = whileItemWriteHeld(() => patchAs(coOwner, firstReview));
+    const res = await patchAs(owner, approve);
+
+    expect(race.outcome()?.status).toBe(200);
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({
+      success: false,
+      error: 'This proposal has already been reviewed',
+    });
+  });
+
+  it('an approve of the version it shows lands', async () => {
+    const res = await patchAs(owner, approve);
+    expect(res.status).toBe(200);
+    expect((await Item.findById(itemId).lean())?.status).toBe('available');
+  });
+
+  it('refuses a version without a proposal expectation, or one that is not a date', async () => {
+    const { expectedStatus: _omit, ...withoutStatus } = approve;
+    expect((await patchAs(owner, withoutStatus)).status).toBe(400);
+    expect((await patchAs(owner, { ...approve, expectedUpdatedAt: 'yesterday' })).status).toBe(400);
+    expect(
+      (
+        await patchAs(owner, {
+          expectedStatus: 'proposed',
+          expectedUpdatedAt: FILLED.toISOString(),
+        })
+      ).status
+    ).toBe(400);
+  });
+});

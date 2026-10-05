@@ -115,6 +115,7 @@ import {
 import {
   PROPOSAL_REMOVED_NOTE,
   PROPOSAL_REVIEWED_ERROR,
+  isNewerVersion,
   proposalReviewState,
 } from '@/lib/utils/proposalReview';
 import { useFreshUploads } from '@/lib/hooks/useFreshUploads';
@@ -684,6 +685,19 @@ export default function WishlistDetail() {
     (error: string, failure: ItemRequestFailure) => {
       showToast(error, 'error');
       if (failure.proposalReviewed) setItemToReview(null);
+      // Edited by the proposer since the dialog was filled (WIS-320): it stays
+      // open and refills from the proposal as it is now, so the owner sees the
+      // edit before approving.
+      const edited = failure.editedProposal;
+      if (edited) {
+        setItemToReview((current) =>
+          current &&
+          current._id === edited._id &&
+          isNewerVersion(edited.updatedAt, current.updatedAt)
+            ? edited
+            : current
+        );
+      }
     },
     [showToast]
   );
@@ -827,8 +841,11 @@ export default function WishlistDetail() {
       // It expects the item to still be the proposal the dialog opened on: one a
       // co-owner has reviewed since is answered 409 and closes the dialog (see
       // onItemRequestError), so it can't overwrite their review (WIS-199).
+      // And the version it shows: an edit by the proposer since is answered 409
+      // with the proposal as it is now, and the dialog refills (WIS-320).
       const approved = await handleUpdateItem(itemToReview._id, updates, {
         expectProposal: true,
+        expectedVersion: itemToReview.updatedAt,
       });
       if (!approved) throw new Error('Failed to approve item');
       showToast(updates.status === 'draft' ? 'Added as a draft' : 'Added to the list', 'success');
@@ -853,6 +870,24 @@ export default function WishlistDetail() {
     setItems((prevItems) => prevItems.filter((item) => item._id !== itemId));
     showToast('Proposal declined', 'success');
   }, [itemToReview, deleteItemHook, showToast, mutations]);
+
+  // A read brings a later version of the proposal under review (the proposer
+  // edited it): the dialog refills from it, keeping the owner's own edits, and
+  // says so, rather than approve fields the owner never saw (WIS-320). The
+  // approve's version check covers an edit no read has brought yet.
+  const liveReviewed = itemToReview
+    ? items.find((item) => item._id === itemToReview._id)
+    : undefined;
+  useEffect(() => {
+    if (liveReviewed?.status !== 'proposed') return;
+    setItemToReview((current) =>
+      current &&
+      current._id === liveReviewed._id &&
+      isNewerVersion(liveReviewed.updatedAt, current.updatedAt)
+        ? liveReviewed
+        : current
+    );
+  }, [liveReviewed]);
 
   // A read shows the proposal under review isn't one any more: a co-owner
   // reviewed it, or it was declined or withdrawn. The dialog closes and says

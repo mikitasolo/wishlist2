@@ -153,3 +153,31 @@ export function itemChanges(
   if (!samePrice(next.price, saved.price)) changes.price = next.price;
   return changes;
 }
+
+/**
+ * The form refilled from a newer version of its item (WIS-320: the proposer
+ * edited a proposal while an owner was reviewing it). A field the person hasn't
+ * touched (still as `filledFrom`) takes `next`'s value; a touched one keeps
+ * theirs. The price's amount and currency go together, as one field, as
+ * `itemChanges` counts them.
+ */
+export function rebaseItemForm(
+  form: ItemFormData,
+  filledFrom: ItemFormData,
+  next: ItemFormData
+): ItemFormData {
+  const rebased = { ...next };
+  const keep = <K extends keyof ItemFormData>(...keys: K[]) => {
+    if (keys.some((key) => form[key] !== filledFrom[key])) {
+      for (const key of keys) rebased[key] = form[key];
+    }
+  };
+  keep('name');
+  keep('imageUrl');
+  keep('price', 'currency');
+  keep('link');
+  keep('notes');
+  keep('mostWanted');
+  keep('isDraft');
+  return rebased;
+}
