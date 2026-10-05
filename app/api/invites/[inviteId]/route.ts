@@ -4,6 +4,7 @@ import { auth } from '@/lib/auth';
 import connectDB from '@/lib/mongodb';
 import Wishlist, { type IWishlist } from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
+import { clearShareLinkBlock } from '@/lib/utils/linkBlocks';
 import WishlistInvite, { type IWishlistInvite } from '@/models/WishlistInvite';
 import {
   clearSupersededInviteNotification,
@@ -399,6 +400,9 @@ export async function PATCH(
       recordInviteAnswer({ invite, answer: 'accepted', answeredAt }),
       // On the list now, so a request to join it is over (best-effort).
       endPendingJoinRequest(invite.wishlist, userId),
+      // An owner's invite is the way back for someone kicked: its share links
+      // work for them again (WIS-338, best-effort).
+      clearShareLinkBlock(invite.wishlist, userId),
     ]);
 
     return NextResponse.json(

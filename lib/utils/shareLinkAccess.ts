@@ -6,6 +6,7 @@ import { resolveShareLink } from '@/lib/utils/shareLinks';
 import { SHARE_TOKEN_HEADER } from '@/lib/utils/shareLinkFields';
 import { getWishlistViewAccess } from '@/lib/utils/wishlistAccess';
 import { errorKind } from '@/lib/utils/errorKind';
+import { isBlockedFromShareLinks } from '@/lib/utils/linkBlocks';
 
 /**
  * Letting a viewer into a list, with or without a share link (WIS-335): the
@@ -26,8 +27,9 @@ import { errorKind } from '@/lib/utils/errorKind';
  * fail-open), so guessing tokens is slow while a live link, which a whole
  * wedding may open from one IP every 5 seconds, is never throttled.
  *
- * Link resolution lives here alone, so a later check on the link (a kicked
- * person's block, WIS-338) goes in `resolveLinkFor` and covers every route.
+ * Link resolution lives here alone, so a check on the link covers every
+ * route: a signed-in viewer kicked from the list (`WishlistLinkBlock`, WIS-338)
+ * is answered exactly as a dead link, failed-lookup budget included.
  */
 
 export const wishlistNotFoundResponse = () =>
@@ -47,13 +49,15 @@ export type ListAdmission =
     };
 
 /**
- * The share link a link-mode request names, if it's live and opens `wishlist`,
- * else `null` (the dead-link answer). A failed lookup spends the caller's IP
- * budget; over it, the 429 is returned instead.
+ * The share link a link-mode request names, if it's live, opens `wishlist`
+ * and `viewerId` isn't kept out of it (kicked, WIS-338), else the dead-link
+ * answer. A failed lookup spends the caller's IP budget; over it, the 429 is
+ * returned instead.
  */
 async function resolveLinkFor(
   token: string,
   wishlist: Pick<IWishlist, '_id'>,
+  viewerId: string | null | undefined,
   headers: Headers
 ): Promise<{ link: IShareLink } | { response: NextResponse }> {
   let resolved: Awaited<ReturnType<typeof resolveShareLink>>;
@@ -63,7 +67,13 @@ async function resolveLinkFor(
     // The routes log what they catch; this one never quotes the token.
     throw new Error(`Share link lookup failed: ${JSON.stringify(errorKind(err))}`);
   }
-  if (resolved && resolved.link.wishlist.equals(wishlist._id)) return { link: resolved.link };
+  if (
+    resolved &&
+    resolved.link.wishlist.equals(wishlist._id) &&
+    !(await isBlockedFromShareLinks(wishlist._id, viewerId))
+  ) {
+    return { link: resolved.link };
+  }
   const limited = await enforce('shareLinkInvalid', ipKey(headers));
   return { response: limited ?? wishlistNotFoundResponse() };
 }
@@ -94,7 +104,7 @@ export async function admitListViewer(
     return { allowed: true, isOwner: access.isOwner, isMember: access.isMember, linkMode: false };
   }
 
-  const resolved = await resolveLinkFor(token, wishlist, request.headers);
+  const resolved = await resolveLinkFor(token, wishlist, viewerId, request.headers);
   if ('response' in resolved)
     return { allowed: false, response: linkModeAnswer(resolved.response) };
   const access = await getWishlistViewAccess(wishlist, viewerId, { link: resolved.link });
