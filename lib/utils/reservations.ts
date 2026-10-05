@@ -4,7 +4,7 @@
 // they can still open its list (`listOpen`), and whether that list is archived
 // (`listArchived`); these helpers turn that into UI grouping and copy.
 
-import { convertPrice } from '@/lib/utils/currency';
+import { convertPrice, normalizeCurrency } from '@/lib/utils/currency';
 import { NO_UPCOMING_OCCASION, occasionSortKey, type Occasion } from '@/lib/utils/occasion';
 
 export interface ReservationStatusInfo {
@@ -193,14 +193,14 @@ export function totalInCurrency(
   currency: string,
   rates: Record<string, number> | null
 ): { price: PriceLike; approx: boolean } | null {
-  const target = currency.toLowerCase();
+  const target = normalizeCurrency(currency);
   let sum = 0;
   let approx = false;
   let any = false;
   for (const p of prices) {
     if (!p) continue;
     any = true;
-    if (p.currency.toLowerCase() === target) {
+    if (normalizeCurrency(p.currency) === target) {
       sum += p.value;
       continue;
     }

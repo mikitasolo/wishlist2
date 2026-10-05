@@ -16,6 +16,7 @@ import { useUsernameAvailability } from '@/lib/hooks/useUsernameAvailability';
 import { useCurrencySuggestion } from '@/lib/hooks/useCurrencySuggestion';
 import { safeCallbackPath } from '@/lib/utils/callbackUrl';
 import { currencySelectOptions } from '@/lib/utils/currencies';
+import { normalizeCurrency } from '@/lib/utils/currency';
 import { currencyToOffer } from '@/lib/utils/currencySuggestion';
 
 const SAVE_FAILED = "Couldn't save your username";
@@ -92,7 +93,7 @@ function Welcome() {
   }, [offeredNow]);
   const [pickedCurrency, setPickedCurrency] = useState<string | null>(null);
   const currency = offered ? (pickedCurrency ?? offered) : null;
-  const currentCurrency = (session?.user?.defaultCurrency ?? 'USD').toUpperCase();
+  const currentCurrency = normalizeCurrency(session?.user?.defaultCurrency);
 
   useEffect(() => {
     if (status === 'unauthenticated') router.replace('/');

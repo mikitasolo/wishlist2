@@ -97,7 +97,7 @@ describe.each(modals)('$kind dialog — Keep adding', ({ kind, title, submit }) 
 
     await waitFor(() => expect(name()).toHaveValue(''));
     expect(onSubmit).toHaveBeenLastCalledWith(
-      expect.objectContaining({ name: 'Bike', price: { value: 12000, currency: 'pln' } })
+      expect.objectContaining({ name: 'Bike', price: { value: 12000, currency: 'PLN' } })
     );
     expect(price()).toHaveValue('');
     expect(screen.getByRole('combobox', { name: 'Currency' })).toHaveTextContent('PLN');

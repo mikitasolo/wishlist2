@@ -1,5 +1,6 @@
 import connectDB from '@/lib/mongodb';
 import CurrencyRate, { ICurrencyRate } from '@/models/CurrencyRate';
+import { rateKey } from '@/lib/utils/currency';
 
 /**
  * Fetches currency exchange rates from the external API
@@ -90,7 +91,8 @@ export async function ensureCurrencyRatesUpToDate(): Promise<ICurrencyRate | nul
 /**
  * Converts a price from any currency to USD cents
  * @param value - Price value in cents (integer) in the source currency
- * @param currency - Source currency code (lowercase, e.g., 'eur', 'usd')
+ * @param currency - Source currency code, in either casing ('EUR', or 'eur' as
+ *   item prices were stored before WIS-49)
  * @param rates - Currency rates map from CurrencyRate model
  * @returns Price in USD cents (integer), or null if conversion fails
  */
@@ -103,7 +105,7 @@ export function convertToUsdCents(
     return null;
   }
 
-  const currencyLower = currency.toLowerCase();
+  const currencyLower = rateKey(currency);
 
   // If already USD, value is already in cents
   if (currencyLower === 'usd') {
@@ -133,7 +135,7 @@ export function convertCurrency(
 ): number | null {
   const usdCents = convertToUsdCents(value, from, rates);
   if (usdCents == null) return null;
-  const toLower = to.toLowerCase();
+  const toLower = rateKey(to);
   if (toLower === 'usd') return usdCents;
   const rate = rates.get(toLower);
   if (!rate) return null;

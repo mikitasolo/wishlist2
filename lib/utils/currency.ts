@@ -3,9 +3,10 @@
  * amount someone typed.
  *
  * A price is an integer number of cents (hundredths of the unit, whatever the
- * currency) and a currency code. Code casing isn't uniform in the DB (an item's
- * is lowercase, a list's and a user's uppercase), so every helper here takes
- * either and normalizes it.
+ * currency) and an uppercase ISO 4217 code. Item prices and their snapshots
+ * were stored lowercase until WIS-49, and the `uppercase-currency-codes`
+ * migration rewrites them, so until it has run everywhere every helper here
+ * takes either casing: compare codes only through `normalizeCurrency`.
  *
  * Every price the app shows goes through `formatPrice` (or `formatApproxPrice`
  * for a converted one), in the viewer's locale: "€349.00" in en-US, "349,00 €"
@@ -21,7 +22,7 @@
 export interface Price {
   /** Cents: hundredths of the unit, in every currency. */
   value: number;
-  /** ISO 4217 code, either case. */
+  /** ISO 4217 code: uppercase, though older rows may still be lowercase. */
   currency: string;
 }
 
@@ -31,9 +32,32 @@ export interface Price {
  */
 export const PRICE_FALLBACK_LOCALE = 'en-US';
 
-/** A currency code as `Intl` takes it: uppercase, USD when there's none. */
-function currencyCode(currency: string | null | undefined): string {
-  return (currency || 'USD').trim().toUpperCase();
+/**
+ * A currency code the way it's stored and compared: trimmed and uppercase
+ * ("eur " → "EUR"), USD when there's none. Every comparison of two codes goes
+ * through this, so a lowercase code written before WIS-49 still matches.
+ */
+export function normalizeCurrency(currency: string | null | undefined): string {
+  return (currency || '').trim().toUpperCase() || 'USD';
+}
+
+/** A currency code as `Intl` takes it. */
+const currencyCode = normalizeCurrency;
+
+/**
+ * The key `code` has in a rates map, whose keys are lowercase (the rates API's
+ * format; see `ensureCurrencyRatesUpToDate`). Only the rates helpers use it.
+ */
+export function rateKey(currency: string): string {
+  return normalizeCurrency(currency).toLowerCase();
+}
+
+/**
+ * Whether the server's rates map knows `currency`, in either casing: what an
+ * item's price must be in to be saved.
+ */
+export function hasRate(rates: Map<string, number>, currency: string): boolean {
+  return rates.has(rateKey(currency));
 }
 
 const formatters = new Map<string, Intl.NumberFormat | null>();
@@ -257,18 +281,20 @@ export function parsePriceInput(
  * Client-safe price conversion between currencies, routing through USD. Rates
  * are currency-per-USD (the shape returned by /api/currency-rates), matching the
  * server-side helpers. Returns null if a needed rate is missing.
- * @param price - source price ({ value in cents, currency })
- * @param to - target currency code
+ * @param price - source price ({ value in cents, currency in either casing })
+ * @param to - target currency code, in either casing
  * @param rates - map of lowercase currency code → units per USD
+ * @returns the price in `to`, its code uppercase
  */
 export function convertPrice(
   price: Price,
   to: string,
   rates: Record<string, number>
 ): { value: number; currency: string } | null {
-  const from = price.currency.toLowerCase();
-  const target = to.toLowerCase();
-  if (from === target) return { value: price.value, currency: target };
+  const from = rateKey(price.currency);
+  const target = rateKey(to);
+  const currency = normalizeCurrency(to);
+  if (from === target) return { value: price.value, currency };
 
   // Source → USD cents
   let usdCents: number;
@@ -281,10 +307,10 @@ export function convertPrice(
   }
 
   // USD cents → target
-  if (target === 'usd') return { value: Math.round(usdCents), currency: 'usd' };
+  if (target === 'usd') return { value: Math.round(usdCents), currency };
   const rate = rates[target];
   if (!rate) return null;
-  return { value: Math.round(usdCents * rate), currency: target };
+  return { value: Math.round(usdCents * rate), currency };
 }
 
 /**
@@ -301,6 +327,6 @@ export function convertedPrice(
 ): Price | null {
   if (currency === 'original' || !rates) return null;
   const converted = convertPrice(price, currency, rates);
-  if (!converted || converted.currency === price.currency.toLowerCase()) return null;
+  if (!converted || converted.currency === normalizeCurrency(price.currency)) return null;
   return converted;
 }

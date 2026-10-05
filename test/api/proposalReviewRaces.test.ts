@@ -129,7 +129,7 @@ const approvalsSentToAlice = () =>
 // The co-owner's review, which lands first, and the owner's, which comes late.
 const firstReview = {
   name: 'Blue Mug (large)',
-  price: { value: 2500, currency: 'usd' },
+  price: { value: 2500, currency: 'USD' },
   notes: 'The large one',
   status: 'available',
 } as const;

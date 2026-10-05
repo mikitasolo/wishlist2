@@ -158,8 +158,15 @@ curl -X POST -H "X-Migration-Secret: $MIGRATION_SECRET" \
   https://<your-host>/api/migrations/<name>
 ```
 
-There are none in the tree right now. These have been applied to every environment and removed; recover any
-of them from git history if you ever need to replay one against a restored backup:
+One is in the tree right now:
+
+- `uppercase-currency-codes` (WIS-49) uppercases the currency code of item prices and of the booking snapshots
+  copied from them (`Reservation` / `GiftLog` `itemPrice`), which were stored lowercase. Run it on staging and then
+  production only **after** the release that reads both casings is deployed. It's idempotent and returns how many
+  rows it rewrote per collection.
+
+These have been applied to every environment and removed; recover any of them from git history if you ever need
+to replay one against a restored backup:
 
 - the co-ownership set: `wishlist-owners`, `remove-admin-role`, `drop-legacy-owner-fields`;
 - `dedupe-pending-invites`, which deduped pending invites and built the unique pending-invite index;

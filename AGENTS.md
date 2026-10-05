@@ -134,7 +134,7 @@ Read it before touching roles, invites, bookings, visibility, notifications or a
 
 ### [Backend & platform](docs/agents/backend.md)
 
-- **Money** is integer cents; currency casing differs by field; other people's prices show in the viewer's currency, always through `formatPrice`. A user's currency is suggested, never guessed. An occasion date is a `YYYY-MM-DD` calendar date: use `lib/utils/occasion.ts` and `useLocalToday`.
+- **Money** is integer cents; currency codes are stored uppercase, but compare them only through `normalizeCurrency` until the WIS-49 migration has run everywhere; other people's prices show in the viewer's currency, always through `formatPrice`. A user's currency is suggested, never guessed. An occasion date is a `YYYY-MM-DD` calendar date: use `lib/utils/occasion.ts` and `useLocalToday`.
 - **Auth**: accounts are created on the first verified sign-in (the adapter's `createUser`); the session callback returns the `sessionPayload` allowlist; only the home page reads the session on the server; a magic link is sent only by the sign-in form's Turnstile-checked server action.
 - **sharp** needs libvips shipped by hand (`outputFileTracingIncludes`, `check:trace`); load it lazily outside the upload route.
 - **Uploads** are re-encoded, type-checked, owned (`uploads/<userId>/`, `canAttachImage`) and freed only via the `blob.ts` helpers from what the write replaced; unsaved uploads are handed back; snapshots have their own helpers.

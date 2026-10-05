@@ -38,7 +38,7 @@ afterAll(() => vi.restoreAllMocks());
 beforeEach(() => cleanup());
 
 describe('EditItemModal — save outcome', () => {
-  const saved = () => item({ price: { value: 5000, currency: 'eur' } });
+  const saved = () => item({ price: { value: 5000, currency: 'EUR' } });
   const nameInput = () => screen.getByLabelText(/item name/i);
   const priceInput = () => screen.getByLabelText(/^price$/i);
   const saveButton = () => screen.getByRole('button', { name: /^save$/i });
@@ -118,7 +118,7 @@ describe('EditItemModal — save outcome', () => {
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     expect(onSave).toHaveBeenCalledTimes(2);
     expect(onSave).toHaveBeenLastCalledWith(
-      expect.objectContaining({ name: 'Road bike', price: { value: 12050, currency: 'eur' } })
+      expect.objectContaining({ name: 'Road bike', price: { value: 12050, currency: 'EUR' } })
     );
   });
 });
@@ -160,7 +160,7 @@ describe('EditItemModal — sends only what changed', () => {
     item({
       name: 'Blue Mug',
       imageUrl: ALICES_IMAGE,
-      price: { value: 1250, currency: 'usd' },
+      price: { value: 1250, currency: 'USD' },
       link: 'https://shop.example.com/mug',
       notes: 'Any colour',
       mostWanted: false,
@@ -219,7 +219,7 @@ describe('EditItemModal — sends only what changed', () => {
     fireEvent.click(screen.getByRole('option', { name: /EUR · Euro/ }));
     fireEvent.click(saveButton());
     await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
-    expect(onSave).toHaveBeenCalledWith({ price: { value: 1250, currency: 'eur' } });
+    expect(onSave).toHaveBeenCalledWith({ price: { value: 1250, currency: 'EUR' } });
   });
 
   it('closes without a request when nothing changed', async () => {

@@ -27,7 +27,11 @@ const ItemSchema = new Schema(
           currency: {
             type: String,
             required: true,
-            lowercase: true, // Store in lowercase to match rates format
+            // ISO 4217, uppercase like `Wishlist.currency` and
+            // `User.defaultCurrency`. Rows from before WIS-49 may still be
+            // lowercase until `uppercase-currency-codes` has run.
+            uppercase: true,
+            trim: true,
           },
         },
         { _id: false } // Don't create _id for nested subdocuments

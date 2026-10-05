@@ -1,7 +1,12 @@
 import type { ApiItem } from '@/types/api';
 import { defaultItemCurrency } from '@/lib/utils/currencies';
 import { normalizeItemLink } from '@/lib/utils/itemFields';
-import { PRICE_FALLBACK_LOCALE, formatPriceInput, parsePriceInput } from '@/lib/utils/currency';
+import {
+  PRICE_FALLBACK_LOCALE,
+  formatPriceInput,
+  normalizeCurrency,
+  parsePriceInput,
+} from '@/lib/utils/currency';
 
 /**
  * The item form (`components/ItemForm.tsx`, behind the add, edit, propose and
@@ -37,7 +42,7 @@ export interface ItemFormData {
 /**
  * An item's content as an edit sends it, and as the server stores it: no image,
  * link or notes is `null`, and the price is in cents with its currency
- * lowercase (to match `Item.price.currency`), or `null` for none.
+ * uppercase (as `Item.price.currency` is stored), or `null` for none.
  */
 export interface ItemContent {
   name: string;
@@ -76,7 +81,9 @@ export function itemToFormData(
     imageUrl: item.imageUrl || '',
     price,
     // Display uppercase in UI
-    currency: item.price?.currency?.toUpperCase() || defaultItemCurrency(defaultCurrency),
+    currency: item.price?.currency
+      ? normalizeCurrency(item.price.currency)
+      : defaultItemCurrency(defaultCurrency),
     link: item.link || '',
     notes: item.notes || '',
     mostWanted: item.mostWanted === true,
@@ -95,7 +102,7 @@ function formPrice(form: ItemFormData, locale: string): ItemContent['price'] {
   if (!amount.ok || amount.cents === null) return null;
   return {
     value: amount.cents,
-    currency: (form.currency || 'USD').toLowerCase(),
+    currency: normalizeCurrency(form.currency),
   };
 }
 
@@ -120,7 +127,7 @@ export function itemFormContent(
 
 function samePrice(a: ItemContent['price'], b: ItemContent['price']): boolean {
   if (!a || !b) return a === b;
-  return a.value === b.value && a.currency === b.currency;
+  return a.value === b.value && normalizeCurrency(a.currency) === normalizeCurrency(b.currency);
 }
 
 const PLAIN_FIELDS = ['name', 'imageUrl', 'link', 'notes', 'mostWanted'] as const;

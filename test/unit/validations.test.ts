@@ -453,6 +453,17 @@ describe('createItemSchema', () => {
     ).toBe(false); // non-integer cents
   });
 
+  // WIS-49: item prices are stored uppercase, like a list's and a user's code.
+  it('uppercases and trims the price currency, on create and on update', () => {
+    for (const schema of [createItemSchema, updateItemSchema]) {
+      const parsed = schema.safeParse({ name: 'x', price: { value: 999, currency: ' eur ' } });
+      expect(parsed.success && parsed.data.price).toEqual({ value: 999, currency: 'EUR' });
+      expect(schema.safeParse({ name: 'x', price: { value: 999, currency: '  ' } }).success).toBe(
+        false
+      );
+    }
+  });
+
   // regression: the create schema accepted `booked` / `completed`, so a create
   // could make an item that is already booked with no Reservation behind it.
   it('regression: only allows draft, available and proposed as a status', () => {

@@ -18,10 +18,11 @@
  * converted, and a control naming a currency the cards aren't in would say
  * otherwise). Without it, prices show in their own currency.
  *
- * Currency codes are compared uppercase: `Item.price.currency` is stored
- * lowercase, `User.defaultCurrency` uppercase.
+ * Currency codes are compared through `normalizeCurrency`: item prices stored
+ * before WIS-49 may still be lowercase.
  */
 import { isOfferedCurrency } from '@/lib/utils/currencies';
+import { normalizeCurrency } from '@/lib/utils/currency';
 
 /** The Prices value that shows each price in its own currency. */
 export const ORIGINAL_PRICES = 'original';
@@ -34,7 +35,7 @@ export type PricesContext = 'own' | 'others';
 
 /** The viewer's currency, uppercase (an account starts on USD). */
 export function viewerPriceCurrency(defaultCurrency: string | null | undefined): string {
-  return (defaultCurrency || 'USD').toUpperCase();
+  return normalizeCurrency(defaultCurrency);
 }
 
 /** Whether any priced item is in a currency other than the viewer's. */
@@ -42,16 +43,16 @@ export function needsPricesControl(
   items: Iterable<{ price?: { currency: string } | null }>,
   viewerCurrency: string
 ): boolean {
-  const mine = viewerCurrency.toUpperCase();
+  const mine = normalizeCurrency(viewerCurrency);
   for (const { price } of items) {
-    if (price?.currency && price.currency.toUpperCase() !== mine) return true;
+    if (price?.currency && normalizeCurrency(price.currency) !== mine) return true;
   }
   return false;
 }
 
 /** Where Prices starts when the viewer hasn't picked anything. */
 export function defaultPricesChoice(context: PricesContext, viewerCurrency: string): string {
-  return context === 'own' ? ORIGINAL_PRICES : viewerCurrency.toUpperCase();
+  return context === 'own' ? ORIGINAL_PRICES : normalizeCurrency(viewerCurrency);
 }
 
 /** Whether `value` can be stored as a pick. */
@@ -80,7 +81,7 @@ export function savedPricesChoice(
   viewerCurrency: string
 ): string | null {
   const stored = storage.getItem(pricesChoiceKey(userId, context));
-  if (stored === VIEWER_CURRENCY_CHOICE) return viewerCurrency.toUpperCase();
+  if (stored === VIEWER_CURRENCY_CHOICE) return normalizeCurrency(viewerCurrency);
   return isStoredValue(stored) ? stored : null;
 }
 
@@ -96,7 +97,7 @@ export function rememberPricesChoice(
   viewerCurrency: string
 ): void {
   const key = pricesChoiceKey(userId, context);
-  const stored = value === viewerCurrency.toUpperCase() ? VIEWER_CURRENCY_CHOICE : value;
+  const stored = value === normalizeCurrency(viewerCurrency) ? VIEWER_CURRENCY_CHOICE : value;
   if (value === defaultPricesChoice(context, viewerCurrency) || !isStoredValue(stored)) {
     storage.removeItem(key);
   } else {

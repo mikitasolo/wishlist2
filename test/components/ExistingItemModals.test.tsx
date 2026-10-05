@@ -101,11 +101,11 @@ describe.each(modals)('$name — price and currency', (modal) => {
     fireEvent.click(screen.getByRole('button', { name: submitLabel }));
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
     // Shown uppercase, stored lowercase to match Item.price.currency.
-    expect(onSubmit.mock.calls[0][0].price).toEqual({ value: 2500, currency: 'pln' });
+    expect(onSubmit.mock.calls[0][0].price).toEqual({ value: 2500, currency: 'PLN' });
   });
 
   it('an item priced in EUR still starts on EUR on a PLN list', async () => {
-    const { onSubmit } = open({ price: { value: 1000, currency: 'eur' } });
+    const { onSubmit } = open({ price: { value: 1000, currency: 'EUR' } });
     expect(currencyButton('EUR')).toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: 'Currency' })).not.toHaveTextContent('PLN');
     expect(priceInput()).toHaveValue('10.00');
@@ -113,7 +113,7 @@ describe.each(modals)('$name — price and currency', (modal) => {
     fireEvent.change(priceInput(), { target: { value: '12' } });
     fireEvent.click(screen.getByRole('button', { name: submitLabel }));
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
-    expect(onSubmit.mock.calls[0][0].price).toEqual({ value: 1200, currency: 'eur' });
+    expect(onSubmit.mock.calls[0][0].price).toEqual({ value: 1200, currency: 'EUR' });
   });
 
   it("falls back to the viewer's default, then USD, when the wishlist has no currency", () => {
@@ -152,7 +152,7 @@ describe.each(modals)('$name — price and currency', (modal) => {
   // price.value, so an item priced at 0 opened with an empty price field and
   // saving any other change submitted `price: null`, which cleared it.
   it('regression: an item priced at 0 keeps its price when another field is saved', async () => {
-    const { onSubmit } = open({ price: { value: 0, currency: 'eur' } });
+    const { onSubmit } = open({ price: { value: 0, currency: 'EUR' } });
     expect(priceInput()).toHaveDisplayValue('0.00');
     expect(currencyButton('EUR')).toBeInTheDocument();
 
@@ -165,11 +165,11 @@ describe.each(modals)('$name — price and currency', (modal) => {
     expect(sent).toMatchObject({ notes: 'Free, just take it' });
     // An edit leaves the unchanged price out; the review sends it as it is.
     if (sendsOnlyChanges) expect(sent).not.toHaveProperty('price');
-    else expect(sent.price).toEqual({ value: 0, currency: 'eur' });
+    else expect(sent.price).toEqual({ value: 0, currency: 'EUR' });
   });
 
   it('does not count a 0.00 price as an unsaved change', () => {
-    const { onClose } = open({ price: { value: 0, currency: 'eur' } });
+    const { onClose } = open({ price: { value: 0, currency: 'EUR' } });
     fireEvent.click(screen.getByRole('button', { name: /^cancel$/i }));
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(screen.queryByText(/discard changes\?/i)).toBeNull();
@@ -178,13 +178,13 @@ describe.each(modals)('$name — price and currency', (modal) => {
 
 describe('itemToFormData — price', () => {
   it('shows a zero price as 0.00, not as an empty field', () => {
-    expect(itemToFormData(item({ price: { value: 0, currency: 'eur' } }), 'PLN').price).toBe(
+    expect(itemToFormData(item({ price: { value: 0, currency: 'EUR' } }), 'PLN').price).toBe(
       '0.00'
     );
   });
 
   it('shows cents as a two-decimal amount', () => {
-    expect(itemToFormData(item({ price: { value: 1999, currency: 'eur' } }), 'PLN').price).toBe(
+    expect(itemToFormData(item({ price: { value: 1999, currency: 'EUR' } }), 'PLN').price).toBe(
       '19.99'
     );
   });
@@ -202,11 +202,11 @@ describe('itemToFormData — currency', () => {
   });
 
   it("keeps a priced item's own currency, shown uppercase", () => {
-    expect(itemToFormData(item({ price: { value: 1000, currency: 'eur' } }), 'PLN').currency).toBe(
+    expect(itemToFormData(item({ price: { value: 1000, currency: 'EUR' } }), 'PLN').currency).toBe(
       'EUR'
     );
     // A zero price is still a price, so it keeps its own currency too.
-    expect(itemToFormData(item({ price: { value: 0, currency: 'gbp' } }), 'PLN').currency).toBe(
+    expect(itemToFormData(item({ price: { value: 0, currency: 'GBP' } }), 'PLN').currency).toBe(
       'GBP'
     );
   });
