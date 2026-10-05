@@ -13,9 +13,7 @@ import {
   rateKey,
 } from '@/lib/utils/currency';
 
-// WIS-49: codes are stored uppercase, but item prices (and their snapshots)
-// written before it are lowercase until the `uppercase-currency-codes`
-// migration has run, so every helper takes either casing.
+// Codes are stored uppercase; the helpers still take either casing from input.
 describe('normalizeCurrency', () => {
   it('trims and uppercases a code, whatever its casing', () => {
     expect(normalizeCurrency('eur')).toBe('EUR');
@@ -72,7 +70,7 @@ describe('formatPrice', () => {
     expect(formatPrice({ value: 12345600, currency: 'inr' }, 'en-IN')).toBe('₹1,23,456.00');
   });
 
-  it('reads the currency code in either case (items are lowercase, lists uppercase)', () => {
+  it('reads the currency code in either case', () => {
     expect(formatPrice({ value: 1250, currency: 'GBP' }, 'en-US')).toBe('£12.50');
     expect(formatPrice({ value: 1250, currency: 'gbp' }, 'en-US')).toBe('£12.50');
   });

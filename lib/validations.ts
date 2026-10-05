@@ -214,8 +214,8 @@ const itemNotesSchema = z
   .max(ITEM_NOTES_MAX, `Notes must be ${ITEM_NOTES_MAX} characters or less`);
 
 /**
- * An item price's currency code, stored uppercase like a list's and a user's
- * (WIS-49; before it, item prices were lowercase). The route checks it against
+ * An item price's currency code, stored uppercase like a list's and a user's.
+ * The route checks it against
  * the day's rates (`hasRate`).
  */
 const itemCurrencySchema = z.string().trim().toUpperCase().min(1, 'Currency code is required');

@@ -46,8 +46,7 @@ describe('convertCurrency (routes through USD)', () => {
   });
 });
 
-// WIS-49: new prices are stored uppercase, older ones lowercase until the
-// `uppercase-currency-codes` migration has run; the rates map stays lowercase.
+// Prices are stored uppercase; the rates map stays lowercase.
 describe('either casing of a currency code', () => {
   it('converts an uppercase code as it does a lowercase one', () => {
     expect(convertToUsdCents(400, 'PLN', rates)).toBe(100);

@@ -18,8 +18,7 @@
  * converted, and a control naming a currency the cards aren't in would say
  * otherwise). Without it, prices show in their own currency.
  *
- * Currency codes are compared through `normalizeCurrency`: item prices stored
- * before WIS-49 may still be lowercase.
+ * Currency codes are compared through `normalizeCurrency`.
  */
 import { isOfferedCurrency } from '@/lib/utils/currencies';
 import { normalizeCurrency } from '@/lib/utils/currency';
