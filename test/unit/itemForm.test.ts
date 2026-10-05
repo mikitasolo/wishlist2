@@ -189,7 +189,6 @@ describe('itemToFormData — the price', () => {
     expect(itemToFormData(priced(123450, 'eur'), 'USD').price).toBe('1,234.50');
   });
 
-  // WIS-49: a price stored before it is lowercase until the migration runs.
   it('fills a lowercase stored currency as the uppercase code, and sends it uppercase', () => {
     const form = itemToFormData(priced(34900, 'eur'), 'USD');
     expect(form.currency).toBe('EUR');

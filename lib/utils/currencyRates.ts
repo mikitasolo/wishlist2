@@ -91,8 +91,8 @@ export async function ensureCurrencyRatesUpToDate(): Promise<ICurrencyRate | nul
 /**
  * Converts a price from any currency to USD cents
  * @param value - Price value in cents (integer) in the source currency
- * @param currency - Source currency code, in either casing ('EUR', or 'eur' as
- *   item prices were stored before WIS-49)
+ * @param currency - Source currency code, ('EUR'; any casing is
+ *   accepted, the rates map being keyed lowercase)
  * @param rates - Currency rates map from CurrencyRate model
  * @returns Price in USD cents (integer), or null if conversion fails
  */

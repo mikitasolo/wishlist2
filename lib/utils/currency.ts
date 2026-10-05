@@ -3,10 +3,8 @@
  * amount someone typed.
  *
  * A price is an integer number of cents (hundredths of the unit, whatever the
- * currency) and an uppercase ISO 4217 code. Item prices and their snapshots
- * were stored lowercase until WIS-49, and the `uppercase-currency-codes`
- * migration rewrites them, so until it has run everywhere every helper here
- * takes either casing: compare codes only through `normalizeCurrency`.
+ * currency) and an uppercase ISO 4217 code. Codes are compared only through
+ * `normalizeCurrency`, which also cleans up a code typed or sent by a client.
  *
  * Every price the app shows goes through `formatPrice` (or `formatApproxPrice`
  * for a converted one), in the viewer's locale: "€349.00" in en-US, "349,00 €"
@@ -22,7 +20,7 @@
 export interface Price {
   /** Cents: hundredths of the unit, in every currency. */
   value: number;
-  /** ISO 4217 code: uppercase, though older rows may still be lowercase. */
+  /** ISO 4217 code: uppercase. */
   currency: string;
 }
 
@@ -35,7 +33,7 @@ export const PRICE_FALLBACK_LOCALE = 'en-US';
 /**
  * A currency code the way it's stored and compared: trimmed and uppercase
  * ("eur " → "EUR"), USD when there's none. Every comparison of two codes goes
- * through this, so a lowercase code written before WIS-49 still matches.
+ * through this, so a code a client sent in another casing still matches.
  */
 export function normalizeCurrency(currency: string | null | undefined): string {
   return (currency || '').trim().toUpperCase() || 'USD';

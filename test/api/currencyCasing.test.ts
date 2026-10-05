@@ -3,9 +3,7 @@ import { NextRequest } from 'next/server';
 import { connectTestDB, disconnectTestDB, clearTestDB } from '../db';
 
 // WIS-49: item prices (and the booking snapshots copied from them) are stored
-// with an uppercase currency code. Rows written before it are lowercase until
-// the `uppercase-currency-codes` migration has run, so they still have to read
-// and convert as before.
+// with an uppercase currency code, whatever casing a client sends.
 
 vi.mock('@/lib/mongodb', () => ({ default: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('@/lib/auth', () => ({ auth: vi.fn() }));
@@ -81,19 +79,6 @@ async function listed(id: string) {
   return items.find((i) => i._id === id);
 }
 
-/** An item as written before WIS-49: straight to the collection, lowercase code. */
-async function legacyItem(currency = 'eur') {
-  const { insertedId } = await Item.collection.insertOne({
-    wishlist: Item.castObject({ wishlist: wishlistId }).wishlist,
-    name: 'Old price',
-    status: 'available',
-    price: { value: 1000, currency },
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  });
-  return insertedId.toString();
-}
-
 async function storedCurrency(id: string) {
   const raw = await Item.collection.findOne({ _id: Item.castObject({ _id: id })._id });
   return (raw?.price as { currency: string } | undefined)?.currency;
@@ -151,22 +136,5 @@ describe('new item prices are stored uppercase', () => {
     expect((await patch(created.data._id, { status: 'booked' })).status).toBe(200);
     const reservation = await Reservation.findOne({ item: created.data._id }).lean();
     expect(reservation?.itemPrice).toEqual({ value: 900, currency: 'EUR' });
-  });
-});
-
-describe('a price stored lowercase before WIS-49', () => {
-  it('still converts for the price sorts', async () => {
-    const id = await legacyItem('eur');
-    as(memberId);
-    expect((await listed(id))?.priceInUsdCents).toBe(2000);
-  });
-
-  it('is rewritten uppercase by an edit that changes it, and survives one that does not', async () => {
-    const id = await legacyItem('eur');
-    as(ownerId);
-    expect((await patch(id, { notes: 'Blue' })).status).toBe(200);
-    expect(await storedCurrency(id)).toBe('eur');
-    expect((await patch(id, { price: { value: 1000, currency: 'eur' } })).status).toBe(200);
-    expect(await storedCurrency(id)).toBe('EUR');
   });
 });

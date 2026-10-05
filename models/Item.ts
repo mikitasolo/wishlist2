@@ -28,8 +28,7 @@ const ItemSchema = new Schema(
             type: String,
             required: true,
             // ISO 4217, uppercase like `Wishlist.currency` and
-            // `User.defaultCurrency`. Rows from before WIS-49 may still be
-            // lowercase until `uppercase-currency-codes` has run.
+            // `User.defaultCurrency`.
             uppercase: true,
             trim: true,
           },
