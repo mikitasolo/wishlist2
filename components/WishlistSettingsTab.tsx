@@ -54,7 +54,13 @@ interface WishlistSettingsTabProps {
   onDelete: () => void;
   /** How many of the list's share links work now: they open it whatever its visibility. */
   liveLinkCount?: number;
+  /** How many of those end the day after the occasion, and so move with it (WIS-342). */
+  occasionLinkCount?: number;
 }
+
+/** Under the occasion while some live links end the day after it (WIS-342). */
+export const OCCASION_LINKS_NOTE =
+  'Share links set to end the day after the occasion move with it.';
 
 /**
  * The Settings tab of a list's page (owners only), in four sections:
@@ -87,6 +93,7 @@ export default function WishlistSettingsTab({
   deleting,
   onDelete,
   liveLinkCount = 0,
+  occasionLinkCount = 0,
 }: WishlistSettingsTabProps) {
   // Share links open the list whatever its visibility (WIS-335).
   // An archived list's links are all dead until it's unarchived.
@@ -123,6 +130,9 @@ export default function WishlistSettingsTab({
               onChange={(occasion) => onEdit({ occasion })}
               disabled={saving}
             />
+            {occasionLinkCount > 0 && !archived && (
+              <p className="-mt-2.5 text-xs text-muted-foreground">{OCCASION_LINKS_NOTE}</p>
+            )}
 
             <div>
               <label className={FIELD_LABEL}>

@@ -11,6 +11,8 @@ export interface ShareLinkRow {
   level: ShareLinkLevel;
   label: string | null;
   expiresAt: string | null;
+  /** Its expiry is the day after the occasion, and moves with it (WIS-342). */
+  untilOccasion: boolean;
   createdAt: string;
   state: 'live' | 'expired';
   joinedCount: number;
@@ -23,10 +25,24 @@ export interface NewShareLink {
   level: ShareLinkLevel;
   label: string | null;
   expiresAt: string | null;
+  /** Sent (true) only for Day after the occasion, with the owner's time zone. */
+  untilOccasion?: true;
+  timeZone?: string;
 }
 
-/** What an edit sends: only the fields the owner changed. */
-export type ShareLinkPatch = Partial<Pick<NewShareLink, 'label' | 'expiresAt'>>;
+/**
+ * What an edit sends: only the fields the owner changed. `untilOccasion` goes
+ * (true) with an expiry picked as Day after the occasion; any other expiry
+ * sent stops the link following the occasion.
+ */
+export type ShareLinkPatch = Partial<
+  Pick<NewShareLink, 'label' | 'expiresAt' | 'untilOccasion' | 'timeZone'>
+>;
+
+/** The browser's time zone, which Day after the occasion ends at the midnight of. */
+export function browserTimeZone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+}
 
 /** The path a link opens the list at. */
 export function shareLinkUrl(token: string): string {
@@ -45,6 +61,8 @@ export interface ShareLinksControl {
   /** How many still work, for "Also anyone with one of your N share links." */
   liveCount: number;
   retry: () => void;
+  /** Reads the links again, keeping the rows shown meanwhile (an occasion change moved some). */
+  reload: () => void;
   create: (input: NewShareLink) => Promise<ShareLinkRow | null>;
   update: (id: string, patch: ShareLinkPatch) => Promise<boolean>;
   revoke: (id: string) => Promise<boolean>;
@@ -99,6 +117,7 @@ export function useShareLinks(listId: string | null, enabled: boolean): ShareLin
     setRead('loading');
     setAttempt((n) => n + 1);
   }, []);
+  const reload = useCallback(() => setAttempt((n) => n + 1), []);
 
   const create = useCallback(
     async (input: NewShareLink): Promise<ShareLinkRow | null> => {
@@ -177,5 +196,5 @@ export function useShareLinks(listId: string | null, enabled: boolean): ShareLin
 
   const now = new Date();
   const liveCount = links.filter((l) => isLinkLive(l, now)).length;
-  return { read, links, liveCount, retry, create, update, revoke };
+  return { read, links, liveCount, retry, reload, create, update, revoke };
 }

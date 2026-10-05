@@ -24,7 +24,12 @@ import {
   type ShareLinkExpiryPreset,
 } from '@/lib/utils/shareLinkExpiry';
 import type { Visibility } from '@/lib/utils/visibility';
-import type { NewShareLink, ShareLinkPatch, ShareLinkRow } from '@/lib/hooks/useShareLinks';
+import {
+  browserTimeZone,
+  type NewShareLink,
+  type ShareLinkPatch,
+  type ShareLinkRow,
+} from '@/lib/hooks/useShareLinks';
 
 /** What each level lets a link's holder do, under the level control. */
 export const SHARE_LINK_LEVEL_HELPERS: Record<ShareLinkLevel, string> = {
@@ -90,10 +95,14 @@ export default function ShareLinkDialog(props: ShareLinkDialogProps) {
   const initialLevel = editing ? editing.level : defaultLevel(visibility);
   const [level, setLevel] = useState<ShareLinkLevel>(initialLevel);
   const [label, setLabel] = useState(editing?.label ?? '');
+  // A link made with Day after the occasion opens on it, while there's one
+  // ahead (WIS-342); any other dated link on Custom.
   const initialPreset: ShareLinkExpiryPreset = editing
-    ? editing.expiresAt
-      ? 'custom'
-      : 'never'
+    ? editing.untilOccasion && hasOccasion
+      ? 'occasion'
+      : editing.expiresAt
+        ? 'custom'
+        : 'never'
     : defaultExpiryPreset(initialLevel, hasOccasion);
   const [preset, setPreset] = useState<ShareLinkExpiryPreset>(initialPreset);
   const [customDate, setCustomDate] = useState(
@@ -152,12 +161,24 @@ export default function ShareLinkDialog(props: ShareLinkDialogProps) {
         level,
         label: trimmed || null,
         expiresAt: expiresAt ?? null,
+        ...(preset === 'occasion'
+          ? { untilOccasion: true as const, timeZone: browserTimeZone() }
+          : {}),
       });
     } else {
       const patch: ShareLinkPatch = {};
       if (trimmed !== (props.link.label ?? '')) patch.label = trimmed || null;
-      if (expiryTouched && expiresAt !== undefined && expiresAt !== props.link.expiresAt) {
-        patch.expiresAt = expiresAt;
+      if (expiryTouched && expiresAt !== undefined) {
+        const untilOccasion = preset === 'occasion';
+        // The same date picked another way still changes whether it follows
+        // the occasion: the expiry goes, and Day after the occasion says so.
+        if (expiresAt !== props.link.expiresAt || untilOccasion !== !!props.link.untilOccasion) {
+          patch.expiresAt = expiresAt;
+          if (untilOccasion) {
+            patch.untilOccasion = true;
+            patch.timeZone = browserTimeZone();
+          }
+        }
       }
       // Nothing changed: nothing to send.
       done = Object.keys(patch).length === 0 ? true : await props.onUpdate(props.link._id, patch);

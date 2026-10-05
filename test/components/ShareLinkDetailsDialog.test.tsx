@@ -29,6 +29,7 @@ const link = (over: Partial<ShareLinkRow> = {}): ShareLinkRow & { token: string 
   level: 'view',
   label: 'Wedding QR',
   expiresAt: null,
+  untilOccasion: false,
   createdAt: new Date(2026, 5, 1).toISOString(),
   state: 'live',
   joinedCount: 0,

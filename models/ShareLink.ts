@@ -36,6 +36,11 @@ const ShareLinkSchema = new Schema(
     label: { type: String, trim: true, maxlength: SHARE_LINK_LABEL_MAX, default: null },
     // Missing (or null) for a link that never expires.
     expiresAt: { type: Date, default: null },
+    // Set with the Day after the occasion preset (WIS-342): `expiresAt` is then
+    // the start of the day after the occasion in `timeZone` (the IANA zone of
+    // whoever set it), kept so by `syncOccasionLinks`. Owners only.
+    untilOccasion: { type: Boolean, default: false },
+    timeZone: { type: String, default: null },
     // Null once that account is deleted.
     createdBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
   },
@@ -57,6 +62,9 @@ export interface IShareLink {
   level: ShareLinkLevel;
   label: string | null;
   expiresAt: Date | null;
+  /** Missing on links made before WIS-342: read as false. */
+  untilOccasion?: boolean;
+  timeZone?: string | null;
   createdBy: mongoose.Types.ObjectId | null;
   createdAt: Date;
 }

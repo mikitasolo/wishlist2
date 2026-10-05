@@ -8,7 +8,7 @@ import ShareLinkDialog, {
   PUBLIC_VIEW_LINK_NOTE,
   REVIVAL_WARNING,
 } from '@/components/ShareLinkDialog';
-import type { ShareLinkRow } from '@/lib/hooks/useShareLinks';
+import { browserTimeZone, type ShareLinkRow } from '@/lib/hooks/useShareLinks';
 import type { Occasion } from '@/lib/utils/occasion';
 
 afterEach(() => cleanup());
@@ -42,6 +42,7 @@ const link = (over: Partial<ShareLinkRow> = {}): ShareLinkRow => ({
   level: 'join',
   label: 'Family chat',
   expiresAt: null,
+  untilOccasion: false,
   createdAt: now.toISOString(),
   state: 'live',
   joinedCount: 0,
@@ -97,10 +98,13 @@ describe('ShareLinkDialog: New link', () => {
     await user.click(radio('Join'));
     await user.type(screen.getByLabelText('Label', { exact: false }), 'Wedding QR');
     await user.click(screen.getByRole('button', { name: 'Create link' }));
+    // Remembered as Day after the occasion, so it moves with it (WIS-342).
     expect(onCreate).toHaveBeenCalledWith({
       level: 'join',
       label: 'Wedding QR',
       expiresAt: local(2026, 6, 13),
+      untilOccasion: true,
+      timeZone: browserTimeZone(),
     });
     expect(onClose).toHaveBeenCalled();
   });
@@ -199,5 +203,42 @@ describe('ShareLinkDialog: Edit link', () => {
     await user.click(screen.getByRole('button', { name: 'Save changes' }));
     expect(onUpdate).not.toHaveBeenCalled();
     expect(onClose).toHaveBeenCalled();
+  });
+
+  // WIS-342: Day after the occasion is remembered, not just its date.
+  it('opens a link made with Day after the occasion on it, and sends nothing untouched', async () => {
+    const user = userEvent.setup();
+    const { onUpdate, onClose } = renderEdit(
+      link({ expiresAt: local(2026, 6, 13), untilOccasion: true })
+    );
+    expect(expires()).toHaveTextContent('Day after the occasion');
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+    expect(onUpdate).not.toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('stops following the occasion when another expiry is picked', async () => {
+    const user = userEvent.setup();
+    const { onUpdate } = renderEdit(link({ expiresAt: local(2026, 6, 13), untilOccasion: true }));
+    await user.click(expires());
+    await user.click(screen.getByRole('option', { name: '1 month' }));
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+    const [, patch] = onUpdate.mock.calls[0];
+    expect(patch).toHaveProperty('expiresAt');
+    expect(patch).not.toHaveProperty('untilOccasion');
+  });
+
+  it('starts following the occasion when Day after the occasion is picked, even on the same date', async () => {
+    const user = userEvent.setup();
+    const { onUpdate } = renderEdit(link({ expiresAt: local(2026, 6, 13) }));
+    expect(expires()).toHaveTextContent('Custom');
+    await user.click(expires());
+    await user.click(screen.getByRole('option', { name: 'Day after the occasion' }));
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+    expect(onUpdate).toHaveBeenCalledWith('l1', {
+      expiresAt: local(2026, 6, 13),
+      untilOccasion: true,
+      timeZone: browserTimeZone(),
+    });
   });
 });

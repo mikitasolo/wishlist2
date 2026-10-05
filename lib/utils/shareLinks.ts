@@ -5,6 +5,7 @@ import ShareLink, { type IShareLink } from '@/models/ShareLink';
 import Wishlist, { type IWishlist } from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
 import { duplicateKeyField } from '@/lib/utils/mongoErrors';
+import { occasionExpiry } from '@/lib/utils/shareLinkExpiry';
 import {
   isShareTokenFormat,
   SHARE_TOKEN_LENGTH,
@@ -128,6 +129,8 @@ export interface ShareLinkView {
   level: ShareLinkLevel;
   label: string | null;
   expiresAt: Date | null;
+  /** Its expiry is the day after the occasion, and moves with it (WIS-342). */
+  untilOccasion: boolean;
   createdAt: Date;
   state: 'live' | 'expired';
   joinedCount: number;
@@ -154,6 +157,7 @@ export function serializeShareLink(
     level: link.level,
     label: link.label ?? null,
     expiresAt: link.expiresAt ?? null,
+    untilOccasion: !!link.untilOccasion,
     createdAt: link.createdAt,
     state: isShareLinkExpired(link, now) ? 'expired' : 'live',
     joinedCount,
@@ -177,6 +181,8 @@ export async function insertShareLink(
     level: ShareLinkLevel;
     label: string | null;
     expiresAt: Date | null;
+    untilOccasion?: boolean;
+    timeZone?: string | null;
     createdBy: string;
   },
   { generateToken = generateShareToken }: { generateToken?: () => string } = {}
@@ -189,6 +195,8 @@ export async function insertShareLink(
         level: fields.level,
         label: fields.label,
         expiresAt: fields.expiresAt,
+        untilOccasion: !!fields.untilOccasion,
+        timeZone: fields.untilOccasion ? (fields.timeZone ?? null) : null,
         createdBy: fields.createdBy,
       });
       return doc.toObject();
@@ -198,4 +206,46 @@ export async function insertShareLink(
       if (attempt >= MAX_TOKEN_ATTEMPTS) throw new Error('Could not generate a unique share token');
     }
   }
+}
+
+/**
+ * Brings a list's links that end with its occasion (`untilOccasion`, WIS-342)
+ * in line with `occasion`: each **live** one is set to end the day after it,
+ * in the link's own time zone (`occasionExpiry`). An expired one is left alone:
+ * the occasion never brings a link back. With no occasion ahead, each keeps
+ * its date and stops following. Idempotent, so it runs after an occasion
+ * change and again whenever owners read the links, which mends a change whose
+ * follow-up failed. Answers the ids of the links whose expiry moved, whose
+ * preview cards the caller purges (the expiry caps the card's cache).
+ */
+export async function syncOccasionLinks(
+  wishlistId: string,
+  occasion: IWishlist['occasion'] | null | undefined,
+  now: Date = new Date()
+): Promise<string[]> {
+  const links = await ShareLink.find(
+    { wishlist: wishlistId, untilOccasion: true, expiresAt: { $gt: now } },
+    { expiresAt: 1, timeZone: 1 }
+  ).lean();
+  const moved: string[] = [];
+  const writes = [];
+  for (const link of links) {
+    const target = link.timeZone ? occasionExpiry(occasion, link.timeZone, now) : null;
+    if (!target) {
+      writes.push({
+        updateOne: { filter: { _id: link._id }, update: { $set: { untilOccasion: false } } },
+      });
+    } else if (target.getTime() !== link.expiresAt?.getTime()) {
+      // Only while it's still live: never revives one that ran out meanwhile.
+      writes.push({
+        updateOne: {
+          filter: { _id: link._id, untilOccasion: true, expiresAt: { $gt: now } },
+          update: { $set: { expiresAt: target } },
+        },
+      });
+      moved.push(String(link._id));
+    }
+  }
+  if (writes.length > 0) await ShareLink.bulkWrite(writes, { ordered: false });
+  return moved;
 }

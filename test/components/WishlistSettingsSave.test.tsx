@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup, waitFor, within } from '@testing-library/react';
+import { render, screen, cleanup, waitFor, within, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 const { push, replace, showToast } = vi.hoisted(() => ({
@@ -155,6 +155,25 @@ describe('the wishlist settings form', () => {
 
     await waitFor(() => expect(patches).toHaveLength(1));
     expect(patches[0]).toEqual({ description: '', visibility: 'friends' });
+  });
+
+  // WIS-342: links that end the day after the occasion move with it on the
+  // server, so the Share links section reads them again.
+  it('reads the share links again after an occasion change', async () => {
+    const user = await openSettings();
+    const linkReads = () =>
+      fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/links')).length;
+    await user.click(screen.getByRole('combobox', { name: 'Occasion' }));
+    await user.click(screen.getByRole('option', { name: 'Wedding' }));
+    fireEvent.change(screen.getByLabelText('Occasion date'), { target: { value: '2030-06-20' } });
+    const before = linkReads();
+    await user.click(save());
+
+    await waitFor(() => expect(patches).toHaveLength(1));
+    expect(patches[0]).toEqual({
+      occasion: { kind: 'wedding', date: '2030-06-20', recurrence: null },
+    });
+    await waitFor(() => expect(linkReads()).toBe(before + 1));
   });
 
   // regression: Save was always there, and pressing it with nothing changed

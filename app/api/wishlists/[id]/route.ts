@@ -24,6 +24,8 @@ import {
   serializeWishlist,
 } from '@/lib/utils/wishlistOwners';
 import { purgeShareCards } from '@/lib/og/purge';
+import { syncOccasionLinks } from '@/lib/utils/shareLinks';
+import { errorKind } from '@/lib/utils/errorKind';
 import { admitListViewer, linkModeAnswer } from '@/lib/utils/shareLinkAccess';
 import { SHARE_TOKEN_HEADER } from '@/lib/utils/shareLinkFields';
 import { deleteOwnedWishlist } from '@/lib/utils/wishlistDeletion';
@@ -272,6 +274,18 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         { featuredBy: viewer, _id: { $ne: id } },
         { $pull: { featuredBy: viewer } }
       );
+    }
+
+    // The links that end the day after the occasion move with it (WIS-342).
+    // The occasion has landed either way: a failure here is mended the next
+    // time owners read the links, which syncs them again.
+    if (updateData.occasion !== undefined) {
+      try {
+        const moved = await syncOccasionLinks(id, updateData.occasion);
+        if (moved.length > 0) await purgeShareCards({ shareLinkIds: moved });
+      } catch (error) {
+        console.error('Could not move the links that end with the occasion:', errorKind(error));
+      }
     }
 
     let updatedWishlist = written;
