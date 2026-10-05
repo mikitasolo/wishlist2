@@ -139,7 +139,7 @@ Read it before touching roles, invites, bookings, visibility, notifications or a
 - **Auth**: accounts are created on the first verified sign-in (the adapter's `createUser`); the session callback returns the `sessionPayload` allowlist; only the home page reads the session on the server; a magic link is sent only by the sign-in form's Turnstile-checked server action.
 - **sharp** needs libvips shipped by hand (`outputFileTracingIncludes`, `check:trace`); load it lazily outside the upload route.
 - **Uploads** are re-encoded, type-checked, owned (`uploads/<userId>/`, `canAttachImage`) and freed only via the `blob.ts` helpers from what the write replaced; unsaved uploads are handed back; snapshots have their own helpers.
-- **Link previews** show only what a signed-out visitor could see; a write that changes a card calls `purgeShareCards`.
+- **Link previews** show only what a signed-out visitor could see (a live share link's: its list, whatever the visibility); a write that changes a card calls `purgeShareCards`.
 - **Email** HTML escapes every user value, and subjects carry no free text; every notification email has a signed one-click unsubscribe for its event (`unsubscribeUrls`), and each event's email follows its setting in `NOTIFICATION_EVENTS`, says no more than its in-app row (`sendNotificationEmail`), and is limited per recipient (proposals: one per list per owner a day). **Logs** carry no personal data.
 - **Rate limiting** only through `enforce()` in `lib/rateLimit.ts`, with branded keys and the new-account tier.
 - **Migrations** are idempotent `createMigration` HTTP endpoints with a stated deploy order.

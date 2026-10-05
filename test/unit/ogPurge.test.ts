@@ -22,6 +22,11 @@ describe('purgeShareCards', () => {
     expect(deleteByTag).toHaveBeenCalledWith(['og-wishlist-w1', 'og-wishlist-w2', 'og-user-u1']);
   });
 
+  it("deletes share links' cards by their own tag", async () => {
+    await purgeShareCards({ wishlistIds: ['w1'], shareLinkIds: ['l1'] });
+    expect(deleteByTag).toHaveBeenCalledWith(['og-wishlist-w1', 'og-link-l1']);
+  });
+
   it('does nothing when there is nothing to purge', async () => {
     await purgeShareCards({});
     expect(deleteByTag).not.toHaveBeenCalled();

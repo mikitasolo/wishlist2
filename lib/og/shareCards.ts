@@ -1,14 +1,26 @@
 import type { ReactElement } from 'react';
 import { errorKind } from '@/lib/utils/errorKind';
-import { shareCardHeaders, userCardTag, wishlistCardTag, withTimeout } from '@/lib/utils/og';
+import {
+  CARD_CDN_MAX_AGE_SECONDS,
+  shareCardHeaders,
+  shareLinkCardMaxAge,
+  shareLinkCardTag,
+  userCardTag,
+  wishlistCardTag,
+  withTimeout,
+} from '@/lib/utils/og';
 import { hiddenWishlistCard, profileCard, siteCard, wishlistCard } from './cards';
 import {
   countVisibleItems,
   isProfileCardCurrent,
+  isShareLinkCardCurrent,
   isWishlistCardCurrent,
   readProfileCard,
+  readShareLinkCard,
   readWishlistCard,
   type ProfileCardData,
+  type ShareLinkCardData,
+  type ShownWishlistCard,
   type WishlistCardData,
 } from './data';
 import { loadCardPhoto, type CardPhoto } from './photo';
@@ -32,9 +44,13 @@ export const RENDER_BUDGET_MS = 3000;
 const AVATAR_BOX = { width: 184, height: 184 };
 const BANNER_BOX = { width: 1200, height: 630 };
 
-function respond({ body, contentType }: CardImage, tags: readonly string[] | null): Response {
+function respond(
+  { body, contentType }: CardImage,
+  tags: readonly string[] | null,
+  maxAgeSeconds?: number
+): Response {
   return new Response(new Uint8Array(body), {
-    headers: { 'Content-Type': contentType, ...shareCardHeaders(tags) },
+    headers: { 'Content-Type': contentType, ...shareCardHeaders(tags, maxAgeSeconds) },
   });
 }
 
@@ -71,7 +87,54 @@ export async function wishlistShareCard(idOrSlug: string): Promise<Response> {
   }
   if (data.kind !== 'public') return fallback(hiddenWishlistCard);
   const card = data;
+  return drawWishlistCard(card, {
+    tags: [wishlistCardTag(card.id), ...(card.ownerId ? [userCardTag(card.ownerId)] : [])],
+    isCurrent: () => isWishlistCardCurrent(card),
+  });
+}
 
+/**
+ * The card for a share link, `/l/<token>` (WIS-336): the list it opens, named
+ * whatever its visibility, while the link is live; a dead link gets exactly a
+ * missing list's card and headers. Cached under the list's tags (so every list
+ * purge drops it) plus the link's own (revoke, expiry edits), and never past
+ * the link's expiry, which nothing purges.
+ */
+export async function shareLinkShareCard(token: string): Promise<Response> {
+  let data: ShareLinkCardData;
+  try {
+    data = await withTimeout(readShareLinkCard(token), DATA_BUDGET_MS);
+  } catch (err) {
+    console.error('Share link card read failed, sending the generic card:', errorKind(err));
+    return fallback(hiddenWishlistCard);
+  }
+  if (data.kind !== 'public') return fallback(hiddenWishlistCard);
+  const card = data;
+  return drawWishlistCard(card, {
+    tags: [
+      wishlistCardTag(card.id),
+      ...(card.ownerId ? [userCardTag(card.ownerId)] : []),
+      shareLinkCardTag(card.linkId),
+    ],
+    isCurrent: () => isShareLinkCardCurrent(card),
+    // Read once drawn, so the time spent drawing counts against the expiry.
+    maxAgeSeconds: () => shareLinkCardMaxAge(card.expiresAt),
+  });
+}
+
+/** Draw a list's card; cache it under `tags` only if `cacheable`. */
+async function drawWishlistCard(
+  card: ShownWishlistCard,
+  {
+    tags,
+    isCurrent,
+    maxAgeSeconds = () => CARD_CDN_MAX_AGE_SECONDS,
+  }: {
+    tags: readonly string[];
+    isCurrent: () => Promise<boolean>;
+    maxAgeSeconds?: () => number;
+  }
+): Promise<Response> {
   try {
     // The banner loads while the items are counted.
     const [count, photo] = await Promise.all([
@@ -90,11 +153,8 @@ export async function wishlistShareCard(idOrSlug: string): Promise<Response> {
       ),
       RENDER_BUDGET_MS
     );
-    const tags = [wishlistCardTag(card.id), ...(card.ownerId ? [userCardTag(card.ownerId)] : [])];
-    return respond(
-      image,
-      (await cacheable(photo, () => isWishlistCardCurrent(card))) ? tags : null
-    );
+    const current = await cacheable(photo, isCurrent);
+    return respond(image, current ? tags : null, maxAgeSeconds());
   } catch (err) {
     console.error('Wishlist share card failed, sending the generic card:', errorKind(err));
     return fallback(hiddenWishlistCard);

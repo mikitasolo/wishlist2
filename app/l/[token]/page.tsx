@@ -25,7 +25,7 @@ import { checkRateLimit, ipKey } from '@/lib/rateLimit';
  */
 export const dynamic = 'force-dynamic';
 
-// No preview of the list here yet (WIS-336), nor any indexing of a secret URL;
+// The preview's metadata is layout.tsx's (WIS-336). No indexing of a secret URL;
 // and nothing the page links out to is told the token-bearing URL.
 export const metadata: Metadata = {
   robots: { index: false, follow: false },

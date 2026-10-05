@@ -128,6 +128,7 @@ const nextConfig = {
     '/opengraph-image': SHARE_CARD_FILES,
     '/wishlists/[id]/opengraph-image': SHARE_CARD_FILES,
     '/users/[username]/opengraph-image': SHARE_CARD_FILES,
+    '/l/[token]/opengraph-image': SHARE_CARD_FILES,
   },
   images: {
     remotePatterns: [

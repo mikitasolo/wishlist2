@@ -2,10 +2,13 @@ import connectDB from '@/lib/mongodb';
 import Wishlist from '@/models/Wishlist';
 import User from '@/models/User';
 import Item from '@/models/Item';
+import ShareLink from '@/models/ShareLink';
 import { resolveWishlistId } from '@/lib/utils/wishlistSlug';
 import { primaryOwnerId } from '@/lib/utils/wishlistOwners';
 import { getWishlistViewAccess } from '@/lib/utils/wishlistAccess';
 import { isPublishedItem, PUBLISHED_ITEM_STATUSES } from '@/lib/utils/itemCounts';
+import { resolveShareLink, unexpiredShareLinkFilter } from '@/lib/utils/shareLinks';
+import type { IWishlist } from '@/models/Wishlist';
 
 /**
  * What a shared link's preview may show. A crawler fetches it signed out, and
@@ -48,7 +51,20 @@ export type ProfileCardData =
     }
   | { kind: 'missing' };
 
-const HIDDEN: WishlistCardData = { kind: 'hidden' };
+/** A list's card that names it. */
+export type ShownWishlistCard = Extract<WishlistCardData, { kind: 'public' }>;
+
+/**
+ * What a share link's preview (`/l/<token>`, WIS-336) may show: the list it
+ * opens, named whatever its visibility (the owner chose to share the link), and
+ * the link's id and expiry for its cache. A dead link (malformed, unknown,
+ * revoked, expired, its list archived or gone) is `hidden`, exactly like a
+ * missing list.
+ */
+export type ShareLinkCardData =
+  (ShownWishlistCard & { linkId: string; expiresAt: Date | null }) | { kind: 'hidden' };
+
+const HIDDEN = { kind: 'hidden' } as const;
 
 export async function readWishlistCard(idOrSlug: string): Promise<WishlistCardData> {
   await connectDB();
@@ -58,7 +74,31 @@ export async function readWishlistCard(idOrSlug: string): Promise<WishlistCardDa
     .select('name slug owners visibility archived bannerUrl updatedAt')
     .lean();
   if (!wishlist || !(await getWishlistViewAccess(wishlist, null)).allowed) return HIDDEN;
+  return shownCard(id, wishlist);
+}
 
+/**
+ * The card of the list a live share link opens, else `hidden`. Resolved only
+ * through `resolveShareLink` (which checks the token's shape before any query)
+ * and admitted only through `getWishlistViewAccess` with that link, signed out:
+ * a crawler is nobody. A failed read throws, for the caller's generic fallback.
+ */
+export async function readShareLinkCard(token: string): Promise<ShareLinkCardData> {
+  const resolved = await resolveShareLink(token);
+  if (!resolved) return HIDDEN;
+  const { link, wishlist } = resolved;
+  if (!(await getWishlistViewAccess(wishlist, null, { link })).allowed) return HIDDEN;
+  return {
+    ...(await shownCard(wishlist._id.toString(), wishlist)),
+    linkId: link._id.toString(),
+    expiresAt: link.expiresAt ?? null,
+  };
+}
+
+async function shownCard(
+  id: string,
+  wishlist: Pick<IWishlist, 'name' | 'slug' | 'owners' | 'bannerUrl' | 'updatedAt'>
+): Promise<ShownWishlistCard> {
   // A co-owned list is credited to its primary owner.
   const ownerId = primaryOwnerId(wishlist);
   const owner = ownerId ? await User.findById(ownerId).select('username updatedAt').lean() : null;
@@ -98,9 +138,7 @@ export async function countVisibleItems(wishlistId: string): Promise<number> {
  * write that changes what a card shows (lib/og/purge.ts) also bumps the
  * `updatedAt` of the list or the user it changes.
  */
-export async function isWishlistCardCurrent(
-  card: Extract<WishlistCardData, { kind: 'public' }>
-): Promise<boolean> {
+export async function isWishlistCardCurrent(card: ShownWishlistCard): Promise<boolean> {
   await connectDB();
   const [list, owner] = await Promise.all([
     Wishlist.exists({ _id: card.id, updatedAt: card.updatedAt }),
@@ -109,6 +147,29 @@ export async function isWishlistCardCurrent(
       : true,
   ]);
   return !!list && !!owner;
+}
+
+/**
+ * Whether a share link's card is still current: its list and owner as read
+ * (`isWishlistCardCurrent`, which an archive also fails, by bumping the list's
+ * `updatedAt`), and the link still there, still this list's, unexpired, with
+ * the expiry it was read with. So a revoke or expiry edit racing the draw,
+ * whose purge ran before this card was cached, keeps it out of the cache.
+ */
+export async function isShareLinkCardCurrent(
+  card: Extract<ShareLinkCardData, { kind: 'public' }>
+): Promise<boolean> {
+  await connectDB();
+  const [listCurrent, link] = await Promise.all([
+    isWishlistCardCurrent(card),
+    ShareLink.exists({
+      _id: card.linkId,
+      wishlist: card.id,
+      expiresAt: card.expiresAt,
+      ...unexpiredShareLinkFilter(),
+    }),
+  ]);
+  return listCurrent && !!link;
 }
 
 export async function readProfileCard(username: string): Promise<ProfileCardData> {

@@ -78,6 +78,7 @@ describe('next.config.js', () => {
     '/opengraph-image',
     '/wishlists/[id]/opengraph-image',
     '/users/[username]/opengraph-image',
+    '/l/[token]/opengraph-image',
   ])('ships the fonts and libvips with %s', (route) => {
     const files = nextConfig.outputFileTracingIncludes?.[route] ?? [];
     expect(files).toContain('./lib/og/fonts/*.ttf');
@@ -95,6 +96,7 @@ describe('next.config.js', () => {
     );
     expect(withLibvips.sort()).toEqual([
       '/api/upload',
+      '/l/[token]/opengraph-image',
       '/opengraph-image',
       '/users/[username]/opengraph-image',
       '/wishlists/[id]/opengraph-image',

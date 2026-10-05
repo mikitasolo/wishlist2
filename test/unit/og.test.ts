@@ -5,6 +5,8 @@ import {
   clampText,
   ogCoverBackground,
   shareCardHeaders,
+  shareLinkCardMaxAge,
+  shareLinkCardTag,
   titleFontSize,
   userCardTag,
   wishlistCardTag,
@@ -90,6 +92,38 @@ describe('share card cache headers', () => {
   it('stores nothing for a card without tags', () => {
     expect(shareCardHeaders(null)).toEqual({ 'Cache-Control': 'no-store' });
     expect(shareCardHeaders([])).toEqual({ 'Cache-Control': 'no-store' });
+  });
+
+  it('keeps a card for less than a day when asked, and never for more', () => {
+    expect(shareCardHeaders(['t'], 90)['Vercel-CDN-Cache-Control']).toBe('public, max-age=90');
+    expect(shareCardHeaders(['t'], 10 ** 9)['Vercel-CDN-Cache-Control']).toBe(
+      `public, max-age=${CARD_CDN_MAX_AGE_SECONDS}`
+    );
+  });
+
+  it('stores nothing when there is no time left to keep it', () => {
+    expect(shareCardHeaders(['t'], 0)).toEqual({ 'Cache-Control': 'no-store' });
+    expect(shareCardHeaders(['t'], 0.5)).toEqual({ 'Cache-Control': 'no-store' });
+    expect(shareCardHeaders(['t'], -5)).toEqual({ 'Cache-Control': 'no-store' });
+    expect(shareCardHeaders(['t'], NaN)).toEqual({ 'Cache-Control': 'no-store' });
+  });
+});
+
+describe('share link cards', () => {
+  // Tags go to Vercel's purge API: the link's id, never its token.
+  it("tags a link's card with the link's id", () => {
+    expect(shareLinkCardTag('l1')).toBe('og-link-l1');
+  });
+
+  // Nothing purges a card when its link simply runs out.
+  it("caps a link card's CDN life at the link's expiry", () => {
+    const now = Date.UTC(2026, 9, 5);
+    expect(shareLinkCardMaxAge(null, now)).toBe(CARD_CDN_MAX_AGE_SECONDS);
+    expect(shareLinkCardMaxAge(new Date(now + 3 * 86400_000), now)).toBe(CARD_CDN_MAX_AGE_SECONDS);
+    expect(shareLinkCardMaxAge(new Date(now + 3_600_500), now)).toBe(3600);
+    expect(shareLinkCardMaxAge(new Date(now + 400), now)).toBe(0);
+    expect(shareLinkCardMaxAge(new Date(now), now)).toBe(0);
+    expect(shareLinkCardMaxAge(new Date(now - 60_000), now)).toBe(0);
   });
 });
 
