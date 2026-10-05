@@ -2,6 +2,7 @@ import Wishlist, { type IWishlist } from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
 import WishlistInvite from '@/models/WishlistInvite';
 import WishlistJoinRequest from '@/models/WishlistJoinRequest';
+import ShareLink from '@/models/ShareLink';
 import Notification from '@/models/Notification';
 import Item from '@/models/Item';
 import { deleteOwnBlob, deleteOwnBlobs } from '@/lib/utils/blob';
@@ -45,6 +46,9 @@ export async function deleteOwnedWishlist(
   //    history for a list that no longer exists).
   //  - Requests to join, pending or declined (an ask that lands after this
   //    takes its own row back: POST /requests re-checks the list).
+  //  - Its share links (WIS-334). One a create already past its checks
+  //    writes after this is taken back by that create, which re-reads the
+  //    list once its link is written.
   //  - Notifications that link to the list, which would now 404 (the
   //    `wishlist_invite` ones even look actionable). One that a request
   //    already past its checks writes after this is taken back by
@@ -60,6 +64,7 @@ export async function deleteOwnedWishlist(
     bestEffort('Join request', wishlistId, () =>
       WishlistJoinRequest.deleteMany({ wishlist: wishlistId })
     ),
+    bestEffort('Share link', wishlistId, () => ShareLink.deleteMany({ wishlist: wishlistId })),
     bestEffort('Notification', wishlistId, () => Notification.deleteMany({ wishlist: wishlistId })),
     deleteOwnBlob(wishlist.bannerUrl),
     // Its cached share card, which would otherwise go on naming it for a day.

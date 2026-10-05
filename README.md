@@ -188,7 +188,7 @@ app/            # App Router pages + API routes (app/api/**)
 components/     # React components (WishlistItem, ItemForm, Select, Skeleton, …)
 lib/            # auth, mongodb, email, env, validations, hooks, utils/**
 models/         # Mongoose models (User, Wishlist, Item, WishlistMember, WishlistInvite, WishlistJoinRequest,
-                #   Reservation, GiftLog, Follow, Notification, CurrencyRate)
+                #   ShareLink, Reservation, GiftLog, Follow, Notification, CurrencyRate)
 test/           # Vitest unit / component / api suites + helpers
 e2e/            # Playwright smoke tests + global setup/teardown
 types/          # shared TS types

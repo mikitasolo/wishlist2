@@ -95,6 +95,10 @@ const SPECS = {
   uploadRelease: { tokens: 40, window: '10 m', policy: 'fail-open', keyKind: 'user' },
   invite: { tokens: 30, window: '1 h', policy: 'fail-open', keyKind: 'user' },
   follow: { tokens: 60, window: '1 h', policy: 'fail-open', keyKind: 'user' },
+  // Making a list's share links (WIS-334): each is a way in for anyone holding
+  // it, so it's budgeted like an invite. Only creation: edits and revokes, and
+  // opening a live link, are never limited.
+  shareLink: { tokens: 30, window: '1 h', policy: 'fail-open', keyKind: 'user' },
   content: { tokens: 60, window: '1 h', policy: 'fail-open', keyKind: 'user' },
   booking: { tokens: 60, window: '1 h', policy: 'fail-open', keyKind: 'user' },
   // Asking a list's owners to invite you (WIS-275): each ask notifies every
@@ -143,6 +147,7 @@ const NEW_ACCOUNT_SPECS = {
   upload: { tokens: 5, window: '10 m' },
   invite: { tokens: 5, window: '1 h' },
   follow: { tokens: 20, window: '1 h' },
+  shareLink: { tokens: 5, window: '1 h' },
   content: { tokens: 20, window: '1 h' },
 } satisfies Partial<Record<LimiterName, Pick<LimiterSpec, 'tokens' | 'window'>>>;
 

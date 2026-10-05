@@ -28,6 +28,11 @@ import {
 } from '@/app/api/wishlists/[id]/owners/[userId]/route';
 import { GET as getJoinRequests } from '@/app/api/wishlists/[id]/requests/route';
 import { PATCH as answerJoinRequest } from '@/app/api/wishlists/[id]/requests/[requestId]/route';
+import { GET as getLinks, POST as createLink } from '@/app/api/wishlists/[id]/links/route';
+import {
+  PATCH as editLink,
+  DELETE as revokeLink,
+} from '@/app/api/wishlists/[id]/links/[linkId]/route';
 import { __setRateLimiters, type RateLimiter } from '@/lib/rateLimit';
 import User from '@/models/User';
 import Wishlist from '@/models/Wishlist';
@@ -35,6 +40,7 @@ import WishlistMember from '@/models/WishlistMember';
 import WishlistInvite from '@/models/WishlistInvite';
 import Notification from '@/models/Notification';
 import WishlistJoinRequest from '@/models/WishlistJoinRequest';
+import ShareLink from '@/models/ShareLink';
 
 const session = vi.mocked(auth);
 
@@ -47,6 +53,7 @@ let carolMembership: string;
 let frankInvite: string;
 let dave: string;
 let daveRequest: string; // dave asked to join (WIS-275)
+let shareLink: string; // one of the list's share links (WIS-334)
 
 const SLUG = 'surprise-party';
 /** What every route answers for a list that doesn't exist. */
@@ -85,6 +92,9 @@ async function makeList({ archived }: { archived: boolean }) {
     await WishlistInvite.create({ wishlist: id, invitedBy: alice, invitedUser: frank })
   )._id.toString();
   daveRequest = (await WishlistJoinRequest.create({ wishlist: id, user: dave }))._id.toString();
+  shareLink = (
+    await ShareLink.create({ wishlist: id, token: 'S'.repeat(22), level: 'view', createdBy: alice })
+  )._id.toString();
   return id;
 }
 
@@ -103,6 +113,13 @@ interface OwnerRoute {
   send: (list: string) => Promise<Response>;
   /** What an owner gets back. */
   ownerStatus: number;
+  /** What an owner gets back on an archived list, when it differs. */
+  archivedOwnerStatus?: number;
+  /**
+   * What a non-owner gets on a list that isn't archived, when it isn't the
+   * usual 403: the share link routes answer them as for a missing list.
+   */
+  nonOwnerStatus?: number;
 }
 
 /** Every owner-only route on a list. */
@@ -198,6 +215,43 @@ const ROUTES: OwnerRoute[] = [
       ),
     ownerStatus: 200,
   },
+  // WIS-334: the share link routes refuse a non-owner with the missing list's
+  // 404 even on a list that isn't archived: the links are the list's secrets.
+  {
+    name: 'GET /api/wishlists/[id]/links',
+    send: (id) => getLinks(req(`/api/wishlists/${id}/links`), { params: Promise.resolve({ id }) }),
+    ownerStatus: 200,
+    nonOwnerStatus: 404,
+  },
+  {
+    name: 'POST /api/wishlists/[id]/links',
+    send: (id) =>
+      createLink(req(`/api/wishlists/${id}/links`, 'POST', { level: 'view' }), {
+        params: Promise.resolve({ id }),
+      }),
+    ownerStatus: 201,
+    // An archived list's owners can't make new links (checked last).
+    archivedOwnerStatus: 409,
+    nonOwnerStatus: 404,
+  },
+  {
+    name: 'PATCH /api/wishlists/[id]/links/[linkId]',
+    send: (id) =>
+      editLink(req(`/api/wishlists/${id}/links/${shareLink}`, 'PATCH', { label: 'Party' }), {
+        params: Promise.resolve({ id, linkId: shareLink }),
+      }),
+    ownerStatus: 200,
+    nonOwnerStatus: 404,
+  },
+  {
+    name: 'DELETE /api/wishlists/[id]/links/[linkId]',
+    send: (id) =>
+      revokeLink(req(`/api/wishlists/${id}/links/${shareLink}`, 'DELETE'), {
+        params: Promise.resolve({ id, linkId: shareLink }),
+      }),
+    ownerStatus: 200,
+    nonOwnerStatus: 404,
+  },
 ];
 
 const route = (name: string) => ROUTES.find((r) => r.name === name)!;
@@ -235,6 +289,7 @@ async function snapshot() {
       .map((i) => `${i.invitedUser}:${i.role}:${i.status}`)
       .sort(),
     joinRequests: (await WishlistJoinRequest.find().lean()).map((r) => r.status).sort(),
+    shareLinks: (await ShareLink.find().lean()).map((l) => `${l.level}:${l.label}`).sort(),
     notifications: await Notification.countDocuments(),
     emails: sendEmail.mock.calls.length,
   };
@@ -286,17 +341,19 @@ describe.each(ROUTES)('$name on an archived list', (route) => {
   it('lets an owner through', async () => {
     const id = await makeList({ archived: true });
 
-    expect((await call(route, id, alice)).status).toBe(route.ownerStatus);
+    expect((await call(route, id, alice)).status).toBe(
+      route.archivedOwnerStatus ?? route.ownerStatus
+    );
   });
 });
 
 describe.each(ROUTES)('$name on a list that is not archived', (route) => {
   // Its existence is no secret: viewing it says as much.
-  it.each(NON_OWNERS)('still refuses %s with 403', async (_, caller) => {
+  it.each(NON_OWNERS)('still refuses %s', async (_, caller) => {
     const id = await makeList({ archived: false });
     const before = await snapshot();
 
-    expect((await call(route, id, caller())).status).toBe(403);
+    expect((await call(route, id, caller())).status).toBe(route.nonOwnerStatus ?? 403);
     expect(await snapshot()).toEqual(before);
   });
 
