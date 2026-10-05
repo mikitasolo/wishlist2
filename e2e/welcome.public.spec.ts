@@ -1,5 +1,6 @@
 import { test, expect } from './fixtures';
 import { FRIEND_SESSION_TOKEN, MAGIC_LINKS, magicLinkPath } from './magicLinks';
+import { E2E_JOIN_LINK_TOKEN } from './shareLinks';
 
 // Signing in by following a magic link (seeded by global-setup) through
 // Auth.js's real callback: a new account's first sign-in is offered the
@@ -86,4 +87,27 @@ test('regression: signing up while signed in as someone else ends that session',
   await expect(page.getByRole('button', { name: /^Keep @user_[a-z0-9]{8}$/ })).toBeVisible();
   // ...and the friend's session is over, not just dropped from this browser.
   expect(await friendSession()).toBeNull();
+});
+
+// WIS-339: a brand-new account signing up through a Join link is told the list
+// is next, goes on in one click, and is back on the link with its confirmation.
+test('a new account signing up through a Join link continues to it in one click', async ({
+  page,
+}) => {
+  const linkPath = `/l/${E2E_JOIN_LINK_TOKEN}`;
+  await page.goto(magicLinkPath(MAGIC_LINKS.newcomerJoins, `${linkPath}?then=join`));
+
+  await expect(page).toHaveURL(/\/welcome\?callbackUrl=/);
+  await expect(
+    page.getByText('One quick thing before you join “E2E Joinable List”', { exact: false })
+  ).toBeVisible();
+  await page.getByRole('button', { name: /^Continue as @user_[a-z0-9]{8}$/ }).click();
+
+  // Back on the link, the confirmation open, nothing joined yet.
+  const dialog = page.getByRole('alertdialog', { name: 'Join @e2ehost’s list?' });
+  await expect(dialog).toBeVisible();
+  await expect(page).toHaveURL(linkPath);
+  await dialog.getByRole('button', { name: 'Join', exact: true }).click();
+  await expect(page).toHaveURL('/wishlists/e2e-joinable');
+  await expect(page.getByText(/^You.re in\. Reserve a gift/)).toBeVisible();
 });

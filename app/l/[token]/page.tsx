@@ -1,15 +1,9 @@
 import type { Metadata } from 'next';
-import { headers } from 'next/headers';
-import { unstable_rethrow } from 'next/navigation';
-import { auth } from '@/lib/auth';
 import AppHeader from '@/components/AppHeader';
 import AuthButton from '@/components/AuthButton';
 import ShareLinkUnavailable from '@/components/ShareLinkUnavailable';
 import WishlistPage from '@/components/WishlistPage';
-import { resolveShareLink } from '@/lib/utils/shareLinks';
-import { checkRateLimit, ipKey } from '@/lib/rateLimit';
-import { isBlockedFromShareLinks } from '@/lib/utils/linkBlocks';
-import { errorKind } from '@/lib/utils/errorKind';
+import { resolveLinkForViewer } from '@/lib/utils/shareLinkPage';
 
 /**
  * A list opened through its share link, `/l/<token>` (WIS-335). Rendered per
@@ -47,7 +41,7 @@ export default async function ShareLinkPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const [{ token }, query] = await Promise.all([params, searchParams]);
-  const resolved = await resolveLink(token);
+  const resolved = await resolveLinkForViewer(token);
 
   if (!resolved) {
     return (
@@ -73,37 +67,4 @@ export default async function ShareLinkPage({
       }}
     />
   );
-}
-
-/**
- * The live link `token` opens, or null; a failed lookup spends the IP's budget.
- * A read that fails (the database, say) throws to the error page rather than
- * passing for a dead link.
- */
-async function resolveLink(token: string) {
-  const live = await resolveShareLink(token);
-  const resolved = live && !(await isKickedViewer(live.wishlist._id)) ? live : null;
-  if (!resolved) await checkRateLimit('shareLinkInvalid', ipKey(new Headers(await headers())));
-  return resolved;
-}
-
-/**
- * Whether the signed-in viewer was kicked from the list (`WishlistLinkBlock`).
- * Read only for a live link, and only for this: nothing about the session
- * reaches the page. A session that can't be read lets the page render; its
- * reads are refused by the same check in `admitListViewer`, which then shows
- * the same dead state.
- */
-async function isKickedViewer(
-  wishlistId: Parameters<typeof isBlockedFromShareLinks>[0]
-): Promise<boolean> {
-  let viewerId: string | undefined;
-  try {
-    viewerId = (await auth())?.user?.id;
-  } catch (error) {
-    unstable_rethrow(error);
-    console.error('Share link page could not read the session:', errorKind(error));
-    return false;
-  }
-  return isBlockedFromShareLinks(wishlistId, viewerId);
 }

@@ -38,3 +38,26 @@ export function isShareTokenFormat(value: unknown): value is string {
  * Only the list `GET`, the items `GET` and the join-request routes read it.
  */
 export const SHARE_TOKEN_HEADER = 'X-Share-Token';
+
+/**
+ * The token of the share link a sign-in is headed back to (WIS-339): `raw` is
+ * a `callbackUrl`, relative or absolute, and only `/l/<token>` on this site
+ * (`origin`) counts, query and hash aside. Null for anything else: another
+ * page, another site, a malformed URL or token. Where it leads is still decided
+ * by `safeCallbackPath`, which keeps a same-origin path as it is.
+ */
+export function shareLinkTokenFromCallback(
+  raw: string | null | undefined,
+  origin: string
+): string | null {
+  if (!raw) return null;
+  let url: URL;
+  try {
+    url = new URL(raw, origin);
+  } catch {
+    return null;
+  }
+  if (url.origin !== origin) return null;
+  const match = /^\/l\/([^/]+)\/?$/.exec(url.pathname);
+  return match && isShareTokenFormat(match[1]) ? match[1] : null;
+}
