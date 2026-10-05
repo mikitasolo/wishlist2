@@ -12,12 +12,12 @@ import { isSnapshotBlob, ownBlobHost } from '@/lib/utils/blob';
  * waiting for it, a function killed between the copy and the reservation swap,
  * a best-effort `del()` that failed.
  *
- `findOrphanSnapshots` only reports them; `sweepOrphanSnapshots` (the monthly
+ * `findOrphanSnapshots` only reports them; `sweepOrphanSnapshots` (the monthly
  * cron, WIS-331) deletes them. Deleting must not trust one scan: marking a gift
  * deletes the reservation before it writes the `GiftLog` that takes the
  * snapshot over, so a scan landing between the two sees an old, held snapshot
- * as unheld. So the sweep checks each orphan's holders again a few seconds
- * later and deletes only what is still unheld.
+ * as unheld. So the sweep checks each orphan's holders again
+ * `SWEEP_RECHECK_DELAY_MS` later and deletes only what is still unheld.
  */
 
 /**
@@ -120,11 +120,13 @@ export async function findOrphanSnapshots({
 
 /**
  * How long the sweep waits before checking an orphan's holders a second time.
- * The gap it covers (the gift route between deleting the reservation and
- * writing the gift log: one user lookup) lasts milliseconds, so a false orphan
- * would have to be caught in it twice, seconds apart.
+ * The gap it covers is the gift route's: between deleting the reservation and
+ * writing the gift log (one user lookup, normally milliseconds), and, if that
+ * write fails, until the reservation is put back. Against a slow or failing
+ * database that wait can reach the driver's 30s server-selection timeout, so
+ * the re-check waits longer than that. A monthly job can spare the time.
  */
-export const SWEEP_RECHECK_DELAY_MS = 5000;
+export const SWEEP_RECHECK_DELAY_MS = 45_000;
 
 /**
  * At most this many deletions per run. Normal leaks are a handful a month; a

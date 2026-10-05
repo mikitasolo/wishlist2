@@ -171,7 +171,7 @@ The same secret guards read-only **maintenance** endpoints under `app/api/mainte
 the tree. `orphan-snapshots` lists the booking snapshot images (`snapshots/` in Blob) that no reservation or
 gift log holds any more, older than a day, with their sizes. It deletes nothing. Vercel Cron (`crons` in `vercel.json`, production only) runs the
 sweep that does delete them, `GET /api/cron/sweep-snapshots`, at 03:00 UTC on the 1st of each month: each
-orphan is checked again a few seconds later and only freed if still unheld, at most 500 per run. It needs
+orphan is checked again 45 seconds later and only freed if still unheld, at most 500 per run. It needs
 `CRON_SECRET`. The report:
 
 ```bash

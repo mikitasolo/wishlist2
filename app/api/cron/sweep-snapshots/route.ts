@@ -3,8 +3,8 @@ import connectDB from '@/lib/mongodb';
 import { secretsMatch } from '@/lib/utils/migration';
 import { sweepOrphanSnapshots } from '@/lib/utils/orphanSnapshots';
 
-/** Room for a full listing, the re-check delay and the deletes. */
-export const maxDuration = 60;
+/** Room for a full listing, the 45s re-check delay and the deletes. */
+export const maxDuration = 120;
 
 /**
  * The monthly sweep of orphaned snapshot blobs (WIS-331), run by Vercel Cron
