@@ -109,6 +109,7 @@ const KEY_KINDS: Record<LimiterName, KeyKind> = {
   upload: 'user',
   uploadRelease: 'user',
   invite: 'user',
+  shareLink: 'user',
   follow: 'user',
   content: 'user',
   booking: 'user',
@@ -747,6 +748,8 @@ const NEW_ACCOUNT_LIMITS: Record<NewAccountLimiterName, { tokens: number; window
   follow: { tokens: 20, window: '1 h' },
   content: { tokens: 20, window: '1 h' },
   upload: { tokens: 5, window: '10 m' },
+  // WIS-334: making share links, budgeted like invites.
+  shareLink: { tokens: 5, window: '1 h' },
 };
 const TIERED = Object.keys(NEW_ACCOUNT_LIMITS) as NewAccountLimiterName[];
 const NEW = { newAccount: true };

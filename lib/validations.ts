@@ -9,6 +9,7 @@ import {
 } from '@/lib/utils/visibleName';
 import { ITEM_NOTES_MAX, isHttpUrl, normalizeItemLink } from '@/lib/utils/itemFields';
 import { notificationPrefsSchema } from '@/lib/utils/notificationPrefs';
+import { SHARE_LINK_LABEL_MAX, SHARE_LINK_LEVELS } from '@/lib/utils/shareLinkFields';
 
 /**
  * Validation schemas for API endpoints
@@ -200,6 +201,49 @@ export const inviteMemberSchema = z.object({
 export const joinRequestAnswerSchema = z.object({
   action: z.enum(['invite', 'decline']),
 });
+
+// Share link schemas (WIS-334). Both are strict, so a body can't carry a
+// `token` (the server makes it) and an edit can't carry a `level` (fixed when
+// the link is made: make a new link instead). Every field is type-checked, so
+// an operator object like `{"$ne": null}` is refused, never passed on.
+
+// A link's label: one short line an owner reads in their link list. Blank
+// (only spaces or zero-width characters) means no label. Like a name, it can't
+// hold line breaks, control characters or bidi overrides: it's owner-written
+// free text that may reach a notification later.
+const shareLinkLabelSchema = z
+  .string()
+  .trim()
+  .max(SHARE_LINK_LABEL_MAX, `Label must be ${SHARE_LINK_LABEL_MAX} characters or less`)
+  .refine((label) => !LINE_BREAK_OR_CONTROL_CHAR.test(label), {
+    message: NAME_CONTROL_CHAR_MESSAGE,
+  })
+  .refine((label) => !BIDI_CONTROL_CHAR.test(label), { message: NAME_BIDI_MESSAGE })
+  .transform((label) => (isVisiblyBlank(label) ? null : label))
+  .nullable();
+
+// When a link stops working: an ISO date-time, or null for never. The API
+// takes what it's sent (the presets and defaults are the client's); a time
+// already past makes an expired link, which a later one brings back.
+const shareLinkExpirySchema = z.iso
+  .datetime({ offset: true, message: 'Invalid expiry date' })
+  .transform((value) => new Date(value))
+  .nullable();
+
+export const createShareLinkSchema = z.strictObject({
+  level: z.enum(SHARE_LINK_LEVELS),
+  label: shareLinkLabelSchema.optional(),
+  expiresAt: shareLinkExpirySchema.optional(),
+});
+
+export const updateShareLinkSchema = z
+  .strictObject({
+    label: shareLinkLabelSchema.optional(),
+    expiresAt: shareLinkExpirySchema.optional(),
+  })
+  .refine((body) => body.label !== undefined || body.expiresAt !== undefined, {
+    message: 'Nothing to update',
+  });
 
 // Item schemas
 // A product link: one typed without a scheme ("amazon.de/dp/1") gets https://,

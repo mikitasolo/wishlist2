@@ -128,6 +128,7 @@ Read it before touching roles, invites, bookings, visibility, notifications or a
 - **Owners never see booking status**, any reservation count, or who proposed an item; every item answer goes through `serializeItem`.
 - **"N items"** is a list's published items, counted only with the `itemCounts` helpers.
 - **A booking is never left unreleasable**; gifting is decoupled from the live item (`Reservation`, `GiftLog`); an item edit never changes its status.
+- **Share links** (`/l/<token>`): a `ShareLink` per link, managed by any owner (`/api/wishlists/[id]/links`, 20 per list, none created while archived); the token (22 base62, `generateShareToken`) goes only to owners, is format-checked before any query (`isShareTokenFormat`) and never logged; resolve only via `resolveShareLink` (every dead link is the same `null`); a link is bound to its list and never grants ownership.
 - **Archived lists are owner-only** (the `Wishlist not found` 404 for everyone else); viewers are admitted only through `getWishlistViewAccess` / `viewableWishlistsFilter`; a list you can't open looks the same whatever the reason; search returns only lists the searcher could open.
 - **Never expose a user's email** to other users; name people with `publicDisplayName`.
 - **Account deletion** is `deleteAccount`'s ordered cascade; a new collection that references a user needs a step there.
