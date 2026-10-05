@@ -51,13 +51,14 @@ export type ResourceRead<T> =
 
 /**
  * GETs one of our JSON routes (`{ success, data }`) and sorts its answer into
- * loaded, refused or failed. Never rejects.
+ * loaded, refused or failed. Never rejects. `init` adds to the request (a
+ * share link's `X-Share-Token` header).
  */
-export async function readResource<T>(url: string): Promise<ResourceRead<T>> {
+export async function readResource<T>(url: string, init?: RequestInit): Promise<ResourceRead<T>> {
   let status: number;
   let body: unknown;
   try {
-    const response = await fetch(url, { cache: 'no-store' });
+    const response = await fetch(url, { ...init, cache: 'no-store' });
     status = response.status;
     body = await response.json();
   } catch (error) {

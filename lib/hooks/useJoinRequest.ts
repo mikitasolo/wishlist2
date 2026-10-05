@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useToast } from '@/components/ToastProvider';
+import { SHARE_TOKEN_HEADER } from '@/lib/utils/shareLinkFields';
 
 /**
  * Where a visitor stands with asking a list's owners to invite them:
@@ -26,11 +27,16 @@ export interface JoinRequestControl {
  * member), and keyed on the viewer and the list, so another account or list
  * never shows the previous one's state. A decline is never told apart: the
  * server answers "requested" for it until they may ask again.
+ *
+ * On a share link's page (`linkToken`, WIS-335) every request carries the
+ * token in `X-Share-Token`, which is what lets a visitor the list's
+ * visibility wouldn't admit ask at all.
  */
 export function useJoinRequest(
   listId: string | null,
   viewerId: string | null,
-  enabled: boolean
+  enabled: boolean,
+  linkToken: string | null = null
 ): JoinRequestControl {
   const { showToast } = useToast();
   const [read, setRead] = useState<{ key: string; state: JoinRequestState } | null>(null);
@@ -47,7 +53,10 @@ export function useJoinRequest(
     let live = true;
     (async () => {
       try {
-        const res = await fetch(`/api/wishlists/${listId}/requests/me`, { cache: 'no-store' });
+        const res = await fetch(`/api/wishlists/${listId}/requests/me`, {
+          cache: 'no-store',
+          headers: linkHeaders(linkToken),
+        });
         const result = await res.json();
         if (!live || !result.success) return;
         setRead({ key, state: result.data?.requested ? 'requested' : 'none' });
@@ -58,7 +67,7 @@ export function useJoinRequest(
     return () => {
       live = false;
     };
-  }, [key, listId]);
+  }, [key, listId, linkToken]);
 
   const state: JoinRequestState = key && read?.key === key ? read.state : 'unknown';
 
@@ -72,7 +81,7 @@ export function useJoinRequest(
           method === 'POST'
             ? `/api/wishlists/${listId}/requests`
             : `/api/wishlists/${listId}/requests/me`;
-        const res = await fetch(url, { method });
+        const res = await fetch(url, { method, headers: linkHeaders(linkToken) });
         const result = await res.json().catch(() => ({}));
         if (keyRef.current !== sentFor) return;
         if (result.success) {
@@ -98,10 +107,15 @@ export function useJoinRequest(
         setBusy(false);
       }
     },
-    [listId, busy, showToast]
+    [listId, busy, showToast, linkToken]
   );
 
   const ask = useCallback(() => void send('POST'), [send]);
   const cancel = useCallback(() => void send('DELETE'), [send]);
   return { state, busy, ask, cancel };
+}
+
+/** A share link's header, when there's a link. */
+function linkHeaders(linkToken: string | null): HeadersInit | undefined {
+  return linkToken ? { [SHARE_TOKEN_HEADER]: linkToken } : undefined;
 }

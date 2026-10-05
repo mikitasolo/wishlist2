@@ -88,7 +88,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 }
 
 // POST /api/wishlists/[id]/requests - ask the list's owners to invite you
-export async function POST(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth();
     if (!session?.user) return signInError();
@@ -97,27 +97,32 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
     const { id: idParam } = await params;
     await connectDB();
     // A list the caller can't open answers as one that doesn't exist.
-    const access = await readListForRequester(idParam, userId);
+    const access = await readListForRequester(request, idParam, userId);
     if (access.response) return access.response;
     const { wishlist, id } = access;
+    // Marks every answer to a share link's ask `private, no-store`.
+    const { answer } = access;
 
     if (access.isOwner || access.isMember) {
-      return NextResponse.json(
-        { success: false, error: 'You’re already on this list' },
-        { status: 409 }
+      return answer(
+        NextResponse.json({ success: false, error: 'You’re already on this list' }, { status: 409 })
       );
     }
 
     // Each ask notifies every owner. Only once the caller is known to be able
     // to ask, so a 429 can't stand in for an answer about the list.
-    const limited = await enforce('joinRequest', userKey(userId));
-    if (limited) return limited;
+    const limited = await enforce('joinRequest', userKey(userId), {
+      newAccount: session.user.newAccount,
+    });
+    if (limited) return answer(limited);
 
     // An invite already waiting for them is the answer they asked for.
     if (await WishlistInvite.exists({ wishlist: id, invitedUser: userId, status: 'pending' })) {
-      return NextResponse.json(
-        { success: false, error: 'You already have an invite to this list. See Activity.' },
-        { status: 409 }
+      return answer(
+        NextResponse.json(
+          { success: false, error: 'You already have an invite to this list. See Activity.' },
+          { status: 409 }
+        )
       );
     }
 
@@ -128,14 +133,14 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
       { wishlist: id, user: userId, status: 'declined', declinedAt: { $gt: declineCutoff() } },
       { $set: { withdrawn: false } }
     );
-    if (declined) return requested(201);
+    if (declined) return answer(requested(201));
 
     try {
       await WishlistJoinRequest.create({ wishlist: id, user: userId, status: 'pending' });
     } catch (err) {
       // One pending request per person per list: a concurrent ask (or a double
       // click) already made it, and notified the owners.
-      if (isDuplicateKeyError(err)) return requested(200);
+      if (isDuplicateKeyError(err)) return answer(requested(200));
       throw err;
     }
 
@@ -143,7 +148,7 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
     // those that existed by then: take back one written after that cleanup.
     if (!(await Wishlist.exists({ _id: id }))) {
       await WishlistJoinRequest.deleteMany({ wishlist: id, user: userId });
-      return wishlistNotFound();
+      return answer(wishlistNotFound());
     }
 
     // Every owner, by the requester's public handle: never an email address.
@@ -167,7 +172,7 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
     // before they existed, so take them back here.
     if (!(await stillPending())) await clearJoinRequestNotifications(id, userId);
 
-    return requested(201);
+    return answer(requested(201));
   } catch (error) {
     console.error('Error requesting to join:', error);
     return NextResponse.json(

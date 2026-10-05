@@ -241,4 +241,37 @@ describe('ShareButton — the owner popover', () => {
     expect(share).not.toHaveBeenCalled();
     expect(await navigator.clipboard.readText()).toBe('');
   });
+
+  // WIS-335: share links, after inviting people.
+  it('takes the owner to the share links, and nudges them on a list that isn’t Public', async () => {
+    device({ touch: false, webShare: false });
+    const onShareLinks = vi.fn();
+    const user = renderOwner({ visibility: 'private', onShareLinks, liveLinkCount: 0 });
+    await user.click(shareButton());
+    expect(screen.getByText('To let others open it, create a share link.')).toBeVisible();
+    await user.click(screen.getByRole('menuitem', { name: 'Share links' }));
+    expect(onShareLinks).toHaveBeenCalledTimes(1);
+  });
+
+  it('says who else gets in while the list has live share links', async () => {
+    device({ touch: false, webShare: false });
+    const user = renderOwner({ visibility: 'friends', onShareLinks: vi.fn(), liveLinkCount: 2 });
+    await user.click(shareButton());
+    expect(screen.getByText('Also anyone with one of your 2 share links.')).toBeVisible();
+    expect(screen.queryByText('To let others open it, create a share link.')).toBeNull();
+  });
+
+  it('doesn’t nudge on a Public list without links', async () => {
+    device({ touch: false, webShare: false });
+    const user = renderOwner({ visibility: 'everyone', onShareLinks: vi.fn(), liveLinkCount: 0 });
+    await user.click(shareButton());
+    expect(screen.queryByText('To let others open it, create a share link.')).toBeNull();
+  });
+
+  it('says nothing about share links until they’ve been read', async () => {
+    device({ touch: false, webShare: false });
+    const user = renderOwner({ visibility: 'private', onShareLinks: vi.fn() });
+    await user.click(shareButton());
+    expect(screen.queryByText('To let others open it, create a share link.')).toBeNull();
+  });
 });

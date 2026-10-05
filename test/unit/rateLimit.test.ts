@@ -120,6 +120,7 @@ const KEY_KINDS: Record<LimiterName, KeyKind> = {
   search: 'ip',
   unsubscribe: 'user',
   unsubscribeInvalid: 'ip',
+  shareLinkInvalid: 'ip',
   emailJoinRequest: 'user',
   emailProposal: 'user',
   emailAccessChanged: 'user',
@@ -750,6 +751,8 @@ const NEW_ACCOUNT_LIMITS: Record<NewAccountLimiterName, { tokens: number; window
   upload: { tokens: 5, window: '10 m' },
   // WIS-334: making share links, budgeted like invites.
   shareLink: { tokens: 5, window: '1 h' },
+  // WIS-335: each ask notifies every owner of a list a share link opened.
+  joinRequest: { tokens: 3, window: '1 h' },
 };
 const TIERED = Object.keys(NEW_ACCOUNT_LIMITS) as NewAccountLimiterName[];
 const NEW = { newAccount: true };

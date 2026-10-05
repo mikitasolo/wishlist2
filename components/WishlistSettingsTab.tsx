@@ -15,6 +15,7 @@ import { FIELD_HELPER, FIELD_LABEL } from '@/components/fieldStyles';
 import { currencySelectOptions } from '@/lib/utils/currencies';
 import { DELETE_LIST_WARNING } from '@/lib/utils/confirmationCopy';
 import { VISIBILITY_OPTIONS, visibilityMeta } from '@/lib/utils/visibility';
+import { shareLinksAudienceText } from '@/lib/utils/shareLink';
 import type { WishlistSettings, WishlistSettingsForm } from '@/lib/utils/wishlistSettings';
 import type { FreshUploads } from '@/lib/utils/freshUploads';
 
@@ -51,6 +52,8 @@ interface WishlistSettingsTabProps {
   deleting: boolean;
   /** Delete: asks first. */
   onDelete: () => void;
+  /** How many of the list's share links work now: they open it whatever its visibility. */
+  liveLinkCount?: number;
 }
 
 /**
@@ -83,7 +86,11 @@ export default function WishlistSettingsTab({
   onUnarchive,
   deleting,
   onDelete,
+  liveLinkCount = 0,
 }: WishlistSettingsTabProps) {
+  // Share links open the list whatever its visibility (WIS-335).
+  // An archived list's links are all dead until it's unarchived.
+  const linksText = archived ? null : shareLinksAudienceText(liveLinkCount);
   const slugChanged = form.slug.trim().toLowerCase() !== saved.slug.trim().toLowerCase();
   return (
     <div className="max-w-3xl space-y-6">
@@ -143,6 +150,7 @@ export default function WishlistSettingsTab({
           />
           <p id="settings-visibility-helper" className={FIELD_HELPER}>
             {visibilityMeta[form.visibility].helper}
+            {linksText && ` ${linksText}`}
           </p>
         </Panel>
 

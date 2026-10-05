@@ -31,3 +31,10 @@ export const shareTokenSchema = z.string().regex(/^[0-9A-Za-z]{22}$/);
 export function isShareTokenFormat(value: unknown): value is string {
   return shareTokenSchema.safeParse(value).success;
 }
+
+/**
+ * The request header a share link's token travels in on API calls (WIS-335):
+ * never a query string, which the 5s items poll would put in request logs.
+ * Only the list `GET`, the items `GET` and the join-request routes read it.
+ */
+export const SHARE_TOKEN_HEADER = 'X-Share-Token';

@@ -66,6 +66,8 @@ function ownerInviteFor(invites: readonly PendingInvite[], username: string | un
 interface WishlistPeopleTabProps {
   /** The invite form, on top. */
   inviteForm: ReactNode;
+  /** The Share links section (`ShareLinksSection`), under the people. */
+  shareLinks?: ReactNode;
   people: readonly WishlistPerson[];
   invites: readonly PendingInvite[];
   /** Pending requests to join, oldest first: the Requests group, shown only when there are some. */
@@ -130,6 +132,7 @@ interface WishlistPeopleTabProps {
  */
 export default function WishlistPeopleTab({
   inviteForm,
+  shareLinks,
   people,
   invites,
   requests = [],
@@ -330,6 +333,8 @@ export default function WishlistPeopleTab({
           )}
         </Panel>
       )}
+
+      {shareLinks}
     </div>
   );
 }

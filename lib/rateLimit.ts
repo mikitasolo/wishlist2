@@ -122,6 +122,11 @@ const SPECS = {
   // verify spend the per-IP budget.
   unsubscribe: { tokens: 20, window: '10 m', policy: 'fail-open', keyKind: 'user' },
   unsubscribeInvalid: { tokens: 30, window: '10 m', policy: 'fail-open', keyKind: 'ip' },
+  // A share link that doesn't open the list it's sent for (WIS-335): unknown,
+  // revoked, expired, another list's, or a malformed token. Only failed lookups
+  // spend it, per IP, so guessing tokens is slow; a live link never does, as a
+  // whole wedding may open one from a single IP, polling every 5 seconds.
+  shareLinkInvalid: { tokens: 30, window: '10 m', policy: 'fail-open', keyKind: 'ip' },
   // Notification emails (WIS-321), one budget per kind, keyed on the
   // *recipient*: what someone else's actions can make us send to one inbox.
   // Fail closed, like the sign-in email: sending costs, and a dropped
@@ -148,6 +153,7 @@ const NEW_ACCOUNT_SPECS = {
   invite: { tokens: 5, window: '1 h' },
   follow: { tokens: 20, window: '1 h' },
   shareLink: { tokens: 5, window: '1 h' },
+  joinRequest: { tokens: 3, window: '1 h' },
   content: { tokens: 20, window: '1 h' },
 } satisfies Partial<Record<LimiterName, Pick<LimiterSpec, 'tokens' | 'window'>>>;
 

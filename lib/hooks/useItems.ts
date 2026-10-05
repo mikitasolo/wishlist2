@@ -277,29 +277,33 @@ export interface ItemsRead {
  * joining the abandoned one.
  */
 export function useFetchItems() {
-  return useCallback(async (wishlistId: string, stamp: () => number): Promise<ItemsRead> => {
-    const requestKey = createRequestKey(`/api/wishlists/${wishlistId}/items`, 'GET');
+  return useCallback(
+    async (wishlistId: string, stamp: () => number, init?: RequestInit): Promise<ItemsRead> => {
+      const requestKey = createRequestKey(`/api/wishlists/${wishlistId}/items`, 'GET');
 
-    return deduplicateRequest(requestKey, () =>
-      withRequestTimeout(async (signal) => {
-        const sentAt = stamp();
-        const response = await fetch(`/api/wishlists/${wishlistId}/items`, {
-          cache: 'no-store',
-          signal,
-        });
-        const result: ApiResponse<ApiItem[]> = await response.json();
+      return deduplicateRequest(requestKey, () =>
+        withRequestTimeout(async (signal) => {
+          const sentAt = stamp();
+          const response = await fetch(`/api/wishlists/${wishlistId}/items`, {
+            ...init,
+            cache: 'no-store',
+            signal,
+          });
+          const result: ApiResponse<ApiItem[]> = await response.json();
 
-        // The list is missing, or hidden from the viewer now: a later read would
-        // be refused the same way.
-        if (isRefusal(response.status, result)) {
-          throw new ReadRefusedError(result.error || 'Failed to fetch items');
-        }
-        if (!response.ok || !result.success || !Array.isArray(result.data)) {
-          throw new Error(result.error || 'Failed to fetch items');
-        }
+          // The list is missing, or hidden from the viewer now: a later read would
+          // be refused the same way.
+          if (isRefusal(response.status, result)) {
+            throw new ReadRefusedError(result.error || 'Failed to fetch items');
+          }
+          if (!response.ok || !result.success || !Array.isArray(result.data)) {
+            throw new Error(result.error || 'Failed to fetch items');
+          }
 
-        return { items: result.data, sentAt };
-      })
-    );
-  }, []);
+          return { items: result.data, sentAt };
+        })
+      );
+    },
+    []
+  );
 }

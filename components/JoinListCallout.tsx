@@ -18,7 +18,17 @@ interface JoinListCalloutProps {
    * Requested with Cancel request.
    */
   joinRequest?: JoinRequestControl;
+  /**
+   * Set on a share link's page (WIS-335): signed out, the button reads Sign in
+   * to ask to join and comes back to the link with `?then=ask`; back from it,
+   * `highlightAsk` highlights Ask to join (nothing is sent until it's clicked).
+   * It also says to keep the link, the only way back for a visitor.
+   */
+  shareLink?: { token: string; highlightAsk: boolean };
 }
+
+/** The quiet line under a share link visitor's callout. */
+export const KEEP_LINK_TEXT = 'Keep this link to come back to the list.';
 
 /**
  * The note a list's page shows anyone who isn't on the list (a signed-out
@@ -37,6 +47,7 @@ export default function JoinListCallout({
   ownerCount,
   signedIn,
   joinRequest,
+  shareLink,
 }: JoinListCalloutProps) {
   const inviters = listInviters(ownerUsernames, ownerCount);
 
@@ -61,29 +72,44 @@ export default function JoinListCallout({
             ? ' You’ve asked them to invite you.'
             : ' Ask to join, and they can invite you.')}
       </p>
-      {signedIn && joinRequest && <AskToJoin request={joinRequest} />}
+      {signedIn && joinRequest && (
+        <AskToJoin request={joinRequest} highlight={!!shareLink?.highlightAsk} />
+      )}
       {!signedIn && (
         <Button
           size="sm"
           className="mt-3"
           // Auth.js carries it to the sign-in page as its `callbackUrl`, which
-          // brings them back to this list once they've signed in.
-          onClick={() => signIn(undefined, { redirectTo: window.location.href })}
+          // brings them back to this list once they've signed in: on a share
+          // link, to the link (the list's own URL may not open for them).
+          onClick={() =>
+            signIn(undefined, {
+              redirectTo: shareLink ? `/l/${shareLink.token}?then=ask` : window.location.href,
+            })
+          }
         >
-          Sign in
+          {shareLink ? 'Sign in to ask to join' : 'Sign in'}
         </Button>
       )}
+      {shareLink && <p className="mt-3 text-sm text-muted-foreground">{KEEP_LINK_TEXT}</p>}
     </Callout>
   );
 }
 
 /** Ask to join, or, once asked, Requested and Cancel request. Nothing until the read lands. */
-function AskToJoin({ request }: { request: JoinRequestControl }) {
+function AskToJoin({ request, highlight }: { request: JoinRequestControl; highlight: boolean }) {
   if (request.state === 'unknown') return null;
   return (
     <div className="mt-3 flex flex-wrap items-center gap-3">
       {request.state === 'none' ? (
-        <Button size="sm" icon="user-plus" onClick={request.ask} disabled={request.busy}>
+        <Button
+          size="sm"
+          icon="user-plus"
+          onClick={request.ask}
+          disabled={request.busy}
+          // Back from signing in to ask: the button they came for, ringed.
+          className={highlight ? 'ring-2 ring-ring ring-offset-2 ring-offset-background' : ''}
+        >
           Ask to join
         </Button>
       ) : (

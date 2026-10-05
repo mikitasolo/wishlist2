@@ -35,6 +35,20 @@ export const LINK_AUDIENCE_TEXT: Record<LinkAudience, string> = {
 };
 
 /**
+ * What the Share popover and the visibility setting add while the list has
+ * live share links (WIS-335): `LINK_AUDIENCE_TEXT` stays about the list's own
+ * URL, and this says who else gets in. Null with none.
+ */
+export function shareLinksAudienceText(liveLinks: number): string | null {
+  if (liveLinks <= 0) return null;
+  if (liveLinks === 1) return 'Also anyone with your share link.';
+  return `Also anyone with one of your ${liveLinks} share links.`;
+}
+
+/** The Share popover's nudge on a list that isn't Public and has no live share link. */
+export const CREATE_SHARE_LINK_HINT = 'To let others open it, create a share link.';
+
+/**
  * Whether Share should open the phone's share sheet: there's a Web Share API
  * and the main pointer is a finger. A desktop browser may have
  * `navigator.share` too, but there copying the link is what people expect.

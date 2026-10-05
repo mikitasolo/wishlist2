@@ -4,6 +4,8 @@ import Wishlist, { IWishlist } from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
 import { areFriends } from '@/lib/utils/friends';
 import { isWishlistOwner, ownedByFilter, ownerIds } from '@/lib/utils/wishlistOwners';
+import { isShareLinkExpired } from '@/lib/utils/shareLinks';
+import type { IShareLink } from '@/models/ShareLink';
 
 /**
  * Management access to a wishlist: owners only. There's no middle tier — anyone
@@ -136,12 +138,29 @@ export type WishlistViewAccess =
  * On success, `isOwner` / `isMember` are the viewer's relationship to the list
  * (a friend who isn't a member is neither). Errors carry the status and message
  * to answer with.
+ *
+ * **Through a share link** (WIS-335): `link` is a link already resolved by
+ * `resolveShareLink` (never a raw token), passed only by the list `GET`, the
+ * items `GET` and the join-request routes (`admitListViewer`). It admits
+ * anyone, signed in or not, but only while it's live and only to its own list:
+ * a link whose `wishlist` isn't this list's `_id`, an expired one, or one on an
+ * archived list admits nobody, the owners included (a dead link is dead for
+ * everyone). Every refusal in link mode is the `Wishlist not found` 404, never
+ * a 401 or 403. Someone let in only by the link is neither owner nor member,
+ * so `serializeItem` sees a visitor. Every other caller passes no link, so
+ * search, profiles, reservations and the rest stay link-blind.
  */
 export async function getWishlistViewAccess(
   wishlist: ViewedWishlist,
-  viewerId?: string | null
+  viewerId?: string | null,
+  { link }: { link?: Pick<IShareLink, 'wishlist' | 'expiresAt'> } = {}
 ): Promise<WishlistViewAccess> {
-  if (isHiddenByArchive(wishlist, viewerId)) {
+  if (link) {
+    // Bound to its list, live, and the list not archived: or nothing at all.
+    if (!link.wishlist.equals(wishlist._id) || isShareLinkExpired(link) || wishlist.archived) {
+      return { allowed: false, status: 404, error: 'Wishlist not found' };
+    }
+  } else if (isHiddenByArchive(wishlist, viewerId)) {
     return { allowed: false, status: 404, error: 'Wishlist not found' };
   }
 
@@ -155,6 +174,9 @@ export async function getWishlistViewAccess(
 
   // `EVERYONE_TIER` is this check as a query. Anything that isn't `everyone` or
   // `friends` gets the `private` rules.
+  // A live link to this list opens it, whatever its visibility.
+  if (link) return granted;
+
   const { visibility } = wishlist;
   if (visibility === 'everyone') return granted;
 
