@@ -8,7 +8,7 @@ import Icon from './Icon';
 import { Skeleton } from './Skeleton';
 import { useToast } from './ToastProvider';
 import type { ApiItem, ApiResponse } from '@/types/api';
-import type { MutationTracker } from '@/lib/utils/itemListMerge';
+import type { MutationTracker } from '@/lib/utils/mutationTracker';
 import { RequestTimeoutError, withRequestTimeout } from '@/lib/utils/requestTimeout';
 import { formatItemCount } from '@/lib/utils/itemCounts';
 

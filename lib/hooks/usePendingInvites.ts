@@ -9,7 +9,7 @@ import type { PendingInvite } from '@/components/InviteCard';
 import { useBusyIds } from '@/lib/hooks/useBusyIds';
 import { createAcceptRedirect } from '@/lib/utils/acceptRedirect';
 import { acceptedInviteToast, alreadyAnsweredInviteToast } from '@/lib/utils/confirmationCopy';
-import { createMutationTracker } from '@/lib/utils/itemListMerge';
+import { createMutationTracker } from '@/lib/utils/mutationTracker';
 import { RequestTimeoutError, withRequestTimeout } from '@/lib/utils/requestTimeout';
 import type { InviteAnswer } from '@/lib/utils/notifications';
 
