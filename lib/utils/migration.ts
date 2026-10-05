@@ -12,7 +12,7 @@ import connectDB from '@/lib/mongodb';
  * `timingSafeEqual` two equal-length buffers (it throws on length mismatch),
  * and it avoids leaking the secret's length through a preliminary length check.
  */
-function secretsMatch(provided: string | null, expected: string): boolean {
+export function secretsMatch(provided: string | null, expected: string): boolean {
   if (provided === null) return false;
   const a = createHash('sha256').update(provided).digest();
   const b = createHash('sha256').update(expected).digest();
