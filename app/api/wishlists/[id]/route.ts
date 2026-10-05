@@ -276,12 +276,14 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       );
     }
 
-    // The links that end the day after the occasion move with it (WIS-342).
-    // The occasion has landed either way: a failure here is mended the next
-    // time owners read the links, which syncs them again.
+    // The links that end the day after the occasion move with it (WIS-342),
+    // to the occasion the list has now: a co-owner's change may have landed
+    // after this one. The occasion has landed either way: a failure here is
+    // mended the next time owners read the links, which syncs them again.
     if (updateData.occasion !== undefined) {
       try {
-        const moved = await syncOccasionLinks(id, updateData.occasion);
+        const current = await Wishlist.findById(id, { occasion: 1 }).lean();
+        const moved = current ? await syncOccasionLinks(id, current.occasion) : [];
         if (moved.length > 0) await purgeShareCards({ shareLinkIds: moved });
       } catch (error) {
         console.error('Could not move the links that end with the occasion:', errorKind(error));

@@ -213,6 +213,29 @@ describe('an occasion change', () => {
     expect(await expiryOf(tied._id)).toBe('2030-06-20T22:00:00.000Z');
   });
 
+  // regression (review of WIS-342): the follow-up used the occasion from the
+  // request, so a co-owner's change landing in between left the links on the
+  // overwritten date.
+  it('moves the links to the occasion the list has once the change has landed', async () => {
+    const tied = await tiedLink();
+    const findById = Wishlist.findById.bind(Wishlist);
+    vi.spyOn(Wishlist, 'findById').mockImplementation(((...args: Parameters<typeof findById>) => {
+      const [, projection] = args;
+      // The follow-up's read: Bob's Jul 1 has landed after Alice's write.
+      if (projection && 'occasion' in (projection as object)) {
+        return {
+          lean: async () => ({
+            _id: listId,
+            occasion: { kind: 'wedding', date: '2030-07-01', recurrence: null },
+          }),
+        };
+      }
+      return findById(...args);
+    }) as never);
+    await setOccasion({ kind: 'wedding', date: '2030-06-27', recurrence: null });
+    expect(await expiryOf(tied._id)).toBe('2030-07-01T22:00:00.000Z');
+  });
+
   // regression (review of WIS-342): the links moved only right after the
   // occasion's write, so one that failed left them stale for good.
   it('saves the occasion even when moving the links fails, and the owners’ next read mends them', async () => {
