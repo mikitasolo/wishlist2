@@ -12,7 +12,7 @@ import Wishlist from '../models/Wishlist';
 import Item from '../models/Item';
 import WishlistMember from '../models/WishlistMember';
 import ShareLink from '../models/ShareLink';
-import { E2E_VIEW_LINK_TOKEN } from './shareLinks';
+import { E2E_JOIN_LINK_TOKEN, E2E_VIEW_LINK_TOKEN } from './shareLinks';
 import {
   E2E_AUTH_SECRET,
   FRIEND_API_SESSION_TOKEN,
@@ -103,6 +103,35 @@ export default async function globalSetup(_config: FullConfig) {
     level: 'view',
     label: 'E2E chat',
     createdBy: friend._id,
+  });
+
+  // An Invite only list of a third user's that the friend isn't on, with a Join
+  // link the friend joins through (WIS-337). Neither the list nor the
+  // notification its join sends is the E2E user's, so nothing another spec
+  // counts (their lists, their unread Activity) changes.
+  const host = await User.create({
+    email: 'e2e-host@example.com',
+    username: 'e2ehost',
+    defaultCurrency: 'USD',
+  });
+  const joinableList = await Wishlist.create({
+    name: 'E2E Joinable List',
+    owners: [host._id],
+    visibility: 'private',
+    slug: 'e2e-joinable',
+    currency: 'USD',
+  });
+  await Item.create({
+    wishlist: joinableList._id,
+    name: 'E2E Joinable Gift',
+    status: 'available',
+  });
+  await ShareLink.create({
+    wishlist: joinableList._id,
+    token: E2E_JOIN_LINK_TOKEN,
+    level: 'join',
+    label: 'E2E party',
+    createdBy: host._id,
   });
 
   const sessionToken = randomUUID();

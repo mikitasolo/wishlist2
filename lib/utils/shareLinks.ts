@@ -3,6 +3,7 @@ import mongoose, { type FilterQuery } from 'mongoose';
 import connectDB from '@/lib/mongodb';
 import ShareLink, { type IShareLink } from '@/models/ShareLink';
 import Wishlist, { type IWishlist } from '@/models/Wishlist';
+import WishlistMember from '@/models/WishlistMember';
 import { duplicateKeyField } from '@/lib/utils/mongoErrors';
 import {
   isShareTokenFormat,
@@ -96,15 +97,29 @@ export async function resolveShareLink(
 }
 
 /**
- * How many people joined through each of `linkIds`, by link id. Always 0 for
- * now: joining through a link (WIS-337) fills it from the `WishlistMember` row
- * that records the link it came by. Every link asked about gets an entry.
+ * How many people joined through each of `linkIds`, by link id: the list's
+ * memberships whose `viaLink` names it (a link join records it, WIS-337). Only
+ * people still on the list count: a member who left, or was kicked or made an
+ * owner (which takes the row), no longer does. Every link asked about gets an
+ * entry. Owners only: the routes that call it check that.
  */
 export async function countJoinedByLink(
-  _wishlistId: string,
+  wishlistId: string,
   linkIds: readonly mongoose.Types.ObjectId[]
 ): Promise<Map<string, number>> {
-  return new Map(linkIds.map((id) => [id.toString(), 0]));
+  const counts = new Map(linkIds.map((id) => [id.toString(), 0]));
+  if (linkIds.length === 0) return counts;
+  const rows = await WishlistMember.aggregate<{ _id: mongoose.Types.ObjectId; n: number }>([
+    {
+      $match: {
+        wishlist: new mongoose.Types.ObjectId(wishlistId),
+        viaLink: { $in: [...linkIds] },
+      },
+    },
+    { $group: { _id: '$viaLink', n: { $sum: 1 } } },
+  ]);
+  for (const row of rows) counts.set(row._id.toString(), row.n);
+  return counts;
 }
 
 /** A link as its list's owners see it in the API. */

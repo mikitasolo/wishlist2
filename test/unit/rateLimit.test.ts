@@ -113,6 +113,7 @@ const KEY_KINDS: Record<LimiterName, KeyKind> = {
   follow: 'user',
   content: 'user',
   booking: 'user',
+  linkJoin: 'user',
   joinRequest: 'user',
   usernameCheck: 'user',
   wishlistSlug: 'user',
@@ -122,6 +123,7 @@ const KEY_KINDS: Record<LimiterName, KeyKind> = {
   unsubscribeInvalid: 'ip',
   shareLinkInvalid: 'ip',
   emailJoinRequest: 'user',
+  emailLinkJoin: 'user',
   emailProposal: 'user',
   emailAccessChanged: 'user',
   emailInviteAccepted: 'user',
@@ -608,7 +610,9 @@ describe('the block counter', () => {
     const { store, pipelines } = fakeStats();
     __setRateLimiters({ booking: deny() }, store);
 
-    expect((await enforce('booking', userKey(IDENTIFIERS.user)))?.status).toBe(429);
+    expect(
+      (await enforce('booking', userKey(IDENTIFIERS.user), { newAccount: false }))?.status
+    ).toBe(429);
     // Answered, and nothing written yet: the count waits for the response.
     expect(after).toHaveBeenCalledTimes(1);
     expect(pipelines).toEqual([]);
@@ -743,7 +747,7 @@ describe('the block counter', () => {
 });
 
 // WIS-42: the operator's values (2026-10-04). Only these surfaces have a
-// new-account tier; booking, search and sign-in keep one limit for everyone.
+// new-account tier; search and sign-in keep one limit for everyone.
 const NEW_ACCOUNT_LIMITS: Record<NewAccountLimiterName, { tokens: number; window: string }> = {
   invite: { tokens: 5, window: '1 h' },
   follow: { tokens: 20, window: '1 h' },
@@ -753,6 +757,10 @@ const NEW_ACCOUNT_LIMITS: Record<NewAccountLimiterName, { tokens: number; window
   shareLink: { tokens: 5, window: '1 h' },
   // WIS-335: each ask notifies every owner of a list a share link opened.
   joinRequest: { tokens: 3, window: '1 h' },
+  // WIS-337: joining through a Join link, and booking, which a forwarded Join
+  // link would otherwise open to a fresh account reserving a whole list.
+  linkJoin: { tokens: 5, window: '1 h' },
+  booking: { tokens: 20, window: '1 h' },
 };
 const TIERED = Object.keys(NEW_ACCOUNT_LIMITS) as NewAccountLimiterName[];
 const NEW = { newAccount: true };
@@ -860,11 +868,11 @@ describe('the new-account tier', () => {
     const key = userKey(IDENTIFIERS.user);
     // @ts-expect-error a tiered limiter needs { newAccount }
     expect(await enforce('invite', key)).toBeNull();
-    // @ts-expect-error booking has no new-account tier
-    expect(await enforce('booking', key, NEW)).toBeNull();
-    // @ts-expect-error nor does search
-    expect(await enforce('search', ipKey(new Headers()), NEW)).toBeNull();
+    // @ts-expect-error booking has one since WIS-337
     expect(await enforce('booking', key)).toBeNull();
+    // @ts-expect-error search has no new-account tier
+    expect(await enforce('search', ipKey(new Headers()), NEW)).toBeNull();
+    expect(await enforce('search', ipKey(new Headers()))).toBeNull();
   });
 
   describe('against the real SDK', () => {

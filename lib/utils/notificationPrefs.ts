@@ -53,6 +53,13 @@ export const NOTIFICATION_EVENTS = {
     label: 'Requests to join',
     description: 'When someone asks to join a list you own.',
   },
+  link_join: {
+    types: ['link_join'],
+    defaults: { inApp: true, email: true },
+    label: 'People joining through a link',
+    description:
+      'When someone joins a list you own through one of its share links. At most one email a day per list.',
+  },
   proposal: {
     types: ['proposal'],
     defaults: { inApp: true, email: true },

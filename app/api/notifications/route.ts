@@ -120,6 +120,7 @@ export async function GET(request: NextRequest) {
         followingActor: oneFollower && actor ? followed.has(actor.id) : null,
         occasionKind: n.type === 'occasion_reminder' ? (n.occasionKind ?? null) : null,
         occasionDate: n.type === 'occasion_reminder' ? (n.occasionDate ?? null) : null,
+        linkLabel: n.type === 'link_join' ? (n.linkLabel ?? null) : null,
         read: n.read,
         createdAt: n.createdAt,
       };

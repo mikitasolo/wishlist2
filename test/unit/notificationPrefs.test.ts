@@ -19,17 +19,19 @@ describe('the settings table (operator decision, 2026-10-05)', () => {
   });
 
   it('keeps an in-app switch on by default for every event', () => {
-    expect(eventsOn('inApp')).toHaveLength(8);
+    expect(eventsOn('inApp')).toHaveLength(9);
     for (const event of eventsOn('inApp')) expect(notificationDefault(event, 'inApp')).toBe(true);
   });
 
-  it('defaults email on for invitations, reminders, join requests and proposals, off for the rest', () => {
+  it('defaults email on for invitations, reminders, join requests, link joins and proposals, off for the rest', () => {
     expect(
       Object.fromEntries(eventsOn('email').map((e) => [e, notificationDefault(e, 'email')]))
     ).toEqual({
       wishlist_invite: true,
       occasion_reminder: true,
       join_request: true,
+      // WIS-337: at most one a day per list per owner (`claimDailyListEmail`).
+      link_join: true,
       proposal: true,
       access_changed: false,
       invite_accepted: false,

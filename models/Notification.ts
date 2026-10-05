@@ -54,6 +54,10 @@ export interface INotification extends Document {
   // (the unique index below).
   occasionKind?: OccasionKind | null;
   occasionDate?: string | null;
+  // `link_join` only (WIS-337): the label of the share link they joined
+  // through, snapshotted (owner-written free text; React and the email escape
+  // it). Absent for a link without one.
+  linkLabel?: string | null;
   read: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -84,6 +88,8 @@ const NotificationSchema = new Schema<INotification>(
     // No default: only an occasion reminder carries them.
     occasionKind: { type: String, enum: OCCASION_KINDS, default: undefined },
     occasionDate: { type: String, match: /^\d{4}-\d{2}-\d{2}$/, default: undefined },
+    // No default: only a link join through a labelled link carries one.
+    linkLabel: { type: String, default: undefined },
     read: { type: Boolean, default: false },
     // Immutable, as the timestamps plugin would declare it, except for a query
     // that opts in with `overwriteImmutable: true`: a coalesced row bumps it to

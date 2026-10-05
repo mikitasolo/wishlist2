@@ -1,10 +1,13 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { signIn } from 'next-auth/react';
 import Button from '@/components/Button';
 import Callout from '@/components/Callout';
-import { listInviters } from '@/lib/utils/listInviters';
+import ConfirmDialog from '@/components/ConfirmDialog';
+import { listInviters, type ListInviters } from '@/lib/utils/listInviters';
 import type { JoinRequestControl } from '@/lib/hooks/useJoinRequest';
+import type { LinkJoinControl } from '@/lib/hooks/useLinkJoin';
 
 interface JoinListCalloutProps {
   /** The list's owners' usernames, primary owner first (an owner without one isn't in it). */
@@ -24,7 +27,17 @@ interface JoinListCalloutProps {
    * `highlightAsk` highlights Ask to join (nothing is sent until it's clicked).
    * It also says to keep the link, the only way back for a visitor.
    */
-  shareLink?: { token: string; highlightAsk: boolean };
+  shareLink?: {
+    token: string;
+    highlightAsk: boolean;
+    /**
+     * A **Join** link (WIS-337): Join this list, through a confirmation, in
+     * place of Ask to join; signed out, Sign in to join, back with
+     * `?then=join`, and then (`confirmOnArrival`) the confirmation opens at
+     * once. Joining still takes a click.
+     */
+    join?: { control: LinkJoinControl; confirmOnArrival: boolean };
+  };
 }
 
 /** The quiet line under a share link visitor's callout. */
@@ -36,7 +49,8 @@ export const KEEP_LINK_TEXT = 'Keep this link to come back to the list.';
  * reserve items, and how to get invited. Signed in, it offers Ask to join
  * (WIS-275), which asks the owners to invite them: once asked it reads
  * Requested, with Cancel request. Signed out, it offers Sign in, back to this
- * list.
+ * list. On a share link's **Join** link (WIS-337) it offers Join this list
+ * instead, through a confirmation (`JoinLinkCallout`).
  *
  * It never says which items, or how many, are reserved: the wording is the
  * same whatever the list holds. Owners and members never see it (the page
@@ -50,6 +64,16 @@ export default function JoinListCallout({
   shareLink,
 }: JoinListCalloutProps) {
   const inviters = listInviters(ownerUsernames, ownerCount);
+  if (shareLink?.join) {
+    return (
+      <JoinLinkCallout
+        inviters={inviters}
+        signedIn={signedIn}
+        token={shareLink.token}
+        join={shareLink.join}
+      />
+    );
+  }
 
   return (
     <Callout icon="gift" className="mb-6 sm:mb-8">
@@ -92,6 +116,96 @@ export default function JoinListCallout({
         </Button>
       )}
       {shareLink && <p className="mt-3 text-sm text-muted-foreground">{KEEP_LINK_TEXT}</p>}
+    </Callout>
+  );
+}
+
+/** "Join @masha’s list?", or "Join this list?" when no one owner can be named. */
+export function joinConfirmTitle(inviters: ListInviters): string {
+  if ('handles' in inviters && inviters.singular) return `Join ${inviters.handles[0]}’s list?`;
+  return 'Join this list?';
+}
+
+/** What joining means: they can reserve gifts, and the owners won't see what. */
+export function joinConfirmMessage(inviters: ListInviters): string {
+  const who =
+    'handles' in inviters
+      ? inviters.handles.join(' and ')
+      : inviters.generic === 'the owner'
+        ? 'The owner'
+        : 'The owners';
+  return `You’ll be able to reserve gifts. ${who} won’t see what you reserve.`;
+}
+
+/**
+ * The callout on a live **Join** link (WIS-337): signed in, Join this list,
+ * which opens the confirmation (Join / Cancel) and never joins by itself;
+ * signed out, Sign in to join, back to the link with `?then=join`, where the
+ * confirmation opens at once (`confirmOnArrival`, once the viewer is known to
+ * be signed in).
+ */
+function JoinLinkCallout({
+  inviters,
+  signedIn,
+  token,
+  join,
+}: {
+  inviters: ListInviters;
+  signedIn: boolean;
+  token: string;
+  join: { control: LinkJoinControl; confirmOnArrival: boolean };
+}) {
+  const [confirming, setConfirming] = useState(false);
+  // Back from signing in to join: the confirmation, once.
+  const [arrivalHandled, setArrivalHandled] = useState(false);
+  useEffect(() => {
+    if (arrivalHandled || !join.confirmOnArrival || !signedIn) return;
+    setArrivalHandled(true);
+    setConfirming(true);
+  }, [arrivalHandled, join.confirmOnArrival, signedIn]);
+
+  return (
+    <Callout icon="gift" className="mb-6 sm:mb-8">
+      <p>
+        <span className="font-semibold">Want to reserve a gift?</span> Join the list so nobody buys
+        the same thing twice.
+      </p>
+      {signedIn ? (
+        <Button
+          size="sm"
+          icon="user-plus"
+          className="mt-3"
+          onClick={() => setConfirming(true)}
+          disabled={join.control.busy}
+        >
+          Join this list
+        </Button>
+      ) : (
+        <Button
+          size="sm"
+          className="mt-3"
+          // Back to the link, where the confirmation opens (nothing joins by itself).
+          onClick={() => signIn(undefined, { redirectTo: `/l/${token}?then=join` })}
+        >
+          Sign in to join
+        </Button>
+      )}
+      <p className="mt-3 text-sm text-muted-foreground">{KEEP_LINK_TEXT}</p>
+      <ConfirmDialog
+        isOpen={confirming && signedIn}
+        title={joinConfirmTitle(inviters)}
+        message={joinConfirmMessage(inviters)}
+        confirmText="Join"
+        pendingText="Joining…"
+        type="info"
+        icon="user-plus"
+        onConfirm={async () => {
+          await join.control.join();
+          // Joined, the page moves on; refused, a toast said why.
+          setConfirming(false);
+        }}
+        onCancel={() => setConfirming(false)}
+      />
     </Callout>
   );
 }

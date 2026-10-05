@@ -16,6 +16,8 @@ export const MAGIC_LINKS = {
   newcomerSwitches: { email: 'e2e-newcomer-switches@example.com', token: 'e2e-signup-switches' },
   /** The seeded friend account, so following it is a returning sign-in. */
   returning: { email: 'e2e-friend@example.com', token: 'e2e-signin-returning' },
+  /** The friend again, signing in to join a list through its Join link (WIS-337). */
+  friendJoins: { email: 'e2e-friend@example.com', token: 'e2e-signin-join' },
 } as const;
 
 /** The path a magic-link email would point at, continuing to `callbackUrl`. */

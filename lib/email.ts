@@ -455,6 +455,7 @@ export async function sendWishlistInvitationEmail(
 /** The notification types that send an email of their own through `sendNotificationEmail`. */
 export type EmailedNotificationType =
   | 'join_request'
+  | 'link_join'
   | 'proposal'
   | 'role_changed'
   | 'removed_from_wishlist'
@@ -468,7 +469,7 @@ export interface NotificationEmailDetails {
   type: EmailedNotificationType;
   /**
    * Whoever did it, by username only, on the types whose in-app row names
-   * them (`join_request`, `invite_accepted`). Ignored on every other type.
+   * them (`join_request`, `invite_accepted`, `link_join`). Ignored on every other type.
    */
   actorUsername?: string | null;
   wishlistId: string;
@@ -480,12 +481,15 @@ export interface NotificationEmailDetails {
   /** `occasion_reminder` only. */
   occasionKind?: OccasionKind | null;
   occasionDate?: string | null;
+  /** `link_join` only: the share link's label, as its in-app row names it. Free text. */
+  linkLabel?: string | null;
 }
 
 /** The types whose email names who did it: the same ones whose in-app row does. */
 const NAMES_ACTOR: ReadonlySet<EmailedNotificationType> = new Set([
   'join_request',
   'invite_accepted',
+  'link_join',
 ]);
 
 const OCCASION_SUBJECT_KIND: Record<OccasionKind, string> = {
@@ -510,6 +514,13 @@ function notificationEmailCopy(
         subject: `${actor} asked to join your wishlist`,
         heading: 'A request to join your wishlist',
         button: 'Review the request',
+      };
+    // The link's label is owner-written free text: in the body only.
+    case 'link_join':
+      return {
+        subject: `${actor} joined your wishlist through a link`,
+        heading: 'Someone joined your wishlist',
+        button: 'See who’s on it',
       };
     case 'proposal':
       return {
@@ -573,6 +584,7 @@ export async function sendNotificationEmail(email: string, details: Notification
     itemName: details.itemName ?? null,
     occasionKind: details.occasionKind ?? null,
     occasionDate: details.occasionDate ?? null,
+    linkLabel: details.type === 'link_join' ? (details.linkLabel ?? null) : null,
     read: false,
     createdAt: '',
     ...overrides,
@@ -588,6 +600,10 @@ export async function sendNotificationEmail(email: string, details: Notification
     view({
       wishlistName: details.wishlistName ? isolateForText(details.wishlistName) : null,
       itemName: details.itemName ? isolateForText(details.itemName) : null,
+      linkLabel:
+        details.type === 'link_join' && details.linkLabel
+          ? isolateForText(details.linkLabel)
+          : null,
     })
   )
     .map((part) => (typeof part === 'string' ? part : `“${part.listName}”`))

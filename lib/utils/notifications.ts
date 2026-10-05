@@ -19,6 +19,7 @@ export const NOTIFICATION_TYPES = [
   'removed_from_wishlist',
   'join_request',
   'occasion_reminder',
+  'link_join',
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
@@ -71,6 +72,10 @@ export interface NotificationView {
   // Null on every other type. Optional, like `count`.
   occasionKind?: OccasionKind | null;
   occasionDate?: string | null;
+  // A `link_join`: the label of the share link they joined through, as its
+  // owners wrote it (free text), or null for a link without one. Null on every
+  // other type. Optional, like `count`.
+  linkLabel?: string | null;
   read: boolean;
   createdAt: string;
 }
@@ -87,6 +92,7 @@ const ACTOR_TYPES: ReadonlySet<NotificationType> = new Set([
   'wishlist_invite',
   'invite_accepted',
   'join_request',
+  'link_join',
 ]);
 
 /** Whether a notification of `type` may show its actor (see `ACTOR_TYPES`). */
@@ -213,6 +219,12 @@ export function notificationParts(n: NotificationView): NotificationPart[] {
     // To the list's owners only, naming the requester by their public handle.
     case 'join_request':
       return [`${actor(n)} asked to join `, list(n)];
+    // To the list's owners only (WIS-337): who joined, by their public handle,
+    // and through which of the list's links, by its label when it has one.
+    case 'link_join':
+      return n.linkLabel
+        ? [`${actor(n)} joined `, list(n), ` through the link “${n.linkLabel}”`]
+        : [`${actor(n)} joined `, list(n), ' through a link'];
     // To the list's members only, a week ahead (lib/utils/occasionReminders.ts).
     case 'occasion_reminder':
       return occasionReminderParts(n);
@@ -287,8 +299,9 @@ export function notificationLink(
       return listLink(n);
     case 'removed_from_wishlist':
       return null;
-    // The list's People tab, where its Requests are answered.
+    // The list's People tab: its Requests, and its members and share links.
     case 'join_request':
+    case 'link_join':
       return n.wishlistSlug || n.wishlistId
         ? `/wishlists/${n.wishlistSlug ?? n.wishlistId}?tab=people`
         : '/notifications';
@@ -316,6 +329,8 @@ export function notificationIcon(n: NotificationView): IconName {
       return 'logout';
     case 'join_request':
       return 'user-plus';
+    case 'link_join':
+      return 'link';
     case 'occasion_reminder':
       return 'calendar';
     default:

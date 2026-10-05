@@ -556,6 +556,7 @@ describe('notification emails (WIS-321)', () => {
 
   it.each([
     ['join_request', '@ivan asked to join your wishlist'],
+    ['link_join', '@ivan joined your wishlist through a link'],
     ['proposal', 'A new proposal to review on your wishlist'],
     ['role_changed', 'Your role on a wishlist changed'],
     ['removed_from_wishlist', 'You were removed from a wishlist'],
@@ -570,6 +571,7 @@ describe('notification emails (WIS-321)', () => {
       itemName: 'https://evil.example',
       occasionKind: 'birthday',
       occasionDate: '2026-10-12',
+      linkLabel: 'Claim at https://evil.example',
     });
     expect(message.subject).toBe(subject);
   });
@@ -622,6 +624,22 @@ describe('notification emails (WIS-321)', () => {
     expect(message.text.split('\n')).toHaveLength(7);
   });
 
+  // WIS-337: the link's label is owner-written free text, so it's escaped in
+  // the HTML, isolated in the text, and never in the subject.
+  it('a link join names who joined and the link’s label, escaped', async () => {
+    const message = await send({
+      type: 'link_join',
+      actorUsername: 'ivan',
+      linkLabel: `${MARKUP}\nline`,
+    });
+    expect(message.subject).toBe('@ivan joined your wishlist through a link');
+    expect(message.html).toContain('@ivan joined <strong>Birthday</strong> through the link “');
+    expect(message.html).toContain(MARKUP_HTML);
+    expect(message.html).not.toContain(MARKUP);
+    expect(message.html).toContain('href="http://localhost:3000/wishlists/birthday?tab=people"');
+    expect(message.text.split('\n')).toHaveLength(7);
+  });
+
   it('an occasion reminder names the kind and the day, nothing about bookings', async () => {
     const message = await send({
       type: 'occasion_reminder',
@@ -635,6 +653,7 @@ describe('notification emails (WIS-321)', () => {
 
   it.each([
     ['join_request', 'join_request'],
+    ['link_join', 'link_join'],
     ['proposal', 'proposal'],
     ['role_changed', 'access_changed'],
     ['removed_from_wishlist', 'access_changed'],
