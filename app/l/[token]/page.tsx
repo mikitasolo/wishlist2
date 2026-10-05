@@ -26,8 +26,9 @@ import { errorKind } from '@/lib/utils/errorKind';
  * someone signed in whom the list's owners kicked (WIS-338) gets the dead state
  * here too, as the API answers them, so a kick can't be told from a revoke.
  *
- * `?as=visitor` is an owner's Preview as visitor; `?then=ask` a visitor back
- * from signing in to ask to join.
+ * `?as=visitor` is an owner's Preview as visitor; `?then=ask` / `?then=join` a
+ * visitor back from signing in to ask to join, or to join (a Join link, whose
+ * confirmation then opens; joining still takes a click).
  */
 export const dynamic = 'force-dynamic';
 
@@ -65,8 +66,10 @@ export default async function ShareLinkPage({
         kind: 'link',
         token,
         listId: String(resolved.wishlist._id),
+        // Only a visitor is shown it: Join this list on a Join link (WIS-337).
+        level: resolved.link.level,
         preview: query.as === 'visitor',
-        then: query.then === 'ask' ? 'ask' : null,
+        then: query.then === 'ask' || query.then === 'join' ? query.then : null,
       }}
     />
   );

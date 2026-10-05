@@ -32,6 +32,8 @@ interface CreateNotificationArgs {
   itemName?: string | null;
   /** `wishlist_invite` only: the role it offers. */
   inviteRole?: InviteRole | null;
+  /** `link_join` only: the share link's label, if it has one. */
+  linkLabel?: string | null;
 }
 
 /**
@@ -202,6 +204,7 @@ async function writeNotification(
       ...(args.type === 'wishlist_invite' && args.inviteRole
         ? { inviteRole: args.inviteRole }
         : {}),
+      ...(args.type === 'link_join' && args.linkLabel ? { linkLabel: args.linkLabel } : {}),
       read: false,
     });
     return row._id;

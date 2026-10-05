@@ -22,6 +22,11 @@ const WishlistMemberSchema = new Schema(
       ref: 'User',
       required: true,
     },
+    // The share link they joined through (WIS-337), for the owners' per-link
+    // joined count (`countJoinedByLink`). Set only when a link join created the
+    // row; absent on a membership from an invite, and never changed after. It
+    // may name a link revoked since, which then counts nowhere.
+    viaLink: { type: Schema.Types.ObjectId, ref: 'ShareLink', default: undefined },
   },
   {
     timestamps: true,
@@ -39,6 +44,7 @@ export interface IWishlistMember {
   _id: mongoose.Types.ObjectId;
   wishlist: mongoose.Types.ObjectId;
   user: mongoose.Types.ObjectId;
+  viaLink?: mongoose.Types.ObjectId | null;
   createdAt: Date;
   updatedAt: Date;
 }

@@ -12,7 +12,7 @@ import Wishlist from '../models/Wishlist';
 import Item from '../models/Item';
 import WishlistMember from '../models/WishlistMember';
 import ShareLink from '../models/ShareLink';
-import { E2E_VIEW_LINK_TOKEN } from './shareLinks';
+import { E2E_JOIN_LINK_TOKEN, E2E_VIEW_LINK_TOKEN } from './shareLinks';
 import {
   E2E_AUTH_SECRET,
   FRIEND_API_SESSION_TOKEN,
@@ -103,6 +103,29 @@ export default async function globalSetup(_config: FullConfig) {
     level: 'view',
     label: 'E2E chat',
     createdBy: friend._id,
+  });
+
+  // An Invite only list of the E2E user's that the friend isn't on, with a Join
+  // link the friend joins through (WIS-337). Its own list, so nothing another
+  // spec counts on e2e-birthday changes.
+  const joinableList = await Wishlist.create({
+    name: 'E2E Joinable List',
+    owners: [user._id],
+    visibility: 'private',
+    slug: 'e2e-joinable',
+    currency: 'USD',
+  });
+  await Item.create({
+    wishlist: joinableList._id,
+    name: 'E2E Joinable Gift',
+    status: 'available',
+  });
+  await ShareLink.create({
+    wishlist: joinableList._id,
+    token: E2E_JOIN_LINK_TOKEN,
+    level: 'join',
+    label: 'E2E party',
+    createdBy: user._id,
   });
 
   const sessionToken = randomUUID();

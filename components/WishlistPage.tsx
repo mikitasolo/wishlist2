@@ -45,7 +45,7 @@ import ShareLinkUnavailable from '@/components/ShareLinkUnavailable';
 import ShareLinksSection, { type ShareLinksSectionHandle } from '@/components/ShareLinksSection';
 import RevokeShareLinksDialog from '@/components/RevokeShareLinksDialog';
 import { useShareLinks } from '@/lib/hooks/useShareLinks';
-import { SHARE_TOKEN_HEADER } from '@/lib/utils/shareLinkFields';
+import { SHARE_TOKEN_HEADER, type ShareLinkLevel } from '@/lib/utils/shareLinkFields';
 import { isPublishedItem } from '@/lib/utils/itemCounts';
 import { readResource, ReadRefusedError } from '@/lib/utils/resourceRead';
 import { missingFromDraft } from '@/lib/utils/occasion';
@@ -53,6 +53,7 @@ import { getVisibility } from '@/lib/utils/visibility';
 import { onCurrentListTab, useListTab, type ListTab } from '@/lib/hooks/useListTab';
 import { useBusyIds } from '@/lib/hooks/useBusyIds';
 import { useJoinRequest } from '@/lib/hooks/useJoinRequest';
+import { useLinkJoin } from '@/lib/hooks/useLinkJoin';
 import {
   rebaseSettingsForm,
   settingsChanges,
@@ -139,10 +140,20 @@ type PageLoad = 'loading' | 'ready' | 'unavailable' | 'failed';
  *   canonical URL, unless `preview` (an owner's Preview as visitor), which
  *   shows them the page as a visitor. `then: 'ask'` is a visitor back from
  *   signing in to ask to join: the button is highlighted, nothing is sent.
+ *   `level` is the link's: a `join` link offers Join this list (WIS-337) in
+ *   place of Ask to join, and `then: 'join'` (back from signing in to join)
+ *   opens its confirmation at once; joining still takes a click.
  */
 export type WishlistAddress =
   | { kind: 'slug'; id: string }
-  | { kind: 'link'; token: string; listId: string; preview?: boolean; then?: 'ask' | null };
+  | {
+      kind: 'link';
+      token: string;
+      listId: string;
+      level?: ShareLinkLevel;
+      preview?: boolean;
+      then?: 'ask' | 'join' | null;
+    };
 
 export default function WishlistPage({ address }: { address: WishlistAddress | null }) {
   const { data: session, status } = useKnownSession();
@@ -152,11 +163,13 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
   // A share link's token, in link mode (else null), and what its reads send.
   const linkToken = address?.kind === 'link' ? address.token : null;
   const previewAsVisitor = address?.kind === 'link' && !!address.preview;
+  // A Join link (WIS-337): Join this list in place of Ask to join.
+  const joinLink = address?.kind === 'link' && address.level === 'join';
   const readInit = useMemo<RequestInit | undefined>(
     () => (linkToken ? { headers: { [SHARE_TOKEN_HEADER]: linkToken } } : undefined),
     [linkToken]
   );
-  // Back from signing in to ask to join (`?then=ask`): kept for this visit
+  // Back from signing in to ask to join (`?then=ask`) or to join (`?then=join`): kept for this visit
   // only, and taken off the URL, so a reload or a copied link doesn't carry it.
   const [askOnArrival] = useState(() => (address?.kind === 'link' ? (address.then ?? null) : null));
   useEffect(() => {
@@ -329,10 +342,13 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
     pageLoad === 'ready' &&
       viewerRole === 'visitor' &&
       !previewAsVisitor &&
+      !joinLink &&
       !!wishlist &&
       !wishlist.archived,
     linkToken
   );
+  // A visitor's join through a Join link (WIS-337), on its confirmation.
+  const linkJoin = useLinkJoin(wishlist ? String(wishlist._id) : null, joinLink ? linkToken : null);
 
   // The list's share links (owners only, WIS-335): People's Share links
   // section, and the count of live ones the Share popover and the visibility
@@ -1909,7 +1925,17 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
             signedIn={!!session?.user}
             joinRequest={joinRequest}
             shareLink={
-              linkToken ? { token: linkToken, highlightAsk: askOnArrival === 'ask' } : undefined
+              linkToken
+                ? {
+                    token: linkToken,
+                    highlightAsk: askOnArrival === 'ask',
+                    // Never on an owner's Preview as visitor: they can't join.
+                    join:
+                      joinLink && !previewAsVisitor
+                        ? { control: linkJoin, confirmOnArrival: askOnArrival === 'join' }
+                        : undefined,
+                  }
+                : undefined
             }
           />
         )}

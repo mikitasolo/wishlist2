@@ -2,7 +2,7 @@
 // The note a list's page shows anyone who isn't on it: who can reserve, and
 // how to get invited (Ask to join signed in, Sign in signed out).
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen, cleanup, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 const { signIn } = vi.hoisted(() => ({ signIn: vi.fn() }));
@@ -10,6 +10,7 @@ vi.mock('next-auth/react', () => ({ signIn }));
 
 import JoinListCallout from '@/components/JoinListCallout';
 import type { JoinRequestControl } from '@/lib/hooks/useJoinRequest';
+import type { LinkJoinControl } from '@/lib/hooks/useLinkJoin';
 
 const note = () => screen.getByRole('note');
 
@@ -114,5 +115,109 @@ describe('JoinListCallout', () => {
   it('says "the owner" of a list whose only owner has no username', () => {
     render(<JoinListCallout ownerUsernames={[]} ownerCount={1} signedIn={false} />);
     expect(note()).toHaveTextContent('Only people the owner invites can reserve items');
+  });
+});
+
+describe('JoinListCallout on a Join link (WIS-337)', () => {
+  const TOKEN = 'AbCdEfGhIjKlMnOpQrStUv';
+  const linkJoin = (over: Partial<LinkJoinControl> = {}): LinkJoinControl => ({
+    busy: false,
+    join: vi.fn().mockResolvedValue(undefined),
+    ...over,
+  });
+  const shareLink = (control: LinkJoinControl, confirmOnArrival = false) => ({
+    token: TOKEN,
+    highlightAsk: false,
+    join: { control, confirmOnArrival },
+  });
+
+  it('says to join, and opens the confirmation instead of joining', async () => {
+    const user = userEvent.setup();
+    const control = linkJoin();
+    render(
+      <JoinListCallout
+        ownerUsernames={['masha']}
+        ownerCount={1}
+        signedIn
+        shareLink={shareLink(control)}
+      />
+    );
+    expect(note()).toHaveTextContent(
+      'Want to reserve a gift? Join the list so nobody buys the same thing twice.'
+    );
+    expect(screen.queryByRole('button', { name: 'Ask to join' })).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Join this list' }));
+    expect(control.join).not.toHaveBeenCalled();
+    expect(screen.getByRole('alertdialog', { name: 'Join @masha’s list?' })).toHaveTextContent(
+      'You’ll be able to reserve gifts. @masha won’t see what you reserve.'
+    );
+    await user.click(screen.getByRole('button', { name: 'Join' }));
+    expect(control.join).toHaveBeenCalledTimes(1);
+  });
+
+  it('holds the dialog pending while the join is in flight', async () => {
+    const user = userEvent.setup();
+    let finish: () => void = () => {};
+    const control = linkJoin({
+      join: vi.fn(() => new Promise<void>((resolve) => (finish = resolve))),
+    });
+    render(
+      <JoinListCallout
+        ownerUsernames={['masha']}
+        ownerCount={1}
+        signedIn
+        shareLink={shareLink(control)}
+      />
+    );
+    await user.click(screen.getByRole('button', { name: 'Join this list' }));
+    await user.click(screen.getByRole('button', { name: 'Join' }));
+    expect(screen.getByRole('button', { name: 'Joining…' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
+    expect(control.join).toHaveBeenCalledTimes(1);
+    finish();
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+  });
+
+  it('holds Join this list while a join is busy', () => {
+    render(
+      <JoinListCallout
+        ownerUsernames={['masha']}
+        ownerCount={1}
+        signedIn
+        shareLink={shareLink(linkJoin({ busy: true }))}
+      />
+    );
+    expect(screen.getByRole('button', { name: 'Join this list' })).toBeDisabled();
+  });
+
+  it('opens the confirmation at once when back from signing in, never joining by itself', () => {
+    const control = linkJoin();
+    render(
+      <JoinListCallout
+        ownerUsernames={['masha', 'ivan']}
+        ownerCount={2}
+        signedIn
+        shareLink={shareLink(control, true)}
+      />
+    );
+    expect(screen.getByRole('alertdialog', { name: 'Join this list?' })).toHaveTextContent(
+      '@masha and @ivan won’t see what you reserve.'
+    );
+    expect(control.join).not.toHaveBeenCalled();
+  });
+
+  it('signed out: Sign in to join, back to the link with then=join, and no dialog', async () => {
+    const user = userEvent.setup();
+    render(
+      <JoinListCallout
+        ownerUsernames={[]}
+        ownerCount={3}
+        signedIn={false}
+        shareLink={shareLink(linkJoin(), true)}
+      />
+    );
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Sign in to join' }));
+    expect(signIn).toHaveBeenCalledWith(undefined, { redirectTo: `/l/${TOKEN}?then=join` });
   });
 });

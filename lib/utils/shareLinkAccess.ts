@@ -10,8 +10,8 @@ import { isBlockedFromShareLinks } from '@/lib/utils/linkBlocks';
 
 /**
  * Letting a viewer into a list, with or without a share link (WIS-335): the
- * one path the list `GET`, the items `GET` and the join-request routes
- * (`readListForRequester`) take. Everything else calls `getWishlistViewAccess`
+ * one path the list `GET`, the items `GET`, the join-request routes
+ * (`readListForRequester`) and the link join (`POST /join`, WIS-337) take. Everything else calls `getWishlistViewAccess`
  * with no link and stays link-blind.
  *
  * A request that carries no `X-Share-Token` header is admitted exactly as
@@ -46,6 +46,8 @@ export type ListAdmission =
       isMember: boolean;
       /** The request came with a share link (a live one, since it was let in). */
       linkMode: boolean;
+      /** That link, resolved (in link mode only): the join route reads its level. */
+      link?: IShareLink;
     };
 
 /**
@@ -111,7 +113,13 @@ export async function admitListViewer(
   if (!access.allowed) {
     return { allowed: false, response: linkModeAnswer(wishlistNotFoundResponse()) };
   }
-  return { allowed: true, isOwner: access.isOwner, isMember: access.isMember, linkMode: true };
+  return {
+    allowed: true,
+    isOwner: access.isOwner,
+    isMember: access.isMember,
+    linkMode: true,
+    link: resolved.link,
+  };
 }
 
 /** `response` marked `private, no-store`, as every link-mode answer is. */

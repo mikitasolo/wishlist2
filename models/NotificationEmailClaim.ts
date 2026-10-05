@@ -8,6 +8,8 @@ import mongoose, { Schema, Model } from 'mongoose';
  * - **A proposal to review**: at most one email per list per owner a day. The
  *   row (`kind: 'proposal'`, `key: ''`) is claimed again only once its `sentAt`
  *   is a day old (`claimProposalEmail`).
+ * - **Someone joining through a share link** (WIS-337): the same, `kind:
+ *   'link_join'`, so a forwarded Join link sends each owner one email a day.
  * - **An occasion reminder**: one email per person, list and occurrence (`kind:
  *   'occasion_reminder'`, `key`: the occurrence's date), so re-runs of the
  *   daily cron and its catch-up days send nothing new.
@@ -21,7 +23,7 @@ import mongoose, { Schema, Model } from 'mongoose';
  */
 const NotificationEmailClaimSchema = new Schema({
   user: { type: Schema.Types.ObjectId, ref: 'User', required: true },
-  kind: { type: String, enum: ['proposal', 'occasion_reminder'], required: true },
+  kind: { type: String, enum: ['proposal', 'link_join', 'occasion_reminder'], required: true },
   wishlist: { type: Schema.Types.ObjectId, ref: 'Wishlist', required: true },
   key: { type: String, default: '' },
   sentAt: { type: Date, required: true },
@@ -35,7 +37,7 @@ export const CLAIM_TTL_SECONDS = 30 * 24 * 60 * 60;
 NotificationEmailClaimSchema.index({ user: 1, kind: 1, wishlist: 1, key: 1 }, { unique: true });
 NotificationEmailClaimSchema.index({ sentAt: 1 }, { expireAfterSeconds: CLAIM_TTL_SECONDS });
 
-export type NotificationEmailClaimKind = 'proposal' | 'occasion_reminder';
+export type NotificationEmailClaimKind = 'proposal' | 'link_join' | 'occasion_reminder';
 
 export interface INotificationEmailClaim {
   _id: mongoose.Types.ObjectId;

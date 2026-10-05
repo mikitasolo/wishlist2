@@ -212,3 +212,112 @@ describe('a list opened through its share link', () => {
     }
   });
 });
+
+describe('a Join link (WIS-337)', () => {
+  const joinLink = (extra: Partial<Extract<WishlistAddress, { kind: 'link' }>> = {}) =>
+    link({ level: 'join', ...extra });
+
+  beforeEach(() => {
+    router.push.mockReset();
+    showToast.mockReset();
+    const read = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === '/api/wishlists/w1/join' && init?.method === 'POST') {
+        return reply({
+          success: true,
+          data: { joined: true, alreadyMember: false, wishlistId: 'w1', wishlistSlug: 'wedding' },
+        });
+      }
+      return read(url, init);
+    });
+  });
+
+  const joins = () =>
+    fetchMock.mock.calls.filter(([url]) => String(url) === '/api/wishlists/w1/join');
+
+  it('offers Join this list in place of Ask to join, and joins only once confirmed', async () => {
+    viewAs({ id: 'u9', username: 'ivan' });
+    const user = userEvent.setup();
+    render(<WishlistPage address={joinLink()} />);
+    await user.click(await screen.findByRole('button', { name: 'Join this list' }));
+    expect(screen.queryByRole('button', { name: 'Ask to join' })).toBeNull();
+    // Nothing yet: the confirmation is open.
+    expect(joins()).toHaveLength(0);
+    const dialog = screen.getByRole('alertdialog', { name: 'Join @anna_m’s list?' });
+    expect(dialog).toHaveTextContent(
+      'You’ll be able to reserve gifts. @anna_m won’t see what you reserve.'
+    );
+    await user.click(screen.getByRole('button', { name: 'Join' }));
+    await waitFor(() => expect(router.push).toHaveBeenCalledWith('/wishlists/wedding?welcome=1'));
+    expect(joins()).toHaveLength(1);
+    const [url, init] = joins()[0];
+    expect(tokenOf(init)).toBe(TOKEN);
+    expect(String(url)).not.toContain(TOKEN);
+    // The join-request read isn't made on a Join link.
+    expect(fetchMock.mock.calls.some(([u]) => String(u) === '/api/wishlists/w1/requests/me')).toBe(
+      false
+    );
+  });
+
+  it('Cancel closes the confirmation and sends nothing', async () => {
+    viewAs({ id: 'u9', username: 'ivan' });
+    const user = userEvent.setup();
+    render(<WishlistPage address={joinLink()} />);
+    await user.click(await screen.findByRole('button', { name: 'Join this list' }));
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(joins()).toHaveLength(0);
+  });
+
+  it('offers a signed-out visitor Sign in to join, back to the link with then=join', async () => {
+    viewAs(null);
+    const user = userEvent.setup();
+    render(<WishlistPage address={joinLink()} />);
+    await user.click(await screen.findByRole('button', { name: 'Sign in to join' }));
+    expect(signIn).toHaveBeenCalledWith(undefined, { redirectTo: `/l/${TOKEN}?then=join` });
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+  });
+
+  it('back from signing in (then=join): the confirmation opens at once, and still takes a click', async () => {
+    window.history.pushState({}, '', `/l/${TOKEN}?then=join`);
+    viewAs({ id: 'u9', username: 'ivan' });
+    const user = userEvent.setup();
+    render(<WishlistPage address={joinLink({ then: 'join' })} />);
+    expect(await screen.findByRole('alertdialog', { name: 'Join @anna_m’s list?' })).toBeTruthy();
+    // `then` is stripped, and nothing is sent on load.
+    expect(window.location.search).toBe('');
+    expect(joins()).toHaveLength(0);
+    await user.click(screen.getByRole('button', { name: 'Join' }));
+    await waitFor(() => expect(joins()).toHaveLength(1));
+  });
+
+  it('a refused join says the link doesn’t work, and stays put', async () => {
+    const read = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) =>
+      url === '/api/wishlists/w1/join'
+        ? reply({ success: false, error: 'Wishlist not found' }, 404)
+        : read(url, init)
+    );
+    viewAs({ id: 'u9', username: 'ivan' });
+    const user = userEvent.setup();
+    render(<WishlistPage address={joinLink()} />);
+    await user.click(await screen.findByRole('button', { name: 'Join this list' }));
+    await user.click(screen.getByRole('button', { name: 'Join' }));
+    await waitFor(() =>
+      expect(showToast).toHaveBeenCalledWith(
+        'This link doesn’t work anymore. Ask the person who sent it for a new one.',
+        'error'
+      )
+    );
+    expect(router.push).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+  });
+
+  it('an owner’s Preview as visitor shows no Join', async () => {
+    role = 'owner';
+    viewAs({ id: 'u0', username: 'anna_m' });
+    render(<WishlistPage address={joinLink({ preview: true })} />);
+    await screen.findByText('Kettle');
+    expect(screen.queryByRole('button', { name: 'Join this list' })).toBeNull();
+  });
+});

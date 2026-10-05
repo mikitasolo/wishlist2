@@ -94,10 +94,6 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       );
     }
 
-    // Covers edits and book/unbook toggles — curb toggle churn + notification noise.
-    const limited = await enforce('booking', userKey(session.user.id));
-    if (limited) return limited;
-
     await connectDB();
 
     const currentUser = await User.findById(session.user.id);
@@ -139,6 +135,16 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         { status: 403 }
       );
     }
+
+    // Covers edits and book/unbook toggles — curb toggle churn + notification
+    // noise. A new account's bookings are on the stricter tier (WIS-337: a Join
+    // link forwarded beyond its audience, and owners who can't see bookings,
+    // would let a fresh account reserve a whole list); an owner editing their
+    // own items never is, so it's decided once ownership is known.
+    const limited = await enforce('booking', userKey(session.user.id), {
+      newAccount: !isOwner && session.user.newAccount,
+    });
+    if (limited) return limited;
 
     // Validate request body
     const validation = await validateRequestBody(request, updateItemSchema);

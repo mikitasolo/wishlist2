@@ -101,6 +101,10 @@ const SPECS = {
   shareLink: { tokens: 30, window: '1 h', policy: 'fail-open', keyKind: 'user' },
   content: { tokens: 60, window: '1 h', policy: 'fail-open', keyKind: 'user' },
   booking: { tokens: 60, window: '1 h', policy: 'fail-open', keyKind: 'user' },
+  // Joining a list through a Join share link (WIS-337): each join notifies
+  // every owner, and a join is a step from reserving, so a forwarded link
+  // can't be walked across many lists at once.
+  linkJoin: { tokens: 20, window: '1 h', policy: 'fail-open', keyKind: 'user' },
   // Asking a list's owners to invite you (WIS-275): each ask notifies every
   // owner, so a cancel-and-ask-again loop can't turn into a stream of them.
   joinRequest: { tokens: 10, window: '1 h', policy: 'fail-open', keyKind: 'user' },
@@ -133,6 +137,7 @@ const SPECS = {
   // notification email is only a missed nudge (Activity still has it). A
   // proposal's is also coalesced to one per list a day (`claimProposalEmail`).
   emailJoinRequest: { tokens: 10, window: '1 h', policy: 'fail-closed', keyKind: 'user' },
+  emailLinkJoin: { tokens: 10, window: '1 h', policy: 'fail-closed', keyKind: 'user' },
   emailProposal: { tokens: 10, window: '1 h', policy: 'fail-closed', keyKind: 'user' },
   emailAccessChanged: { tokens: 10, window: '1 h', policy: 'fail-closed', keyKind: 'user' },
   emailInviteAccepted: { tokens: 10, window: '1 h', policy: 'fail-closed', keyKind: 'user' },
@@ -145,8 +150,11 @@ export type LimiterName = keyof typeof SPECS;
 /**
  * The stricter tier for an account under 24h old (WIS-42, values the operator
  * accepted on 2026-10-04): only the surfaces that reach other people (invites,
- * follows, new lists and items) or cost money (uploads). Booking, search and
- * sign-in have none. Policy and key kind are the standard entry's.
+ * follows, new lists and items) or cost money (uploads). Search and sign-in
+ * have none. Joining through a link, and booking, got one with WIS-337: a Join
+ * link forwarded beyond its audience, plus owners who can't see bookings, makes
+ * a fresh account reserving everything a griefing path. Policy and key kind are
+ * the standard entry's.
  */
 const NEW_ACCOUNT_SPECS = {
   upload: { tokens: 5, window: '10 m' },
@@ -154,6 +162,8 @@ const NEW_ACCOUNT_SPECS = {
   follow: { tokens: 20, window: '1 h' },
   shareLink: { tokens: 5, window: '1 h' },
   joinRequest: { tokens: 3, window: '1 h' },
+  linkJoin: { tokens: 5, window: '1 h' },
+  booking: { tokens: 20, window: '1 h' },
   content: { tokens: 20, window: '1 h' },
 } satisfies Partial<Record<LimiterName, Pick<LimiterSpec, 'tokens' | 'window'>>>;
 

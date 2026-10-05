@@ -439,12 +439,13 @@ describe('notificationIcon', () => {
 });
 
 describe('showsActor', () => {
-  it('shows who did it on a follow, an invite, an accepted invite and a request to join only', () => {
+  it('shows who did it on a follow, an invite, an accepted invite, a request to join and a link join only', () => {
     expect(NOTIFICATION_TYPES.filter(showsActor)).toEqual([
       'follow',
       'wishlist_invite',
       'invite_accepted',
       'join_request',
+      'link_join',
     ]);
   });
 
@@ -547,6 +548,37 @@ describe('a request to join (WIS-275)', () => {
     expect(notificationLink(request())).toBe('/wishlists/anna-30?tab=people');
     expect(notificationLink(request({ wishlistSlug: null }))).toBe('/wishlists/w1?tab=people');
     expect(notificationIcon(request())).toBe('user-plus');
+  });
+});
+
+describe('a link join (WIS-337)', () => {
+  const join = (over: Partial<NotificationView> = {}) =>
+    make({
+      type: 'link_join',
+      actorUsername: 'ivan_petrov',
+      wishlistName: 'Anna’s 30th',
+      wishlistSlug: 'anna-30',
+      wishlistId: 'w1',
+      linkLabel: null,
+      ...over,
+    });
+
+  it('names who joined, the list, and the link by its label when it has one', () => {
+    expect(notificationText(join())).toBe('@ivan_petrov joined Anna’s 30th through a link');
+    expect(notificationParts(join({ linkLabel: 'Family chat' }))).toEqual([
+      '@ivan_petrov joined ',
+      { listName: 'Anna’s 30th' },
+      ' through the link “Family chat”',
+    ]);
+    expect(notificationText(join({ actorUsername: null }))).toBe(
+      'Someone joined Anna’s 30th through a link'
+    );
+  });
+
+  it('links to the list’s People tab', () => {
+    expect(notificationLink(join())).toBe('/wishlists/anna-30?tab=people');
+    expect(notificationLink(join({ wishlistSlug: null }))).toBe('/wishlists/w1?tab=people');
+    expect(notificationIcon(join())).toBe('link');
   });
 });
 
