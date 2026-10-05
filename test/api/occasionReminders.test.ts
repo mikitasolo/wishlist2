@@ -11,8 +11,10 @@ import { connectTestDB, disconnectTestDB, clearTestDB } from '../db';
 vi.mock('@/lib/mongodb', () => ({ default: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('@/lib/auth', () => ({ auth: vi.fn() }));
 vi.mock('@vercel/functions', () => ({ dangerouslyDeleteByTag: vi.fn() }));
+vi.mock('@/lib/email', () => ({ sendNotificationEmail: vi.fn() }));
 
 import { auth } from '@/lib/auth';
+import { sendNotificationEmail } from '@/lib/email';
 import { GET as CRON } from '@/app/api/cron/occasion-reminders/route';
 import { GET as FEED } from '@/app/api/notifications/route';
 import { PATCH as PATCH_ME } from '@/app/api/users/me/route';
@@ -26,6 +28,7 @@ import Follow from '@/models/Follow';
 import type { Occasion } from '@/lib/utils/occasion';
 
 const session = vi.mocked(auth);
+const sendEmail = vi.mocked(sendNotificationEmail);
 
 // Monday 5 Oct 2026, 06:00 UTC: a week ahead is Monday 12 Oct.
 const NOW = new Date('2026-10-05T06:00:00Z');
@@ -43,6 +46,7 @@ afterAll(disconnectTestDB);
 beforeEach(async () => {
   await clearTestDB();
   session.mockReset();
+  sendEmail.mockReset();
   vi.stubEnv('CRON_SECRET', 'cron-secret');
   owner = (await User.create({ email: 'owner@x.com', username: 'owner' }))._id;
 });
@@ -100,7 +104,13 @@ describe('GET /api/cron/occasion-reminders', () => {
 
     const res = await cron('cron-secret');
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ success: true, lists: 1, sent: 1, capped: false });
+    expect(await res.json()).toEqual({
+      success: true,
+      lists: 1,
+      sent: 1,
+      capped: false,
+      emailed: 1,
+    });
   });
 });
 
@@ -114,7 +124,12 @@ describe('sendOccasionReminders', () => {
     const l = await list({ kind: 'birthday', date: '2000-10-12', recurrence: 'yearly' });
     await join(l._id, mia);
 
-    expect(await sendOccasionReminders(NOW)).toEqual({ lists: 1, sent: 1, capped: false });
+    expect(await sendOccasionReminders(NOW)).toEqual({
+      lists: 1,
+      sent: 1,
+      capped: false,
+      emailed: 1,
+    });
     const rows = await reminders();
     expect(rows.map((r) => String(r.user))).toEqual([String(mia)]);
     expect(rows[0]).toMatchObject({
@@ -149,7 +164,12 @@ describe('sendOccasionReminders', () => {
     const none = await list(null);
     for (const l of [archived, tooFar, tooClose, passed, none]) await join(l._id, mia);
 
-    expect(await sendOccasionReminders(NOW)).toEqual({ lists: 0, sent: 0, capped: false });
+    expect(await sendOccasionReminders(NOW)).toEqual({
+      lists: 0,
+      sent: 0,
+      capped: false,
+      emailed: 0,
+    });
     expect(await reminders()).toHaveLength(0);
   });
 
@@ -225,12 +245,23 @@ describe('sendOccasionReminders', () => {
     for (const p of people) await join(later._id, p);
     await join(soon._id, people[0]);
 
-    expect(await sendOccasionReminders(NOW, 2)).toEqual({ lists: 2, sent: 2, capped: true });
+    // Emails have their own cap, so every member is emailed in the first run.
+    expect(await sendOccasionReminders(NOW, 2)).toEqual({
+      lists: 2,
+      sent: 2,
+      capped: true,
+      emailed: 4,
+    });
     // The list closest to its last day went first.
     expect(await reminders({ wishlist: soon._id })).toHaveLength(1);
     expect(await reminders({ wishlist: later._id })).toHaveLength(1);
 
-    expect(await sendOccasionReminders(NOW, 2)).toEqual({ lists: 1, sent: 2, capped: false });
+    expect(await sendOccasionReminders(NOW, 2)).toEqual({
+      lists: 1,
+      sent: 2,
+      capped: false,
+      emailed: 0,
+    });
     expect(await reminders({ wishlist: later._id })).toHaveLength(3);
   });
 

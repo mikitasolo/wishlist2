@@ -4,6 +4,8 @@ import WishlistMember from '@/models/WishlistMember';
 import User from '@/models/User';
 import Notification from '@/models/Notification';
 import { createOccasionReminders } from '@/lib/notifications';
+import NotificationEmailClaim from '@/models/NotificationEmailClaim';
+import { claimOccasionReminderEmail, sendOne } from '@/lib/notificationEmails';
 import { notificationOptInFilter } from '@/lib/utils/notificationPrefs';
 import {
   addDays,
@@ -34,11 +36,22 @@ import {
  * - **Capped**: at most `OCCASION_REMINDER_MAX_PER_RUN` new reminders a run,
  *   nearest occasion first, so the lists closest to their last day go first and
  *   the rest carry over to the next run.
+ * - **Email** (WIS-321): the same people, the same once-per-occurrence and the
+ *   same window, but its own setting (`notificationPrefs.occasion_reminder.email`,
+ *   on by default) and its own record of what was sent (`NotificationEmailClaim`),
+ *   so turning the in-app reminder off doesn't stop the email, nor the other way
+ *   round. Capped at `OCCASION_EMAIL_MAX_PER_RUN` a run (`sendReminderEmails`).
  */
 
 export const OCCASION_REMINDER_LEAD_DAYS = 7;
 export const OCCASION_REMINDER_CATCH_UP_DAYS = 2;
 export const OCCASION_REMINDER_MAX_PER_RUN = 500;
+/**
+ * At most this many reminder emails a run (WIS-321): each is an SMTP send
+ * inside the cron's 60s, so far fewer than the in-app rows. Like those, the
+ * rest carry over to the next run, within the catch-up window.
+ */
+export const OCCASION_EMAIL_MAX_PER_RUN = 50;
 
 /** The days counted from `today` that a reminder is due on, nearest first. */
 export function reminderDayOffsets(): number[] {
@@ -145,16 +158,102 @@ export interface OccasionReminderRun {
   sent: number;
   /** The run stopped at the cap with reminders left to send. */
   capped: boolean;
+  /** Reminder emails sent. */
+  emailed: number;
+}
+
+/**
+ * Who of a list's members still needs this occurrence's reminder email:
+ * members (not owners) whose reminder email is on and who haven't had it.
+ */
+async function pendingEmailRecipients(list: DueList): Promise<mongoose.Types.ObjectId[]> {
+  const members = await WishlistMember.find({ wishlist: list._id }).select('user').lean();
+  const owners = new Set(list.owners.map(String));
+  const ids = members.map((m) => m.user).filter((id) => !owners.has(String(id)));
+  if (ids.length === 0) return [];
+  const [wanting, emailed] = await Promise.all([
+    User.find({ _id: { $in: ids }, ...notificationOptInFilter('occasion_reminder', 'email') })
+      .select('_id')
+      .lean(),
+    NotificationEmailClaim.find({
+      kind: 'occasion_reminder',
+      wishlist: list._id,
+      key: list.occasionDate,
+      user: { $in: ids },
+    })
+      .select('user')
+      .lean(),
+  ]);
+  const done = new Set(emailed.map((c) => String(c.user)));
+  return wanting
+    .map((u) => u._id)
+    .filter((id) => !done.has(String(id)))
+    .sort((a, b) => String(a).localeCompare(String(b)));
+}
+
+/**
+ * Email up to `budget` of a due list's members their reminder, and return how
+ * many went out. Each is claimed first (once per person, list and occurrence,
+ * under the claim's unique index, so overlapping runs send it once), then the
+ * list and the person are read again: a list archived, deleted or moved to
+ * another day since, or a person who left, became an owner or turned the email
+ * off, gives the claim back and gets nothing.
+ */
+async function sendReminderEmails(
+  list: DueList,
+  users: mongoose.Types.ObjectId[]
+): Promise<number> {
+  let emailed = 0;
+  for (const user of users) {
+    const claim = await claimOccasionReminderEmail(user, list._id, list.occasionDate);
+    if (!claim) continue;
+    const [now, member, recipient] = await Promise.all([
+      Wishlist.findById(list._id).select('name slug owners archived occasion').lean(),
+      WishlistMember.exists({ wishlist: list._id, user }),
+      User.findOne({ _id: user, ...notificationOptInFilter('occasion_reminder', 'email') })
+        .select('email')
+        .lean(),
+    ]);
+    const occasion = now?.occasion;
+    const stillDue =
+      !!now &&
+      !now.archived &&
+      !!occasion &&
+      nextOccurrence(occasion.date, occasion.recurrence ?? null, list.occasionDate) ===
+        list.occasionDate &&
+      !now.owners.some((o) => String(o) === String(user));
+    if (!stillDue || !member || !recipient?.email) {
+      await claim.release();
+      continue;
+    }
+    const sent = await sendOne(
+      recipient.email,
+      {
+        recipientId: String(user),
+        type: 'occasion_reminder',
+        wishlistId: String(list._id),
+        wishlistName: now.name,
+        wishlistSlug: now.slug ?? null,
+        occasionKind: occasion.kind,
+        occasionDate: list.occasionDate,
+      },
+      async () => claim
+    );
+    if (sent) emailed += 1;
+  }
+  return emailed;
 }
 
 /** One daily run: remind every due list's members, up to the cap (see the top of this file). */
 export async function sendOccasionReminders(
   now: Date = new Date(),
-  maxPerRun: number = OCCASION_REMINDER_MAX_PER_RUN
+  maxPerRun: number = OCCASION_REMINDER_MAX_PER_RUN,
+  maxEmailsPerRun: number = OCCASION_EMAIL_MAX_PER_RUN
 ): Promise<OccasionReminderRun> {
   const today = utcDateString(now);
-  const run: OccasionReminderRun = { lists: 0, sent: 0, capped: false };
-  for (const list of await listsDueForReminder(today)) {
+  const run: OccasionReminderRun = { lists: 0, sent: 0, capped: false, emailed: 0 };
+  const due = await listsDueForReminder(today);
+  for (const list of due) {
     const pending = await pendingRecipients(list);
     if (pending.length === 0) continue;
     const room = maxPerRun - run.sent;
@@ -171,6 +270,14 @@ export async function sendOccasionReminders(
       users: pending.slice(0, room),
     });
     if (run.capped) break;
+  }
+  // Emails after every in-app row, with their own cap, nearest occasion first.
+  for (const list of due) {
+    const room = maxEmailsPerRun - run.emailed;
+    if (room <= 0) break;
+    const pending = await pendingEmailRecipients(list);
+    if (pending.length === 0) continue;
+    run.emailed += await sendReminderEmails(list, pending.slice(0, room));
   }
   return run;
 }

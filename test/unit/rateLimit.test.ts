@@ -119,6 +119,12 @@ const KEY_KINDS: Record<LimiterName, KeyKind> = {
   search: 'ip',
   unsubscribe: 'user',
   unsubscribeInvalid: 'ip',
+  emailJoinRequest: 'user',
+  emailProposal: 'user',
+  emailAccessChanged: 'user',
+  emailInviteAccepted: 'user',
+  emailProposalApproved: 'user',
+  emailOccasionReminder: 'user',
 };
 const LIMITERS = Object.entries(KEY_KINDS) as [LimiterName, KeyKind][];
 

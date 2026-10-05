@@ -6,6 +6,7 @@ import WishlistMember from '@/models/WishlistMember';
 import WishlistInvite from '@/models/WishlistInvite';
 import Item from '@/models/Item';
 import WishlistJoinRequest from '@/models/WishlistJoinRequest';
+import NotificationEmailClaim from '@/models/NotificationEmailClaim';
 import Follow from '@/models/Follow';
 import { clearJoinRequestNotifications } from '@/lib/utils/joinRequests';
 import Notification from '@/models/Notification';
@@ -43,7 +44,7 @@ import { purgeShareCards } from '@/lib/og/purge';
  *      `deleteGiftLogs`), freeing their snapshots.
  *   5. Its invites, requests to join (with the owners' `join_request`
  *      notifications about them), follows and notifications (its own, and any that name it as
- *      their actor), its proposals' link back to it, and its dashboard pins.
+ *      their actor), the record of notification emails sent to it, its proposals' link back to it, and its dashboard pins.
  *   6. Its uploads, once nothing points at them any more.
  *   7. Its sign-in accounts and verification tokens, and its sessions again.
  *   8. Steps 2–6 once more, for anything a request already in flight when the
@@ -149,6 +150,7 @@ async function eraseHoldings(userId: string, agreed: ReadonlySet<string>): Promi
 
   await Follow.deleteMany({ $or: [{ follower: uid }, { following: uid }] });
   await Notification.deleteMany({ $or: [{ user: uid }, { actor: uid }] });
+  await NotificationEmailClaim.deleteMany({ user: uid });
   // Proposals stay on the lists they were made for, which are their owners',
   // without the link back to who made it (owners never saw it anyway).
   await Item.updateMany({ proposedBy: uid }, { $unset: { proposedBy: 1 } });
