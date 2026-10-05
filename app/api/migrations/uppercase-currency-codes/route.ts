@@ -41,7 +41,9 @@ async function uppercase(model: Pick<Model<unknown>, 'collection'>, field: strin
  * Deploy ordering: run it only **after** the code that reads both casings (the
  * WIS-49 PR) is deployed, on staging and then on production. The code before it
  * looks rates up with the stored code as it is, so an uppercased price would
- * stop converting on a deployment still running it. Once it has run everywhere,
+ * stop converting on a deployment still running it. For the same reason, once
+ * it has run on a host, rolling that host back to a release from before WIS-49
+ * leaves prices unconverted until it's rolled forward. Once it has run everywhere,
  * the follow-up cleanup deletes this endpoint and the lowercase tolerance.
  */
 export const POST = createMigration(async () => {
