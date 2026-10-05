@@ -311,7 +311,7 @@
     }
   }
 
-  /* A share link's print card (components/ShareLinkQrDialog.tsx, WIS-328):
+  /* A share link's print card (components/ShareLinkDetailsDialog.tsx, WIS-328):
      while it's mounted, a print shows it alone. `!important` so the page's
      own display utilities can't bring the rest back. */
   @media print {
