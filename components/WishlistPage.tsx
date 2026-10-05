@@ -43,6 +43,7 @@ import LoadError from '@/components/LoadError';
 import WishlistUnavailable from '@/components/WishlistUnavailable';
 import ShareLinkUnavailable from '@/components/ShareLinkUnavailable';
 import ShareLinksSection, { type ShareLinksSectionHandle } from '@/components/ShareLinksSection';
+import RevokeShareLinksDialog from '@/components/RevokeShareLinksDialog';
 import { useShareLinks } from '@/lib/hooks/useShareLinks';
 import { SHARE_TOKEN_HEADER } from '@/lib/utils/shareLinkFields';
 import { isPublishedItem } from '@/lib/utils/itemCounts';
@@ -341,6 +342,17 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
     isOwner && !linkToken && pageLoad === 'ready'
   );
   const shareLinksRef = useRef<ShareLinksSectionHandle>(null);
+  // An owner the viewer has just removed or made a member, who could have
+  // copied the list's live share links: offered for revoking once the
+  // confirmation has closed (WIS-338). Links stay unless revoked.
+  const [revokeLinksFor, setRevokeLinksFor] = useState<{ username: string | null } | null>(null);
+  const hasLiveLinks = shareLinks.read === 'loaded' && shareLinks.liveCount > 0;
+  const offerLinkRevoke = useCallback(
+    (username: string | null) => {
+      if (hasLiveLinks) setRevokeLinksFor({ username });
+    },
+    [hasLiveLinks]
+  );
   // Share's "Share links": People, then the section, or the New link dialog
   // when there are no links yet, once the section is on screen and has read.
   const [toShareLinks, setToShareLinks] = useState(false);
@@ -1239,6 +1251,7 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
             // Removing someone also cancels any invite they still had pending here.
             if (type === 'owner') {
               dropOwner({ id: memberId, username: memberUsername ?? null });
+              offerLinkRevoke(memberUsername ?? null);
               await Promise.all([refreshMembers(), refreshInvites(), refreshOwners()]);
             } else {
               await Promise.all([refreshMembers(), refreshInvites()]);
@@ -1270,6 +1283,7 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
     dropOwner,
     refreshOwners,
     runRowAction,
+    offerLinkRevoke,
   ]);
 
   /**
@@ -1321,6 +1335,7 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
           if (result.success) {
             showToast(`@${username || 'user'} is now a member`, 'success');
             dropOwner({ id: userId, username });
+            offerLinkRevoke(username);
             // Demoting also cancels any invite they still had pending here.
             await Promise.all([refreshMembers(), refreshInvites(), refreshOwners()]);
           } else {
@@ -1344,6 +1359,7 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
       dropOwner,
       refreshOwners,
       runRowAction,
+      offerLinkRevoke,
     ]
   );
 
@@ -2285,7 +2301,9 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
         deleteConfirm.memberId && (
           <ConfirmDialog
             isOpen={!!deleteConfirm}
-            {...removeFromListCopy(deleteConfirm.memberUsername, deleteConfirm.type)}
+            {...removeFromListCopy(deleteConfirm.memberUsername, deleteConfirm.type, {
+              liveLinks: hasLiveLinks,
+            })}
             onConfirm={confirmKickMember}
             onCancel={() => setDeleteConfirm(null)}
             confirmText="Remove"
@@ -2357,6 +2375,16 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
           pendingText="Making member…"
           cancelText="Cancel"
           type="warning"
+        />
+      )}
+
+      {/* After its confirmation has closed, never stacked on it. */}
+      {revokeLinksFor && !demoteConfirm && !deleteConfirm && (
+        <RevokeShareLinksDialog
+          username={revokeLinksFor.username}
+          links={shareLinks.links}
+          onRevoke={shareLinks.revoke}
+          onDone={() => setRevokeLinksFor(null)}
         />
       )}
 

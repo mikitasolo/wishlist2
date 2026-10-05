@@ -60,6 +60,19 @@ describe('the copy an owner reads', () => {
     });
   });
 
+  it('a kick says the person can’t use the list’s share links only when it has live ones (WIS-338)', () => {
+    expect(removeFromListCopy('ben', 'member', { liveLinks: true }).message).toBe(
+      "They lose access, anything they reserved here goes back on the list, and they're told they were removed (not by whom). They won't be able to use this list's share links."
+    );
+    expect(removeFromListCopy('ben', 'member', { liveLinks: false }).message).not.toContain(
+      'share links'
+    );
+    // Removing an owner leaves the links working for them: the prompt after it asks instead.
+    expect(removeFromListCopy('bob', 'owner', { liveLinks: true }).message).not.toContain(
+      'share links'
+    );
+  });
+
   it('names someone without a username as @user, as the rows do', () => {
     expect(removeFromListCopy(null, 'member').title).toBe('Remove @user?');
   });

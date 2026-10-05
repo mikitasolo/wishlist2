@@ -121,7 +121,7 @@ Read it before touching roles, invites, bookings, visibility, notifications or a
 - **Roles**: a list has exactly owners (`Wishlist.owners[]`) and members (`WishlistMember`, no role field); all co-owners are equal, authorized only through the `wishlistOwners.ts` / `wishlistAccess.ts` helpers, and owner-only writes are conditional (`removeWishlistOwner`, `deleteOwnedWishlist`, `ownedByFilter`). A list always keeps one owner.
 - **Members** browse, propose and reserve; everything else is owner-only.
 - **Becoming an owner** takes consent (create, `owner` invite, promotion of an existing member) and releases that person's bookings and reservations; route role changes through `releaseHoldingsForRole`, and keep the grant-then-release order that `undoBookingUnlessMember` relies on.
-- **Demote / remove / kick** notify only the person affected, never naming who did it; losing ownership clears `owners` and `featuredBy`; nobody changes their own role.
+- **Demote / remove / kick** notify only the person affected, never naming who did it; losing ownership clears `owners` and `featuredBy`; nobody changes their own role; a kick keeps them out of the list's share links until an invite is accepted.
 - **Occasion reminders** go 7 days ahead to members only (never owners or friends), once per (person, list, occurrence) via a unique index, re-checked after the write, capped per run, opt-out in `notificationPrefs`, no booking info.
 - **Invites**: by username only, one pending per person per list, issued through `issueWishlistInvite` (20-pending cap, `PENDING_INVITE_CAP`); answered by claiming the pending row first; leaving or losing a role cancels your pending invites, and an owner taken off loses the ones they sent; an archived list's `member` invites are paused.
 - **Requests to join** grant nothing: owners answer with a normal invite or a silent decline.
@@ -136,7 +136,7 @@ Read it before touching roles, invites, bookings, visibility, notifications or a
 ### [Backend & platform](docs/agents/backend.md)
 
 - **Money** is integer cents; currency codes are uppercase everywhere (normalize client input with `normalizeCurrency`); other people's prices show in the viewer's currency, always through `formatPrice`. A user's currency is suggested, never guessed. An occasion date is a `YYYY-MM-DD` calendar date: use `lib/utils/occasion.ts` and `useLocalToday`.
-- **Auth**: accounts are created on the first verified sign-in (the adapter's `createUser`); the session callback returns the `sessionPayload` allowlist; only the home page reads the session on the server; a magic link is sent only by the sign-in form's Turnstile-checked server action.
+- **Auth**: accounts are created on the first verified sign-in (the adapter's `createUser`); the session callback returns the `sessionPayload` allowlist; only the home page reads the session on the server (and `/l/[token]`, for a kick block); a magic link is sent only by the sign-in form's Turnstile-checked server action.
 - **sharp** needs libvips shipped by hand (`outputFileTracingIncludes`, `check:trace`); load it lazily outside the upload route.
 - **Uploads** are re-encoded, type-checked, owned (`uploads/<userId>/`, `canAttachImage`) and freed only via the `blob.ts` helpers from what the write replaced; unsaved uploads are handed back; snapshots have their own helpers.
 - **Link previews** show only what a signed-out visitor could see (a live share link's: its list, whatever the visibility); a write that changes a card calls `purgeShareCards`.

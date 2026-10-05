@@ -9,6 +9,7 @@ import WishlistJoinRequest from '@/models/WishlistJoinRequest';
 import NotificationEmailClaim from '@/models/NotificationEmailClaim';
 import Follow from '@/models/Follow';
 import ShareLink from '@/models/ShareLink';
+import WishlistLinkBlock from '@/models/WishlistLinkBlock';
 import { clearJoinRequestNotifications } from '@/lib/utils/joinRequests';
 import Notification from '@/models/Notification';
 import { ownedByFilter } from '@/lib/utils/wishlistOwners';
@@ -159,6 +160,8 @@ async function eraseHoldings(userId: string, agreed: ReadonlySet<string>): Promi
   // Share links it made stay with their lists (links are the list's, and a
   // printed QR code keeps working), without the record of who made them.
   await ShareLink.updateMany({ createdBy: uid }, { $set: { createdBy: null } });
+  // The lists that kicked it keeping it out of their share links (WIS-338).
+  await WishlistLinkBlock.deleteMany({ user: uid });
 }
 
 /**

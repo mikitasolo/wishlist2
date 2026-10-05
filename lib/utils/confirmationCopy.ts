@@ -56,13 +56,18 @@ export function ownerLeaveCopy(listName: string): ConfirmationCopy {
   };
 }
 
+/** What a kick adds when the list has live share links (WIS-338). */
+export const KICK_LINKS_SENTENCE = "They won't be able to use this list's share links.";
+
 /**
  * An owner removing someone from the list. Read by an owner, so it takes no
  * count and says nothing about whether this person reserved anything.
  */
 export function removeFromListCopy(
   username: string | null | undefined,
-  role: 'member' | 'owner'
+  role: 'member' | 'owner',
+  /** The list has share links that work (WIS-338): a kick keeps them out of those too. */
+  { liveLinks = false }: { liveLinks?: boolean } = {}
 ): ConfirmationCopy {
   if (role === 'owner') {
     return {
@@ -74,7 +79,8 @@ export function removeFromListCopy(
   return {
     title: `Remove ${handle(username)}?`,
     message:
-      "They lose access, anything they reserved here goes back on the list, and they're told they were removed (not by whom).",
+      "They lose access, anything they reserved here goes back on the list, and they're told they were removed (not by whom)." +
+      (liveLinks ? ` ${KICK_LINKS_SENTENCE}` : ''),
   };
 }
 

@@ -9,6 +9,7 @@ import { releaseLateBookings, releaseUserBookings } from '@/lib/utils/wishlistOw
 import { cancelPendingInvites } from '@/lib/utils/wishlistInvites';
 import { isObjectIdParam } from '@/lib/utils/objectId';
 import { createNotification } from '@/lib/notifications';
+import { blockFromShareLinks } from '@/lib/utils/linkBlocks';
 
 const notOwnerError = () =>
   NextResponse.json(
@@ -110,6 +111,11 @@ export async function DELETE(
       // removed nobody, so it doesn't say it did.
       return NextResponse.json({ success: false, error: 'Membership not found' }, { status: 404 });
     }
+
+    // Kicked, not left: the list's share links no longer let them back in
+    // (WIS-338). Only once this kick removed them, so a lost one blocks nobody;
+    // only an owner's invite, accepted, lifts it.
+    await blockFromShareLinks(id, membershipUserId);
 
     // Their bookings again, for one that checked their membership before the delete.
     await releaseLateBookings(id, membershipUserId);
