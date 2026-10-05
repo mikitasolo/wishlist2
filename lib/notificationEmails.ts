@@ -10,6 +10,7 @@ import { checkRateLimit, userKey, type LimiterName } from '@/lib/rateLimit';
 import { errorKind } from '@/lib/utils/errorKind';
 import { isDuplicateKeyError } from '@/lib/utils/mongoErrors';
 import type { NotificationType } from '@/lib/utils/notifications';
+import { notificationEventOf, notificationOptInFilter } from '@/lib/utils/notificationPrefs';
 
 /**
  * Notification emails (WIS-321, the operator's decision of 2026-10-05), sent
@@ -87,7 +88,11 @@ export async function emailNotification(
   if (recipients.length === 0 || !emailedByNotifications(args.type) || !args.wishlist) return;
   const type = args.type;
   try {
-    const users = await User.find({ _id: { $in: recipients } })
+    // The setting again, as a second guard: only those who still want it.
+    const users = await User.find({
+      _id: { $in: recipients },
+      ...notificationOptInFilter(notificationEventOf(type), 'email'),
+    })
       .select('email')
       .lean();
     await Promise.all(

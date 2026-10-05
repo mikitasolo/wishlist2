@@ -146,20 +146,26 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
       return wishlistNotFound();
     }
 
-    // Every owner, by the requester's public handle: never an email.
-    await createNotifications(ownerIds(wishlist), {
-      type: 'join_request',
-      actorUsername: session.user.username ?? null,
-      actor: userId,
-      wishlist: id,
-      wishlistName: wishlist.name,
-      wishlistSlug: wishlist.slug ?? null,
-    });
+    // Every owner, by the requester's public handle: never an email address.
+    // Their emails wait for the request to be still pending once the rows are
+    // written, as an email can't be taken back like the rows below.
+    const stillPending = async () =>
+      !!(await WishlistJoinRequest.exists({ wishlist: id, user: userId, status: 'pending' }));
+    await createNotifications(
+      ownerIds(wishlist),
+      {
+        type: 'join_request',
+        actorUsername: session.user.username ?? null,
+        actor: userId,
+        wishlist: id,
+        wishlistName: wishlist.name,
+        wishlistSlug: wishlist.slug ?? null,
+      },
+      { stillHolds: stillPending }
+    );
     // Cancelled or answered while those were being written: that cleanup ran
     // before they existed, so take them back here.
-    if (!(await WishlistJoinRequest.exists({ wishlist: id, user: userId, status: 'pending' }))) {
-      await clearJoinRequestNotifications(id, userId);
-    }
+    if (!(await stillPending())) await clearJoinRequestNotifications(id, userId);
 
     return requested(201);
   } catch (error) {

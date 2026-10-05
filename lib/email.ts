@@ -22,6 +22,12 @@ const smtpTransporter =
         host: env.SMTP_HOST,
         port: parseInt(env.SMTP_PORT),
         secure: env.SMTP_SECURE === 'true', // true for 465, false for other ports
+        // Bounded, as notification emails are sent inside the request that
+        // caused them: a slow SMTP server must fail a send in seconds, not
+        // hold the action for nodemailer's minutes-long defaults.
+        connectionTimeout: 10_000,
+        greetingTimeout: 10_000,
+        socketTimeout: 20_000,
         auth: {
           user: env.SMTP_USER,
           pass: env.SMTP_PASSWORD,

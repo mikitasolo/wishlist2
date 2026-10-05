@@ -63,7 +63,10 @@ beforeEach(async () => {
     )._id
   );
 });
-afterEach(() => __setRateLimiters(null));
+afterEach(() => {
+  __setRateLimiters(null);
+  vi.restoreAllMocks();
+});
 
 async function user(username: string, notificationPrefs?: NotificationPrefs) {
   return String(
@@ -171,6 +174,43 @@ describe('who gets an email', () => {
       wishlist: new Types.ObjectId(),
       wishlistName: 'Gone',
     });
+    expect(sendEmail).not.toHaveBeenCalled();
+  });
+
+  // regression: a failed settings read fell back to the default, "everyone",
+  // for the email channel too, so a transient error emailed people who had
+  // unsubscribed.
+  it('regression: a failed read of the email setting emails nobody', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    await User.updateOne({ _id: bo }, { 'notificationPrefs.join_request.email': false });
+    const find = User.find.bind(User);
+    vi.spyOn(User, 'find').mockImplementation(((filter: Record<string, unknown>) => {
+      if (Object.keys(filter ?? {}).some((k) => k.endsWith('.email'))) {
+        throw new Error('transient');
+      }
+      return find(filter);
+    }) as never);
+
+    await createNotifications([ann, bo], {
+      type: 'join_request',
+      actorUsername: 'ivan',
+      wishlist: wid,
+      wishlistName: 'L',
+    });
+    expect(sendEmail).not.toHaveBeenCalled();
+    // The rows still go out by their own, in-app, setting.
+    expect(await Notification.countDocuments({ type: 'join_request' })).toBe(2);
+  });
+
+  // regression: the email went out inside `createNotifications`, before the
+  // join-request route's re-check, so a request cancelled while its rows were
+  // written still emailed every owner.
+  it('regression: no email for an event taken back while its rows were written', async () => {
+    await createNotifications(
+      [ann],
+      { type: 'join_request', actorUsername: 'ivan', wishlist: wid, wishlistName: 'L' },
+      { stillHolds: async () => false }
+    );
     expect(sendEmail).not.toHaveBeenCalled();
   });
 

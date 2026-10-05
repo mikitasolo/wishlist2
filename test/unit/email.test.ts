@@ -150,6 +150,10 @@ describe('EMAIL_TRANSPORT=smtp', () => {
       host: 'localhost',
       port: 587,
       secure: false,
+      // Bounded: notification emails are sent inside the request (WIS-321).
+      connectionTimeout: 10_000,
+      greetingTimeout: 10_000,
+      socketTimeout: 20_000,
       auth: { user: 'test', pass: 'test' },
     });
     expect(sendMail).toHaveBeenCalledTimes(1);

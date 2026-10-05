@@ -95,7 +95,16 @@ export async function createNotification(
  */
 export async function createNotifications(
   users: Id[],
-  args: Omit<CreateNotificationArgs, 'user'>
+  args: Omit<CreateNotificationArgs, 'user'>,
+  options: {
+    /**
+     * Re-checked once the rows are written, before any email goes out: false
+     * when the event was taken back meanwhile (a join request cancelled while
+     * its rows were written), which the caller then settles for the rows. An
+     * email can't be taken back, so it isn't sent.
+     */
+    stillHolds?: () => Promise<boolean>;
+  } = {}
 ): Promise<mongoose.Types.ObjectId[]> {
   // `String`, not `.toString()`: a missing recipient must fail in the guarded
   // write below, which logs it, not throw out of a best-effort side effect.
@@ -115,7 +124,9 @@ export async function createNotifications(
   // Each recipient's email follows its own setting, whatever their in-app one
   // (`emailNotification` skips the types that email elsewhere or not at all),
   // and none goes out about a list that's gone.
-  if (!gone) await emailNotification(byEmail, args);
+  if (!gone && byEmail.length > 0 && (!options.stillHolds || (await options.stillHolds()))) {
+    await emailNotification(byEmail, args);
+  }
   return written;
 }
 
@@ -127,10 +138,10 @@ export async function createNotifications(
  * Nobody, on a channel the event isn't offered on.
  *
  * Read when the notification is written, not when the action began, so a
- * setting changed a moment before is honoured. A failed read keeps the
- * default's answer (everyone for one on by default, nobody otherwise), logged
- * by its kind: a preference is a side effect's side effect, never a reason to
- * fail or lose what the default would send.
+ * setting changed a moment before is honoured. A failed read is logged by its
+ * kind and, in app, keeps the default's answer (everyone for one on by
+ * default): a row is a side effect, never a reason to fail the action. By
+ * email it sends to nobody, so an unsubscribe always holds.
  */
 export async function recipientsWanting(
   users: Id[],
@@ -156,7 +167,9 @@ export async function recipientsWanting(
     return ids.filter((id) => onSet.has(id));
   } catch (err) {
     console.error('Failed to read notification settings:', errorKind(err));
-    return fallback ? ids : [];
+    // In app, the default's answer. Never an email: someone who unsubscribed
+    // must not get one because a read failed.
+    return fallback && channel === 'inApp' ? ids : [];
   }
 }
 
