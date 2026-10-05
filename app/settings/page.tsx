@@ -49,7 +49,12 @@ import { useFreshUploads } from '@/lib/hooks/useFreshUploads';
  * username and bio are typed, so they wait for their own Save.
  */
 type InstantField =
-  'image' | 'defaultCurrency' | 'searchable' | 'whoCanInvite' | 'profileVisibility';
+  | 'image'
+  | 'defaultCurrency'
+  | 'searchable'
+  | 'whoCanInvite'
+  | 'profileVisibility'
+  | 'occasionReminders';
 /** What a save note sits beside: one instant setting, or the username and bio together. */
 type NoteKey = InstantField | 'profile';
 
@@ -65,6 +70,8 @@ const SEARCHABLE_ON =
   'People can find you by searching for your username, and you show up in invite suggestions.';
 const SEARCHABLE_OFF =
   'You won’t appear in search or invite suggestions. People who know your exact username can still open your profile, and invite you if Who can invite you allows it.';
+const OCCASION_REMINDERS_HELPER =
+  'In Activity, a week before the occasion on a list you’re a member of.';
 const WHO_CAN_INVITE_HELPER = 'Owners of a list you’re on can still offer to make you a co-owner.';
 
 type PatchResult =
@@ -510,6 +517,16 @@ export default function SettingsPage() {
           </div>
         </Panel>
 
+        <Panel className="mb-6" title="Notifications">
+          <Toggle
+            label="Occasion reminders"
+            description={OCCASION_REMINDERS_HELPER}
+            checked={form.occasionReminders}
+            onChange={(on) => changeInstant('occasionReminders', on)}
+            note={<SaveNote state={notes.occasionReminders} />}
+          />
+        </Panel>
+
         <Panel className="mb-6" title="Preferences">
           <div id={SETTINGS_CURRENCY_FIELD_ID} ref={currencyField}>
             <div className="mb-1.5 flex items-center gap-3">
@@ -734,6 +751,16 @@ function SettingsSkeleton() {
           <Skeleton className="h-6 w-11 rounded-full" />
         </div>
         {row('w-56 max-w-full')}
+      </Panel>
+      <Panel className="mb-6">
+        {title('w-28')}
+        <div className="mt-5 flex items-center justify-between gap-4">
+          <div className="flex-1 space-y-1.5">
+            <Skeleton className="h-4 w-36" />
+            <Skeleton className="h-4 w-3/4" />
+          </div>
+          <Skeleton className="h-6 w-11 rounded-full" />
+        </div>
       </Panel>
       <Panel className="mb-6">
         {title('w-28')}

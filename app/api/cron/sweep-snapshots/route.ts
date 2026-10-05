@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
-import { secretsMatch } from '@/lib/utils/migration';
+import { cronRefusal } from '@/lib/utils/cronAuth';
 import { sweepOrphanSnapshots } from '@/lib/utils/orphanSnapshots';
 
 /** Room for a full listing, the 45s re-check delay and the deletes. */
@@ -15,15 +15,8 @@ export const maxDuration = 120;
  * read-only report is `POST /api/maintenance/orphan-snapshots`.
  */
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) {
-    return NextResponse.json({ success: false, error: 'CRON_SECRET is not set' }, { status: 500 });
-  }
-  const header = request.headers.get('authorization');
-  const token = header?.startsWith('Bearer ') ? header.slice('Bearer '.length) : null;
-  if (!secretsMatch(token, secret)) {
-    return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
-  }
+  const refused = cronRefusal(request);
+  if (refused) return refused;
 
   try {
     await connectDB();

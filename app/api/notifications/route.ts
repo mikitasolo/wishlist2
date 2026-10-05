@@ -118,6 +118,8 @@ export async function GET(request: NextRequest) {
         actorId: actor?.id ?? null,
         actorImage: actor?.image ?? null,
         followingActor: oneFollower && actor ? followed.has(actor.id) : null,
+        occasionKind: n.type === 'occasion_reminder' ? (n.occasionKind ?? null) : null,
+        occasionDate: n.type === 'occasion_reminder' ? (n.occasionDate ?? null) : null,
         read: n.read,
         createdAt: n.createdAt,
       };

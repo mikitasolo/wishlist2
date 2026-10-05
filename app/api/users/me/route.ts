@@ -21,6 +21,7 @@ import {
   isUploadedBy,
 } from '@/lib/utils/blob';
 import { purgeShareCards } from '@/lib/og/purge';
+import { notificationPrefWrites } from '@/lib/utils/notificationPrefs';
 
 // GET /api/users/me - current user's profile + privacy settings
 export async function GET() {
@@ -32,7 +33,7 @@ export async function GET() {
 
     await connectDB();
     const user = await User.findById(session.user.id).select(
-      'email username image bio defaultCurrency privacy'
+      'email username image bio defaultCurrency privacy notificationPrefs'
     );
     if (!user) {
       return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
@@ -59,7 +60,7 @@ export async function GET() {
  */
 type ProfileWrite = Partial<Pick<IUser, 'username' | 'image' | 'bio' | 'defaultCurrency'>> & {
   [K in keyof IUserPrivacy as `privacy.${K}`]?: IUserPrivacy[K];
-};
+} & Record<`notificationPrefs.${string}`, boolean>;
 
 // PATCH /api/users/me - update the profile and privacy settings it's sent. The
 // settings page sends only what its form changed (`profileChanges`,
@@ -87,7 +88,8 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
     }
 
-    const { username, image, bio, defaultCurrency, currencyChosen, privacy } = validation.data;
+    const { username, image, bio, defaultCurrency, currencyChosen, privacy, notificationPrefs } =
+      validation.data;
 
     if (!canAttachImage(image, session.user.id, user.image)) {
       return NextResponse.json({ success: false, error: FOREIGN_IMAGE_ERROR }, { status: 400 });
@@ -144,6 +146,9 @@ export async function PATCH(request: NextRequest) {
     if (privacy?.profileVisibility !== undefined) {
       changes['privacy.profileVisibility'] = privacy.profileVisibility;
     }
+    // Likewise each notification setting, by its own path
+    // (`notificationPrefs.occasion_reminder.inApp`).
+    Object.assign(changes, notificationPrefWrites(notificationPrefs));
 
     // One write, which hands back the profile as it was just before it landed,
     // so what follows works from what it replaced, not from the read above. Two
@@ -208,6 +213,7 @@ export async function PATCH(request: NextRequest) {
           bio: saved.bio,
           defaultCurrency: saved.defaultCurrency,
           privacy: saved.privacy,
+          notificationPrefs: saved.notificationPrefs ?? {},
         },
       },
       { status: 200 }

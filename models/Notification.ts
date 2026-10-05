@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document } from 'mongoose';
+import { OCCASION_KINDS, type OccasionKind } from '@/lib/utils/occasion';
 import {
   INVITE_ANSWERS,
   INVITE_ROLES,
@@ -47,6 +48,12 @@ export interface INotification extends Document {
   // "invited you to co-own …". Absent on rows written before it (WIS-273), which
   // read as a plain invite.
   inviteRole?: InviteRole | null;
+  // `occasion_reminder` only: the occasion's kind and the occurrence it's about
+  // (a real `YYYY-MM-DD`: a yearly occasion's next one, never its stored
+  // year). With `user` and `wishlist` it's what makes a reminder once-only
+  // (the unique index below).
+  occasionKind?: OccasionKind | null;
+  occasionDate?: string | null;
   read: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -74,6 +81,9 @@ const NotificationSchema = new Schema<INotification>(
     inviteAnswer: { type: String, enum: INVITE_ANSWERS, default: undefined },
     // No default: only an invite carries one.
     inviteRole: { type: String, enum: INVITE_ROLES, default: undefined },
+    // No default: only an occasion reminder carries them.
+    occasionKind: { type: String, enum: OCCASION_KINDS, default: undefined },
+    occasionDate: { type: String, match: /^\d{4}-\d{2}-\d{2}$/, default: undefined },
     read: { type: Boolean, default: false },
     // Immutable, as the timestamps plugin would declare it, except for a query
     // that opts in with `overwriteImmutable: true`: a coalesced row bumps it to
@@ -111,6 +121,14 @@ NotificationSchema.index(
       wishlist: { $gte: new mongoose.Types.ObjectId('000000000000000000000000') },
     },
   }
+);
+
+// One occasion reminder per person per list per occurrence (WIS-193): the
+// daily run writes them as upserts on this key, so a re-run, a retry or two
+// overlapping runs never remind anyone twice about the same day.
+NotificationSchema.index(
+  { user: 1, wishlist: 1, occasionDate: 1 },
+  { unique: true, partialFilterExpression: { type: 'occasion_reminder' } }
 );
 
 export default (mongoose.models.Notification as mongoose.Model<INotification>) ||

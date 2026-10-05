@@ -142,6 +142,31 @@ export function localDateString(now: Date = new Date()): string {
 }
 
 /**
+ * The UTC calendar date of `now` (default: this moment), as `YYYY-MM-DD`: the
+ * server's "today", for work that has no viewer (the daily occasion reminders).
+ * Anything a person sees counts from their local date (`localDateString`).
+ */
+export function utcDateString(now: Date = new Date()): string {
+  return toCalendarString({
+    year: now.getUTCFullYear(),
+    month: now.getUTCMonth() + 1,
+    day: now.getUTCDate(),
+  });
+}
+
+/** `date` (`YYYY-MM-DD`) moved by `days` whole days, or `null` if it isn't a real date. */
+export function addDays(date: string, days: number): string | null {
+  const parsed = parseCalendarDate(date);
+  if (!parsed) return null;
+  const moved = new Date(utcMidnight(parsed) + days * DAY_MS);
+  return toCalendarString({
+    year: moved.getUTCFullYear(),
+    month: moved.getUTCMonth() + 1,
+    day: moved.getUTCDate(),
+  });
+}
+
+/**
  * Days from `from` to `to` (both `YYYY-MM-DD`): positive when `to` is later, 0
  * on the same day, `null` if either isn't a real date.
  */

@@ -549,3 +549,42 @@ describe('a request to join (WIS-275)', () => {
     expect(notificationIcon(request())).toBe('user-plus');
   });
 });
+
+describe('occasion reminder', () => {
+  const reminder = (over: Partial<NotificationView> = {}) =>
+    make({
+      type: 'occasion_reminder',
+      wishlistName: 'Anna’s 30th',
+      wishlistSlug: 'anna-30',
+      wishlistId: 'w1',
+      occasionKind: 'birthday',
+      occasionDate: '2026-10-17',
+      ...over,
+    });
+
+  it('names the kind, the day and the list, and nothing about bookings', () => {
+    const parts = notificationParts(reminder());
+    expect(parts).toHaveLength(2);
+    expect(parts[0]).toMatch(/^Birthday coming up on .*17.*: $/);
+    expect(parts[1]).toEqual({ listName: 'Anna’s 30th' });
+    expect(notificationText(reminder())).not.toMatch(/reserv|book|left|item/i);
+  });
+
+  it('reads plainly without a known kind or day', () => {
+    expect(notificationText(reminder({ occasionKind: 'other' }))).toMatch(
+      /^An occasion coming up on /
+    );
+    expect(notificationText(reminder({ occasionKind: null, occasionDate: null }))).toBe(
+      'An occasion coming up: Anna’s 30th'
+    );
+    expect(notificationText(reminder({ occasionDate: 'not-a-date' }))).toBe(
+      'Birthday coming up: Anna’s 30th'
+    );
+  });
+
+  it('links to the list, with a calendar icon and no actor', () => {
+    expect(notificationLink(reminder())).toBe('/wishlists/anna-30');
+    expect(notificationIcon(reminder())).toBe('calendar');
+    expect(showsActor('occasion_reminder')).toBe(false);
+  });
+});

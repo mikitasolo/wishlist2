@@ -1,0 +1,176 @@
+import mongoose from 'mongoose';
+import Wishlist from '@/models/Wishlist';
+import WishlistMember from '@/models/WishlistMember';
+import User from '@/models/User';
+import Notification from '@/models/Notification';
+import { createOccasionReminders } from '@/lib/notifications';
+import { notificationOptInFilter } from '@/lib/utils/notificationPrefs';
+import {
+  addDays,
+  daysBetween,
+  nextOccurrence,
+  utcDateString,
+  YEARLY_PLACEHOLDER_YEAR,
+  type Occasion,
+} from '@/lib/utils/occasion';
+
+/**
+ * Occasion reminders (WIS-193): a week before a list's occasion, each of its
+ * members gets one `occasion_reminder` in Activity. The daily cron
+ * (`GET /api/cron/occasion-reminders`) runs `sendOccasionReminders`.
+ *
+ * - **Who**: the list's members (`WishlistMember`) as they are when it runs,
+ *   never its owners, and never friends who could merely see it. Not on an
+ *   archived list. Not to anyone who turned occasion reminders off in Settings
+ *   (`notificationPrefs.occasion_reminder.inApp`).
+ * - **When**: `OCCASION_REMINDER_LEAD_DAYS` (7) before the next occurrence,
+ *   counted from the server's UTC date. Vercel Cron on Hobby runs once a day
+ *   with loose timing and never retries, so a list still reminds its members up
+ *   to `OCCASION_REMINDER_CATCH_UP_DAYS` later than that: after a missed run, or
+ *   for those a capped run didn't reach. The reminder names the day itself, so
+ *   it reads right whichever day it lands.
+ * - **Once**: per person, list and occurrence (a unique index on the reminder,
+ *   `createOccasionReminders`), so re-runs and overlapping runs send nothing new.
+ * - **Capped**: at most `OCCASION_REMINDER_MAX_PER_RUN` new reminders a run,
+ *   nearest occasion first, so the lists closest to their last day go first and
+ *   the rest carry over to the next run.
+ */
+
+export const OCCASION_REMINDER_LEAD_DAYS = 7;
+export const OCCASION_REMINDER_CATCH_UP_DAYS = 2;
+export const OCCASION_REMINDER_MAX_PER_RUN = 500;
+
+/** The days counted from `today` that a reminder is due on, nearest first. */
+export function reminderDayOffsets(): number[] {
+  const offsets: number[] = [];
+  for (
+    let d = OCCASION_REMINDER_LEAD_DAYS - OCCASION_REMINDER_CATCH_UP_DAYS;
+    d <= OCCASION_REMINDER_LEAD_DAYS;
+    d++
+  ) {
+    offsets.push(d);
+  }
+  return offsets;
+}
+
+/**
+ * The stored `occasion.date` values whose next occurrence is `target`: the
+ * one-off on that day, and the yearly one on its month and day (stored on the
+ * placeholder year). On Feb 28 of a year with no Feb 29, a yearly Feb 29 one
+ * falls then too (`nextOccurrence`).
+ */
+export function storedDatesFor(target: string): string[] {
+  const [, month, day] = target.split('-');
+  if (!month || !day) return [];
+  const dates = [target, `${YEARLY_PLACEHOLDER_YEAR}-${month}-${day}`];
+  if (month === '02' && day === '28' && addDays(target, 1)?.endsWith('-03-01')) {
+    dates.push(`${YEARLY_PLACEHOLDER_YEAR}-02-29`);
+  }
+  // A one-off stored on 2000 itself matches too: long past, so
+  // `listsDueForReminder` drops it once it works out the next occurrence.
+  return dates;
+}
+
+interface DueList {
+  _id: mongoose.Types.ObjectId;
+  name: string;
+  slug?: string | null;
+  owners: mongoose.Types.ObjectId[];
+  occasion: Occasion;
+  /** Its next occurrence, which the reminder is about. */
+  occasionDate: string;
+  /** Days from today until then. */
+  days: number;
+}
+
+/**
+ * The unarchived lists whose occasion next falls within the reminder window
+ * from `today`, nearest first.
+ */
+export async function listsDueForReminder(today: string): Promise<DueList[]> {
+  const offsets = reminderDayOffsets();
+  const stored = offsets.flatMap((d) => storedDatesFor(addDays(today, d) ?? ''));
+  const lists = await Wishlist.find({
+    archived: { $ne: true },
+    'occasion.date': { $in: stored },
+  })
+    .select('name slug owners occasion')
+    .lean();
+
+  const due: DueList[] = [];
+  for (const list of lists) {
+    const occasion = list.occasion;
+    if (!occasion) continue;
+    const next = nextOccurrence(occasion.date, occasion.recurrence ?? null, today);
+    const days = next === null ? null : daysBetween(today, next);
+    if (next === null || days === null || !offsets.includes(days)) continue;
+    due.push({ ...list, occasion, occasionDate: next, days });
+  }
+  return due.sort((a, b) => a.days - b.days || String(a._id).localeCompare(String(b._id)));
+}
+
+/**
+ * Who of a list's members still needs this occurrence's reminder: members (not
+ * owners) who get occasion reminders and haven't had this one.
+ */
+async function pendingRecipients(list: DueList): Promise<mongoose.Types.ObjectId[]> {
+  const members = await WishlistMember.find({ wishlist: list._id }).select('user').lean();
+  const owners = new Set(list.owners.map(String));
+  const ids = members.map((m) => m.user).filter((id) => !owners.has(String(id)));
+  if (ids.length === 0) return [];
+  const [wanting, reminded] = await Promise.all([
+    User.find({ _id: { $in: ids }, ...notificationOptInFilter('occasion_reminder', 'inApp') })
+      .select('_id')
+      .lean(),
+    Notification.find({
+      type: 'occasion_reminder',
+      wishlist: list._id,
+      occasionDate: list.occasionDate,
+      user: { $in: ids },
+    })
+      .select('user')
+      .lean(),
+  ]);
+  const done = new Set(reminded.map((n) => String(n.user)));
+  return wanting
+    .map((u) => u._id)
+    .filter((id) => !done.has(String(id)))
+    .sort((a, b) => String(a).localeCompare(String(b)));
+}
+
+export interface OccasionReminderRun {
+  /** Lists that had someone to remind. */
+  lists: number;
+  /** New reminders written (and still standing after their re-check). */
+  sent: number;
+  /** The run stopped at the cap with reminders left to send. */
+  capped: boolean;
+}
+
+/** One daily run: remind every due list's members, up to the cap (see the top of this file). */
+export async function sendOccasionReminders(
+  now: Date = new Date(),
+  maxPerRun: number = OCCASION_REMINDER_MAX_PER_RUN
+): Promise<OccasionReminderRun> {
+  const today = utcDateString(now);
+  const run: OccasionReminderRun = { lists: 0, sent: 0, capped: false };
+  for (const list of await listsDueForReminder(today)) {
+    const pending = await pendingRecipients(list);
+    if (pending.length === 0) continue;
+    const room = maxPerRun - run.sent;
+    if (room <= 0) {
+      run.capped = true;
+      break;
+    }
+    if (pending.length > room) run.capped = true;
+    run.lists += 1;
+    run.sent += await createOccasionReminders({
+      wishlist: list,
+      occasion: list.occasion,
+      occasionDate: list.occasionDate,
+      users: pending.slice(0, room),
+    });
+    if (run.capped) break;
+  }
+  return run;
+}
