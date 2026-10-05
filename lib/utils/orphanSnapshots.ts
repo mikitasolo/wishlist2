@@ -12,7 +12,12 @@ import { isSnapshotBlob, ownBlobHost } from '@/lib/utils/blob';
  * waiting for it, a function killed between the copy and the reservation swap,
  * a best-effort `del()` that failed.
  *
- * This only reports them. Deleting is a separate, later decision.
+ * This only reports them. Deleting is a separate, later decision, and must not
+ * trust this report alone: marking a gift deletes the reservation before it
+ * writes the `GiftLog` that takes the snapshot over, so a scan landing between
+ * the two sees an old, held snapshot as unheld. A delete step re-checks each
+ * blob's holders at delete time (as `releaseSnapshots` does) and skips any
+ * it's unsure of.
  */
 
 /**
