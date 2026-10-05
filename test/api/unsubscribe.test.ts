@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import { NextRequest } from 'next/server';
 import mongoose from 'mongoose';
 import { connectTestDB, disconnectTestDB, clearTestDB } from '../db';
@@ -10,15 +10,16 @@ import { auth } from '@/lib/auth';
 import * as route from '@/app/api/unsubscribe/route';
 import User from '@/models/User';
 import { unsubscribeQuery } from '@/lib/utils/unsubscribe';
+import { __setRateLimiters, type RateLimiter } from '@/lib/rateLimit';
 
 const session = vi.mocked(auth);
 
-function post(query: string) {
+function post(query: string, ip = '203.0.113.7') {
   // As a mail client sends RFC 8058's one-click POST: the link's query, a form body.
   return route.POST(
     new NextRequest(`http://localhost/api/unsubscribe?${query}`, {
       method: 'POST',
-      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      headers: { 'content-type': 'application/x-www-form-urlencoded', 'x-forwarded-for': ip },
       body: 'List-Unsubscribe=One-Click',
     })
   );
@@ -103,5 +104,41 @@ describe('POST /api/unsubscribe', () => {
 
   it('acts on POST only, so a scanner opening the link changes nothing', () => {
     expect('GET' in route).toBe(false);
+  });
+
+  describe('rate limits', () => {
+    const valid = vi.fn<RateLimiter['limit']>();
+    const invalid = vi.fn<RateLimiter['limit']>();
+    const refused = { success: false, reset: Date.now() + 60_000, limit: 1, remaining: 0 };
+    const allowed = { success: true, reset: 0, limit: 1, remaining: 1 };
+
+    beforeEach(() => {
+      valid.mockReset();
+      invalid.mockReset();
+      valid.mockResolvedValue(allowed);
+      invalid.mockResolvedValue(allowed);
+      __setRateLimiters({ unsubscribe: { limit: valid }, unsubscribeInvalid: { limit: invalid } });
+    });
+    afterEach(() => __setRateLimiters(null));
+
+    // A mail provider sends everyone's one-click POSTs from a few shared IPs,
+    // so a valid link must never be counted against its IP.
+    it('counts a valid link against the account it names, never its IP', async () => {
+      expect((await post(unsubscribeQuery({ userId: mia, event: 'proposal' }))).status).toBe(200);
+      expect(valid).toHaveBeenCalledWith(mia);
+      expect(invalid).not.toHaveBeenCalled();
+    });
+
+    it('counts a link that does not verify against its IP', async () => {
+      expect((await post(`u=${mia}&e=proposal&t=forged`)).status).toBe(400);
+      expect(invalid).toHaveBeenCalledWith('ip:203.0.113.7');
+      expect(valid).not.toHaveBeenCalled();
+    });
+
+    it('a limited account changes nothing', async () => {
+      valid.mockResolvedValue(refused);
+      expect((await post(unsubscribeQuery({ userId: mia, event: 'proposal' }))).status).toBe(429);
+      expect((await prefsOf(mia))?.proposal).toEqual({ email: true });
+    });
   });
 });

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import User from '@/models/User';
-import { enforce, ipKey } from '@/lib/rateLimit';
+import { enforce, ipKey, userKey } from '@/lib/rateLimit';
 import { errorKind } from '@/lib/utils/errorKind';
 import { notificationPrefPath } from '@/lib/utils/notificationPrefs';
 import { verifyUnsubscribe } from '@/lib/utils/unsubscribe';
@@ -17,14 +17,14 @@ import { verifyUnsubscribe } from '@/lib/utils/unsubscribe';
  *   link preview that opens every URL in a message never unsubscribes anyone.
  * - **Signed out.** The signature is the authorization; no session is read, so
  *   a link works from any device, whoever is signed in there.
+ * - **Limited per account, not per IP** (`unsubscribe`): a mail provider's
+ *   one-click POSTs share a few IPs. Only links that don't verify are limited
+ *   per IP (`unsubscribeInvalid`).
  * - **Says nothing about the account.** A valid link is answered the same
  *   whether or not its account still exists, and nothing in the answer comes
  *   from the account (no email, no name).
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  const limited = await enforce('unsubscribe', ipKey(request.headers));
-  if (limited) return limited;
-
   const { searchParams } = request.nextUrl;
   const target = verifyUnsubscribe({
     u: searchParams.get('u'),
@@ -32,11 +32,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     t: searchParams.get('t'),
   });
   if (!target) {
+    const limited = await enforce('unsubscribeInvalid', ipKey(request.headers));
+    if (limited) return limited;
     return NextResponse.json(
       { success: false, error: 'This unsubscribe link doesn’t work.' },
       { status: 400 }
     );
   }
+
+  // Per account, not per IP: see `unsubscribe` in lib/rateLimit.ts.
+  const limited = await enforce('unsubscribe', userKey(target.userId));
+  if (limited) return limited;
 
   try {
     await connectDB();
