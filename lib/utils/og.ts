@@ -69,18 +69,43 @@ export function userCardTag(userId: string): string {
 }
 
 /**
- * Response headers for a card. Only a card that showed real, current data is
- * cached, and only on Vercel's CDN: for a day, under `tags`, so the writes that
- * change it can purge it (lib/og/purge.ts). Everything else (a hidden or missing
- * list, a missing user, a fallback after a timeout or a failed photo) gets
- * `no-store`, so a cold start can't pin a generic card for a day, and a hidden
- * list's card looks exactly like a missing one's, headers included.
+ * The cache tag on a share link's own card (`/l/<token>`, WIS-336), purged when
+ * the link is revoked or its expiry edited. Built from the link's id, never its
+ * token: tags go to Vercel's purge API and its logs.
  */
-export function shareCardHeaders(tags: readonly string[] | null): Record<string, string> {
-  if (!tags?.length) return { 'Cache-Control': 'no-store' };
+export function shareLinkCardTag(linkId: string): string {
+  return `og-link-${linkId}`;
+}
+
+/**
+ * How long the CDN may keep a share link's card: a day, but never past the
+ * link's expiry, since nothing purges a card when a link simply runs out. Zero
+ * (don't cache) once it has expired or is about to.
+ */
+export function shareLinkCardMaxAge(expiresAt: Date | null, now: number = Date.now()): number {
+  if (!expiresAt) return CARD_CDN_MAX_AGE_SECONDS;
+  const left = Math.floor((expiresAt.getTime() - now) / 1000);
+  return Math.max(0, Math.min(CARD_CDN_MAX_AGE_SECONDS, left));
+}
+
+/**
+ * Response headers for a card. Only a card that showed real, current data is
+ * cached, and only on Vercel's CDN: for a day (or `maxAgeSeconds`, if shorter),
+ * under `tags`, so the writes that change it can purge it (lib/og/purge.ts).
+ * Everything else (a hidden or missing list, a dead share link, a missing user,
+ * a fallback after a timeout or a failed photo) gets `no-store`, so a cold start
+ * can't pin a generic card for a day, and a hidden list's card looks exactly
+ * like a missing one's, headers included.
+ */
+export function shareCardHeaders(
+  tags: readonly string[] | null,
+  maxAgeSeconds: number = CARD_CDN_MAX_AGE_SECONDS
+): Record<string, string> {
+  const maxAge = Math.min(CARD_CDN_MAX_AGE_SECONDS, Math.floor(maxAgeSeconds));
+  if (!tags?.length || !(maxAge > 0)) return { 'Cache-Control': 'no-store' };
   return {
     'Cache-Control': 'public, max-age=0, must-revalidate',
-    'Vercel-CDN-Cache-Control': `public, max-age=${CARD_CDN_MAX_AGE_SECONDS}`,
+    'Vercel-CDN-Cache-Control': `public, max-age=${maxAge}`,
     'Vercel-Cache-Tag': tags.join(','),
   };
 }

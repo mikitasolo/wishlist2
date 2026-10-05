@@ -8,6 +8,7 @@ import { getOwnerAccess } from '@/lib/utils/wishlistAccess';
 import { isObjectIdParam } from '@/lib/utils/objectId';
 import { errorKind } from '@/lib/utils/errorKind';
 import { serializeShareLink } from '@/lib/utils/shareLinks';
+import { purgeShareCards } from '@/lib/og/purge';
 
 // One of a list's share links (WIS-334): any owner edits or revokes any of
 // them (links are the list's, not their maker's), the list archived or not.
@@ -68,6 +69,10 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       { new: true, runValidators: true }
     ).lean();
     if (!link) return linkNotFound();
+    // The link's preview card is cached no longer than its expiry as it was
+    // (lib/og/shareCards.ts): a new expiry, earlier or later, drops it. The
+    // label isn't on the card.
+    if (expiresAt !== undefined) await purgeShareCards({ shareLinkIds: [linkId] });
 
     // No token: only the link list and the create answer carry one.
     return NextResponse.json(
@@ -93,6 +98,8 @@ export async function DELETE(_request: NextRequest, { params }: Params) {
 
     const { deletedCount } = await ShareLink.deleteOne({ _id: linkId, wishlist: id });
     if (!deletedCount) return linkNotFound();
+    // A chat that fetched the link's preview keeps its copy; our CDN doesn't.
+    await purgeShareCards({ shareLinkIds: [linkId] });
     return NextResponse.json({ success: true }, { status: 200 });
   } catch (error) {
     console.error('Error revoking share link:', errorKind(error));
