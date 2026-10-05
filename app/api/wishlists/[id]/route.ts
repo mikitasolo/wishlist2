@@ -16,7 +16,7 @@ import {
   generateUniqueWishlistSlug,
   isReservedWishlistSlug,
 } from '@/lib/utils/wishlistSlug';
-import { getOwnerAccess, getWishlistViewAccess } from '@/lib/utils/wishlistAccess';
+import { getOwnerAccess } from '@/lib/utils/wishlistAccess';
 import {
   ownedByFilter,
   ownerIds,
@@ -24,6 +24,8 @@ import {
   serializeWishlist,
 } from '@/lib/utils/wishlistOwners';
 import { purgeShareCards } from '@/lib/og/purge';
+import { admitListViewer, linkModeAnswer } from '@/lib/utils/shareLinkAccess';
+import { SHARE_TOKEN_HEADER } from '@/lib/utils/shareLinkFields';
 import { deleteOwnedWishlist } from '@/lib/utils/wishlistDeletion';
 import { enforce, userKey } from '@/lib/rateLimit';
 
@@ -39,17 +41,24 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   try {
     const session = await auth();
     const { id: idParam } = await params;
+    // Opened through a share link (WIS-335): every answer is `private, no-store`.
+    const linkMode = request.headers.get(SHARE_TOKEN_HEADER) !== null;
+    const answer = (response: NextResponse) => (linkMode ? linkModeAnswer(response) : response);
 
     await connectDB();
 
     const id = await resolveWishlistId(idParam);
     if (!id) {
-      return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
+      return answer(
+        NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 })
+      );
     }
 
     const wishlist = await Wishlist.findById(id);
     if (!wishlist) {
-      return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
+      return answer(
+        NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 })
+      );
     }
 
     // Fetch owners' public usernames (never expose their emails to viewers).
@@ -61,12 +70,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const primaryId = primaryOwnerId(wishlist);
     const ownerUsername = (primaryId && usernameById.get(primaryId)) || null;
 
-    // Archived (owners only), visibility tier, membership, any owner's friends:
-    // the same rules as the items read, so the list and its items agree.
-    const access = await getWishlistViewAccess(wishlist, session?.user?.id);
-    if (!access.allowed) {
-      return NextResponse.json({ success: false, error: access.error }, { status: access.status });
-    }
+    // Archived (owners only), visibility tier, membership, any owner's friends,
+    // or a live share link to this list: the same rules as the items read, so
+    // the list and its items agree.
+    const access = await admitListViewer(request, wishlist, session?.user?.id);
+    if (!access.allowed) return access.response;
     let userRole: 'owner' | 'member' | null = null;
     if (access.isOwner) userRole = 'owner';
     else if (access.isMember) userRole = 'member';
@@ -90,17 +98,19 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         : (await Wishlist.findById(wishlist._id).select('slug').lean())?.slug;
     }
 
-    return NextResponse.json(
-      {
-        success: true,
-        data: {
-          ...serializeWishlist(wishlist, session?.user?.id ?? null),
-          userRole,
-          ownerUsername,
-          ownerUsernames,
+    return answer(
+      NextResponse.json(
+        {
+          success: true,
+          data: {
+            ...serializeWishlist(wishlist, session?.user?.id ?? null),
+            userRole,
+            ownerUsername,
+            ownerUsernames,
+          },
         },
-      },
-      { status: 200 }
+        { status: 200 }
+      )
     );
   } catch (error) {
     console.error('Error fetching wishlist:', error);

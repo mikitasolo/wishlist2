@@ -8,9 +8,11 @@ import { buttonClassName, CONTROL_ICON_SIZE } from './buttonStyles';
 import { useToast } from './ToastProvider';
 import {
   canUseShareSheet,
+  CREATE_SHARE_LINK_HINT,
   LINK_AUDIENCE_TEXT,
   linkAudience,
   resolveShareUrl,
+  shareLinksAudienceText,
   shareOrCopy,
 } from '@/lib/utils/shareLink';
 import { getVisibility, visibilityMeta, type Visibility } from '@/lib/utils/visibility';
@@ -21,6 +23,13 @@ export interface ShareOwnerInfo {
   archived?: boolean;
   /** Takes the owner to where they invite people by username. */
   onInvite: () => void;
+  /**
+   * Takes the owner to the list's share links (People's Share links section,
+   * or the New link dialog when there are none). Offered only when set.
+   */
+  onShareLinks?: () => void;
+  /** How many of the list's share links work now (WIS-335); unset until they've been read. */
+  liveLinkCount?: number;
 }
 
 interface ShareButtonProps {
@@ -129,7 +138,27 @@ export default function ShareButton({
       onSelect: owner.onInvite,
       separated: true,
     },
+    ...(owner.onShareLinks
+      ? [
+          {
+            label: 'Share links',
+            icon: 'link' as const,
+            onSelect: owner.onShareLinks,
+            separated: true,
+          },
+        ]
+      : []),
   ];
+  // Who else gets in: anyone with a live share link, or, on a list that isn't
+  // Public and has none, how to let them.
+  const linksLine =
+    shareLinksAudienceText(owner.liveLinkCount ?? 0) ??
+    (owner.onShareLinks &&
+    owner.liveLinkCount === 0 &&
+    audience !== 'anyone' &&
+    audience !== 'owners'
+      ? CREATE_SHARE_LINK_HINT
+      : null);
 
   return (
     <Menu
@@ -149,7 +178,10 @@ export default function ShareButton({
             size={16}
             className="mt-0.5 flex-shrink-0 text-muted-foreground"
           />
-          {LINK_AUDIENCE_TEXT[audience]}
+          <span>
+            {LINK_AUDIENCE_TEXT[audience]}
+            {linksLine && <span className="mt-1 block text-muted-foreground">{linksLine}</span>}
+          </span>
         </p>
       }
       headerDescribesMenu

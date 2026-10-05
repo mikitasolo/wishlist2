@@ -11,6 +11,8 @@ import User from '../models/User';
 import Wishlist from '../models/Wishlist';
 import Item from '../models/Item';
 import WishlistMember from '../models/WishlistMember';
+import ShareLink from '../models/ShareLink';
+import { E2E_VIEW_LINK_TOKEN } from './shareLinks';
 import {
   E2E_AUTH_SECRET,
   FRIEND_API_SESSION_TOKEN,
@@ -84,6 +86,24 @@ export default async function globalSetup(_config: FullConfig) {
     currency: 'USD',
   });
   await WishlistMember.create({ wishlist: friendList._id, user: user._id });
+
+  // An Invite only list of the friend's that the E2E user isn't on, opened only
+  // through its share link (e2e/shareLinks.ts).
+  const hiddenList = await Wishlist.create({
+    name: 'E2E Hidden List',
+    owners: [friend._id],
+    visibility: 'private',
+    slug: 'e2e-hidden',
+    currency: 'USD',
+  });
+  await Item.create({ wishlist: hiddenList._id, name: 'E2E Hidden Gift', status: 'available' });
+  await ShareLink.create({
+    wishlist: hiddenList._id,
+    token: E2E_VIEW_LINK_TOKEN,
+    level: 'view',
+    label: 'E2E chat',
+    createdBy: friend._id,
+  });
 
   const sessionToken = randomUUID();
   const expires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);

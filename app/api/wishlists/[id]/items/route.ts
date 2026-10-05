@@ -29,6 +29,8 @@ import {
   COPY_IMAGE_QUOTA_NOTICE,
 } from '@/lib/utils/itemCopy';
 import { isCountedOnShareCard } from '@/lib/og/data';
+import { admitListViewer, linkModeAnswer } from '@/lib/utils/shareLinkAccess';
+import { SHARE_TOKEN_HEADER } from '@/lib/utils/shareLinkFields';
 import { purgeShareCards } from '@/lib/og/purge';
 import {
   IDEMPOTENCY_HEADER,
@@ -147,25 +149,26 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   try {
     const session = await auth();
     const { id: idParam } = await params;
+    // Read through a share link (WIS-335): every answer is `private, no-store`.
+    const linkMode = request.headers.get(SHARE_TOKEN_HEADER) !== null;
+    const answer = (response: NextResponse) => (linkMode ? linkModeAnswer(response) : response);
+    const notFound = () =>
+      answer(NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 }));
+
     const wishlistId = await resolveWishlistId(idParam);
-    if (!wishlistId) {
-      return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
-    }
+    if (!wishlistId) return notFound();
 
     await connectDB();
 
     const wishlist = await Wishlist.findById(wishlistId);
-    if (!wishlist) {
-      return NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
-    }
+    if (!wishlist) return notFound();
 
     // Exactly the rules of GET /api/wishlists/[id] (archived → 404 for non-owners,
-    // visibility tier, membership, any owner's friends), so the items are never
-    // readable by someone the list itself is hidden from, or vice versa.
-    const access = await getWishlistViewAccess(wishlist, session?.user?.id);
-    if (!access.allowed) {
-      return NextResponse.json({ success: false, error: access.error }, { status: access.status });
-    }
+    // visibility tier, membership, any owner's friends, a live share link to
+    // this list), so the items are never readable by someone the list itself is
+    // hidden from, or vice versa. A link-admitted viewer is a visitor below.
+    const access = await admitListViewer(request, wishlist, session?.user?.id);
+    if (!access.allowed) return access.response;
 
     // Ensure currency rates are up to date
     const currencyRate = await ensureCurrencyRatesUpToDate();
@@ -210,7 +213,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     const filteredItems = visibleItems.map((item) => serializeItem(item, viewer, rates));
 
-    return NextResponse.json({ success: true, data: filteredItems }, { status: 200 });
+    return answer(NextResponse.json({ success: true, data: filteredItems }, { status: 200 }));
   } catch (error) {
     console.error('Error fetching items:', error);
     return NextResponse.json({ success: false, error: 'Failed to fetch items' }, { status: 500 });
