@@ -3,7 +3,13 @@ import { getEnvVars } from './env';
 import { EMAIL_LOGO_PNG_BASE64 } from './emailLogo';
 import { isolateForText } from './utils/emailText';
 import { unsubscribeUrls } from './utils/unsubscribe';
-import type { NotificationEvent } from './utils/notificationPrefs';
+import {
+  NOTIFICATION_EVENTS,
+  notificationEventOf,
+  type NotificationEvent,
+} from './utils/notificationPrefs';
+import { notificationLink, notificationParts, type NotificationView } from './utils/notifications';
+import type { OccasionKind } from './utils/occasion';
 
 // Get validated environment variables
 const env = getEnvVars();
@@ -436,6 +442,174 @@ export async function sendWishlistInvitationEmail(
     // its own that could pass for our own text.
     text: `Wishlist invitation\n\n${isolateForText(inviter)} ${invitedTo} “${isolateForText(wishlistName)}”.\n\nAccept or decline it on your Activity page: ${invitesUrl}\n\nUnsubscribe from invitation emails: ${unsubscribe.page}`,
     link: invitesUrl,
+    unsubscribe,
+  });
+}
+
+/** The notification types that send an email of their own through `sendNotificationEmail`. */
+export type EmailedNotificationType =
+  | 'join_request'
+  | 'proposal'
+  | 'role_changed'
+  | 'removed_from_wishlist'
+  | 'invite_accepted'
+  | 'proposal_approved'
+  | 'occasion_reminder';
+
+export interface NotificationEmailDetails {
+  /** The recipient's account id, for the unsubscribe link (never shown). */
+  recipientId: string;
+  type: EmailedNotificationType;
+  /**
+   * Whoever did it, by username only, on the types whose in-app row names
+   * them (`join_request`, `invite_accepted`). Ignored on every other type.
+   */
+  actorUsername?: string | null;
+  wishlistId: string;
+  /** Free text: escaped in the HTML, isolated in the text part, never in the subject. */
+  wishlistName: string | null;
+  wishlistSlug?: string | null;
+  /** `proposal_approved` only: the item, as its in-app row names it. Free text. */
+  itemName?: string | null;
+  /** `occasion_reminder` only. */
+  occasionKind?: OccasionKind | null;
+  occasionDate?: string | null;
+}
+
+/** The types whose email names who did it: the same ones whose in-app row does. */
+const NAMES_ACTOR: ReadonlySet<EmailedNotificationType> = new Set([
+  'join_request',
+  'invite_accepted',
+]);
+
+const OCCASION_SUBJECT_KIND: Record<OccasionKind, string> = {
+  birthday: 'A birthday',
+  holiday: 'A holiday',
+  wedding: 'A wedding',
+  other: 'An occasion',
+};
+
+/**
+ * Subject, heading and button of a notification email. None carries free
+ * text: only the actor's username, which `USERNAME_REGEX` bounds (see
+ * `invitationSubject`), and fixed words.
+ */
+function notificationEmailCopy(
+  details: NotificationEmailDetails,
+  actor: string
+): { subject: string; heading: string; button: string } {
+  switch (details.type) {
+    case 'join_request':
+      return {
+        subject: `${actor} asked to join your wishlist`,
+        heading: 'A request to join your wishlist',
+        button: 'Review the request',
+      };
+    case 'proposal':
+      return {
+        subject: 'A new proposal to review on your wishlist',
+        heading: 'A new proposal to review',
+        button: 'Review proposals',
+      };
+    case 'role_changed':
+      return {
+        subject: 'Your role on a wishlist changed',
+        heading: 'You’re now a member of a wishlist',
+        button: 'Open the wishlist',
+      };
+    case 'removed_from_wishlist':
+      return {
+        subject: 'You were removed from a wishlist',
+        heading: 'You were removed from a wishlist',
+        button: 'Open Activity',
+      };
+    case 'invite_accepted':
+      return {
+        subject: `${actor} accepted your invitation`,
+        heading: 'Your invitation was accepted',
+        button: 'Open the wishlist',
+      };
+    case 'proposal_approved':
+      return {
+        subject: 'Your proposed item was accepted',
+        heading: 'Your proposed item was accepted',
+        button: 'Open the wishlist',
+      };
+    case 'occasion_reminder': {
+      const kind = OCCASION_SUBJECT_KIND[details.occasionKind ?? 'other'] ?? 'An occasion';
+      return {
+        subject: `${kind} is coming up on a wishlist you’re on`,
+        heading: `${kind} is coming up`,
+        button: 'Open the wishlist',
+      };
+    }
+  }
+}
+
+/**
+ * A notification email (WIS-321): the in-app row's own line, built by the same
+ * `notificationParts` from the same fields, so an email never says more than
+ * the notification does (a proposal stays anonymous, a role change never names
+ * who made it, nothing mentions bookings). It links where the row links, and
+ * to Activity where the row links nowhere (a removal). Every one carries the
+ * unsubscribe link and headers for its event.
+ */
+export async function sendNotificationEmail(email: string, details: NotificationEmailDetails) {
+  const actorUsername = NAMES_ACTOR.has(details.type) ? (details.actorUsername ?? null) : null;
+  const view = (overrides: Partial<NotificationView>): NotificationView => ({
+    _id: '',
+    type: details.type,
+    actorUsername,
+    count: 1,
+    wishlistName: details.wishlistName,
+    wishlistSlug: details.wishlistSlug ?? null,
+    wishlistId: details.wishlistId,
+    itemName: details.itemName ?? null,
+    occasionKind: details.occasionKind ?? null,
+    occasionDate: details.occasionDate ?? null,
+    read: false,
+    createdAt: '',
+    ...overrides,
+  });
+
+  const htmlLine = notificationParts(view({}))
+    .map((part) =>
+      typeof part === 'string' ? escapeHtml(part) : `<strong>${escapeHtml(part.listName)}</strong>`
+    )
+    .join('');
+  // The text part takes raw values, so each free-text one is isolated first.
+  const textLine = notificationParts(
+    view({
+      wishlistName: details.wishlistName ? isolateForText(details.wishlistName) : null,
+      itemName: details.itemName ? isolateForText(details.itemName) : null,
+    })
+  )
+    .map((part) => (typeof part === 'string' ? part : `“${part.listName}”`))
+    .join('');
+
+  const path = notificationLink(view({})) ?? '/notifications';
+  const url = `${env.NEXTAUTH_URL}${path}`;
+  const copy = notificationEmailCopy(details, actorUsername ? `@${actorUsername}` : 'Someone');
+  const event = notificationEventOf(details.type);
+  const unsubscribe = notificationUnsubscribe(details.recipientId, event);
+  const topic = NOTIFICATION_EVENTS[event].label.toLowerCase();
+
+  const html = getEmailTemplate({
+    title: copy.heading,
+    greeting: copy.heading,
+    contentHtml: `<p>${htmlLine}.</p>`,
+    buttonText: copy.button,
+    buttonUrl: url,
+    unsubscribeUrl: unsubscribe.page,
+  });
+
+  await deliver({
+    kind: `${details.type} notification`,
+    to: email,
+    subject: copy.subject,
+    html,
+    text: `${copy.heading}\n\n${textLine}.\n\n${copy.button}: ${url}\n\nUnsubscribe from ${topic} emails: ${unsubscribe.page}`,
+    link: url,
     unsubscribe,
   });
 }

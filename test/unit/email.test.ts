@@ -528,3 +528,122 @@ describe('unsubscribe links (WIS-321)', () => {
     expect(message.html).not.toContain('/unsubscribe');
   });
 });
+
+describe('notification emails (WIS-321)', () => {
+  type Details = import('@/lib/email').NotificationEmailDetails;
+  type Message = ReturnType<typeof sentMessage> & { headers?: Record<string, string> };
+  const MARKUP = `<a href="https://evil.example">Win</a>`;
+  const MARKUP_HTML = '&lt;a href=&quot;https://evil.example&quot;&gt;Win&lt;/a&gt;';
+
+  const base = (overrides: Partial<Details>): Details => ({
+    recipientId: RECIPIENT_ID,
+    type: 'join_request',
+    wishlistId: '64b7f0c2a1b2c3d4e5f60799',
+    wishlistName: 'Birthday',
+    wishlistSlug: 'birthday',
+    ...overrides,
+  });
+
+  async function send(overrides: Partial<Details>): Promise<Message> {
+    const { sendNotificationEmail } = await loadEmail('smtp');
+    await sendNotificationEmail(RECIPIENT, base(overrides));
+    return sentMessage() as Message;
+  }
+
+  it.each([
+    ['join_request', '@ivan asked to join your wishlist'],
+    ['proposal', 'A new proposal to review on your wishlist'],
+    ['role_changed', 'Your role on a wishlist changed'],
+    ['removed_from_wishlist', 'You were removed from a wishlist'],
+    ['invite_accepted', '@ivan accepted your invitation'],
+    ['proposal_approved', 'Your proposed item was accepted'],
+    ['occasion_reminder', 'A birthday is coming up on a wishlist you’re on'],
+  ] as const)('%s: a subject with no free text', async (type, subject) => {
+    const message = await send({
+      type,
+      actorUsername: 'ivan',
+      wishlistName: 'Claim your gift at https://evil.example/login',
+      itemName: 'https://evil.example',
+      occasionKind: 'birthday',
+      occasionDate: '2026-10-12',
+    });
+    expect(message.subject).toBe(subject);
+  });
+
+  it('says what the in-app row says, with the list escaped in the HTML', async () => {
+    const message = await send({
+      type: 'join_request',
+      actorUsername: 'ivan',
+      wishlistName: MARKUP,
+    });
+    expect(message.html).toContain(`@ivan asked to join <strong>${MARKUP_HTML}</strong>.`);
+    expect(message.html).not.toContain(MARKUP);
+    expect(message.html).toContain('href="http://localhost:3000/wishlists/birthday?tab=people"');
+  });
+
+  // Owners never learn who proposed an item, and a demotion or removal never
+  // names the owner who made it: the email can't either, whatever it's passed.
+  it.each(['proposal', 'role_changed', 'removed_from_wishlist', 'proposal_approved'] as const)(
+    '%s never names an actor, even one passed in',
+    async (type) => {
+      const message = await send({ type, actorUsername: 'secret_owner' });
+      expect(message.subject).not.toContain('secret_owner');
+      expect(message.html).not.toContain('secret_owner');
+      expect(message.text).not.toContain('secret_owner');
+    }
+  );
+
+  it('a proposal reads "Someone proposed an item", and links to the list', async () => {
+    const message = await send({ type: 'proposal' });
+    expect(message.html).toContain('Someone proposed an item for <strong>Birthday</strong>.');
+    expect(message.html).toContain('href="http://localhost:3000/wishlists/birthday"');
+  });
+
+  it('a removal links to Activity, not to the list it may no longer open', async () => {
+    const message = await send({ type: 'removed_from_wishlist' });
+    expect(message.html).toContain('href="http://localhost:3000/notifications"');
+    expect(message.html).not.toContain('/wishlists/birthday');
+  });
+
+  it('escapes an approved item’s name, and keeps it and the list on one line in text', async () => {
+    const message = await send({
+      type: 'proposal_approved',
+      itemName: `${MARKUP}\r\nline`,
+      wishlistName: 'Gift\u202E\nList',
+    });
+    expect(message.html).toContain(MARKUP_HTML);
+    expect(message.html).not.toContain(MARKUP);
+    expect(message.text).not.toMatch(/[\u202A-\u202E\r\u2028\u2029]/);
+    // Heading, blank, the line, blank, button link, blank, unsubscribe link.
+    expect(message.text.split('\n')).toHaveLength(7);
+  });
+
+  it('an occasion reminder names the kind and the day, nothing about bookings', async () => {
+    const message = await send({
+      type: 'occasion_reminder',
+      occasionKind: 'wedding',
+      occasionDate: '2026-10-12',
+    });
+    expect(message.subject).toBe('A wedding is coming up on a wishlist you’re on');
+    expect(message.html).toMatch(/Wedding coming up on [^<]+: <strong>Birthday<\/strong>\./);
+    expect(message.html).not.toMatch(/reserv|book/i);
+  });
+
+  it.each([
+    ['join_request', 'join_request'],
+    ['proposal', 'proposal'],
+    ['role_changed', 'access_changed'],
+    ['removed_from_wishlist', 'access_changed'],
+    ['invite_accepted', 'invite_accepted'],
+    ['proposal_approved', 'proposal_approved'],
+    ['occasion_reminder', 'occasion_reminder'],
+  ] as const)('%s unsubscribes from %s emails only', async (type, event) => {
+    const message = await send({ type });
+    const oneClick = new URL((message.headers?.['List-Unsubscribe'] ?? '').replace(/^<|>$/g, ''));
+    expect(oneClick.searchParams.get('e')).toBe(event);
+    expect(oneClick.searchParams.get('u')).toBe(RECIPIENT_ID);
+    expect(message.headers?.['List-Unsubscribe-Post']).toBe('List-Unsubscribe=One-Click');
+    expect(message.html).toContain(`/unsubscribe?u=${RECIPIENT_ID}&amp;e=${event}&amp;t=`);
+    expect(message.html).not.toContain(RECIPIENT);
+  });
+});

@@ -118,6 +118,17 @@ const SPECS = {
   // verify spend the per-IP budget.
   unsubscribe: { tokens: 20, window: '10 m', policy: 'fail-open', keyKind: 'user' },
   unsubscribeInvalid: { tokens: 30, window: '10 m', policy: 'fail-open', keyKind: 'ip' },
+  // Notification emails (WIS-321), one budget per kind, keyed on the
+  // *recipient*: what someone else's actions can make us send to one inbox.
+  // Fail closed, like the sign-in email: sending costs, and a dropped
+  // notification email is only a missed nudge (Activity still has it). A
+  // proposal's is also coalesced to one per list a day (`claimProposalEmail`).
+  emailJoinRequest: { tokens: 10, window: '1 h', policy: 'fail-closed', keyKind: 'user' },
+  emailProposal: { tokens: 10, window: '1 h', policy: 'fail-closed', keyKind: 'user' },
+  emailAccessChanged: { tokens: 10, window: '1 h', policy: 'fail-closed', keyKind: 'user' },
+  emailInviteAccepted: { tokens: 10, window: '1 h', policy: 'fail-closed', keyKind: 'user' },
+  emailProposalApproved: { tokens: 10, window: '1 h', policy: 'fail-closed', keyKind: 'user' },
+  emailOccasionReminder: { tokens: 10, window: '1 d', policy: 'fail-closed', keyKind: 'user' },
 } satisfies Record<string, LimiterSpec>;
 
 export type LimiterName = keyof typeof SPECS;

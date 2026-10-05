@@ -16,6 +16,7 @@ import {
   type NotificationEvent,
 } from '@/lib/utils/notificationPrefs';
 import { nextOccurrence, type OccasionKind } from '@/lib/utils/occasion';
+import { emailedByNotifications, emailNotification } from '@/lib/notificationEmails';
 
 type Id = string | mongoose.Types.ObjectId;
 
@@ -85,6 +86,8 @@ export async function createNotification(
  * someone else created the list. Duplicate ids are collapsed, and anyone who
  * turned the event's in-app setting off is skipped (`recipientsWanting`). The
  * list is re-checked once for the whole fan-out, after every row is written.
+ * Then those whose email setting is on are emailed (`emailNotification`,
+ * lib/notificationEmails.ts), once the rows stand.
  *
  * Returns the ids of the rows that carry it (a follow and a failed write have
  * none), so a caller can take back exactly what it wrote: see
@@ -96,14 +99,23 @@ export async function createNotifications(
 ): Promise<mongoose.Types.ObjectId[]> {
   // `String`, not `.toString()`: a missing recipient must fail in the guarded
   // write below, which logs it, not throw out of a best-effort side effect.
-  const unique = await recipientsWanting(
-    Array.from(new Set(users.map(String))),
-    notificationEventOf(args.type),
-    'inApp'
-  );
-  const ids = await Promise.all(unique.map((user) => writeNotification({ ...args, user })));
+  const everyone = Array.from(new Set(users.map(String)));
+  const event = notificationEventOf(args.type);
+  const [inApp, byEmail] = await Promise.all([
+    recipientsWanting(everyone, event, 'inApp'),
+    emailedByNotifications(args.type) ? recipientsWanting(everyone, event, 'email') : [],
+  ]);
+  const ids = await Promise.all(inApp.map((user) => writeNotification({ ...args, user })));
   const written = ids.filter((id): id is mongoose.Types.ObjectId => id !== null);
-  if (args.wishlist) await dropIfWishlistGone(args.wishlist, written);
+  // One re-check of the list for the rows and the emails alike.
+  const gone =
+    !!args.wishlist &&
+    (written.length > 0 || byEmail.length > 0) &&
+    (await dropIfWishlistGone(args.wishlist, written));
+  // Each recipient's email follows its own setting, whatever their in-app one
+  // (`emailNotification` skips the types that email elsewhere or not at all),
+  // and none goes out about a list that's gone.
+  if (!gone) await emailNotification(byEmail, args);
   return written;
 }
 
@@ -197,15 +209,17 @@ async function writeNotification(
  * cleanup takes the row.
  *
  * Best-effort, like the write: a failed check or delete is logged by its kind
- * only, and leaves the notification in place.
+ * only, and leaves the notification in place. Returns whether the list was
+ * found gone (then no email goes out either).
  */
-async function dropIfWishlistGone(wishlist: Id, ids: mongoose.Types.ObjectId[]): Promise<void> {
-  if (ids.length === 0) return;
+async function dropIfWishlistGone(wishlist: Id, ids: mongoose.Types.ObjectId[]): Promise<boolean> {
   try {
-    if (await Wishlist.exists({ _id: wishlist })) return;
-    await Notification.deleteMany({ _id: { $in: ids }, wishlist });
+    if (await Wishlist.exists({ _id: wishlist })) return false;
+    if (ids.length > 0) await Notification.deleteMany({ _id: { $in: ids }, wishlist });
+    return true;
   } catch (err) {
     console.error('Failed to re-check the wishlist of a new notification:', errorKind(err));
+    return false;
   }
 }
 
