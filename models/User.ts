@@ -1,5 +1,8 @@
 import mongoose, { Schema, Model } from 'mongoose';
-import type { NotificationPrefs } from '@/lib/utils/notificationPrefs';
+import {
+  notificationPrefsMongooseShape,
+  type NotificationPrefs,
+} from '@/lib/utils/notificationPrefs';
 
 export type InvitePolicy = 'everyone' | 'friends' | 'nobody';
 export type ProfileVisibility = 'everyone' | 'friends';
@@ -73,11 +76,7 @@ const UserSchema = new Schema(
     // saved is absent and reads as its default there (`wantsNotification`,
     // `notificationOptInFilter`), so changing a default later reaches every
     // account that never touched it.
-    notificationPrefs: {
-      occasion_reminder: {
-        inApp: { type: Boolean },
-      },
-    },
+    notificationPrefs: notificationPrefsMongooseShape(),
   },
   {
     timestamps: true,

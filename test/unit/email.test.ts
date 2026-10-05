@@ -13,6 +13,7 @@ const { createTransport, sendMail } = vi.hoisted(() => {
 vi.mock('nodemailer', () => ({ default: { createTransport } }));
 
 const RECIPIENT = 'friend@example.com';
+const RECIPIENT_ID = '64b7f0c2a1b2c3d4e5f60718';
 const MAGIC_LINK =
   'http://localhost:3000/api/auth/callback/nodemailer?token=secret-token-123&email=friend%40example.com';
 const INVITES_LINK = 'http://localhost:3000/invites';
@@ -20,6 +21,7 @@ const INVITES_LINK = 'http://localhost:3000/invites';
 /** An invite from @alice to a list called Birthday, with any field overridden. */
 function invite(overrides: Partial<WishlistInvitationDetails> = {}): WishlistInvitationDetails {
   return {
+    recipientId: RECIPIENT_ID,
     wishlistName: 'Birthday',
     role: 'member',
     inviterName: 'alice',
@@ -469,7 +471,60 @@ describe('user-controlled values in the invite email text', () => {
     const { text, subject } = sentMessage();
     expect(text).toContain('“\u2068Gift Claim it now here\u2069”.');
     expect(text).not.toMatch(/[\u202A-\u202E\r\u2028\u2029]/);
-    expect(text.split('\n')).toHaveLength(5);
+    // Heading, blank, sentence, blank, Activity link, blank, unsubscribe link.
+    expect(text.split('\n')).toHaveLength(7);
     expect(subject).toBe('Someone invited you to a wishlist');
+  });
+});
+
+describe('unsubscribe links (WIS-321)', () => {
+  type WithHeaders = { headers?: Record<string, string> };
+
+  it('the invite email carries a one-click List-Unsubscribe for invitation emails only', async () => {
+    const { sendWishlistInvitationEmail } = await loadEmail('smtp');
+    const { verifyUnsubscribe } = await import('@/lib/utils/unsubscribe');
+
+    await sendWishlistInvitationEmail(RECIPIENT, invite());
+
+    const message = sentMessage() as ReturnType<typeof sentMessage> & WithHeaders;
+    expect(message.headers?.['List-Unsubscribe-Post']).toBe('List-Unsubscribe=One-Click');
+    const header = message.headers?.['List-Unsubscribe'] ?? '';
+    const oneClick = new URL(header.replace(/^<|>$/g, ''));
+    expect(oneClick.pathname).toBe('/api/unsubscribe');
+    expect(
+      verifyUnsubscribe({
+        u: oneClick.searchParams.get('u'),
+        e: oneClick.searchParams.get('e'),
+        t: oneClick.searchParams.get('t'),
+      })
+    ).toEqual({ userId: RECIPIENT_ID, event: 'wishlist_invite' });
+  });
+
+  it('offers the unsubscribe page and Settings in the footer and the text part, never the address', async () => {
+    const { sendWishlistInvitationEmail } = await loadEmail('smtp');
+
+    await sendWishlistInvitationEmail(RECIPIENT, invite());
+
+    const { html, text } = sentMessage();
+    const page = /href="(http:\/\/localhost:3000\/unsubscribe\?[^"]+)"/.exec(html)?.[1];
+    expect(page).toBeDefined();
+    const pageUrl = new URL(page!.replaceAll('&amp;', '&'));
+    expect(pageUrl.searchParams.get('e')).toBe('wishlist_invite');
+    expect(page).not.toContain(encodeURIComponent(RECIPIENT));
+    expect(html).toContain('http://localhost:3000/settings#notifications');
+    expect(html).not.toContain('If you didn’t request this');
+    expect(text).toContain(
+      'Unsubscribe from invitation emails: http://localhost:3000/unsubscribe?'
+    );
+  });
+
+  it('a magic link carries none', async () => {
+    const { sendMagicLinkEmail } = await loadEmail('smtp');
+
+    await sendMagicLinkEmail(RECIPIENT, MAGIC_LINK);
+
+    const message = sentMessage() as ReturnType<typeof sentMessage> & WithHeaders;
+    expect(message.headers).toBeUndefined();
+    expect(message.html).not.toContain('/unsubscribe');
   });
 });

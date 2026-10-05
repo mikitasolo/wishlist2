@@ -7,7 +7,14 @@ import { errorKind } from '@/lib/utils/errorKind';
 import WishlistMember from '@/models/WishlistMember';
 import User from '@/models/User';
 import { isDuplicateKeyError } from '@/lib/utils/mongoErrors';
-import { notificationOptInFilter } from '@/lib/utils/notificationPrefs';
+import {
+  notificationDefault,
+  notificationEventOf,
+  notificationOptInFilter,
+  notificationPrefPath,
+  type NotificationChannel,
+  type NotificationEvent,
+} from '@/lib/utils/notificationPrefs';
 import { nextOccurrence, type OccasionKind } from '@/lib/utils/occasion';
 
 type Id = string | mongoose.Types.ObjectId;
@@ -75,8 +82,9 @@ export async function createNotification(
 /**
  * Same notification to several recipients — used to fan an event out to every
  * owner of a co-owned wishlist, so no owner misses a proposal just because
- * someone else created the list. Duplicate ids are collapsed. The list is
- * re-checked once for the whole fan-out, after every row is written.
+ * someone else created the list. Duplicate ids are collapsed, and anyone who
+ * turned the event's in-app setting off is skipped (`recipientsWanting`). The
+ * list is re-checked once for the whole fan-out, after every row is written.
  *
  * Returns the ids of the rows that carry it (a follow and a failed write have
  * none), so a caller can take back exactly what it wrote: see
@@ -88,11 +96,56 @@ export async function createNotifications(
 ): Promise<mongoose.Types.ObjectId[]> {
   // `String`, not `.toString()`: a missing recipient must fail in the guarded
   // write below, which logs it, not throw out of a best-effort side effect.
-  const unique = Array.from(new Set(users.map(String)));
+  const unique = await recipientsWanting(
+    Array.from(new Set(users.map(String))),
+    notificationEventOf(args.type),
+    'inApp'
+  );
   const ids = await Promise.all(unique.map((user) => writeNotification({ ...args, user })));
   const written = ids.filter((id): id is mongoose.Types.ObjectId => id !== null);
   if (args.wishlist) await dropIfWishlistGone(args.wishlist, written);
   return written;
+}
+
+/**
+ * Of `users`, those who get `event` on `channel` (Settings → Notifications), in
+ * the order given. A setting on by default drops only those who turned it off,
+ * so an id with no account behind it is kept (a later write fails on it, or
+ * nothing reads it); one off by default keeps only those who turned it on.
+ * Nobody, on a channel the event isn't offered on.
+ *
+ * Read when the notification is written, not when the action began, so a
+ * setting changed a moment before is honoured. A failed read keeps the
+ * default's answer (everyone for one on by default, nobody otherwise), logged
+ * by its kind: a preference is a side effect's side effect, never a reason to
+ * fail or lose what the default would send.
+ */
+export async function recipientsWanting(
+  users: Id[],
+  event: NotificationEvent,
+  channel: NotificationChannel
+): Promise<string[]> {
+  const ids = users.map(String);
+  const fallback = notificationDefault(event, channel);
+  if (ids.length === 0 || fallback === undefined) return [];
+  const path = notificationPrefPath(event, channel);
+  try {
+    if (fallback) {
+      const off = await User.find({ _id: { $in: ids }, [path]: false })
+        .select('_id')
+        .lean();
+      const offSet = new Set(off.map((u) => String(u._id)));
+      return ids.filter((id) => !offSet.has(id));
+    }
+    const on = await User.find({ _id: { $in: ids }, ...notificationOptInFilter(event, channel) })
+      .select('_id')
+      .lean();
+    const onSet = new Set(on.map((u) => String(u._id)));
+    return ids.filter((id) => onSet.has(id));
+  } catch (err) {
+    console.error('Failed to read notification settings:', errorKind(err));
+    return fallback ? ids : [];
+  }
 }
 
 /**

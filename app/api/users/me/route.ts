@@ -213,7 +213,9 @@ export async function PATCH(request: NextRequest) {
           bio: saved.bio,
           defaultCurrency: saved.defaultCurrency,
           privacy: saved.privacy,
-          notificationPrefs: saved.notificationPrefs ?? {},
+          // From `toObject()`, which drops the empty object of each event
+          // never set, so only saved settings come back (as GET answers).
+          notificationPrefs: saved.toObject().notificationPrefs ?? {},
         },
       },
       { status: 200 }

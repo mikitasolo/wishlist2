@@ -111,6 +111,13 @@ const SPECS = {
   accountDelete: { tokens: 5, window: '1 h', policy: 'fail-open', keyKind: 'user' },
   // Public read/scraping surfaces — keyed on IP.
   search: { tokens: 60, window: '1 m', policy: 'fail-open', keyKind: 'ip' },
+  // A notification email's one-click unsubscribe (WIS-321), signed out. A valid
+  // link is limited per account it names, never per IP: RFC 8058's POST comes
+  // from the mail provider's servers, whose few shared IPs carry everyone's
+  // unsubscribes, and a refused one isn't retried. Only links that don't
+  // verify spend the per-IP budget.
+  unsubscribe: { tokens: 20, window: '10 m', policy: 'fail-open', keyKind: 'user' },
+  unsubscribeInvalid: { tokens: 30, window: '10 m', policy: 'fail-open', keyKind: 'ip' },
 } satisfies Record<string, LimiterSpec>;
 
 export type LimiterName = keyof typeof SPECS;

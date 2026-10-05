@@ -139,7 +139,7 @@ Read it before touching roles, invites, bookings, visibility, notifications or a
 - **sharp** needs libvips shipped by hand (`outputFileTracingIncludes`, `check:trace`); load it lazily outside the upload route.
 - **Uploads** are re-encoded, type-checked, owned (`uploads/<userId>/`, `canAttachImage`) and freed only via the `blob.ts` helpers from what the write replaced; unsaved uploads are handed back; snapshots have their own helpers.
 - **Link previews** show only what a signed-out visitor could see; a write that changes a card calls `purgeShareCards`.
-- **Email** HTML escapes every user value, and subjects carry no free text. **Logs** carry no personal data.
+- **Email** HTML escapes every user value, and subjects carry no free text; every notification email has a signed one-click unsubscribe for its event (`unsubscribeUrls`), and each event's email follows its setting in `NOTIFICATION_EVENTS`. **Logs** carry no personal data.
 - **Rate limiting** only through `enforce()` in `lib/rateLimit.ts`, with branded keys and the new-account tier.
 - **Migrations** are idempotent `createMigration` HTTP endpoints with a stated deploy order.
 - **`overrides`** and the known `npm audit` exceptions live in backend.md; update that list with any audit change.

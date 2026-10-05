@@ -2,6 +2,8 @@ import nodemailer from 'nodemailer';
 import { getEnvVars } from './env';
 import { EMAIL_LOGO_PNG_BASE64 } from './emailLogo';
 import { isolateForText } from './utils/emailText';
+import { unsubscribeUrls } from './utils/unsubscribe';
+import type { NotificationEvent } from './utils/notificationPrefs';
 
 // Get validated environment variables
 const env = getEnvVars();
@@ -39,6 +41,35 @@ interface OutgoingEmail {
   text: string;
   /** The link the email exists to deliver (magic link, invitations page, …). */
   link: string;
+  /**
+   * A notification email's one-click unsubscribe (`notificationUnsubscribe`):
+   * sent as `List-Unsubscribe` + `List-Unsubscribe-Post` (RFC 8058), so a mail
+   * client's own Unsubscribe turns off just this email. Never on a magic link.
+   */
+  unsubscribe?: Unsubscribe;
+}
+
+interface Unsubscribe {
+  /** The footer link: a page with one button (`/unsubscribe`). */
+  page: string;
+  /** The header's target, which a mail client POSTs to (`/api/unsubscribe`). */
+  oneClick: string;
+}
+
+/**
+ * The unsubscribe links for a notification email about `event` to the account
+ * `recipientId`: they turn off that event's email, and only for that account.
+ */
+function notificationUnsubscribe(recipientId: string, event: NotificationEvent): Unsubscribe {
+  return unsubscribeUrls(env.NEXTAUTH_URL, { userId: recipientId, event });
+}
+
+/** The headers that make a mail client offer one-click unsubscribe (RFC 2369, RFC 8058). */
+export function unsubscribeHeaders(unsubscribe: Unsubscribe): Record<string, string> {
+  return {
+    'List-Unsubscribe': `<${unsubscribe.oneClick}>`,
+    'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+  };
 }
 
 /**
@@ -88,6 +119,7 @@ async function deliver(email: OutgoingEmail): Promise<void> {
       subject: email.subject,
       html: email.html,
       text: email.text,
+      ...(email.unsubscribe ? { headers: unsubscribeHeaders(email.unsubscribe) } : {}),
       attachments: [{ filename: 'logo.png', content: LOGO_PNG, cid: LOGO_CID }],
     });
     console.log(`Sent ${email.kind} email`);
@@ -141,6 +173,11 @@ function getEmailTemplate(options: {
   footerHtml?: string;
   showLinkFallback?: boolean;
   linkUrl?: string;
+  /**
+   * A notification email's unsubscribe page (`Unsubscribe.page`): the footer
+   * then offers it and Settings, in place of "If you didn’t request this".
+   */
+  unsubscribeUrl?: string;
 }) {
   const siteTitle = 'Wishlist';
 
@@ -234,6 +271,7 @@ function getEmailTemplate(options: {
           .email-footer { padding: 26px 32px; background-color: #f2f2f5; border-top: 1px solid #e3e3e8; text-align: center; }
           .email-footer p { margin: 0 0 6px 0; font-size: 12.5px; color: #6e6e73; line-height: 1.5; }
           .email-footer p:last-child { margin-bottom: 0; }
+          .email-footer a { color: #3a38a6; text-decoration: underline; }
 
           @media only screen and (max-width: 600px) {
             .email-wrapper { padding: 20px 0; }
@@ -254,6 +292,7 @@ function getEmailTemplate(options: {
             .link-fallback a { color: #a3a1ff !important; }
             .email-footer { background-color: #141418 !important; border-color: #303036 !important; }
             .email-footer p { color: #a7a7ad !important; }
+            .email-footer a { color: #a3a1ff !important; }
           }
         </style>
       </head>
@@ -289,7 +328,11 @@ function getEmailTemplate(options: {
 
             <div class="email-footer">
               ${options.footerHtml ? `<p>${options.footerHtml}</p>` : ''}
-              <p>Sent by ${siteTitle} · If you didn’t request this, you can safely ignore it.</p>
+              ${
+                options.unsubscribeUrl
+                  ? `<p>Sent by ${siteTitle} · <a href="${escapeHtml(options.unsubscribeUrl)}">Unsubscribe from these emails</a> · <a href="${escapeHtml(`${env.NEXTAUTH_URL}/settings#notifications`)}">Notification settings</a></p>`
+                  : `<p>Sent by ${siteTitle} · If you didn’t request this, you can safely ignore it.</p>`
+              }
             </div>
           </div>
         </div>
@@ -324,6 +367,8 @@ export async function sendMagicLinkEmail(email: string, magicLink: string) {
 }
 
 export interface WishlistInvitationDetails {
+  /** The invitee's account id, for the unsubscribe link (never shown). */
+  recipientId: string;
   /** Free text: escaped in the HTML, and kept out of the subject. */
   wishlistName: string;
   /** `owner` invites (a new co-owner, or a member's promotion) ask them to co-own it. */
@@ -364,6 +409,7 @@ export async function sendWishlistInvitationEmail(
   // who's already signed in (the usual case on a phone) lands there at once; a
   // signed-out one is sent through sign-in and back to it.
   const invitesUrl = `${env.NEXTAUTH_URL}/invites`;
+  const unsubscribe = notificationUnsubscribe(details.recipientId, 'wishlist_invite');
 
   const html = getEmailTemplate({
     title: 'Wishlist invitation',
@@ -378,6 +424,7 @@ export async function sendWishlistInvitationEmail(
     buttonText: 'Review invitation',
     buttonUrl: invitesUrl,
     footerHtml: `Invitation sent to <strong>${escapeHtml(email)}</strong>`,
+    unsubscribeUrl: unsubscribe.page,
   });
 
   await deliver({
@@ -387,7 +434,8 @@ export async function sendWishlistInvitationEmail(
     html,
     // The name stays inside a sentence that names the inviter, never a line of
     // its own that could pass for our own text.
-    text: `Wishlist invitation\n\n${isolateForText(inviter)} ${invitedTo} “${isolateForText(wishlistName)}”.\n\nAccept or decline it on your Activity page: ${invitesUrl}`,
+    text: `Wishlist invitation\n\n${isolateForText(inviter)} ${invitedTo} “${isolateForText(wishlistName)}”.\n\nAccept or decline it on your Activity page: ${invitesUrl}\n\nUnsubscribe from invitation emails: ${unsubscribe.page}`,
     link: invitesUrl,
+    unsubscribe,
   });
 }

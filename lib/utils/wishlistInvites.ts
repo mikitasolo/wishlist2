@@ -4,7 +4,7 @@ import WishlistInvite, { IWishlistInvite } from '@/models/WishlistInvite';
 import Wishlist, { IWishlist } from '@/models/Wishlist';
 import Notification from '@/models/Notification';
 import { sendWishlistInvitationEmail } from '@/lib/email';
-import { createNotification } from '@/lib/notifications';
+import { createNotification, recipientsWanting } from '@/lib/notifications';
 import { isDuplicateKeyError } from '@/lib/utils/mongoErrors';
 import { errorKind } from '@/lib/utils/errorKind';
 import { isWishlistOwner } from '@/lib/utils/wishlistOwners';
@@ -93,7 +93,8 @@ async function countCappedPending(
 
 /**
  * Create a pending invite and tell the invitee about it (in-app notification +
- * email). Membership/ownership is only granted when they accept, so this is also
+ * email, each unless they turned it off in Settings → Notifications; the invite
+ * card on Activity shows either way). Membership/ownership is only granted when they accept, so this is also
  * the promotion path for co-ownership.
  *
  * Returns `null` when the invitee already has a pending invite for this list —
@@ -179,9 +180,15 @@ export async function issueWishlistInvite(
   // is this call's job, and no email goes out for an invite that's settled.
   if (await settledSinceIssued(invite, notification)) return invite;
 
-  if (args.invitedUserEmail) {
+  // Unless they turned invitation emails off (Settings → Notifications; on by
+  // default), read now, so a change made a moment ago is honoured.
+  if (
+    args.invitedUserEmail &&
+    (await recipientsWanting([args.invitedUserId], 'wishlist_invite', 'email')).length > 0
+  ) {
     try {
       await sendWishlistInvitationEmail(args.invitedUserEmail, {
+        recipientId: String(args.invitedUserId),
         wishlistName: args.wishlistName,
         role: args.role,
         inviterName: args.inviterName,

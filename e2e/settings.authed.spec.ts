@@ -50,3 +50,23 @@ test('the bio waits for its Save, and asks before leaving it unsaved', async ({ 
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByText('Saved', { exact: true })).toBeVisible();
 });
+
+test('a notification switch saves on its own, and stays saved (WIS-321)', async ({ page }) => {
+  await page.goto('/settings#notifications');
+  await expect(page.getByRole('heading', { name: 'Notifications', exact: true })).toBeVisible();
+  const email = page.getByRole('switch', { name: 'Requests to join: email' });
+  const inApp = page.getByRole('switch', { name: 'Requests to join: in app' });
+  await expect(email).toHaveAttribute('aria-checked', 'true');
+  await expect(page.getByRole('switch', { name: 'New followers: email' })).toHaveCount(0);
+
+  await email.click();
+  await expect(page.getByText('Saved', { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(email).toHaveAttribute('aria-checked', 'false');
+  await expect(inApp).toHaveAttribute('aria-checked', 'true');
+
+  await email.click();
+  await expect(page.getByText('Saved', { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(email).toHaveAttribute('aria-checked', 'true');
+});

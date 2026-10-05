@@ -1,6 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
+import Switch from '@/components/Switch';
 
 // A labelled on/off switch: the label and description on the left, the switch
 // on the right.
@@ -29,23 +30,7 @@ export default function Toggle({
         </div>
         <p className="text-sm text-muted-foreground">{description}</p>
       </div>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={checked}
-        aria-label={label}
-        onClick={() => onChange(!checked)}
-        disabled={disabled}
-        className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-          checked ? 'bg-primary-600' : 'bg-border-strong'
-        }`}
-      >
-        <span
-          className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition-transform duration-200 ${
-            checked ? 'translate-x-[22px]' : 'translate-x-0.5'
-          }`}
-        />
-      </button>
+      <Switch label={label} checked={checked} onChange={onChange} disabled={disabled} />
     </div>
   );
 }
