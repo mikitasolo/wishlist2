@@ -117,6 +117,9 @@ WishlistSchema.path('owners').validate(
 
 // "My wishlists" / profile listings look up by owner.
 WishlistSchema.index({ owners: 1 });
+// The daily occasion reminders look lists up by their occasion's stored date
+// (lib/utils/occasionReminders.ts).
+WishlistSchema.index({ 'occasion.date': 1 });
 
 // Base document type
 export interface IWishlist {

@@ -1,6 +1,12 @@
 import { plural } from '@/lib/utils/plural';
 import type { IconName } from '@/components/Icon';
 import { followersHref, profileHref } from '@/lib/utils/profileLinks';
+import {
+  formatOccasionDay,
+  isCalendarDate,
+  OCCASION_KINDS,
+  type OccasionKind,
+} from '@/lib/utils/occasion';
 
 // The one list of notification types: the model's enum is built from it too.
 export const NOTIFICATION_TYPES = [
@@ -12,6 +18,7 @@ export const NOTIFICATION_TYPES = [
   'role_changed',
   'removed_from_wishlist',
   'join_request',
+  'occasion_reminder',
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
@@ -59,6 +66,11 @@ export interface NotificationView {
   // A `follow` row from one person: whether the recipient follows them now
   // (null on every other row), so the row offers Follow back only when not.
   followingActor?: boolean | null;
+  // An `occasion_reminder`: the occasion's kind and the day it falls on (its
+  // next occurrence, a real `YYYY-MM-DD`, never a yearly one's stored year).
+  // Null on every other type. Optional, like `count`.
+  occasionKind?: OccasionKind | null;
+  occasionDate?: string | null;
   read: boolean;
   createdAt: string;
 }
@@ -201,10 +213,35 @@ export function notificationParts(n: NotificationView): NotificationPart[] {
     // To the list's owners only, naming the requester by their public handle.
     case 'join_request':
       return [`${actor(n)} asked to join `, list(n)];
+    // To the list's members only, a week ahead (lib/utils/occasionReminders.ts).
+    case 'occasion_reminder':
+      return occasionReminderParts(n);
     default:
       return ['You have a new notification'];
   }
 }
+
+/**
+ * "Birthday coming up on Sat 17 Oct: " for an occasion reminder: the kind and the day,
+ * formatted in the viewer's locale (never a countdown, which would go stale as
+ * the row sits in the feed). Nothing about bookings or what's left to give.
+ */
+function occasionReminderParts(n: NotificationView): NotificationPart[] {
+  const kind =
+    n.occasionKind && (OCCASION_KINDS as readonly string[]).includes(n.occasionKind)
+      ? OCCASION_REMINDER_KIND[n.occasionKind]
+      : 'An occasion';
+  const day =
+    n.occasionDate && isCalendarDate(n.occasionDate) ? formatOccasionDay(n.occasionDate) : null;
+  return day ? [`${kind} coming up on ${day}: `, list(n)] : [`${kind} coming up: `, list(n)];
+}
+
+const OCCASION_REMINDER_KIND: Record<OccasionKind, string> = {
+  birthday: 'Birthday',
+  holiday: 'Holiday',
+  wedding: 'Wedding',
+  other: 'An occasion',
+};
 
 /** Human-readable line for a notification, as plain text. */
 export function notificationText(n: NotificationView): string {
@@ -246,6 +283,7 @@ export function notificationLink(
     case 'proposal':
     case 'proposal_approved':
     case 'role_changed':
+    case 'occasion_reminder':
       return listLink(n);
     case 'removed_from_wishlist':
       return null;
@@ -278,6 +316,8 @@ export function notificationIcon(n: NotificationView): IconName {
       return 'logout';
     case 'join_request':
       return 'user-plus';
+    case 'occasion_reminder':
+      return 'calendar';
     default:
       return 'bell';
   }

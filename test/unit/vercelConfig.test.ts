@@ -44,9 +44,11 @@ describe('vercel.json', () => {
   });
 
   // Hobby runs a cron at most once a day, so a more frequent schedule fails the deploy.
-  it('runs the monthly snapshot sweep, at most daily, on a route that exists', () => {
+  it('runs the monthly snapshot sweep and daily reminders, at most daily, on a route that exists', () => {
     const crons = vercelConfig.crons ?? [];
     expect(crons).toContainEqual({ path: '/api/cron/sweep-snapshots', schedule: '0 3 1 * *' });
+    // Daily: a reminder is due a week before, with a two-day catch-up (WIS-193).
+    expect(crons).toContainEqual({ path: '/api/cron/occasion-reminders', schedule: '0 6 * * *' });
     for (const cron of crons) {
       const [minute, hour] = cron.schedule.split(' ');
       expect(/^\d+$/.test(minute) && /^\d+$/.test(hour)).toBe(true);

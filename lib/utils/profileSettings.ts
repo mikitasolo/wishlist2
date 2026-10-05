@@ -1,4 +1,5 @@
 import type { InvitePolicy, ProfileVisibility } from '@/models/User';
+import { wantsNotification, type NotificationPrefs } from '@/lib/utils/notificationPrefs';
 
 /**
  * The account settings form (`app/settings/page.tsx`), and what a save of it
@@ -28,6 +29,8 @@ export interface ProfileSettings {
   searchable: boolean;
   whoCanInvite: InvitePolicy;
   profileVisibility: ProfileVisibility;
+  /** Occasion reminders in Activity (`notificationPrefs.occasion_reminder.inApp`). */
+  occasionReminders: boolean;
 }
 
 type PrivacySettings = Pick<ProfileSettings, 'searchable' | 'whoCanInvite' | 'profileVisibility'>;
@@ -40,6 +43,8 @@ export interface ProfileChanges {
   bio?: string;
   defaultCurrency?: string;
   privacy?: Partial<PrivacySettings>;
+  /** Of the notification settings, only the ones changed, each by event and channel. */
+  notificationPrefs?: NotificationPrefs;
 }
 
 /** The fields of a profile (as `/api/users/me` returns it) that its settings come from. */
@@ -53,6 +58,7 @@ export interface ProfileSettingsSource {
     whoCanInvite?: InvitePolicy | null;
     profileVisibility?: ProfileVisibility | null;
   } | null;
+  notificationPrefs?: NotificationPrefs | null;
 }
 
 /**
@@ -68,6 +74,7 @@ export function profileSettings(profile: ProfileSettingsSource): ProfileSettings
     searchable: profile.privacy?.searchable ?? true,
     whoCanInvite: profile.privacy?.whoCanInvite ?? 'everyone',
     profileVisibility: profile.privacy?.profileVisibility ?? 'everyone',
+    occasionReminders: wantsNotification(profile.notificationPrefs, 'occasion_reminder', 'inApp'),
   };
 }
 
@@ -84,6 +91,7 @@ const asStored: { [K in keyof ProfileSettings]: (value: ProfileSettings[K]) => u
   searchable: (v) => v,
   whoCanInvite: (v) => v,
   profileVisibility: (v) => v,
+  occasionReminders: (v) => v,
 };
 
 const FIELDS = Object.keys(asStored) as (keyof ProfileSettings)[];
@@ -128,6 +136,10 @@ export function profileChanges(form: ProfileSettings, saved: ProfileSettings): P
   }
   if (Object.keys(privacy).length > 0) changes.privacy = privacy;
 
+  if (!sameField('occasionReminders', form, saved)) {
+    changes.notificationPrefs = occasionRemindersChange(form.occasionReminders);
+  }
+
   return changes;
 }
 
@@ -153,9 +165,15 @@ export function settingChange<K extends keyof ProfileSettings>(
       return { bio: settings.bio!.trim() };
     case 'defaultCurrency':
       return { defaultCurrency: settings.defaultCurrency!.toUpperCase() };
+    case 'occasionReminders':
+      return { notificationPrefs: occasionRemindersChange(settings.occasionReminders!) };
     default:
       return { privacy: { [key]: value } as Partial<PrivacySettings> };
   }
+}
+
+function occasionRemindersChange(on: boolean): NotificationPrefs {
+  return { occasion_reminder: { inApp: on } };
 }
 
 /**

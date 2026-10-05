@@ -122,6 +122,7 @@ Read it before touching roles, invites, bookings, visibility, notifications or a
 - **Members** browse, propose and reserve; everything else is owner-only.
 - **Becoming an owner** takes consent (create, `owner` invite, promotion of an existing member) and releases that person's bookings and reservations; route role changes through `releaseHoldingsForRole`, and keep the grant-then-release order that `undoBookingUnlessMember` relies on.
 - **Demote / remove / kick** notify only the person affected, never naming who did it; losing ownership clears `owners` and `featuredBy`; nobody changes their own role.
+- **Occasion reminders** go 7 days ahead to members only (never owners or friends), once per (person, list, occurrence) via a unique index, re-checked after the write, capped per run, opt-out in `notificationPrefs`, no booking info.
 - **Invites**: by username only, one pending per person per list, issued through `issueWishlistInvite` (20-pending cap, `PENDING_INVITE_CAP`); answered by claiming the pending row first; leaving or losing a role cancels your pending invites, and an owner taken off loses the ones they sent; an archived list's `member` invites are paused.
 - **Requests to join** grant nothing: owners answer with a normal invite or a silent decline.
 - **Owners never see booking status**, any reservation count, or who proposed an item; every item answer goes through `serializeItem`.

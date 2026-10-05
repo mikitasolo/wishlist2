@@ -1,4 +1,5 @@
 import mongoose, { Schema, Model } from 'mongoose';
+import type { NotificationPrefs } from '@/lib/utils/notificationPrefs';
 
 export type InvitePolicy = 'everyone' | 'friends' | 'nobody';
 export type ProfileVisibility = 'everyone' | 'friends';
@@ -67,6 +68,16 @@ const UserSchema = new Schema(
         default: 'everyone',
       },
     },
+    // Which notifications they get, per event and channel
+    // (lib/utils/notificationPrefs.ts). No defaults here: a setting never
+    // saved is absent and reads as its default there (`wantsNotification`,
+    // `notificationOptInFilter`), so changing a default later reaches every
+    // account that never touched it.
+    notificationPrefs: {
+      occasion_reminder: {
+        inApp: { type: Boolean },
+      },
+    },
   },
   {
     timestamps: true,
@@ -90,6 +101,7 @@ export interface IUser {
   defaultCurrency?: string;
   currencyChosenAt?: Date;
   privacy?: IUserPrivacy;
+  notificationPrefs?: NotificationPrefs;
   createdAt: Date;
   updatedAt: Date;
 }

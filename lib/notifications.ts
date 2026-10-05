@@ -4,6 +4,11 @@ import Wishlist from '@/models/Wishlist';
 import type { IWishlistInvite } from '@/models/WishlistInvite';
 import { showsActor, type InviteAnswer, type InviteRole } from '@/lib/utils/notifications';
 import { errorKind } from '@/lib/utils/errorKind';
+import WishlistMember from '@/models/WishlistMember';
+import User from '@/models/User';
+import { isDuplicateKeyError } from '@/lib/utils/mongoErrors';
+import { notificationOptInFilter } from '@/lib/utils/notificationPrefs';
+import { nextOccurrence, type OccasionKind } from '@/lib/utils/occasion';
 
 type Id = string | mongoose.Types.ObjectId;
 
@@ -300,4 +305,149 @@ async function notifyProposal(
     UPSERT_OPTIONS
   );
   return row?._id ?? null;
+}
+
+interface OccasionReminderArgs {
+  wishlist: { _id: mongoose.Types.ObjectId; name: string; slug?: string | null };
+  occasion: { kind: OccasionKind };
+  /** The occurrence it's about: a real `YYYY-MM-DD` (a yearly one's next one). */
+  occasionDate: string;
+  users: mongoose.Types.ObjectId[];
+}
+
+/**
+ * Write an occasion reminder for each of `users` about one occurrence of a
+ * list's occasion (WIS-193), and return how many new ones stand. Each is an
+ * upsert on the reminder's unique key (`user`, `wishlist`, `occasionDate`), so
+ * one already there is left as it is (read or not) and a concurrent run's
+ * duplicate is refused by the index: nobody is reminded twice about one day.
+ *
+ * Then, as `dropIfWishlistGone` does for every list notification, the rows just
+ * written are re-checked against the list and its people as they are now, and
+ * taken back unless they still hold: the list is gone, archived, or its occasion
+ * no longer falls on `occasionDate` (all of them), or a recipient is no longer
+ * a member, is an owner now, or has turned reminders off (theirs).
+ *
+ * The row says which list, its occasion's kind and the day: no actor, and
+ * nothing about bookings or what's left to give.
+ *
+ * Best-effort: a failure is logged by its kind only and counts as nothing sent.
+ */
+export async function createOccasionReminders({
+  wishlist,
+  occasion,
+  occasionDate,
+  users,
+}: OccasionReminderArgs): Promise<number> {
+  if (users.length === 0) return 0;
+  let written: mongoose.Types.ObjectId[];
+  try {
+    const result = await Notification.bulkWrite(
+      users.map((user) => ({
+        updateOne: {
+          filter: {
+            user,
+            wishlist: wishlist._id,
+            type: 'occasion_reminder' as const,
+            occasionDate,
+          },
+          update: {
+            $setOnInsert: {
+              actorUsername: null,
+              count: 1,
+              wishlistName: wishlist.name,
+              wishlistSlug: wishlist.slug ?? null,
+              itemName: null,
+              occasionKind: occasion.kind,
+              read: false,
+            },
+          },
+          upsert: true,
+        },
+      })),
+      { ordered: false }
+    );
+    written = Object.values(result.upsertedIds);
+  } catch (err) {
+    // A concurrent run inserted some of the same reminders first: the index
+    // refuses ours, and the rest of the batch still lands (`ordered: false`).
+    const upserted = onlyDuplicateKeyErrors(err);
+    if (!upserted) {
+      console.error('Failed to write occasion reminders:', errorKind(err));
+      return 0;
+    }
+    written = upserted;
+  }
+  if (written.length === 0) return 0;
+  return written.length - (await dropStaleOccasionReminders(wishlist._id, occasionDate, written));
+}
+
+/**
+ * The ids a bulk write still upserted, when everything it refused was a
+ * duplicate key; `null` for any other failure.
+ */
+function onlyDuplicateKeyErrors(err: unknown): mongoose.Types.ObjectId[] | null {
+  if (typeof err !== 'object' || err === null) return null;
+  const { writeErrors, result } = err as {
+    writeErrors?: unknown;
+    result?: { upsertedIds?: Record<number, mongoose.Types.ObjectId> };
+  };
+  const errors = Array.isArray(writeErrors) ? writeErrors : writeErrors ? [writeErrors] : [];
+  if (errors.length === 0 || !errors.every(isDuplicateKeyError)) return null;
+  return Object.values(result?.upsertedIds ?? {});
+}
+
+/**
+ * The re-check after `createOccasionReminders`' write: deletes those of `ids`
+ * that no longer hold (see there), and returns how many it deleted.
+ */
+async function dropStaleOccasionReminders(
+  wishlistId: mongoose.Types.ObjectId,
+  occasionDate: string,
+  ids: mongoose.Types.ObjectId[]
+): Promise<number> {
+  try {
+    const list = await Wishlist.findById(wishlistId).select('owners archived occasion').lean();
+    const occasion = list?.occasion;
+    const stillDue =
+      !!list &&
+      !list.archived &&
+      !!occasion &&
+      nextOccurrence(occasion.date, occasion.recurrence ?? null, occasionDate) === occasionDate;
+    if (!stillDue) {
+      const { deletedCount } = await Notification.deleteMany({ _id: { $in: ids } });
+      return deletedCount;
+    }
+
+    const rows = await Notification.find({ _id: { $in: ids } })
+      .select('user')
+      .lean();
+    const recipients = rows.map((r) => r.user);
+    const [members, wanting] = await Promise.all([
+      WishlistMember.find({ wishlist: wishlistId, user: { $in: recipients } })
+        .select('user')
+        .lean(),
+      User.find({
+        _id: { $in: recipients },
+        ...notificationOptInFilter('occasion_reminder', 'inApp'),
+      })
+        .select('_id')
+        .lean(),
+    ]);
+    const owners = new Set(list.owners.map(String));
+    const memberSet = new Set(members.map((m) => String(m.user)));
+    const wantSet = new Set(wanting.map((u) => String(u._id)));
+    const stale = rows
+      .filter((r) => {
+        const user = String(r.user);
+        return owners.has(user) || !memberSet.has(user) || !wantSet.has(user);
+      })
+      .map((r) => r._id);
+    if (stale.length === 0) return 0;
+    const { deletedCount } = await Notification.deleteMany({ _id: { $in: stale } });
+    return deletedCount;
+  } catch (err) {
+    console.error('Failed to re-check new occasion reminders:', errorKind(err));
+    return 0;
+  }
 }

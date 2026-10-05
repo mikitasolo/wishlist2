@@ -8,6 +8,7 @@ import {
   NAME_CONTROL_CHAR_MESSAGE,
 } from '@/lib/utils/visibleName';
 import { ITEM_NOTES_MAX, isHttpUrl, normalizeItemLink } from '@/lib/utils/itemFields';
+import { notificationPrefsSchema } from '@/lib/utils/notificationPrefs';
 
 /**
  * Validation schemas for API endpoints
@@ -160,6 +161,8 @@ export const updateProfileSchema = z
         profileVisibility: z.enum(['everyone', 'friends']).optional(),
       })
       .optional(),
+    // Each notification setting it's sent, per event and channel.
+    notificationPrefs: notificationPrefsSchema.optional(),
   })
   .refine((data) => Object.keys(data).length > 0, {
     message: 'At least one field must be provided for update',

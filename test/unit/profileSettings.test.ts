@@ -19,6 +19,7 @@ const saved: ProfileSettings = {
   searchable: true,
   whoCanInvite: 'everyone',
   profileVisibility: 'everyone',
+  occasionReminders: true,
 };
 
 /** The form as filled from `saved`, with `change` made in it. */
@@ -45,6 +46,7 @@ describe('profileSettings', () => {
       searchable: false,
       whoCanInvite: 'friends',
       profileVisibility: 'friends',
+      occasionReminders: true,
     });
   });
 
@@ -57,6 +59,7 @@ describe('profileSettings', () => {
       searchable: true,
       whoCanInvite: 'everyone',
       profileVisibility: 'everyone',
+      occasionReminders: true,
     });
     expect(profileSettings({ privacy: { searchable: null } }).searchable).toBe(true);
   });
@@ -69,6 +72,25 @@ describe('profileSettings', () => {
 describe('profileChanges', () => {
   it('is empty when nothing changed', () => {
     expect(profileChanges(edited(), saved)).toEqual({});
+  });
+
+  it('sends occasion reminders as their one notification setting, by event and channel', () => {
+    expect(profileChanges(edited({ occasionReminders: false }), saved)).toEqual({
+      notificationPrefs: { occasion_reminder: { inApp: false } },
+    });
+    expect(settingChange('occasionReminders', true)).toEqual({
+      notificationPrefs: { occasion_reminder: { inApp: true } },
+    });
+  });
+
+  it('reads occasion reminders from the saved setting, on unless turned off', () => {
+    expect(
+      profileSettings({ notificationPrefs: { occasion_reminder: { inApp: false } } })
+        .occasionReminders
+    ).toBe(false);
+    expect(
+      profileSettings({ notificationPrefs: { occasion_reminder: {} } }).occasionReminders
+    ).toBe(true);
   });
 
   // regression: the settings page sent the whole `privacy` object on every
