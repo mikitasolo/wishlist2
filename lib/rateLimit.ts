@@ -111,6 +111,10 @@ const SPECS = {
   accountDelete: { tokens: 5, window: '1 h', policy: 'fail-open', keyKind: 'user' },
   // Public read/scraping surfaces — keyed on IP.
   search: { tokens: 60, window: '1 m', policy: 'fail-open', keyKind: 'ip' },
+  // A notification email's one-click unsubscribe (WIS-321): signed out, so per
+  // IP. Each valid link only turns one email off, so this only stops a script
+  // hammering the endpoint with guessed signatures.
+  unsubscribe: { tokens: 30, window: '10 m', policy: 'fail-open', keyKind: 'ip' },
 } satisfies Record<string, LimiterSpec>;
 
 export type LimiterName = keyof typeof SPECS;

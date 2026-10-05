@@ -1,6 +1,54 @@
 import type { InvitePolicy, ProfileVisibility } from '@/models/User';
-import { wantsNotification, type NotificationPrefs } from '@/lib/utils/notificationPrefs';
 import { normalizeCurrency } from '@/lib/utils/currency';
+import {
+  channelsOf,
+  NOTIFICATION_EVENT_KEYS,
+  wantsNotification,
+  type NOTIFICATION_EVENTS,
+  type NotificationChannel,
+  type NotificationEvent,
+  type NotificationPrefs,
+} from '@/lib/utils/notificationPrefs';
+
+/**
+ * One notification setting as a form field: `notify.<event>.<channel>`, for
+ * each channel the event is offered on (`NOTIFICATION_EVENTS`), so each switch
+ * is compared, saved and refilled on its own like any other setting.
+ */
+export type NotificationSettingKey = {
+  [
+    E in NotificationEvent
+  ]: `notify.${E}.${keyof (typeof NOTIFICATION_EVENTS)[E]['defaults'] & string}`;
+}[NotificationEvent];
+
+export interface NotificationSetting {
+  key: NotificationSettingKey;
+  event: NotificationEvent;
+  channel: NotificationChannel;
+}
+
+/** Every notification setting, event by event in the table's order. */
+export const NOTIFICATION_SETTINGS: readonly NotificationSetting[] =
+  NOTIFICATION_EVENT_KEYS.flatMap((event) =>
+    channelsOf(event).map((channel) => ({
+      key: `notify.${event}.${channel}` as NotificationSettingKey,
+      event,
+      channel,
+    }))
+  );
+
+/** The setting a form field stands for, or undefined for any other field. */
+export function notificationSettingOf(key: string): NotificationSetting | undefined {
+  return NOTIFICATION_SETTINGS.find((s) => s.key === key);
+}
+
+/** The form field of `event` on `channel`, if it's offered there. */
+export function notificationSettingKey(
+  event: NotificationEvent,
+  channel: NotificationChannel
+): NotificationSettingKey | undefined {
+  return NOTIFICATION_SETTINGS.find((s) => s.event === event && s.channel === channel)?.key;
+}
 
 /**
  * The account settings form (`app/settings/page.tsx`), and what a save of it
@@ -22,7 +70,7 @@ import { normalizeCurrency } from '@/lib/utils/currency';
  * no bio is `''`, no photo is `null`, and the privacy settings sit alongside
  * the rest, so each one is compared and sent on its own.
  */
-export interface ProfileSettings {
+export interface ProfileSettings extends Record<NotificationSettingKey, boolean> {
   username: string;
   image: string | null;
   bio: string;
@@ -30,8 +78,6 @@ export interface ProfileSettings {
   searchable: boolean;
   whoCanInvite: InvitePolicy;
   profileVisibility: ProfileVisibility;
-  /** Occasion reminders in Activity (`notificationPrefs.occasion_reminder.inApp`). */
-  occasionReminders: boolean;
 }
 
 type PrivacySettings = Pick<ProfileSettings, 'searchable' | 'whoCanInvite' | 'profileVisibility'>;
@@ -75,7 +121,12 @@ export function profileSettings(profile: ProfileSettingsSource): ProfileSettings
     searchable: profile.privacy?.searchable ?? true,
     whoCanInvite: profile.privacy?.whoCanInvite ?? 'everyone',
     profileVisibility: profile.privacy?.profileVisibility ?? 'everyone',
-    occasionReminders: wantsNotification(profile.notificationPrefs, 'occasion_reminder', 'inApp'),
+    ...(Object.fromEntries(
+      NOTIFICATION_SETTINGS.map((s) => [
+        s.key,
+        wantsNotification(profile.notificationPrefs, s.event, s.channel),
+      ])
+    ) as Record<NotificationSettingKey, boolean>),
   };
 }
 
@@ -92,7 +143,10 @@ const asStored: { [K in keyof ProfileSettings]: (value: ProfileSettings[K]) => u
   searchable: (v) => v,
   whoCanInvite: (v) => v,
   profileVisibility: (v) => v,
-  occasionReminders: (v) => v,
+  ...(Object.fromEntries(NOTIFICATION_SETTINGS.map((s) => [s.key, (v: boolean) => v])) as Record<
+    NotificationSettingKey,
+    (v: boolean) => boolean
+  >),
 };
 
 const FIELDS = Object.keys(asStored) as (keyof ProfileSettings)[];
@@ -137,9 +191,13 @@ export function profileChanges(form: ProfileSettings, saved: ProfileSettings): P
   }
   if (Object.keys(privacy).length > 0) changes.privacy = privacy;
 
-  if (!sameField('occasionReminders', form, saved)) {
-    changes.notificationPrefs = occasionRemindersChange(form.occasionReminders);
+  let prefs: NotificationPrefs | undefined;
+  for (const setting of NOTIFICATION_SETTINGS) {
+    if (!sameField(setting.key, form, saved)) {
+      prefs = withSetting(prefs ?? {}, setting, form[setting.key]);
+    }
   }
+  if (prefs) changes.notificationPrefs = prefs;
 
   return changes;
 }
@@ -166,15 +224,24 @@ export function settingChange<K extends keyof ProfileSettings>(
       return { bio: settings.bio!.trim() };
     case 'defaultCurrency':
       return { defaultCurrency: settings.defaultCurrency!.toUpperCase() };
-    case 'occasionReminders':
-      return { notificationPrefs: occasionRemindersChange(settings.occasionReminders!) };
-    default:
+    case 'searchable':
+    case 'whoCanInvite':
+    case 'profileVisibility':
       return { privacy: { [key]: value } as Partial<PrivacySettings> };
+    default: {
+      const setting = notificationSettingOf(key)!;
+      return { notificationPrefs: withSetting({}, setting, value as boolean) };
+    }
   }
 }
 
-function occasionRemindersChange(on: boolean): NotificationPrefs {
-  return { occasion_reminder: { inApp: on } };
+/** `prefs` with `setting` set to `on`, by event and channel. */
+function withSetting(
+  prefs: NotificationPrefs,
+  setting: NotificationSetting,
+  on: boolean
+): NotificationPrefs {
+  return { ...prefs, [setting.event]: { ...prefs[setting.event], [setting.channel]: on } };
 }
 
 /**

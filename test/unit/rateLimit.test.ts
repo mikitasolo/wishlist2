@@ -117,6 +117,7 @@ const KEY_KINDS: Record<LimiterName, KeyKind> = {
   wishlistSlug: 'user',
   accountDelete: 'user',
   search: 'ip',
+  unsubscribe: 'ip',
 };
 const LIMITERS = Object.entries(KEY_KINDS) as [LimiterName, KeyKind][];
 

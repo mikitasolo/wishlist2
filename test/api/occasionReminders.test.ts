@@ -362,10 +362,21 @@ describe('PATCH /api/users/me notificationPrefs', () => {
     expect((await sendOccasionReminders(NOW)).sent).toBe(0);
   });
 
-  it('refuses an unknown notification setting', async () => {
+  it('refuses an unknown notification setting, and an email for a new follower', async () => {
     const mia = await user('mia');
     session.mockResolvedValue({ user: { id: String(mia) } } as never);
-    const res = await patch({ notificationPrefs: { occasion_reminder: { email: true } } });
-    expect(res.status).toBe(400);
+    expect((await patch({ notificationPrefs: { bookings: { email: true } } })).status).toBe(400);
+    expect((await patch({ notificationPrefs: { follow: { email: true } } })).status).toBe(400);
+    expect((await User.findById(mia).lean())?.notificationPrefs ?? {}).toEqual({});
+  });
+
+  it('saves an email setting by its own path, leaving the in-app one alone (WIS-321)', async () => {
+    const mia = await user('mia', { notificationPrefs: { proposal: { inApp: false } } });
+    session.mockResolvedValue({ user: { id: String(mia) } } as never);
+
+    const res = await patch({ notificationPrefs: { proposal: { email: false } } });
+    expect(res.status).toBe(200);
+    const saved = await User.findById(mia).lean();
+    expect(saved?.notificationPrefs).toEqual({ proposal: { inApp: false, email: false } });
   });
 });

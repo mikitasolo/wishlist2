@@ -34,9 +34,12 @@ import {
   profileSettings,
   rebaseProfileForm,
   settingChange,
+  type NotificationSettingKey,
   type ProfileChanges,
   type ProfileSettings,
 } from '@/lib/utils/profileSettings';
+import NotificationSettings from '@/components/NotificationSettings';
+import { NOTIFICATION_EVENT_KEYS } from '@/lib/utils/notificationPrefs';
 import type { InvitePolicy, ProfileVisibility } from '@/models/User';
 import Field from '@/components/Field';
 import Textarea from '@/components/Textarea';
@@ -54,7 +57,7 @@ type InstantField =
   | 'searchable'
   | 'whoCanInvite'
   | 'profileVisibility'
-  | 'occasionReminders';
+  | NotificationSettingKey;
 /** What a save note sits beside: one instant setting, or the username and bio together. */
 type NoteKey = InstantField | 'profile';
 
@@ -70,8 +73,6 @@ const SEARCHABLE_ON =
   'People can find you by searching for your username, and you show up in invite suggestions.';
 const SEARCHABLE_OFF =
   'You won’t appear in search or invite suggestions. People who know your exact username can still open your profile, and invite you if Who can invite you allows it.';
-const OCCASION_REMINDERS_HELPER =
-  'In Activity, a week before the occasion on a list you’re a member of.';
 const WHO_CAN_INVITE_HELPER = 'Owners of a list you’re on can still offer to make you a co-owner.';
 
 type PatchResult =
@@ -517,13 +518,16 @@ export default function SettingsPage() {
           </div>
         </Panel>
 
-        <Panel className="mb-6" title="Notifications">
-          <Toggle
-            label="Occasion reminders"
-            description={OCCASION_REMINDERS_HELPER}
-            checked={form.occasionReminders}
-            onChange={(on) => changeInstant('occasionReminders', on)}
-            note={<SaveNote state={notes.occasionReminders} />}
+        <Panel
+          id="notifications"
+          className="mb-6 scroll-mt-24"
+          title="Notifications"
+          description="What reaches you in Activity, and what’s also sent to your email."
+        >
+          <NotificationSettings
+            values={form}
+            onChange={(key, on) => changeInstant(key, on)}
+            note={(key) => <SaveNote state={notes[key]} />}
           />
         </Panel>
 
@@ -702,7 +706,7 @@ function ProfileLink({ username }: { username: string }) {
   );
 }
 
-/** The four panels, shaped like the page, while the profile is read. */
+/** The five panels, shaped like the page, while the profile is read. */
 function SettingsSkeleton() {
   const row = (labelWidth: string) => (
     <div className="mt-6">
@@ -754,13 +758,17 @@ function SettingsSkeleton() {
       </Panel>
       <Panel className="mb-6">
         {title('w-28')}
-        <div className="mt-5 flex items-center justify-between gap-4">
-          <div className="flex-1 space-y-1.5">
-            <Skeleton className="h-4 w-36" />
-            <Skeleton className="h-4 w-3/4" />
+        <Skeleton className="mt-2 h-4 w-72 max-w-full" />
+        {NOTIFICATION_EVENT_KEYS.map((event) => (
+          <div key={event} className="mt-5 flex items-center gap-3 sm:gap-6">
+            <div className="flex-1 space-y-1.5">
+              <Skeleton className="h-4 w-36" />
+              <Skeleton className="h-4 w-3/4" />
+            </div>
+            <Skeleton className="h-6 w-11 rounded-full" />
+            <Skeleton className="h-6 w-11 rounded-full" />
           </div>
-          <Skeleton className="h-6 w-11 rounded-full" />
-        </div>
+        ))}
       </Panel>
       <Panel className="mb-6">
         {title('w-28')}

@@ -106,7 +106,13 @@ describe.each(doors)(
     /** What the invite email is handed: the inviter's names, never the list's in a subject. */
     const emailed = (inviterName: string, inviterUsername: string | null) => [
       inviteeEmail,
-      { wishlistName: WISHLIST_NAME, role, inviterName, inviterUsername },
+      {
+        recipientId: inviteeId(),
+        wishlistName: WISHLIST_NAME,
+        role,
+        inviterName,
+        inviterUsername,
+      },
     ];
 
     // regression: both invite routes fell back to `session.user.email.split('@')[0]`

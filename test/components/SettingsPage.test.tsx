@@ -102,6 +102,7 @@ type Profile = {
   bio: string | null;
   defaultCurrency: string;
   privacy: Privacy;
+  notificationPrefs?: Record<string, Record<string, boolean>>;
 };
 
 const reply = (body: unknown, status = 200) => ({
@@ -190,9 +191,21 @@ beforeEach(() => {
       }
       // The route's one write: what it was sent, each privacy setting on its
       // own, over the profile as it is by then.
-      const { privacy, ...rest } = body;
+      const { privacy, notificationPrefs, ...rest } = body;
       if ('image' in rest) rest.image = rest.image || null;
-      server = { ...server, ...rest, privacy: { ...server.privacy, ...privacy } };
+      // Each notification setting on its own path too.
+      const prefs = { ...server.notificationPrefs };
+      for (const [event, channels] of Object.entries(
+        (notificationPrefs ?? {}) as Record<string, Record<string, boolean>>
+      )) {
+        prefs[event] = { ...prefs[event], ...channels };
+      }
+      server = {
+        ...server,
+        ...rest,
+        privacy: { ...server.privacy, ...privacy },
+        notificationPrefs: prefs,
+      };
       const answer = { ...server, privacy: { ...server.privacy } };
       const replyHold = holdReply;
       holdReply = null;
@@ -227,6 +240,7 @@ async function openSettings() {
 }
 
 const searchable = () => screen.getByRole('switch', { name: 'Searchable' });
+const notifySwitch = (name: string) => screen.getByRole('switch', { name });
 const radio = (group: string, name: string) =>
   within(screen.getByRole('radiogroup', { name: group })).getByRole('radio', { name });
 const visibilityOption = (name: string) => radio('Who can see your profile', name);
@@ -246,6 +260,33 @@ async function pickCurrency(user: ReturnType<typeof userEvent.setup>, code: stri
  * and how to read what the control shows (before and after).
  */
 const instantControls = [
+  {
+    name: 'Requests to join: email (on by default)',
+    change: async (user: ReturnType<typeof userEvent.setup>) =>
+      user.click(notifySwitch('Requests to join: email')),
+    sends: { notificationPrefs: { join_request: { email: false } } },
+    shown: () => notifySwitch('Requests to join: email').getAttribute('aria-checked'),
+    before: 'true',
+    after: 'false',
+  },
+  {
+    name: 'Invitations accepted: email (off by default)',
+    change: async (user: ReturnType<typeof userEvent.setup>) =>
+      user.click(notifySwitch('Invitations accepted: email')),
+    sends: { notificationPrefs: { invite_accepted: { email: true } } },
+    shown: () => notifySwitch('Invitations accepted: email').getAttribute('aria-checked'),
+    before: 'false',
+    after: 'true',
+  },
+  {
+    name: 'New followers: in app',
+    change: async (user: ReturnType<typeof userEvent.setup>) =>
+      user.click(notifySwitch('New followers: in app')),
+    sends: { notificationPrefs: { follow: { inApp: false } } },
+    shown: () => notifySwitch('New followers: in app').getAttribute('aria-checked'),
+    before: 'true',
+    after: 'false',
+  },
   {
     name: 'Searchable',
     change: async (user: ReturnType<typeof userEvent.setup>) => user.click(searchable()),
@@ -471,6 +512,50 @@ describe('settings that save as they change', () => {
     await user.click(radio('Theme', 'Light'));
     expect(setTheme).toHaveBeenLastCalledWith('light');
     expect(patches).toHaveLength(0);
+  });
+});
+
+describe('Settings → Notifications (WIS-321)', () => {
+  it('shows each event with its in-app and email switch at its default, and no email for followers', async () => {
+    await openSettings();
+    for (const name of [
+      'Invitations: in app',
+      'Invitations: email',
+      'Occasion reminders: email',
+      'Proposals to review: email',
+      'Changes to your access: in app',
+    ]) {
+      expect(notifySwitch(name)).toHaveAttribute('aria-checked', 'true');
+    }
+    expect(notifySwitch('Changes to your access: email')).toHaveAttribute('aria-checked', 'false');
+    expect(notifySwitch('Proposals approved: email')).toHaveAttribute('aria-checked', 'false');
+    expect(notifySwitch('New followers: in app')).toHaveAttribute('aria-checked', 'true');
+    expect(screen.queryByRole('switch', { name: 'New followers: email' })).toBeNull();
+    expect(screen.getByText('No email')).toBeInTheDocument();
+  });
+
+  it('reads what was saved', async () => {
+    server.notificationPrefs = { proposal: { email: false }, access_changed: { email: true } };
+    await openSettings();
+    expect(notifySwitch('Proposals to review: email')).toHaveAttribute('aria-checked', 'false');
+    expect(notifySwitch('Proposals to review: in app')).toHaveAttribute('aria-checked', 'true');
+    expect(notifySwitch('Changes to your access: email')).toHaveAttribute('aria-checked', 'true');
+  });
+
+  it('saves the two switches of one event each on its own', async () => {
+    const user = await openSettings();
+
+    await user.click(notifySwitch('Proposals to review: email'));
+    await waitFor(() => expect(patches).toHaveLength(1));
+    await user.click(notifySwitch('Proposals to review: in app'));
+    await waitFor(() => expect(patches).toHaveLength(2));
+
+    expect(patches[1]).toEqual({ notificationPrefs: { proposal: { inApp: false } } });
+    await waitFor(() =>
+      expect(server.notificationPrefs).toEqual({ proposal: { email: false, inApp: false } })
+    );
+    expect(notifySwitch('Proposals to review: email')).toHaveAttribute('aria-checked', 'false');
+    expect(notifySwitch('Proposals to review: in app')).toHaveAttribute('aria-checked', 'false');
   });
 });
 

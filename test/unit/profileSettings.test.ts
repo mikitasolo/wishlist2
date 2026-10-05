@@ -1,11 +1,19 @@
 import { describe, it, expect } from 'vitest';
 import {
+  NOTIFICATION_SETTINGS,
   profileChanges,
   profileSettings,
   rebaseProfileForm,
   settingChange,
+  type NotificationSettingKey,
   type ProfileSettings,
 } from '@/lib/utils/profileSettings';
+import { notificationDefault } from '@/lib/utils/notificationPrefs';
+
+// Every notification switch at its default, as an account that never set one reads.
+const NOTIFY_DEFAULTS = Object.fromEntries(
+  NOTIFICATION_SETTINGS.map((s) => [s.key, notificationDefault(s.event, s.channel)])
+) as Record<NotificationSettingKey, boolean>;
 
 const PHOTO = 'https://store.public.blob.vercel-storage.com/uploads/u1/me.webp';
 const NEW_PHOTO = 'https://store.public.blob.vercel-storage.com/uploads/u1/new.webp';
@@ -19,7 +27,7 @@ const saved: ProfileSettings = {
   searchable: true,
   whoCanInvite: 'everyone',
   profileVisibility: 'everyone',
-  occasionReminders: true,
+  ...NOTIFY_DEFAULTS,
 };
 
 /** The form as filled from `saved`, with `change` made in it. */
@@ -46,7 +54,7 @@ describe('profileSettings', () => {
       searchable: false,
       whoCanInvite: 'friends',
       profileVisibility: 'friends',
-      occasionReminders: true,
+      ...NOTIFY_DEFAULTS,
     });
   });
 
@@ -59,7 +67,7 @@ describe('profileSettings', () => {
       searchable: true,
       whoCanInvite: 'everyone',
       profileVisibility: 'everyone',
-      occasionReminders: true,
+      ...NOTIFY_DEFAULTS,
     });
     expect(profileSettings({ privacy: { searchable: null } }).searchable).toBe(true);
   });
@@ -74,23 +82,47 @@ describe('profileChanges', () => {
     expect(profileChanges(edited(), saved)).toEqual({});
   });
 
-  it('sends occasion reminders as their one notification setting, by event and channel', () => {
-    expect(profileChanges(edited({ occasionReminders: false }), saved)).toEqual({
+  it('sends a changed notification switch as its one setting, by event and channel', () => {
+    expect(profileChanges(edited({ 'notify.occasion_reminder.inApp': false }), saved)).toEqual({
       notificationPrefs: { occasion_reminder: { inApp: false } },
     });
-    expect(settingChange('occasionReminders', true)).toEqual({
-      notificationPrefs: { occasion_reminder: { inApp: true } },
+    expect(settingChange('notify.join_request.email', false)).toEqual({
+      notificationPrefs: { join_request: { email: false } },
     });
   });
 
-  it('reads occasion reminders from the saved setting, on unless turned off', () => {
+  it('sends only the switches changed, several of one event together', () => {
     expect(
-      profileSettings({ notificationPrefs: { occasion_reminder: { inApp: false } } })
-        .occasionReminders
-    ).toBe(false);
-    expect(
-      profileSettings({ notificationPrefs: { occasion_reminder: {} } }).occasionReminders
-    ).toBe(true);
+      profileChanges(
+        edited({
+          'notify.proposal.inApp': false,
+          'notify.proposal.email': false,
+          'notify.invite_accepted.email': true,
+        }),
+        saved
+      )
+    ).toEqual({
+      notificationPrefs: {
+        proposal: { inApp: false, email: false },
+        invite_accepted: { email: true },
+      },
+    });
+  });
+
+  it('reads each switch from its saved setting, or its default', () => {
+    const settings = profileSettings({
+      notificationPrefs: { occasion_reminder: { inApp: false }, access_changed: { email: true } },
+    });
+    expect(settings['notify.occasion_reminder.inApp']).toBe(false);
+    expect(settings['notify.occasion_reminder.email']).toBe(true);
+    expect(settings['notify.access_changed.email']).toBe(true);
+    expect(settings['notify.invite_accepted.email']).toBe(false);
+  });
+
+  it('has no switch for a channel an event is not offered on (a new follower’s email)', () => {
+    expect(NOTIFICATION_SETTINGS.map((s) => s.key)).toContain('notify.follow.inApp');
+    expect(NOTIFICATION_SETTINGS.map((s) => s.key)).not.toContain('notify.follow.email');
+    expect(Object.keys(profileSettings({}))).not.toContain('notify.follow.email');
   });
 
   // regression: the settings page sent the whole `privacy` object on every
