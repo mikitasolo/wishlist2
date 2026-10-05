@@ -1,10 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { createRequire } from 'node:module';
 import path from 'node:path';
+import { existsSync } from 'node:fs';
 
 const require = createRequire(import.meta.url);
 const vercelConfig = require('../../vercel.json') as {
   git?: { deploymentEnabled?: boolean | Record<string, boolean> };
+  crons?: Array<{ path: string; schedule: string }>;
 };
 
 /**
@@ -39,5 +41,16 @@ describe('vercel.json', () => {
     'release/main',
   ])('builds no preview for the PR branch %s', (branch) => {
     expect(deploys(branch)).toBe(false);
+  });
+
+  // Hobby runs a cron at most once a day, so a more frequent schedule fails the deploy.
+  it('runs the monthly snapshot sweep, at most daily, on a route that exists', () => {
+    const crons = vercelConfig.crons ?? [];
+    expect(crons).toContainEqual({ path: '/api/cron/sweep-snapshots', schedule: '0 3 1 * *' });
+    for (const cron of crons) {
+      const [minute, hour] = cron.schedule.split(' ');
+      expect(/^\d+$/.test(minute) && /^\d+$/.test(hour)).toBe(true);
+      expect(existsSync(path.join(__dirname, '../../app', cron.path, 'route.ts'))).toBe(true);
+    }
   });
 });

@@ -73,24 +73,25 @@ Open [http://localhost:3000](http://localhost:3000) (in an agent workspace, a gi
 
 Copy `.env.example` to `.env.local` and fill in:
 
-| Variable                         | Required | Description                                                                          |
-| -------------------------------- | -------- | ------------------------------------------------------------------------------------ |
-| `MONGODB_URI`                    | yes      | Connection string **including the database name** in the path                        |
-| `NEXTAUTH_SECRET`                | yes      | Session secret — generate with `openssl rand -base64 32`                             |
-| `NEXTAUTH_URL`                   | yes\*    | App URL (e.g. `http://localhost:3000`). \*Derived from `VERCEL_URL` on Vercel        |
-| `EMAIL_TRANSPORT`                | no       | `smtp` (default) or `console` (logs mail; local/Development only). See below         |
-| `SMTP_HOST`                      | yes\*\*  | SMTP server host                                                                     |
-| `SMTP_PORT`                      | yes\*\*  | SMTP port (e.g. `587`)                                                               |
-| `SMTP_SECURE`                    | yes\*\*  | `true` for port 465, otherwise `false`                                               |
-| `SMTP_USER`                      | yes\*\*  | SMTP username                                                                        |
-| `SMTP_PASSWORD`                  | yes\*\*  | SMTP password                                                                        |
-| `EMAIL_FROM`                     | yes      | From address for outgoing mail                                                       |
-| `MIGRATION_SECRET`               | yes      | Shared secret guarding migration endpoints                                           |
-| `BLOB_READ_WRITE_TOKEN`          | yes      | Vercel Blob token for uploads. Its store ID says which blob URLs are ours            |
-| `UPSTASH_REDIS_REST_URL`         | no       | Upstash Redis REST URL for rate limiting. Unset ⇒ rate limiting disabled             |
-| `UPSTASH_REDIS_REST_TOKEN`       | no       | Upstash Redis REST token (set together with the URL)                                 |
-| `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | no       | Cloudflare Turnstile site key for the sign-in form. Unset ⇒ Turnstile off. See below |
-| `TURNSTILE_SECRET_KEY`           | no       | Cloudflare Turnstile secret key (set together with the site key)                     |
+| Variable                         | Required  | Description                                                                                  |
+| -------------------------------- | --------- | -------------------------------------------------------------------------------------------- |
+| `MONGODB_URI`                    | yes       | Connection string **including the database name** in the path                                |
+| `NEXTAUTH_SECRET`                | yes       | Session secret — generate with `openssl rand -base64 32`                                     |
+| `NEXTAUTH_URL`                   | yes\*     | App URL (e.g. `http://localhost:3000`). \*Derived from `VERCEL_URL` on Vercel                |
+| `EMAIL_TRANSPORT`                | no        | `smtp` (default) or `console` (logs mail; local/Development only). See below                 |
+| `SMTP_HOST`                      | yes\*\*   | SMTP server host                                                                             |
+| `SMTP_PORT`                      | yes\*\*   | SMTP port (e.g. `587`)                                                                       |
+| `SMTP_SECURE`                    | yes\*\*   | `true` for port 465, otherwise `false`                                                       |
+| `SMTP_USER`                      | yes\*\*   | SMTP username                                                                                |
+| `SMTP_PASSWORD`                  | yes\*\*   | SMTP password                                                                                |
+| `EMAIL_FROM`                     | yes       | From address for outgoing mail                                                               |
+| `MIGRATION_SECRET`               | yes       | Shared secret guarding migration endpoints                                                   |
+| `CRON_SECRET`                    | prod only | Vercel Cron sends it as a bearer token; without it the monthly snapshot sweep refuses to run |
+| `BLOB_READ_WRITE_TOKEN`          | yes       | Vercel Blob token for uploads. Its store ID says which blob URLs are ours                    |
+| `UPSTASH_REDIS_REST_URL`         | no        | Upstash Redis REST URL for rate limiting. Unset ⇒ rate limiting disabled                     |
+| `UPSTASH_REDIS_REST_TOKEN`       | no        | Upstash Redis REST token (set together with the URL)                                         |
+| `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | no        | Cloudflare Turnstile site key for the sign-in form. Unset ⇒ Turnstile off. See below         |
+| `TURNSTILE_SECRET_KEY`           | no        | Cloudflare Turnstile secret key (set together with the site key)                             |
 
 \*\*Only when `EMAIL_TRANSPORT` is `smtp` (the default). With `EMAIL_TRANSPORT=console` no email is sent: each one is printed to the server log (recipient, subject and its link, e.g. the magic link), so the `SMTP_*` variables are optional. It's meant for local dev, CI and E2E (`VERCEL_ENV` unset) and the Vercel Development environment (`VERCEL_ENV=development`), and refused with any other `VERCEL_ENV`, Preview and Production included: env validation throws, which fails the build and every request, so a misconfigured Vercel deploy can neither silently drop sign-in emails nor print working magic links into its runtime logs. The check keys on `VERCEL_ENV`, so it guards Vercel deployments only. Any other `EMAIL_TRANSPORT` value is an error. Rate limits apply in both modes, since the sign-in limiter runs before the email goes anywhere.
 
@@ -168,7 +169,10 @@ See [docs/agents/backend.md](docs/agents/backend.md) for the rules a new migrati
 
 The same secret guards read-only **maintenance** endpoints under `app/api/maintenance/<name>`, which stay in
 the tree. `orphan-snapshots` lists the booking snapshot images (`snapshots/` in Blob) that no reservation or
-gift log holds any more, older than a day, with their sizes. It deletes nothing:
+gift log holds any more, older than a day, with their sizes. It deletes nothing. Vercel Cron (`crons` in `vercel.json`, production only) runs the
+sweep that does delete them, `GET /api/cron/sweep-snapshots`, at 03:00 UTC on the 1st of each month: each
+orphan is checked again a few seconds later and only freed if still unheld, at most 500 per run. It needs
+`CRON_SECRET`. The report:
 
 ```bash
 curl -X POST -H "X-Migration-Secret: $MIGRATION_SECRET" \
