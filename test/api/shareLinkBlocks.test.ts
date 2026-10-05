@@ -242,6 +242,32 @@ describe('a kick keeps the person out of the list’s share links', () => {
     expect(await blocked('kicked')).toBe(false);
   });
 
+  // regression: the block was written straight after the membership delete, so
+  // a failed write skipped releaseLateBookings and left a late booking that
+  // nobody could release.
+  it('regression: a failed block write still frees a booking that landed during the kick', async () => {
+    const item = await Item.findOne({ wishlist: listId });
+    const realDelete = WishlistMember.deleteOne.bind(WishlistMember);
+    vi.spyOn(WishlistMember, 'deleteOne').mockImplementation(((filter: object) =>
+      realDelete(filter).then(async (result) => {
+        // A booking that checked their membership before the delete lands now.
+        await Item.updateOne(
+          { _id: item!._id },
+          { $set: { status: 'booked', bookedBy: ids.kicked } }
+        );
+        return result;
+      })) as never);
+    vi.spyOn(WishlistLinkBlock, 'updateOne').mockRejectedValue(new Error('db down') as never);
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const res = await kick('kicked');
+
+    expect(res.status).toBe(500);
+    const after = await Item.findById(item!._id).lean();
+    expect(after!.status).toBe('available');
+    expect(after!.bookedBy ?? null).toBeNull();
+  });
+
   it('two kicks at once leave one block and no error', async () => {
     await Promise.all([
       blockFromShareLinks(listId, ids.kicked),

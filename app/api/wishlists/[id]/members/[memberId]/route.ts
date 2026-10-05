@@ -112,17 +112,18 @@ export async function DELETE(
       return NextResponse.json({ success: false, error: 'Membership not found' }, { status: 404 });
     }
 
-    // Kicked, not left: the list's share links no longer let them back in
-    // (WIS-338). Only once this kick removed them, so a lost one blocks nobody;
-    // only an owner's invite, accepted, lifts it.
-    await blockFromShareLinks(id, membershipUserId);
-
     // Their bookings again, for one that checked their membership before the delete.
     await releaseLateBookings(id, membershipUserId);
 
     // And once more: a promotion issued between the cancel above and the delete
     // would otherwise leave them an owner invite on a list they're no longer on.
     await cancelPendingInvites(id, membershipUserId);
+
+    // Kicked, not left: the list's share links no longer let them back in
+    // (WIS-338). Only once this kick removed them, so a lost one blocks nobody;
+    // only an owner's invite, accepted, lifts it. After the cleanup above, so a
+    // failed write here (a 500 the owner sees) can't leave a booking behind.
+    await blockFromShareLinks(id, membershipUserId);
 
     // Only for a kick that removed them. Just to them, without naming who did it,
     // and with no link: they may no longer be able to see the list.
