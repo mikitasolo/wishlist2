@@ -9,6 +9,7 @@ import Menu, { type MenuItem } from '@/components/Menu';
 import Panel, { PanelRow } from '@/components/Panel';
 import { Skeleton } from '@/components/Skeleton';
 import ShareLinkDialog, { SHARE_LINK_LEVEL_LABELS } from '@/components/ShareLinkDialog';
+import ShareLinkQrDialog from '@/components/ShareLinkQrDialog';
 import { iconButtonClassName } from '@/components/buttonStyles';
 import { useToast } from '@/components/ToastProvider';
 import {
@@ -50,6 +51,8 @@ const ROW_MENU_TRIGGER = iconButtonClassName({ variant: 'ghost', size: 'sm' });
 
 interface ShareLinksSectionProps {
   control: ShareLinksControl;
+  /** The list's name, for the QR code's print card and file names. */
+  listName: string;
   archived: boolean;
   visibility: Visibility;
   occasion?: Occasion | null;
@@ -61,13 +64,16 @@ interface ShareLinksSectionProps {
 /**
  * The Share links section of a list's People tab, for its owners (WIS-335):
  * each link with its label, level (Can view / Can join), expiry, how many
- * joined through it (Join links), and Copy link, Edit, Preview as visitor and
- * Revoke. New link opens `ShareLinkDialog`. An archived list's links are dead
- * until it's unarchived, so it offers only Edit and Revoke, and no New link.
+ * joined through it (Join links), and Copy link, QR code (WIS-328), Edit,
+ * Preview as visitor and Revoke. New link opens `ShareLinkDialog`; its Create
+ * for print goes on to the new link's QR code. An archived list's links are
+ * dead until it's unarchived, so it offers only Edit and Revoke, and no New
+ * link or QR code.
  * A failed read shows `LoadError`, never an empty section.
  */
 export default function ShareLinksSection({
   control,
+  listName,
   archived,
   visibility,
   occasion,
@@ -79,7 +85,10 @@ export default function ShareLinksSection({
   const sectionRef = useRef<HTMLElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const [dialog, setDialog] = useState<
-    { mode: 'create' } | { mode: 'edit'; link: ShareLinkRow } | null
+    | { mode: 'create' }
+    | { mode: 'edit'; link: ShareLinkRow }
+    | { mode: 'qr'; link: ShareLinkRow & { token: string } }
+    | null
   >(null);
   const [revoking, setRevoking] = useState<ShareLinkRow | null>(null);
   const now = fixedNow ?? new Date();
@@ -111,6 +120,15 @@ export default function ShareLinksSection({
   }
 
   const rowItems = (link: ShareLinkRow): MenuItem[] => [
+    ...(!archived && link.token && isLinkLive(link, now)
+      ? [
+          {
+            label: 'QR code',
+            icon: 'qr-code' as const,
+            onSelect: () => setDialog({ mode: 'qr', link: { ...link, token: link.token! } }),
+          },
+        ]
+      : []),
     { label: 'Edit', icon: 'edit', onSelect: () => setDialog({ mode: 'edit', link }) },
     ...(!archived && link.token && isLinkLive(link, now)
       ? [
@@ -221,8 +239,23 @@ export default function ShareLinksSection({
           mode="create"
           visibility={visibility}
           occasion={occasion}
+          // Create for print has moved on to the QR code by the time this closes.
+          onClose={() => setDialog((d) => (d?.mode === 'create' ? null : d))}
+          onCreate={async (input, options) => {
+            const created = await control.create(input);
+            if (created?.token && options?.forPrint) {
+              setDialog({ mode: 'qr', link: { ...created, token: created.token } });
+            }
+            return !!created;
+          }}
+        />
+      )}
+      {dialog?.mode === 'qr' && (
+        <ShareLinkQrDialog
+          link={dialog.link}
+          listName={listName}
+          occasion={occasion}
           onClose={() => setDialog(null)}
-          onCreate={async (input) => !!(await control.create(input))}
         />
       )}
       {dialog?.mode === 'edit' && (

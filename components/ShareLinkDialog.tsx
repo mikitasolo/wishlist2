@@ -36,6 +36,12 @@ export const SHARE_LINK_LEVEL_HELPERS: Record<ShareLinkLevel, string> = {
 export const PUBLIC_VIEW_LINK_NOTE =
   'Anyone can already open this list. A view link keeps working if you rename it.';
 
+/** The label For print gives its link, so each print run can be revoked on its own (WIS-328). */
+export const PRINT_LINK_LABEL = 'Printed card';
+
+/** Under Create for print, in New link. */
+export const FOR_PRINT_HELPER = `Makes a link labelled “${PRINT_LINK_LABEL}”, so you can revoke each print run on its own.`;
+
 /** Said in Edit when the new expiry brings an expired link back. */
 export const REVIVAL_WARNING = 'This link will work again for everyone who has it.';
 
@@ -59,8 +65,11 @@ type ShareLinkDialogProps = {
   | {
       mode: 'create';
       link?: never;
-      /** Resolves true once the link exists, which closes the dialog. */
-      onCreate: (input: NewShareLink) => Promise<boolean>;
+      /**
+       * Resolves true once the link exists, which closes the dialog. `forPrint`:
+       * made by Create for print, whose link goes on to its QR code.
+       */
+      onCreate: (input: NewShareLink, options?: { forPrint: true }) => Promise<boolean>;
       onUpdate?: never;
     }
   | {
@@ -76,7 +85,8 @@ type ShareLinkDialogProps = {
  * New link and Edit link, for a list's owners (WIS-335). New link picks the
  * level (View or Join, fixed once made), a label only owners see, and when it
  * stops working, from presets whose defaults follow the level
- * (`defaultExpiryPreset`). Edit changes the label and expiry only, sends only
+ * (`defaultExpiryPreset`). Create for print makes the same link labelled
+ * "Printed card" (WIS-328). Edit changes the label and expiry only, sends only
  * what changed, and warns when the new expiry brings an expired link back.
  */
 export default function ShareLinkDialog(props: ShareLinkDialogProps) {
@@ -111,6 +121,7 @@ export default function ShareLinkDialog(props: ShareLinkDialogProps) {
     levelHelper: useId(),
     expiry: useId(),
     date: useId(),
+    forPrint: useId(),
   };
 
   const chooseLevel = (next: ShareLinkLevel) => {
@@ -139,6 +150,10 @@ export default function ShareLinkDialog(props: ShareLinkDialogProps) {
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
+    await save(false);
+  }
+
+  async function save(forPrint: boolean) {
     if (submitting) return;
     if (expiresAt === undefined && (!editing || expiryTouched)) {
       setDateError('Pick a date after today.');
@@ -148,11 +163,14 @@ export default function ShareLinkDialog(props: ShareLinkDialogProps) {
     setSubmitting(true);
     let done: boolean;
     if (props.mode === 'create') {
-      done = await props.onCreate({
+      const input: NewShareLink = {
         level,
-        label: trimmed || null,
+        label: forPrint ? PRINT_LINK_LABEL : trimmed || null,
         expiresAt: expiresAt ?? null,
-      });
+      };
+      done = forPrint
+        ? await props.onCreate(input, { forPrint: true })
+        : await props.onCreate(input);
     } else {
       const patch: ShareLinkPatch = {};
       if (trimmed !== (props.link.label ?? '')) patch.label = trimmed || null;
@@ -272,6 +290,24 @@ export default function ShareLinkDialog(props: ShareLinkDialogProps) {
         )}
 
         {revival && <Callout tone="warning">{REVIVAL_WARNING}</Callout>}
+
+        {!editing && (
+          <div className="border-t border-border pt-4">
+            <Button
+              variant="secondary"
+              size="sm"
+              icon="printer"
+              onClick={() => save(true)}
+              disabled={submitting}
+              aria-describedby={ids.forPrint}
+            >
+              Create for print
+            </Button>
+            <p id={ids.forPrint} className={FIELD_HELPER}>
+              {FOR_PRINT_HELPER}
+            </p>
+          </div>
+        )}
       </div>
     </BaseModal>
   );
