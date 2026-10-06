@@ -7,6 +7,7 @@ import User from '@/models/User';
 import Follow from '@/models/Follow';
 import { pausedInviteWishlistIds } from '@/lib/utils/wishlistInvites';
 import { showsActor } from '@/lib/utils/notifications';
+import { dropHiddenBirthdayReminders } from '@/lib/utils/birthdayReminders';
 
 const FEED_LIMIT = 30;
 
@@ -88,9 +89,16 @@ export async function GET(request: NextRequest) {
     await connectDB();
 
     const visible = await visibleNotifications(session.user.id);
+    // A friend's birthday reminder shows (and counts) only while its birthday
+    // is still theirs to see: the ones the feed would show or count are
+    // re-checked first. If that fails, none is shown or counted.
+    const birthdayNames = await dropHiddenBirthdayReminders(session.user.id, visible, FEED_LIMIT);
+    const counted = birthdayNames
+      ? { ...visible, read: false }
+      : { ...visible, read: false, type: { $ne: 'birthday_reminder' } };
     const [rows, unreadCount] = await Promise.all([
       Notification.find(visible).sort({ createdAt: -1 }).limit(FEED_LIMIT).lean(),
-      Notification.countDocuments({ ...visible, read: false }),
+      Notification.countDocuments(counted),
     ]);
 
     const withActors = request.nextUrl.searchParams.get('actors') === '1';
@@ -98,14 +106,22 @@ export async function GET(request: NextRequest) {
       ? await feedActors(session.user.id, rows)
       : { actors: new Map<string, Actor>(), followed: new Set<string>() };
 
-    const data = rows.map((n) => {
+    const data = rows.flatMap((n) => {
+      // Named (and linked) by the person's username now, never the one the
+      // row was written with; one that couldn't be re-checked isn't shown.
+      let actorUsername = n.actorUsername ?? null;
+      if (n.type === 'birthday_reminder') {
+        const now = n.actor ? birthdayNames?.get(n.actor.toString()) : undefined;
+        if (!now) return [];
+        actorUsername = now;
+      }
       const actorId = actorOf(n);
       const actor = actorId ? (actors.get(actorId) ?? null) : null;
       const oneFollower = n.type === 'follow' && (n.count ?? 1) === 1;
       return {
         _id: n._id.toString(),
         type: n.type,
-        actorUsername: n.actorUsername ?? null,
+        actorUsername,
         // Rows from before coalescing carry neither field: each is one event.
         count: n.count ?? 1,
         actorUsernames: n.actorUsernames ?? [],
@@ -119,7 +135,10 @@ export async function GET(request: NextRequest) {
         actorImage: actor?.image ?? null,
         followingActor: oneFollower && actor ? followed.has(actor.id) : null,
         occasionKind: n.type === 'occasion_reminder' ? (n.occasionKind ?? null) : null,
-        occasionDate: n.type === 'occasion_reminder' ? (n.occasionDate ?? null) : null,
+        occasionDate:
+          n.type === 'occasion_reminder' || n.type === 'birthday_reminder'
+            ? (n.occasionDate ?? null)
+            : null,
         linkLabel: n.type === 'link_join' ? (n.linkLabel ?? null) : null,
         read: n.read,
         createdAt: n.createdAt,
