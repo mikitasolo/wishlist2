@@ -342,6 +342,21 @@ describe('the birthday nudge (WIS-344)', () => {
     expect(onNew).toHaveBeenCalledTimes(1);
   });
 
+  it('reads nothing for it without New list to open (WIS-347)', async () => {
+    render(<NeedsYou ownLists={[list('w1', 'Books')]} />);
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith('/api/users/me/invites', expect.anything())
+    );
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/users/me/reservations/summary',
+        expect.anything()
+      )
+    );
+    expect(fetchMock.mock.calls.some(([url]) => url === '/api/users/me')).toBe(false);
+    expect(nudge()).toBeNull();
+  });
+
   it('counts down to the day itself', async () => {
     today(2026, 10, 27);
     render(<NeedsYou ownLists={[]} onNewBirthdayList={vi.fn()} />);

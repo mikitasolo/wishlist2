@@ -12,7 +12,7 @@ import { notificationLink, notificationParts, type NotificationView } from './ut
 import type { OccasionKind } from './utils/occasion';
 import {
   BIRTHDAY_NUDGE_DETAIL,
-  BIRTHDAY_NUDGE_HOME_PATH,
+  BIRTHDAY_NUDGE_EMAIL_PATH,
   birthdayNudgeTitle,
 } from './utils/birthdayNudge';
 
@@ -664,13 +664,14 @@ export interface BirthdayNudgeEmailDetails {
  * The nudge to make a list before your own birthday (WIS-344), sent once a
  * year by the daily cron (`sendBirthdayNudgeEmails`). Fixed words only: no
  * date, no list, nothing anyone typed. It links to Home with New list open on
- * a Birthday list (`BIRTHDAY_NUDGE_HOME_PATH`), and carries the unsubscribe
- * link and headers for `birthday_nudge`.
+ * a Birthday list, through sign-in so that survives being signed out
+ * (`BIRTHDAY_NUDGE_EMAIL_PATH`), and carries the unsubscribe link and headers
+ * for `birthday_nudge`.
  */
 export async function sendBirthdayNudgeEmail(email: string, details: BirthdayNudgeEmailDetails) {
   const heading = birthdayNudgeTitle(details.days);
   const button = 'Make a list';
-  const url = `${env.NEXTAUTH_URL}${BIRTHDAY_NUDGE_HOME_PATH}`;
+  const url = `${env.NEXTAUTH_URL}${BIRTHDAY_NUDGE_EMAIL_PATH}`;
   const unsubscribe = notificationUnsubscribe(details.recipientId, 'birthday_nudge');
   const topic = NOTIFICATION_EVENTS.birthday_nudge.label.toLowerCase();
 

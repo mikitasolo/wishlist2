@@ -70,3 +70,20 @@ test('regression: a new list tells its owner it is empty, Add your first item ad
     await page.request.delete(`/api${list}`);
   }
 });
+
+// The birthday nudge email's button (WIS-347) goes through sign-in, so a
+// signed-out reader keeps it; signed in, it goes straight on to New list on a
+// Birthday list.
+test('the birthday email’s link, signed in, opens New list on a Birthday list', async ({
+  page,
+}) => {
+  await page.goto('/auth/signin?callbackUrl=%2F%3FnewList%3Dbirthday');
+  const create = page.getByRole('dialog', { name: 'Create new wishlist' });
+  await expect(create.getByRole('combobox', { name: 'Occasion', exact: true })).toHaveText(
+    /Birthday/
+  );
+  // Taken off the address, so a reload doesn't open it again.
+  await expect(page).toHaveURL('/');
+  await create.getByRole('button', { name: 'Cancel' }).click();
+  await expect(create).toBeHidden();
+});

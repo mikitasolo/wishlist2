@@ -6,8 +6,8 @@ import { sendBirthdayNudgeEmail } from '@/lib/email';
 import { claimBirthdayNudgeEmail, emailAllowed } from '@/lib/notificationEmails';
 import { errorKind } from '@/lib/utils/errorKind';
 import { notificationOptInFilter } from '@/lib/utils/notificationPrefs';
-import { addDays, utcDateString } from '@/lib/utils/occasion';
-import { storedDatesFor } from '@/lib/utils/occasionReminders';
+import { utcDateString } from '@/lib/utils/occasion';
+import { reminderDayOffsets, storedDatesDue } from '@/lib/utils/occasionReminders';
 import {
   BIRTHDAY_NUDGE_LEAD_DAYS,
   birthdayNudge,
@@ -41,15 +41,7 @@ export const BIRTHDAY_NUDGE_MAX_PER_RUN = 50;
 
 /** The days from `today` the email is due on, nearest first (19, 20, 21). */
 export function birthdayEmailDayOffsets(): number[] {
-  const offsets: number[] = [];
-  for (
-    let d = BIRTHDAY_NUDGE_LEAD_DAYS - BIRTHDAY_NUDGE_CATCH_UP_DAYS;
-    d <= BIRTHDAY_NUDGE_LEAD_DAYS;
-    d++
-  ) {
-    offsets.push(d);
-  }
-  return offsets;
+  return reminderDayOffsets(BIRTHDAY_NUDGE_LEAD_DAYS, BIRTHDAY_NUDGE_CATCH_UP_DAYS);
 }
 
 type Id = mongoose.Types.ObjectId;
@@ -99,10 +91,8 @@ export async function sendBirthdayNudgeEmails(
 ): Promise<BirthdayNudgeRun> {
   const today = utcDateString(now);
   const run: BirthdayNudgeRun = { emailed: 0, capped: false };
-  const offsets = birthdayEmailDayOffsets();
-  const stored = offsets.flatMap((d) => storedDatesFor(addDays(today, d) ?? ''));
   const people = await User.find({
-    birthday: { $in: stored },
+    birthday: { $in: storedDatesDue(today, birthdayEmailDayOffsets()) },
     ...notificationOptInFilter('birthday_nudge', 'email'),
   })
     .select('_id birthday')

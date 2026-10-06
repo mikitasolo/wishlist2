@@ -1,5 +1,5 @@
-import mongoose from 'mongoose';
-import Wishlist from '@/models/Wishlist';
+import mongoose, { type FilterQuery } from 'mongoose';
+import Wishlist, { type IWishlist } from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
 import User from '@/models/User';
 import Notification from '@/models/Notification';
@@ -53,16 +53,17 @@ export const OCCASION_REMINDER_MAX_PER_RUN = 500;
  */
 export const OCCASION_EMAIL_MAX_PER_RUN = 50;
 
-/** The days counted from `today` that a reminder is due on, nearest first. */
-export function reminderDayOffsets(): number[] {
+/**
+ * The days counted from `today` that a reminder is due on, nearest first: from
+ * `lead - catchUp` to `lead`. The occasion reminders' own by default; the
+ * birthday nudge's email passes its own lead and catch-up.
+ */
+export function reminderDayOffsets(
+  lead: number = OCCASION_REMINDER_LEAD_DAYS,
+  catchUp: number = OCCASION_REMINDER_CATCH_UP_DAYS
+): number[] {
   const offsets: number[] = [];
-  for (
-    let d = OCCASION_REMINDER_LEAD_DAYS - OCCASION_REMINDER_CATCH_UP_DAYS;
-    d <= OCCASION_REMINDER_LEAD_DAYS;
-    d++
-  ) {
-    offsets.push(d);
-  }
+  for (let d = lead - catchUp; d <= lead; d++) offsets.push(d);
   return offsets;
 }
 
@@ -84,7 +85,7 @@ export function storedDatesFor(target: string): string[] {
   return dates;
 }
 
-interface DueList {
+export interface DueList {
   _id: mongoose.Types.ObjectId;
   name: string;
   slug?: string | null;
@@ -97,15 +98,29 @@ interface DueList {
 }
 
 /**
- * The unarchived lists whose occasion next falls within the reminder window
- * from `today`, nearest first.
+ * The stored dates (`storedDatesFor`) whose next occurrence may fall on one of
+ * `offsets` days from `today`: what a query for due occasions (or birthdays)
+ * matches before the exact day is worked out.
  */
-export async function listsDueForReminder(today: string): Promise<DueList[]> {
+export function storedDatesDue(today: string, offsets: number[] = reminderDayOffsets()): string[] {
+  return Array.from(new Set(offsets.flatMap((d) => storedDatesFor(addDays(today, d) ?? ''))));
+}
+
+/**
+ * The unarchived lists whose occasion next falls within the reminder window
+ * from `today`, nearest first. `filter` narrows the lists read (the birthday
+ * reminders read one person's Birthday lists through it); it can't widen the
+ * rule: archived lists and dates outside the window stay out.
+ */
+export async function listsDueForReminder(
+  today: string,
+  filter: FilterQuery<IWishlist> = {}
+): Promise<DueList[]> {
   const offsets = reminderDayOffsets();
-  const stored = offsets.flatMap((d) => storedDatesFor(addDays(today, d) ?? ''));
   const lists = await Wishlist.find({
+    ...filter,
     archived: { $ne: true },
-    'occasion.date': { $in: stored },
+    'occasion.date': { $in: storedDatesDue(today, offsets) },
   })
     .select('name slug owners occasion')
     .lean();

@@ -1,3 +1,4 @@
+import { SIGN_IN_PATH } from '@/lib/utils/callbackUrl';
 import { addDays, daysBetween, nextOccurrence, type Occasion } from '@/lib/utils/occasion';
 
 /**
@@ -116,8 +117,16 @@ export const BIRTHDAY_NUDGE_DETAIL = 'Make a list so friends know what to get yo
 
 /** Home's query that opens New list on a Birthday list (`?newList=birthday`). */
 export const NEW_LIST_PARAM = 'newList';
-/** Where the email's button goes: Home, with New list open on a Birthday list. */
+/** Home, with New list open on a Birthday list. */
 export const BIRTHDAY_NUDGE_HOME_PATH = `/?${NEW_LIST_PARAM}=birthday`;
+/**
+ * Where the email's button goes (WIS-347): the sign-in page, continuing to
+ * `BIRTHDAY_NUDGE_HOME_PATH`. Signed in, the page sends you straight on; signed
+ * out, the magic link carries it as its `callbackUrl` (kept on this site by
+ * `safeCallbackPath` and Auth.js), so New list still opens on Birthday once
+ * you're in, rather than meeting Home's landing first.
+ */
+export const BIRTHDAY_NUDGE_EMAIL_PATH = `${SIGN_IN_PATH}?callbackUrl=${encodeURIComponent(BIRTHDAY_NUDGE_HOME_PATH)}`;
 
 /**
  * The older Birthday lists a new one can start from (WIS-348): the lists you

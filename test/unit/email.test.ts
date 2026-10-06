@@ -703,8 +703,10 @@ describe('the birthday nudge email (WIS-344)', () => {
     expect(message.subject).toBe('Your birthday is coming up');
     expect(message.html).toContain('Your birthday is in 3 weeks');
     expect(message.html).toContain('Make a list so friends know what to get you.');
-    expect(message.html).toContain('http://localhost:3000/?newList=birthday');
-    expect(message.text).toContain('Make a list: http://localhost:3000/?newList=birthday');
+    // Through sign-in, so a signed-out reader still lands on it (WIS-347).
+    const link = 'http://localhost:3000/auth/signin?callbackUrl=%2F%3FnewList%3Dbirthday';
+    expect(message.html).toContain(link);
+    expect(message.text).toContain(`Make a list: ${link}`);
     // No date, no list, no address.
     expect(message.html).not.toMatch(/\d{4}-\d{2}-\d{2}/);
     expect(message.html).not.toContain(RECIPIENT);

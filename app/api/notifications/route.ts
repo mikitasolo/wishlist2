@@ -108,10 +108,10 @@ export async function GET(request: NextRequest) {
 
     const data = rows.flatMap((n) => {
       // Named (and linked) by the person's username now, never the one the
-      // row was written with; one that couldn't be re-checked isn't shown.
+      // row was written with; a row that wasn't re-checked itself isn't shown.
       let actorUsername = n.actorUsername ?? null;
       if (n.type === 'birthday_reminder') {
-        const now = n.actor ? birthdayNames?.get(n.actor.toString()) : undefined;
+        const now = birthdayNames?.get(n._id.toString());
         if (!now) return [];
         actorUsername = now;
       }

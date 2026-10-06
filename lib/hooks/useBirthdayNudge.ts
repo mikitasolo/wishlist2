@@ -32,12 +32,16 @@ export interface BirthdayNudgeOffer {
  * answer. Dismissing it hides it for this birthday, remembered per account in
  * this browser (storage that can't be read shows it again); next year's
  * birthday brings it back.
+ *
+ * With `enabled` false (a page with nowhere to act on it) it reads nothing,
+ * neither the profile nor storage, and is always `null`.
  */
 export function useBirthdayNudge(
-  ownLists: readonly BirthdayRuleList[] | null
+  ownLists: readonly BirthdayRuleList[] | null,
+  enabled: boolean = true
 ): BirthdayNudgeOffer | null {
   const { data: session, status } = useKnownSession();
-  const userId = status === 'authenticated' ? (session?.user?.id ?? null) : null;
+  const userId = enabled && status === 'authenticated' ? (session?.user?.id ?? null) : null;
   const today = useLocalToday();
   const [read, setRead] = useState<{ userId: string; birthday: string | null } | null>(null);
   // The birthday it was last dismissed for, from storage; `null` until read.

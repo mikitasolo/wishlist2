@@ -70,6 +70,14 @@ test('sign-in from a list says where it continues to, without naming the list', 
   await expect(page.getByText(/E2E Friend/i)).toHaveCount(0);
 });
 
+// The birthday nudge email's button (WIS-347): signed out, it's the sign-in
+// form (whose link continues to New list on a Birthday list), not the landing.
+test('the birthday email’s link, signed out, asks to sign in and stays put', async ({ page }) => {
+  await page.goto('/auth/signin?callbackUrl=%2F%3FnewList%3Dbirthday');
+  await expect(page.getByText("We'll email you a link — no password.")).toBeVisible();
+  await expect(page).toHaveURL('/auth/signin?callbackUrl=%2F%3FnewList%3Dbirthday');
+});
+
 // regression: Try again on the error page dropped the callbackUrl, so an
 // expired link from a shared list ended on the dashboard.
 test('regression: the auth error page keeps where sign-in was going', async ({ page }) => {
