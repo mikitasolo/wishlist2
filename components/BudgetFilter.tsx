@@ -11,16 +11,23 @@ interface BudgetFilterProps {
   currency: string;
   /** The text isn't an amount (the filter is off meanwhile). */
   invalid?: boolean;
+  className?: string;
 }
 
 /**
  * "Under X" over a list's prices, in the viewer's currency (WIS-326). A free
  * amount field for a toolbar; the page keeps the text, so it's never saved.
  */
-export default function BudgetFilter({ value, onChange, currency, invalid }: BudgetFilterProps) {
+export default function BudgetFilter({
+  value,
+  onChange,
+  currency,
+  invalid,
+  className = '',
+}: BudgetFilterProps) {
   const locale = useViewerLocale();
   return (
-    <div className="flex items-center gap-2">
+    <div className={`flex items-center gap-2 ${className}`}>
       <span className="text-sm text-muted-foreground">Under</span>
       <Input
         size="sm"
@@ -33,7 +40,7 @@ export default function BudgetFilter({ value, onChange, currency, invalid }: Bud
         placeholder="Any price"
         aria-label={`Show items under this price, in ${currency}`}
         aria-invalid={invalid || undefined}
-        className="w-28"
+        className="min-w-0 flex-1 sm:w-28 sm:flex-none"
       />
     </div>
   );

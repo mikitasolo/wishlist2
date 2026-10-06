@@ -1732,7 +1732,7 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
   );
 
   // The budget filter ("Under X", in the viewer's currency, WIS-326): for
-  // gifters only (a signed-in member or visitor of someone else's list), never
+  // gifters only (a signed-in non-owner of someone else's list; a signed-out link visitor has no known currency), never
   // saved. It narrows what's shown after the chips have counted, so a chip's
   // count never moves with it.
   const viewerCurrency = viewerPriceCurrency(session?.user?.defaultCurrency);
@@ -1831,7 +1831,11 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
 
   // The grid's first cell: an owner's Add item or a member's Propose an item,
   // under All (and a member's Your proposals), never while a search is on.
-  const addTile = addTileFor(viewerRole, activeChip, searchQuery.trim() !== '');
+  const addTile = addTileFor(
+    viewerRole,
+    activeChip,
+    searchQuery.trim() !== '' || budgetLimit !== null
+  );
 
   const chips = listChips(viewerRole).map((chip) => ({
     value: chip,
@@ -2080,14 +2084,6 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
                         menuAlign="right"
                         triggerClassName="min-w-0 flex-1 sm:flex-none sm:flex-shrink-0"
                       />
-                      {budgetOffered && (
-                        <BudgetFilter
-                          value={budgetText}
-                          onChange={setBudgetText}
-                          currency={viewerCurrency}
-                          invalid={budget === 'invalid'}
-                        />
-                      )}
                       {prices.shown && (
                         <Select
                           value={prices.value}
@@ -2097,6 +2093,15 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
                           ariaLabel="Show prices in"
                           menuAlign="right"
                           triggerClassName="flex-shrink-0"
+                        />
+                      )}
+                      {budgetOffered && (
+                        <BudgetFilter
+                          className="w-full sm:w-auto"
+                          value={budgetText}
+                          onChange={setBudgetText}
+                          currency={viewerCurrency}
+                          invalid={budget === 'invalid'}
                         />
                       )}
                     </div>
@@ -2164,7 +2169,7 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
                     body={
                       searchQuery.trim()
                         ? `No items match “${searchQuery.trim()}”.`
-                        : budgetLimit !== null
+                        : budgetLimit !== null && activeChip === 'all'
                           ? 'No items are under that price.'
                           : 'No items match this filter.'
                     }
