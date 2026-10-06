@@ -93,13 +93,19 @@ import SettingsPage from '@/app/settings/page';
 const PHOTO = 'https://store.public.blob.vercel-storage.com/uploads/me/new.webp';
 const OLD_PHOTO = 'https://store.public.blob.vercel-storage.com/uploads/me/old.webp';
 
-type Privacy = { searchable: boolean; whoCanInvite: string; profileVisibility: string };
+type Privacy = {
+  searchable: boolean;
+  whoCanInvite: string;
+  profileVisibility: string;
+  birthdayVisibility?: string;
+};
 type Profile = {
   _id: string;
   email: string;
   username: string;
   image: string | null;
   bio: string | null;
+  birthday?: string | null;
   defaultCurrency: string;
   privacy: Privacy;
   notificationPrefs?: Record<string, Record<string, boolean>>;
@@ -245,6 +251,18 @@ const radio = (group: string, name: string) =>
   within(screen.getByRole('radiogroup', { name: group })).getByRole('radio', { name });
 const visibilityOption = (name: string) => radio('Who can see your profile', name);
 const inviteOption = (name: string) => radio('Who can invite you to wishlists', name);
+const birthdayOption = (name: string) => radio('Who can see your birthday', name);
+const birthdayMonth = () => screen.getByRole('combobox', { name: 'Birthday month' });
+const birthdayDay = () => screen.getByRole('combobox', { name: 'Birthday day' });
+
+async function pickOption(
+  user: ReturnType<typeof userEvent.setup>,
+  picker: HTMLElement,
+  name: string
+) {
+  await user.click(picker);
+  await user.click(screen.getByRole('option', { name }));
+}
 const photoValue = () => screen.getByTestId('photo').getAttribute('data-value');
 const currencyPicker = () => screen.getByRole('combobox', { name: 'Default currency' });
 const bio = () => screen.getByRole('textbox', { name: 'Bio' });
@@ -315,6 +333,16 @@ const instantControls = [
         : 'everyone',
     before: 'everyone',
     after: 'friends',
+  },
+  {
+    name: 'Who can see your birthday',
+    change: async (user: ReturnType<typeof userEvent.setup>) =>
+      user.click(birthdayOption('No one')),
+    sends: { privacy: { birthdayVisibility: 'nobody' } },
+    shown: () =>
+      birthdayOption('No one').getAttribute('aria-checked') === 'true' ? 'nobody' : 'friends',
+    before: 'friends',
+    after: 'nobody',
   },
   {
     name: 'Default currency',
@@ -556,6 +584,82 @@ describe('Settings → Notifications (WIS-321)', () => {
     );
     expect(notifySwitch('Proposals to review: email')).toHaveAttribute('aria-checked', 'false');
     expect(notifySwitch('Proposals to review: in app')).toHaveAttribute('aria-checked', 'false');
+  });
+});
+
+describe('the birthday (WIS-323)', () => {
+  it('waits for the profile’s Save, which sends only the birthday, with no year', async () => {
+    const user = await openSettings();
+
+    await pickOption(user, birthdayMonth(), 'March');
+    // A month alone can't be saved yet.
+    expect(screen.getByText('Pick both the month and the day')).toBeInTheDocument();
+    expect(saveText()).toBeDisabled();
+    await pickOption(user, birthdayDay(), '14');
+    expect(screen.queryByText('Pick both the month and the day')).toBeNull();
+    expect(patches).toHaveLength(0);
+
+    await user.click(saveText());
+
+    await waitFor(() => expect(patches).toHaveLength(1));
+    expect(patches[0]).toEqual({ birthday: '2000-03-14' });
+    expect(server.birthday).toBe('2000-03-14');
+    expect(await screen.findByText('Saved')).toBeInTheDocument();
+    expect(saveText()).toBeDisabled();
+  });
+
+  it('shows the saved birthday, and Clear sends it as null', async () => {
+    server.birthday = '2000-02-29';
+    const user = await openSettings();
+    expect(birthdayMonth()).toHaveTextContent('February');
+    expect(birthdayDay()).toHaveTextContent('29');
+
+    await user.click(screen.getByRole('button', { name: 'Clear' }));
+    await user.click(saveText());
+
+    await waitFor(() => expect(patches).toHaveLength(1));
+    expect(patches[0]).toEqual({ birthday: null });
+  });
+
+  it('is left out of a save of the bio', async () => {
+    server.birthday = '2000-02-29';
+    const user = await openSettings();
+    await user.type(bio(), ' And plants.');
+    await user.click(saveText());
+
+    await waitFor(() => expect(patches).toHaveLength(1));
+    expect(patches[0]).toEqual({ bio: 'I collect mugs. And plants.' });
+  });
+
+  it('Cancel puts the saved birthday back', async () => {
+    server.birthday = '2000-02-29';
+    const user = await openSettings();
+    await pickOption(user, birthdayMonth(), 'March');
+
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    expect(birthdayMonth()).toHaveTextContent('February');
+    expect(saveText()).toBeDisabled();
+  });
+
+  it('says Everyone means friends while the profile is friends only', async () => {
+    server.privacy = {
+      ...server.privacy,
+      profileVisibility: 'friends',
+      birthdayVisibility: 'everyone',
+    };
+    const user = await openSettings();
+    const capped = 'Your profile is friends only, so Everyone means your friends too.';
+    expect(screen.getByText(capped)).toBeInTheDocument();
+
+    await user.click(visibilityOption('Everyone'));
+
+    await waitFor(() => expect(screen.queryByText(capped)).toBeNull());
+    expect(
+      screen.getByText(
+        'Everyone means everyone who can see your profile. Only the day and month show.'
+      )
+    ).toBeInTheDocument();
   });
 });
 

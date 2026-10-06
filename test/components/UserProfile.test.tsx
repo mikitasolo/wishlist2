@@ -292,6 +292,36 @@ describe('UserProfile — with no wishlists to show', () => {
   });
 });
 
+describe('UserProfile — birthday (WIS-323)', () => {
+  it('shows the month and day when the answer carries a birthday, never a year', async () => {
+    session.current = signedIn('me');
+    stubFetch(profile({ birthday: '2000-03-14' }));
+    render(<UserProfile />);
+
+    const line = await screen.findByText(/March 14|14 March/);
+    expect(line.closest('p')).not.toHaveTextContent('2000');
+    expect(line.closest('p')).not.toHaveTextContent('can see it');
+  });
+
+  it('shows nothing when the answer has no birthday', async () => {
+    session.current = signedIn('me');
+    stubFetch(profile());
+    render(<UserProfile />);
+
+    await screen.findByRole('button', { name: '0 followers' });
+    expect(screen.queryByText(/Birthday:/)).toBeNull();
+  });
+
+  it('on your own profile, says who else can see it', async () => {
+    session.current = signedIn('friend');
+    stubFetch(profile({ isSelf: true, birthday: '2000-02-29', birthdayAudience: 'nobody' }));
+    render(<UserProfile />);
+
+    const line = await screen.findByText(/February 29|29 February/);
+    expect(line.closest('p')).toHaveTextContent('Only you can see it');
+  });
+});
+
 describe('UserProfile — follower counts', () => {
   // regression: the profile read "1 followers": it wrote a plural noun after
   // the count, whatever the count.
@@ -372,6 +402,20 @@ describe('UserProfile — following', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Unfollow' }));
     await waitFor(() => expect(follows(fetchMock)).toHaveLength(1));
     expect(follows(fetchMock)[0][1]).toMatchObject({ method: 'DELETE' });
+  });
+
+  it('stops showing a birthday once you unfollow a friend (WIS-323)', async () => {
+    session.current = signedIn('me');
+    stubWithFollow(
+      profile({ isFollowing: true, followsYou: true, isFriend: true, birthday: '2000-03-14' })
+    );
+    render(<UserProfile />);
+    await screen.findByText(/March 14|14 March/);
+    fireEvent.click(screen.getByRole('button', { name: 'Unfollow @friend' }));
+    const dialog = await screen.findByRole('alertdialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Unfollow' }));
+
+    await waitFor(() => expect(screen.queryByText(/March 14|14 March/)).toBeNull());
   });
 
   it('unfollows someone who is not a friend with no confirmation', async () => {

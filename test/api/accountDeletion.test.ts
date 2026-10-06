@@ -575,3 +575,15 @@ describe('deleteAccount: races on a list it owns', () => {
     expect(after?.bookedBy).toBeNull();
   });
 });
+
+describe('deleteAccount: the profile birthday (WIS-323)', () => {
+  it('leaves with the user row, so nothing anywhere still holds it', async () => {
+    await User.updateOne(
+      { _id: annOid },
+      { $set: { birthday: '2000-03-14', 'privacy.birthdayVisibility': 'everyone' } }
+    );
+    expect(await eraseAnn()).toBe('deleted');
+    expect(await db().collection('users').countDocuments({ _id: annOid })).toBe(0);
+    expect(await db().collection('users').countDocuments({ birthday: '2000-03-14' })).toBe(0);
+  });
+});

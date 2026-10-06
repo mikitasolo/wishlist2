@@ -6,6 +6,7 @@ import { signOut } from 'next-auth/react';
 import { useKnownSession } from '@/lib/hooks/useKnownSession';
 import AppHeader from '@/components/AppHeader';
 import AuthButton from '@/components/AuthButton';
+import BirthdayField from '@/components/BirthdayField';
 import Button from '@/components/Button';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import DeleteAccount from '@/components/DeleteAccount';
@@ -45,11 +46,12 @@ import Field from '@/components/Field';
 import Textarea from '@/components/Textarea';
 import { FIELD_HELPER, FIELD_LABEL } from '@/components/fieldStyles';
 import { useFreshUploads } from '@/lib/hooks/useFreshUploads';
+import { isCompleteBirthday, type BirthdayVisibility } from '@/lib/utils/birthday';
 
 /**
  * The settings that save as they're changed (D8): each sends only itself, the
  * moment it's picked, and goes back to what's saved if that fails. The
- * username and bio are typed, so they wait for their own Save.
+ * username, bio and birthday are edited, so they wait for their own Save.
  */
 type InstantField =
   | 'image'
@@ -57,8 +59,9 @@ type InstantField =
   | 'searchable'
   | 'whoCanInvite'
   | 'profileVisibility'
+  | 'birthdayVisibility'
   | NotificationSettingKey;
-/** What a save note sits beside: one instant setting, or the username and bio together. */
+/** What a save note sits beside: one instant setting, or the username, bio and birthday together. */
 type NoteKey = InstantField | 'profile';
 
 /** What the header shows comes from the session, so a change to these reads it again. */
@@ -73,6 +76,11 @@ const SEARCHABLE_ON =
   'People can find you by searching for your username, and you show up in invite suggestions.';
 const SEARCHABLE_OFF =
   'You won’t appear in search or invite suggestions. People who know your exact username can still open your profile, and invite you if Who can invite you allows it.';
+const BIRTHDAY_VISIBILITY_HELPER =
+  'Everyone means everyone who can see your profile. Only the day and month show.';
+// A friends-only profile caps it (`birthdayAudience`), so Everyone reads as Friends.
+const BIRTHDAY_VISIBILITY_CAPPED =
+  'Your profile is friends only, so Everyone means your friends too.';
 const WHO_CAN_INVITE_HELPER = 'Owners of a list you’re on can still offer to make you a co-owner.';
 
 type PatchResult =
@@ -311,13 +319,19 @@ export default function SettingsPage() {
     }
   }
 
-  // The username and bio: typed, so saved together with their own Save.
+  // The username, bio and birthday: edited, so saved together with their own Save.
   const textChanges = saved
-    ? profileChanges({ ...saved, username: form.username, bio: form.bio }, saved)
+    ? profileChanges(
+        { ...saved, username: form.username, bio: form.bio, birthday: form.birthday },
+        saved
+      )
     : {};
   const textDirty = Object.keys(textChanges).length > 0;
   const usernameChanged = textChanges.username !== undefined;
-  const canSaveText = textDirty && !savingText && (!usernameChanged || availability === 'ok');
+  // A month picked without its day (or the other way round) waits for the other.
+  const birthdayComplete = isCompleteBirthday(form.birthday);
+  const canSaveText =
+    textDirty && !savingText && birthdayComplete && (!usernameChanged || availability === 'ok');
   const guard = useLeaveGuard(textDirty);
 
   async function handleSaveText() {
@@ -329,6 +343,7 @@ export default function SettingsPage() {
       ...current,
       username: form.username,
       bio: form.bio,
+      birthday: form.birthday,
     });
     setSavingText(false);
     if (result.ok) {
@@ -341,7 +356,17 @@ export default function SettingsPage() {
 
   function discardText() {
     setSettings((s) =>
-      s.saved ? { ...s, form: { ...s.form, username: s.saved.username, bio: s.saved.bio } } : s
+      s.saved
+        ? {
+            ...s,
+            form: {
+              ...s.form,
+              username: s.saved.username,
+              bio: s.saved.bio,
+              birthday: s.saved.birthday,
+            },
+          }
+        : s
     );
     note('profile', undefined);
   }
@@ -438,6 +463,42 @@ export default function SettingsPage() {
                 disabled={savingText}
               />
             </Field>
+          </div>
+
+          <div className="mt-5">
+            <BirthdayField
+              value={form.birthday}
+              onChange={(birthday) => edit({ birthday })}
+              disabled={savingText}
+              error={birthdayComplete ? null : 'Pick both the month and the day'}
+            />
+          </div>
+
+          <div className="mt-5">
+            <div className="flex items-center gap-3">
+              <p id="birthday-visibility-label" className="text-sm font-medium text-foreground">
+                Who can see your birthday
+              </p>
+              <SaveNote state={notes.birthdayVisibility} />
+            </div>
+            <p id="birthday-visibility-helper" className={`${FIELD_HELPER} mb-1.5`}>
+              {form.profileVisibility === 'friends' && form.birthdayVisibility === 'everyone'
+                ? BIRTHDAY_VISIBILITY_CAPPED
+                : BIRTHDAY_VISIBILITY_HELPER}
+            </p>
+            <SegmentedControl
+              size="sm"
+              className="max-w-sm"
+              ariaLabelledBy="birthday-visibility-label"
+              ariaDescribedBy="birthday-visibility-helper"
+              value={form.birthdayVisibility}
+              onChange={(v) => changeInstant('birthdayVisibility', v as BirthdayVisibility)}
+              options={[
+                { value: 'nobody', label: 'No one' },
+                { value: 'friends', label: 'Friends' },
+                { value: 'everyone', label: 'Everyone' },
+              ]}
+            />
           </div>
 
           {smUp !== false && (
@@ -613,7 +674,7 @@ export default function SettingsPage() {
       <ConfirmDialog
         isOpen={guard.pending !== null}
         title="Discard changes?"
-        message="Your new username and bio haven’t been saved."
+        message="Your profile changes haven’t been saved."
         confirmText="Discard"
         cancelText="Keep editing"
         type="warning"
@@ -737,6 +798,19 @@ function SettingsSkeleton() {
         <div className="mt-5">
           <Skeleton className="mb-1.5 h-4 w-10" />
           <Skeleton className="h-[5.5rem] w-full rounded-xl" />
+        </div>
+        <div className="mt-5">
+          <Skeleton className="mb-1.5 h-4 w-16" />
+          <div className="flex gap-3">
+            <Skeleton className="h-11 flex-1 rounded-xl sm:w-40 sm:flex-none" />
+            <Skeleton className="h-11 w-24 rounded-xl" />
+          </div>
+          <Skeleton className="mt-1.5 h-3 w-64 max-w-full" />
+        </div>
+        <div className="mt-5">
+          <Skeleton className="h-4 w-44" />
+          <Skeleton className="mt-1.5 h-3 w-full max-w-md" />
+          <Skeleton className="mt-1.5 h-8 w-full max-w-sm rounded-xl" />
         </div>
       </Panel>
       <Panel className="mb-6">

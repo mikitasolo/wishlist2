@@ -3,6 +3,11 @@ import {
   notificationPrefsMongooseShape,
   type NotificationPrefs,
 } from '@/lib/utils/notificationPrefs';
+import {
+  BIRTHDAY_VISIBILITIES,
+  DEFAULT_BIRTHDAY_VISIBILITY,
+  type BirthdayVisibility,
+} from '@/lib/utils/birthday';
 
 export type InvitePolicy = 'everyone' | 'friends' | 'nobody';
 export type ProfileVisibility = 'everyone' | 'friends';
@@ -41,6 +46,15 @@ const UserSchema = new Schema(
       maxlength: 300,
       default: null,
     },
+    // Their birthday (WIS-323): a day and a month, `YYYY-MM-DD` on
+    // `YEARLY_PLACEHOLDER_YEAR` (`normalizeBirthday`, applied by
+    // `updateProfileSchema`), never a real year. Absent or null when not set.
+    // Independent of any list's occasion. Only ever answered to someone else
+    // through `visibleBirthday` / `birthdayVisibleFilter` (lib/utils/birthday.ts).
+    birthday: {
+      type: String,
+      default: null,
+    },
     // Preferred currency (uppercase code, e.g. "USD"). Used as the default for
     // new wishlists and to convert prices when viewing others' lists.
     defaultCurrency: {
@@ -70,6 +84,13 @@ const UserSchema = new Schema(
         enum: ['everyone', 'friends'],
         default: 'everyone',
       },
+      // Who besides them sees their birthday, never wider than
+      // `profileVisibility` allows (`birthdayAudience`).
+      birthdayVisibility: {
+        type: String,
+        enum: BIRTHDAY_VISIBILITIES,
+        default: DEFAULT_BIRTHDAY_VISIBILITY,
+      },
     },
     // Which notifications they get, per event and channel
     // (lib/utils/notificationPrefs.ts). No defaults here: a setting never
@@ -87,6 +108,7 @@ export interface IUserPrivacy {
   searchable: boolean;
   whoCanInvite: InvitePolicy;
   profileVisibility: ProfileVisibility;
+  birthdayVisibility?: BirthdayVisibility;
 }
 
 // Base document type
@@ -97,6 +119,7 @@ export interface IUser {
   username?: string | null;
   image?: string | null;
   bio?: string | null;
+  birthday?: string | null;
   defaultCurrency?: string;
   currencyChosenAt?: Date;
   privacy?: IUserPrivacy;

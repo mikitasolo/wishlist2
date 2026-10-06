@@ -1,6 +1,11 @@
 import type { InvitePolicy, ProfileVisibility } from '@/models/User';
 import { normalizeCurrency } from '@/lib/utils/currency';
 import {
+  DEFAULT_BIRTHDAY_VISIBILITY,
+  normalizeBirthday,
+  type BirthdayVisibility,
+} from '@/lib/utils/birthday';
+import {
   channelsOf,
   NOTIFICATION_EVENT_KEYS,
   wantsNotification,
@@ -67,20 +72,30 @@ export function notificationSettingKey(
 
 /**
  * The profile's settings as the server has them, the way the form edits them:
- * no bio is `''`, no photo is `null`, and the privacy settings sit alongside
+ * no bio or birthday is `''`, no photo is `null`, and the privacy settings sit alongside
  * the rest, so each one is compared and sent on its own.
  */
 export interface ProfileSettings extends Record<NotificationSettingKey, boolean> {
   username: string;
   image: string | null;
   bio: string;
+  /**
+   * `YYYY-MM-DD` on `YEARLY_PLACEHOLDER_YEAR`, or `''` for none. While it's
+   * being picked it may lack its month or day (`birthdayFromParts`), which
+   * `isCompleteBirthday` holds back from a save.
+   */
+  birthday: string;
   defaultCurrency: string;
   searchable: boolean;
   whoCanInvite: InvitePolicy;
   profileVisibility: ProfileVisibility;
+  birthdayVisibility: BirthdayVisibility;
 }
 
-type PrivacySettings = Pick<ProfileSettings, 'searchable' | 'whoCanInvite' | 'profileVisibility'>;
+type PrivacySettings = Pick<
+  ProfileSettings,
+  'searchable' | 'whoCanInvite' | 'profileVisibility' | 'birthdayVisibility'
+>;
 
 /** What a save sends: only the settings changed, and of `privacy` only the ones changed. */
 export interface ProfileChanges {
@@ -88,6 +103,8 @@ export interface ProfileChanges {
   /** `''` clears the photo. */
   image?: string;
   bio?: string;
+  /** `null` clears it. */
+  birthday?: string | null;
   defaultCurrency?: string;
   privacy?: Partial<PrivacySettings>;
   /** Of the notification settings, only the ones changed, each by event and channel. */
@@ -99,11 +116,13 @@ export interface ProfileSettingsSource {
   username?: string | null;
   image?: string | null;
   bio?: string | null;
+  birthday?: string | null;
   defaultCurrency?: string | null;
   privacy?: {
     searchable?: boolean | null;
     whoCanInvite?: InvitePolicy | null;
     profileVisibility?: ProfileVisibility | null;
+    birthdayVisibility?: BirthdayVisibility | null;
   } | null;
   notificationPrefs?: NotificationPrefs | null;
 }
@@ -117,10 +136,14 @@ export function profileSettings(profile: ProfileSettingsSource): ProfileSettings
     username: profile.username || '',
     image: profile.image || null,
     bio: profile.bio || '',
+    // As the server would store it, so one saved before normalization (or by
+    // hand) with a real year still reads as complete.
+    birthday: (profile.birthday && normalizeBirthday(profile.birthday)) || '',
     defaultCurrency: normalizeCurrency(profile.defaultCurrency),
     searchable: profile.privacy?.searchable ?? true,
     whoCanInvite: profile.privacy?.whoCanInvite ?? 'everyone',
     profileVisibility: profile.privacy?.profileVisibility ?? 'everyone',
+    birthdayVisibility: profile.privacy?.birthdayVisibility ?? DEFAULT_BIRTHDAY_VISIBILITY,
     ...(Object.fromEntries(
       NOTIFICATION_SETTINGS.map((s) => [
         s.key,
@@ -139,10 +162,13 @@ const asStored: { [K in keyof ProfileSettings]: (value: ProfileSettings[K]) => u
   // No photo is `null` or `''` alike (`isSameImage` on the server).
   image: (v) => v || null,
   bio: (v) => v.trim(),
+  // No birthday is `null` on the server, `''` here.
+  birthday: (v) => v || null,
   defaultCurrency: (v) => v.toUpperCase(),
   searchable: (v) => v,
   whoCanInvite: (v) => v,
   profileVisibility: (v) => v,
+  birthdayVisibility: (v) => v,
   ...(Object.fromEntries(NOTIFICATION_SETTINGS.map((s) => [s.key, (v: boolean) => v])) as Record<
     NotificationSettingKey,
     (v: boolean) => boolean
@@ -150,7 +176,12 @@ const asStored: { [K in keyof ProfileSettings]: (value: ProfileSettings[K]) => u
 };
 
 const FIELDS = Object.keys(asStored) as (keyof ProfileSettings)[];
-const PRIVACY_FIELDS = ['searchable', 'whoCanInvite', 'profileVisibility'] as const;
+const PRIVACY_FIELDS = [
+  'searchable',
+  'whoCanInvite',
+  'profileVisibility',
+  'birthdayVisibility',
+] as const;
 
 /** Whether `a` and `b` hold what the server would store as the same `key`. */
 function sameField<K extends keyof ProfileSettings>(
@@ -183,6 +214,7 @@ export function profileChanges(form: ProfileSettings, saved: ProfileSettings): P
   if (!sameField('username', form, saved)) changes.username = form.username.toLowerCase();
   if (!sameField('image', form, saved)) changes.image = form.image || '';
   if (!sameField('bio', form, saved)) changes.bio = form.bio.trim();
+  if (!sameField('birthday', form, saved)) changes.birthday = form.birthday || null;
   if (!sameField('defaultCurrency', form, saved)) changes.defaultCurrency = form.defaultCurrency;
 
   const privacy: Partial<PrivacySettings> = {};
@@ -222,11 +254,14 @@ export function settingChange<K extends keyof ProfileSettings>(
       return { image: settings.image || '' };
     case 'bio':
       return { bio: settings.bio!.trim() };
+    case 'birthday':
+      return { birthday: settings.birthday || null };
     case 'defaultCurrency':
       return { defaultCurrency: settings.defaultCurrency!.toUpperCase() };
     case 'searchable':
     case 'whoCanInvite':
     case 'profileVisibility':
+    case 'birthdayVisibility':
       return { privacy: { [key]: value } as Partial<PrivacySettings> };
     default: {
       const setting = notificationSettingOf(key)!;

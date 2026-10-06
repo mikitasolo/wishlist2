@@ -28,12 +28,21 @@ import { FOLLOWERS_PARAM } from '@/lib/utils/profileLinks';
 import { sortByUpcomingOccasion } from '@/lib/utils/occasion';
 import { useLocalToday } from '@/lib/hooks/useLocalToday';
 import { profileCoOwnerLabel, visitorLine } from '@/lib/utils/profileLists';
+import {
+  BIRTHDAY_AUDIENCE_TEXT,
+  formatBirthday,
+  type BirthdayVisibility,
+} from '@/lib/utils/birthday';
 
 interface Profile {
   _id: string;
   username: string;
   image?: string | null;
   bio?: string | null;
+  /** Only there when they have one and this viewer may see it (`visibleBirthday`). */
+  birthday?: string;
+  /** Your own profile only: who else sees your birthday. */
+  birthdayAudience?: BirthdayVisibility;
   isSelf: boolean;
   isFollowing: boolean;
   followsYou: boolean;
@@ -180,6 +189,7 @@ export default function UserProfile() {
     }
     setFollowBusy(true);
     const next = !profile.isFollowing;
+    const shownBirthday = profile.birthday;
     // Optimistic update
     setProfile((p) =>
       p
@@ -187,6 +197,10 @@ export default function UserProfile() {
             ...p,
             isFollowing: next,
             isFriend: next && p.followsYou,
+            // No longer friends: a birthday shown to friends may not be theirs
+            // to see any more, so it goes (one shown to everyone comes back on
+            // the next read).
+            birthday: !next && p.isFriend ? undefined : p.birthday,
             followerCount: p.followerCount + (next ? 1 : -1),
           }
         : p
@@ -205,6 +219,7 @@ export default function UserProfile() {
               ...p,
               isFollowing: !next,
               isFriend: !next && p.followsYou,
+              birthday: shownBirthday,
               followerCount: p.followerCount + (next ? -1 : 1),
             }
           : p
@@ -279,6 +294,8 @@ export default function UserProfile() {
   }
 
   // "Visitors see 3 of your 5 lists", on your own profile only.
+  // "March 14": only there when the answer carried a birthday (`visibleBirthday`).
+  const birthdayText = profile?.birthday ? formatBirthday(profile.birthday) : '';
   const visitorNote = profile?.isSelf ? visitorLine(visitorCount, wishlists.length) : null;
 
   return (
@@ -324,6 +341,16 @@ export default function UserProfile() {
                 </button>
                 {profile?.followsYou && !profile.isFriend ? <span>· Follows you</span> : null}
               </div>
+              {profile && birthdayText && (
+                <p className="mt-1 text-sm text-muted-foreground">
+                  <span aria-hidden>🎂 </span>
+                  <span className="sr-only">Birthday: </span>
+                  <span className="text-foreground">{birthdayText}</span>
+                  {profile.isSelf && profile.birthdayAudience && (
+                    <span> · {BIRTHDAY_AUDIENCE_TEXT[profile.birthdayAudience]}</span>
+                  )}
+                </p>
+              )}
             </div>
           </div>
           <div className="flex flex-shrink-0 items-center gap-3">

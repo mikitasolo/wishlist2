@@ -23,10 +23,12 @@ const saved: ProfileSettings = {
   username: 'alice',
   image: PHOTO,
   bio: 'I collect mugs.',
+  birthday: '2000-03-14',
   defaultCurrency: 'EUR',
   searchable: true,
   whoCanInvite: 'everyone',
   profileVisibility: 'everyone',
+  birthdayVisibility: 'friends',
   ...NOTIFY_DEFAULTS,
 };
 
@@ -43,33 +45,50 @@ describe('profileSettings', () => {
         username: 'alice',
         image: PHOTO,
         bio: 'I collect mugs.',
+        birthday: '2000-02-29',
         defaultCurrency: 'EUR',
-        privacy: { searchable: false, whoCanInvite: 'friends', profileVisibility: 'friends' },
+        privacy: {
+          searchable: false,
+          whoCanInvite: 'friends',
+          profileVisibility: 'friends',
+          birthdayVisibility: 'everyone',
+        },
       })
     ).toEqual({
       username: 'alice',
       image: PHOTO,
       bio: 'I collect mugs.',
+      birthday: '2000-02-29',
       defaultCurrency: 'EUR',
       searchable: false,
       whoCanInvite: 'friends',
       profileVisibility: 'friends',
+      birthdayVisibility: 'everyone',
       ...NOTIFY_DEFAULTS,
     });
   });
 
-  it("reads what's missing as the model's defaults: no photo, no bio, USD, public", () => {
-    expect(profileSettings({ username: null, image: '', bio: null, privacy: null })).toEqual({
+  it("reads what's missing as the model's defaults: no photo, no bio, no birthday, USD, public, birthday to friends", () => {
+    expect(
+      profileSettings({ username: null, image: '', bio: null, birthday: null, privacy: null })
+    ).toEqual({
       username: '',
       image: null,
       bio: '',
+      birthday: '',
       defaultCurrency: 'USD',
       searchable: true,
       whoCanInvite: 'everyone',
       profileVisibility: 'everyone',
+      birthdayVisibility: 'friends',
       ...NOTIFY_DEFAULTS,
     });
     expect(profileSettings({ privacy: { searchable: null } }).searchable).toBe(true);
+  });
+
+  it('reads a birthday stored with a real year as its day and month', () => {
+    expect(profileSettings({ birthday: '1990-03-14' }).birthday).toBe('2000-03-14');
+    expect(profileSettings({ birthday: 'nonsense' }).birthday).toBe('');
   });
 
   it('uppercases the currency', () => {
@@ -132,8 +151,17 @@ describe('profileChanges', () => {
     ['searchable', { searchable: false }],
     ['whoCanInvite', { whoCanInvite: 'nobody' }],
     ['profileVisibility', { profileVisibility: 'friends' }],
+    ['birthdayVisibility', { birthdayVisibility: 'nobody' }],
   ] as const)('regression: sends only the privacy setting changed (%s)', (_, change) => {
     expect(profileChanges(edited(change), saved)).toEqual({ privacy: change });
+  });
+
+  it('sends a changed birthday on its own, and a cleared one as null', () => {
+    expect(profileChanges(edited({ birthday: '2000-02-29' }), saved)).toEqual({
+      birthday: '2000-02-29',
+    });
+    expect(profileChanges(edited({ birthday: '' }), saved)).toEqual({ birthday: null });
+    expect(profileChanges(edited({ bio: 'Mugs.' }), saved)).not.toHaveProperty('birthday');
   });
 
   it('regression: a save of anything else sends no privacy settings at all', () => {
@@ -253,6 +281,10 @@ describe('settingChange', () => {
     expect(settingChange('image', NEW_PHOTO)).toEqual({ image: NEW_PHOTO });
     expect(settingChange('username', 'Alice')).toEqual({ username: 'alice' });
     expect(settingChange('bio', ' Mugs. ')).toEqual({ bio: 'Mugs.' });
+    expect(settingChange('birthdayVisibility', 'everyone')).toEqual({
+      privacy: { birthdayVisibility: 'everyone' },
+    });
+    expect(settingChange('birthday', '')).toEqual({ birthday: null });
   });
 
   it('clears the photo with an empty string, as profileChanges does', () => {
