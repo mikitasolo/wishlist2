@@ -688,3 +688,40 @@ describe('notification emails (WIS-321)', () => {
     expect(message.html).not.toContain(RECIPIENT);
   });
 });
+
+describe('the birthday nudge email (WIS-344)', () => {
+  type Message = ReturnType<typeof sentMessage> & { headers?: Record<string, string> };
+
+  async function send(days: number): Promise<Message> {
+    const { sendBirthdayNudgeEmail } = await loadEmail('smtp');
+    await sendBirthdayNudgeEmail(RECIPIENT, { recipientId: RECIPIENT_ID, days });
+    return sentMessage() as Message;
+  }
+
+  it('says when, in fixed words, and links to New list on a Birthday list', async () => {
+    const message = await send(21);
+    expect(message.subject).toBe('Your birthday is coming up');
+    expect(message.html).toContain('Your birthday is in 3 weeks');
+    expect(message.html).toContain('Make a list so friends know what to get you.');
+    expect(message.html).toContain('http://localhost:3000/?newList=birthday');
+    expect(message.text).toContain('Make a list: http://localhost:3000/?newList=birthday');
+    // No date, no list, no address.
+    expect(message.html).not.toMatch(/\d{4}-\d{2}-\d{2}/);
+    expect(message.html).not.toContain(RECIPIENT);
+  });
+
+  it('counts down from the day it goes out', async () => {
+    expect((await send(20)).html).toContain('Your birthday is in 20 days');
+  });
+
+  it('unsubscribes from birthday nudge emails only', async () => {
+    const message = await send(21);
+    const oneClick = new URL((message.headers?.['List-Unsubscribe'] ?? '').replace(/^<|>$/g, ''));
+    expect(oneClick.searchParams.get('e')).toBe('birthday_nudge');
+    expect(oneClick.searchParams.get('u')).toBe(RECIPIENT_ID);
+    expect(message.headers?.['List-Unsubscribe-Post']).toBe('List-Unsubscribe=One-Click');
+    expect(message.text).toContain(
+      'Unsubscribe from your birthday emails: http://localhost:3000/unsubscribe?'
+    );
+  });
+});

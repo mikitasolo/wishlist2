@@ -21,7 +21,8 @@ import { useHydrated } from '@/lib/hooks/useHydrated';
 import { useLocalToday } from '@/lib/hooks/useLocalToday';
 import { usePinToTop } from '@/lib/hooks/usePinToTop';
 import type { FriendBirthday } from '@/lib/utils/comingUp';
-import { sortByUpcomingOccasion } from '@/lib/utils/occasion';
+import { sortByUpcomingOccasion, type OccasionKind } from '@/lib/utils/occasion';
+import { NEW_LIST_PARAM } from '@/lib/utils/birthdayNudge';
 import { pinnedFirst } from '@/lib/utils/pinnedLists';
 import { IWishlist } from '@/models/Wishlist';
 
@@ -67,6 +68,14 @@ export default function Dashboard() {
   const userId = session?.user?.id ?? null;
   const listsFor = useRef<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  // The occasion kind New list opens on: Birthday from the birthday nudge
+  // (Needs you's row, or its email's `?newList=birthday`), else none.
+  const [createKind, setCreateKind] = useState<OccasionKind | undefined>(undefined);
+  const openCreate = useCallback((kind?: OccasionKind) => {
+    setCreateKind(kind);
+    setShowCreateModal(true);
+  }, []);
+  const openBirthdayList = useCallback(() => openCreate('birthday'), [openCreate]);
   // Pin to top on your own lists: per-owner, one at a time (`usePinToTop`).
   const { pinning, toggle: togglePin } = usePinToTop(setOwned);
 
@@ -140,6 +149,21 @@ export default function Dashboard() {
     };
   }, [status, userId]);
 
+  // The birthday nudge email's link (WIS-344): New list on a Birthday list,
+  // once, the query taken off so a reload doesn't open it again.
+  useEffect(() => {
+    if (status !== 'authenticated') return;
+    const url = new URL(window.location.href);
+    if (url.searchParams.get(NEW_LIST_PARAM) !== 'birthday') return;
+    url.searchParams.delete(NEW_LIST_PARAM);
+    window.history.replaceState(
+      window.history.state,
+      '',
+      `${url.pathname}${url.search}${url.hash}`
+    );
+    openCreate('birthday');
+  }, [status, openCreate]);
+
   const retryLoad = useCallback(() => {
     setLoadFailed(false);
     setLoading(true);
@@ -207,20 +231,27 @@ export default function Dashboard() {
             size="sm"
             shape="pill"
             icon="plus"
-            onClick={() => setShowCreateModal(true)}
+            onClick={() => openCreate()}
             className="sm:mb-1"
           >
             New list
           </Button>
         </header>
 
-        <CreateWishlistModal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} />
+        <CreateWishlistModal
+          isOpen={showCreateModal}
+          onClose={() => setShowCreateModal(false)}
+          occasionKind={createKind}
+        />
 
         <div className="space-y-12">
           {/* What's waiting on you: hidden when nothing is. Your proposals to
               review come from your lists, so they wait for them. */}
           <UsernameNudge userId={session.user.id} username={profileUsername} />
-          <NeedsYou ownLists={loading || loadFailed ? null : ownedInOrder} />
+          <NeedsYou
+            ownLists={loading || loadFailed ? null : ownedInOrder}
+            onNewBirthdayList={openBirthdayList}
+          />
 
           {loading ? (
             <DashboardSkeleton />
@@ -230,7 +261,7 @@ export default function Dashboard() {
             <>
               {/* No lists yet, but a friend's birthday can still be coming. */}
               <ComingUp own={[]} shared={[]} birthdays={birthdays} viewerId={session.user.id} />
-              <StarterCard username={profileUsername} onCreate={() => setShowCreateModal(true)} />
+              <StarterCard username={profileUsername} onCreate={() => openCreate()} />
             </>
           ) : (
             <>

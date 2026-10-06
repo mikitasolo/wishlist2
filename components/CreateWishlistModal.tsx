@@ -13,7 +13,7 @@ import { useFreshUploads } from '@/lib/hooks/useFreshUploads';
 import Select from './Select';
 import Button from './Button';
 import Icon from './Icon';
-import OccasionField from './OccasionField';
+import OccasionField, { YEARLY_BY_DEFAULT } from './OccasionField';
 import Field from './Field';
 import Input from './Input';
 import Textarea from './Textarea';
@@ -25,6 +25,7 @@ import {
   missingFromDraft,
   occasionToDraft,
   type OccasionDraft,
+  type OccasionKind,
 } from '@/lib/utils/occasion';
 
 /** The new list, as `POST /api/wishlists` answers it: the fields a caller of `onCreated` reads. */
@@ -44,6 +45,12 @@ interface CreateWishlistModalProps {
    * to my list" saves the item to it).
    */
   onCreated?: (wishlist: CreatedWishlist) => void;
+  /**
+   * The occasion's kind to open on, its date left to pick: the birthday
+   * nudge's New list opens on Birthday (WIS-344). Never a date: a list's
+   * occasion is its own, never filled in from the profile birthday.
+   */
+  occasionKind?: OccasionKind;
 }
 
 const defaultFormData = {
@@ -54,6 +61,15 @@ const defaultFormData = {
   currency: 'USD',
   occasion: occasionToDraft(null),
 };
+
+/**
+ * The occasion a new list's form opens on: none, or just a kind, repeating
+ * every year when picking it by hand would (a Birthday), its date left empty.
+ */
+const startingOccasion = (kind: OccasionKind | undefined): OccasionDraft =>
+  kind
+    ? { ...occasionToDraft(null), kind, yearly: YEARLY_BY_DEFAULT.has(kind) }
+    : occasionToDraft(null);
 
 const sameDraft = (a: OccasionDraft, b: OccasionDraft) =>
   a.kind === b.kind &&
@@ -66,6 +82,7 @@ export default function CreateWishlistModal({
   isOpen,
   onClose,
   onCreated,
+  occasionKind,
 }: CreateWishlistModalProps) {
   const router = useRouter();
   const { data: session } = useSession();
@@ -92,16 +109,23 @@ export default function CreateWishlistModal({
     }
   }, [isOpen]);
 
-  // Check if form has changes
+  // Open on the occasion's kind asked for (none by default). Before the
+  // changes check, so an untouched prefilled form never reads as changed.
+  useEffect(() => {
+    if (isOpen) setFormData((f) => ({ ...f, occasion: startingOccasion(occasionKind) }));
+  }, [isOpen, occasionKind]);
+
+  // Check if form has changes (never while closed: the reset puts no occasion back)
   useEffect(() => {
     const hasChanges =
-      formData.name !== defaultFormData.name ||
-      formData.description !== defaultFormData.description ||
-      formData.visibility !== defaultFormData.visibility ||
-      formData.bannerUrl !== defaultFormData.bannerUrl ||
-      !sameDraft(formData.occasion, defaultFormData.occasion);
+      isOpen &&
+      (formData.name !== defaultFormData.name ||
+        formData.description !== defaultFormData.description ||
+        formData.visibility !== defaultFormData.visibility ||
+        formData.bannerUrl !== defaultFormData.bannerUrl ||
+        !sameDraft(formData.occasion, startingOccasion(occasionKind)));
     setHasUnsavedChanges(hasChanges);
-  }, [formData]);
+  }, [isOpen, formData, occasionKind]);
 
   // Prefill the currency from the user's default when opening.
   useEffect(() => {

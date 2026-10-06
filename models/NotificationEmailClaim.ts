@@ -17,26 +17,38 @@ import mongoose, { Schema, Model } from 'mongoose';
  *   and occurrence (`kind: 'birthday_reminder'`, no list, `about`: whose
  *   birthday, `key`: `<their id>:<the occurrence's date>`, so the unique index
  *   tells two friends' birthdays on one day apart).
+ * - **The nudge before your own birthday** (WIS-344): one email per person a
+ *   year (`kind: 'birthday_nudge'`, no list, `key`: the birthday's year), from
+ *   the daily birthday cron.
  *
  * A claim is taken before the send, under the unique index, so two requests or
  * runs racing for the same email can't both send it; a failed send gives its
  * claim back. Rows expire a month after their last claim (well past a day, and
- * past the reminders' catch-up window), so the collection stays small. It holds
- * no address and no content, only who was emailed about which list (or whose
- * birthday); an account deletion removes its rows, and those about it
+ * past the reminders' catch-up window, and past the birthday a nudge was
+ * about), so the collection stays small. It holds no address and no content,
+ * only who was emailed about which list (or whose birthday, or in which year); an account deletion removes its rows, and those about it
  * (`deleteAccount`).
  */
-const CLAIM_KINDS = ['proposal', 'link_join', 'occasion_reminder', 'birthday_reminder'] as const;
+const CLAIM_KINDS = [
+  'proposal',
+  'link_join',
+  'occasion_reminder',
+  'birthday_reminder',
+  'birthday_nudge',
+] as const;
+
+/** The kinds about a person, not a list: their claims have no `wishlist`. */
+const LISTLESS_KINDS: readonly string[] = ['birthday_reminder', 'birthday_nudge'];
 
 const NotificationEmailClaimSchema = new Schema({
   user: { type: Schema.Types.ObjectId, ref: 'User', required: true },
   kind: { type: String, enum: CLAIM_KINDS, required: true },
-  // Every kind but a birthday reminder is about a list.
+  // Every kind but the birthday ones (`LISTLESS_KINDS`) is about a list.
   wishlist: {
     type: Schema.Types.ObjectId,
     ref: 'Wishlist',
     required(this: { kind?: string }) {
-      return this.kind !== 'birthday_reminder';
+      return !LISTLESS_KINDS.includes(this.kind ?? '');
     },
   },
   // `birthday_reminder` only: whose birthday it was about.

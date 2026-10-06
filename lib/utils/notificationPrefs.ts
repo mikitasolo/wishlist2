@@ -54,6 +54,14 @@ export const NOTIFICATION_EVENTS = {
     label: 'Friends’ birthdays',
     description: 'A week before a friend’s birthday, when they share it with you.',
   },
+  // WIS-344: no notification type, as the nudge's in-app side is a row of
+  // Needs you (dismissed there), not an Activity row; so email only.
+  birthday_nudge: {
+    types: [],
+    defaults: { email: true },
+    label: 'Your birthday',
+    description: 'Three weeks before your birthday, if you haven’t made a Birthday list yet.',
+  },
   join_request: {
     types: ['join_request'],
     defaults: { inApp: true, email: true },

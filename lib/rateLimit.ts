@@ -144,6 +144,8 @@ const SPECS = {
   emailProposalApproved: { tokens: 10, window: '1 h', policy: 'fail-closed', keyKind: 'user' },
   emailOccasionReminder: { tokens: 10, window: '1 d', policy: 'fail-closed', keyKind: 'user' },
   emailBirthdayReminder: { tokens: 10, window: '1 d', policy: 'fail-closed', keyKind: 'user' },
+  // WIS-344: once a year by its claim; this only backs that up.
+  emailBirthdayNudge: { tokens: 2, window: '1 d', policy: 'fail-closed', keyKind: 'user' },
 } satisfies Record<string, LimiterSpec>;
 
 export type LimiterName = keyof typeof SPECS;

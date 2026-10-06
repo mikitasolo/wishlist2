@@ -10,7 +10,8 @@ export const maxDuration = 60;
  * `vercel.json`; production deployment only), behind the `CRON_SECRET`
  * bearer (`cronRefusal`). Runs every birthday task in turn, each within its
  * own time budget and caps (`runBirthdayTasks`, lib/utils/birthdayCron.ts),
- * e.g. friends' birthday reminders a week ahead. Safe to re-run: nothing
+ * friends' birthday reminders a week ahead (`reminders`), then the nudge
+ * email three weeks before your own (`nudges`). Safe to re-run: nothing
  * already sent is sent again. Answers counts only, per task; a 500 if any
  * task failed (the others still ran).
  */
