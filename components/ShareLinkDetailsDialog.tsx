@@ -1,6 +1,6 @@
 'use client';
 
-import { useId, useMemo } from 'react';
+import { useId, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import BaseModal from '@/components/BaseModal';
 import Badge from '@/components/Badge';
@@ -8,12 +8,29 @@ import Button from '@/components/Button';
 import Callout from '@/components/Callout';
 import Field from '@/components/Field';
 import Input from '@/components/Input';
+import QrCard from '@/components/QrCard';
+import SegmentedControl from '@/components/SegmentedControl';
+import Select from '@/components/Select';
+import { FIELD_LABEL } from '@/components/fieldStyles';
 import { SHARE_LINK_LEVEL_LABELS } from '@/components/ShareLinkDialog';
 import { useToast } from '@/components/ToastProvider';
 import { shareLinkUrl, type ShareLinkRow } from '@/lib/hooks/useShareLinks';
 import { useLocalToday } from '@/lib/hooks/useLocalToday';
 import { useShareSheetAvailable } from '@/lib/hooks/useShareSheetAvailable';
 import { occasionDetails, type Occasion } from '@/lib/utils/occasion';
+import {
+  QR_CARD_DESIGNS,
+  QR_CARD_DESIGN_LABELS,
+  QR_CARD_SIZES,
+  QR_CARD_SIZE_SPECS,
+  SHEET_GAP,
+  clampCopies,
+  defaultCardDesign,
+  maxCopiesPerSheet,
+  sheetColumns,
+  type QrCardDesign,
+  type QrCardSize,
+} from '@/lib/utils/qrCard';
 import { qrFileName, qrShape, qrSvgFile, type QrShape } from '@/lib/utils/qrCode';
 import { shareOrCopy } from '@/lib/utils/shareLink';
 import { formatLinkExpiry } from '@/lib/utils/shareLinkExpiry';
@@ -34,6 +51,23 @@ export const PRINT_CARD_CALLS: Record<ShareLinkLevel, string> = {
 /** The class the print card's root carries: while it's mounted, printing prints only it. */
 export const PRINT_CARD_CLASS = 'qr-print-root';
 
+/** What a print gives: the bare code, or the card around it (WIS-346). */
+type QrFormat = 'card' | 'code';
+
+const FORMAT_OPTIONS = [
+  { value: 'card', label: 'Card' },
+  { value: 'code', label: 'QR code only' },
+] as const;
+
+const DESIGN_OPTIONS = QR_CARD_DESIGNS.map((d) => ({ value: d, label: QR_CARD_DESIGN_LABELS[d] }));
+const SIZE_OPTIONS = QR_CARD_SIZES.map((s) => ({ value: s, label: QR_CARD_SIZE_SPECS[s].label }));
+
+/** The bare code's printed side, in mm. */
+const PRINTED_CODE_MM = 70;
+
+/** The default card size: a postcard, two to a sheet. */
+const DEFAULT_SIZE: QrCardSize = 'postcard';
+
 /** The PNG's side is at least this many pixels, whole pixels per module. */
 const PNG_MIN_PX = 1024;
 
@@ -52,9 +86,12 @@ interface ShareLinkDetailsDialogProps {
  * one place, opened from its row's Share and straight after New link. Its full
  * `/l/<token>` URL with Copy link (and Share on a phone, the share sheet), and
  * its QR code (WIS-328), drawn in the browser so the token never goes to a
- * third party, with Download PNG, Download SVG and Print card. The card (the
- * list's name, occasion and the code) is mounted for as long as the dialog is
- * open and is all a print shows. Never for the list's own URL.
+ * third party. Handing out the code is two steps (WIS-346): how it looks (the
+ * bare code, or a card in one of the designs and sizes, some copies to a
+ * sheet), then what to do with it (the code: Download PNG, Download SVG,
+ * Print; a card: Print card, which also saves a PDF from the browser's print
+ * dialog). What prints is mounted for as long as the dialog is open and is all
+ * a print shows. Never for the list's own URL.
  */
 export default function ShareLinkDetailsDialog({
   link,
@@ -77,6 +114,28 @@ export default function ShareLinkDetailsDialog({
   const expiry = formatLinkExpiry(link, now ?? new Date());
   const details = occasion && today ? occasionDetails(occasion, today) : null;
   const occasionLine = details ? [details.kind, details.date].filter(Boolean).join(' · ') : null;
+  const [format, setFormat] = useState<QrFormat>('card');
+  // The occasion's design until one is picked, so it follows an occasion set or changed meanwhile.
+  const [pickedDesign, setDesign] = useState<QrCardDesign | null>(null);
+  const design = pickedDesign ?? defaultCardDesign(occasion?.kind);
+  const [size, setSize] = useState<QrCardSize>(DEFAULT_SIZE);
+  const [copies, setCopies] = useState(() => maxCopiesPerSheet(DEFAULT_SIZE));
+  const maxCopies = maxCopiesPerSheet(size);
+  const cardProps = {
+    shape,
+    design,
+    size,
+    listName,
+    occasionLine,
+    call: PRINT_CARD_CALLS[link.level],
+    url,
+  };
+
+  function pickSize(next: QrCardSize) {
+    setSize(next);
+    // A new size starts on a full sheet of it.
+    setCopies(maxCopiesPerSheet(next));
+  }
 
   async function handOut(sheet: boolean) {
     const outcome = await shareOrCopy({ url, title: listName }, { sheet });
@@ -122,34 +181,105 @@ export default function ShareLinkDetailsDialog({
             </div>
           </div>
 
-          <div>
+          <div className="space-y-4">
+            <SegmentedControl
+              options={FORMAT_OPTIONS}
+              value={format}
+              onChange={setFormat}
+              ariaLabel="Print as"
+            />
+            {format === 'card' && (
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <p className={FIELD_LABEL}>Design</p>
+                  <Select
+                    value={design}
+                    onChange={(v) => setDesign(v as QrCardDesign)}
+                    options={DESIGN_OPTIONS}
+                    ariaLabel="Design"
+                    triggerClassName="w-full"
+                  />
+                </div>
+                <div>
+                  <p className={FIELD_LABEL}>Size</p>
+                  <Select
+                    value={size}
+                    onChange={(v) => pickSize(v as QrCardSize)}
+                    options={SIZE_OPTIONS}
+                    ariaLabel="Size"
+                    triggerClassName="w-full"
+                  />
+                </div>
+                {maxCopies > 1 && (
+                  <div>
+                    <p className={FIELD_LABEL}>Copies per sheet</p>
+                    <Select
+                      value={String(copies)}
+                      onChange={(v) => setCopies(clampCopies(size, Number(v)))}
+                      options={Array.from({ length: maxCopies }, (_, i) => ({
+                        value: String(i + 1),
+                        label: String(i + 1),
+                      }))}
+                      ariaLabel="Copies per sheet"
+                      triggerClassName="w-full"
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* White whatever the theme: a scanner needs dark modules on light. */}
-            <div className="mx-auto w-full max-w-56 overflow-hidden rounded-xl border border-border bg-white">
-              <QrSvg shape={shape} label={`QR code for ${title}`} />
+            {format === 'card' ? (
+              <div className="mx-auto w-full max-w-80 overflow-hidden rounded-xl border border-border bg-white">
+                <QrCard {...cardProps} label={`Card preview for ${title}`} className="w-full" />
+              </div>
+            ) : (
+              <div className="mx-auto w-full max-w-56 overflow-hidden rounded-xl border border-border bg-white">
+                <QrSvg shape={shape} label={`QR code for ${title}`} />
+              </div>
+            )}
+
+            <div className="flex flex-wrap justify-center gap-3">
+              {format === 'card' ? (
+                <Button variant="secondary" size="sm" icon="printer" onClick={() => window.print()}>
+                  Print card
+                </Button>
+              ) : (
+                <>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    icon="download"
+                    onClick={downloadPng}
+                    aria-label="Download PNG"
+                  >
+                    PNG
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    icon="download"
+                    onClick={downloadSvg}
+                    aria-label="Download SVG"
+                  >
+                    SVG
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    icon="printer"
+                    onClick={() => window.print()}
+                  >
+                    Print
+                  </Button>
+                </>
+              )}
             </div>
-            <div className="mt-3 flex flex-wrap justify-center gap-3">
-              <Button
-                variant="secondary"
-                size="sm"
-                icon="download"
-                onClick={downloadPng}
-                aria-label="Download PNG"
-              >
-                PNG
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                icon="download"
-                onClick={downloadSvg}
-                aria-label="Download SVG"
-              >
-                SVG
-              </Button>
-              <Button variant="secondary" size="sm" icon="printer" onClick={() => window.print()}>
-                Print card
-              </Button>
-            </div>
+            {format === 'card' && (
+              <p className="text-center text-xs text-muted-foreground">
+                To save a PDF, pick Save as PDF in the print dialog.
+              </p>
+            )}
           </div>
 
           <Callout tone="warning">{LINK_WARNINGS[link.level]}</Callout>
@@ -157,16 +287,30 @@ export default function ShareLinkDetailsDialog({
       </BaseModal>
       {createPortal(
         <div
-          className={`${PRINT_CARD_CLASS} hidden min-h-screen flex-col items-center justify-center gap-4 bg-white p-8 text-center text-black print:flex`}
+          className={`${PRINT_CARD_CLASS} hidden justify-center bg-white print:grid`}
+          style={{
+            gap: `${SHEET_GAP}mm`,
+            gridTemplateColumns:
+              format === 'card'
+                ? `repeat(${sheetColumns(size, copies)}, ${QR_CARD_SIZE_SPECS[size].width}mm)`
+                : `${PRINTED_CODE_MM}mm`,
+          }}
           data-testid="qr-print-card"
         >
-          <h1 className="text-3xl font-semibold tracking-tight break-words">{listName}</h1>
-          {occasionLine && <p className="text-lg">{occasionLine}</p>}
-          <div className="mt-4 w-72">
-            <QrSvg shape={shape} />
-          </div>
-          <p className="text-lg font-medium">{PRINT_CARD_CALLS[link.level]}</p>
-          <p className="max-w-sm text-xs break-all">{url}</p>
+          {format === 'card' ? (
+            Array.from({ length: copies }, (_, i) => (
+              // A dashed line round each card to cut along.
+              <div key={i} className="qr-print-cut">
+                <QrCard {...cardProps} />
+              </div>
+            ))
+          ) : (
+            <div className="text-center text-black">
+              <QrSvg shape={shape} />
+              {/* To type when a scan fails. */}
+              <p className="mt-2 text-xs break-all">{url}</p>
+            </div>
+          )}
         </div>,
         document.body
       )}

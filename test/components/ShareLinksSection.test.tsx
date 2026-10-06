@@ -172,13 +172,13 @@ describe('ShareLinksSection', () => {
     const dialog = screen.getByRole('dialog', { name: 'Family chat' });
     const url = `${window.location.origin}/l/${TOKEN}`;
     expect(within(dialog).getByLabelText('Link')).toHaveValue(url);
-    const qr = within(dialog).getByRole('img', { name: 'QR code for Family chat' });
-    expect(qr.querySelector('path')).toHaveAttribute('d', qrShape(url).path);
+    const preview = within(dialog).getByRole('img', { name: 'Card preview for Family chat' });
+    expect(preview.querySelector('[data-qr] path')).toHaveAttribute('d', qrShape(url).path);
     // The print card carries the list's name and the same code.
     const card = screen.getByTestId('qr-print-card');
-    expect(card).toHaveTextContent('Anna’s birthday');
+    expect(card).toHaveTextContent(/Anna’s ?birthday/);
     expect(card).toHaveTextContent(url);
-    expect(card.querySelector('path')).toHaveAttribute('d', qrShape(url).path);
+    expect(card.querySelector('[data-qr] path')).toHaveAttribute('d', qrShape(url).path);
   });
 
   it('opens a new link in its dialog as soon as it’s created, with the label typed', async () => {
@@ -197,7 +197,9 @@ describe('ShareLinksSection', () => {
     const url = `${window.location.origin}/l/${NEW_TOKEN}`;
     expect(within(dialog).getByLabelText('Link')).toHaveValue(url);
     expect(
-      within(dialog).getByRole('img', { name: 'QR code for Wedding QR' }).querySelector('path')
+      within(dialog)
+        .getByRole('img', { name: 'Card preview for Wedding QR' })
+        .querySelector('[data-qr] path')
     ).toHaveAttribute('d', qrShape(url).path);
   });
 
