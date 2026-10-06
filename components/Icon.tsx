@@ -63,7 +63,8 @@ export type IconName =
   | 'download'
   | 'eye'
   | 'eye-off'
-  | 'printer';
+  | 'printer'
+  | 'tag';
 
 const paths: Record<IconName, React.ReactNode> = {
   gift: (
@@ -322,6 +323,13 @@ const paths: Record<IconName, React.ReactNode> = {
       <path d="M6 9V3h12v6" />
       <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
       <rect x="6" y="14" width="12" height="7" rx="1" />
+    </>
+  ),
+  // A price tag: tagging a person into your groups (WIS-27).
+  tag: (
+    <>
+      <path d="M12.59 2.59A2 2 0 0 0 11.17 2H4a2 2 0 0 0-2 2v7.17a2 2 0 0 0 .59 1.42l8.7 8.7a2.43 2.43 0 0 0 3.42 0l6.58-6.58a2.43 2.43 0 0 0 0-3.42z" />
+      <circle cx="7.5" cy="7.5" r="1" />
     </>
   ),
 };

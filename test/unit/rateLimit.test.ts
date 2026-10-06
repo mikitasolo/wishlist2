@@ -111,6 +111,7 @@ const KEY_KINDS: Record<LimiterName, KeyKind> = {
   invite: 'user',
   shareLink: 'user',
   follow: 'user',
+  groups: 'user',
   content: 'user',
   listCopy: 'user',
   booking: 'user',

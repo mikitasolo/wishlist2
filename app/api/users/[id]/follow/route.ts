@@ -6,6 +6,7 @@ import User from '@/models/User';
 import Follow from '@/models/Follow';
 import { createNotification } from '@/lib/notifications';
 import { isObjectIdParam } from '@/lib/utils/objectId';
+import { removeFromOwnGroups } from '@/lib/utils/peopleGroups';
 
 // POST /api/users/[id]/follow - follow a user
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -47,6 +48,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // someone who already notified this user in the last 24h (unfollow deletes
     // the edge, so follow → unfollow → follow lands here again).
     if (result.upsertedCount > 0) {
+      // A new follow starts in none of your groups (WIS-27), even if a failed
+      // unfollow cleanup left an old tag behind.
+      await removeFromOwnGroups(session.user.id, targetId);
       await createNotification({
         user: targetId,
         type: 'follow',
@@ -79,6 +83,17 @@ export async function DELETE(
     if (isObjectIdParam(targetId)) {
       await connectDB();
       await Follow.deleteOne({ follower: session.user.id, following: targetId });
+      // Only people you follow are in your groups (WIS-27): the edge goes
+      // first, so a tag racing this sees it gone and takes itself back. The
+      // unfollow has happened either way, so a failure here doesn't undo its
+      // answer: a tag left behind is never shown or used (`listGroups` and
+      // `groupMemberIds` read only people still followed), and a new follow
+      // clears it.
+      try {
+        await removeFromOwnGroups(session.user.id, targetId);
+      } catch {
+        console.error('Error taking an unfollowed person out of groups');
+      }
     }
 
     return NextResponse.json({ success: true }, { status: 200 });

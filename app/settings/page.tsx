@@ -10,6 +10,7 @@ import BirthdayField from '@/components/BirthdayField';
 import Button from '@/components/Button';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import DeleteAccount from '@/components/DeleteAccount';
+import GroupsSettings, { GroupsSettingsSkeleton } from '@/components/GroupsSettings';
 import Icon from '@/components/Icon';
 import ImageUpload from '@/components/ImageUpload';
 import LoadError from '@/components/LoadError';
@@ -579,6 +580,8 @@ export default function SettingsPage() {
           </div>
         </Panel>
 
+        <GroupsSettings />
+
         <Panel
           id="notifications"
           className="mb-6 scroll-mt-24"
@@ -830,6 +833,7 @@ function SettingsSkeleton() {
         </div>
         {row('w-56 max-w-full')}
       </Panel>
+      <GroupsSettingsSkeleton />
       <Panel className="mb-6">
         {title('w-28')}
         <Skeleton className="mt-2 h-4 w-72 max-w-full" />
