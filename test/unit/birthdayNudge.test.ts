@@ -6,6 +6,7 @@ import {
   birthdayNudgeDue,
   birthdayNudgeTitle,
   hasBirthdayListComing,
+  olderBirthdayLists,
   type BirthdayRuleList,
 } from '@/lib/utils/birthdayNudge';
 import { birthdayEmailDayOffsets } from '@/lib/utils/birthdayNudgeEmails';
@@ -155,5 +156,74 @@ describe('the copy', () => {
 describe('birthdayEmailDayOffsets', () => {
   it('is three weeks ahead with two days of catch-up, nearest first', () => {
     expect(birthdayEmailDayOffsets()).toEqual([19, 20, 21]);
+  });
+});
+
+describe('olderBirthdayLists (WIS-348)', () => {
+  const today = '2026-10-06';
+  const yearly = (date: string): Occasion => ({ kind: 'birthday', date, recurrence: 'yearly' });
+  const oneOff = (date: string): Occasion => ({ kind: 'birthday', date, recurrence: null });
+  const ids = (lists: Parameters<typeof olderBirthdayLists>[0]) =>
+    olderBirthdayLists(lists, today).map((w) => w._id);
+
+  it('keeps only Birthday lists, as id and name, newest created first', () => {
+    expect(
+      olderBirthdayLists(
+        [
+          { _id: 'old', name: '2023', occasion: oneOff('2023-03-14'), createdAt: '2023-01-01' },
+          {
+            _id: 'trip',
+            name: 'Trip',
+            occasion: { kind: 'other', date: '2024-03-14', recurrence: null },
+          },
+          { _id: 'none', name: 'None', occasion: null },
+          { _id: 'new', name: '2025', occasion: oneOff('2025-03-14'), createdAt: '2025-01-01' },
+        ],
+        today
+      )
+    ).toEqual([
+      { _id: 'new', name: '2025' },
+      { _id: 'old', name: '2023' },
+    ]);
+  });
+  // regression: "last year's list" could be this year's, made after the nudge email went out.
+  it('regression: leaves out this birthday’s own list: a one-off in the window, or a yearly one made lately', () => {
+    expect(
+      ids([
+        { _id: 'mine', name: 'This year', occasion: oneOff('2026-10-20') },
+        { _id: 'just', name: 'Just past', occasion: oneOff('2026-09-20') },
+        { _id: 'week', name: 'Yearly', occasion: yearly('2000-10-20'), createdAt: '2026-09-29' },
+        {
+          _id: 'arch',
+          name: 'Archived',
+          archived: true,
+          occasion: yearly('2000-10-20'),
+          createdAt: '2026-09-29',
+        },
+        { _id: 'none', name: 'Unknown', occasion: yearly('2000-10-20') },
+        { _id: 'far', name: 'Far off', occasion: oneOff('2026-03-14') },
+      ])
+    ).toEqual(['far']);
+  });
+  // regression: a yearly list keeps its day every year, so last year's is always in the window.
+  it('regression: offers a yearly list made a year ago, archived or not, though its date is in the window', () => {
+    expect(
+      ids([
+        { _id: 'live', name: 'A', occasion: yearly('2000-10-20'), createdAt: '2025-09-01' },
+        {
+          _id: 'arch',
+          name: 'B',
+          archived: true,
+          occasion: yearly('2000-10-20'),
+          createdAt: '2024-09-01',
+        },
+      ])
+    ).toEqual(['live', 'arch']);
+  });
+  it('is empty with no lists or no date today', () => {
+    expect(ids(null)).toEqual([]);
+    expect(
+      olderBirthdayLists([{ _id: 'a', name: 'A', occasion: oneOff('2020-01-01') }], null)
+    ).toEqual([]);
   });
 });

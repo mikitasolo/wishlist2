@@ -695,7 +695,7 @@ function ArchiveStep({
  * Archives a list from outside its page (no page state to follow), as the
  * page's own archive does: `PATCH { archived: true }`, with the same toasts.
  */
-async function archiveList(
+export async function archiveList(
   listId: string,
   showToast: (message: string, type: 'success' | 'error') => void
 ): Promise<boolean> {

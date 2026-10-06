@@ -118,3 +118,50 @@ export const BIRTHDAY_NUDGE_DETAIL = 'Make a list so friends know what to get yo
 export const NEW_LIST_PARAM = 'newList';
 /** Where the email's button goes: Home, with New list open on a Birthday list. */
 export const BIRTHDAY_NUDGE_HOME_PATH = `/?${NEW_LIST_PARAM}=birthday`;
+
+/**
+ * The older Birthday lists a new one can start from (WIS-348): the lists you
+ * own (alone or co-owned, archived or not) whose occasion kind is `birthday`,
+ * newest created first (`createdAt`, the given order where it's missing).
+ * Only `{ _id, name }` leaves it: the owner's own lists.
+ *
+ * Not this birthday's own: the profile birthday isn't known here (the email's
+ * link opens New list whenever), so the nudge's window (`hasBirthdayListComing`)
+ * is taken at its widest for any birthday the nudge could be showing for, from
+ * `BIRTHDAY_NUDGE_LEAD_DAYS` before `today` to the lead plus the grace days
+ * after it. A list whose date falls in it is left out when it's a one-off (made
+ * for this year's) or a yearly one made within `RECENT_BIRTHDAY_LIST_DAYS`
+ * (this year's, archived or not: a yearly list has the same day every year, so
+ * only its creation tells this year's from last year's). An older yearly list
+ * stays, archived or not. One with no known creation counts as recent. Nothing
+ * without `today`.
+ */
+export const RECENT_BIRTHDAY_LIST_DAYS = 60;
+
+export function olderBirthdayLists<
+  T extends {
+    _id: unknown;
+    name: string;
+    createdAt?: unknown;
+    archived?: boolean | null;
+    occasion?: Occasion | null;
+  },
+>(ownLists: readonly T[] | null | undefined, today: string | null | undefined) {
+  const from = today ? addDays(today, -BIRTHDAY_NUDGE_LEAD_DAYS) : null;
+  const to = today ? addDays(today, BIRTHDAY_NUDGE_LEAD_DAYS + BIRTHDAY_LIST_GRACE_DAYS) : null;
+  if (!from || !to) return [];
+  const recentBefore = new Date(today + 'T00:00:00Z').getTime() - RECENT_BIRTHDAY_LIST_DAYS * 864e5;
+  const time = (w: T) => (w.createdAt ? new Date(w.createdAt as string).getTime() || 0 : 0);
+  return (ownLists ?? [])
+    .filter((w) => {
+      const o = w.occasion;
+      if (o?.kind !== 'birthday') return false;
+      const date = nextOccurrence(o.date, o.recurrence ?? null, from);
+      const inWindow = date !== null && (daysBetween(date, to) ?? -1) >= 0;
+      if (!inWindow) return true;
+      if (o.recurrence !== 'yearly') return false;
+      return time(w) > 0 && time(w) < recentBefore;
+    })
+    .sort((a, b) => time(b) - time(a))
+    .map((w) => ({ _id: String(w._id), name: w.name }));
+}

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, within, act } from '@testing-library/react';
+import { render, screen, within, act, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 
@@ -64,15 +64,54 @@ vi.mock('@/components/AppHeader', () => ({ default: () => null }));
 vi.mock('@/components/AuthButton', () => ({ default: () => null }));
 vi.mock('@/components/GlobalSearch', () => ({ default: () => null }));
 vi.mock('@/components/CreateWishlistModal', () => ({
-  default: ({ isOpen, occasionKind }: { isOpen: boolean; occasionKind?: string }) =>
+  default: ({
+    isOpen,
+    occasionKind,
+    startFrom,
+  }: {
+    isOpen: boolean;
+    occasionKind?: string;
+    startFrom?: { lists: { _id: string; name: string }[]; onStart: (id: string) => void };
+  }) =>
     isOpen ? (
-      <div role="dialog" aria-label="Create new wishlist" data-occasion-kind={occasionKind} />
+      <div
+        role="dialog"
+        aria-label="Create new wishlist"
+        data-occasion-kind={occasionKind}
+        data-start-from={startFrom?.lists.map((w) => w._id).join(',')}
+      >
+        {startFrom && (
+          <button onClick={() => startFrom.onStart(startFrom.lists[0]._id)}>Start from</button>
+        )}
+      </div>
     ) : null,
+}));
+vi.mock('@/components/StartFromListModal', () => ({
+  archiveList: vi.fn(async () => true),
+  // Takes focus as it opens, as the real one's focus trap does.
+  default: ({
+    sourceId,
+    onArchiveSource,
+  }: {
+    sourceId: string;
+    onArchiveSource: () => Promise<boolean>;
+  }) => (
+    <div
+      role="dialog"
+      aria-label="Start a new list"
+      data-source={sourceId}
+      tabIndex={-1}
+      ref={(el) => el?.focus()}
+    >
+      <button onClick={() => void onArchiveSource()}>Archive source</button>
+    </div>
+  ),
 }));
 vi.mock('@/components/ShareButton', () => ({ default: () => null }));
 vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }));
 
 import Home from '@/components/Dashboard';
+import { archiveList } from '@/components/StartFromListModal';
 import { localDateString } from '@/lib/utils/occasion';
 import { atWidth } from './viewport';
 
@@ -171,6 +210,60 @@ describe('dashboard — the greeting row', () => {
     expect(dialog).toHaveAttribute('data-occasion-kind', 'birthday');
     // Taken off the address, so a reload doesn't open it again.
     expect(window.location.search).toBe('');
+  });
+
+  describe('start from an earlier list (WIS-348)', () => {
+    const birthday = { kind: 'birthday', date: '2000-03-14', recurrence: 'yearly' };
+
+    it('offers your older Birthday lists, archived or not, newest first, and opens the flow on one', async () => {
+      answers.lists = () =>
+        json({
+          success: true,
+          data: {
+            owned: [
+              list('w2', 'Trip', { occasion: { ...birthday, kind: 'other' } }),
+              list('w3', 'Birthday 2025', {
+                occasion: birthday,
+                archived: true,
+                createdAt: '2020-01-01',
+              }),
+              list('w4', 'Birthday 2024', {
+                occasion: birthday,
+                archived: true,
+                createdAt: '2020-01-01',
+              }),
+              // This year's (a one-off dated today): never offered as an earlier one.
+              list('w5', 'Birthday 2026', {
+                occasion: { kind: 'birthday', date: localDateString(new Date()), recurrence: null },
+              }),
+            ],
+            member: [list('m1', 'Anna’s birthday', { occasion: birthday, owners: ['anna'] })],
+          },
+        });
+      window.history.replaceState(null, '', '/?newList=birthday');
+      render(<Home />);
+      const dialog = await screen.findByRole('dialog', { name: 'Create new wishlist' });
+      await waitFor(() => expect(dialog).toHaveAttribute('data-start-from', 'w3,w4'));
+      await userEvent.setup().click(within(dialog).getByRole('button', { name: 'Start from' }));
+      expect(screen.queryByRole('dialog', { name: 'Create new wishlist' })).toBeNull();
+      expect(screen.getByRole('dialog', { name: 'Start a new list' })).toHaveAttribute(
+        'data-source',
+        'w3'
+      );
+      // Opened after New list closed, and holds the focus.
+      expect(screen.getByRole('dialog', { name: 'Start a new list' })).toHaveFocus();
+      // Archiving there is sent for that list, and the dashboard's own copy follows.
+      await userEvent.setup().click(screen.getByRole('button', { name: 'Archive source' }));
+      expect(archiveList).toHaveBeenCalledWith('w3', expect.any(Function));
+    });
+
+    it('offers nothing with no older Birthday list, nor on a plain New list', async () => {
+      window.history.replaceState(null, '', '/?newList=birthday');
+      render(<Home />);
+      const dialog = await screen.findByRole('dialog', { name: 'Create new wishlist' });
+      expect(dialog).not.toHaveAttribute('data-start-from');
+      expect(within(dialog).queryByRole('button', { name: 'Start from' })).toBeNull();
+    });
   });
 
   // regression (WIS-213): the Reserved by you tile showed "0" before its count
