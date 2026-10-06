@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
-// A share link's dialog (WIS-328, WIS-341): its URL with Copy link and the
-// share sheet, the warning for its level, the SVG download, and the print card
-// with the list's name and occasion.
+// A share link's dialog (WIS-328, WIS-341, WIS-346): its URL with Copy link
+// and the share sheet, the warning for its level, then how its code looks (a
+// card in a design, size and copies per sheet, or the bare code) and what to do
+// with it (print the card; download or print the code).
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -20,6 +21,13 @@ import ShareLinkDetailsDialog, {
 } from '@/components/ShareLinkDetailsDialog';
 import type { ShareLinkRow } from '@/lib/hooks/useShareLinks';
 import { qrShape, qrSvgFile } from '@/lib/utils/qrCode';
+
+async function pick(user: ReturnType<typeof userEvent.setup>, select: string, option: string) {
+  await user.click(screen.getByRole('combobox', { name: select }));
+  await user.click(screen.getByRole('option', { name: option }));
+}
+
+const printedCards = () => screen.getByTestId('qr-print-card').querySelectorAll('svg[data-design]');
 
 const TOKEN = 'AbCdEfGhIjKlMnOpQrStUv';
 const URL_ = `${window.location.origin}/l/${TOKEN}`;
@@ -52,7 +60,7 @@ describe('ShareLinkDetailsDialog', () => {
     expect(screen.getByRole('dialog', { name: 'Wedding QR' })).toHaveTextContent(
       LINK_WARNINGS.view
     );
-    expect(screen.getByTestId('qr-print-card')).toHaveTextContent(PRINT_CARD_CALLS.view);
+    expect(printedCards()[0]).toHaveTextContent(PRINT_CARD_CALLS.view);
   });
 
   it('warns that anyone who scans a Join link can join the list', () => {
@@ -66,7 +74,7 @@ describe('ShareLinkDetailsDialog', () => {
     expect(screen.getByRole('dialog', { name: 'Wedding QR' })).toHaveTextContent(
       LINK_WARNINGS.join
     );
-    expect(screen.getByTestId('qr-print-card')).toHaveTextContent(PRINT_CARD_CALLS.join);
+    expect(printedCards()[0]).toHaveTextContent(PRINT_CARD_CALLS.join);
   });
 
   it('downloads the SVG of exactly the link’s code, named after the list', async () => {
@@ -84,6 +92,7 @@ describe('ShareLinkDetailsDialog', () => {
       expect(this.href).toBe('blob:qr');
     });
     render(<ShareLinkDetailsDialog link={link()} listName="Our wedding" onClose={vi.fn()} />);
+    await user.click(screen.getByRole('radio', { name: 'QR code only' }));
     await user.click(screen.getByRole('button', { name: 'Download SVG' }));
     expect(click).toHaveBeenCalledTimes(1);
     expect(blobs[0].type).toBe('image/svg+xml');
@@ -102,15 +111,93 @@ describe('ShareLinkDetailsDialog', () => {
         onClose={vi.fn()}
       />
     );
-    const card = screen.getByTestId('qr-print-card');
-    expect(card).toHaveClass('qr-print-root', 'hidden', 'print:flex');
-    expect(card.parentElement).toBe(document.body);
-    expect(card).toHaveTextContent('Our wedding');
-    expect(card).toHaveTextContent(/^Our weddingWedding · /);
-    expect(card.querySelector('path')).toHaveAttribute('d', qrShape(URL_).path);
+    const root = screen.getByTestId('qr-print-card');
+    expect(root).toHaveClass('qr-print-root', 'hidden', 'print:grid');
+    expect(root.parentElement).toBe(document.body);
+    // A postcard by default, a full sheet of two, in the occasion's design.
+    const cards = printedCards();
+    expect(cards).toHaveLength(2);
+    expect(cards[0]).toHaveAttribute('data-design', 'wedding');
+    expect(cards[0]).toHaveAttribute('width', '148mm');
+    expect(cards[0]).toHaveTextContent(/^Wishlist\.Our ?weddingWedding · /);
+    expect(cards[0]).toHaveTextContent(PRINT_CARD_CALLS.view);
+    expect(cards[0]).toHaveTextContent(URL_);
+    expect(cards[0].querySelector('[data-qr] path')).toHaveAttribute('d', qrShape(URL_).path);
+    // Nothing on the card but what the link's visitors can see.
+    expect(screen.queryByRole('button', { name: 'Download SVG' })).toBeNull();
     await user.click(screen.getByRole('button', { name: 'Print card' }));
     expect(print).toHaveBeenCalledTimes(1);
     vi.unstubAllGlobals();
+  });
+
+  it('previews and prints the design, size and copies picked', async () => {
+    const user = userEvent.setup();
+    render(<ShareLinkDetailsDialog link={link()} listName="Our wedding" onClose={vi.fn()} />);
+    const preview = screen.getByRole('img', { name: 'Card preview for Wedding QR' });
+    // No occasion: Classic.
+    expect(preview).toHaveAttribute('data-design', 'classic');
+
+    await pick(user, 'Design', 'Confetti');
+    expect(screen.getByRole('img', { name: 'Card preview for Wedding QR' })).toHaveAttribute(
+      'data-design',
+      'confetti'
+    );
+
+    // A new size starts on a full sheet of it.
+    await pick(user, 'Size', 'Credit card · 85 × 54 mm');
+    expect(printedCards()).toHaveLength(8);
+    expect(printedCards()[0]).toHaveAttribute('data-design', 'confetti');
+    expect(printedCards()[0]).toHaveAttribute('width', '85mm');
+    expect(screen.getByTestId('qr-print-card').style.gridTemplateColumns).toBe('repeat(2, 85mm)');
+
+    await pick(user, 'Copies per sheet', '3');
+    expect(printedCards()).toHaveLength(3);
+
+    // One to a sheet: nothing to pick.
+    await pick(user, 'Size', 'A5 · 148 × 210 mm');
+    expect(printedCards()).toHaveLength(1);
+    expect(screen.queryByRole('combobox', { name: 'Copies per sheet' })).toBeNull();
+  });
+
+  it('follows the list’s occasion until a design is picked', async () => {
+    const user = userEvent.setup();
+    const props = { link: link(), listName: 'Our wedding', onClose: vi.fn() };
+    const { rerender } = render(<ShareLinkDetailsDialog {...props} />);
+    const preview = () => screen.getByRole('img', { name: 'Card preview for Wedding QR' });
+    expect(preview()).toHaveAttribute('data-design', 'classic');
+    // The occasion is set while the dialog is open (a co-owner, on the poll).
+    rerender(
+      <ShareLinkDetailsDialog
+        {...props}
+        occasion={{ kind: 'birthday', date: '2026-06-20', recurrence: null }}
+      />
+    );
+    expect(preview()).toHaveAttribute('data-design', 'birthday');
+    await pick(user, 'Design', 'Ribbon');
+    rerender(
+      <ShareLinkDetailsDialog
+        {...props}
+        occasion={{ kind: 'wedding', date: '2026-06-20', recurrence: null }}
+      />
+    );
+    expect(preview()).toHaveAttribute('data-design', 'ribbon');
+  });
+
+  it('downloads or prints the bare code once QR code only is picked', async () => {
+    const user = userEvent.setup();
+    render(<ShareLinkDetailsDialog link={link()} listName="Our wedding" onClose={vi.fn()} />);
+    await user.click(screen.getByRole('radio', { name: 'QR code only' }));
+    expect(screen.getByRole('img', { name: 'QR code for Wedding QR' })).toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: 'Design' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Download PNG' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Print$/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Print card' })).toBeNull();
+    const root = screen.getByTestId('qr-print-card');
+    expect(printedCards()).toHaveLength(0);
+    expect(root.querySelectorAll('path')).toHaveLength(1);
+    // With its URL under it, to type when a scan fails.
+    expect(root).toHaveTextContent(URL_);
+    expect(root.querySelector('path')).toHaveAttribute('d', qrShape(URL_).path);
   });
 
   it('shows the link’s full URL and copies it', async () => {

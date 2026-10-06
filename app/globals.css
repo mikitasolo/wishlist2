@@ -328,6 +328,16 @@
       overflow: visible !important;
       height: auto !important;
     }
+    /* The card's decoration prints in colour, not dropped as a background,
+       and each card has a light dashed line to cut along (WIS-346). */
+    .qr-print-root {
+      print-color-adjust: exact;
+      -webkit-print-color-adjust: exact;
+    }
+    .qr-print-cut {
+      outline: 0.2mm dashed #b5b3c8;
+      break-inside: avoid;
+    }
   }
 }
 
