@@ -47,7 +47,7 @@ vi.mock('@/lib/hooks/useCurrencySuggestion', () => ({
 }));
 vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }));
 
-import WelcomePage from '@/app/welcome/page';
+import WelcomePage, { welcomeSubtitle } from '@/components/WelcomeForm';
 
 type Reply = { status: number; body: unknown } | Error;
 let patchReply: Reply;
@@ -296,6 +296,66 @@ describe('Welcome page', () => {
       await waitFor(() => expect(showToast).toHaveBeenCalledWith('nope', 'error'));
       expect(replace).not.toHaveBeenCalled();
     });
+  });
+
+  // WIS-339: a sign-up through a live share link, headed back to it.
+  describe('on the way back to a share link', () => {
+    const LINK = '/l/AbCdEfGhIjKlMnOpQrStUv?then=join';
+    const joining = { name: 'Anna’s wedding', level: 'join' as const };
+    const isPrimary = (el: HTMLElement) => el.className.includes('bg-primary-600');
+
+    beforeEach(() => {
+      params.search = `callbackUrl=${encodeURIComponent(`${window.location.origin}${LINK}`)}`;
+    });
+
+    it('names the list it leads to', () => {
+      render(<WelcomePage nextList={joining} />);
+      expect(
+        screen.getByText(
+          'One quick thing before you join “Anna’s wedding”: the name its owners will see.'
+        )
+      ).toBeInTheDocument();
+    });
+
+    it('makes going on with the generated name the one-click way, back to the link', () => {
+      render(<WelcomePage nextList={joining} />);
+      const go = screen.getByRole('button', { name: 'Continue as @user_4f9k2x7q' });
+      expect(isPrimary(go)).toBe(true);
+      expect(isPrimary(screen.getByRole('button', { name: 'Save and continue' }))).toBe(false);
+      // The primary comes last: right on a wide screen, on top on a phone.
+      expect(go.previousElementSibling).toBe(
+        screen.getByRole('button', { name: 'Save and continue' })
+      );
+      fireEvent.click(go);
+      expect(replace).toHaveBeenCalledWith(LINK);
+      expect(patches()).toEqual([]);
+    });
+
+    it('makes Save and continue the primary once a name is typed, and saves it on the way', async () => {
+      render(<WelcomePage nextList={joining} />);
+      await chooseAvailable('jane_d');
+      const saveAndGo = screen.getByRole('button', { name: 'Save and continue' });
+      expect(isPrimary(saveAndGo)).toBe(true);
+      expect(isPrimary(screen.getByRole('button', { name: 'Continue as @user_4f9k2x7q' }))).toBe(
+        false
+      );
+      fireEvent.click(saveAndGo);
+      await waitFor(() => expect(replace).toHaveBeenCalledWith(LINK));
+      expect(patches()).toEqual([{ username: 'jane_d' }]);
+    });
+
+    it('looks as it always does without a live link to name', () => {
+      render(<WelcomePage nextList={null} />);
+      expect(screen.getByText(welcomeSubtitle(null))).toBeInTheDocument();
+      expect(isPrimary(keep())).toBe(false);
+      expect(isPrimary(save())).toBe(true);
+    });
+  });
+
+  it('says what a View link leads to', () => {
+    expect(welcomeSubtitle({ name: 'Birthday', level: 'view' })).toBe(
+      'One quick thing before you see “Birthday”: how people will see you.'
+    );
   });
 
   it('sends a signed-out visitor home', () => {

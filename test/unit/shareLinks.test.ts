@@ -1,6 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { generateShareToken, isShareLinkExpired, serializeShareLink } from '@/lib/utils/shareLinks';
-import { isShareTokenFormat, SHARE_TOKEN_LENGTH } from '@/lib/utils/shareLinkFields';
+import {
+  isShareTokenFormat,
+  SHARE_TOKEN_LENGTH,
+  shareLinkTokenFromCallback,
+} from '@/lib/utils/shareLinkFields';
 import { createShareLinkSchema, updateShareLinkSchema } from '@/lib/validations';
 import mongoose from 'mongoose';
 
@@ -181,5 +185,34 @@ describe('updateShareLinkSchema', () => {
 
   it.each(['label', 'expiresAt'])('refuses an operator object as %s', (field) => {
     expect(updateShareLinkSchema.safeParse({ [field]: { $ne: null } }).success).toBe(false);
+  });
+});
+
+describe('shareLinkTokenFromCallback (WIS-339)', () => {
+  const ORIGIN = 'https://wishlist.test';
+  const TOKEN = 'AbCdEfGhIjKlMnOpQrStUv';
+
+  it.each([
+    [`/l/${TOKEN}`, TOKEN],
+    [`/l/${TOKEN}?then=join`, TOKEN],
+    [`/l/${TOKEN}/`, TOKEN],
+    [`${ORIGIN}/l/${TOKEN}?then=ask#x`, TOKEN],
+  ])('finds the token in %s', (raw, expected) => {
+    expect(shareLinkTokenFromCallback(raw, ORIGIN)).toBe(expected);
+  });
+
+  it.each([
+    null,
+    '',
+    '/invites',
+    `/wishlists/${TOKEN}`,
+    `/l/${TOKEN}/more`,
+    '/l/short',
+    `/l/${TOKEN.slice(0, 21)}$`,
+    `https://evil.example/l/${TOKEN}`,
+    `//evil.example/l/${TOKEN}`,
+    'http://[bad',
+  ])('finds none in %s', (raw) => {
+    expect(shareLinkTokenFromCallback(raw, ORIGIN)).toBeNull();
   });
 });
