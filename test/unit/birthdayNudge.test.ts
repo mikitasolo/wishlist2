@@ -6,6 +6,7 @@ import {
   birthdayNudgeDue,
   birthdayNudgeTitle,
   hasBirthdayListComing,
+  olderBirthdayLists,
   type BirthdayRuleList,
 } from '@/lib/utils/birthdayNudge';
 import { birthdayEmailDayOffsets } from '@/lib/utils/birthdayNudgeEmails';
@@ -155,5 +156,27 @@ describe('the copy', () => {
 describe('birthdayEmailDayOffsets', () => {
   it('is three weeks ahead with two days of catch-up, nearest first', () => {
     expect(birthdayEmailDayOffsets()).toEqual([19, 20, 21]);
+  });
+});
+
+describe('olderBirthdayLists (WIS-348)', () => {
+  const birthday = { kind: 'birthday' as const };
+  it('keeps only the Birthday lists, in the order given, as id and name', () => {
+    expect(
+      olderBirthdayLists([
+        { _id: 'a', name: '2026', occasion: birthday, archived: false },
+        { _id: 'b', name: 'Trip', occasion: { kind: 'other' as const } },
+        { _id: 'c', name: '2025', occasion: birthday, archived: true },
+        { _id: 'd', name: 'None', occasion: null },
+        { _id: 'e', name: 'Unset' },
+      ])
+    ).toEqual([
+      { _id: 'a', name: '2026' },
+      { _id: 'c', name: '2025' },
+    ]);
+  });
+  it('is empty with no lists', () => {
+    expect(olderBirthdayLists(null)).toEqual([]);
+    expect(olderBirthdayLists([])).toEqual([]);
   });
 });

@@ -22,7 +22,8 @@ import { useLocalToday } from '@/lib/hooks/useLocalToday';
 import { usePinToTop } from '@/lib/hooks/usePinToTop';
 import type { FriendBirthday } from '@/lib/utils/comingUp';
 import { sortByUpcomingOccasion, type OccasionKind } from '@/lib/utils/occasion';
-import { NEW_LIST_PARAM } from '@/lib/utils/birthdayNudge';
+import StartFromListModal from '@/components/StartFromListModal';
+import { NEW_LIST_PARAM, olderBirthdayLists } from '@/lib/utils/birthdayNudge';
 import { pinnedFirst } from '@/lib/utils/pinnedLists';
 import { IWishlist } from '@/models/Wishlist';
 
@@ -75,6 +76,8 @@ export default function Dashboard() {
     setCreateKind(kind);
     setShowCreateModal(true);
   }, []);
+  // The older list a new one is being started from (WIS-348), from the birthday nudge's New list.
+  const [startFromId, setStartFromId] = useState<string | null>(null);
   const openBirthdayList = useCallback(() => openCreate('birthday'), [openCreate]);
   // Pin to top on your own lists: per-owner, one at a time (`usePinToTop`).
   const { pinning, toggle: togglePin } = usePinToTop(setOwned);
@@ -188,6 +191,18 @@ export default function Dashboard() {
     [owned, today]
   );
   const sharedByOccasion = useMemo(() => sortByUpcomingOccasion(member, today), [member, today]);
+  // Offered only on the birthday nudge's New list, and only with an older Birthday list of yours.
+  const startFromOffer = useMemo(() => {
+    const lists = createKind === 'birthday' && !loadFailed ? olderBirthdayLists(owned) : [];
+    if (lists.length === 0) return undefined;
+    return {
+      lists,
+      onStart: (id: string) => {
+        setShowCreateModal(false);
+        setStartFromId(id);
+      },
+    };
+  }, [createKind, loadFailed, owned]);
   const pins = useMemo(() => ({ pinning, onToggle: togglePin }), [pinning, togglePin]);
 
   const profileUsername = (session?.user as { username?: string })?.username || null;
@@ -242,7 +257,11 @@ export default function Dashboard() {
           isOpen={showCreateModal}
           onClose={() => setShowCreateModal(false)}
           occasionKind={createKind}
+          startFrom={startFromOffer}
         />
+        {startFromId && (
+          <StartFromListModal sourceId={startFromId} isOpen onClose={() => setStartFromId(null)} />
+        )}
 
         <div className="space-y-12">
           {/* What's waiting on you: hidden when nothing is. Your proposals to

@@ -455,3 +455,48 @@ describe('CreateWishlistModal — the new order', () => {
     });
   });
 });
+
+describe('start from last year’s list (WIS-348)', () => {
+  const lists = [
+    { _id: 'w2', name: 'Birthday 2025' },
+    { _id: 'w1', name: 'Birthday 2024' },
+  ];
+
+  it('starts from the newest older list by default', async () => {
+    const onStart = vi.fn();
+    render(
+      <CreateWishlistModal
+        isOpen
+        onClose={vi.fn()}
+        occasionKind="birthday"
+        startFrom={{ lists, onStart }}
+      />
+    );
+    await userEvent.setup().click(button('Start from last year’s list'));
+    expect(onStart).toHaveBeenCalledWith('w2');
+  });
+
+  it('starts from the one picked when there are several', async () => {
+    const onStart = vi.fn();
+    const user = userEvent.setup();
+    render(<CreateWishlistModal isOpen onClose={vi.fn()} startFrom={{ lists, onStart }} />);
+    await user.click(screen.getByRole('combobox', { name: 'List to start from' }));
+    await user.click(screen.getByRole('option', { name: 'Birthday 2024' }));
+    await user.click(button('Start from last year’s list'));
+    expect(onStart).toHaveBeenCalledWith('w1');
+  });
+
+  it('shows no picker for one list, and no offer without any', () => {
+    const { rerender } = render(
+      <CreateWishlistModal
+        isOpen
+        onClose={vi.fn()}
+        startFrom={{ lists: lists.slice(0, 1), onStart: vi.fn() }}
+      />
+    );
+    expect(screen.getByRole('button', { name: 'Start from last year’s list' })).toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: 'List to start from' })).toBeNull();
+    rerender(<CreateWishlistModal isOpen onClose={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: 'Start from last year’s list' })).toBeNull();
+  });
+});

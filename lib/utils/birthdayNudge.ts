@@ -118,3 +118,17 @@ export const BIRTHDAY_NUDGE_DETAIL = 'Make a list so friends know what to get yo
 export const NEW_LIST_PARAM = 'newList';
 /** Where the email's button goes: Home, with New list open on a Birthday list. */
 export const BIRTHDAY_NUDGE_HOME_PATH = `/?${NEW_LIST_PARAM}=birthday`;
+
+/**
+ * The older Birthday lists a new one can start from (WIS-348): the lists you
+ * own (alone or co-owned, archived or not) whose occasion kind is `birthday`,
+ * in the order given (`GET /api/wishlists` answers newest first, so the first
+ * is last year's). Only `{ _id, name }` leaves it: the owner's own lists.
+ */
+export function olderBirthdayLists<
+  T extends { _id: unknown; name: string; occasion?: Pick<Occasion, 'kind'> | null },
+>(ownLists: readonly T[] | null | undefined): { _id: string; name: string }[] {
+  return (ownLists ?? [])
+    .filter((w) => w.occasion?.kind === 'birthday')
+    .map((w) => ({ _id: String(w._id), name: w.name }));
+}

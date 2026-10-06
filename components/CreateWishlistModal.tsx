@@ -51,6 +51,13 @@ interface CreateWishlistModalProps {
    * occasion is its own, never filled in from the profile birthday.
    */
   occasionKind?: OccasionKind;
+  /**
+   * Older lists of the same kind to start from (WIS-348): the birthday
+   * nudge's New list offers "Start from last year's list" beside a blank one.
+   * `lists` is newest first; `onStart` gets the one picked (the first unless
+   * another is chosen) and the caller closes this and opens that flow.
+   */
+  startFrom?: { lists: { _id: string; name: string }[]; onStart: (id: string) => void };
 }
 
 const defaultFormData = {
@@ -83,11 +90,13 @@ export default function CreateWishlistModal({
   onClose,
   onCreated,
   occasionKind,
+  startFrom,
 }: CreateWishlistModalProps) {
   const router = useRouter();
   const { data: session } = useSession();
   const { showToast } = useToast();
   const [formData, setFormData] = useState(defaultFormData);
+  const [startFromId, setStartFromId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showConfirmClose, setShowConfirmClose] = useState(false);
@@ -222,6 +231,32 @@ export default function CreateWishlistModal({
         }
       >
         <div className="space-y-4">
+          {startFrom && startFrom.lists.length > 0 && (
+            <div className="space-y-3 rounded-xl border border-border p-3">
+              <p className="text-sm text-muted-foreground">
+                Make this year’s list from an older one, keeping the items and people you pick.
+              </p>
+              {startFrom.lists.length > 1 && (
+                <Select
+                  value={startFromId ?? startFrom.lists[0]._id}
+                  onChange={setStartFromId}
+                  options={startFrom.lists.map((w) => ({ value: w._id, label: w.name }))}
+                  ariaLabel="List to start from"
+                  size="lg"
+                  triggerClassName="w-full"
+                  disabled={isSubmitting}
+                />
+              )}
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={isSubmitting}
+                onClick={() => startFrom.onStart(startFromId ?? startFrom.lists[0]._id)}
+              >
+                Start from last year’s list
+              </Button>
+            </div>
+          )}
           <Field label="Wishlist name *" id="name">
             <Input
               required
