@@ -8,6 +8,7 @@ import { render, screen, cleanup, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ApiItem } from '@/types/api';
 import { WISHLIST_SORT_STORAGE_KEY } from '@/lib/utils/itemFilters';
+import { setDiscreetMode } from '@/lib/hooks/useDiscreetMode';
 
 const { router, showToast, params } = vi.hoisted(() => ({
   // One object, as Next's own router is: the page's read of the list depends on it.
@@ -424,5 +425,42 @@ describe('the sort is still remembered', () => {
     expect(screen.getByRole('combobox', { name: 'Sort items by' })).toHaveTextContent('Name A–Z');
     expect(shown()).toEqual(['Lamp', 'Mug', 'Scarf', 'Idea', 'Kettle', 'Vase']);
     expect(localStorage.getItem(WISHLIST_SORT_STORAGE_KEY)).toBe('name-asc');
+  });
+});
+
+// Discreet mode (WIS-46): applied as the page renders, so a member's chips,
+// order, dimming and cards say nothing of what's reserved.
+describe('discreet mode', () => {
+  afterEach(() => act(() => setDiscreetMode(false)));
+
+  it('draws a member\u2019s list with no reserved chip, no reserved cards and no reserve controls', async () => {
+    setDiscreetMode(true);
+    await open('birthday');
+    expect(chipNames()).toEqual(['All 6', 'Available 4', 'Your proposals 1']);
+    expect(shown()).toEqual(['Mug', 'Kettle', 'Scarf', 'Lamp', 'Idea', 'Vase']);
+    expect(dimmed()).toEqual(['Vase']);
+    expect(screen.queryByText(/reserv/i)).toBeNull();
+    expect(screen.queryByRole('button', { name: /reserve|release/i })).toBeNull();
+  });
+
+  it('shows All when the list was opened on Reserved by you, and the real state again once off', async () => {
+    window.history.replaceState(null, '', '/wishlists/birthday?show=reserved-by-you');
+    setDiscreetMode(true);
+    await open('birthday');
+    expect(chip('All')).toBeChecked();
+    expect(shown()).toHaveLength(6);
+
+    act(() => setDiscreetMode(false));
+    expect(chipNames()).toEqual(['All 6', 'Available 2', 'Reserved by you 1', 'Your proposals 1']);
+    // The chip they opened on is back, and shows what they reserved.
+    expect(chip('Reserved by you')).toBeChecked();
+    expect(shown()).toEqual(['Scarf']);
+  });
+
+  it('leaves an owner\u2019s list as it is', async () => {
+    userRole = 'owner';
+    setDiscreetMode(true);
+    await open('birthday');
+    expect(chipNames()).toEqual(['All 5', 'Drafts 1', 'Proposals 1', 'Live 2', 'Received 1']);
   });
 });

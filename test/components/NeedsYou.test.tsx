@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, within, act, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { setDiscreetMode } from '@/lib/hooks/useDiscreetMode';
 import type { ReactNode } from 'react';
 
 // The dashboard's Needs you (WIS-252, D4): what's waiting on you, in up to
@@ -234,6 +235,18 @@ describe('Needs you', () => {
       'href',
       '/booked'
     );
+  });
+
+  it('leaves the changed reservations row off in discreet mode (WIS-46)', async () => {
+    answers.summary = () => json({ success: true, data: { changed: 3 } });
+    act(() => setDiscreetMode(true));
+    try {
+      render(<NeedsYou ownLists={[]} />);
+      await act(async () => {});
+      expect(screen.queryByText(/reservations? changed/)).toBeNull();
+    } finally {
+      act(() => setDiscreetMode(false));
+    }
   });
 
   it('says "1 reservation changed" for one', async () => {

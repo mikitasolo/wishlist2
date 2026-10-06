@@ -5,6 +5,8 @@ import { useKnownSession } from '@/lib/hooks/useKnownSession';
 import BrandLink from '@/components/BrandLink';
 import GlobalSearch from '@/components/GlobalSearch';
 import { HeaderNav, TabBar } from '@/components/AppNav';
+import IconButton from '@/components/IconButton';
+import { useDiscreetMode } from '@/lib/hooks/useDiscreetMode';
 import { useUnreadNotifications } from '@/lib/hooks/useUnreadNotifications';
 
 interface AppHeaderProps {
@@ -56,6 +58,7 @@ export default function AppHeader({ actions, search = true, minimal = false }: A
   const username = session?.user?.username ?? null;
   // One reader for both badges, the tab bar's and the header link's.
   const unread = useUnreadNotifications();
+  const { discreet, setDiscreet } = useDiscreetMode();
 
   return (
     <>
@@ -77,6 +80,18 @@ export default function AppHeader({ actions, search = true, minimal = false }: A
             ) : null}
           </div>
           <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+            {signedIn && discreet && (
+              // Discreet mode is on (WIS-46): reservations are kept off the
+              // screen, and this says so, and turns it off.
+              <IconButton
+                icon="eye-off"
+                label="Discreet mode is on. Turn it off"
+                title="Discreet mode is on. Turn it off"
+                variant="secondary"
+                className="flex-shrink-0"
+                onClick={() => setDiscreet(false)}
+              />
+            )}
             {search && !minimal && <GlobalSearch onOpenChange={setSearchOpen} />}
             {actions}
           </div>

@@ -14,6 +14,8 @@ import ItemCardView from '@/components/ItemCardView';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import Menu, { type MenuItem } from '@/components/Menu';
 import { statusMeta } from '@/lib/utils/itemStatus';
+import { useDiscreetMode } from '@/lib/hooks/useDiscreetMode';
+import { withoutReservation } from '@/lib/utils/discreet';
 import IconButton from '@/components/IconButton';
 import ItemSheet from '@/components/ItemSheet';
 import {
@@ -133,7 +135,7 @@ interface WishlistItemProps {
 }
 
 function WishlistItem({
-  item,
+  item: shownItem,
   onUpdate,
   onEdit,
   onReview,
@@ -149,6 +151,15 @@ function WishlistItem({
   highlighted = false,
 }: WishlistItemProps) {
   const { data: session } = useSession();
+  // Discreet mode (WIS-46): a member's card is drawn as plain available, with
+  // nothing to reserve or release, whatever the item's state. The item itself
+  // (and the poll's updates to it) is left as it is.
+  const { discreet } = useDiscreetMode();
+  const hideBooking = discreet && isMember && !isOwner;
+  const item = useMemo(
+    () => (hideBooking ? withoutReservation(shownItem) : shownItem),
+    [hideBooking, shownItem]
+  );
   // The item's details (ItemSheet), opened from the card's body.
   const [sheetOpen, setSheetOpen] = useState(false);
   const bodyButtonRef = useRef<HTMLButtonElement>(null);
@@ -339,6 +350,8 @@ function WishlistItem({
       tone: 'soft',
       onClick: () => onEdit(item),
     };
+  } else if (hideBooking) {
+    // Discreet mode: no reserve control, and no disabled one to give it away.
   } else if (isAuthenticated && isMember && item.status === 'available') {
     primary = {
       label: 'Reserve',

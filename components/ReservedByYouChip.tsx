@@ -1,4 +1,7 @@
+'use client';
+
 import Badge, { type BadgeSize } from '@/components/Badge';
+import { useDiscreetMode } from '@/lib/hooks/useDiscreetMode';
 
 /**
  * "2 reserved by you": how many items on a list shared with you that you've
@@ -20,7 +23,9 @@ export default function ReservedByYouChip({
   /** Position only. */
   className?: string;
 }) {
-  if (!count || count <= 0) return null;
+  // Discreet mode (WIS-46) keeps reservations, counts included, off the screen.
+  const { discreet } = useDiscreetMode();
+  if (discreet || !count || count <= 0) return null;
   return (
     <Badge tone="success" icon="gift" size={size} className={className}>
       {count} reserved by you

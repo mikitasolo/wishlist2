@@ -27,6 +27,7 @@ vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }
 
 import BookedPage from '@/app/booked/page';
 import type { Occasion } from '@/lib/utils/occasion';
+import { setDiscreetMode } from '@/lib/hooks/useDiscreetMode';
 import { ITEM_REQUEST_TIMEOUT_MS, REQUEST_TIMEOUT_MESSAGE } from '@/lib/utils/requestTimeout';
 
 const reservation = {
@@ -2044,5 +2045,36 @@ describe('BookedPage — what to give next (WIS-263)', () => {
         '/wishlists/odds'
       );
     });
+  });
+});
+
+// Discreet mode (WIS-46): the page is covered until Show, for this visit only.
+describe('BookedPage in discreet mode', () => {
+  afterEach(() => act(() => setDiscreetMode(false)));
+
+  it('covers the reservations until Show, and the next visit is covered again', async () => {
+    setDiscreetMode(true);
+    mockHeldFetch();
+    const view = render(<BookedPage />);
+    expect(screen.getByText('Discreet mode is on')).toBeInTheDocument();
+    await act(async () => {});
+    expect(screen.queryByText('Lego set')).toBeNull();
+    expect(screen.queryByTestId('reserved-summary')).toBeNull();
+
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Show' }));
+    expect(await screen.findByText('Lego set')).toBeInTheDocument();
+    expect(screen.queryByText('Discreet mode is on')).toBeNull();
+
+    view.unmount();
+    mockHeldFetch();
+    render(<BookedPage />);
+    expect(screen.getByText('Discreet mode is on')).toBeInTheDocument();
+  });
+
+  it('shows the page as ever while it is off', async () => {
+    mockHeldFetch();
+    render(<BookedPage />);
+    expect(await screen.findByText('Lego set')).toBeInTheDocument();
+    expect(screen.queryByText('Discreet mode is on')).toBeNull();
   });
 });
