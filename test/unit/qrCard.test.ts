@@ -6,6 +6,7 @@ import {
   QR_CARD_SIZES,
   QR_CARD_SIZE_SPECS,
   SHEET_GAP,
+  cardPixelSize,
   clampCopies,
   defaultCardDesign,
   fitText,
@@ -32,6 +33,14 @@ describe('sheetGrid', () => {
       expect(cols * width + (cols - 1) * SHEET_GAP).toBeLessThanOrEqual(PRINTABLE_AREA.width);
       expect(rows * height + (rows - 1) * SHEET_GAP).toBeLessThanOrEqual(PRINTABLE_AREA.height);
     }
+  });
+});
+
+describe('cardPixelSize', () => {
+  it('sizes a card image at 300 dpi of its printed size', () => {
+    expect(cardPixelSize('card')).toEqual({ width: 1004, height: 638 });
+    expect(cardPixelSize('postcard')).toEqual({ width: 1748, height: 1240 });
+    expect(cardPixelSize('card', 600)).toEqual({ width: 2008, height: 1276 });
   });
 });
 

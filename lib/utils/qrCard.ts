@@ -53,6 +53,18 @@ export function clampCopies(size: QrCardSize, copies: number): number {
   return Math.min(maxCopiesPerSheet(size), Math.max(1, Math.floor(copies)));
 }
 
+/** A card image's resolution (WIS-350): sharp in print, and the code scans off a screen. */
+export const CARD_PNG_DPI = 300;
+
+/** A `size` card's pixels at `dpi`. */
+export function cardPixelSize(
+  size: QrCardSize,
+  dpi: number = CARD_PNG_DPI
+): { width: number; height: number } {
+  const { width, height } = QR_CARD_SIZE_SPECS[size];
+  return { width: Math.round((width / 25.4) * dpi), height: Math.round((height / 25.4) * dpi) };
+}
+
 /** The columns the sheet lays `copies` cards out in: never more than there are cards. */
 export function sheetColumns(size: QrCardSize, copies: number): number {
   return Math.min(sheetGrid(size).cols, Math.max(1, copies));
