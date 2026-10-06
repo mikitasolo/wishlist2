@@ -227,7 +227,11 @@ export default function Dashboard() {
           ) : loadFailed ? (
             <LoadError title="Couldn’t load your wishlists" onRetry={retryLoad} />
           ) : !hasAny ? (
-            <StarterCard username={profileUsername} onCreate={() => setShowCreateModal(true)} />
+            <>
+              {/* No lists yet, but a friend's birthday can still be coming. */}
+              <ComingUp own={[]} shared={[]} birthdays={birthdays} viewerId={session.user.id} />
+              <StarterCard username={profileUsername} onCreate={() => setShowCreateModal(true)} />
+            </>
           ) : (
             <>
               <ComingUp

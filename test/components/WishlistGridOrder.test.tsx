@@ -120,6 +120,7 @@ beforeEach(() => {
       });
     }
     if (url === '/api/users/friend-id/wishlists') return json({ success: true, data: shared });
+    if (url === '/api/users/me/birthdays') return json({ success: true, data: [] });
     throw new Error(`unexpected fetch ${url}`);
   });
   vi.stubGlobal('fetch', fetchMock);

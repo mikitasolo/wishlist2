@@ -74,6 +74,7 @@ beforeEach(() => {
     'fetch',
     vi.fn(async (url: string) => {
       if (url === '/api/wishlists') return json({ success: true, data: { owned, member: [] } });
+      if (url === '/api/users/me/birthdays') return json({ success: true, data: [] });
       throw new Error(`unexpected fetch ${url}`);
     })
   );

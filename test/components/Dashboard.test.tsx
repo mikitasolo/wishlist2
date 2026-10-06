@@ -380,6 +380,20 @@ describe('dashboard — friends’ birthdays in Coming up (WIS-343)', () => {
     expect(requested('/api/users/me/birthdays')).toBe(1);
   });
 
+  it('shows a friend’s birthday to an account with no lists yet, above the starter card', async () => {
+    answers.lists = () => json({ success: true, data: { owned: [], member: [] } });
+    answers.birthdays = () =>
+      json({
+        success: true,
+        data: [{ id: 'anna-id', username: 'anna', image: null, birthday: todayYearly() }],
+      });
+    render(<Home />);
+
+    expect(await screen.findByRole('link', { name: '@anna’s birthday' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: 'Coming up' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Your wishlists' })).toBeNull();
+  });
+
   it.each([
     ['a 5xx', () => serverError('Failed to fetch birthdays')],
     [
