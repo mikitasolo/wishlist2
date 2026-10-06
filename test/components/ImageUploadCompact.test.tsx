@@ -14,7 +14,10 @@ const PHOTO = 'https://teststore42.public.blob.vercel-storage.com/uploads/u1/new
 describe('ImageUpload — compact photo row (the item form)', () => {
   it('offers Add photo when empty, with no big drop zone', () => {
     render(<ImageUpload compact value={null} onChange={vi.fn()} />);
-    expect(screen.getByRole('button', { name: 'Add photo' })).toBeInTheDocument();
+    // One control: the dashed tile is the button, not an empty box beside it.
+    expect(screen.getAllByRole('button')).toEqual([
+      screen.getByRole('button', { name: 'Add photo' }),
+    ]);
     expect(screen.queryByRole('button', { name: /remove/i })).toBeNull();
     expect(screen.queryByText(/drag & drop/i)).toBeNull();
   });

@@ -17,8 +17,8 @@ interface ImageUploadProps {
   /** Render as a compact circular control (avatars). Forces a 1:1 round crop. */
   circle?: boolean;
   /**
-   * Render as a 72px thumbnail row ("Add photo", or the thumbnail with Replace
-   * and Remove), for a form where the photo is one field among others (the
+   * Render as a 72px row (a dashed "Add photo" control, or the thumbnail with
+   * Replace and Remove), for a form where the photo is one field among others (the
    * item form). An image dropped anywhere on the page, or pasted, is taken too.
    */
   compact?: boolean;
@@ -186,22 +186,32 @@ export default function ImageUpload({
         }}
       />
 
-      {compact ? (
+      {compact && !value ? (
+        // Empty: one dashed control, as tall as the thumbnail row it turns into.
+        <div className="flex items-center gap-4">
+          <button
+            type="button"
+            onClick={openPicker}
+            disabled={disabled || uploading}
+            className={`inline-flex h-[72px] items-center gap-3 rounded-xl border-2 border-dashed pl-3 pr-5 text-sm font-medium transition-colors ${
+              dragging
+                ? 'border-primary-500 bg-primary-500/12 text-foreground'
+                : 'border-border-strong text-foreground hover:bg-surface-hover'
+            } disabled:opacity-60`}
+          >
+            <span className="inline-flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-surface-2 text-muted-foreground">
+              {uploading ? <Spinner /> : <Icon name="image" size={18} />}
+            </span>
+            Add photo
+          </button>
+          {uploading && <span className="text-sm text-muted-foreground">Uploading…</span>}
+        </div>
+      ) : compact ? (
         <div className="flex items-center gap-4">
           <div
-            className={`relative flex h-[72px] w-[72px] flex-shrink-0 items-center justify-center overflow-hidden rounded-xl transition-colors ${
-              value
-                ? 'border border-border bg-surface-2'
-                : dragging
-                  ? 'border-2 border-dashed border-primary-500 bg-primary-500/12'
-                  : 'border-2 border-dashed border-border-strong hover:bg-surface-hover'
-            } ${disabled ? 'opacity-60' : ''}`}
+            className={`relative flex h-[72px] w-[72px] flex-shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border bg-surface-2 ${disabled ? 'opacity-60' : ''}`}
           >
-            {value ? (
-              <BannerImage src={value} alt="Item photo" sizes="72px" />
-            ) : (
-              <Icon name="image" size={18} className="text-muted-foreground" />
-            )}
+            <BannerImage src={value!} alt="Item photo" sizes="72px" />
             {uploading && (
               <div className="absolute inset-0 flex items-center justify-center bg-black/40 text-white">
                 <Spinner className="text-white" />
@@ -214,23 +224,20 @@ export default function ImageUpload({
               type="button"
               variant="secondary"
               size="sm"
-              icon={value ? undefined : 'plus'}
               onClick={openPicker}
               disabled={disabled || uploading}
             >
-              {value ? 'Replace' : 'Add photo'}
+              Replace
             </Button>
-            {value && (
-              <Button
-                type="button"
-                variant="danger-ghost"
-                size="sm"
-                onClick={remove}
-                disabled={disabled || uploading}
-              >
-                Remove
-              </Button>
-            )}
+            <Button
+              type="button"
+              variant="danger-ghost"
+              size="sm"
+              onClick={remove}
+              disabled={disabled || uploading}
+            >
+              Remove
+            </Button>
             {uploading && (
               <span className="inline-flex h-9 items-center text-sm text-muted-foreground">
                 Uploading…
