@@ -113,7 +113,7 @@ import { useCurrencyRates } from '@/lib/hooks/useCurrencyRates';
 import { useViewerLocale } from '@/lib/hooks/useViewerLocale';
 import BudgetFilter from '@/components/BudgetFilter';
 import { filterByBudget, hasPricedItem, parseBudget } from '@/lib/utils/budgetFilter';
-import { needsPricesControl, viewerPriceCurrency } from '@/lib/utils/listPrices';
+import { needsPricesControl, ORIGINAL_PRICES, viewerPriceCurrency } from '@/lib/utils/listPrices';
 import { TONE_CLASSES } from '@/lib/utils/statusTones';
 import { useReceivedToast } from '@/lib/hooks/useReceivedToast';
 import { useReserveToast } from '@/lib/hooks/useReserveToast';
@@ -1731,20 +1731,33 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
     [items, activeChip, viewerRole, viewerId, sortBy]
   );
 
-  // The budget filter ("Under X", in the viewer's currency, WIS-326): for
-  // gifters only (a signed-in non-owner of someone else's list; a signed-out link visitor has no known currency), never
-  // saved. It narrows what's shown after the chips have counted, so a chip's
-  // count never moves with it.
-  const viewerCurrency = viewerPriceCurrency(session?.user?.defaultCurrency);
+  // Prices (D9): someone else's list starts in the viewer's currency, their
+  // own on each item's; offered only when some price is in another currency.
+  const prices = useListPrices({
+    viewerId,
+    defaultCurrency: session?.user?.defaultCurrency,
+    ownList: isOwner,
+    items,
+  });
+
+  // The budget filter ("Under X", WIS-326): for gifters only (a signed-in
+  // non-owner of someone else's list; a signed-out link visitor has no known
+  // currency), never saved. The amount is in the currency Prices shows, so a
+  // new pick re-reads the typed text in it; on each item's own currency (or
+  // with Prices not offered) it's the account's default. It narrows what's
+  // shown after the chips have counted, so a chip's count never moves with it.
+  const accountCurrency = viewerPriceCurrency(session?.user?.defaultCurrency);
+  const viewerCurrency = prices.value === ORIGINAL_PRICES ? accountCurrency : prices.value;
   const viewerLocale = useViewerLocale();
   const [budgetText, setBudgetText] = useState('');
   const budgetOffered = !isOwner && !!viewerId && hasPricedItem(items);
   const budget = budgetOffered ? parseBudget(budgetText, viewerLocale) : null;
   const budgetLimit = budget === 'invalid' ? null : budget;
   // Rates are only needed to compare a price in another currency.
-  const budgetRates = useCurrencyRates(
-    budgetLimit !== null && needsPricesControl(items, viewerCurrency)
+  const ownRates = useCurrencyRates(
+    budgetLimit !== null && prices.rates === null && needsPricesControl(items, viewerCurrency)
   );
+  const budgetRates = prices.rates ?? ownRates;
 
   const filteredItems = useMemo(
     () =>
@@ -1818,15 +1831,6 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
     itemIds,
     isShown: isItemShown,
     reveal: showAllItems,
-  });
-
-  // Prices (D9): someone else's list starts in the viewer's currency, their
-  // own on each item's; offered only when some price is in another currency.
-  const prices = useListPrices({
-    viewerId,
-    defaultCurrency: session?.user?.defaultCurrency,
-    ownList: isOwner,
-    items,
   });
 
   // The grid's first cell: an owner's Add item or a member's Propose an item,

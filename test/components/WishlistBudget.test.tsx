@@ -161,6 +161,31 @@ describe('budget filter', () => {
     expect(screen.getAllByRole('radio').map((r) => r.textContent)).toEqual(before);
   });
 
+  it('follows the currency picked in Prices, keeping the typed amount', async () => {
+    const user = userEvent.setup();
+    await open();
+    await user.type(budget()!, '15');
+    expect(budget()).toHaveAccessibleName(/in PLN/);
+    await waitFor(() => expect(shown()).toEqual(['Item: Gift card']));
+
+    await user.click(screen.getByRole('combobox', { name: 'Show prices in' }));
+    await user.click(screen.getByRole('option', { name: /^USD/ }));
+    // The same "15", now dollars: the Stove (10 USD) is within it.
+    expect(budget()).toHaveValue('15');
+    expect(budget()).toHaveAccessibleName(/in USD/);
+    await waitFor(() => expect([...shown()].sort()).toEqual(['Item: Gift card', 'Item: Stove']));
+  });
+
+  it('falls back to the account’s default currency when Prices is on each item’s own', async () => {
+    const user = userEvent.setup();
+    await open();
+    await user.click(screen.getByRole('combobox', { name: 'Show prices in' }));
+    await user.click(screen.getByRole('option', { name: 'Each item’s currency' }));
+    await user.type(budget()!, '15');
+    expect(budget()).toHaveAccessibleName(/in PLN/);
+    await waitFor(() => expect(shown()).toEqual(['Item: Gift card']));
+  });
+
   it('is not saved: a fresh visit starts without it', async () => {
     const view = await open();
     await userEvent.type(budget()!, '50');
