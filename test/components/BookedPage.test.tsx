@@ -2056,30 +2056,30 @@ describe('BookedPage in discreet mode', () => {
     setDiscreetMode(true);
     mockHeldFetch();
     const view = render(<BookedPage />);
-    expect(screen.getByText('Discreet mode is on')).toBeInTheDocument();
+    expect(screen.getByText('No spoiler mode is on')).toBeInTheDocument();
     await act(async () => {});
     expect(screen.queryByText('Lego set')).toBeNull();
     expect(screen.queryByTestId('reserved-summary')).toBeNull();
 
     await userEvent.setup().click(screen.getByRole('button', { name: 'Show' }));
     expect(await screen.findByText('Lego set')).toBeInTheDocument();
-    expect(screen.queryByText('Discreet mode is on')).toBeNull();
+    expect(screen.queryByText('No spoiler mode is on')).toBeNull();
 
     // Off and on again, it's covered again without leaving the page.
     act(() => setDiscreetMode(false));
     act(() => setDiscreetMode(true));
-    expect(screen.getByText('Discreet mode is on')).toBeInTheDocument();
+    expect(screen.getByText('No spoiler mode is on')).toBeInTheDocument();
 
     view.unmount();
     mockHeldFetch();
     render(<BookedPage />);
-    expect(screen.getByText('Discreet mode is on')).toBeInTheDocument();
+    expect(screen.getByText('No spoiler mode is on')).toBeInTheDocument();
   });
 
   it('shows the page as ever while it is off', async () => {
     mockHeldFetch();
     render(<BookedPage />);
     expect(await screen.findByText('Lego set')).toBeInTheDocument();
-    expect(screen.queryByText('Discreet mode is on')).toBeNull();
+    expect(screen.queryByText('No spoiler mode is on')).toBeNull();
   });
 });

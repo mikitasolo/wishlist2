@@ -124,20 +124,22 @@ describe('the "N reserved by you" chip', () => {
 });
 
 describe('the header switch', () => {
-  it('is pressed while on, flips in one tap, and is remembered', async () => {
+  it('is checked while on, flips in one tap, and is remembered', async () => {
     const user = userEvent.setup();
     render(<AppHeader actions={<AuthButton />} />);
-    const toggle = screen.getByRole('button', { name: 'Discreet mode' });
-    expect(toggle).toHaveAttribute('aria-pressed', 'false');
-    expect(toggle).toHaveAttribute('title', 'Turn on discreet mode');
+    const toggle = screen.getByRole('switch', { name: 'No spoiler mode' });
+    expect(toggle).toHaveAttribute('aria-checked', 'false');
+    expect(toggle).toHaveAttribute('title', 'Turn on no spoiler mode');
+    // The name is on the pill too, from sm up.
+    expect(toggle).toHaveTextContent('No spoiler mode');
 
     await user.click(toggle);
-    expect(toggle).toHaveAttribute('aria-pressed', 'true');
-    expect(toggle).toHaveAttribute('title', 'Discreet mode is on. Turn it off');
+    expect(toggle).toHaveAttribute('aria-checked', 'true');
+    expect(toggle).toHaveAttribute('title', 'No spoiler mode is on. Turn it off');
     expect(localStorage.getItem(DISCREET_STORAGE_KEY)).toBe('1');
 
     await user.click(toggle);
-    expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    expect(toggle).toHaveAttribute('aria-checked', 'false');
     expect(localStorage.getItem(DISCREET_STORAGE_KEY)).toBeNull();
   });
 
@@ -145,7 +147,7 @@ describe('the header switch', () => {
     const user = userEvent.setup();
     render(<AuthButton />);
     await user.click(screen.getByRole('button', { name: 'Account menu' }));
-    expect(screen.queryByRole('menuitem', { name: /discreet/i })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: /discreet|spoiler/i })).toBeNull();
   });
 
   function Probe() {

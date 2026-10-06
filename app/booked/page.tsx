@@ -474,7 +474,7 @@ export default function BookedPage() {
           <div className="mt-8">
             <EmptyState
               icon="eye-off"
-              title="Discreet mode is on"
+              title="No spoiler mode is on"
               body="Your reservations are hidden while it is."
               actions={
                 <Button variant="secondary" onClick={() => setRevealed(true)}>
