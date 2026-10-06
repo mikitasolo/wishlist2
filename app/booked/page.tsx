@@ -45,6 +45,7 @@ import {
   type OccasionGroup,
 } from '@/lib/utils/reservations';
 import Button from '@/components/Button';
+import { useDiscreetMode } from '@/lib/hooks/useDiscreetMode';
 
 interface Price {
   value: number;
@@ -136,6 +137,15 @@ export default function BookedPage() {
   const userId = session?.user?.id;
   const router = useRouter();
   const { showToast } = useToast();
+  // Discreet mode (WIS-46) covers the page until Show, for this visit only: the
+  // state goes with the page, so the next visit is covered again. What's behind
+  // the cover is still read, so Show has it ready.
+  const { discreet } = useDiscreetMode();
+  const [revealed, setRevealed] = useState(false);
+  // Turned off, the next time it's on starts covered again, Show or not.
+  useEffect(() => {
+    if (!discreet) setRevealed(false);
+  }, [discreet]);
   const locale = useViewerLocale();
   // The viewer's local date, which "To give" is grouped by: `null` until it's
   // known (see `useLocalToday`), and until then the cards aren't grouped.
@@ -454,6 +464,29 @@ export default function BookedPage() {
     viewerCurrency,
     rates
   );
+
+  if (discreet && !revealed) {
+    return (
+      <div className="min-h-screen">
+        <AppHeader actions={<AuthButton />} />
+        <main className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
+          <h1 className="text-3xl font-semibold tracking-tight text-foreground">Reserved by you</h1>
+          <div className="mt-8">
+            <EmptyState
+              icon="eye-off"
+              title="Discreet mode is on"
+              body="Your reservations are hidden while it is."
+              actions={
+                <Button variant="secondary" onClick={() => setRevealed(true)}>
+                  Show
+                </Button>
+              }
+            />
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen">

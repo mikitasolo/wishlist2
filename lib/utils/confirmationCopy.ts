@@ -36,8 +36,20 @@ function positiveCount(count: unknown): number {
  * hold, from the items the page has loaded, or `null` until it has; with none
  * (or not knowing) the message says what happens to anything they reserved.
  */
-export function memberLeaveCopy(listName: string, reservedByYou: number | null): ConfirmationCopy {
+export function memberLeaveCopy(
+  listName: string,
+  reservedByYou: number | null,
+  /** Discreet mode is on: no count, only that some are reserved, and only if any are. */
+  discreet = false
+): ConfirmationCopy {
   const count = positiveCount(reservedByYou);
+  if (discreet && count > 0) {
+    return {
+      title: `Leave ${quoted(listName)}?`,
+      message:
+        "You'll lose access. Some of your items here are reserved: they go back on the list, but stay on your Reserved page so you can still log them.",
+    };
+  }
   const reserved =
     count === 0
       ? 'Anything you reserved here goes back on the list, but stays on your Reserved page so you can still log it.'

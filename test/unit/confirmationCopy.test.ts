@@ -11,6 +11,22 @@ import {
   removeFromListCopy,
 } from '@/lib/utils/confirmationCopy';
 
+describe('memberLeaveCopy in discreet mode (WIS-46)', () => {
+  it('gives no count, and warns only when they hold at least one', () => {
+    for (const count of [1, 3]) {
+      const { message } = memberLeaveCopy('Camping trip', count, true);
+      expect(message).toBe(
+        "You'll lose access. Some of your items here are reserved: they go back on the list, but stay on your Reserved page so you can still log them."
+      );
+    }
+    for (const count of [0, null]) {
+      expect(memberLeaveCopy('Camping trip', count, true).message).toBe(
+        memberLeaveCopy('Camping trip', count).message
+      );
+    }
+  });
+});
+
 describe('memberLeaveCopy', () => {
   // regression: a member's leave said "All your bookings will be removed".
   // Leaving frees the items and keeps the reservations.

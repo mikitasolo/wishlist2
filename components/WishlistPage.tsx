@@ -103,9 +103,12 @@ import {
   isDimmedInAll,
   listChips,
   LIST_CHIP_LABELS,
+  type ListChip,
   orderListItems,
 } from '@/lib/utils/listChips';
 import { useListChip } from '@/lib/hooks/useListChip';
+import { useDiscreetMode } from '@/lib/hooks/useDiscreetMode';
+import { withoutReservation } from '@/lib/utils/discreet';
 import { useItemDeepLink } from '@/lib/hooks/useItemDeepLink';
 import { useStickyItems } from '@/lib/hooks/useStickyItems';
 import { useListPrices } from '@/lib/hooks/useListPrices';
@@ -394,11 +397,21 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
 
   // The status chip the list is shown on: All on every list the page opens
   // (or the URL's ?show=), kept only for this list and role, and never saved.
-  const [activeChip, chooseChip] = useListChip(
+  const [chosenChip, chooseChip] = useListChip(
     wishlist ? { id: String(wishlist._id), slug: wishlist.slug } : null,
     wishlistId,
     viewerRole
   );
+
+  // Discreet mode (WIS-46) keeps a member's reservations off the screen. It's
+  // applied as the page renders (`viewItems`, below), never to `items`, which
+  // the poll and the mutations keep as the server has it, so nothing flashes
+  // the real state back. The chip for their own reservations goes, and a list
+  // opened on it shows All.
+  const { discreet } = useDiscreetMode();
+  const hideReservations = discreet && isMember && !isOwner;
+  const activeChip: ListChip =
+    hideReservations && chosenChip === 'reserved-by-you' ? 'all' : chosenChip;
 
   // Restore the visitor's saved sort, else the default. It's one setting for
   // every list, so it's read once rather than per wishlist. A status filter an
@@ -1719,16 +1732,27 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
   );
 
   // Each chip's count, by the rules the chips filter with (lib/utils/listChips.ts).
+  // The items as this screen draws them: in discreet mode, none reserved.
+  const viewItems = useMemo(
+    () => (hideReservations ? items.map(withoutReservation) : items),
+    [items, hideReservations]
+  );
   const chipCounts = useMemo(
-    () => countListChips(items, viewerRole, viewerId),
+    () => countListChips(viewItems, viewerRole, viewerId),
+    [viewItems, viewerRole, viewerId]
+  );
+  // What they've reserved, for Leave list's copy: not hidden from them there,
+  // since it says what they keep.
+  const reservedByYou = useMemo(
+    () => countListChips(items, viewerRole, viewerId)['reserved-by-you'],
     [items, viewerRole, viewerId]
   );
 
   // The items under the chip, actionable ones first under All, in the
   // viewer's sort within each group.
   const chipItems = useMemo(
-    () => orderListItems(items, activeChip, viewerRole, viewerId, sortBy),
-    [items, activeChip, viewerRole, viewerId, sortBy]
+    () => orderListItems(viewItems, activeChip, viewerRole, viewerId, sortBy),
+    [viewItems, activeChip, viewerRole, viewerId, sortBy]
   );
 
   // Prices (D9): someone else's list starts in the viewer's currency, their
@@ -1774,7 +1798,7 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
   // slot, and in view, until they change the chip, search or sort (WIS-297).
   const { items: sortedItems, pin: pinItem } = useStickyItems(
     filteredItems,
-    items,
+    viewItems,
     JSON.stringify([wishlistId, viewerRole, activeChip, sortBy, searchQuery, budgetLimit])
   );
   const handleStickyCardUpdate = useCallback(
@@ -1818,8 +1842,8 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
   // What All shows this viewer, so a link to anything else (a draft sent to
   // a member, say) does nothing rather than resetting their view.
   const itemIds = useMemo(
-    () => orderListItems(items, 'all', viewerRole, viewerId, sortBy).map((i) => i._id),
-    [items, viewerRole, viewerId, sortBy]
+    () => orderListItems(viewItems, 'all', viewerRole, viewerId, sortBy).map((i) => i._id),
+    [viewItems, viewerRole, viewerId, sortBy]
   );
   const isItemShown = useCallback(
     (id: string) => sortedItems.some((i) => i._id === id),
@@ -1841,11 +1865,13 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
     searchQuery.trim() !== '' || budgetLimit !== null
   );
 
-  const chips = listChips(viewerRole).map((chip) => ({
-    value: chip,
-    label: LIST_CHIP_LABELS[chip],
-    count: chipCounts[chip],
-  }));
+  const chips = listChips(viewerRole)
+    .filter((chip) => !(hideReservations && chip === 'reserved-by-you'))
+    .map((chip) => ({
+      value: chip,
+      label: LIST_CHIP_LABELS[chip],
+      count: chipCounts[chip],
+    }));
 
   // The tab on screen is the panel an owner's tab bar controls. Nobody else
   // has tabs, so their items are just the page.
@@ -2410,7 +2436,7 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
           {...(isOwner
             ? ownerLeaveCopy(wishlist.name)
             : // Their own reservations, from the items already on the page.
-              memberLeaveCopy(wishlist.name, itemsLoaded ? chipCounts['reserved-by-you'] : null))}
+              memberLeaveCopy(wishlist.name, itemsLoaded ? reservedByYou : null, hideReservations))}
           onConfirm={confirmLeaveWishlist}
           onCancel={() => setDeleteConfirm(null)}
           confirmText="Leave"

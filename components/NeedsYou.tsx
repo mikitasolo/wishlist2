@@ -16,6 +16,7 @@ import { ACTIVITY_PATH } from '@/lib/utils/activityPath';
 import { BIRTHDAY_NUDGE_DETAIL, birthdayNudgeTitle } from '@/lib/utils/birthdayNudge';
 import { LIST_CHIP_PARAM } from '@/lib/utils/listChips';
 import { plural } from '@/lib/utils/plural';
+import { useDiscreetMode } from '@/lib/hooks/useDiscreetMode';
 import { TONE_CLASSES } from '@/lib/utils/statusTones';
 
 /** How many rows Needs you shows at most. */
@@ -100,7 +101,10 @@ export default function NeedsYou({
 }) {
   const headingId = useId();
   const { invites, busy, respond } = usePendingInvites();
-  const changed = useChangedReservations();
+  const { discreet } = useDiscreetMode();
+  // Discreet mode (WIS-46) leaves reservations, a changed one's count too, off the screen.
+  const changedRead = useChangedReservations();
+  const changed = discreet ? null : changedRead;
   // Without New list to open there's no row to show, so nothing is read for it.
   const birthday = useBirthdayNudge(ownLists, !!onNewBirthdayList);
   const currency = useCurrencyOffer();
