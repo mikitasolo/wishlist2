@@ -38,10 +38,12 @@ let source: unknown;
 let people: unknown;
 let inviteReply: (body: { username: string }) => { status: number; body: unknown };
 let archiveFails = false;
+let copyGateway = false;
 
 beforeEach(() => {
   calls = [];
   archiveFails = false;
+  copyGateway = false;
   source = SOURCE;
   people = PEOPLE;
   inviteReply = () => ({ status: 201, body: { success: true, data: {} } });
@@ -60,8 +62,11 @@ beforeEach(() => {
         });
       if (url === '/api/wishlists/w-old/copy' && method === 'GET')
         return reply(200, { success: true, data: source });
-      if (url === '/api/wishlists/w-old/copy' && method === 'POST')
+      if (url === '/api/wishlists/w-old/copy' && method === 'POST') {
+        // The platform's own error page, not the route's JSON.
+        if (copyGateway) return new Response('<html>504</html>', { status: 504 });
         return reply(201, { success: true, data: NEW_LIST });
+      }
       if (url === '/api/wishlists/w-old/members')
         return reply(200, { success: true, data: people });
       if (url === '/api/wishlists/w-new/members') {
@@ -229,5 +234,87 @@ describe('StartFromListModal', () => {
     expect(await screen.findByText('Couldn’t load this wishlist')).toBeInTheDocument();
     expect(screen.queryByText('No items to bring over.')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Create list' })).toBeDisabled();
+  });
+
+  // regression (review): a 504 page from the platform isn't JSON; the dialog
+  // must say to try again, with the same key, rather than fail on parsing.
+  it('treats a gateway timeout as worth trying again, with the same key', async () => {
+    copyGateway = true;
+    open();
+    fireEvent.click(await screen.findByRole('button', { name: 'Create list' }));
+
+    await waitFor(() =>
+      expect(showToast).toHaveBeenCalledWith('Couldn’t create the list. Try again.', 'error')
+    );
+    copyGateway = false;
+    fireEvent.click(screen.getByRole('button', { name: 'Create list' }));
+    await screen.findByRole('dialog', { name: 'Invite people again' });
+    const [first, second] = posts('/api/wishlists/w-old/copy');
+    expect(second.headers['Idempotency-Key']).toBe(first.headers['Idempotency-Key']);
+  });
+
+  // regression (review): Pick all could pick more items than one copy takes.
+  it('picks at most 100 items with Pick the first 100', async () => {
+    source = {
+      ...SOURCE,
+      items: Array.from({ length: 101 }, (_, i) => ({
+        _id: `i${i}`,
+        name: `Item ${i}`,
+        imageUrl: null,
+        mostWanted: false,
+        draft: false,
+      })),
+    };
+    open();
+    fireEvent.click(await screen.findByRole('button', { name: 'Pick the first 100' }));
+
+    expect(screen.getByText('100 items picked, up to 100')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Create list' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Clear' })).toBeInTheDocument();
+  });
+
+  // Should fix (review): the invite limit used to fill every remaining row with
+  // the same refusal.
+  it('stops at the invite limit and says how many weren’t sent', async () => {
+    people = [
+      ...PEOPLE,
+      { user: { _id: 'u-dan', username: 'dan' }, role: 'member' },
+      { user: { _id: 'u-eve', username: 'eve' }, role: 'member' },
+    ];
+    inviteReply = ({ username }) =>
+      username === 'bob'
+        ? { status: 201, body: { success: true, data: {} } }
+        : { status: 429, body: { success: false, error: 'Too many requests. Please slow down.' } };
+    open();
+    fireEvent.click(await screen.findByRole('button', { name: 'Create list' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Invite 4 people' }));
+
+    expect(await screen.findByText(/so 3 invitations weren’t sent/)).toBeInTheDocument();
+    // It stopped at the first refusal: bob, then carol, and nobody after.
+    expect(posts('/api/wishlists/w-new/members').map((c) => c.body)).toEqual([
+      { username: 'bob', role: 'owner' },
+      { username: 'carol', role: 'member' },
+    ]);
+    expect(screen.queryByText('Too many requests. Please slow down.')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Invite 3 people' })).toBeEnabled();
+  });
+
+  it('archives through the page’s own archive when it’s given one', async () => {
+    people = [PEOPLE[0]];
+    const onArchiveSource = vi.fn().mockResolvedValue(true);
+    render(
+      <StartFromListModal
+        sourceId="w-old"
+        isOpen
+        onClose={onClose}
+        onArchiveSource={onArchiveSource}
+      />
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Create list' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Archive' }));
+
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/wishlists/birthday-2027'));
+    expect(onArchiveSource).toHaveBeenCalledTimes(1);
+    expect(calls.some((c) => c.method === 'PATCH')).toBe(false);
   });
 });

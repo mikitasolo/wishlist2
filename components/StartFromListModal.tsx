@@ -4,6 +4,7 @@ import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import BaseModal from './BaseModal';
 import Button from './Button';
+import Callout from './Callout';
 import Avatar from './Avatar';
 import Badge from './Badge';
 import Cover from './Cover';
@@ -35,6 +36,7 @@ import {
 } from '@/lib/utils/occasion';
 import {
   COPY_ITEMS_MAX,
+  COPY_REQUEST_TIMEOUT_MS,
   reinviteCandidates,
   type CopyCandidate,
   type ReinviteCandidate,
@@ -60,8 +62,8 @@ interface NewList {
 type Read<T> =
   { state: 'loading' } | { state: 'failed' } | { state: 'refused' } | { state: 'loaded'; data: T };
 
-/** Copying images can take a while: longer than an item's save. */
-const COPY_REQUEST_TIMEOUT_MS = 60_000;
+/** Said for an answer that isn't the route's (the platform's 504, say): trying again is safe. */
+const COPY_RETRY_MESSAGE = 'Couldn’t create the list. Try again.';
 
 const ROLE_OPTIONS = [
   { value: 'member', label: 'Member' },
@@ -77,6 +79,12 @@ interface StartFromListModalProps {
   isOpen: boolean;
   /** Closed before the list exists: nothing was made. */
   onClose: () => void;
+  /**
+   * Archives the source list, saying how it went (a toast), and resolves to
+   * whether it did: the list's page passes its own, so its state follows and a
+   * second click is turned away. Without it, the archive is sent from here.
+   */
+  onArchiveSource?: () => Promise<boolean>;
 }
 
 /**
@@ -98,7 +106,12 @@ interface StartFromListModalProps {
  * Opened by the list's Settings, and by anything else holding the id of a list
  * the viewer owns.
  */
-export default function StartFromListModal({ sourceId, isOpen, onClose }: StartFromListModalProps) {
+export default function StartFromListModal({
+  sourceId,
+  isOpen,
+  onClose,
+  onArchiveSource,
+}: StartFromListModalProps) {
   const router = useRouter();
   const { showToast } = useToast();
   const { data: session } = useKnownSession();
@@ -155,6 +168,8 @@ export default function StartFromListModal({ sourceId, isOpen, onClose }: StartF
   const loaded = source.state === 'loaded' ? source.data : null;
   const items = loaded?.items ?? [];
   const tooMany = picked.size > COPY_ITEMS_MAX;
+  // As many as one copy takes: all of them, or the first COPY_ITEMS_MAX.
+  const allPicked = picked.size > 0 && picked.size >= Math.min(items.length, COPY_ITEMS_MAX);
 
   const toggle = (id: string) =>
     setPicked((prev) => {
@@ -192,15 +207,19 @@ export default function StartFromListModal({ sourceId, isOpen, onClose }: StartF
           body: JSON.stringify(payload),
           signal,
         });
-        return (await res.json()) as {
+        // A platform error page (a 504 when the route ran out of time) isn't
+        // JSON: the key is kept, so trying again answers with the list if it
+        // was made, or makes it.
+        const body = (await res.json().catch(() => null)) as {
           success: boolean;
           data?: NewList;
           error?: string;
           notice?: string;
-        };
+        } | null;
+        return body ?? { success: false, error: COPY_RETRY_MESSAGE };
       }, COPY_REQUEST_TIMEOUT_MS);
       if (!result.success || !result.data) {
-        showToast(result.error || 'Failed to create wishlist', 'error');
+        showToast(result.error || COPY_RETRY_MESSAGE, 'error');
         return;
       }
       keys.current.reset();
@@ -214,7 +233,7 @@ export default function StartFromListModal({ sourceId, isOpen, onClose }: StartF
       showToast(
         error instanceof Error && error.name === 'RequestTimeoutError'
           ? error.message
-          : 'Failed to create wishlist',
+          : COPY_RETRY_MESSAGE,
         'error'
       );
     } finally {
@@ -245,8 +264,8 @@ export default function StartFromListModal({ sourceId, isOpen, onClose }: StartF
     return (
       <ArchiveStep
         isOpen={isOpen}
-        sourceId={sourceId}
         sourceName={loaded.name}
+        archive={onArchiveSource ?? (() => archiveList(sourceId, showToast))}
         onDone={() => finish(created)}
       />
     );
@@ -330,11 +349,17 @@ export default function StartFromListModal({ sourceId, isOpen, onClose }: StartF
                   className="rounded-md text-sm font-medium text-accent"
                   onClick={() =>
                     setPicked(
-                      picked.size === items.length ? new Set() : new Set(items.map((i) => i._id))
+                      allPicked
+                        ? new Set()
+                        : new Set(items.slice(0, COPY_ITEMS_MAX).map((i) => i._id))
                     )
                   }
                 >
-                  {picked.size === items.length ? 'Clear' : 'Pick all'}
+                  {allPicked
+                    ? 'Clear'
+                    : items.length > COPY_ITEMS_MAX
+                      ? `Pick the first ${COPY_ITEMS_MAX}`
+                      : 'Pick all'}
                 </button>
               )}
             </div>
@@ -384,7 +409,9 @@ export default function StartFromListModal({ sourceId, isOpen, onClose }: StartF
               <p className={FIELD_HELPER} aria-live="polite">
                 {tooMany
                   ? `Pick at most ${COPY_ITEMS_MAX} items.`
-                  : `${plural(picked.size, 'item')} picked`}
+                  : items.length > COPY_ITEMS_MAX
+                    ? `${plural(picked.size, 'item')} picked, up to ${COPY_ITEMS_MAX}`
+                    : `${plural(picked.size, 'item')} picked`}
               </p>
             )}
           </fieldset>
@@ -427,6 +454,8 @@ function PeopleStep({
   const [roles, setRoles] = useState<Record<string, 'owner' | 'member'>>({});
   const [results, setResults] = useState<Record<string, InviteResult>>({});
   const [sending, setSending] = useState(false);
+  // How many invitations the `invite` limit stopped, if it did.
+  const [notSent, setNotSent] = useState(0);
 
   const load = useCallback(async () => {
     setPeople({ state: 'loading' });
@@ -464,16 +493,23 @@ function PeopleStep({
     e.preventDefault();
     if (sending || pending.length === 0) return;
     setSending(true);
+    setNotSent(0);
     const next: Record<string, InviteResult> = { ...results };
     // One at a time, each through the invite route every invite takes: its
     // checks, its consent (an owner invite must be accepted) and its limits.
-    for (const person of pending) {
+    for (const [index, person] of pending.entries()) {
       try {
         const res = await fetch(`/api/wishlists/${list._id}/members`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username: person.username, role: roles[person.userId] }),
         });
+        // Out of invites for now: every one after this would be refused the
+        // same, so it stops and says how many are left to send.
+        if (res.status === 429) {
+          setNotSent(pending.length - index);
+          break;
+        }
         const body = (await res.json().catch(() => null)) as {
           success?: boolean;
           error?: string;
@@ -518,6 +554,11 @@ function PeopleStep({
         These people were on the old list. Each gets an invitation to “{list.name}”, and joins once
         they accept it.
       </p>
+      {notSent > 0 && (
+        <Callout tone="warning" className="mb-4">
+          {`You’ve sent a lot of invitations in the last hour, so ${plural(notSent, 'invitation')} ${notSent === 1 ? 'wasn’t' : 'weren’t'} sent. Try again later, or invite them from the new list’s People tab.`}
+        </Callout>
+      )}
       {people.state === 'loading' && (
         <div className="space-y-2" aria-hidden="true">
           <Skeleton className="h-14 w-full rounded-xl" />
@@ -598,41 +639,29 @@ function PeopleStep({
 /** Step 3: offer to archive the old list. */
 function ArchiveStep({
   isOpen,
-  sourceId,
   sourceName,
+  archive,
   onDone,
 }: {
   isOpen: boolean;
-  sourceId: string;
   sourceName: string;
+  /** Archives the old list, toasting how it went; resolves to whether it did. */
+  archive: () => Promise<boolean>;
   onDone: () => void;
 }) {
-  const { showToast } = useToast();
   const [archiving, setArchiving] = useState(false);
+  // Turns a second click away before the disabled state has rendered.
+  const busy = useRef(false);
 
-  const archive = async () => {
+  const onArchive = async () => {
+    if (busy.current) return;
+    busy.current = true;
     setArchiving(true);
-    try {
-      const res = await fetch(`/api/wishlists/${sourceId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ archived: true }),
-      });
-      const body = (await res.json().catch(() => null)) as {
-        success?: boolean;
-        error?: string;
-      } | null;
-      if (body?.success) {
-        showToast(`“${sourceName}” archived`, 'success');
-        onDone();
-        return;
-      }
-      // Stays open, so Archive can be tried again (or the list kept).
-      showToast(body?.error || 'Failed to archive wishlist', 'error');
-    } catch {
-      showToast('Failed to archive wishlist', 'error');
-    }
+    const archived = await archive().catch(() => false);
+    busy.current = false;
     setArchiving(false);
+    // Stays open when it failed, so Archive can be tried again (or the list kept).
+    if (archived) onDone();
   };
 
   return (
@@ -648,7 +677,7 @@ function ArchiveStep({
           <Button variant="secondary" onClick={onDone} disabled={archiving}>
             Keep it
           </Button>
-          <Button icon="archive" onClick={archive} disabled={archiving}>
+          <Button icon="archive" onClick={onArchive} disabled={archiving}>
             {archiving ? 'Archiving…' : 'Archive'}
           </Button>
         </>
@@ -660,4 +689,33 @@ function ArchiveStep({
       </p>
     </BaseModal>
   );
+}
+
+/**
+ * Archives a list from outside its page (no page state to follow), as the
+ * page's own archive does: `PATCH { archived: true }`, with the same toasts.
+ */
+async function archiveList(
+  listId: string,
+  showToast: (message: string, type: 'success' | 'error') => void
+): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/wishlists/${listId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ archived: true }),
+    });
+    const body = (await res.json().catch(() => null)) as {
+      success?: boolean;
+      error?: string;
+    } | null;
+    if (body?.success) {
+      showToast('Wishlist archived', 'success');
+      return true;
+    }
+    showToast(body?.error || 'Failed to update wishlist', 'error');
+  } catch {
+    showToast('Failed to update wishlist', 'error');
+  }
+  return false;
 }

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import { NextRequest } from 'next/server';
+import mongoose from 'mongoose';
 import { connectTestDB, disconnectTestDB, clearTestDB } from '../db';
 import { holdFirstCall } from '../interleave';
 
@@ -30,7 +31,7 @@ import { GET as LIST_ITEMS } from '@/app/api/wishlists/[id]/items/route';
 import { USER_UPLOAD_QUOTA_BYTES } from '@/lib/utils/blob';
 import {
   COPY_IN_PROGRESS_ERROR,
-  COPY_PENDING_STALE_MS,
+  COPY_STALE_MS,
   COPY_LIST_IMAGES_FAILED_NOTICE,
   COPY_LIST_IMAGES_QUOTA_NOTICE,
 } from '@/lib/utils/wishlistCopy';
@@ -38,6 +39,7 @@ import { scopedIdempotencyKey } from '@/lib/utils/itemIdempotency';
 import { __setRateLimiters, type RateLimiter } from '@/lib/rateLimit';
 import User from '@/models/User';
 import Wishlist from '@/models/Wishlist';
+import WishlistCopy from '@/models/WishlistCopy';
 import WishlistMember from '@/models/WishlistMember';
 import Item from '@/models/Item';
 import Reservation from '@/models/Reservation';
@@ -291,7 +293,6 @@ describe('POST /api/wishlists/[id]/copy — the new list', () => {
       archived: false,
       occasion: { kind: 'birthday', date: '2000-03-14', recurrence: 'yearly' },
     });
-    expect(data).not.toHaveProperty('idempotencyKey');
     expect(data.slug).toMatch(/^birthday-2027/);
     // The cover is a new blob of alice's own, never bob's.
     expect(data.bannerUrl).toMatch(new RegExp(`^${HOST}/uploads/${alice}/image-c\\d+\\.jpg$`));
@@ -584,7 +585,7 @@ describe('POST /api/wishlists/[id]/copy — once only, and whole or not at all',
   it('makes one list when two attempts race, and the loser copies nothing', async () => {
     as(alice);
     let racer: Response | undefined;
-    holdFirstCall(Wishlist, 'create', async () => {
+    holdFirstCall(WishlistCopy, 'create', async () => {
       racer = await postCopy({});
     });
 
@@ -599,21 +600,24 @@ describe('POST /api/wishlists/[id]/copy — once only, and whole or not at all',
     expect(del).not.toHaveBeenCalled();
   });
 
-  // regression (review): the key used to be claimed only once the list was
-  // finished, so a retry while the first attempt was still copying was handed
-  // a half-made list, which the first could then still take back.
-  it('tells a retry to wait while the first attempt is still making the list', async () => {
+  // regression (review): a retry while the first attempt was still copying was
+  // handed a half-made list, and the list was readable everywhere meanwhile.
+  it('tells a retry to wait, and shows no list anywhere, while the first attempt is making it', async () => {
     const item = await makeItem();
     as(alice);
     let racer: Response | undefined;
+    let listsMeanwhile = -1;
     holdFirstCall(Item, 'insertMany', async () => {
       racer = await postCopy({ itemIds: [String(item._id)] });
+      listsMeanwhile = (await newLists()).length;
     });
 
     const res = await postCopy({ itemIds: [String(item._id)] });
 
     expect(racer!.status).toBe(409);
     expect(await racer!.json()).toEqual({ success: false, error: COPY_IN_PROGRESS_ERROR });
+    // No list exists until it's finished: nothing can read, count or share it.
+    expect(listsMeanwhile).toBe(0);
     expect(res.status).toBe(201);
     expect(await newLists()).toHaveLength(1);
     expect(copy).toHaveBeenCalledTimes(2);
@@ -621,35 +625,84 @@ describe('POST /api/wishlists/[id]/copy — once only, and whole or not at all',
     expect((await postCopy({ itemIds: [String(item._id)] })).status).toBe(200);
   });
 
-  it('takes back a list a dead attempt left half made, and makes it again', async () => {
-    const stale = await Wishlist.create({
-      name: 'Half made',
-      owners: [alice],
-      visibility: 'friends',
-      idempotencyKey: scopedIdempotencyKey(alice, KEY),
-      copyPending: true,
-      createdAt: new Date(Date.now() - COPY_PENDING_STALE_MS - 1000),
+  /** What a copy that died part-way leaves: its row, an item and two copied images. */
+  async function deadCopy(key: string) {
+    const wishlist = new mongoose.Types.ObjectId();
+    await Item.create({ wishlist, name: 'Orphan', imageUrl: blobOf(alice, 'o.jpg') });
+    await WishlistCopy.create({
+      user: alice,
+      key: scopedIdempotencyKey(alice, key),
+      wishlist,
+      copiedUrls: [blobOf(alice, 'o.jpg'), blobOf(alice, 'cover-copy.jpg')],
+      createdAt: new Date(Date.now() - COPY_STALE_MS - 1000),
     });
-    await Item.create({ wishlist: stale._id, name: 'Orphan', imageUrl: blobOf(alice, 'o.jpg') });
+    return wishlist;
+  }
+
+  it('takes back what a dead attempt left, images included, and makes the list again', async () => {
+    const dead = await deadCopy(KEY);
     as(alice);
 
     const res = await postCopy({});
 
     expect(res.status).toBe(201);
-    expect((await res.json()).data._id).not.toBe(String(stale._id));
-    expect(await Wishlist.exists({ _id: stale._id })).toBeNull();
-    expect(await Item.countDocuments({ wishlist: stale._id })).toBe(0);
+    expect((await res.json()).data._id).not.toBe(String(dead));
+    expect(await Item.countDocuments({ wishlist: dead })).toBe(0);
     expect(del).toHaveBeenCalledWith(blobOf(alice, 'o.jpg'));
+    expect(del).toHaveBeenCalledWith(blobOf(alice, 'cover-copy.jpg'));
     expect(await newLists()).toHaveLength(1);
+    expect(await WishlistCopy.countDocuments({ wishlist: dead })).toBe(0);
   });
 
-  it('never sends the marks it keeps on a list', async () => {
+  // regression (review): a dead attempt's leftovers were only ever cleaned up
+  // by a retry with its own key, which the dialog drops once it's closed.
+  it('sweeps a dead attempt under another key on the user’s next copy', async () => {
+    const dead = await deadCopy('an-older-key-0123456789');
     as(alice);
-    const { data } = await (await postCopy({})).json();
-    expect(data).not.toHaveProperty('copyPending');
-    expect(data).not.toHaveProperty('idempotencyKey');
-    const stored = await Wishlist.findById(data._id).select('+copyPending').lean();
-    expect(stored!.copyPending).toBeUndefined();
+
+    expect((await postCopy({})).status).toBe(201);
+
+    expect(await Item.countDocuments({ wishlist: dead })).toBe(0);
+    expect(del).toHaveBeenCalledWith(blobOf(alice, 'cover-copy.jpg'));
+    expect(await WishlistCopy.countDocuments({ wishlist: dead })).toBe(0);
+  });
+
+  it('answers with the list of an attempt that wrote it but died before marking it done', async () => {
+    const list = await Wishlist.create({ name: 'Made', owners: [alice], visibility: 'friends' });
+    await WishlistCopy.create({
+      user: alice,
+      key: scopedIdempotencyKey(alice, KEY),
+      wishlist: list._id,
+      createdAt: new Date(Date.now() - COPY_STALE_MS - 1000),
+    });
+    as(alice);
+
+    const res = await postCopy({});
+
+    expect(res.status).toBe(200);
+    expect((await res.json()).data._id).toBe(String(list._id));
+    expect(await newLists()).toHaveLength(1);
+    expect((await WishlistCopy.findOne({ wishlist: list._id }).lean())!.done).toBe(true);
+  });
+
+  // regression (review): the limits were spent before a retry was answered,
+  // so retrying one copy could lock a new account out.
+  it('spends no limit on a retry or a refused request', async () => {
+    const spent: string[] = [];
+    const counting = (name: string): RateLimiter => ({
+      async limit() {
+        spent.push(name);
+        return { success: true, reset: Date.now() + 60_000, limit: 10, remaining: 9 };
+      },
+    });
+    __setRateLimiters({ listCopy: counting('listCopy'), content: counting('content') });
+    as(alice);
+
+    expect((await postCopy({})).status).toBe(201);
+    expect((await postCopy({})).status).toBe(200);
+    expect((await postCopy({ name: ' ' })).status).toBe(400);
+
+    expect(spent).toEqual(['listCopy', 'content']);
   });
 
   it('leaves no list, items or copied images behind when saving the items fails', async () => {
@@ -664,6 +717,7 @@ describe('POST /api/wishlists/[id]/copy — once only, and whole or not at all',
     expect(await newLists()).toHaveLength(0);
     expect(await Item.countDocuments({ wishlist: { $ne: source } })).toBe(0);
     expect(del).toHaveBeenCalledTimes(3);
+    expect(await WishlistCopy.countDocuments()).toBe(0);
     // A retry with the same key then makes the list.
     vi.mocked(console.error).mockRestore();
     expect((await postCopy({ itemIds: items.map((i) => String(i._id)) })).status).toBe(201);

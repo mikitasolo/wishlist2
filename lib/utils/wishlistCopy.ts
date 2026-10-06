@@ -69,11 +69,17 @@ export function serializeCopyCandidate(item: CandidateSource): CopyCandidate {
 }
 
 /**
- * A list still marked as being made this long after it was created was left
- * by an attempt that died (past the route's `maxDuration`): a retry takes it
- * back and starts again rather than waiting on it forever.
+ * The timings of a copy, lined up so a retry never waits long on an attempt
+ * that died. The route gives up copying images after `COPY_IMAGES_BUDGET_MS`
+ * and is killed at its `maxDuration` (40 s, in the route file, which must hold
+ * it as a literal); a copy still unfinished `COPY_STALE_MS` after it started
+ * must have died, so it's taken back and a retry starts again; the dialog
+ * waits `COPY_REQUEST_TIMEOUT_MS`, past the route's limit, so it hears the
+ * route's own answer (or the platform's 504) rather than giving up first.
  */
-export const COPY_PENDING_STALE_MS = 2 * 60 * 1000;
+export const COPY_IMAGES_BUDGET_MS = 20_000;
+export const COPY_STALE_MS = 45_000;
+export const COPY_REQUEST_TIMEOUT_MS = 45_000;
 
 /** Answered to a retry while the first attempt is still making the list. */
 export const COPY_IN_PROGRESS_ERROR = 'This list is still being made. Try again in a moment.';

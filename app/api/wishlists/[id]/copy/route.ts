@@ -1,31 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server';
+import mongoose from 'mongoose';
 import { auth } from '@/lib/auth';
 import { enforce, userKey } from '@/lib/rateLimit';
 import connectDB from '@/lib/mongodb';
 import Item from '@/models/Item';
 import Wishlist, { type IWishlist } from '@/models/Wishlist';
+import WishlistCopy from '@/models/WishlistCopy';
 import { copyWishlistSchema, validateRequestBody } from '@/lib/validations';
 import { generateUniqueWishlistSlug, resolveWishlistId } from '@/lib/utils/wishlistSlug';
 import { getOwnerAccess } from '@/lib/utils/wishlistAccess';
 import { ownedByFilter, serializeWishlist } from '@/lib/utils/wishlistOwners';
 import {
   copyBlobToUploads,
-  deleteOwnBlobs,
   getUserUploadBytes,
   isOwnBlob,
   type UploadCopy,
 } from '@/lib/utils/blob';
-import { deleteOwnedWishlist } from '@/lib/utils/wishlistDeletion';
 import { normalizeCurrency } from '@/lib/utils/currency';
 import {
   IDEMPOTENCY_HEADER,
-  isIdempotencyKeyClash,
   readIdempotencyKey,
   scopedIdempotencyKey,
 } from '@/lib/utils/itemIdempotency';
 import {
+  COPY_IMAGES_BUDGET_MS,
   COPY_IN_PROGRESS_ERROR,
-  COPY_PENDING_STALE_MS,
   COPYABLE_STATUSES,
   COPY_LIST_IMAGES_FAILED_NOTICE,
   COPY_LIST_IMAGES_QUOTA_NOTICE,
@@ -33,10 +32,19 @@ import {
   serializeCopyCandidate,
   startingCopyOccasion,
 } from '@/lib/utils/wishlistCopy';
+import {
+  finishCopy,
+  isStaleCopy,
+  settleCopy,
+  settleStaleCopies,
+  takeBackCopy,
+} from '@/lib/utils/wishlistCopies';
 import { errorKind } from '@/lib/utils/errorKind';
 
-// Copying many images runs past the default limit.
-export const maxDuration = 60;
+// Copying many images runs past the default limit. Lined up with
+// `COPY_IMAGES_BUDGET_MS`, `COPY_STALE_MS` and the dialog's timeout
+// (lib/utils/wishlistCopy.ts); Next.js needs it as a literal here.
+export const maxDuration = 40;
 
 /**
  * "Start a new list from this one" (WIS-325), owners only, archived lists
@@ -114,28 +122,36 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 
 /** How many images are copied at once. */
 const IMAGE_COPY_CONCURRENCY = 4;
-/** After this long, images not yet started aren't copied: the list is made without them. */
-const IMAGE_COPY_BUDGET_MS = 25_000;
 
 /**
  * Copy each of `urls` (all our own blobs) into the user's uploads, a few at a
  * time, as "Save to my list" does for one: never shared with the source, so
  * deleting either list's item can't break the other's image. They share one
- * quota budget, read once, so together they never go over it.
+ * quota budget, read once, so together they never go over it. `onCopied`
+ * records each copy as it lands, before the next is started, so a copy that
+ * never finishes can still free them. Images not started within
+ * `COPY_IMAGES_BUDGET_MS` aren't copied.
  */
-async function copyImages(urls: string[], userId: string): Promise<UploadCopy[]> {
+async function copyImages(
+  urls: string[],
+  userId: string,
+  onCopied: (url: string) => Promise<void>
+): Promise<UploadCopy[]> {
   if (urls.length === 0) return [];
   const results: UploadCopy[] = new Array(urls.length);
   const budget = { used: await getUserUploadBytes(userId) };
-  const deadline = Date.now() + IMAGE_COPY_BUDGET_MS;
+  const deadline = Date.now() + COPY_IMAGES_BUDGET_MS;
   let next = 0;
   const worker = async () => {
     while (next < urls.length) {
       const i = next++;
-      results[i] =
-        Date.now() < deadline
-          ? await copyBlobToUploads(urls[i], userId, budget)
-          : { ok: false, reason: 'failed' };
+      if (Date.now() >= deadline) {
+        results[i] = { ok: false, reason: 'failed' };
+        continue;
+      }
+      const copied = await copyBlobToUploads(urls[i], userId, budget);
+      if (copied.ok) await onCopied(copied.url);
+      results[i] = copied;
     }
   };
   await Promise.all(Array.from({ length: Math.min(IMAGE_COPY_CONCURRENCY, urls.length) }, worker));
@@ -144,38 +160,44 @@ async function copyImages(urls: string[], userId: string): Promise<UploadCopy[]>
 
 /**
  * What an earlier attempt of this request (same key, same caller) left: its
- * finished list, answered again instead of making a second one; a 409 while
- * that attempt is still making it; or null when there's nothing (or only a
- * list a dead attempt left half made, which is taken back here), and this
- * attempt goes ahead.
+ * finished list, answered again instead of making a second one (200); a 409
+ * while that attempt is still making it; or null when there's nothing to
+ * answer with, and this attempt goes ahead. An attempt that must have died is
+ * settled first: finished if its list was written, else taken back whole. A
+ * finished copy whose list has since been deleted is forgotten, and the
+ * request makes it again.
  */
 async function replayCopy(scopedKey: string, userId: string): Promise<NextResponse | null> {
-  const existing = await Wishlist.findOne({
-    idempotencyKey: scopedKey,
-    ...ownedByFilter(userId),
-  }).select('+copyPending');
-  if (!existing) return null;
-  if (existing.copyPending) {
-    if (Date.now() - existing.createdAt.getTime() < COPY_PENDING_STALE_MS) {
+  let row = await WishlistCopy.findOne({ key: scopedKey, user: userId }).lean();
+  if (!row) return null;
+  if (!row.done) {
+    if (!isStaleCopy(row)) {
       return NextResponse.json(
         { success: false, error: COPY_IN_PROGRESS_ERROR },
         { status: 409, headers: NO_STORE }
       );
     }
-    await deleteOwnedWishlist(existing._id.toString(), userId);
-    return null;
+    if ((await settleCopy(row._id, userId)) === 'taken back') return null;
+    row = { ...row, done: true };
   }
-  return NextResponse.json(
-    { success: true, data: serializeWishlist(existing, userId) },
-    { status: 200, headers: NO_STORE }
-  );
+  const list = await Wishlist.findOne({ _id: row.wishlist, ...ownedByFilter(userId) });
+  if (list) {
+    return NextResponse.json(
+      { success: true, data: serializeWishlist(list, userId) },
+      { status: 200, headers: NO_STORE }
+    );
+  }
+  await WishlistCopy.deleteOne({ _id: row._id, done: true });
+  return null;
 }
 
-/** Takes back a copy that can't stand: the new list, its items and every image copied for it. */
-async function undoCopy(wishlistId: string, copiedUrls: string[]) {
-  await Wishlist.deleteOne({ _id: wishlistId });
-  await Item.deleteMany({ wishlist: wishlistId });
-  await deleteOwnBlobs(copiedUrls);
+/** Whether `err` is the unique index refusing a second row for one request's key. */
+function isCopyKeyClash(err: unknown): boolean {
+  const { code, keyPattern } = (err ?? {}) as {
+    code?: unknown;
+    keyPattern?: Record<string, unknown>;
+  };
+  return code === 11000 && !!keyPattern && 'key' in keyPattern;
 }
 
 // POST /api/wishlists/[id]/copy - Make a new list from this one
@@ -192,16 +214,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const access = await authorize((await params).id, userId);
     if ('refused' in access) return access.refused;
     const { id, wishlist: source } = access;
-
-    // Making a list, as POST /api/wishlists does, with its budget, plus one of
-    // its own, since one request copies up to 100 items and their images. Only
-    // once the caller is known to own the list: a 429 only an existing list
-    // could answer with would give away an archived one.
-    const tier = { newAccount: session.user.newAccount };
-    const limited =
-      (await enforce('listCopy', userKey(userId), tier)) ??
-      (await enforce('content', userKey(userId), tier));
-    if (limited) return limited;
 
     const validation = await validateRequestBody(request, copyWishlistSchema);
     if (!validation.success) {
@@ -221,8 +233,27 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       );
     }
     const scopedKey = scopedIdempotencyKey(userId, key);
+    // A retry is answered before any limit is spent: only a new copy spends.
     const replayed = await replayCopy(scopedKey, userId);
     if (replayed) return replayed;
+
+    // Making a list, as POST /api/wishlists does, with its budget, plus one of
+    // its own, since one request copies up to 100 items and their images. Only
+    // once the caller is known to own the list: a 429 only an existing list
+    // could answer with would give away an archived one.
+    const tier = { newAccount: session.user.newAccount };
+    const limited =
+      (await enforce('listCopy', userKey(userId), tier)) ??
+      (await enforce('content', userKey(userId), tier));
+    if (limited) return limited;
+
+    // Any earlier copy of theirs that died (its key since dropped by the
+    // dialog) is settled now, so it doesn't keep its items and images.
+    try {
+      await settleStaleCopies(userId);
+    } catch (err) {
+      console.error(`Settling stale list copies failed (${errorKind(err)})`);
+    }
 
     // Only the source's own copyable items: an id from another list, or one
     // marked received or still a proposal (since it was picked, say), is left
@@ -238,37 +269,22 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           .lean()
       : [];
 
-    // The key is claimed first, by the list itself, marked as being made: a
-    // retry racing this attempt is refused by the unique index before it
-    // copies anything, and is told to wait rather than handed a list that
-    // isn't finished (or that this attempt may still take back).
-    let created;
+    // The request is recorded first, under its key: a retry racing this
+    // attempt is refused by the unique index before it copies anything, and is
+    // told to wait. The list itself is written last, so until it's finished
+    // there's no list for anything to read, count, share or invite to.
+    const newId = new mongoose.Types.ObjectId();
+    let copyRow;
     try {
-      created = await Wishlist.create({
-        name,
-        slug: await generateUniqueWishlistSlug(name),
-        description: source.description || undefined,
-        // Only the person who starts the copy owns it: the source's other
-        // owners are offered an owner invite afterwards, which they must accept.
-        owners: [userId],
-        visibility,
-        bannerUrl: null,
-        ...(occasion ? { occasion } : {}),
-        currency: source.currency || 'USD',
-        idempotencyKey: scopedKey,
-        copyPending: true,
-      });
+      copyRow = await WishlistCopy.create({ user: userId, key: scopedKey, wishlist: newId });
     } catch (err) {
-      // Another attempt of this request got there first: answer as it stands.
-      if (isIdempotencyKeyClash(err)) {
+      if (isCopyKeyClash(err)) {
         const again = await replayCopy(scopedKey, userId);
         if (again) return again;
       }
       throw err;
     }
-    const newId = created._id.toString();
 
-    const copiedUrls: string[] = [];
     let notice: string | undefined;
     let made;
     try {
@@ -285,20 +301,22 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       const toCopy = sources.flatMap((url, i) => (isOwnBlob(url) ? [{ url, i }] : []));
       const copies = await copyImages(
         toCopy.map((c) => c.url),
-        userId
+        userId,
+        async (url) => {
+          await WishlistCopy.updateOne({ _id: copyRow._id }, { $push: { copiedUrls: url } });
+        }
       );
       toCopy.forEach(({ i }, k) => {
         const copied = copies[k];
-        if (copied.ok) {
-          images[i] = copied.url;
-          copiedUrls.push(copied.url);
-        } else if (copied.reason === 'quota') notice = COPY_LIST_IMAGES_QUOTA_NOTICE;
+        if (copied.ok) images[i] = copied.url;
+        else if (copied.reason === 'quota') notice = COPY_LIST_IMAGES_QUOTA_NOTICE;
         else notice ??= COPY_LIST_IMAGES_FAILED_NOTICE;
       });
       const [bannerUrl, ...itemImages] = images;
 
       // Spread over the milliseconds before now, in the source's order, so the
-      // new list shows them in the order the source does.
+      // new list shows them in the order the source does. Nothing reads them
+      // until their list exists.
       const base = Date.now() - items.length;
       await Item.insertMany(
         items.map((item, i) => ({
@@ -325,25 +343,40 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       // copy taken back and the answer anyone else gets.
       const after = await getOwnerAccess(id, userId);
       if (!after.wishlist || !after.isOwner) {
-        await undoCopy(newId, copiedUrls);
+        await takeBackCopy(copyRow._id, userId);
         return after.wishlist ? NOT_OWNER() : NOT_FOUND();
       }
 
-      // Finished: the cover goes on and the mark comes off, in one write.
-      made = await Wishlist.findOneAndUpdate(
-        { _id: newId, ...ownedByFilter(userId) },
-        { $set: { bannerUrl }, $unset: { copyPending: 1 } },
-        { new: true }
-      );
+      made = await Wishlist.create({
+        _id: newId,
+        name,
+        slug: await generateUniqueWishlistSlug(name),
+        description: source.description || undefined,
+        // Only the person who starts the copy owns it: the source's other
+        // owners are offered an owner invite afterwards, which they must accept.
+        owners: [userId],
+        visibility,
+        bannerUrl,
+        ...(occasion ? { occasion } : {}),
+        currency: source.currency || 'USD',
+      });
     } catch (err) {
-      // No half a list: the list goes with whatever items and images made it.
-      await undoCopy(newId, copiedUrls);
+      // No half a list: whatever items and images made it are taken back. A
+      // failure there is logged, never put in place of the one that got here.
+      try {
+        await takeBackCopy(copyRow._id, userId);
+      } catch (undoErr) {
+        console.error(`Taking back a failed list copy failed (${errorKind(undoErr)})`);
+      }
       throw err;
     }
-    if (!made) {
-      // Deleted by its owner before it was finished: nothing holds the copies.
-      await undoCopy(newId, copiedUrls);
-      return NOT_FOUND();
+
+    // The list stands. If marking its row fails, the next retry or sweep sees
+    // the list and marks it then.
+    try {
+      await finishCopy(copyRow._id);
+    } catch (err) {
+      console.error(`Marking a list copy finished failed (${errorKind(err)})`);
     }
 
     return NextResponse.json(

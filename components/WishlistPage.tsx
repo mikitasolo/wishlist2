@@ -1495,8 +1495,9 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
   // Archive or unarchive the list: from Settings, from the confirmation, or
   // from the archived banner's Unarchive.
   const setArchived = useCallback(
-    async (archived: boolean) => {
-      if (!wishlistId || archivingRef.current) return;
+    // Resolves to whether it landed (Start a new list's last step waits on it).
+    async (archived: boolean): Promise<boolean> => {
+      if (!wishlistId || archivingRef.current) return false;
       archivingRef.current = true;
       setIsArchiving(true);
       try {
@@ -1509,11 +1510,13 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
         if (result.success) {
           setWishlist((prev) => (prev ? { ...prev, archived } : prev));
           showToast(archived ? 'Wishlist archived' : 'Wishlist unarchived', 'success');
-        } else {
-          showToast(result.error || 'Failed to update wishlist', 'error');
+          return true;
         }
+        showToast(result.error || 'Failed to update wishlist', 'error');
+        return false;
       } catch {
         showToast('Failed to update wishlist', 'error');
+        return false;
       } finally {
         archivingRef.current = false;
         setIsArchiving(false);
@@ -2431,6 +2434,7 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
           sourceId={String(wishlist._id)}
           isOpen={startNewOpen}
           onClose={() => setStartNewOpen(false)}
+          onArchiveSource={() => setArchived(true)}
         />
       )}
 
