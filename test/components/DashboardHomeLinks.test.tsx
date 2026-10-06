@@ -60,6 +60,7 @@ function serve(ownedCount: number, sharedCount: number) {
           },
         });
       }
+      if (url === '/api/users/me/birthdays') return json({ success: true, data: [] });
       throw new Error(`unexpected fetch ${url}`);
     })
   );
