@@ -37,6 +37,7 @@ vi.mock('@/components/GlobalSearch', () => ({ default: () => null }));
 vi.mock('@/components/CreateWishlistModal', () => ({ default: () => null }));
 
 import AppHeader from '@/components/AppHeader';
+import { ToastProvider } from '@/components/ToastProvider';
 import { HeaderNav, TabBar } from '@/components/AppNav';
 
 const me: User = { id: 'me', email: 'me@example.com', username: 'mikita' };
@@ -174,7 +175,7 @@ describe('HeaderNav — Activity’s count', () => {
 describe('AppHeader — navigation', () => {
   it('links Home · Reserved · Activity in the header, with Me left to the avatar', () => {
     state.pathname = '/booked';
-    render(<AppHeader />);
+    render(<AppHeader />, { wrapper: ToastProvider });
     const nav = headerNav()!;
     expect(
       within(nav)
@@ -189,14 +190,14 @@ describe('AppHeader — navigation', () => {
   });
 
   it('puts the tab bar beside the header, not inside it', () => {
-    render(<AppHeader />);
+    render(<AppHeader />, { wrapper: ToastProvider });
     expect(tabBar()).toHaveAttribute('data-tab-bar', 'shown');
     expect(screen.getByRole('banner')).not.toContainElement(tabBar());
   });
 
   it('shows no tab bar and no links to a signed-out visitor', () => {
     state.user = null;
-    render(<AppHeader />);
+    render(<AppHeader />, { wrapper: ToastProvider });
     expect(tabBar()).toBeNull();
     expect(headerNav()).toBeNull();
     expect(screen.queryByRole('link', { name: 'Home' })).toBeNull();
@@ -205,7 +206,7 @@ describe('AppHeader — navigation', () => {
 
   // WIS-302: New list lives on Home and My wishlists, not in the header.
   it('has no New list in the header for someone signed in', () => {
-    render(<AppHeader />);
+    render(<AppHeader />, { wrapper: ToastProvider });
     expect(screen.queryByRole('button', { name: 'New list' })).toBeNull();
   });
 
@@ -215,7 +216,7 @@ describe('AppHeader — navigation', () => {
   it('while the session loads, holds the places of the links and the tab bar, and nothing else', () => {
     state.user = null;
     state.loading = true;
-    render(<AppHeader />);
+    render(<AppHeader />, { wrapper: ToastProvider });
 
     expect(tabBar()).toHaveAttribute('data-tab-bar', 'pending');
     expect(headerNav()).toHaveClass('hidden', 'sm:session-hint:flex');
@@ -229,7 +230,7 @@ describe('AppHeader — navigation', () => {
 
   it('keeps the navigation up while a known session is updated', () => {
     state.loading = true;
-    render(<AppHeader />);
+    render(<AppHeader />, { wrapper: ToastProvider });
     expect(tabBar()).toHaveAttribute('data-tab-bar', 'shown');
     expect(headerNav()).toHaveClass('flex');
   });
@@ -242,7 +243,7 @@ describe('AppHeader — Activity’s unread count', () => {
 
   it('has no bell', async () => {
     unread = 2;
-    render(<AppHeader />);
+    render(<AppHeader />, { wrapper: ToastProvider });
     await screen.findAllByRole('link', { name: 'Activity, 2 unread' });
     expect(screen.queryByRole('link', { name: /notification/i })).toBeNull();
     expect(screen.queryByTitle('Notifications')).toBeNull();
@@ -256,7 +257,7 @@ describe('AppHeader — Activity’s unread count', () => {
 
   it('shows the count on both the tab and the header link, from one read', async () => {
     unread = 3;
-    render(<AppHeader />);
+    render(<AppHeader />, { wrapper: ToastProvider });
     const links = await screen.findAllByRole('link', { name: 'Activity, 3 unread' });
     expect(links).toHaveLength(2);
     expect(headerNav()).toContainElement(links[0]);
@@ -265,7 +266,7 @@ describe('AppHeader — Activity’s unread count', () => {
   });
 
   it('shows no count at 0', async () => {
-    render(<AppHeader />);
+    render(<AppHeader />, { wrapper: ToastProvider });
     await act(async () => {});
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(activityLinks().map((a) => a.textContent)).toEqual(['Activity', 'Activity']);
@@ -276,7 +277,7 @@ describe('AppHeader — Activity’s unread count', () => {
     'follows the count on %s, and the badge goes at 0',
     async (event) => {
       unread = 1;
-      render(<AppHeader />);
+      render(<AppHeader />, { wrapper: ToastProvider });
       await screen.findAllByRole('link', { name: 'Activity, 1 unread' });
 
       unread = 4;
@@ -297,7 +298,7 @@ describe('AppHeader — Activity’s unread count', () => {
 
   it('reads nothing and shows no count to a signed-out visitor', async () => {
     state.user = null;
-    render(<AppHeader />);
+    render(<AppHeader />, { wrapper: ToastProvider });
     await act(async () => {});
     expect(fetchMock).not.toHaveBeenCalled();
     expect(activityLinks()).toEqual([]);
@@ -306,7 +307,7 @@ describe('AppHeader — Activity’s unread count', () => {
   it('shows no count on the placeholders while the session loads', () => {
     state.user = null;
     state.loading = true;
-    render(<AppHeader />);
+    render(<AppHeader />, { wrapper: ToastProvider });
     expect(fetchMock).not.toHaveBeenCalled();
     expect(document.querySelector('[data-badge]')).toBeNull();
   });

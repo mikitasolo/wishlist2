@@ -1,16 +1,31 @@
 'use client';
 
 import Icon from '@/components/Icon';
+import { useToast } from '@/components/ToastProvider';
 import { useDiscreetMode } from '@/lib/hooks/useDiscreetMode';
 
 /**
  * No spoiler mode's switch in the header (discreet mode, WIS-46), one tap from
  * every page: a pill with an eye, the name and a small track. Off it's quiet;
  * on, the eye is struck through, the knob slides over and the pill takes the
- * accent tint. On a phone the name gives way to keep the header on one line.
+ * accent tint. On a phone the name gives way to keep the header on one line,
+ * and a tooltip never shows on touch, so each switch says what it did in a
+ * toast: often nothing on the page changes to show it (WIS-353).
  */
 export default function NoSpoilerSwitch() {
   const { discreet, setDiscreet } = useDiscreetMode();
+  const { showToast } = useToast();
+
+  const toggle = () => {
+    const on = !discreet;
+    setDiscreet(on);
+    showToast(
+      on
+        ? 'No spoiler mode is on. Your reservations are hidden on this device.'
+        : 'No spoiler mode is off. Your reservations show again.'
+    );
+  };
+
   return (
     <button
       type="button"
@@ -18,7 +33,7 @@ export default function NoSpoilerSwitch() {
       aria-checked={discreet}
       aria-label="No spoiler mode"
       title={discreet ? 'No spoiler mode is on. Turn it off' : 'Turn on no spoiler mode'}
-      onClick={() => setDiscreet(!discreet)}
+      onClick={toggle}
       className={`group inline-flex h-10 flex-shrink-0 items-center gap-2 rounded-full border pr-1.5 pl-3.5 text-sm font-medium whitespace-nowrap shadow-xs transition-[background-color,border-color,color,box-shadow] duration-200 active:scale-[0.97] motion-reduce:transition-none ${
         discreet
           ? 'border-primary-500/50 bg-primary-500/12 text-accent shadow-[0_6px_18px_-10px_rgba(94,92,230,0.9)] hover:bg-primary-500/18'
