@@ -40,7 +40,7 @@ export default function BudgetFilter({
         placeholder="Any price"
         aria-label={`Show items under this price, in ${currency}`}
         aria-invalid={invalid || undefined}
-        className="min-w-0 flex-1 sm:w-28 sm:flex-none"
+        className="min-w-0 flex-1 sm:w-36 sm:flex-none"
       />
     </div>
   );
