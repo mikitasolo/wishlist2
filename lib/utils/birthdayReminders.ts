@@ -1,18 +1,25 @@
 import mongoose from 'mongoose';
 import User from '@/models/User';
-import Wishlist from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
 import Notification from '@/models/Notification';
 import NotificationEmailClaim from '@/models/NotificationEmailClaim';
 import { onlyDuplicateKeyErrors } from '@/lib/notifications';
 import { birthdayClaimKey, claimBirthdayReminderEmail, sendOne } from '@/lib/notificationEmails';
-import { birthdayVisibleFilter, canSeeBirthday, type BirthdayPrivacy } from '@/lib/utils/birthday';
+import {
+  birthdayVisibleFilter,
+  canSeeBirthday,
+  listCoversBirthday,
+  type BirthdayPrivacy,
+} from '@/lib/utils/birthday';
 import { areFriends, getFriendIds } from '@/lib/utils/friends';
 import { notificationOptInFilter, type NotificationChannel } from '@/lib/utils/notificationPrefs';
-import { reminderDayOffsets, storedDatesFor } from '@/lib/utils/occasionReminders';
+import {
+  listsDueForReminder,
+  reminderDayOffsets,
+  storedDatesDue,
+} from '@/lib/utils/occasionReminders';
 import { errorKind } from '@/lib/utils/errorKind';
 import {
-  addDays,
   daysBetween,
   nextOccurrence,
   utcDateString,
@@ -36,9 +43,11 @@ import {
  *   turned it off (`notificationPrefs.birthday_reminder.inApp`, on by
  *   default). **Not a friend who is a member of any of the person's
  *   unarchived Birthday lists due for its own occasion reminder in the same
- *   window** and whose occasion reminders are on for that channel
+ *   window, on a date within `BIRTHDAY_LIST_COVER_DAYS` of the birthday**,
+ *   and whose occasion reminders are on for that channel
  *   (`coveredByBirthdayLists`): that list's `occasion_reminder` already tells
- *   them, so each friend hears about one birthday once.
+ *   them, so each friend hears about one birthday once. A Birthday list the
+ *   person co-owns for someone else (a child's, on another day) covers nobody.
  * - **When**: the occasion reminders' lead and catch-up (`reminderDayOffsets`),
  *   counted from the UTC date; the row names the day itself.
  * - **Once**: per friend, person and occurrence, by a unique partial index
@@ -70,10 +79,7 @@ interface DueBirthday {
 /** The stored birthdays (all on the placeholder year) whose next one is due a reminder from `today`. */
 function storedBirthdaysDue(today: string): string[] {
   const placeholder = `${YEARLY_PLACEHOLDER_YEAR}-`;
-  const stored = reminderDayOffsets()
-    .flatMap((d) => storedDatesFor(addDays(today, d) ?? ''))
-    .filter((date) => date.startsWith(placeholder));
-  return Array.from(new Set(stored));
+  return storedDatesDue(today).filter((date) => date.startsWith(placeholder));
 }
 
 /** Whether a stored birthday's next occurrence, counted from `occasionDate` itself, is that day. */
@@ -111,44 +117,40 @@ export async function birthdaysDueForReminder(today: string): Promise<DueBirthda
 }
 
 /**
- * The members of the person's unarchived Birthday lists (lists they own, of
- * occasion kind `birthday`) whose next occurrence falls within the reminder
- * window from `today`: each of those lists' `occasion_reminder` covers them.
- * An archived list, or one outside the window, covers nobody.
+ * The members of the person's Birthday lists that cover the birthday on
+ * `occasionDate`, whatever their settings: the unarchived lists they own (alone
+ * or with others) of occasion kind `birthday`, due their own occasion reminder
+ * from `today` (`listsDueForReminder`), on a date within
+ * `BIRTHDAY_LIST_COVER_DAYS` of the birthday (`listCoversBirthday`). The same
+ * for either channel; `reachedOn` narrows it to one.
  */
-export async function coveredByBirthdayLists(
+async function birthdayListMembers(
   personId: Id,
-  today: string,
-  channel: NotificationChannel
-): Promise<Set<string>> {
-  const offsets = reminderDayOffsets();
-  const stored = offsets.flatMap((d) => storedDatesFor(addDays(today, d) ?? ''));
-  const lists = await Wishlist.find({
+  occasionDate: string,
+  today: string
+): Promise<Id[]> {
+  const lists = await listsDueForReminder(today, {
     owners: personId,
-    archived: { $ne: true },
     'occasion.kind': 'birthday',
-    'occasion.date': { $in: stored },
-  })
-    .select('occasion')
-    .lean();
-  const due = lists
-    .filter((list) => {
-      const occasion = list.occasion;
-      if (!occasion) return false;
-      const next = nextOccurrence(occasion.date, occasion.recurrence ?? null, today);
-      const days = next === null ? null : daysBetween(today, next);
-      return days !== null && offsets.includes(days);
-    })
+  });
+  const covering = lists
+    .filter((list) => listCoversBirthday(list.occasionDate, occasionDate))
     .map((list) => list._id);
-  if (due.length === 0) return new Set();
-  const members = await WishlistMember.find({ wishlist: { $in: due } })
+  if (covering.length === 0) return [];
+  const members = await WishlistMember.find({ wishlist: { $in: covering } })
     .select('user')
     .lean();
+  return members.map((m) => m.user);
+}
+
+/**
+ * Those of `members` a Birthday list's reminder reaches on `channel`: a member
+ * who turned occasion reminders off there would otherwise hear nothing.
+ */
+async function reachedOn(members: Id[], channel: NotificationChannel): Promise<Set<string>> {
   if (members.length === 0) return new Set();
-  // Only those the list's reminder reaches on this channel: a member who
-  // turned occasion reminders off there would otherwise hear nothing.
   const reached = await User.find({
-    _id: { $in: members.map((m) => m.user) },
+    _id: { $in: members },
     ...notificationOptInFilter('occasion_reminder', channel),
   })
     .select('_id')
@@ -156,36 +158,81 @@ export async function coveredByBirthdayLists(
   return new Set(reached.map((u) => String(u._id)));
 }
 
-/** The person's friends who aren't covered on `channel` by one of their Birthday lists (see the top). */
-async function audience(personId: Id, today: string, channel: NotificationChannel): Promise<Id[]> {
-  const [friends, covered] = await Promise.all([
-    getFriendIds(personId),
-    coveredByBirthdayLists(personId, today, channel),
-  ]);
-  return friends.filter((id) => !covered.has(id)).map((id) => new mongoose.Types.ObjectId(id));
+/**
+ * The friends whose Birthday lists' `occasion_reminder` already tells them on
+ * `channel` about the birthday on `occasionDate` (see the top).
+ */
+export async function coveredByBirthdayLists(
+  personId: Id,
+  occasionDate: string,
+  today: string,
+  channel: NotificationChannel
+): Promise<Set<string>> {
+  return reachedOn(await birthdayListMembers(personId, occasionDate, today), channel);
 }
 
-/** Who of the audience still needs this occurrence's in-app reminder. */
-async function pendingRecipients(person: DueBirthday, today: string): Promise<Id[]> {
-  const ids = await audience(person._id, today, 'inApp');
+/**
+ * What the audience is worked out from, for either channel: the person's
+ * friends, and the members of their Birthday lists that cover this birthday.
+ */
+interface Circle {
+  friends: string[];
+  listMembers: Id[];
+}
+
+async function readCircle(personId: Id, occasionDate: string, today: string): Promise<Circle> {
+  const [friends, listMembers] = await Promise.all([
+    getFriendIds(personId),
+    birthdayListMembers(personId, occasionDate, today),
+  ]);
+  return { friends, listMembers };
+}
+
+/** The circle's friends who aren't covered on `channel` by one of the person's Birthday lists. */
+async function audienceOf(circle: Circle, channel: NotificationChannel): Promise<Id[]> {
+  const covered = await reachedOn(circle.listMembers, channel);
+  return circle.friends
+    .filter((id) => !covered.has(id))
+    .map((id) => new mongoose.Types.ObjectId(id));
+}
+
+/**
+ * Who of the audience still needs this occurrence's reminder on `channel`:
+ * those whose `birthday_reminder` is on there, less those who've had it (the
+ * in-app row, or the email's claim).
+ */
+async function pendingRecipients(
+  person: DueBirthday,
+  circle: Circle,
+  channel: NotificationChannel
+): Promise<Id[]> {
+  const ids = await audienceOf(circle, channel);
   if (ids.length === 0) return [];
-  const [wanting, reminded] = await Promise.all([
-    User.find({ _id: { $in: ids }, ...notificationOptInFilter('birthday_reminder', 'inApp') })
+  const [wanting, done] = await Promise.all([
+    User.find({ _id: { $in: ids }, ...notificationOptInFilter('birthday_reminder', channel) })
       .select('_id')
       .lean(),
-    Notification.find({
-      type: 'birthday_reminder',
-      actor: person._id,
-      occasionDate: person.occasionDate,
-      user: { $in: ids },
-    })
-      .select('user')
-      .lean(),
+    channel === 'inApp'
+      ? Notification.find({
+          type: 'birthday_reminder',
+          actor: person._id,
+          occasionDate: person.occasionDate,
+          user: { $in: ids },
+        })
+          .select('user')
+          .lean()
+      : NotificationEmailClaim.find({
+          kind: 'birthday_reminder',
+          key: birthdayClaimKey(person._id, person.occasionDate),
+          user: { $in: ids },
+        })
+          .select('user')
+          .lean(),
   ]);
-  const done = new Set(reminded.map((n) => String(n.user)));
+  const doneSet = new Set(done.map((row) => String(row.user)));
   return wanting
     .map((u) => u._id)
-    .filter((id) => !done.has(String(id)))
+    .filter((id) => !doneSet.has(String(id)))
     .sort((a, b) => String(a).localeCompare(String(b)));
 }
 
@@ -296,8 +343,9 @@ async function dropStaleBirthdayReminders(
     const rows = await Notification.find({ _id: { $in: ids } })
       .select('user')
       .lean();
+    // Read again, never the run's earlier read: this is the re-check.
     const [allowed, wanting] = await Promise.all([
-      audience(personId, today, 'inApp'),
+      readCircle(personId, occasionDate, today).then((circle) => audienceOf(circle, 'inApp')),
       User.find({
         _id: { $in: rows.map((r) => r.user) },
         ...notificationOptInFilter('birthday_reminder', 'inApp'),
@@ -317,29 +365,6 @@ async function dropStaleBirthdayReminders(
     console.error('Failed to re-check new birthday reminders:', errorKind(err));
     return 0;
   }
-}
-
-/** Who of the audience still needs this occurrence's reminder email. */
-async function pendingEmailRecipients(person: DueBirthday, today: string): Promise<Id[]> {
-  const ids = await audience(person._id, today, 'email');
-  if (ids.length === 0) return [];
-  const [wanting, emailed] = await Promise.all([
-    User.find({ _id: { $in: ids }, ...notificationOptInFilter('birthday_reminder', 'email') })
-      .select('_id')
-      .lean(),
-    NotificationEmailClaim.find({
-      kind: 'birthday_reminder',
-      key: birthdayClaimKey(person._id, person.occasionDate),
-      user: { $in: ids },
-    })
-      .select('user')
-      .lean(),
-  ]);
-  const done = new Set(emailed.map((c) => String(c.user)));
-  return wanting
-    .map((u) => u._id)
-    .filter((id) => !done.has(String(id)))
-    .sort((a, b) => String(a).localeCompare(String(b)));
 }
 
 /**
@@ -363,7 +388,7 @@ async function sendBirthdayEmails(
     const [now, friends, covered, recipient] = await Promise.all([
       stillDuePerson(person._id, person.occasionDate),
       areFriends(user, person._id),
-      coveredByBirthdayLists(person._id, today, 'email'),
+      coveredByBirthdayLists(person._id, person.occasionDate, today, 'email'),
       User.findOne({ _id: user, ...notificationOptInFilter('birthday_reminder', 'email') })
         .select('email')
         .lean(),
@@ -427,12 +452,25 @@ export async function sendBirthdayReminders(
   const run: BirthdayReminderRun = { people: 0, sent: 0, capped: false, emailed: 0 };
   const timeUp = () => Date.now() >= deadline;
   const due = await birthdaysDueForReminder(today);
+  // Each person's friends and covering Birthday lists, read once a run for
+  // picking who's pending on either channel. The re-checks after a write or a
+  // claim read them again.
+  const circles = new Map<string, Promise<Circle>>();
+  const circleOf = (person: DueBirthday) => {
+    const key = String(person._id);
+    let circle = circles.get(key);
+    if (!circle) {
+      circle = readCircle(person._id, person.occasionDate, today);
+      circles.set(key, circle);
+    }
+    return circle;
+  };
   for (const person of due) {
     if (timeUp()) {
       run.capped = true;
       break;
     }
-    const pending = await pendingRecipients(person, today);
+    const pending = await pendingRecipients(person, await circleOf(person), 'inApp');
     if (pending.length === 0) continue;
     const room = maxPerRun - run.sent;
     if (room <= 0) {
@@ -457,7 +495,7 @@ export async function sendBirthdayReminders(
       run.capped = true;
       break;
     }
-    const pending = await pendingEmailRecipients(person, today);
+    const pending = await pendingRecipients(person, await circleOf(person), 'email');
     if (pending.length === 0) continue;
     run.emailed += await sendBirthdayEmails(person, pending.slice(0, room), today, timeUp);
   }
@@ -479,13 +517,16 @@ const FEED_RECHECK_PASSES = 3;
  * Only the rows the feed can show or count are checked: the unread ones, and
  * those among the newest `feedLimit` of `visible` (the feed's own filter). A
  * deletion can bring an older row into the newest, so it looks again, up to
- * `FEED_RECHECK_PASSES` times. With no such rows it reads nothing else.
+ * `FEED_RECHECK_PASSES` times. With no such rows it reads nothing else, and
+ * a reader with no birthday reminder at all costs one existence check.
  *
- * Returns each checked, still-standing reminder's person's username as it is
- * now, by account, for the feed to name and link them by (a username can
- * change hands): a feed row with none there is left out. `null` when the
- * re-check failed: the feed then leaves every birthday reminder out, of its
- * rows and of its unread count alike.
+ * Returns, by reminder (row id), each checked, still-standing reminder's
+ * person's username as it is now, read by account, for the feed to name and
+ * link them by (a username can change hands). Row by row, never by person: a
+ * feed row not in it (one no pass reached) is left out, even when another
+ * reminder about the same person passed. `null` when the re-check failed: the
+ * feed then leaves every birthday reminder out, of its rows and of its unread
+ * count alike.
  */
 export async function dropHiddenBirthdayReminders(
   userId: string,
@@ -494,6 +535,7 @@ export async function dropHiddenBirthdayReminders(
 ): Promise<Map<string, string> | null> {
   try {
     const names = new Map<string, string>();
+    if (!(await Notification.exists({ user: userId, type: 'birthday_reminder' }))) return names;
     const checked = new Set<string>();
     let friendSet: Set<string> | null = null;
     for (let pass = 0; pass < FEED_RECHECK_PASSES; pass++) {
@@ -537,7 +579,7 @@ export async function dropHiddenBirthdayReminders(
             canSeeBirthday(person.privacy as BirthdayPrivacy, 'friend') &&
             !!r.occasionDate &&
             fallsOn(person.birthday, r.occasionDate);
-          if (ok) names.set(String(person._id), person.username as string);
+          if (ok) names.set(String(r._id), person.username as string);
           return !ok;
         })
         .map((r) => r._id);

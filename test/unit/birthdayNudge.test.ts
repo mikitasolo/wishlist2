@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
+import { safeCallbackPath, SIGN_IN_PATH } from '@/lib/utils/callbackUrl';
+import { signInRetryPath } from '@/lib/utils/signInForm';
 import {
+  BIRTHDAY_NUDGE_EMAIL_PATH,
+  BIRTHDAY_NUDGE_HOME_PATH,
   BIRTHDAY_NUDGE_LEAD_DAYS,
   birthdayCountdown,
   birthdayNudge,
@@ -225,5 +229,23 @@ describe('olderBirthdayLists (WIS-348)', () => {
     expect(
       olderBirthdayLists([{ _id: 'a', name: 'A', occasion: oneOff('2020-01-01') }], null)
     ).toEqual([]);
+  });
+});
+
+describe('BIRTHDAY_NUDGE_EMAIL_PATH (WIS-347)', () => {
+  const origin = 'http://localhost:3000';
+  const callback = () => new URL(BIRTHDAY_NUDGE_EMAIL_PATH, origin).searchParams.get('callbackUrl');
+
+  // regression: the email linked to `/?newList=birthday` itself; signed out,
+  // Home shows the landing, and New list on Birthday was lost through sign-in.
+  it('regression: goes through sign-in, continuing to New list on a Birthday list', () => {
+    expect(new URL(BIRTHDAY_NUDGE_EMAIL_PATH, origin).pathname).toBe(SIGN_IN_PATH);
+    expect(callback()).toBe(BIRTHDAY_NUDGE_HOME_PATH);
+    expect(BIRTHDAY_NUDGE_HOME_PATH).toBe('/?newList=birthday');
+  });
+
+  it('continues only to that path on this site, as the sign-in and error pages read it', () => {
+    expect(safeCallbackPath(callback(), origin, '/auth')).toBe('/?newList=birthday');
+    expect(signInRetryPath(callback(), origin)).toBe(BIRTHDAY_NUDGE_EMAIL_PATH);
   });
 });

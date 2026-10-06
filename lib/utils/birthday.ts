@@ -20,7 +20,21 @@
  * reminders), and leaves the field out for anyone excluded, exactly as
  * for someone with no birthday, so a hidden birthday can't be told from none.
  */
-import { YEARLY_PLACEHOLDER_YEAR, normalizeOccasionDate } from '@/lib/utils/occasion';
+import { YEARLY_PLACEHOLDER_YEAR, daysBetween, normalizeOccasionDate } from '@/lib/utils/occasion';
+
+/**
+ * How many days either side of the birthday a Birthday list's date may be and
+ * still cover a friend's birthday reminder (WIS-347, operator 2026-10-06): a
+ * party a few days off counts, a child's or partner's list on another day
+ * doesn't (`coveredByBirthdayLists`).
+ */
+export const BIRTHDAY_LIST_COVER_DAYS = 7;
+
+/** Whether a Birthday list on `listDate` covers the birthday on `occasionDate` (both real `YYYY-MM-DD`). */
+export function listCoversBirthday(listDate: string, occasionDate: string): boolean {
+  const days = daysBetween(occasionDate, listDate);
+  return days !== null && Math.abs(days) <= BIRTHDAY_LIST_COVER_DAYS;
+}
 
 export const BIRTHDAY_VISIBILITIES = ['nobody', 'friends', 'everyone'] as const;
 export type BirthdayVisibility = (typeof BIRTHDAY_VISIBILITIES)[number];

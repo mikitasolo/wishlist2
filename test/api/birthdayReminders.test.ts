@@ -691,3 +691,103 @@ describe('account deletion', () => {
     ]);
   });
 });
+
+describe('follow-ups (WIS-347)', () => {
+  const feed = async (viewer: Types.ObjectId) => {
+    session.mockResolvedValue({ user: { id: String(viewer) } } as never);
+    return (await FEED(new NextRequest('http://localhost/api/notifications'))).json();
+  };
+
+  // The run's two dates are always within the window's two days of each other,
+  // so these hold by the window too; `listCoversBirthday` (unit) pins the 7 days.
+  it('a Birthday list she co-owns for someone else’s birthday covers nobody; one near hers does', async () => {
+    const [mia, bo] = await Promise.all([friend('mia'), friend('bo')]);
+    const kid = await user('kid');
+    // Her child's list, co-owned, on the child's birthday three weeks later.
+    const kids = await birthdayList('2026-11-02', { owners: [anna, kid] });
+    // Her own party, two days before her birthday.
+    const party = await list({ kind: 'birthday', date: '2000-10-10', recurrence: 'yearly' });
+    await join(kids._id, mia);
+    await join(party._id, bo);
+    await run();
+    expect(await remindedIds()).toEqual([String(mia)]);
+  });
+
+  it('reads each person’s friends and Birthday lists once to pick who’s pending, re-checking after the write and each claim', async () => {
+    const on = { notificationPrefs: { birthday_reminder: { email: true } } };
+    await friend('mia', on);
+    await friend('bo', on);
+    const lists = vi.spyOn(Wishlist, 'find');
+    const result = await run();
+    expect(result).toMatchObject({ sent: 2, emailed: 2 });
+    // Once to pick who's pending (both channels), once in the in-app re-check,
+    // and once after each email's claim: the picking isn't repeated per channel.
+    expect(lists).toHaveBeenCalledTimes(4);
+    lists.mockRestore();
+  });
+
+  it('the feed reads nothing more than one existence check for a reader with no birthday reminder', async () => {
+    const mia = await friend('mia');
+    await Notification.create({ user: mia, type: 'follow', actorUsername: 'bo', read: false });
+    const finds = vi.spyOn(Notification, 'find');
+    const follows = vi.spyOn(Follow, 'find');
+    const body = await feed(mia);
+    expect(body.data.map((n: { type: string }) => n.type)).toEqual(['follow']);
+    expect(body.unreadCount).toBe(1);
+    // The feed's own read of its rows only.
+    expect(finds).toHaveBeenCalledTimes(1);
+    expect(follows).not.toHaveBeenCalled();
+    finds.mockRestore();
+    follows.mockRestore();
+  });
+
+  it('regression: the feed admits each reminder on its own, never one no re-check pass reached', async () => {
+    // The re-check returned names by person: once one reminder about Anna
+    // passed, any other about her showed, even one no pass had checked (a
+    // stale date). Three stale rows use up the three passes, bringing an
+    // unchecked, stale-dated one about Anna into the feed.
+    const mia = await friend('mia');
+    const strangers = await Promise.all(
+      ['ben', 'cleo', 'dan'].map((n) => user(n, { birthday: BIRTHDAY }))
+    );
+    const t0 = Date.now();
+    const at = (s: number) => new Date(t0 - s * 1000);
+    const birthdayRow = (actor: Types.ObjectId, occasionDate: string, s: number) => ({
+      user: mia,
+      type: 'birthday_reminder',
+      actor,
+      actorUsername: 'x',
+      occasionDate,
+      count: 1,
+      read: true,
+      createdAt: at(s),
+    });
+    await Notification.collection.insertMany([
+      birthdayRow(anna, IN_A_WEEK, 0),
+      ...Array.from({ length: 28 }, (_, i) => ({
+        user: mia,
+        type: 'follow',
+        actorUsername: 'bo',
+        count: 1,
+        read: true,
+        createdAt: at(i + 1),
+      })),
+      ...strangers.map((s, i) => birthdayRow(s, IN_A_WEEK, 29 + i)),
+      // Anna's birthday never fell on this day: stale.
+      birthdayRow(anna, '2026-10-11', 32),
+    ]);
+
+    const { data } = await feed(mia);
+    const shown = data.filter((n: { type: string }) => n.type === 'birthday_reminder');
+    expect(shown.map((n: { occasionDate: string }) => n.occasionDate)).toEqual([IN_A_WEEK]);
+    expect(shown[0].actorUsername).toBe('anna');
+    // The strangers' went; the unchecked one stays for a later read to judge.
+    expect((await reminders()).map((r) => r.occasionDate).sort()).toEqual([
+      '2026-10-11',
+      IN_A_WEEK,
+    ]);
+    // The next read reaches it, and takes it back.
+    expect((await feed(mia)).data).toHaveLength(29);
+    expect(await reminders()).toHaveLength(1);
+  });
+});

@@ -80,7 +80,8 @@ const RESERVED_PATH = '/booked';
  * - "Your birthday is in 3 weeks" (WIS-344, `useBirthdayNudge`), from three
  *   weeks before the birthday on your profile, unless one of your lists is a
  *   Birthday list coming; New list opens the create dialog on a Birthday list
- *   (`onNewBirthdayList`), and it can be dismissed for this birthday;
+ *   (`onNewBirthdayList`; without it, the nudge isn't read at all), and it
+ *   can be dismissed for this birthday;
  * - "2 proposals to review on Anna's 30th", for each of your own lists with
  *   proposals waiting (`proposalCount`, which only an owner's lists carry), to
  *   the list's Proposals. A count, never who proposed;
@@ -100,7 +101,8 @@ export default function NeedsYou({
   const headingId = useId();
   const { invites, busy, respond } = usePendingInvites();
   const changed = useChangedReservations();
-  const birthday = useBirthdayNudge(ownLists);
+  // Without New list to open there's no row to show, so nothing is read for it.
+  const birthday = useBirthdayNudge(ownLists, !!onNewBirthdayList);
   const currency = useCurrencyOffer();
 
   const rows: Row[] = [];
