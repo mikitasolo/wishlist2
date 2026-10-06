@@ -109,6 +109,11 @@ import { useListChip } from '@/lib/hooks/useListChip';
 import { useItemDeepLink } from '@/lib/hooks/useItemDeepLink';
 import { useStickyItems } from '@/lib/hooks/useStickyItems';
 import { useListPrices } from '@/lib/hooks/useListPrices';
+import { useCurrencyRates } from '@/lib/hooks/useCurrencyRates';
+import { useViewerLocale } from '@/lib/hooks/useViewerLocale';
+import BudgetFilter from '@/components/BudgetFilter';
+import { filterByBudget, hasPricedItem, parseBudget } from '@/lib/utils/budgetFilter';
+import { needsPricesControl, ORIGINAL_PRICES, viewerPriceCurrency } from '@/lib/utils/listPrices';
 import { TONE_CLASSES } from '@/lib/utils/statusTones';
 import { useReceivedToast } from '@/lib/hooks/useReceivedToast';
 import { useReserveToast } from '@/lib/hooks/useReserveToast';
@@ -1726,9 +1731,43 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
     [items, activeChip, viewerRole, viewerId, sortBy]
   );
 
+  // Prices (D9): someone else's list starts in the viewer's currency, their
+  // own on each item's; offered only when some price is in another currency.
+  const prices = useListPrices({
+    viewerId,
+    defaultCurrency: session?.user?.defaultCurrency,
+    ownList: isOwner,
+    items,
+  });
+
+  // The budget filter ("Under X", WIS-326): for gifters only (a signed-in
+  // non-owner of someone else's list; a signed-out link visitor has no known
+  // currency), never saved. The amount is in the currency Prices shows, so a
+  // new pick re-reads the typed text in it; on each item's own currency (or
+  // with Prices not offered) it's the account's default. It narrows what's
+  // shown after the chips have counted, so a chip's count never moves with it.
+  const accountCurrency = viewerPriceCurrency(session?.user?.defaultCurrency);
+  const viewerCurrency = prices.value === ORIGINAL_PRICES ? accountCurrency : prices.value;
+  const viewerLocale = useViewerLocale();
+  const [budgetText, setBudgetText] = useState('');
+  const budgetOffered = !isOwner && !!viewerId && hasPricedItem(items);
+  const budget = budgetOffered ? parseBudget(budgetText, viewerLocale) : null;
+  const budgetLimit = budget === 'invalid' ? null : budget;
+  // Rates are only needed to compare a price in another currency.
+  const ownRates = useCurrencyRates(
+    budgetLimit !== null && prices.rates === null && needsPricesControl(items, viewerCurrency)
+  );
+  const budgetRates = prices.rates ?? ownRates;
+
   const filteredItems = useMemo(
-    () => searchItemsByName(chipItems, searchQuery),
-    [chipItems, searchQuery]
+    () =>
+      filterByBudget(
+        searchItemsByName(chipItems, searchQuery),
+        budgetLimit,
+        viewerCurrency,
+        budgetRates
+      ),
+    [chipItems, searchQuery, budgetLimit, viewerCurrency, budgetRates]
   );
 
   // A card the viewer reserves, releases, publishes or marks stays in its
@@ -1736,7 +1775,7 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
   const { items: sortedItems, pin: pinItem } = useStickyItems(
     filteredItems,
     items,
-    JSON.stringify([wishlistId, viewerRole, activeChip, sortBy, searchQuery])
+    JSON.stringify([wishlistId, viewerRole, activeChip, sortBy, searchQuery, budgetLimit])
   );
   const handleStickyCardUpdate = useCallback(
     (id: string, updates: Partial<ApiItem>) => {
@@ -1765,10 +1804,14 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
   const showAllItems = useCallback(() => {
     chooseChip('all');
     setSearchQuery('');
+    setBudgetText('');
   }, [chooseChip]);
 
   // Clear the item search when switching to a different wishlist.
-  useEffect(() => setSearchQuery(''), [wishlistId]);
+  useEffect(() => {
+    setSearchQuery('');
+    setBudgetText('');
+  }, [wishlistId]);
 
   // `?item=<id>` (the Reserved page's View on list): scroll to that item and
   // highlight it, clearing a chip or search that would hide it.
@@ -1790,18 +1833,13 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
     reveal: showAllItems,
   });
 
-  // Prices (D9): someone else's list starts in the viewer's currency, their
-  // own on each item's; offered only when some price is in another currency.
-  const prices = useListPrices({
-    viewerId,
-    defaultCurrency: session?.user?.defaultCurrency,
-    ownList: isOwner,
-    items,
-  });
-
   // The grid's first cell: an owner's Add item or a member's Propose an item,
   // under All (and a member's Your proposals), never while a search is on.
-  const addTile = addTileFor(viewerRole, activeChip, searchQuery.trim() !== '');
+  const addTile = addTileFor(
+    viewerRole,
+    activeChip,
+    searchQuery.trim() !== '' || budgetLimit !== null
+  );
 
   const chips = listChips(viewerRole).map((chip) => ({
     value: chip,
@@ -2061,6 +2099,15 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
                           triggerClassName="flex-shrink-0"
                         />
                       )}
+                      {budgetOffered && (
+                        <BudgetFilter
+                          className="w-full sm:w-auto"
+                          value={budgetText}
+                          onChange={setBudgetText}
+                          currency={viewerCurrency}
+                          invalid={budget === 'invalid'}
+                        />
+                      )}
                     </div>
                   </>
                 )}
@@ -2126,7 +2173,9 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
                     body={
                       searchQuery.trim()
                         ? `No items match “${searchQuery.trim()}”.`
-                        : 'No items match this filter.'
+                        : budgetLimit !== null && activeChip === 'all'
+                          ? 'No items are under that price.'
+                          : 'No items match this filter.'
                     }
                     actions={
                       <>
