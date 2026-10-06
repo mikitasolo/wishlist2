@@ -53,6 +53,8 @@ export interface INotification extends Document {
   // year). With `user` and `wishlist` it's what makes a reminder once-only
   // (the unique index below).
   occasionKind?: OccasionKind | null;
+  // `birthday_reminder` too (WIS-345): the birthday's next occurrence, with
+  // `user` (the friend) and `actor` (whose birthday it is) its once-only key.
   occasionDate?: string | null;
   // `link_join` only (WIS-337): the label of the share link they joined
   // through, snapshotted (owner-written free text; React and the email escape
@@ -135,6 +137,13 @@ NotificationSchema.index(
 NotificationSchema.index(
   { user: 1, wishlist: 1, occasionDate: 1 },
   { unique: true, partialFilterExpression: { type: 'occasion_reminder' } }
+);
+
+// One birthday reminder per friend per person per occurrence (WIS-345): the
+// daily run writes them as upserts on this key (`createBirthdayReminders`).
+NotificationSchema.index(
+  { user: 1, actor: 1, occasionDate: 1 },
+  { unique: true, partialFilterExpression: { type: 'birthday_reminder' } }
 );
 
 export default (mongoose.models.Notification as mongoose.Model<INotification>) ||

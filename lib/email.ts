@@ -461,7 +461,8 @@ export type EmailedNotificationType =
   | 'removed_from_wishlist'
   | 'invite_accepted'
   | 'proposal_approved'
-  | 'occasion_reminder';
+  | 'occasion_reminder'
+  | 'birthday_reminder';
 
 export interface NotificationEmailDetails {
   /** The recipient's account id, for the unsubscribe link (never shown). */
@@ -469,10 +470,12 @@ export interface NotificationEmailDetails {
   type: EmailedNotificationType;
   /**
    * Whoever did it, by username only, on the types whose in-app row names
-   * them (`join_request`, `invite_accepted`, `link_join`). Ignored on every other type.
+   * them (`join_request`, `invite_accepted`, `link_join`), and whose birthday
+   * it is on a `birthday_reminder`. Ignored on every other type.
    */
   actorUsername?: string | null;
-  wishlistId: string;
+  /** The list it's about: null on a `birthday_reminder`, which is about a person. */
+  wishlistId: string | null;
   /** Free text: escaped in the HTML, isolated in the text part, never in the subject. */
   wishlistName: string | null;
   wishlistSlug?: string | null;
@@ -480,6 +483,7 @@ export interface NotificationEmailDetails {
   itemName?: string | null;
   /** `occasion_reminder` only. */
   occasionKind?: OccasionKind | null;
+  /** `occasion_reminder` and `birthday_reminder`: the day it's about. */
   occasionDate?: string | null;
   /** `link_join` only: the share link's label, as its in-app row names it. Free text. */
   linkLabel?: string | null;
@@ -490,6 +494,7 @@ const NAMES_ACTOR: ReadonlySet<EmailedNotificationType> = new Set([
   'join_request',
   'invite_accepted',
   'link_join',
+  'birthday_reminder',
 ]);
 
 const OCCASION_SUBJECT_KIND: Record<OccasionKind, string> = {
@@ -560,6 +565,13 @@ function notificationEmailCopy(
         button: 'Open the wishlist',
       };
     }
+    // About a person, never a list (WIS-345).
+    case 'birthday_reminder':
+      return {
+        subject: `${actor}’s birthday is coming up`,
+        heading: 'A friend’s birthday is coming up',
+        button: 'Open their profile',
+      };
   }
 }
 

@@ -1,6 +1,7 @@
 import { plural } from '@/lib/utils/plural';
 import type { IconName } from '@/components/Icon';
 import { followersHref, profileHref } from '@/lib/utils/profileLinks';
+import { formatBirthday } from '@/lib/utils/birthday';
 import {
   formatOccasionDay,
   isCalendarDate,
@@ -20,6 +21,7 @@ export const NOTIFICATION_TYPES = [
   'join_request',
   'occasion_reminder',
   'link_join',
+  'birthday_reminder',
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
@@ -69,7 +71,8 @@ export interface NotificationView {
   followingActor?: boolean | null;
   // An `occasion_reminder`: the occasion's kind and the day it falls on (its
   // next occurrence, a real `YYYY-MM-DD`, never a yearly one's stored year).
-  // Null on every other type. Optional, like `count`.
+  // A `birthday_reminder` carries the day too (the birthday's next one), and
+  // no kind. Null on every other type. Optional, like `count`.
   occasionKind?: OccasionKind | null;
   occasionDate?: string | null;
   // A `link_join`: the label of the share link they joined through, as its
@@ -93,6 +96,8 @@ const ACTOR_TYPES: ReadonlySet<NotificationType> = new Set([
   'invite_accepted',
   'join_request',
   'link_join',
+  // Whose birthday it is: a friend of the recipient's, who could see it.
+  'birthday_reminder',
 ]);
 
 /** Whether a notification of `type` may show its actor (see `ACTOR_TYPES`). */
@@ -228,6 +233,10 @@ export function notificationParts(n: NotificationView): NotificationPart[] {
     // To the list's members only, a week ahead (lib/utils/occasionReminders.ts).
     case 'occasion_reminder':
       return occasionReminderParts(n);
+    // To the person's friends who may see their birthday, a week ahead
+    // (lib/utils/birthdayReminders.ts): about the person, never a list.
+    case 'birthday_reminder':
+      return [birthdayReminderText(n)];
     default:
       return ['You have a new notification'];
   }
@@ -246,6 +255,18 @@ function occasionReminderParts(n: NotificationView): NotificationPart[] {
   const day =
     n.occasionDate && isCalendarDate(n.occasionDate) ? formatOccasionDay(n.occasionDate) : null;
   return day ? [`${kind} coming up on ${day}: `, list(n)] : [`${kind} coming up: `, list(n)];
+}
+
+/**
+ * "@anna’s birthday is on March 14": whose and the day, with no year and no
+ * countdown (which would go stale as the row sits in the feed). Nothing about
+ * any list, item or booking, nor who else was reminded.
+ */
+function birthdayReminderText(n: NotificationView): string {
+  const who = n.actorUsername ? `@${n.actorUsername}’s` : 'A friend’s';
+  const day =
+    n.occasionDate && isCalendarDate(n.occasionDate) ? formatBirthday(n.occasionDate) : '';
+  return day ? `${who} birthday is on ${day}` : `${who} birthday is coming up`;
 }
 
 const OCCASION_REMINDER_KIND: Record<OccasionKind, string> = {
@@ -299,6 +320,9 @@ export function notificationLink(
       return listLink(n);
     case 'removed_from_wishlist':
       return null;
+    // Their profile, not a list.
+    case 'birthday_reminder':
+      return n.actorUsername ? profileHref(n.actorUsername) : '/notifications';
     // The list's People tab: its Requests, and its members and share links.
     case 'join_request':
     case 'link_join':
@@ -333,6 +357,8 @@ export function notificationIcon(n: NotificationView): IconName {
       return 'link';
     case 'occasion_reminder':
       return 'calendar';
+    case 'birthday_reminder':
+      return 'gift';
     default:
       return 'bell';
   }

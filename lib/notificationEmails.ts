@@ -46,6 +46,7 @@ export const EMAIL_LIMITERS: Record<EmailedNotificationType, EmailLimiterName> =
   invite_accepted: 'emailInviteAccepted',
   proposal_approved: 'emailProposalApproved',
   occasion_reminder: 'emailOccasionReminder',
+  birthday_reminder: 'emailBirthdayReminder',
 };
 
 /**
@@ -68,9 +69,14 @@ export const PROPOSAL_EMAIL_WINDOW_MS = 24 * 60 * 60 * 1000;
 /** The types emailed at most once per list per owner a day, by their claim. */
 const DAILY_PER_LIST: ReadonlySet<EmailedNotificationType> = new Set(['proposal', 'link_join']);
 
-/** The types `createNotifications` emails about (occasion reminders go through the cron). */
+/** The types `createNotifications` emails about (occasion and birthday reminders go through the cron). */
 export function emailedByNotifications(type: NotificationType): type is EmailedNotificationType {
-  return type !== 'follow' && type !== 'wishlist_invite' && type !== 'occasion_reminder';
+  return (
+    type !== 'follow' &&
+    type !== 'wishlist_invite' &&
+    type !== 'occasion_reminder' &&
+    type !== 'birthday_reminder'
+  );
 }
 
 export interface NotificationEmailArgs {
@@ -257,4 +263,38 @@ export async function claimOccasionReminderEmail(
     }
     return null;
   }
+}
+
+/**
+ * Claim a friend's birthday reminder email (WIS-345) for one friend, person
+ * and occurrence: taken once, ever (until the row expires, long after the
+ * reminder window has passed). The key carries whose birthday it is, so two
+ * friends' birthdays on the same day are two claims.
+ */
+export async function claimBirthdayReminderEmail(
+  userId: Id,
+  personId: Id,
+  occasionDate: string,
+  now: Date = new Date()
+): Promise<Claim | null> {
+  try {
+    const row = await NotificationEmailClaim.create({
+      user: userId,
+      kind: 'birthday_reminder',
+      about: personId,
+      key: birthdayClaimKey(personId, occasionDate),
+      sentAt: now,
+    });
+    return claimOf(row._id, now);
+  } catch (err) {
+    if (!isDuplicateKeyError(err)) {
+      console.error('Failed to claim a birthday reminder email:', errorKind(err));
+    }
+    return null;
+  }
+}
+
+/** The claim key of a birthday reminder email: whose birthday, and which day. */
+export function birthdayClaimKey(personId: Id, occasionDate: string): string {
+  return `${String(personId)}:${occasionDate}`;
 }

@@ -47,6 +47,13 @@ export const NOTIFICATION_EVENTS = {
     label: 'Occasion reminders',
     description: 'A week before the occasion on a list you’re a member of.',
   },
+  // Off by email unless turned on (the operator's decision, WIS-345).
+  birthday_reminder: {
+    types: ['birthday_reminder'],
+    defaults: { inApp: true, email: false },
+    label: 'Friends’ birthdays',
+    description: 'A week before a friend’s birthday, when they share it with you.',
+  },
   join_request: {
     types: ['join_request'],
     defaults: { inApp: true, email: true },

@@ -367,8 +367,9 @@ describe('an answered invite', () => {
 describe('notificationParts — list names', () => {
   const name = 'Anna’s 30th Birthday';
   const everyType = (overrides: Partial<NotificationView>) =>
-    NOTIFICATION_TYPES.filter((type) => type !== 'follow').flatMap((type) =>
-      [1, 2].map((count) => make({ type, count, actorUsername: 'ann', ...overrides }))
+    // A follow and a friend's birthday are about a person, never a list.
+    NOTIFICATION_TYPES.filter((type) => type !== 'follow' && type !== 'birthday_reminder').flatMap(
+      (type) => [1, 2].map((count) => make({ type, count, actorUsername: 'ann', ...overrides }))
     );
 
   // regression: some types quoted the list's name («on “Anna’s 30th Birthday”»)
@@ -439,13 +440,14 @@ describe('notificationIcon', () => {
 });
 
 describe('showsActor', () => {
-  it('shows who did it on a follow, an invite, an accepted invite, a request to join and a link join only', () => {
+  it('shows who did it on a follow, an invite, an accepted invite, a request to join, a link join and whose birthday it is only', () => {
     expect(NOTIFICATION_TYPES.filter(showsActor)).toEqual([
       'follow',
       'wishlist_invite',
       'invite_accepted',
       'join_request',
       'link_join',
+      'birthday_reminder',
     ]);
   });
 
@@ -618,5 +620,46 @@ describe('occasion reminder', () => {
     expect(notificationLink(reminder())).toBe('/wishlists/anna-30');
     expect(notificationIcon(reminder())).toBe('calendar');
     expect(showsActor('occasion_reminder')).toBe(false);
+  });
+});
+
+describe('birthday reminder (WIS-345)', () => {
+  const reminder = (over: Partial<NotificationView> = {}) =>
+    make({
+      type: 'birthday_reminder',
+      actorUsername: 'anna',
+      occasionDate: '2027-03-14',
+      ...over,
+    });
+
+  it('names whose birthday and its day, with no year, list, item or booking', () => {
+    const parts = notificationParts(reminder());
+    expect(parts).toHaveLength(1);
+    expect(parts.every((p) => typeof p === 'string')).toBe(true);
+    const text = notificationText(reminder());
+    expect(text).toMatch(/^@anna’s birthday is on /);
+    expect(text).toMatch(/14/);
+    expect(text).not.toMatch(/2027|list|reserv|book|item/i);
+  });
+
+  it('never names a list, even on a row that somehow carries one', () => {
+    const text = notificationText(reminder({ wishlistName: 'Anna’s 30th', wishlistId: 'w1' }));
+    expect(text).not.toContain('Anna’s 30th');
+  });
+
+  it('reads plainly without a day or a name', () => {
+    expect(notificationText(reminder({ occasionDate: null }))).toBe(
+      '@anna’s birthday is coming up'
+    );
+    expect(notificationText(reminder({ actorUsername: null, occasionDate: 'x' }))).toBe(
+      'A friend’s birthday is coming up'
+    );
+  });
+
+  it('links to their profile, with a gift icon and their face', () => {
+    expect(notificationLink(reminder())).toBe('/users/anna');
+    expect(notificationLink(reminder({ actorUsername: null }))).toBe('/notifications');
+    expect(notificationIcon(reminder())).toBe('gift');
+    expect(showsActor('birthday_reminder')).toBe(true);
   });
 });

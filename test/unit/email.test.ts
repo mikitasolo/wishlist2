@@ -563,6 +563,7 @@ describe('notification emails (WIS-321)', () => {
     ['invite_accepted', '@ivan accepted your invitation'],
     ['proposal_approved', 'Your proposed item was accepted'],
     ['occasion_reminder', 'A birthday is coming up on a wishlist you’re on'],
+    ['birthday_reminder', '@ivan’s birthday is coming up'],
   ] as const)('%s: a subject with no free text', async (type, subject) => {
     const message = await send({
       type,
@@ -651,6 +652,22 @@ describe('notification emails (WIS-321)', () => {
     expect(message.html).not.toMatch(/reserv|book/i);
   });
 
+  it('a friend’s birthday reminder names them and the day, links to their profile, and names no list', async () => {
+    const message = await send({
+      type: 'birthday_reminder',
+      actorUsername: 'anna',
+      wishlistId: null,
+      wishlistName: 'Anna’s secret list',
+      occasionDate: '2027-03-14',
+    });
+    expect(message.subject).toBe('@anna’s birthday is coming up');
+    expect(message.html).toMatch(/@anna’s birthday is on [^<]*14[^<]*\./);
+    expect(message.html).toContain('href="http://localhost:3000/users/anna"');
+    expect(message.html).not.toContain('secret list');
+    expect(message.text).not.toContain('secret list');
+    expect(message.html).not.toMatch(/2027|reserv|book/i);
+  });
+
   it.each([
     ['join_request', 'join_request'],
     ['link_join', 'link_join'],
@@ -660,6 +677,7 @@ describe('notification emails (WIS-321)', () => {
     ['invite_accepted', 'invite_accepted'],
     ['proposal_approved', 'proposal_approved'],
     ['occasion_reminder', 'occasion_reminder'],
+    ['birthday_reminder', 'birthday_reminder'],
   ] as const)('%s unsubscribes from %s emails only', async (type, event) => {
     const message = await send({ type });
     const oneClick = new URL((message.headers?.['List-Unsubscribe'] ?? '').replace(/^<|>$/g, ''));

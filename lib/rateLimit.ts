@@ -143,6 +143,7 @@ const SPECS = {
   emailInviteAccepted: { tokens: 10, window: '1 h', policy: 'fail-closed', keyKind: 'user' },
   emailProposalApproved: { tokens: 10, window: '1 h', policy: 'fail-closed', keyKind: 'user' },
   emailOccasionReminder: { tokens: 10, window: '1 d', policy: 'fail-closed', keyKind: 'user' },
+  emailBirthdayReminder: { tokens: 10, window: '1 d', policy: 'fail-closed', keyKind: 'user' },
 } satisfies Record<string, LimiterSpec>;
 
 export type LimiterName = keyof typeof SPECS;

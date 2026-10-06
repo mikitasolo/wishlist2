@@ -469,7 +469,7 @@ export async function createOccasionReminders({
  * The ids a bulk write still upserted, when everything it refused was a
  * duplicate key; `null` for any other failure.
  */
-function onlyDuplicateKeyErrors(err: unknown): mongoose.Types.ObjectId[] | null {
+export function onlyDuplicateKeyErrors(err: unknown): mongoose.Types.ObjectId[] | null {
   if (typeof err !== 'object' || err === null) return null;
   const { writeErrors, result } = err as {
     writeErrors?: unknown;

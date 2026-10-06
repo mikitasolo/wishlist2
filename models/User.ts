@@ -128,6 +128,10 @@ export interface IUser {
   updatedAt: Date;
 }
 
+// The daily friends' birthday reminders (WIS-345) look people up by the
+// birthdays due in their window (`birthdaysDueForReminder`).
+UserSchema.index({ birthday: 1 });
+
 const User: Model<IUser> = mongoose.models.User || mongoose.model<IUser>('User', UserSchema);
 
 export default User;

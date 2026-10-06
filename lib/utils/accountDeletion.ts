@@ -152,7 +152,11 @@ async function eraseHoldings(userId: string, agreed: ReadonlySet<string>): Promi
 
   await Follow.deleteMany({ $or: [{ follower: uid }, { following: uid }] });
   await Notification.deleteMany({ $or: [{ user: uid }, { actor: uid }] });
-  await NotificationEmailClaim.deleteMany({ user: uid });
+  // Its own record of emails sent, and the birthday reminder emails about it
+  // (WIS-345), which hold no list to be deleted with.
+  await NotificationEmailClaim.deleteMany({
+    $or: [{ user: uid }, { kind: 'birthday_reminder', about: uid }],
+  });
   // Proposals stay on the lists they were made for, which are their owners',
   // without the link back to who made it (owners never saw it anyway).
   await Item.updateMany({ proposedBy: uid }, { $unset: { proposedBy: 1 } });
