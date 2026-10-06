@@ -16,6 +16,7 @@ const row = (over: Partial<ShareLinkRow>): ShareLinkRow => ({
   level: 'view',
   label: null,
   expiresAt: null,
+  untilOccasion: false,
   createdAt: '2026-10-01T00:00:00Z',
   state: 'live',
   joinedCount: 0,

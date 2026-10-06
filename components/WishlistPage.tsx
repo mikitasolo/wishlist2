@@ -44,7 +44,7 @@ import WishlistUnavailable from '@/components/WishlistUnavailable';
 import ShareLinkUnavailable from '@/components/ShareLinkUnavailable';
 import ShareLinksSection, { type ShareLinksSectionHandle } from '@/components/ShareLinksSection';
 import RevokeShareLinksDialog from '@/components/RevokeShareLinksDialog';
-import { useShareLinks } from '@/lib/hooks/useShareLinks';
+import { isLinkLive, useShareLinks } from '@/lib/hooks/useShareLinks';
 import { SHARE_TOKEN_HEADER, type ShareLinkLevel } from '@/lib/utils/shareLinkFields';
 import { isPublishedItem } from '@/lib/utils/itemCounts';
 import { readResource, ReadRefusedError } from '@/lib/utils/resourceRead';
@@ -1613,6 +1613,7 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
     bannerUploads.discardAll();
   }, [bannerUploads]);
 
+  const reloadShareLinks = shareLinks.reload;
   const saveSettings = useCallback(
     async (e: FormEvent<HTMLFormElement>) => {
       e.preventDefault();
@@ -1647,6 +1648,8 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
 
         const result = await response.json();
         outcome = result.success ? 'saved' : 'refused';
+        // An occasion change moves the links that end the day after it (WIS-342).
+        if (result.success && changes.occasion !== undefined) reloadShareLinks();
 
         if (result.success) {
           // The caller's pin isn't a setting: a save never changes it, and its
@@ -1687,6 +1690,7 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
       router,
       showToast,
       bannerUploads,
+      reloadShareLinks,
     ]
   );
   // Who each username suggestion in the invite form already is on the list.
@@ -2252,6 +2256,9 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
               deleting={isDeletingWishlist}
               onDelete={handleDeleteWishlist}
               liveLinkCount={shareLinks.liveCount}
+              occasionLinkCount={
+                shareLinks.links.filter((l) => l.untilOccasion && isLinkLive(l, new Date())).length
+              }
             />
           </div>
         )}

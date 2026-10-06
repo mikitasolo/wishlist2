@@ -1,4 +1,5 @@
 import { addDays, isCalendarDate, nextOccurrence, type Occasion } from '@/lib/utils/occasion';
+import { dateInZone, startOfDayInZone } from '@/lib/utils/zonedDate';
 import type { ShareLinkLevel } from '@/lib/utils/shareLinkFields';
 import type { Visibility } from '@/lib/utils/visibility';
 
@@ -156,4 +157,20 @@ export function expiryDateString(expiresAt: string): string {
   const at = new Date(expiresAt);
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}`;
+}
+
+/**
+ * When a link that ends with the occasion (`untilOccasion`, WIS-342) stops
+ * working: the start of the day after the occasion's next occurrence, both read
+ * in `timeZone`, the zone of whoever set it, so it ends at their midnight
+ * whoever edits the list and wherever the server runs. Null when there's no
+ * occasion ahead to end with.
+ */
+export function occasionExpiry(
+  occasion: Occasion | null | undefined,
+  timeZone: string,
+  now: Date = new Date()
+): Date | null {
+  const day = dayAfterOccasion(occasion, dateInZone(now, timeZone));
+  return day ? startOfDayInZone(day, timeZone) : null;
 }

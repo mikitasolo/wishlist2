@@ -9,6 +9,7 @@ import { isObjectIdParam } from '@/lib/utils/objectId';
 import { errorKind } from '@/lib/utils/errorKind';
 import { serializeShareLink } from '@/lib/utils/shareLinks';
 import { purgeShareCards } from '@/lib/og/purge';
+import { occasionExpiry } from '@/lib/utils/shareLinkExpiry';
 
 // One of a list's share links (WIS-334): any owner edits or revokes any of
 // them (links are the list's, not their maker's), the list archived or not.
@@ -21,6 +22,12 @@ const unauthorized = () =>
 const notFound = () =>
   NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 });
 // Only ever sent to an owner.
+// Day after the occasion on a list with none ahead (a co-owner cleared it meanwhile).
+const noOccasionError = () =>
+  NextResponse.json(
+    { success: false, error: 'This list has no occasion for the link to end with' },
+    { status: 409 }
+  );
 const linkNotFound = () =>
   NextResponse.json({ success: false, error: 'Link not found' }, { status: 404 });
 
@@ -51,12 +58,25 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         { status: validation.status }
       );
     }
-    const { label, expiresAt } = validation.data;
+    const { label } = validation.data;
+    let { expiresAt } = validation.data;
+    // A date set any other way than Day after the occasion stops it following
+    // the occasion (WIS-342).
+    const untilOccasion =
+      validation.data.untilOccasion ?? (expiresAt !== undefined ? false : undefined);
+    const timeZone =
+      untilOccasion === undefined ? undefined : untilOccasion ? validation.data.timeZone! : null;
 
     // Ownership again right before the write: the body was read in between,
     // and a co-owner may have taken the caller off the list meanwhile.
     const current = await getOwnerAccess(id, session.user.id);
     if (!current.wishlist || !current.isOwner) return notFound();
+    if (untilOccasion) {
+      // The server works out the date, from the occasion as it is now.
+      const ends = occasionExpiry(current.wishlist.occasion, timeZone!);
+      if (!ends) return noOccasionError();
+      expiresAt = ends;
+    }
 
     const link = await ShareLink.findOneAndUpdate(
       { _id: linkId, wishlist: id },
@@ -64,6 +84,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         $set: {
           ...(label !== undefined ? { label } : {}),
           ...(expiresAt !== undefined ? { expiresAt } : {}),
+          ...(untilOccasion !== undefined ? { untilOccasion, timeZone } : {}),
         },
       },
       { new: true, runValidators: true }

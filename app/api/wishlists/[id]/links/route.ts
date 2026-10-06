@@ -12,7 +12,10 @@ import {
   insertShareLink,
   serializeShareLink,
   SHARE_LINK_CAP,
+  syncOccasionLinks,
 } from '@/lib/utils/shareLinks';
+import { occasionExpiry } from '@/lib/utils/shareLinkExpiry';
+import { purgeShareCards } from '@/lib/og/purge';
 
 // The owners' share links (WIS-334). Owner-only, and a refused caller is told
 // what a missing list tells them: these are the list's secrets, and the list's
@@ -26,6 +29,12 @@ const notFound = () =>
 const archivedError = () =>
   NextResponse.json(
     { success: false, error: 'Unarchive this list to create links' },
+    { status: 409 }
+  );
+// Day after the occasion on a list with none ahead (a co-owner cleared it meanwhile).
+const noOccasionError = () =>
+  NextResponse.json(
+    { success: false, error: 'This list has no occasion for the link to end with' },
     { status: 409 }
   );
 const capError = () =>
@@ -54,6 +63,16 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     // An archived list's owners still see, edit and revoke its links.
     const { isOwner, wishlist } = await getOwnerAccess(id, session.user.id);
     if (!wishlist || !isOwner) return notFound();
+
+    // Links that end with the occasion are put right first (WIS-342): this
+    // mends an occasion change whose follow-up failed. Never at the cost of
+    // the list itself.
+    try {
+      const moved = await syncOccasionLinks(id, wishlist.occasion);
+      if (moved.length > 0) await purgeShareCards({ shareLinkIds: moved });
+    } catch (error) {
+      console.error('Could not sync the links that end with the occasion:', errorKind(error));
+    }
 
     const links = await ShareLink.find({ wishlist: wishlist._id }).sort({ createdAt: -1 }).lean();
     const joined = await countJoinedByLink(
@@ -95,7 +114,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         { status: validation.status }
       );
     }
-    const { level, label = null, expiresAt = null } = validation.data;
+    const { level, label = null, untilOccasion = false } = validation.data;
+    let { expiresAt = null } = validation.data;
+    const timeZone = untilOccasion ? (validation.data.timeZone ?? null) : null;
 
     // The cap counts expired links too: they're still listed, and a later
     // expiry brings one back. Re-checked once the link is written (below).
@@ -110,6 +131,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // Checked last, against the fresh read, so a link that couldn't be made
     // anyway gets that answer instead.
     if (current.wishlist.archived) return archivedError();
+    if (untilOccasion) {
+      // The server works out the date, from the occasion as it is now.
+      const ends = occasionExpiry(current.wishlist.occasion, timeZone!);
+      if (!ends) return noOccasionError();
+      expiresAt = ends;
+    }
 
     // Spent only by a request about to make a link (a refused one costs
     // nothing), and only once the caller is known to own the list: a 429 that
@@ -124,6 +151,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       level,
       label,
       expiresAt,
+      untilOccasion,
+      timeZone,
       createdBy: session.user.id,
     });
 

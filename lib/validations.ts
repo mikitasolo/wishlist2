@@ -10,6 +10,7 @@ import {
 import { ITEM_NOTES_MAX, isHttpUrl, normalizeItemLink } from '@/lib/utils/itemFields';
 import { notificationPrefsSchema } from '@/lib/utils/notificationPrefs';
 import { SHARE_LINK_LABEL_MAX, SHARE_LINK_LEVELS } from '@/lib/utils/shareLinkFields';
+import { isTimeZone } from '@/lib/utils/zonedDate';
 
 /**
  * Validation schemas for API endpoints
@@ -230,20 +231,38 @@ const shareLinkExpirySchema = z.iso
   .transform((value) => new Date(value))
   .nullable();
 
-export const createShareLinkSchema = z.strictObject({
-  level: z.enum(SHARE_LINK_LEVELS),
-  label: shareLinkLabelSchema.optional(),
-  expiresAt: shareLinkExpirySchema.optional(),
-});
+// `untilOccasion` (WIS-342): the link ends the day after the list's occasion,
+// at midnight in `timeZone` (the IANA zone of whoever sets it), and moves with
+// the occasion. The server works the date out, so it needs the zone.
+const shareLinkTimeZoneSchema = z.string().refine(isTimeZone, 'Invalid time zone');
+const UNTIL_OCCASION_NEEDS_ZONE = {
+  message: 'A link that ends with the occasion needs a time zone',
+  path: ['timeZone'],
+};
+
+export const createShareLinkSchema = z
+  .strictObject({
+    level: z.enum(SHARE_LINK_LEVELS),
+    label: shareLinkLabelSchema.optional(),
+    expiresAt: shareLinkExpirySchema.optional(),
+    untilOccasion: z.boolean().optional(),
+    timeZone: shareLinkTimeZoneSchema.optional(),
+  })
+  .refine((body) => !body.untilOccasion || !!body.timeZone, UNTIL_OCCASION_NEEDS_ZONE);
 
 export const updateShareLinkSchema = z
   .strictObject({
     label: shareLinkLabelSchema.optional(),
     expiresAt: shareLinkExpirySchema.optional(),
+    untilOccasion: z.boolean().optional(),
+    timeZone: shareLinkTimeZoneSchema.optional(),
   })
-  .refine((body) => body.label !== undefined || body.expiresAt !== undefined, {
-    message: 'Nothing to update',
-  });
+  .refine(
+    (body) =>
+      body.label !== undefined || body.expiresAt !== undefined || body.untilOccasion !== undefined,
+    { message: 'Nothing to update' }
+  )
+  .refine((body) => !body.untilOccasion || !!body.timeZone, UNTIL_OCCASION_NEEDS_ZONE);
 
 // Item schemas
 // A product link: one typed without a scheme ("amazon.de/dp/1") gets https://,

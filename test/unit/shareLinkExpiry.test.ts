@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   dayAfterOccasion,
+  occasionExpiry,
   defaultExpiryPreset,
   defaultLevel,
   expiryDateString,
@@ -114,5 +115,56 @@ describe('expiry state', () => {
     expect(formatLinkExpiry({ expiresAt: local(2027, 1, 3) }, now, 'en-GB')).toBe(
       'Expires 3 Jan 2027'
     );
+  });
+});
+
+describe('occasionExpiry (WIS-342)', () => {
+  const oneOff = (date: string) => ({ kind: 'wedding' as const, date, recurrence: null });
+  const yearly = (date: string) => ({
+    kind: 'birthday' as const,
+    date,
+    recurrence: 'yearly' as const,
+  });
+
+  it('is midnight the day after the occasion, in the link’s zone', () => {
+    const now = new Date('2030-06-01T12:00:00Z');
+    expect(occasionExpiry(oneOff('2030-06-20'), 'Europe/Berlin', now)?.toISOString()).toBe(
+      '2030-06-20T22:00:00.000Z'
+    );
+    expect(occasionExpiry(oneOff('2030-06-20'), 'America/Los_Angeles', now)?.toISOString()).toBe(
+      '2030-06-21T07:00:00.000Z'
+    );
+  });
+
+  // regression (review of WIS-342): moving an expiry by whole days of 24h
+  // drifted an hour across a clock change.
+  it('keeps local midnight across a clock change', () => {
+    const now = new Date('2030-10-01T12:00:00Z');
+    // Berlin is UTC+2 in October and UTC+1 in December.
+    expect(occasionExpiry(oneOff('2030-10-20'), 'Europe/Berlin', now)?.toISOString()).toBe(
+      '2030-10-20T22:00:00.000Z'
+    );
+    expect(occasionExpiry(oneOff('2030-12-10'), 'Europe/Berlin', now)?.toISOString()).toBe(
+      '2030-12-10T23:00:00.000Z'
+    );
+  });
+
+  // regression (review of WIS-342): one list-wide shift counted from the
+  // editor's date moved a link made in another zone a year back.
+  it('reads a yearly occasion’s next date in the link’s own zone', () => {
+    // Dec 26 05:00 UTC: still Dec 25 in Los Angeles, already Dec 26 in Berlin.
+    const now = new Date('2030-12-26T05:00:00Z');
+    expect(occasionExpiry(yearly('2000-12-25'), 'America/Los_Angeles', now)?.toISOString()).toBe(
+      '2030-12-26T08:00:00.000Z'
+    );
+    expect(occasionExpiry(yearly('2000-12-25'), 'Europe/Berlin', now)?.toISOString()).toBe(
+      '2031-12-25T23:00:00.000Z'
+    );
+  });
+
+  it('is null with no occasion ahead', () => {
+    const now = new Date('2030-06-01T12:00:00Z');
+    expect(occasionExpiry(null, 'UTC', now)).toBeNull();
+    expect(occasionExpiry(oneOff('2030-05-01'), 'UTC', now)).toBeNull();
   });
 });
