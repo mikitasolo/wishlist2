@@ -222,8 +222,16 @@ describe('dashboard — the greeting row', () => {
           data: {
             owned: [
               list('w2', 'Trip', { occasion: { ...birthday, kind: 'other' } }),
-              list('w3', 'Birthday 2025', { occasion: birthday, archived: true }),
-              list('w4', 'Birthday 2024', { occasion: birthday, archived: true }),
+              list('w3', 'Birthday 2025', {
+                occasion: birthday,
+                archived: true,
+                createdAt: '2020-01-01',
+              }),
+              list('w4', 'Birthday 2024', {
+                occasion: birthday,
+                archived: true,
+                createdAt: '2020-01-01',
+              }),
               // This year's (a one-off dated today): never offered as an earlier one.
               list('w5', 'Birthday 2026', {
                 occasion: { kind: 'birthday', date: localDateString(new Date()), recurrence: null },

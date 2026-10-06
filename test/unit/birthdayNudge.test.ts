@@ -187,20 +187,38 @@ describe('olderBirthdayLists (WIS-348)', () => {
     ]);
   });
   // regression: "last year's list" could be this year's, made after the nudge email went out.
-  it('regression: leaves out the list the nudge already counts, this birthday’s', () => {
+  it('regression: leaves out this birthday’s own list: a one-off in the window, or a yearly one made lately', () => {
     expect(
       ids([
         { _id: 'mine', name: 'This year', occasion: oneOff('2026-10-20') },
         { _id: 'just', name: 'Just past', occasion: oneOff('2026-09-20') },
-        { _id: 'live', name: 'Yearly', occasion: yearly('2000-10-20') },
+        { _id: 'week', name: 'Yearly', occasion: yearly('2000-10-20'), createdAt: '2026-09-29' },
+        {
+          _id: 'arch',
+          name: 'Archived',
+          archived: true,
+          occasion: yearly('2000-10-20'),
+          createdAt: '2026-09-29',
+        },
+        { _id: 'none', name: 'Unknown', occasion: yearly('2000-10-20') },
         { _id: 'far', name: 'Far off', occasion: oneOff('2026-03-14') },
       ])
     ).toEqual(['far']);
   });
-  it('keeps an archived yearly list whatever its date: it is last year’s', () => {
-    expect(ids([{ _id: 'a', name: 'A', archived: true, occasion: yearly('2000-10-20') }])).toEqual([
-      'a',
-    ]);
+  // regression: a yearly list keeps its day every year, so last year's is always in the window.
+  it('regression: offers a yearly list made a year ago, archived or not, though its date is in the window', () => {
+    expect(
+      ids([
+        { _id: 'live', name: 'A', occasion: yearly('2000-10-20'), createdAt: '2025-09-01' },
+        {
+          _id: 'arch',
+          name: 'B',
+          archived: true,
+          occasion: yearly('2000-10-20'),
+          createdAt: '2024-09-01',
+        },
+      ])
+    ).toEqual(['live', 'arch']);
   });
   it('is empty with no lists or no date today', () => {
     expect(ids(null)).toEqual([]);
