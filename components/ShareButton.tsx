@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useShareSheetAvailable } from '@/lib/hooks/useShareSheetAvailable';
 import Button from './Button';
 import Icon, { type IconName } from './Icon';
 import Menu, { type MenuItem } from './Menu';
@@ -53,17 +54,6 @@ interface ShareButtonProps {
   owner?: ShareOwnerInfo;
 }
 
-/** Re-read whether to offer the share sheet when the main pointer changes (a tablet's keyboard). */
-function subscribeToPointer(onChange: () => void): () => void {
-  if (typeof window.matchMedia !== 'function') return () => {};
-  const query = window.matchMedia('(pointer: coarse)');
-  query.addEventListener?.('change', onChange);
-  return () => query.removeEventListener?.('change', onChange);
-}
-
-/** The server can't know the device: it renders no Share, and the browser adds it once hydrated. */
-const noShareSheetOnServer = () => false;
-
 /**
  * Shares a list's or a profile's link. On a touch device with the Web Share
  * API it opens the phone's share sheet; elsewhere (or if the sheet fails) it
@@ -85,11 +75,7 @@ export default function ShareButton({
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(copiedTimer.current), []);
   // Only the owner's popover renders from it; the plain share decides on click.
-  const sheetAvailable = useSyncExternalStore(
-    subscribeToPointer,
-    canUseShareSheet,
-    noShareSheetOnServer
-  );
+  const sheetAvailable = useShareSheetAvailable();
 
   async function share(sheet: boolean) {
     const outcome = await shareOrCopy({ url: resolveShareUrl(url), title }, { sheet });

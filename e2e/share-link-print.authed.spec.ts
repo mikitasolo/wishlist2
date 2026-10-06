@@ -8,19 +8,18 @@ test('a link’s print card prints on the page after scrolling down to it', asyn
   await page.setViewportSize({ width: 390, height: 600 });
   await page.goto('/wishlists/e2e-birthday?tab=people');
 
-  await page.getByRole('button', { name: 'New link' }).click();
+  // Scrolled down to Share links, as a phone has to be.
+  const newLink = page.getByRole('button', { name: 'New link' });
+  await newLink.scrollIntoViewIfNeeded();
+  expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+  await newLink.click();
   await page
     .getByRole('dialog', { name: 'New link' })
     .getByRole('button', { name: 'Create link' })
     .click();
-  await expect(page.getByRole('dialog', { name: 'New link' })).toBeHidden();
-
-  const actions = page.getByRole('button', { name: /^Actions for / }).first();
-  await actions.scrollIntoViewIfNeeded();
-  expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
-  await actions.click();
-  await page.getByRole('menuitem', { name: 'QR code' }).click();
-  await expect(page.getByRole('dialog', { name: 'QR code' })).toBeVisible();
+  // The new link opens in its dialog, with its QR code.
+  const dialog = page.getByRole('dialog', { name: 'Share link' });
+  await expect(dialog).toBeVisible();
 
   await page.emulateMedia({ media: 'print' });
   const card = page.getByTestId('qr-print-card');
@@ -32,12 +31,11 @@ test('a link’s print card prints on the page after scrolling down to it', asyn
   await page.emulateMedia({ media: 'screen' });
 
   // Leave the list as it was: revoke the link.
+  await dialog.getByRole('button', { name: /close/i }).first().click();
   await page
-    .getByRole('dialog', { name: 'QR code' })
-    .getByRole('button', { name: /close/i })
+    .getByRole('button', { name: /^Actions for / })
     .first()
     .click();
-  await actions.click();
   await page.getByRole('menuitem', { name: 'Revoke' }).click();
   await page.getByRole('alertdialog').getByRole('button', { name: 'Revoke link' }).click();
   await expect(page.getByText('No share links yet', { exact: false })).toBeVisible();

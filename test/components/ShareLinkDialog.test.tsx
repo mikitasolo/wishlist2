@@ -1,12 +1,10 @@
 // @vitest-environment jsdom
 // New link / Edit link (WIS-335): level and expiry defaults, the Public-list
-// note, the expired-link warning, an edit sending only what changed, and
-// Create for print (WIS-328).
+// note, the expired-link warning, and an edit sending only what changed.
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import ShareLinkDialog, {
-  PRINT_LINK_LABEL,
   PUBLIC_VIEW_LINK_NOTE,
   REVIVAL_WARNING,
 } from '@/components/ShareLinkDialog';
@@ -135,35 +133,15 @@ describe('ShareLinkDialog: New link', () => {
     expect(onCreate).not.toHaveBeenCalled();
   });
 
-  it('creates a link labelled “Printed card” with Create for print, at the chosen level and expiry', async () => {
-    const user = userEvent.setup();
-    const { onCreate, onClose } = renderCreate({ occasion: birthday });
-    await user.click(radio('Join'));
-    // A label typed for a chat link doesn't name the print run.
-    await user.type(screen.getByLabelText('Label', { exact: false }), 'Family chat');
-    await user.click(screen.getByRole('button', { name: 'Create for print' }));
-    expect(onCreate).toHaveBeenCalledWith(
-      { level: 'join', label: PRINT_LINK_LABEL, expiresAt: local(2026, 6, 13) },
-      { forPrint: true }
-    );
-    expect(onClose).toHaveBeenCalled();
-  });
-
-  it('asks for a custom date before Create for print too', async () => {
-    const user = userEvent.setup();
-    const { onCreate } = renderCreate();
-    await user.click(expires());
-    await user.click(screen.getByRole('option', { name: 'Custom' }));
-    await user.click(screen.getByRole('button', { name: 'Create for print' }));
-    expect(screen.getByText('Pick a date after today.')).toBeInTheDocument();
-    expect(onCreate).not.toHaveBeenCalled();
+  it('has no separate Create for print: every link has its QR code', () => {
+    renderCreate();
+    expect(screen.queryByRole('button', { name: /print/i })).toBeNull();
   });
 });
 
 describe('ShareLinkDialog: Edit link', () => {
-  it('shows the level without letting it change, and no Create for print', () => {
+  it('shows the level without letting it change', () => {
     renderEdit(link());
-    expect(screen.queryByRole('button', { name: 'Create for print' })).toBeNull();
     expect(screen.queryByRole('radio')).toBeNull();
     expect(screen.getByText('Can join')).toBeInTheDocument();
   });

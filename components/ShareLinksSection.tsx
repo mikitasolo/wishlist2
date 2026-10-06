@@ -9,7 +9,7 @@ import Menu, { type MenuItem } from '@/components/Menu';
 import Panel, { PanelRow } from '@/components/Panel';
 import { Skeleton } from '@/components/Skeleton';
 import ShareLinkDialog, { SHARE_LINK_LEVEL_LABELS } from '@/components/ShareLinkDialog';
-import ShareLinkQrDialog from '@/components/ShareLinkQrDialog';
+import ShareLinkDetailsDialog from '@/components/ShareLinkDetailsDialog';
 import { iconButtonClassName } from '@/components/buttonStyles';
 import { useToast } from '@/components/ToastProvider';
 import {
@@ -51,7 +51,7 @@ const ROW_MENU_TRIGGER = iconButtonClassName({ variant: 'ghost', size: 'sm' });
 
 interface ShareLinksSectionProps {
   control: ShareLinksControl;
-  /** The list's name, for the QR code's print card and file names. */
+  /** The list's name, for the link dialog's print card, share sheet and file names. */
   listName: string;
   archived: boolean;
   visibility: Visibility;
@@ -64,11 +64,12 @@ interface ShareLinksSectionProps {
 /**
  * The Share links section of a list's People tab, for its owners (WIS-335):
  * each link with its label, level (Can view / Can join), expiry, how many
- * joined through it (Join links), and Copy link, QR code (WIS-328), Edit,
- * Preview as visitor and Revoke. New link opens `ShareLinkDialog`; its Create
- * for print goes on to the new link's QR code. An archived list's links are
- * dead until it's unarchived, so it offers only Edit and Revoke, and no New
- * link or QR code.
+ * joined through it (Join links), Share, which opens the link's dialog (its URL,
+ * Copy link, the share sheet and its QR code: `ShareLinkDetailsDialog`,
+ * WIS-341), and a menu of Copy link, Edit, Preview as visitor and Revoke. New
+ * link opens `ShareLinkDialog`, and the link it makes opens in its dialog at
+ * once. A dead link (expired, or any on an archived list, until it's
+ * unarchived) offers only Edit and Revoke, and an archived list no New link.
  * A failed read shows `LoadError`, never an empty section.
  */
 export default function ShareLinksSection({
@@ -87,7 +88,7 @@ export default function ShareLinksSection({
   const [dialog, setDialog] = useState<
     | { mode: 'create' }
     | { mode: 'edit'; link: ShareLinkRow }
-    | { mode: 'qr'; link: ShareLinkRow & { token: string } }
+    | { mode: 'details'; link: ShareLinkRow & { token: string } }
     | null
   >(null);
   const [revoking, setRevoking] = useState<ShareLinkRow | null>(null);
@@ -107,8 +108,7 @@ export default function ShareLinksSection({
     [archived]
   );
 
-  async function copyLink(link: ShareLinkRow) {
-    if (!link.token) return;
+  async function copyLink(link: ShareLinkRow & { token: string }) {
     try {
       await navigator.clipboard.writeText(
         new URL(shareLinkUrl(link.token), window.location.href).href
@@ -119,35 +119,36 @@ export default function ShareLinksSection({
     }
   }
 
-  const rowItems = (link: ShareLinkRow): MenuItem[] => [
-    ...(!archived && link.token && isLinkLive(link, now)
-      ? [
-          {
-            label: 'QR code',
-            icon: 'qr-code' as const,
-            onSelect: () => setDialog({ mode: 'qr', link: { ...link, token: link.token! } }),
-          },
-        ]
-      : []),
-    { label: 'Edit', icon: 'edit', onSelect: () => setDialog({ mode: 'edit', link }) },
-    ...(!archived && link.token && isLinkLive(link, now)
-      ? [
-          {
-            label: 'Preview as visitor',
-            icon: 'external-link' as const,
-            href: `${shareLinkUrl(link.token)}?as=visitor`,
-            external: true,
-          },
-        ]
-      : []),
-    {
-      label: 'Revoke',
-      icon: 'trash',
-      danger: true,
-      separated: true,
-      onSelect: () => setRevoking(link),
-    },
-  ];
+  /** A link that works, with its token: the ones Share and Copy link are for. */
+  const liveWithToken = (link: ShareLinkRow): (ShareLinkRow & { token: string }) | null =>
+    !archived && link.token && isLinkLive(link, now) ? { ...link, token: link.token } : null;
+
+  const rowItems = (link: ShareLinkRow): MenuItem[] => {
+    const live = liveWithToken(link);
+    return [
+      ...(live
+        ? [{ label: 'Copy link', icon: 'link' as const, onSelect: () => copyLink(live) }]
+        : []),
+      { label: 'Edit', icon: 'edit', onSelect: () => setDialog({ mode: 'edit', link }) },
+      ...(live
+        ? [
+            {
+              label: 'Preview as visitor',
+              icon: 'external-link' as const,
+              href: `${shareLinkUrl(live.token)}?as=visitor`,
+              external: true,
+            },
+          ]
+        : []),
+      {
+        label: 'Revoke',
+        icon: 'trash',
+        danger: true,
+        separated: true,
+        onSelect: () => setRevoking(link),
+      },
+    ];
+  };
 
   const header = (
     <PanelRow className="flex flex-wrap items-start justify-between gap-3 py-4">
@@ -188,6 +189,7 @@ export default function ShareLinksSection({
           ) : (
             control.links.map((link) => {
               const expiry = formatLinkExpiry(link, now);
+              const live = liveWithToken(link);
               const meta = [
                 expiry,
                 link.level === 'join'
@@ -199,26 +201,26 @@ export default function ShareLinksSection({
                   <div className="min-w-0 flex-1">
                     {/* The label gets the row's width; the level and the rest under it. */}
                     <p className="truncate font-medium text-foreground">{linkName(link)}</p>
-                    <div className="mt-1 flex min-w-0 items-center gap-2">
+                    {/* Wraps rather than cutting the joined count off on a phone. */}
+                    <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
                       <Badge size="sm" tone={link.level === 'join' ? 'info' : 'neutral'}>
                         {SHARE_LINK_LEVEL_LABELS[link.level]}
                       </Badge>
                       {meta.length > 0 && (
-                        <p className="truncate text-xs text-muted-foreground">{meta.join(' · ')}</p>
+                        <p className="text-xs text-muted-foreground">{meta.join(' · ')}</p>
                       )}
                     </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
-                    {!archived && link.token && (
+                    {live && (
                       <Button
                         variant="secondary"
                         size="sm"
-                        icon="link"
-                        onClick={() => copyLink(link)}
-                        aria-label={`Copy link ${linkName(link)}`}
+                        icon="share"
+                        onClick={() => setDialog({ mode: 'details', link: live })}
+                        aria-label={`Share ${linkName(link)}`}
                       >
-                        {/* Just the icon on a phone, so the label keeps its room. */}
-                        <span className="max-sm:sr-only">Copy link</span>
+                        Share
                       </Button>
                     )}
                     <Menu
@@ -239,23 +241,24 @@ export default function ShareLinksSection({
           mode="create"
           visibility={visibility}
           occasion={occasion}
-          // Create for print has moved on to the QR code by the time this closes.
+          // The new link has opened in its own dialog by the time this closes.
           onClose={() => setDialog((d) => (d?.mode === 'create' ? null : d))}
-          onCreate={async (input, options) => {
+          onCreate={async (input) => {
             const created = await control.create(input);
-            if (created?.token && options?.forPrint) {
-              setDialog({ mode: 'qr', link: { ...created, token: created.token } });
+            if (created?.token) {
+              setDialog({ mode: 'details', link: { ...created, token: created.token } });
             }
             return !!created;
           }}
         />
       )}
-      {dialog?.mode === 'qr' && (
-        <ShareLinkQrDialog
+      {dialog?.mode === 'details' && (
+        <ShareLinkDetailsDialog
           link={dialog.link}
           listName={listName}
           occasion={occasion}
           onClose={() => setDialog(null)}
+          now={fixedNow}
         />
       )}
       {dialog?.mode === 'edit' && (
