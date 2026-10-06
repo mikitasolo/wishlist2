@@ -79,7 +79,9 @@ test('the birthday email’s link, signed in, opens New list on a Birthday list'
 }) => {
   await page.goto('/auth/signin?callbackUrl=%2F%3FnewList%3Dbirthday');
   const create = page.getByRole('dialog', { name: 'Create new wishlist' });
-  await expect(create).toHaveAttribute('data-occasion-kind', 'birthday');
+  await expect(create.getByRole('combobox', { name: 'Occasion', exact: true })).toHaveText(
+    /Birthday/
+  );
   // Taken off the address, so a reload doesn't open it again.
   await expect(page).toHaveURL('/');
   await create.getByRole('button', { name: 'Cancel' }).click();
