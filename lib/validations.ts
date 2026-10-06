@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { normalizeOccasionDate, OCCASION_KINDS } from '@/lib/utils/occasion';
+import { BIRTHDAY_VISIBILITIES, normalizeBirthday } from '@/lib/utils/birthday';
 import {
   isVisiblyBlank,
   LINE_BREAK_OR_CONTROL_CHAR,
@@ -141,11 +142,25 @@ export const usernameSchema = z
     'Username must be 3–20 characters, start with a letter, and use only lowercase letters, numbers, or underscores'
   );
 
+// A profile birthday (WIS-323): a day and a month, whatever year it's sent with.
+export const birthdaySchema = z.string().transform((date, ctx) => {
+  const birthday = normalizeBirthday(date);
+  if (!birthday) {
+    ctx.issues.push({ code: 'custom', message: 'Pick a real day and month', input: date });
+    return z.NEVER;
+  }
+  return birthday;
+});
+
 export const updateProfileSchema = z
   .object({
     username: usernameSchema.optional(),
     image: z.url('Invalid image URL').nullable().or(z.literal('')).optional(),
     bio: z.string().trim().max(300, 'Bio must be 300 characters or less').nullable().optional(),
+    // Their birthday's day and month, sent as `YYYY-MM-DD`: any year is
+    // dropped (`normalizeBirthday`), stored on `YEARLY_PLACEHOLDER_YEAR`.
+    // `null` clears it.
+    birthday: birthdaySchema.nullable().optional(),
     defaultCurrency: z
       .string()
       .trim()
@@ -161,6 +176,7 @@ export const updateProfileSchema = z
         searchable: z.boolean().optional(),
         whoCanInvite: z.enum(['everyone', 'friends', 'nobody']).optional(),
         profileVisibility: z.enum(['everyone', 'friends']).optional(),
+        birthdayVisibility: z.enum(BIRTHDAY_VISIBILITIES).optional(),
       })
       .optional(),
     // Each notification setting it's sent, per event and channel.

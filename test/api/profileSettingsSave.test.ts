@@ -95,6 +95,7 @@ describe('saving the account settings leaves a change saved from another tab alo
       searchable: false,
       whoCanInvite: 'everyone',
       profileVisibility: 'friends',
+      birthdayVisibility: 'friends',
     });
   });
 
@@ -154,6 +155,7 @@ describe('PATCH /api/users/me — the privacy settings it writes', () => {
       searchable: false,
       whoCanInvite: 'everyone',
       profileVisibility: 'friends',
+      birthdayVisibility: 'friends',
     });
     expect((await res.json()).data.privacy).toMatchObject({ profileVisibility: 'friends' });
   });
@@ -162,8 +164,14 @@ describe('PATCH /api/users/me — the privacy settings it writes', () => {
     ['searchable', { searchable: false }],
     ['whoCanInvite', { whoCanInvite: 'friends' }],
     ['profileVisibility', { profileVisibility: 'friends' }],
-  ] as const)('writes %s on its own, keeping the other two as they are', async (_, privacy) => {
-    const stored = { searchable: true, whoCanInvite: 'nobody', profileVisibility: 'everyone' };
+    ['birthdayVisibility', { birthdayVisibility: 'everyone' }],
+  ] as const)('writes %s on its own, keeping the others as they are', async (_, privacy) => {
+    const stored = {
+      searchable: true,
+      whoCanInvite: 'nobody',
+      profileVisibility: 'everyone',
+      birthdayVisibility: 'nobody',
+    };
     await User.updateOne({ _id: alice }, { $set: { privacy: stored } });
 
     expect((await patch({ privacy })).status).toBe(200);
@@ -176,8 +184,9 @@ describe('PATCH /api/users/me — the privacy settings it writes', () => {
     const res = await patch({ privacy });
 
     expect(res.status).toBe(200);
-    expect(await privacyOf()).toEqual(privacy);
-    expect((await res.json()).data.privacy).toEqual(privacy);
+    // The birthday setting (WIS-323) wasn't sent, so it stays at its default.
+    expect(await privacyOf()).toEqual({ ...privacy, birthdayVisibility: 'friends' });
+    expect((await res.json()).data.privacy).toEqual({ ...privacy, birthdayVisibility: 'friends' });
   });
 
   it('writes a privacy setting into a profile stored without any', async () => {

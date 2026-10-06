@@ -5,6 +5,7 @@ import connectDB from '@/lib/mongodb';
 import User from '@/models/User';
 import Follow from '@/models/Follow';
 import { getFollowInfo } from '@/lib/utils/friends';
+import { birthdayAudience, birthdayField } from '@/lib/utils/birthday';
 
 // GET /api/users/by-username/[username] - resolve a username to a public profile,
 // including follow relationship + counts for the current viewer.
@@ -21,7 +22,7 @@ export async function GET(
     await connectDB();
 
     const user = await User.findOne({ username: username.toLowerCase().trim() }).select(
-      'username image bio privacy'
+      'username image bio birthday privacy'
     );
     if (!user) {
       return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
@@ -52,6 +53,11 @@ export async function GET(
           username: user.username,
           image: user.image ?? null,
           bio: canSeeBio ? (user.bio ?? null) : null,
+          // Only for someone `birthdayAudience` admits, and then only if set:
+          // the key is left out otherwise, so a hidden birthday reads as none.
+          ...birthdayField(user, isSelf ? 'self' : follow.isFriend ? 'friend' : 'other'),
+          // Your own profile says who else sees it.
+          ...(isSelf && { birthdayAudience: birthdayAudience(user.privacy) }),
           isSelf,
           followerCount,
           followingCount,

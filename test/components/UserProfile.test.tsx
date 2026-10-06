@@ -292,6 +292,36 @@ describe('UserProfile — with no wishlists to show', () => {
   });
 });
 
+describe('UserProfile — birthday (WIS-323)', () => {
+  it('shows the month and day when the answer carries a birthday, never a year', async () => {
+    session.current = signedIn('me');
+    stubFetch(profile({ birthday: '2000-03-14' }));
+    render(<UserProfile />);
+
+    const line = await screen.findByText(/March 14|14 March/);
+    expect(line.closest('p')).not.toHaveTextContent('2000');
+    expect(line.closest('p')).not.toHaveTextContent('can see it');
+  });
+
+  it('shows nothing when the answer has no birthday', async () => {
+    session.current = signedIn('me');
+    stubFetch(profile());
+    render(<UserProfile />);
+
+    await screen.findByRole('button', { name: '0 followers' });
+    expect(screen.queryByText(/Birthday:/)).toBeNull();
+  });
+
+  it('on your own profile, says who else can see it', async () => {
+    session.current = signedIn('friend');
+    stubFetch(profile({ isSelf: true, birthday: '2000-02-29', birthdayAudience: 'nobody' }));
+    render(<UserProfile />);
+
+    const line = await screen.findByText(/February 29|29 February/);
+    expect(line.closest('p')).toHaveTextContent('Only you can see it');
+  });
+});
+
 describe('UserProfile — follower counts', () => {
   // regression: the profile read "1 followers": it wrote a plural noun after
   // the count, whatever the count.

@@ -33,7 +33,7 @@ export async function GET() {
 
     await connectDB();
     const user = await User.findById(session.user.id).select(
-      'email username image bio defaultCurrency privacy notificationPrefs'
+      'email username image bio birthday defaultCurrency privacy notificationPrefs'
     );
     if (!user) {
       return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
@@ -58,7 +58,9 @@ export async function GET() {
  * What a save writes: each field it was sent that changes the profile, and each
  * privacy setting it was sent by its own dotted path (`privacy.searchable`).
  */
-type ProfileWrite = Partial<Pick<IUser, 'username' | 'image' | 'bio' | 'defaultCurrency'>> & {
+type ProfileWrite = Partial<
+  Pick<IUser, 'username' | 'image' | 'bio' | 'birthday' | 'defaultCurrency'>
+> & {
   [K in keyof IUserPrivacy as `privacy.${K}`]?: IUserPrivacy[K];
 } & Record<`notificationPrefs.${string}`, boolean>;
 
@@ -88,8 +90,16 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
     }
 
-    const { username, image, bio, defaultCurrency, currencyChosen, privacy, notificationPrefs } =
-      validation.data;
+    const {
+      username,
+      image,
+      bio,
+      birthday,
+      defaultCurrency,
+      currencyChosen,
+      privacy,
+      notificationPrefs,
+    } = validation.data;
 
     if (!canAttachImage(image, session.user.id, user.image)) {
       return NextResponse.json({ success: false, error: FOREIGN_IMAGE_ERROR }, { status: 400 });
@@ -122,6 +132,11 @@ export async function PATCH(request: NextRequest) {
       changes.bio = bio || null;
     }
 
+    // Already normalized to a day and month (`birthdaySchema`); null clears it.
+    if (birthday !== undefined) {
+      changes.birthday = birthday;
+    }
+
     if (defaultCurrency !== undefined) {
       changes.defaultCurrency = defaultCurrency;
     }
@@ -145,6 +160,9 @@ export async function PATCH(request: NextRequest) {
     }
     if (privacy?.profileVisibility !== undefined) {
       changes['privacy.profileVisibility'] = privacy.profileVisibility;
+    }
+    if (privacy?.birthdayVisibility !== undefined) {
+      changes['privacy.birthdayVisibility'] = privacy.birthdayVisibility;
     }
     // Likewise each notification setting, by its own path
     // (`notificationPrefs.occasion_reminder.inApp`).
@@ -211,6 +229,7 @@ export async function PATCH(request: NextRequest) {
           username: saved.username,
           image: saved.image,
           bio: saved.bio,
+          birthday: saved.birthday ?? null,
           defaultCurrency: saved.defaultCurrency,
           privacy: saved.privacy,
           // From `toObject()`, which drops the empty object of each event

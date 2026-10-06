@@ -238,3 +238,21 @@ describe('clientSession', () => {
     expect(clientSession({ user: { id: '' }, expires } as never)).toBeNull();
   });
 });
+
+describe('sessionPayload: the profile birthday (WIS-323)', () => {
+  it('never carries it, even from a read that has it', () => {
+    const payload = sessionPayload(
+      { id: 'row-id', email: 'me@example.com', birthday: '2000-03-14' } as never,
+      {
+        _id: id,
+        username: 'me',
+        image: null,
+        defaultCurrency: 'USD',
+        birthday: '2000-03-14',
+        privacy: { birthdayVisibility: 'everyone' },
+      } as never,
+      EXPIRES
+    );
+    expect(JSON.stringify(payload)).not.toMatch(/birthday|03-14/);
+  });
+});

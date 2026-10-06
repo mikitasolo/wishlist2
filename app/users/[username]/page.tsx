@@ -28,12 +28,21 @@ import { FOLLOWERS_PARAM } from '@/lib/utils/profileLinks';
 import { sortByUpcomingOccasion } from '@/lib/utils/occasion';
 import { useLocalToday } from '@/lib/hooks/useLocalToday';
 import { profileCoOwnerLabel, visitorLine } from '@/lib/utils/profileLists';
+import {
+  BIRTHDAY_AUDIENCE_TEXT,
+  formatBirthday,
+  type BirthdayVisibility,
+} from '@/lib/utils/birthday';
 
 interface Profile {
   _id: string;
   username: string;
   image?: string | null;
   bio?: string | null;
+  /** Only there when they have one and this viewer may see it (`visibleBirthday`). */
+  birthday?: string;
+  /** Your own profile only: who else sees your birthday. */
+  birthdayAudience?: BirthdayVisibility;
   isSelf: boolean;
   isFollowing: boolean;
   followsYou: boolean;
@@ -324,6 +333,16 @@ export default function UserProfile() {
                 </button>
                 {profile?.followsYou && !profile.isFriend ? <span>· Follows you</span> : null}
               </div>
+              {profile?.birthday && formatBirthday(profile.birthday) && (
+                <p className="mt-1 text-sm text-muted-foreground">
+                  <span aria-hidden>🎂 </span>
+                  <span className="sr-only">Birthday: </span>
+                  <span className="text-foreground">{formatBirthday(profile.birthday)}</span>
+                  {profile.isSelf && profile.birthdayAudience && (
+                    <span> · {BIRTHDAY_AUDIENCE_TEXT[profile.birthdayAudience]}</span>
+                  )}
+                </p>
+              )}
             </div>
           </div>
           <div className="flex flex-shrink-0 items-center gap-3">
