@@ -1,4 +1,5 @@
 import { sendBirthdayReminders } from '@/lib/utils/birthdayReminders';
+import { sendBirthdayNudgeEmails } from '@/lib/utils/birthdayNudgeEmails';
 
 /**
  * The one daily birthday cron (`GET /api/cron/birthdays`, WIS-345): every
@@ -34,8 +35,16 @@ export const BIRTHDAY_TASKS: readonly BirthdayTask[] = [
   {
     // Friends' birthday reminders, a week ahead (lib/utils/birthdayReminders.ts).
     name: 'reminders',
-    budgetMs: 40_000,
+    budgetMs: 25_000,
     run: async (now, deadline) => ({ ...(await sendBirthdayReminders(now, { deadline })) }),
+  },
+  {
+    // The nudge email before your own birthday (lib/utils/birthdayNudgeEmails.ts, WIS-344).
+    name: 'nudges',
+    budgetMs: 15_000,
+    run: async (now, deadline) => ({
+      ...(await sendBirthdayNudgeEmails(now, undefined, deadline)),
+    }),
   },
 ];
 

@@ -136,6 +136,8 @@ describe('GET /api/cron/birthdays', () => {
     expect(await res.json()).toEqual({
       success: true,
       reminders: { people: 1, sent: 1, capped: false, emailed: 0 },
+      // Anna's birthday is a week off: not due her own nudge (WIS-344).
+      nudges: { emailed: 0, capped: false },
     });
   });
 });

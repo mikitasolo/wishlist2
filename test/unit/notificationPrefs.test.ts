@@ -31,6 +31,8 @@ describe('the settings table (operator decision, 2026-10-05)', () => {
       occasion_reminder: true,
       // WIS-345: the operator's decision, off unless turned on.
       birthday_reminder: false,
+      // WIS-344: once a year, three weeks before your own birthday.
+      birthday_nudge: true,
       join_request: true,
       // WIS-337: at most one a day per list per owner (`claimDailyListEmail`).
       link_join: true,
@@ -39,6 +41,14 @@ describe('the settings table (operator decision, 2026-10-05)', () => {
       invite_accepted: false,
       proposal_approved: false,
     });
+  });
+
+  it('offers the birthday nudge by email only: its in-app side is a Needs you row (WIS-344)', () => {
+    expect(channelsOf('birthday_nudge')).toEqual(['email']);
+    expect(wantsNotification(undefined, 'birthday_nudge', 'email')).toBe(true);
+    expect(wantsNotification({ birthday_nudge: { email: false } }, 'birthday_nudge', 'email')).toBe(
+      false
+    );
   });
 
   it('offers no email for a new follower', () => {

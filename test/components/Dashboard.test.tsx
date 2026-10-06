@@ -64,8 +64,10 @@ vi.mock('@/components/AppHeader', () => ({ default: () => null }));
 vi.mock('@/components/AuthButton', () => ({ default: () => null }));
 vi.mock('@/components/GlobalSearch', () => ({ default: () => null }));
 vi.mock('@/components/CreateWishlistModal', () => ({
-  default: ({ isOpen }: { isOpen: boolean }) =>
-    isOpen ? <div role="dialog" aria-label="Create new wishlist" /> : null,
+  default: ({ isOpen, occasionKind }: { isOpen: boolean; occasionKind?: string }) =>
+    isOpen ? (
+      <div role="dialog" aria-label="Create new wishlist" data-occasion-kind={occasionKind} />
+    ) : null,
 }));
 vi.mock('@/components/ShareButton', () => ({ default: () => null }));
 vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }));
@@ -158,7 +160,17 @@ describe('dashboard — the greeting row', () => {
     expect(screen.queryByRole('link', { name: /Reserved by you/ })).toBeNull();
     expect(screen.queryByRole('combobox', { name: 'Featured wishlist' })).toBeNull();
     expect(screen.queryByText('Featured')).toBeNull();
-    expect(requested('/api/users/me')).toBe(0);
+    // Your profile is read once, for the birthday nudge only (WIS-344): no counts from it.
+    expect(requested('/api/users/me')).toBe(1);
+  });
+
+  it('opens New list on a Birthday list from the birthday email’s link, once (WIS-344)', async () => {
+    window.history.replaceState(null, '', '/?newList=birthday');
+    render(<Home />);
+    const dialog = await screen.findByRole('dialog', { name: 'Create new wishlist' });
+    expect(dialog).toHaveAttribute('data-occasion-kind', 'birthday');
+    // Taken off the address, so a reload doesn't open it again.
+    expect(window.location.search).toBe('');
   });
 
   // regression (WIS-213): the Reserved by you tile showed "0" before its count

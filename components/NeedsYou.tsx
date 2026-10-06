@@ -3,13 +3,17 @@
 import { useId, type ReactNode } from 'react';
 import Link from 'next/link';
 import CurrencyPrompt, { useCurrencyOffer } from '@/components/CurrencyPrompt';
+import Button from '@/components/Button';
 import Icon, { type IconName } from '@/components/Icon';
+import IconButton from '@/components/IconButton';
 import InviteCard, { ACTION_CARD_CLASSES } from '@/components/InviteCard';
 import { buttonClassName } from '@/components/buttonStyles';
 import type { WishlistSummary } from '@/components/WishlistCard';
+import { useBirthdayNudge, type BirthdayNudgeOffer } from '@/lib/hooks/useBirthdayNudge';
 import { useChangedReservations } from '@/lib/hooks/useChangedReservations';
 import { usePendingInvites } from '@/lib/hooks/usePendingInvites';
 import { ACTIVITY_PATH } from '@/lib/utils/activityPath';
+import { BIRTHDAY_NUDGE_DETAIL, birthdayNudgeTitle } from '@/lib/utils/birthdayNudge';
 import { LIST_CHIP_PARAM } from '@/lib/utils/listChips';
 import { plural } from '@/lib/utils/plural';
 import { TONE_CLASSES } from '@/lib/utils/statusTones';
@@ -18,7 +22,7 @@ import { TONE_CLASSES } from '@/lib/utils/statusTones';
 export const NEEDS_YOU_LIMIT = 3;
 
 /** A row of Needs you, by what it's about. */
-type RowKind = 'invite' | 'reservations' | 'proposals' | 'currency';
+type RowKind = 'invite' | 'reservations' | 'birthday' | 'proposals' | 'currency';
 interface Row {
   key: string;
   kind: RowKind;
@@ -31,7 +35,13 @@ interface Row {
  * because Activity lists them too (as it does invitations): the changed
  * reservations and the currency prompt are nowhere else on the way in.
  */
-const FIRST_PICK: readonly RowKind[] = ['invite', 'reservations', 'currency', 'proposals'];
+const FIRST_PICK: readonly RowKind[] = [
+  'invite',
+  'reservations',
+  'birthday',
+  'currency',
+  'proposals',
+];
 
 /**
  * The rows that fit, in the order they're shown: one of each kind first
@@ -67,6 +77,10 @@ const RESERVED_PATH = '/booked';
  * - "3 reservations changed", the gifter's own reservations that need their
  *   confirmation (`useChangedReservations`, the Booked page's count), to
  *   Reserved. Only the gifter ever sees this count;
+ * - "Your birthday is in 3 weeks" (WIS-344, `useBirthdayNudge`), from three
+ *   weeks before the birthday on your profile, unless one of your lists is a
+ *   Birthday list coming; New list opens the create dialog on a Birthday list
+ *   (`onNewBirthdayList`), and it can be dismissed for this birthday;
  * - "2 proposals to review on Anna's 30th", for each of your own lists with
  *   proposals waiting (`proposalCount`, which only an owner's lists carry), to
  *   the list's Proposals. A count, never who proposed;
@@ -75,10 +89,18 @@ const RESERVED_PATH = '/booked';
  * `ownLists` is your own active lists, as the page shows them; `null` while
  * they're read or when they couldn't be, which only leaves the proposals out.
  */
-export default function NeedsYou({ ownLists }: { ownLists: WishlistSummary[] | null }) {
+export default function NeedsYou({
+  ownLists,
+  onNewBirthdayList,
+}: {
+  ownLists: WishlistSummary[] | null;
+  /** Opens New list on a Birthday list: the birthday nudge's action. */
+  onNewBirthdayList?: () => void;
+}) {
   const headingId = useId();
   const { invites, busy, respond } = usePendingInvites();
   const changed = useChangedReservations();
+  const birthday = useBirthdayNudge(ownLists);
   const currency = useCurrencyOffer();
 
   const rows: Row[] = [];
@@ -111,6 +133,13 @@ export default function NeedsYou({ ownLists }: { ownLists: WishlistSummary[] | n
           actionLabel="Review changed reservations"
         />
       ),
+    });
+  }
+  if (birthday && onNewBirthdayList) {
+    rows.push({
+      key: 'birthday',
+      kind: 'birthday',
+      node: <BirthdayNudgeRow nudge={birthday} onNewList={onNewBirthdayList} />,
     });
   }
   for (const list of ownLists ?? []) {
@@ -199,6 +228,40 @@ function ActionRow({
         {action}
         <Icon name="arrow-right" size={16} />
       </Link>
+    </div>
+  );
+}
+
+/**
+ * The birthday nudge as a row: the countdown and why, then New list and
+ * Dismiss (for this birthday).
+ */
+function BirthdayNudgeRow({
+  nudge,
+  onNewList,
+}: {
+  nudge: BirthdayNudgeOffer;
+  onNewList: () => void;
+}) {
+  return (
+    <div className={ACTION_CARD_CLASSES}>
+      <div className="flex min-w-0 items-center gap-3">
+        <span className="inline-flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-primary-500/12 text-accent">
+          <Icon name="gift" size={18} />
+        </span>
+        <div className="min-w-0">
+          <p className="text-body font-semibold text-foreground">
+            {birthdayNudgeTitle(nudge.days)}
+          </p>
+          <p className="text-sm text-muted-foreground">{BIRTHDAY_NUDGE_DETAIL}</p>
+        </div>
+      </div>
+      <div className="flex items-center gap-2 self-start sm:self-auto">
+        <Button variant="secondary" size="sm" icon="plus" onClick={onNewList}>
+          New list
+        </Button>
+        <IconButton icon="close" label="Dismiss until next birthday" onClick={nudge.dismiss} />
+      </div>
     </div>
   );
 }

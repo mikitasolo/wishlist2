@@ -71,6 +71,7 @@ let answers: {
   invites: () => Response | Promise<Response>;
   summary: () => Response | Promise<Response>;
   answer: () => Response;
+  profile: () => Response | Promise<Response>;
 };
 let fetchMock: ReturnType<typeof vi.fn>;
 const realResolvedOptions = Intl.DateTimeFormat.prototype.resolvedOptions;
@@ -84,10 +85,13 @@ beforeEach(() => {
     invites: () => json({ success: true, data: pending }),
     summary: () => json({ success: true, data: { changed: 0 } }),
     answer: () => json({ success: true, data: { wishlistId: 'w-1', wishlistSlug: 'list-1' } }),
+    profile: () => json({ success: true, data: { username: 'me', birthday: null } }),
   };
+  localStorage.clear();
   fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     if (url === '/api/users/me/invites') return answers.invites();
     if (url === '/api/users/me/reservations/summary') return answers.summary();
+    if (url === '/api/users/me') return answers.profile();
     if (url.startsWith('/api/invites/') && init?.method === 'PATCH') {
       pending = pending.filter((i) => url !== `/api/invites/${i._id}`);
       return answers.answer();
@@ -308,5 +312,96 @@ describe('Needs you', () => {
     await act(async () => window.dispatchEvent(new Event('focus')));
     await settle();
     expect(screen.getByText('1 reservation changed')).toBeInTheDocument();
+  });
+});
+
+describe('the birthday nudge (WIS-344)', () => {
+  const withBirthday = (birthday: string | null) => () =>
+    json({ success: true, data: { username: 'me', birthday } });
+  /** Today in the browser: a local date, whatever the test machine's zone. */
+  const today = (year: number, month: number, day: number) =>
+    vi.useFakeTimers({ now: new Date(year, month - 1, day, 12), toFake: ['Date'] });
+
+  beforeEach(() => {
+    answers.profile = withBirthday('2000-10-27');
+    today(2026, 10, 6);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const nudge = () => screen.queryByText('Your birthday is in 3 weeks');
+
+  it('shows three weeks before your birthday with no Birthday list, and New list opens on one', async () => {
+    const onNew = vi.fn();
+    render(<NeedsYou ownLists={[list('w1', 'Books')]} onNewBirthdayList={onNew} />);
+    await waitFor(() => expect(nudge()).not.toBeNull());
+    const [row] = rows();
+    expect(row).toHaveTextContent('Make a list so friends know what to get you.');
+    await userEvent.setup().click(within(row).getByRole('button', { name: 'New list' }));
+    expect(onNew).toHaveBeenCalledTimes(1);
+  });
+
+  it('counts down to the day itself', async () => {
+    today(2026, 10, 27);
+    render(<NeedsYou ownLists={[]} onNewBirthdayList={vi.fn()} />);
+    await waitFor(() => expect(screen.queryByText('Your birthday is today')).not.toBeNull());
+  });
+
+  it('hides while any of your lists is a Birthday list coming, however many there are', async () => {
+    const lists = [
+      list('w1', 'Books', { occasion: { kind: 'wedding', date: '2026-10-27', recurrence: null } }),
+      list('w2', 'Party', { occasion: { kind: 'birthday', date: '2026-10-31', recurrence: null } }),
+    ];
+    const { container } = render(<NeedsYou ownLists={lists} onNewBirthdayList={vi.fn()} />);
+    await settle();
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it('shows when your only Birthday list is last year’s', async () => {
+    const lists = [
+      list('w1', 'Old', { occasion: { kind: 'birthday', date: '2025-10-27', recurrence: null } }),
+    ];
+    render(<NeedsYou ownLists={lists} onNewBirthdayList={vi.fn()} />);
+    await waitFor(() => expect(nudge()).not.toBeNull());
+  });
+
+  it('waits for your lists, and shows nothing outside the window or without a birthday', async () => {
+    const first = render(<NeedsYou ownLists={null} onNewBirthdayList={vi.fn()} />);
+    await settle();
+    expect(first.container).toBeEmptyDOMElement();
+    first.unmount();
+
+    today(2026, 10, 5); // 22 days to go
+    const second = render(<NeedsYou ownLists={[]} onNewBirthdayList={vi.fn()} />);
+    await settle();
+    expect(second.container).toBeEmptyDOMElement();
+    second.unmount();
+
+    today(2026, 10, 6);
+    answers.profile = withBirthday(null);
+    const third = render(<NeedsYou ownLists={[]} onNewBirthdayList={vi.fn()} />);
+    await settle();
+    expect(third.container).toBeEmptyDOMElement();
+  });
+
+  it('dismisses for this birthday, and comes back for next year’s', async () => {
+    const first = render(<NeedsYou ownLists={[]} onNewBirthdayList={vi.fn()} />);
+    await waitFor(() => expect(nudge()).not.toBeNull());
+    await userEvent
+      .setup()
+      .click(screen.getByRole('button', { name: 'Dismiss until next birthday' }));
+    expect(block()).toBeNull();
+    first.unmount();
+
+    // Still dismissed on the next visit.
+    const again = render(<NeedsYou ownLists={[]} onNewBirthdayList={vi.fn()} />);
+    await settle();
+    expect(again.container).toBeEmptyDOMElement();
+    again.unmount();
+
+    today(2027, 10, 6);
+    render(<NeedsYou ownLists={[]} onNewBirthdayList={vi.fn()} />);
+    await waitFor(() => expect(nudge()).not.toBeNull());
   });
 });

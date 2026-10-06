@@ -49,7 +49,7 @@ const dayOptions = (month: string) =>
 
 // What "Repeats every year" starts as when a kind is first picked: a birthday
 // or a holiday comes round again, a wedding doesn't.
-const YEARLY_BY_DEFAULT: ReadonlySet<OccasionKind> = new Set(['birthday', 'holiday']);
+export const YEARLY_BY_DEFAULT: ReadonlySet<OccasionKind> = new Set(['birthday', 'holiday']);
 
 /**
  * The wishlist settings' occasion: a kind (or none), whether it repeats every

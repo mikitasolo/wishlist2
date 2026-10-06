@@ -173,7 +173,7 @@ export async function sendOne(
  * limiter is keyed on the recipient's user id (`keyKind: 'user'`), which the
  * key type can't check across a union of limiter names, hence the one cast.
  */
-function emailAllowed(limiter: EmailLimiterName, recipientId: string): Promise<boolean> {
+export function emailAllowed(limiter: EmailLimiterName, recipientId: string): Promise<boolean> {
   return checkRateLimit(limiter as 'emailProposal', userKey(recipientId));
 }
 
@@ -297,4 +297,30 @@ export async function claimBirthdayReminderEmail(
 /** The claim key of a birthday reminder email: whose birthday, and which day. */
 export function birthdayClaimKey(personId: Id, occasionDate: string): string {
   return `${String(personId)}:${occasionDate}`;
+}
+
+/**
+ * Claim the birthday nudge email (WIS-344) for one person and the birthday on
+ * `occurrence`: taken once per person and year (the occurrence's year), by one
+ * caller only. No list.
+ */
+export async function claimBirthdayNudgeEmail(
+  userId: Id,
+  occurrence: string,
+  now: Date = new Date()
+): Promise<Claim | null> {
+  try {
+    const row = await NotificationEmailClaim.create({
+      user: userId,
+      kind: 'birthday_nudge',
+      key: occurrence.slice(0, 4),
+      sentAt: now,
+    });
+    return claimOf(row._id, now);
+  } catch (err) {
+    if (!isDuplicateKeyError(err)) {
+      console.error('Failed to claim a birthday nudge email:', errorKind(err));
+    }
+    return null;
+  }
 }

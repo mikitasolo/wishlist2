@@ -10,6 +10,11 @@ import {
 } from './utils/notificationPrefs';
 import { notificationLink, notificationParts, type NotificationView } from './utils/notifications';
 import type { OccasionKind } from './utils/occasion';
+import {
+  BIRTHDAY_NUDGE_DETAIL,
+  BIRTHDAY_NUDGE_HOME_PATH,
+  birthdayNudgeTitle,
+} from './utils/birthdayNudge';
 
 // Get validated environment variables
 const env = getEnvVars();
@@ -643,6 +648,47 @@ export async function sendNotificationEmail(email: string, details: Notification
     subject: copy.subject,
     html,
     text: `${copy.heading}\n\n${textLine}.\n\n${copy.button}: ${url}\n\nUnsubscribe from ${topic} emails: ${unsubscribe.page}`,
+    link: url,
+    unsubscribe,
+  });
+}
+
+export interface BirthdayNudgeEmailDetails {
+  /** The recipient's account id, for the unsubscribe link (never shown). */
+  recipientId: string;
+  /** Days until their birthday, for the heading ("in 3 weeks"). */
+  days: number;
+}
+
+/**
+ * The nudge to make a list before your own birthday (WIS-344), sent once a
+ * year by the daily cron (`sendBirthdayNudgeEmails`). Fixed words only: no
+ * date, no list, nothing anyone typed. It links to Home with New list open on
+ * a Birthday list (`BIRTHDAY_NUDGE_HOME_PATH`), and carries the unsubscribe
+ * link and headers for `birthday_nudge`.
+ */
+export async function sendBirthdayNudgeEmail(email: string, details: BirthdayNudgeEmailDetails) {
+  const heading = birthdayNudgeTitle(details.days);
+  const button = 'Make a list';
+  const url = `${env.NEXTAUTH_URL}${BIRTHDAY_NUDGE_HOME_PATH}`;
+  const unsubscribe = notificationUnsubscribe(details.recipientId, 'birthday_nudge');
+  const topic = NOTIFICATION_EVENTS.birthday_nudge.label.toLowerCase();
+
+  const html = getEmailTemplate({
+    title: heading,
+    greeting: heading,
+    contentHtml: `<p>${escapeHtml(BIRTHDAY_NUDGE_DETAIL)}</p>`,
+    buttonText: button,
+    buttonUrl: url,
+    unsubscribeUrl: unsubscribe.page,
+  });
+
+  await deliver({
+    kind: 'birthday_nudge notification',
+    to: email,
+    subject: 'Your birthday is coming up',
+    html,
+    text: `${heading}\n\n${BIRTHDAY_NUDGE_DETAIL}\n\n${button}: ${url}\n\nUnsubscribe from ${topic} emails: ${unsubscribe.page}`,
     link: url,
     unsubscribe,
   });

@@ -418,6 +418,24 @@ describe('CreateWishlistModal — the new order', () => {
     });
   });
 
+  it('opens on a Birthday occasion for the birthday nudge, its date left to pick (WIS-344)', async () => {
+    const onClose = vi.fn();
+    const user = userEvent.setup();
+    render(<CreateWishlistModal isOpen onClose={onClose} occasionKind="birthday" />);
+    expect(screen.getByRole('combobox', { name: 'Occasion' })).toHaveTextContent('Birthday');
+    expect(screen.queryByDisplayValue(/\d{4}-\d{2}-\d{2}/)).toBeNull();
+    // Yearly, as picking Birthday by hand makes it, with no month or day picked:
+    // a one-off birthday list would lapse after this year's.
+    expect(screen.getByRole('combobox', { name: 'Occasion month' })).not.toHaveTextContent(
+      /January|February|March|April|May|June|July|August|September|October|November|December/
+    );
+    expect(screen.getByRole('combobox', { name: 'Occasion day' })).toBeInTheDocument();
+    // The prefill is where the form starts, not a change to discard.
+    await user.click(button('Cancel'));
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+  });
+
   it('submits a yearly occasion as its day and month on the placeholder year', async () => {
     const fetchMock = created();
     vi.stubGlobal('fetch', fetchMock);
