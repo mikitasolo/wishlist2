@@ -109,6 +109,11 @@ import { useListChip } from '@/lib/hooks/useListChip';
 import { useItemDeepLink } from '@/lib/hooks/useItemDeepLink';
 import { useStickyItems } from '@/lib/hooks/useStickyItems';
 import { useListPrices } from '@/lib/hooks/useListPrices';
+import { useCurrencyRates } from '@/lib/hooks/useCurrencyRates';
+import { useViewerLocale } from '@/lib/hooks/useViewerLocale';
+import BudgetFilter from '@/components/BudgetFilter';
+import { filterByBudget, hasPricedItem, parseBudget } from '@/lib/utils/budgetFilter';
+import { needsPricesControl, viewerPriceCurrency } from '@/lib/utils/listPrices';
 import { TONE_CLASSES } from '@/lib/utils/statusTones';
 import { useReceivedToast } from '@/lib/hooks/useReceivedToast';
 import { useReserveToast } from '@/lib/hooks/useReserveToast';
@@ -1726,9 +1731,30 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
     [items, activeChip, viewerRole, viewerId, sortBy]
   );
 
+  // The budget filter ("Under X", in the viewer's currency, WIS-326): for
+  // gifters only (a signed-in member or visitor of someone else's list), never
+  // saved. It narrows what's shown after the chips have counted, so a chip's
+  // count never moves with it.
+  const viewerCurrency = viewerPriceCurrency(session?.user?.defaultCurrency);
+  const viewerLocale = useViewerLocale();
+  const [budgetText, setBudgetText] = useState('');
+  const budgetOffered = !isOwner && !!viewerId && hasPricedItem(items);
+  const budget = budgetOffered ? parseBudget(budgetText, viewerLocale) : null;
+  const budgetLimit = budget === 'invalid' ? null : budget;
+  // Rates are only needed to compare a price in another currency.
+  const budgetRates = useCurrencyRates(
+    budgetLimit !== null && needsPricesControl(items, viewerCurrency)
+  );
+
   const filteredItems = useMemo(
-    () => searchItemsByName(chipItems, searchQuery),
-    [chipItems, searchQuery]
+    () =>
+      filterByBudget(
+        searchItemsByName(chipItems, searchQuery),
+        budgetLimit,
+        viewerCurrency,
+        budgetRates
+      ),
+    [chipItems, searchQuery, budgetLimit, viewerCurrency, budgetRates]
   );
 
   // A card the viewer reserves, releases, publishes or marks stays in its
@@ -1736,7 +1762,7 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
   const { items: sortedItems, pin: pinItem } = useStickyItems(
     filteredItems,
     items,
-    JSON.stringify([wishlistId, viewerRole, activeChip, sortBy, searchQuery])
+    JSON.stringify([wishlistId, viewerRole, activeChip, sortBy, searchQuery, budgetLimit])
   );
   const handleStickyCardUpdate = useCallback(
     (id: string, updates: Partial<ApiItem>) => {
@@ -1765,10 +1791,14 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
   const showAllItems = useCallback(() => {
     chooseChip('all');
     setSearchQuery('');
+    setBudgetText('');
   }, [chooseChip]);
 
   // Clear the item search when switching to a different wishlist.
-  useEffect(() => setSearchQuery(''), [wishlistId]);
+  useEffect(() => {
+    setSearchQuery('');
+    setBudgetText('');
+  }, [wishlistId]);
 
   // `?item=<id>` (the Reserved page's View on list): scroll to that item and
   // highlight it, clearing a chip or search that would hide it.
@@ -2050,6 +2080,14 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
                         menuAlign="right"
                         triggerClassName="min-w-0 flex-1 sm:flex-none sm:flex-shrink-0"
                       />
+                      {budgetOffered && (
+                        <BudgetFilter
+                          value={budgetText}
+                          onChange={setBudgetText}
+                          currency={viewerCurrency}
+                          invalid={budget === 'invalid'}
+                        />
+                      )}
                       {prices.shown && (
                         <Select
                           value={prices.value}
@@ -2126,7 +2164,9 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
                     body={
                       searchQuery.trim()
                         ? `No items match “${searchQuery.trim()}”.`
-                        : 'No items match this filter.'
+                        : budgetLimit !== null
+                          ? 'No items are under that price.'
+                          : 'No items match this filter.'
                     }
                     actions={
                       <>
