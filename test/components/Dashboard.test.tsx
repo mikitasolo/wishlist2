@@ -71,6 +71,7 @@ vi.mock('@/components/ShareButton', () => ({ default: () => null }));
 vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }));
 
 import Home from '@/components/Dashboard';
+import { localDateString } from '@/lib/utils/occasion';
 import { atWidth } from './viewport';
 
 function list(id: string, name: string, fields: Record<string, unknown> = {}) {
@@ -98,7 +99,7 @@ const serverError = (error: string) => json({ success: false, error }, 500);
 
 /** What each read is answered with: a response (possibly held), or a network failure. */
 type Answer = () => Response | Promise<Response>;
-let answers: { lists: Answer; invites: Answer; summary: Answer; pin: Answer };
+let answers: { lists: Answer; invites: Answer; summary: Answer; pin: Answer; birthdays: Answer };
 let fetchMock: ReturnType<typeof vi.fn>;
 beforeEach(() => {
   auth.signInAs('me');
@@ -111,12 +112,14 @@ beforeEach(() => {
     invites: () => json({ success: true, data: [] }),
     summary: () => json({ success: true, data: { changed: 0 } }),
     pin: () => json({ success: true, data: {} }),
+    birthdays: () => json({ success: true, data: [] }),
   };
   fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     if (url.startsWith('/api/wishlists/') && init?.method === 'PATCH') return answers.pin();
     if (url === '/api/wishlists') return answers.lists();
     if (url === '/api/users/me/invites') return answers.invites();
     if (url === '/api/users/me/reservations/summary') return answers.summary();
+    if (url === '/api/users/me/birthdays') return answers.birthdays();
     throw new Error(`unexpected fetch ${url}`);
   });
   vi.stubGlobal('fetch', fetchMock);
@@ -342,6 +345,77 @@ describe('dashboard — a new account', () => {
     render(<Home />);
     await screen.findByRole('heading', { level: 2, name: 'Your wishlists' });
     expect(screen.queryByText(/Pick a username friends will recognise/)).toBeNull();
+  });
+});
+
+describe('dashboard — friends’ birthdays in Coming up (WIS-343)', () => {
+  // Today's month and day, on the placeholder year a birthday is stored on.
+  const todayYearly = () => `2000-${localDateString().slice(5)}`;
+  const herList = () =>
+    list('w9', 'Anna’s 30th', {
+      owners: ['anna-id'],
+      ownerUsername: 'anna',
+      userRole: 'member',
+      occasion: { kind: 'birthday', date: todayYearly(), recurrence: 'yearly' },
+    });
+
+  it('shows a friend’s birthday and her Birthday list on the same day, each its own card', async () => {
+    answers.lists = () => json({ success: true, data: { owned, member: [herList()] } });
+    answers.birthdays = () =>
+      json({
+        success: true,
+        data: [{ id: 'anna-id', username: 'anna', image: null, birthday: todayYearly() }],
+      });
+    render(<Home />);
+
+    const section = (await screen.findByRole('heading', { level: 2, name: 'Coming up' })).closest(
+      'section'
+    )!;
+    expect(await within(section).findByRole('link', { name: '@anna’s birthday' })).toHaveAttribute(
+      'href',
+      '/users/anna'
+    );
+    expect(within(section).getByRole('link', { name: 'Anna’s 30th' })).toBeInTheDocument();
+    expect(within(section).getAllByRole('listitem')).toHaveLength(2);
+    expect(requested('/api/users/me/birthdays')).toBe(1);
+  });
+
+  it('shows a friend’s birthday to an account with no lists yet, above the starter card', async () => {
+    answers.lists = () => json({ success: true, data: { owned: [], member: [] } });
+    answers.birthdays = () =>
+      json({
+        success: true,
+        data: [{ id: 'anna-id', username: 'anna', image: null, birthday: todayYearly() }],
+      });
+    render(<Home />);
+
+    expect(await screen.findByRole('link', { name: '@anna’s birthday' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: 'Coming up' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Your wishlists' })).toBeNull();
+  });
+
+  it.each([
+    ['a 5xx', () => serverError('Failed to fetch birthdays')],
+    [
+      'a network error',
+      (): Response => {
+        throw new TypeError('Failed to fetch');
+      },
+    ],
+  ])('keeps the lists, and Coming up’s, when the birthdays fail with %s', async (_l, fail) => {
+    answers.lists = () => json({ success: true, data: { owned, member: [herList()] } });
+    answers.birthdays = fail;
+    render(<Home />);
+
+    const section = (await screen.findByRole('heading', { level: 2, name: 'Coming up' })).closest(
+      'section'
+    )!;
+    await settle();
+    expect(within(section).getAllByRole('listitem')).toHaveLength(1);
+    expect(within(section).getByRole('link', { name: 'Anna’s 30th' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Your wishlists' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Couldn’t load your wishlists' })).toBeNull();
+    expect(showToast).not.toHaveBeenCalled();
   });
 });
 

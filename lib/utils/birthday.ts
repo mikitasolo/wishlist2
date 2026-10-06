@@ -16,7 +16,8 @@
  * (a friends-only profile caps it at friends); the person always sees their
  * own. Every answer that carries someone's birthday goes through
  * `visibleBirthday` (one person) or `birthdayVisibleFilter` (its query form,
- * for the batch reads to come: Coming up, reminders), and leaves the field out for anyone excluded, exactly as
+ * for reads of many: Coming up's `GET /api/users/me/birthdays`, and the
+ * reminders), and leaves the field out for anyone excluded, exactly as
  * for someone with no birthday, so a hidden birthday can't be told from none.
  */
 import { YEARLY_PLACEHOLDER_YEAR, normalizeOccasionDate } from '@/lib/utils/occasion';

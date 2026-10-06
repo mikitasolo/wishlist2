@@ -20,6 +20,7 @@ import { useToast } from '@/components/ToastProvider';
 import { useHydrated } from '@/lib/hooks/useHydrated';
 import { useLocalToday } from '@/lib/hooks/useLocalToday';
 import { usePinToTop } from '@/lib/hooks/usePinToTop';
+import type { FriendBirthday } from '@/lib/utils/comingUp';
 import { sortByUpcomingOccasion } from '@/lib/utils/occasion';
 import { pinnedFirst } from '@/lib/utils/pinnedLists';
 import { IWishlist } from '@/models/Wishlist';
@@ -115,6 +116,30 @@ export default function Dashboard() {
     };
   }, [status, userId, showToast, attempt]);
 
+  // Friends' birthdays for Coming up (WIS-343): a read of its own, so it never
+  // holds the lists back, and one that fails adds no birthday cards while the
+  // lists show as ever. Keyed on the account, like the lists.
+  const [birthdays, setBirthdays] = useState<FriendBirthday[]>([]);
+  useEffect(() => {
+    setBirthdays([]);
+    if (status !== 'authenticated' || !userId) return;
+    let current = true;
+    (async () => {
+      try {
+        const response = await fetch('/api/users/me/birthdays', { cache: 'no-store' });
+        const result = await response.json();
+        if (!current) return;
+        if (!result.success) throw new Error(result.error || 'Failed to load birthdays');
+        setBirthdays(Array.isArray(result.data) ? result.data : []);
+      } catch (error) {
+        if (current) console.error('Error fetching birthdays:', error);
+      }
+    })();
+    return () => {
+      current = false;
+    };
+  }, [status, userId]);
+
   const retryLoad = useCallback(() => {
     setLoadFailed(false);
     setLoading(true);
@@ -202,10 +227,19 @@ export default function Dashboard() {
           ) : loadFailed ? (
             <LoadError title="Couldn’t load your wishlists" onRetry={retryLoad} />
           ) : !hasAny ? (
-            <StarterCard username={profileUsername} onCreate={() => setShowCreateModal(true)} />
+            <>
+              {/* No lists yet, but a friend's birthday can still be coming. */}
+              <ComingUp own={[]} shared={[]} birthdays={birthdays} viewerId={session.user.id} />
+              <StarterCard username={profileUsername} onCreate={() => setShowCreateModal(true)} />
+            </>
           ) : (
             <>
-              <ComingUp own={activeOwned} shared={member} viewerId={session.user.id} />
+              <ComingUp
+                own={activeOwned}
+                shared={member}
+                birthdays={birthdays}
+                viewerId={session.user.id}
+              />
 
               {/* Your wishlists */}
               {activeOwned.length > 0 && (

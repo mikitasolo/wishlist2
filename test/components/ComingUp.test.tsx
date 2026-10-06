@@ -167,6 +167,82 @@ describe('Coming up', () => {
     expect(section()).not.toHaveTextContent('Hidden');
   });
 
+  describe('friends’ birthdays (WIS-343)', () => {
+    const anna = { id: 'anna-id', username: 'anna', image: null, birthday: '2000-10-16' };
+
+    it('shows a friend’s birthday and her Birthday list on the same day as two cards', () => {
+      render(
+        <ComingUp
+          own={[]}
+          shared={[
+            shared('Anna’s 30th', yearly('2000-10-16'), {
+              owners: ['anna-id'],
+              ownerUsername: 'anna',
+            }),
+          ]}
+          birthdays={[anna]}
+          viewerId="me"
+        />
+      );
+      expect(cards()).toHaveLength(2);
+      const birthday = card('@anna’s birthday');
+      expect(within(birthday).getByRole('link')).toHaveAttribute('href', '/users/anna');
+      expect(within(birthday).getByText(/^In 14 days · /)).toHaveAttribute(
+        'dateTime',
+        '2026-10-16'
+      );
+      // About her only: no list's name, link, count or action on it.
+      expect(within(birthday).getAllByRole('link')).toHaveLength(1);
+      expect(birthday).not.toHaveTextContent(/30th|Find a gift|item|list/i);
+      expect(within(birthday).queryByRole('button')).toBeNull();
+      // Her list keeps its own card, as ever.
+      expect(
+        within(card('Anna’s 30th')).getByRole('link', { name: 'Anna’s 30th' })
+      ).toHaveAttribute('href', '/wishlists/anna-s-30th');
+    });
+
+    it('sorts birthdays among the lists by day, then name, and says today', () => {
+      render(
+        <ComingUp
+          own={own}
+          shared={others}
+          birthdays={[
+            anna,
+            { id: 'bo-id', username: 'bo', image: null, birthday: '2000-10-02' },
+            { id: 'far-id', username: 'far', image: null, birthday: '2000-12-01' },
+          ]}
+          viewerId="me"
+        />
+      );
+      expect(cards().map((c) => within(c).getAllByRole('link')[0].textContent)).toEqual([
+        '@bo’s birthday',
+        'Dmitri’s birthday',
+        'Camping trip',
+        '@anna’s birthday',
+        'Anna’s 30th',
+        'Lena’s wedding',
+      ]);
+      expect(within(card('@bo’s birthday')).getByText(/^Today · /)).toBeInTheDocument();
+    });
+
+    it('never shows your own birthday', () => {
+      const { container } = render(
+        <ComingUp
+          own={[]}
+          shared={[]}
+          birthdays={[{ id: 'me', username: 'me', image: null, birthday: '2000-10-03' }]}
+          viewerId="me"
+        />
+      );
+      expect(container).toBeEmptyDOMElement();
+    });
+
+    it('shows a birthday even when no list is coming up', () => {
+      render(<ComingUp own={[]} shared={[]} birthdays={[anna]} viewerId="me" />);
+      expect(cards()).toHaveLength(1);
+    });
+  });
+
   it('renders nothing when no list has an occasion that close', () => {
     const { container } = render(
       <ComingUp own={[own[2], own[3], own[4]]} shared={[others[2]]} viewerId="me" />
