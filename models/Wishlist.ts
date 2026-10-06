@@ -110,6 +110,14 @@ const WishlistSchema = new Schema(
       required: false,
       select: false,
     },
+    // Set while a copy is still being made (WIS-325), so a retry with its key
+    // is told to wait instead of being handed a list that isn't finished.
+    // Removed once it is; never selected or sent.
+    copyPending: {
+      type: Boolean,
+      required: false,
+      select: false,
+    },
   },
   {
     timestamps: true,
@@ -159,6 +167,8 @@ export interface IWishlist {
   occasion?: Occasion | null;
   /** Only on a list made by a copy (WIS-325); never selected or sent. */
   idempotencyKey?: string;
+  /** Only while a copy is being made (WIS-325); never selected or sent. */
+  copyPending?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }

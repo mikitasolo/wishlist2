@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
+  COPYABLE_STATUSES,
   copiedStatus,
-  isCopyableStatus,
   serializeCopyCandidate,
   startingCopyOccasion,
 } from '@/lib/utils/wishlistCopy';
@@ -9,12 +9,8 @@ import { copyWishlistSchema } from '@/lib/validations';
 
 describe('which items a new list can bring over (WIS-325)', () => {
   it('offers drafts and available items, and booked ones alike, never received ones or proposals', () => {
-    expect(isCopyableStatus('draft')).toBe(true);
-    expect(isCopyableStatus('available')).toBe(true);
     // Owners can't tell booked from available, so neither may the picker.
-    expect(isCopyableStatus('booked')).toBe(true);
-    expect(isCopyableStatus('completed')).toBe(false);
-    expect(isCopyableStatus('proposed')).toBe(false);
+    expect([...COPYABLE_STATUSES].sort()).toEqual(['available', 'booked', 'draft']);
   });
 
   it('keeps a draft a draft and makes everything else available', () => {
@@ -24,7 +20,7 @@ describe('which items a new list can bring over (WIS-325)', () => {
   });
 
   it('shapes a booked item exactly as an available one', () => {
-    const base = { _id: 'abc', name: 'Mug', imageUrl: null, price: null, mostWanted: false };
+    const base = { _id: 'abc', name: 'Mug', imageUrl: null, mostWanted: false };
     const booked = { ...base, status: 'booked', bookedBy: 'x', proposedBy: 'y' };
     expect(serializeCopyCandidate(booked)).toEqual(
       serializeCopyCandidate({ ...base, status: 'available' })

@@ -15,14 +15,12 @@ import StartFromListModal from '@/components/StartFromListModal';
 // What GET /api/wishlists/[id]/copy answers.
 const SOURCE = {
   name: 'Birthday 2026',
-  description: 'Turning 30',
   visibility: 'friends',
   occasion: { kind: 'birthday', date: '2000-03-14', recurrence: 'yearly' },
-  bannerUrl: null,
   archived: false,
   items: [
-    { _id: 'i1', name: 'Blue mug', imageUrl: null, price: null, mostWanted: true, draft: false },
-    { _id: 'i2', name: 'Socks', imageUrl: null, price: null, mostWanted: false, draft: true },
+    { _id: 'i1', name: 'Blue mug', imageUrl: null, mostWanted: true, draft: false },
+    { _id: 'i2', name: 'Socks', imageUrl: null, mostWanted: false, draft: true },
   ],
 };
 // What GET /api/wishlists/[id]/members answers: me, a co-owner, a member, one without a username.
@@ -39,9 +37,11 @@ let calls: Call[];
 let source: unknown;
 let people: unknown;
 let inviteReply: (body: { username: string }) => { status: number; body: unknown };
+let archiveFails = false;
 
 beforeEach(() => {
   calls = [];
+  archiveFails = false;
   source = SOURCE;
   people = PEOPLE;
   inviteReply = () => ({ status: 201, body: { success: true, data: {} } });
@@ -69,7 +69,9 @@ beforeEach(() => {
         return reply(r.status, r.body);
       }
       if (url === '/api/wishlists/w-old' && method === 'PATCH')
-        return reply(200, { success: true, data: {} });
+        return archiveFails
+          ? reply(500, { success: false, error: 'Failed to update wishlist' })
+          : reply(200, { success: true, data: {} });
       return reply(500, { success: false });
     })
   );
@@ -176,6 +178,24 @@ describe('StartFromListModal', () => {
     expect(patch.url).toBe('/api/wishlists/w-old');
     expect(patch.body).toEqual({ archived: true });
     expect(posts('/api/wishlists/w-new/members')).toHaveLength(0);
+  });
+
+  // regression (review): a failed archive still closed the dialog and left
+  // for the new list, with no way to try again from there.
+  it('stays on the archive question when archiving fails, so it can be tried again', async () => {
+    people = [PEOPLE[0]];
+    archiveFails = true;
+    open();
+    fireEvent.click(await screen.findByRole('button', { name: 'Create list' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Archive' }));
+
+    await waitFor(() =>
+      expect(showToast).toHaveBeenCalledWith('Failed to update wishlist', 'error')
+    );
+    expect(push).not.toHaveBeenCalled();
+    archiveFails = false;
+    fireEvent.click(screen.getByRole('button', { name: 'Archive' }));
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/wishlists/birthday-2027'));
   });
 
   it('doesn’t offer to archive a list that already is', async () => {

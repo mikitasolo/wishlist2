@@ -300,6 +300,11 @@ export async function listUserUploads(userId: string): Promise<string[]> {
 /** What `copyBlobToUploads` made: the copy's URL, or why there is none. */
 export type UploadCopy = { ok: true; url: string } | { ok: false; reason: 'quota' | 'failed' };
 
+/** A user's upload bytes, shared by copies made together (see `copyBlobToUploads`). */
+export interface UploadBudget {
+  used: number;
+}
+
 /** How long saving a copy of an item waits for its image copy before saving without it. */
 export const UPLOAD_COPY_TIMEOUT_MS = 5000;
 
@@ -319,19 +324,40 @@ export const UPLOAD_COPY_TIMEOUT_MS = 5000;
  * copy that lands after the timeout is freed then). `url` must be one of our
  * blobs (`isOwnBlob`); anything else is `failed` too. Its own log lines carry
  * no URL, since a blob's path names the user who uploaded it.
+ *
+ * Several copies made at once (starting a new list from one, WIS-325) share
+ * one `budget`: the user's upload bytes, read once by the caller. Each copy
+ * checks it and reserves its size in one step before copying (and gives it
+ * back if the copy doesn't stand), so copies running together can't go over
+ * the quota between them, and the folder is listed once, not per image.
  */
-export async function copyBlobToUploads(url: string, userId: string): Promise<UploadCopy> {
+export async function copyBlobToUploads(
+  url: string,
+  userId: string,
+  budget?: UploadBudget
+): Promise<UploadCopy> {
   const parsed = parseOwnBlobUrl(url);
   if (!parsed || !userId) return { ok: false, reason: 'failed' };
   const started: { copy?: Promise<{ url: string }> } = {};
+  let reserved = 0;
+  const release = () => {
+    if (budget) budget.used -= reserved;
+    reserved = 0;
+  };
   try {
     const copied = await withTimeout(UPLOAD_COPY_TIMEOUT_MS, async (abortSignal) => {
       const [source, used] = await Promise.all([
         head(url, { abortSignal }),
-        getUserUploadBytes(userId),
+        budget ? budget.used : getUserUploadBytes(userId),
       ]);
-      if (used + source.size > USER_UPLOAD_QUOTA_BYTES) return null;
+      // Checked and reserved with no await between, against the budget as it
+      // is now (others may have reserved since it was read above).
+      if ((budget ? budget.used : used) + source.size > USER_UPLOAD_QUOTA_BYTES) return null;
       abortSignal.throwIfAborted(); // too late: don't start a copy nobody will keep
+      if (budget) {
+        reserved = source.size;
+        budget.used += reserved;
+      }
       started.copy = copy(url, `uploads/${userId}/image${extensionOf(parsed)}`, {
         access: 'public',
         addRandomSuffix: true,
@@ -342,11 +368,13 @@ export async function copyBlobToUploads(url: string, userId: string): Promise<Up
     if (!copied) return { ok: false, reason: 'quota' };
     if (isUploadedBy(copied.url, userId)) return { ok: true, url: copied.url };
     // Not a file directly in their folder, so not one they could keep: drop it.
+    release();
     await deleteOwnBlob(copied.url);
     console.error('Copying an image into uploads gave a path outside the folder; dropped it');
   } catch (err) {
     // A copy still under way at the timeout may land later, in their folder and
     // on their quota, with nothing holding it: free it then.
+    release();
     started.copy?.then(
       (late) => deleteOwnBlob(late.url),
       () => {}

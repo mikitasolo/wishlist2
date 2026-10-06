@@ -112,6 +112,7 @@ const KEY_KINDS: Record<LimiterName, KeyKind> = {
   shareLink: 'user',
   follow: 'user',
   content: 'user',
+  listCopy: 'user',
   booking: 'user',
   linkJoin: 'user',
   joinRequest: 'user',
@@ -754,6 +755,8 @@ const NEW_ACCOUNT_LIMITS: Record<NewAccountLimiterName, { tokens: number; window
   invite: { tokens: 5, window: '1 h' },
   follow: { tokens: 20, window: '1 h' },
   content: { tokens: 20, window: '1 h' },
+  // WIS-325: starting a new list from one, up to 100 items a time.
+  listCopy: { tokens: 3, window: '1 h' },
   upload: { tokens: 5, window: '10 m' },
   // WIS-334: making share links, budgeted like invites.
   shareLink: { tokens: 5, window: '1 h' },

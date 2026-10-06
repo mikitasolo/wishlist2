@@ -44,10 +44,8 @@ import {
 /** What `GET /api/wishlists/[id]/copy` answers. */
 interface CopySource {
   name: string;
-  description: string;
   visibility: Visibility;
   occasion: Occasion | null;
-  bannerUrl: string | null;
   archived: boolean;
   items: CopyCandidate[];
 }
@@ -444,9 +442,11 @@ function PeopleStep({
     setRoles(Object.fromEntries(candidates.map((c) => [c.userId, c.role])));
   }, [sourceId, selfId]);
 
+  // Only once the session says who the starter is: they're never offered to
+  // themselves (it shows loading until then).
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (selfId) void load();
+  }, [load, selfId]);
 
   const candidates = people.state === 'loaded' ? people.data : [];
   // Nobody else was on the list: nothing to ask. Once only, whatever re-renders.
@@ -622,14 +622,17 @@ function ArchiveStep({
         success?: boolean;
         error?: string;
       } | null;
-      if (body?.success) showToast(`“${sourceName}” archived`, 'success');
-      else showToast(body?.error || 'Failed to archive wishlist', 'error');
+      if (body?.success) {
+        showToast(`“${sourceName}” archived`, 'success');
+        onDone();
+        return;
+      }
+      // Stays open, so Archive can be tried again (or the list kept).
+      showToast(body?.error || 'Failed to archive wishlist', 'error');
     } catch {
       showToast('Failed to archive wishlist', 'error');
-    } finally {
-      setArchiving(false);
-      onDone();
     }
+    setArchiving(false);
   };
 
   return (

@@ -21,11 +21,6 @@ export const COPY_ITEMS_MAX = 100;
  */
 export const COPYABLE_STATUSES = ['draft', 'available', 'booked'] as const;
 
-/** Whether an item with this status may be brought over. */
-export function isCopyableStatus(status: string): boolean {
-  return (COPYABLE_STATUSES as readonly string[]).includes(status);
-}
-
 /** A copy's status: a draft stays a draft, everything else is available and unreserved. */
 export function copiedStatus(status: string): 'draft' | 'available' {
   return status === 'draft' ? 'draft' : 'available';
@@ -45,7 +40,6 @@ export interface CopyCandidate {
   _id: string;
   name: string;
   imageUrl: string | null;
-  price: { value: number; currency: string } | null;
   mostWanted: boolean;
   /** Owners see their drafts anyway; nothing else about its status is said. */
   draft: boolean;
@@ -55,7 +49,6 @@ interface CandidateSource {
   _id: { toString(): string };
   name: string;
   imageUrl?: string | null;
-  price?: { value: number; currency: string } | null;
   mostWanted?: boolean;
   status: string;
 }
@@ -70,11 +63,20 @@ export function serializeCopyCandidate(item: CandidateSource): CopyCandidate {
     _id: item._id.toString(),
     name: item.name,
     imageUrl: item.imageUrl || null,
-    price: item.price ? { value: item.price.value, currency: item.price.currency } : null,
     mostWanted: !!item.mostWanted,
     draft: item.status === 'draft',
   };
 }
+
+/**
+ * A list still marked as being made this long after it was created was left
+ * by an attempt that died (past the route's `maxDuration`): a retry takes it
+ * back and starts again rather than waiting on it forever.
+ */
+export const COPY_PENDING_STALE_MS = 2 * 60 * 1000;
+
+/** Answered to a retry while the first attempt is still making the list. */
+export const COPY_IN_PROGRESS_ERROR = 'This list is still being made. Try again in a moment.';
 
 /** Sent back with the new list when some images weren't copied for lack of upload space. */
 export const COPY_LIST_IMAGES_QUOTA_NOTICE =

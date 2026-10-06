@@ -60,7 +60,7 @@ export function isFeaturedBy(wishlist: Featurable, userId?: string | null): bool
  */
 export type ApiWishlist = Omit<
   IWishlist,
-  'owners' | 'featuredBy' | 'occasion' | 'idempotencyKey'
+  'owners' | 'featuredBy' | 'occasion' | 'idempotencyKey' | 'copyPending'
 > & {
   owners: string[];
   featured: boolean;
@@ -87,13 +87,14 @@ export function serializeWishlist(
   // `isPublic` is the legacy flag the schema dropped (WIS-184). A list stored
   // before then still carries it, and a read hands back what's stored, so it's
   // left out here rather than sent to clients that must not start reading it.
-  // `idempotencyKey` is never selected, but a list just created still holds
-  // the one it was made with (WIS-325): it's the server's, never the client's.
+  // `idempotencyKey` and `copyPending` are never selected, but a list just
+  // created still holds them (WIS-325): they're the server's, never the client's.
   const {
     owners: _owners,
     featuredBy: _featuredBy,
     isPublic: _isPublic,
     idempotencyKey: _idempotencyKey,
+    copyPending: _copyPending,
     ...rest
   } = raw;
   return {

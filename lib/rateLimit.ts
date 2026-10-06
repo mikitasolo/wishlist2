@@ -100,6 +100,9 @@ const SPECS = {
   // opening a live link, are never limited.
   shareLink: { tokens: 30, window: '1 h', policy: 'fail-open', keyKind: 'user' },
   content: { tokens: 60, window: '1 h', policy: 'fail-open', keyKind: 'user' },
+  // Starting a new list from one (WIS-325): besides `content`, which it spends
+  // like any new list, since one request copies up to 100 items and their images.
+  listCopy: { tokens: 10, window: '1 h', policy: 'fail-open', keyKind: 'user' },
   booking: { tokens: 60, window: '1 h', policy: 'fail-open', keyKind: 'user' },
   // Joining a list through a Join share link (WIS-337): each join notifies
   // every owner, and a join is a step from reserving, so a forwarded link
@@ -168,6 +171,7 @@ const NEW_ACCOUNT_SPECS = {
   linkJoin: { tokens: 5, window: '1 h' },
   booking: { tokens: 20, window: '1 h' },
   content: { tokens: 20, window: '1 h' },
+  listCopy: { tokens: 3, window: '1 h' },
 } satisfies Partial<Record<LimiterName, Pick<LimiterSpec, 'tokens' | 'window'>>>;
 
 /** The limiters that have a new-account tier. */
