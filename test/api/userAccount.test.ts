@@ -47,7 +47,10 @@ describe('createUserAccount', () => {
       searchable: true,
       whoCanInvite: 'everyone',
       profileVisibility: 'everyone',
+      birthdayVisibility: 'friends',
     });
+    // No birthday until they add one (WIS-323).
+    expect(row!.birthday ?? null).toBeNull();
     expect(row!.createdAt).toBeInstanceOf(Date);
   });
 

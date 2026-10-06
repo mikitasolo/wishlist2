@@ -16,7 +16,7 @@
  * (a friends-only profile caps it at friends); the person always sees their
  * own. Every answer that carries someone's birthday goes through
  * `visibleBirthday` (one person) or `birthdayVisibleFilter` (its query form,
- * for reads of many), and leaves the field out for anyone excluded, exactly as
+ * for the batch reads to come: Coming up, reminders), and leaves the field out for anyone excluded, exactly as
  * for someone with no birthday, so a hidden birthday can't be told from none.
  */
 import { YEARLY_PLACEHOLDER_YEAR, normalizeOccasionDate } from '@/lib/utils/occasion';
@@ -88,7 +88,7 @@ export function birthdayField(
  * The query form of `canSeeBirthday`, for a read of many people's birthdays
  * (Coming up, reminders): matches the users with a birthday that a viewer who
  * is their `friend`, or `other`, may see. Pinned to `canSeeBirthday` by a
- * table test (`test/api/birthdayVisibleFilter.test.ts`): change both together.
+ * table test (`test/api/birthday.test.ts`): change both together.
  * A setting never saved matches as its default does (`birthdayVisibility`
  * friends, `profileVisibility` everyone). The caller still narrows it to the
  * people it's about (the viewer's friends, say), and selects only what it shows.

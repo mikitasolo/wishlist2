@@ -86,6 +86,11 @@ describe('profileSettings', () => {
     expect(profileSettings({ privacy: { searchable: null } }).searchable).toBe(true);
   });
 
+  it('reads a birthday stored with a real year as its day and month', () => {
+    expect(profileSettings({ birthday: '1990-03-14' }).birthday).toBe('2000-03-14');
+    expect(profileSettings({ birthday: 'nonsense' }).birthday).toBe('');
+  });
+
   it('uppercases the currency', () => {
     expect(profileSettings({ defaultCurrency: 'pln' }).defaultCurrency).toBe('PLN');
   });

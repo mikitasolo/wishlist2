@@ -189,6 +189,7 @@ export default function UserProfile() {
     }
     setFollowBusy(true);
     const next = !profile.isFollowing;
+    const shownBirthday = profile.birthday;
     // Optimistic update
     setProfile((p) =>
       p
@@ -196,6 +197,10 @@ export default function UserProfile() {
             ...p,
             isFollowing: next,
             isFriend: next && p.followsYou,
+            // No longer friends: a birthday shown to friends may not be theirs
+            // to see any more, so it goes (one shown to everyone comes back on
+            // the next read).
+            birthday: !next && p.isFriend ? undefined : p.birthday,
             followerCount: p.followerCount + (next ? 1 : -1),
           }
         : p
@@ -214,6 +219,7 @@ export default function UserProfile() {
               ...p,
               isFollowing: !next,
               isFriend: !next && p.followsYou,
+              birthday: shownBirthday,
               followerCount: p.followerCount + (next ? -1 : 1),
             }
           : p
@@ -288,6 +294,8 @@ export default function UserProfile() {
   }
 
   // "Visitors see 3 of your 5 lists", on your own profile only.
+  // "March 14": only there when the answer carried a birthday (`visibleBirthday`).
+  const birthdayText = profile?.birthday ? formatBirthday(profile.birthday) : '';
   const visitorNote = profile?.isSelf ? visitorLine(visitorCount, wishlists.length) : null;
 
   return (
@@ -333,11 +341,11 @@ export default function UserProfile() {
                 </button>
                 {profile?.followsYou && !profile.isFriend ? <span>· Follows you</span> : null}
               </div>
-              {profile?.birthday && formatBirthday(profile.birthday) && (
+              {profile && birthdayText && (
                 <p className="mt-1 text-sm text-muted-foreground">
                   <span aria-hidden>🎂 </span>
                   <span className="sr-only">Birthday: </span>
-                  <span className="text-foreground">{formatBirthday(profile.birthday)}</span>
+                  <span className="text-foreground">{birthdayText}</span>
                   {profile.isSelf && profile.birthdayAudience && (
                     <span> · {BIRTHDAY_AUDIENCE_TEXT[profile.birthdayAudience]}</span>
                   )}

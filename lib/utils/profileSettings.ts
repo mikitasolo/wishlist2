@@ -1,6 +1,10 @@
 import type { InvitePolicy, ProfileVisibility } from '@/models/User';
 import { normalizeCurrency } from '@/lib/utils/currency';
-import { DEFAULT_BIRTHDAY_VISIBILITY, type BirthdayVisibility } from '@/lib/utils/birthday';
+import {
+  DEFAULT_BIRTHDAY_VISIBILITY,
+  normalizeBirthday,
+  type BirthdayVisibility,
+} from '@/lib/utils/birthday';
 import {
   channelsOf,
   NOTIFICATION_EVENT_KEYS,
@@ -132,7 +136,9 @@ export function profileSettings(profile: ProfileSettingsSource): ProfileSettings
     username: profile.username || '',
     image: profile.image || null,
     bio: profile.bio || '',
-    birthday: profile.birthday || '',
+    // As the server would store it, so one saved before normalization (or by
+    // hand) with a real year still reads as complete.
+    birthday: (profile.birthday && normalizeBirthday(profile.birthday)) || '',
     defaultCurrency: normalizeCurrency(profile.defaultCurrency),
     searchable: profile.privacy?.searchable ?? true,
     whoCanInvite: profile.privacy?.whoCanInvite ?? 'everyone',

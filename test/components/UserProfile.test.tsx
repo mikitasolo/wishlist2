@@ -404,6 +404,20 @@ describe('UserProfile — following', () => {
     expect(follows(fetchMock)[0][1]).toMatchObject({ method: 'DELETE' });
   });
 
+  it('stops showing a birthday once you unfollow a friend (WIS-323)', async () => {
+    session.current = signedIn('me');
+    stubWithFollow(
+      profile({ isFollowing: true, followsYou: true, isFriend: true, birthday: '2000-03-14' })
+    );
+    render(<UserProfile />);
+    await screen.findByText(/March 14|14 March/);
+    fireEvent.click(screen.getByRole('button', { name: 'Unfollow @friend' }));
+    const dialog = await screen.findByRole('alertdialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Unfollow' }));
+
+    await waitFor(() => expect(screen.queryByText(/March 14|14 March/)).toBeNull());
+  });
+
   it('unfollows someone who is not a friend with no confirmation', async () => {
     session.current = signedIn('me');
     const fetchMock = stubWithFollow(profile({ isFollowing: true }));
