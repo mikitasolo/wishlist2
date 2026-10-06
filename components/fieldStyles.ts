@@ -20,14 +20,30 @@ export type FieldShape = 'rounded' | 'pill';
 /** `rounded-xl` by default; `pill` for a field that sits in page chrome (the header's search). */
 const SHAPE: Record<FieldShape, string> = { rounded: 'rounded-xl', pill: 'rounded-full' };
 
+/**
+ * What you type in a field is 16px on a phone: iOS browsers (all WebKit,
+ * Chrome too) zoom the page in when a field under 16px is focused, and it
+ * stays zoomed. From `sm` up it's back on the control scale (WIS-352).
+ */
+const FIELD_TEXT: Record<FieldSize, string> = {
+  sm: 'text-base sm:text-sm',
+  lg: 'text-base sm:text-body',
+};
+
 const inputSizeStyles: Record<FieldSize, string> = {
-  sm: 'h-9 px-3 text-sm',
-  lg: 'h-11 px-3.5 text-body',
+  sm: `h-9 px-3 ${FIELD_TEXT.sm}`,
+  lg: `h-11 px-3.5 ${FIELD_TEXT.lg}`,
 };
 
 const textareaSizeStyles: Record<FieldSize, string> = {
-  sm: 'px-3 py-2 text-sm',
-  lg: 'px-3.5 py-2.5 text-body',
+  sm: `px-3 py-2 ${FIELD_TEXT.sm}`,
+  lg: `px-3.5 py-2.5 ${FIELD_TEXT.lg}`,
+};
+
+/** A picker trigger is a button, which doesn't zoom, so it keeps the control scale. */
+const pickerSizeStyles: Record<FieldSize, string> = {
+  sm: 'h-9 px-3.5 text-sm',
+  lg: 'h-11 px-3.5 text-body',
 };
 
 /** A plain text input. */
@@ -64,5 +80,5 @@ export const FIELD_ERROR = 'mt-1.5 text-xs text-danger';
  * label and a hover.
  */
 export function pickerTriggerClassName(size: FieldSize = 'lg'): string {
-  return `flex items-center justify-between gap-2 ${SHAPE.rounded} ${BORDER} ${inputSizeStyles[size].replace('px-3 ', 'px-3.5 ')} font-medium transition-colors hover:bg-surface-hover disabled:opacity-50`;
+  return `flex items-center justify-between gap-2 ${SHAPE.rounded} ${BORDER} ${pickerSizeStyles[size]} font-medium transition-colors hover:bg-surface-hover disabled:opacity-50`;
 }

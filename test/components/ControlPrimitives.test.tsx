@@ -218,11 +218,16 @@ describe('Input', () => {
       'border-border-strong',
       'bg-surface',
       'px-3.5',
-      'text-body',
+      'text-base',
+      'sm:text-body',
       'field-focus',
       'outline-hidden'
     );
-    expect(screen.getByRole('textbox', { name: 'Toolbar' })).toHaveClass('h-9', 'text-sm');
+    expect(screen.getByRole('textbox', { name: 'Toolbar' })).toHaveClass(
+      'h-9',
+      'text-base',
+      'sm:text-sm'
+    );
   });
 });
 
