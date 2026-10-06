@@ -160,31 +160,52 @@ describe('birthdayEmailDayOffsets', () => {
 });
 
 describe('olderBirthdayLists (WIS-348)', () => {
-  const birthday = { kind: 'birthday' as const };
-  it('keeps only the Birthday lists, in the order given, as id and name', () => {
+  const today = '2026-10-06';
+  const yearly = (date: string): Occasion => ({ kind: 'birthday', date, recurrence: 'yearly' });
+  const oneOff = (date: string): Occasion => ({ kind: 'birthday', date, recurrence: null });
+  const ids = (lists: Parameters<typeof olderBirthdayLists>[0]) =>
+    olderBirthdayLists(lists, today).map((w) => w._id);
+
+  it('keeps only Birthday lists, as id and name, newest created first', () => {
     expect(
-      olderBirthdayLists([
-        { _id: 'a', name: '2026', occasion: birthday, archived: false },
-        { _id: 'b', name: 'Trip', occasion: { kind: 'other' as const } },
-        { _id: 'c', name: '2025', occasion: birthday, archived: true },
-        { _id: 'd', name: 'None', occasion: null },
-        { _id: 'e', name: 'Unset' },
-      ])
+      olderBirthdayLists(
+        [
+          { _id: 'old', name: '2023', occasion: oneOff('2023-03-14'), createdAt: '2023-01-01' },
+          {
+            _id: 'trip',
+            name: 'Trip',
+            occasion: { kind: 'other', date: '2024-03-14', recurrence: null },
+          },
+          { _id: 'none', name: 'None', occasion: null },
+          { _id: 'new', name: '2025', occasion: oneOff('2025-03-14'), createdAt: '2025-01-01' },
+        ],
+        today
+      )
     ).toEqual([
-      { _id: 'a', name: '2026' },
-      { _id: 'c', name: '2025' },
+      { _id: 'new', name: '2025' },
+      { _id: 'old', name: '2023' },
     ]);
   });
-  it('puts the newest created first whatever the order given', () => {
+  // regression: "last year's list" could be this year's, made after the nudge email went out.
+  it('regression: leaves out the list the nudge already counts, this birthday’s', () => {
     expect(
-      olderBirthdayLists([
-        { _id: 'old', name: 'Old', occasion: birthday, createdAt: '2023-01-01T00:00:00Z' },
-        { _id: 'new', name: 'New', occasion: birthday, createdAt: '2025-01-01T00:00:00Z' },
-      ]).map((w) => w._id)
-    ).toEqual(['new', 'old']);
+      ids([
+        { _id: 'mine', name: 'This year', occasion: oneOff('2026-10-20') },
+        { _id: 'just', name: 'Just past', occasion: oneOff('2026-09-20') },
+        { _id: 'live', name: 'Yearly', occasion: yearly('2000-10-20') },
+        { _id: 'far', name: 'Far off', occasion: oneOff('2026-03-14') },
+      ])
+    ).toEqual(['far']);
   });
-  it('is empty with no lists', () => {
-    expect(olderBirthdayLists(null)).toEqual([]);
-    expect(olderBirthdayLists([])).toEqual([]);
+  it('keeps an archived yearly list whatever its date: it is last year’s', () => {
+    expect(ids([{ _id: 'a', name: 'A', archived: true, occasion: yearly('2000-10-20') }])).toEqual([
+      'a',
+    ]);
+  });
+  it('is empty with no lists or no date today', () => {
+    expect(ids(null)).toEqual([]);
+    expect(
+      olderBirthdayLists([{ _id: 'a', name: 'A', occasion: oneOff('2020-01-01') }], null)
+    ).toEqual([]);
   });
 });

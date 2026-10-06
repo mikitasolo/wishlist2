@@ -122,19 +122,38 @@ export const BIRTHDAY_NUDGE_HOME_PATH = `/?${NEW_LIST_PARAM}=birthday`;
 /**
  * The older Birthday lists a new one can start from (WIS-348): the lists you
  * own (alone or co-owned, archived or not) whose occasion kind is `birthday`,
- * newest created first (`createdAt`, the given order where it's missing). Only `{ _id, name }` leaves it: the owner's own lists.
+ * newest created first (`createdAt`, the given order where it's missing).
+ * Only `{ _id, name }` leaves it: the owner's own lists.
+ *
+ * Not this birthday's own: the profile birthday isn't known here (the email's
+ * link opens New list whenever), so the nudge's window (`hasBirthdayListComing`)
+ * is taken at its widest for any birthday the nudge could be showing for, from
+ * `BIRTHDAY_NUDGE_LEAD_DAYS` before `today` to the lead plus the grace days
+ * after it. A list whose date falls in it is left out when it's unarchived (it
+ * is the one the nudge means) or a one-off (made for this year's); an archived
+ * yearly list is last year's whatever its date. Nothing without `today`.
  */
 export function olderBirthdayLists<
   T extends {
     _id: unknown;
     name: string;
     createdAt?: unknown;
-    occasion?: Pick<Occasion, 'kind'> | null;
+    archived?: boolean | null;
+    occasion?: Occasion | null;
   },
->(ownLists: readonly T[] | null | undefined): { _id: string; name: string }[] {
+>(ownLists: readonly T[] | null | undefined, today: string | null | undefined) {
+  const from = today ? addDays(today, -BIRTHDAY_NUDGE_LEAD_DAYS) : null;
+  const to = today ? addDays(today, BIRTHDAY_NUDGE_LEAD_DAYS + BIRTHDAY_LIST_GRACE_DAYS) : null;
+  if (!from || !to) return [];
   const time = (w: T) => (w.createdAt ? new Date(w.createdAt as string).getTime() || 0 : 0);
   return (ownLists ?? [])
-    .filter((w) => w.occasion?.kind === 'birthday')
+    .filter((w) => {
+      const o = w.occasion;
+      if (o?.kind !== 'birthday') return false;
+      const date = nextOccurrence(o.date, o.recurrence ?? null, from);
+      const inWindow = date !== null && (daysBetween(date, to) ?? -1) >= 0;
+      return !(inWindow && (!w.archived || o.recurrence !== 'yearly'));
+    })
     .sort((a, b) => time(b) - time(a))
     .map((w) => ({ _id: String(w._id), name: w.name }));
 }

@@ -87,14 +87,31 @@ vi.mock('@/components/CreateWishlistModal', () => ({
     ) : null,
 }));
 vi.mock('@/components/StartFromListModal', () => ({
-  default: ({ sourceId }: { sourceId: string }) => (
-    <div role="dialog" aria-label="Start a new list" data-source={sourceId} />
+  archiveList: vi.fn(async () => true),
+  // Takes focus as it opens, as the real one's focus trap does.
+  default: ({
+    sourceId,
+    onArchiveSource,
+  }: {
+    sourceId: string;
+    onArchiveSource: () => Promise<boolean>;
+  }) => (
+    <div
+      role="dialog"
+      aria-label="Start a new list"
+      data-source={sourceId}
+      tabIndex={-1}
+      ref={(el) => el?.focus()}
+    >
+      <button onClick={() => void onArchiveSource()}>Archive source</button>
+    </div>
   ),
 }));
 vi.mock('@/components/ShareButton', () => ({ default: () => null }));
 vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }));
 
 import Home from '@/components/Dashboard';
+import { archiveList } from '@/components/StartFromListModal';
 import { localDateString } from '@/lib/utils/occasion';
 import { atWidth } from './viewport';
 
@@ -195,7 +212,7 @@ describe('dashboard — the greeting row', () => {
     expect(window.location.search).toBe('');
   });
 
-  describe('start from last year’s list (WIS-348)', () => {
+  describe('start from an earlier list (WIS-348)', () => {
     const birthday = { kind: 'birthday', date: '2000-03-14', recurrence: 'yearly' };
 
     it('offers your older Birthday lists, archived or not, newest first, and opens the flow on one', async () => {
@@ -206,7 +223,11 @@ describe('dashboard — the greeting row', () => {
             owned: [
               list('w2', 'Trip', { occasion: { ...birthday, kind: 'other' } }),
               list('w3', 'Birthday 2025', { occasion: birthday, archived: true }),
-              list('w4', 'Birthday 2024', { occasion: birthday }),
+              list('w4', 'Birthday 2024', { occasion: birthday, archived: true }),
+              // This year's (a one-off dated today): never offered as an earlier one.
+              list('w5', 'Birthday 2026', {
+                occasion: { kind: 'birthday', date: localDateString(new Date()), recurrence: null },
+              }),
             ],
             member: [list('m1', 'Anna’s birthday', { occasion: birthday, owners: ['anna'] })],
           },
@@ -221,6 +242,11 @@ describe('dashboard — the greeting row', () => {
         'data-source',
         'w3'
       );
+      // Opened after New list closed, and holds the focus.
+      expect(screen.getByRole('dialog', { name: 'Start a new list' })).toHaveFocus();
+      // Archiving there is sent for that list, and the dashboard's own copy follows.
+      await userEvent.setup().click(screen.getByRole('button', { name: 'Archive source' }));
+      expect(archiveList).toHaveBeenCalledWith('w3', expect.any(Function));
     });
 
     it('offers nothing with no older Birthday list, nor on a plain New list', async () => {

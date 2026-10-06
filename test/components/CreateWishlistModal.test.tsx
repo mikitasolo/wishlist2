@@ -456,7 +456,7 @@ describe('CreateWishlistModal — the new order', () => {
   });
 });
 
-describe('start from last year’s list (WIS-348)', () => {
+describe('start from earlier list (WIS-348)', () => {
   const lists = [
     { _id: 'w2', name: 'Birthday 2025' },
     { _id: 'w1', name: 'Birthday 2024' },
@@ -472,7 +472,7 @@ describe('start from last year’s list (WIS-348)', () => {
         startFrom={{ lists, onStart }}
       />
     );
-    await userEvent.setup().click(button('Start from last year’s list'));
+    await userEvent.setup().click(button('Start from an earlier list'));
     expect(onStart).toHaveBeenCalledWith('w2');
   });
 
@@ -482,7 +482,7 @@ describe('start from last year’s list (WIS-348)', () => {
     render(<CreateWishlistModal isOpen onClose={vi.fn()} startFrom={{ lists, onStart }} />);
     await user.click(screen.getByRole('combobox', { name: 'List to start from' }));
     await user.click(screen.getByRole('option', { name: 'Birthday 2024' }));
-    await user.click(button('Start from last year’s list'));
+    await user.click(button('Start from an earlier list'));
     expect(onStart).toHaveBeenCalledWith('w1');
   });
 
@@ -494,9 +494,32 @@ describe('start from last year’s list (WIS-348)', () => {
         startFrom={{ lists: lists.slice(0, 1), onStart: vi.fn() }}
       />
     );
-    expect(screen.getByRole('button', { name: 'Start from last year’s list' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Start from an earlier list' })).toBeInTheDocument();
     expect(screen.queryByRole('combobox', { name: 'List to start from' })).toBeNull();
     rerender(<CreateWishlistModal isOpen onClose={vi.fn()} />);
-    expect(screen.queryByRole('button', { name: 'Start from last year’s list' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Start from an earlier list' })).toBeNull();
+  });
+
+  it('hides the offer as soon as the form is typed in, so a draft is never dropped', async () => {
+    render(
+      <CreateWishlistModal isOpen onClose={vi.fn()} startFrom={{ lists, onStart: vi.fn() }} />
+    );
+    await userEvent.setup().type(nameField(), 'x');
+    expect(screen.queryByRole('button', { name: 'Start from an earlier list' })).toBeNull();
+  });
+
+  it('forgets the list picked when it closes', async () => {
+    const onStart = vi.fn();
+    const user = userEvent.setup();
+    const startFrom = { lists, onStart };
+    const { rerender } = render(
+      <CreateWishlistModal isOpen onClose={vi.fn()} startFrom={startFrom} />
+    );
+    await user.click(screen.getByRole('combobox', { name: 'List to start from' }));
+    await user.click(screen.getByRole('option', { name: 'Birthday 2024' }));
+    rerender(<CreateWishlistModal isOpen={false} onClose={vi.fn()} startFrom={startFrom} />);
+    rerender(<CreateWishlistModal isOpen onClose={vi.fn()} startFrom={startFrom} />);
+    await user.click(button('Start from an earlier list'));
+    expect(onStart).toHaveBeenCalledWith('w2');
   });
 });

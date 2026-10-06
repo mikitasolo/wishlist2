@@ -82,6 +82,13 @@ const startingOccasion = (kind: OccasionKind | undefined): OccasionDraft =>
 const pickedStartId = (lists: { _id: string }[], picked: string | null) =>
   lists.some((w) => w._id === picked) ? (picked as string) : lists[0]._id;
 
+const isDirty = (f: typeof defaultFormData, kind: OccasionKind | undefined) =>
+  f.name !== defaultFormData.name ||
+  f.description !== defaultFormData.description ||
+  f.visibility !== defaultFormData.visibility ||
+  f.bannerUrl !== defaultFormData.bannerUrl ||
+  !sameDraft(f.occasion, startingOccasion(kind));
+
 const sameDraft = (a: OccasionDraft, b: OccasionDraft) =>
   a.kind === b.kind &&
   a.yearly === b.yearly &&
@@ -119,6 +126,7 @@ export default function CreateWishlistModal({
       setHasUnsavedChanges(false);
       setShowConfirmClose(false);
       setMoreOpen(false);
+      setStartFromId(null);
     }
   }, [isOpen]);
 
@@ -130,14 +138,7 @@ export default function CreateWishlistModal({
 
   // Check if form has changes (never while closed: the reset puts no occasion back)
   useEffect(() => {
-    const hasChanges =
-      isOpen &&
-      (formData.name !== defaultFormData.name ||
-        formData.description !== defaultFormData.description ||
-        formData.visibility !== defaultFormData.visibility ||
-        formData.bannerUrl !== defaultFormData.bannerUrl ||
-        !sameDraft(formData.occasion, startingOccasion(occasionKind)));
-    setHasUnsavedChanges(hasChanges);
+    setHasUnsavedChanges(isOpen && isDirty(formData, occasionKind));
   }, [isOpen, formData, occasionKind]);
 
   // Prefill the currency from the user's default when opening.
@@ -235,10 +236,10 @@ export default function CreateWishlistModal({
         }
       >
         <div className="space-y-4">
-          {startFrom && startFrom.lists.length > 0 && !hasUnsavedChanges && (
+          {startFrom && startFrom.lists.length > 0 && !isDirty(formData, occasionKind) && (
             <div className="space-y-3 rounded-xl border border-border p-3">
               <p className="text-sm text-muted-foreground">
-                Make this year’s list from an older one, keeping the items and people you pick.
+                Make a new list from an earlier one, keeping the items and people you pick.
               </p>
               {startFrom.lists.length > 1 && (
                 <Select
@@ -257,7 +258,7 @@ export default function CreateWishlistModal({
                 disabled={isSubmitting}
                 onClick={() => startFrom.onStart(pickedStartId(startFrom.lists, startFromId))}
               >
-                Start from last year’s list
+                Start from an earlier list
               </Button>
             </div>
           )}
