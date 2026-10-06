@@ -2,7 +2,7 @@
 // The budget filter (WIS-326): "Under X" in the viewer's currency, for gifters
 // only, never saved, and it never moves a chip's count.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup, waitFor } from '@testing-library/react';
+import { render, screen, cleanup, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ApiItem } from '@/types/api';
 
@@ -30,6 +30,7 @@ vi.mock('@/components/AppHeader', () => ({ default: () => null }));
 vi.mock('@/components/AuthButton', () => ({ default: () => null }));
 vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }));
 
+import { setDiscreetMode } from '@/lib/hooks/useDiscreetMode';
 import WishlistDetail from '@/app/wishlists/[id]/page';
 
 let userRole: 'owner' | 'member';
@@ -206,5 +207,25 @@ describe('budget filter', () => {
     listItems = [{ ...item('Gift card', 0, 'pln', 4), price: undefined } as ApiItem];
     await open();
     expect(budget()).toBeNull();
+  });
+});
+
+// WIS-46: discreet mode leaves the filter working, and draws reserved items as
+// plain available, so a filtered grid still gives no reservation away.
+describe('budget filter in discreet mode', () => {
+  afterEach(() => act(() => setDiscreetMode(false)));
+
+  it('still narrows by price, with reserved items drawn as available', async () => {
+    setDiscreetMode(true);
+    listItems = [
+      { ...item('Tent', 10000, 'eur', 1), status: 'booked', bookedBy: 'carol' } as ApiItem,
+      { ...item('Stove', 4000, 'pln', 2), status: 'booked', bookedBy: 'other' } as ApiItem,
+      item('Lamp', 2000, 'usd', 3),
+    ];
+    await open();
+    await userEvent.type(budget()!, '100');
+    await waitFor(() => expect([...shown()].sort()).toEqual(['Item: Lamp', 'Item: Stove']));
+    expect(screen.queryByText(/reserv/i)).toBeNull();
+    expect(screen.getByRole('radio', { name: /^Available 3$/ })).toBeInTheDocument();
   });
 });
