@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { setDiscreetMode } from '@/lib/hooks/useDiscreetMode';
 
 const { router, showToast } = vi.hoisted(() => ({
   // One object, as Next's own router is: the page's read of the list depends on it.
@@ -194,6 +195,33 @@ describe("a member's Leave", () => {
       "You'll lose access. Anything you reserved here goes back on the list, but stays on your Reserved page so you can still log it."
     );
     expect(iconOf(dialog)).toBe('logout');
+  });
+
+  // WIS-46: discreet mode shows no count, and warns only if something is reserved.
+  it('in discreet mode warns that some items are reserved, with no count, only when they hold any', async () => {
+    setDiscreetMode(true);
+    try {
+      items = [item('1', 'booked', 'alice'), item('2', 'booked', 'alice'), item('3', 'available')];
+      const user = userEvent.setup();
+      const view = render(<WishlistDetail />);
+      await itemsShown();
+      await pickLeave(user);
+      const dialog = await screen.findByRole('alertdialog', { name: 'Leave “Birthday”?' });
+      expect(dialog).toHaveAccessibleDescription(
+        "You'll lose access. Some of your items here are reserved: they go back on the list, but stay on your Reserved page so you can still log them."
+      );
+      expect(dialog).not.toHaveAccessibleDescription(/\d/);
+      view.unmount();
+
+      items = [item('1', 'available'), item('2', 'booked', 'dave')];
+      render(<WishlistDetail />);
+      await itemsShown();
+      await pickLeave(user);
+      const none = await screen.findByRole('alertdialog', { name: 'Leave “Birthday”?' });
+      expect(none).not.toHaveAccessibleDescription(/Some of your items/);
+    } finally {
+      setDiscreetMode(false);
+    }
   });
 
   // regression: the leave's answer carries how many items it freed, and the

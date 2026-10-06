@@ -123,24 +123,29 @@ describe('the "N reserved by you" chip', () => {
   });
 });
 
-describe('the switch and the header indicator', () => {
-  it('turns on from the account menu, is remembered, and the header says so until it is turned off', async () => {
+describe('the header switch', () => {
+  it('is pressed while on, flips in one tap, and is remembered', async () => {
     const user = userEvent.setup();
     render(<AppHeader actions={<AuthButton />} />);
-    expect(screen.queryByRole('button', { name: /discreet mode is on/i })).toBeNull();
+    const toggle = screen.getByRole('button', { name: 'Discreet mode' });
+    expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    expect(toggle).toHaveAttribute('title', 'Turn on discreet mode');
 
-    await user.click(screen.getByRole('button', { name: 'Account menu' }));
-    await user.click(screen.getByRole('menuitem', { name: 'Turn on discreet mode' }));
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    expect(toggle).toHaveAttribute('title', 'Discreet mode is on. Turn it off');
     expect(localStorage.getItem(DISCREET_STORAGE_KEY)).toBe('1');
 
-    const indicator = screen.getByRole('button', { name: /discreet mode is on/i });
-    await user.click(screen.getByRole('button', { name: 'Account menu' }));
-    expect(screen.getByRole('menuitem', { name: 'Turn off discreet mode' })).toBeInTheDocument();
-    await user.keyboard('{Escape}');
-
-    await user.click(indicator);
-    expect(screen.queryByRole('button', { name: /discreet mode is on/i })).toBeNull();
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute('aria-pressed', 'false');
     expect(localStorage.getItem(DISCREET_STORAGE_KEY)).toBeNull();
+  });
+
+  it('is not in the account menu', async () => {
+    const user = userEvent.setup();
+    render(<AuthButton />);
+    await user.click(screen.getByRole('button', { name: 'Account menu' }));
+    expect(screen.queryByRole('menuitem', { name: /discreet/i })).toBeNull();
   });
 
   function Probe() {

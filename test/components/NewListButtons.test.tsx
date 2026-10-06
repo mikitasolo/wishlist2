@@ -93,7 +93,12 @@ describe('the header', () => {
   it.each([390, 640, 768, 1280])('has no New list at %ipx', (width) => {
     atWidth(width);
     render(<AppHeader />);
-    expect(within(screen.getByRole('banner')).queryByRole('button')).toBeNull();
+    // Only the discreet-mode switch (WIS-46) is a button in it.
+    expect(
+      within(screen.getByRole('banner'))
+        .queryAllByRole('button')
+        .map((b) => b.getAttribute('aria-label'))
+    ).toEqual(['Discreet mode']);
     expect(screen.queryByRole('button', { name: /New (list|wishlist)/ })).toBeNull();
     expect(createDialog()).toBeNull();
   });

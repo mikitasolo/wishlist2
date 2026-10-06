@@ -155,7 +155,6 @@ describe('AuthButton — the account menu from the keyboard', () => {
     expect(screen.getAllByRole('menuitem').map((el) => el.textContent)).toEqual([
       'Your profile',
       'Settings',
-      'Turn on discreet mode',
       'Sign out',
     ]);
   });
@@ -242,7 +241,7 @@ describe('AuthButton — the account menu from the keyboard', () => {
 describe('AuthButton — what the account menu holds', () => {
   const accountButton = () => screen.getByRole('button', { name: /^account menu/i });
 
-  it('has exactly your profile, Settings, the theme, discreet mode and Sign out', async () => {
+  it('has exactly your profile, Settings, the theme and Sign out', async () => {
     render(<AuthButton />);
     fireEvent.click(accountButton());
     const menu = await screen.findByRole('menu', { name: 'Account' });
@@ -250,13 +249,7 @@ describe('AuthButton — what the account menu holds', () => {
     const entries = [...menu.querySelectorAll('[role="menuitem"], [role="group"]')].map((el) =>
       el.getAttribute('role') === 'group' ? el.getAttribute('aria-label') : el.textContent
     );
-    expect(entries).toEqual([
-      'Your profile',
-      'Settings',
-      'Theme',
-      'Turn on discreet mode',
-      'Sign out',
-    ]);
+    expect(entries).toEqual(['Your profile', 'Settings', 'Theme', 'Sign out']);
     expect(screen.queryByRole('menuitem', { name: /reserved/i })).toBeNull();
     expect(document.querySelector('a[href="/booked"]')).toBeNull();
     expect(document.querySelector('a[href="/notifications"]')).toBeNull();
@@ -277,7 +270,6 @@ describe('AuthButton — what the account menu holds', () => {
     await screen.findByRole('menuitem', { name: 'Settings' });
     expect(screen.getAllByRole('menuitem').map((el) => el.textContent)).toEqual([
       'Settings',
-      'Turn on discreet mode',
       'Sign out',
     ]);
   });

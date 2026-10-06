@@ -8,7 +8,6 @@ import Button from '@/components/Button';
 import Menu, { type MenuEntry } from '@/components/Menu';
 import { Skeleton } from '@/components/Skeleton';
 import { useTheme } from '@/components/ThemeProvider';
-import { useDiscreetMode } from '@/lib/hooks/useDiscreetMode';
 import { parseThemeChoice } from '@/lib/utils/theme';
 import { isAuthOnlyPath } from '@/lib/utils/callbackUrl';
 import { meHref } from '@/lib/utils/appNav';
@@ -31,7 +30,6 @@ const ACCOUNT_TRIGGER_BOX = 'items-center gap-1.5 rounded-full p-1 sm:pr-2';
 export default function AuthButton() {
   const { data: session, status } = useKnownSession();
   const { theme, setTheme } = useTheme();
-  const { discreet, setDiscreet } = useDiscreetMode();
   const user = session?.user;
 
   // While the session loads, the shape it's about to take (see AppHeader): the
@@ -75,12 +73,6 @@ export default function AuthButton() {
           { value: 'system', label: 'System', icon: 'monitor' },
         ],
         onChange: (t) => setTheme(parseThemeChoice(t)),
-      },
-      // A device setting, like the theme: it keeps reservations off this screen.
-      {
-        label: discreet ? 'Turn off discreet mode' : 'Turn on discreet mode',
-        icon: discreet ? 'eye' : 'eye-off',
-        onSelect: () => setDiscreet(!discreet),
       },
       {
         label: 'Sign out',

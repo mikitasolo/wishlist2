@@ -2436,7 +2436,7 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
           {...(isOwner
             ? ownerLeaveCopy(wishlist.name)
             : // Their own reservations, from the items already on the page.
-              memberLeaveCopy(wishlist.name, itemsLoaded ? reservedByYou : null))}
+              memberLeaveCopy(wishlist.name, itemsLoaded ? reservedByYou : null, hideReservations))}
           onConfirm={confirmLeaveWishlist}
           onCancel={() => setDeleteConfirm(null)}
           confirmText="Leave"

@@ -5,6 +5,7 @@ import { useKnownSession } from '@/lib/hooks/useKnownSession';
 import BrandLink from '@/components/BrandLink';
 import GlobalSearch from '@/components/GlobalSearch';
 import { HeaderNav, TabBar } from '@/components/AppNav';
+import { Skeleton } from '@/components/Skeleton';
 import IconButton from '@/components/IconButton';
 import { useDiscreetMode } from '@/lib/hooks/useDiscreetMode';
 import { useUnreadNotifications } from '@/lib/hooks/useUnreadNotifications';
@@ -80,18 +81,22 @@ export default function AppHeader({ actions, search = true, minimal = false }: A
             ) : null}
           </div>
           <div className="flex min-w-0 items-center gap-2 sm:gap-3">
-            {signedIn && discreet && (
-              // Discreet mode is on (WIS-46): reservations are kept off the
-              // screen, and this says so, and turns it off.
+            {signedIn ? (
+              // Discreet mode (WIS-46), one tap from every page: an eye while
+              // it's off, an eye struck through and tinted while it's on.
               <IconButton
-                icon="eye-off"
-                label="Discreet mode is on. Turn it off"
-                title="Discreet mode is on. Turn it off"
+                icon={discreet ? 'eye-off' : 'eye'}
+                label="Discreet mode"
+                title={discreet ? 'Discreet mode is on. Turn it off' : 'Turn on discreet mode'}
+                aria-pressed={discreet}
                 variant="secondary"
-                className="flex-shrink-0"
-                onClick={() => setDiscreet(false)}
+                className={`flex-shrink-0 ${discreet ? 'border-primary-500 bg-primary-500/12 text-accent' : ''}`}
+                onClick={() => setDiscreet(!discreet)}
               />
-            )}
+            ) : pending ? (
+              // Its place while the session loads, where it's known to be signed in.
+              <Skeleton className="hidden h-8 w-8 flex-shrink-0 rounded-lg session-hint:block" />
+            ) : null}
             {search && !minimal && <GlobalSearch onOpenChange={setSearchOpen} />}
             {actions}
           </div>

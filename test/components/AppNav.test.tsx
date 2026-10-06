@@ -221,7 +221,10 @@ describe('AppHeader — navigation', () => {
     expect(headerNav()).toHaveClass('hidden', 'sm:session-hint:flex');
     // No New list and no bell to hold a place for (WIS-302): the account
     // button's placeholder is AuthButton's own, not rendered here.
-    expect(screen.getByRole('banner').querySelector('.skeleton')).toBeNull();
+    // Only the discreet-mode switch's (WIS-46).
+    const places = screen.getByRole('banner').querySelectorAll('.skeleton');
+    expect(places).toHaveLength(1);
+    expect(places[0]).toHaveClass('hidden', 'session-hint:block');
   });
 
   it('keeps the navigation up while a known session is updated', () => {
