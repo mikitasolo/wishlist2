@@ -142,6 +142,10 @@ export default function BookedPage() {
   // the cover is still read, so Show has it ready.
   const { discreet } = useDiscreetMode();
   const [revealed, setRevealed] = useState(false);
+  // Turned off, the next time it's on starts covered again, Show or not.
+  useEffect(() => {
+    if (!discreet) setRevealed(false);
+  }, [discreet]);
   const locale = useViewerLocale();
   // The viewer's local date, which "To give" is grouped by: `null` until it's
   // known (see `useLocalToday`), and until then the cards aren't grouped.

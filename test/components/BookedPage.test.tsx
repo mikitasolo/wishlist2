@@ -2065,6 +2065,11 @@ describe('BookedPage in discreet mode', () => {
     expect(await screen.findByText('Lego set')).toBeInTheDocument();
     expect(screen.queryByText('Discreet mode is on')).toBeNull();
 
+    // Off and on again, it's covered again without leaving the page.
+    act(() => setDiscreetMode(false));
+    act(() => setDiscreetMode(true));
+    expect(screen.getByText('Discreet mode is on')).toBeInTheDocument();
+
     view.unmount();
     mockHeldFetch();
     render(<BookedPage />);

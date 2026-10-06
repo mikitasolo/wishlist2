@@ -27,22 +27,24 @@ function emit() {
   listeners.forEach((l) => l());
 }
 
+// One storage listener for every subscriber (a card each), attached with the
+// first and removed with the last. Another tab turned it on or off.
+function onStorage(e: StorageEvent) {
+  if (e.key !== DISCREET_STORAGE_KEY && e.key !== null) return;
+  try {
+    current = parseDiscreet(localStorage.getItem(DISCREET_STORAGE_KEY));
+  } catch {
+    return;
+  }
+  emit();
+}
+
 function subscribe(listener: () => void): () => void {
+  if (listeners.size === 0) window.addEventListener('storage', onStorage);
   listeners.add(listener);
-  // Another tab turned it on or off.
-  const onStorage = (e: StorageEvent) => {
-    if (e.key !== DISCREET_STORAGE_KEY && e.key !== null) return;
-    try {
-      current = parseDiscreet(localStorage.getItem(DISCREET_STORAGE_KEY));
-    } catch {
-      return;
-    }
-    emit();
-  };
-  window.addEventListener('storage', onStorage);
   return () => {
     listeners.delete(listener);
-    window.removeEventListener('storage', onStorage);
+    if (listeners.size === 0) window.removeEventListener('storage', onStorage);
   };
 }
 

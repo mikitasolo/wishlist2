@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // Discreet mode (WIS-46): a device setting that keeps reservations off the screen.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup, act } from '@testing-library/react';
+import { render, screen, cleanup, act, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ApiItem } from '@/types/api';
 
@@ -73,6 +73,18 @@ describe('WishlistItem in discreet mode', () => {
     // The product link takes the primary's place.
     expect(screen.getByRole('link', { name: /product page/i })).toBeInTheDocument();
   });
+
+  it.each(states)(
+    'opens an item %s in its sheet with no status or booking control',
+    async (_, f) => {
+      setDiscreetMode(true);
+      render(<WishlistItem item={item(f)} onUpdate={vi.fn()} isAuthenticated isMember />);
+      await userEvent.setup().click(screen.getByRole('button', { name: 'Cool Gift' }));
+      const sheet = await screen.findByRole('dialog');
+      expect(within(sheet).queryByText(/reserv|given/i)).toBeNull();
+      expect(within(sheet).queryByRole('button', { name: /reserve|release|given/i })).toBeNull();
+    }
+  );
 
   it('keeps the real controls and badge while it is off', () => {
     render(
