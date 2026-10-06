@@ -101,6 +101,15 @@ const WishlistSchema = new Schema(
           'Occasion date must be a real date, and a yearly one must be on the placeholder year',
       },
     },
+    // "Start a new list from this one" (WIS-325): the creating request's
+    // `Idempotency-Key`, scoped to its sender (`scopedIdempotencyKey`), so a
+    // retry answers with the list the first attempt made instead of a second
+    // one. Never selected, and never sent (`serializeWishlist`).
+    idempotencyKey: {
+      type: String,
+      required: false,
+      select: false,
+    },
   },
   {
     timestamps: true,
@@ -120,6 +129,13 @@ WishlistSchema.index({ owners: 1 });
 // The daily occasion reminders look lists up by their occasion's stored date
 // (lib/utils/occasionReminders.ts).
 WishlistSchema.index({ 'occasion.date': 1 });
+// One list per creating request: a retry racing the first attempt is refused
+// here and answered with the first one's list. Partial: lists made any other
+// way carry no key.
+WishlistSchema.index(
+  { idempotencyKey: 1 },
+  { unique: true, partialFilterExpression: { idempotencyKey: { $exists: true } } }
+);
 
 // Base document type
 export interface IWishlist {
@@ -141,6 +157,8 @@ export interface IWishlist {
   bannerUrl?: string | null;
   /** Absent on lists saved before occasions existed: treat as none. */
   occasion?: Occasion | null;
+  /** Only on a list made by a copy (WIS-325); never selected or sent. */
+  idempotencyKey?: string;
   createdAt: Date;
   updatedAt: Date;
 }
