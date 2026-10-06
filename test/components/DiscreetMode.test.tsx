@@ -30,6 +30,7 @@ import WishlistItem from '@/components/WishlistItem';
 import ReservedByYouChip from '@/components/ReservedByYouChip';
 import AuthButton from '@/components/AuthButton';
 import AppHeader from '@/components/AppHeader';
+import { ToastProvider } from '@/components/ToastProvider';
 import {
   resetDiscreetModeForTests,
   setDiscreetMode,
@@ -126,7 +127,7 @@ describe('the "N reserved by you" chip', () => {
 describe('the header switch', () => {
   it('is checked while on, flips in one tap, and is remembered', async () => {
     const user = userEvent.setup();
-    render(<AppHeader actions={<AuthButton />} />);
+    render(<AppHeader actions={<AuthButton />} />, { wrapper: ToastProvider });
     const toggle = screen.getByRole('switch', { name: 'No spoiler mode' });
     expect(toggle).toHaveAttribute('aria-checked', 'false');
     expect(toggle).toHaveAttribute('title', 'Turn on no spoiler mode');
@@ -141,6 +142,24 @@ describe('the header switch', () => {
     await user.click(toggle);
     expect(toggle).toHaveAttribute('aria-checked', 'false');
     expect(localStorage.getItem(DISCREET_STORAGE_KEY)).toBeNull();
+  });
+
+  // On a phone the switch has no name and no tooltip, and often nothing on the
+  // page changes, so each switch says what it did (WIS-353).
+  it('says what it did in a toast, each time it is switched', async () => {
+    const user = userEvent.setup();
+    render(<AppHeader actions={<AuthButton />} />, { wrapper: ToastProvider });
+    const toggle = screen.getByRole('switch', { name: 'No spoiler mode' });
+
+    await user.click(toggle);
+    expect(
+      screen.getByText('No spoiler mode is on. Your reservations are hidden on this device.')
+    ).toBeInTheDocument();
+
+    await user.click(toggle);
+    expect(
+      screen.getByText('No spoiler mode is off. Your reservations show again.')
+    ).toBeInTheDocument();
   });
 
   it('is not in the account menu', async () => {
