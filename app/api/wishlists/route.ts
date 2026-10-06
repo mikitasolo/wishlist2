@@ -10,6 +10,7 @@ import { createWishlistSchema, validateRequestBody } from '@/lib/validations';
 import { ownedByFilter, ownerIds, serializeWishlist } from '@/lib/utils/wishlistOwners';
 import { canAttachImage, FOREIGN_IMAGE_ERROR } from '@/lib/utils/blob';
 import { countReservedBy, countWishlistItems, countsFor } from '@/lib/utils/wishlistItemCounts';
+import { notifyAskersOfNewList } from '@/lib/utils/wishlistAsks';
 
 // GET /api/wishlists - Get all wishlists user has access to
 export async function GET(request: NextRequest) {
@@ -190,6 +191,9 @@ export async function POST(request: NextRequest) {
       ...(occasion ? { occasion } : {}),
       currency: currency || user.defaultCurrency || 'USD',
     });
+
+    // WIS-324: friends who asked for a list, and can open this one, are told.
+    await notifyAskersOfNewList(wishlist, user._id, user.username ?? null);
 
     return NextResponse.json(
       { success: true, data: serializeWishlist(wishlist, user._id.toString()) },

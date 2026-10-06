@@ -367,9 +367,11 @@ describe('an answered invite', () => {
 describe('notificationParts — list names', () => {
   const name = 'Anna’s 30th Birthday';
   const everyType = (overrides: Partial<NotificationView>) =>
-    // A follow and a friend's birthday are about a person, never a list.
-    NOTIFICATION_TYPES.filter((type) => type !== 'follow' && type !== 'birthday_reminder').flatMap(
-      (type) => [1, 2].map((count) => make({ type, count, actorUsername: 'ann', ...overrides }))
+    // A follow, a friend's birthday and an ask for a list are about a person, never a list.
+    NOTIFICATION_TYPES.filter(
+      (type) => type !== 'follow' && type !== 'birthday_reminder' && type !== 'wishlist_ask'
+    ).flatMap((type) =>
+      [1, 2].map((count) => make({ type, count, actorUsername: 'ann', ...overrides }))
     );
 
   // regression: some types quoted the list's name («on “Anna’s 30th Birthday”»)
@@ -440,7 +442,7 @@ describe('notificationIcon', () => {
 });
 
 describe('showsActor', () => {
-  it('shows who did it on a follow, an invite, an accepted invite, a request to join, a link join and whose birthday it is only', () => {
+  it('shows who did it on a follow, an invite, an accepted invite, a request to join, a link join, whose birthday it is and who asked for or made a list only', () => {
     expect(NOTIFICATION_TYPES.filter(showsActor)).toEqual([
       'follow',
       'wishlist_invite',
@@ -448,6 +450,8 @@ describe('showsActor', () => {
       'join_request',
       'link_join',
       'birthday_reminder',
+      'wishlist_ask',
+      'asked_list_made',
     ]);
   });
 
@@ -661,5 +665,35 @@ describe('birthday reminder (WIS-345)', () => {
     expect(notificationLink(reminder({ actorUsername: null }))).toBe('/notifications');
     expect(notificationIcon(reminder())).toBe('gift');
     expect(showsActor('birthday_reminder')).toBe(true);
+  });
+});
+
+describe('asking a friend for a wishlist (WIS-324)', () => {
+  it('tells the person who asked, and links to the asker’s profile', () => {
+    const n = make({ type: 'wishlist_ask', actorUsername: 'ivan' });
+    expect(notificationText(n)).toBe('@ivan wants to know what you’d like');
+    expect(notificationLink(n)).toBe('/users/ivan');
+    // About a person, never a list.
+    expect(notificationParts(n).every((p) => typeof p === 'string')).toBe(true);
+  });
+
+  it('tells an asker which list was made, and links to it', () => {
+    const n = make({
+      type: 'asked_list_made',
+      actorUsername: 'anna',
+      wishlistName: 'Birthday',
+      wishlistSlug: 'birthday',
+    });
+    expect(notificationParts(n)).toEqual([
+      '@anna made a wishlist you asked for: ',
+      { listName: 'Birthday' },
+    ]);
+    expect(notificationLink(n)).toBe('/wishlists/birthday');
+  });
+
+  it('never assumes a name', () => {
+    expect(notificationText(make({ type: 'wishlist_ask', actorUsername: null }))).toBe(
+      'Someone wants to know what you’d like'
+    );
   });
 });

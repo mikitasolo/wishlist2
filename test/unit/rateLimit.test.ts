@@ -117,6 +117,8 @@ const KEY_KINDS: Record<LimiterName, KeyKind> = {
   booking: 'user',
   linkJoin: 'user',
   joinRequest: 'user',
+  wishlistAsk: 'user',
+  wishlistAskReceived: 'user',
   usernameCheck: 'user',
   wishlistSlug: 'user',
   accountDelete: 'user',
@@ -133,6 +135,8 @@ const KEY_KINDS: Record<LimiterName, KeyKind> = {
   emailOccasionReminder: 'user',
   emailBirthdayReminder: 'user',
   emailBirthdayNudge: 'user',
+  emailWishlistAsk: 'user',
+  emailAskedListMade: 'user',
 };
 const LIMITERS = Object.entries(KEY_KINDS) as [LimiterName, KeyKind][];
 
@@ -763,6 +767,7 @@ const NEW_ACCOUNT_LIMITS: Record<NewAccountLimiterName, { tokens: number; window
   shareLink: { tokens: 5, window: '1 h' },
   // WIS-335: each ask notifies every owner of a list a share link opened.
   joinRequest: { tokens: 3, window: '1 h' },
+  wishlistAsk: { tokens: 3, window: '1 h' },
   // WIS-337: joining through a Join link, and booking, which a forwarded Join
   // link would otherwise open to a fresh account reserving a whole list.
   linkJoin: { tokens: 5, window: '1 h' },

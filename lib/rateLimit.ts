@@ -114,6 +114,12 @@ const SPECS = {
   // Asking a list's owners to invite you (WIS-275): each ask notifies every
   // owner, so a cancel-and-ask-again loop can't turn into a stream of them.
   joinRequest: { tokens: 10, window: '1 h', policy: 'fail-open', keyKind: 'user' },
+  // Asking a friend to make a wishlist (WIS-324): once per person per 30 days
+  // by its own rule; this caps one asker's asks across people. The person's
+  // side (`wishlistAskReceived`, keyed on them) only holds back the
+  // notification, never the ask, so it tells the asker nothing.
+  wishlistAsk: { tokens: 10, window: '1 h', policy: 'fail-open', keyKind: 'user' },
+  wishlistAskReceived: { tokens: 10, window: '1 d', policy: 'fail-open', keyKind: 'user' },
   usernameCheck: { tokens: 30, window: '1 m', policy: 'fail-open', keyKind: 'user' },
   // A list's URL, chosen by its owner. Slugs are unique across every list, so
   // "already taken" (409) says some list holds one, an archived list included
@@ -150,6 +156,8 @@ const SPECS = {
   emailProposalApproved: { tokens: 10, window: '1 h', policy: 'fail-closed', keyKind: 'user' },
   emailOccasionReminder: { tokens: 10, window: '1 d', policy: 'fail-closed', keyKind: 'user' },
   emailBirthdayReminder: { tokens: 10, window: '1 d', policy: 'fail-closed', keyKind: 'user' },
+  emailWishlistAsk: { tokens: 10, window: '1 d', policy: 'fail-closed', keyKind: 'user' },
+  emailAskedListMade: { tokens: 10, window: '1 h', policy: 'fail-closed', keyKind: 'user' },
   // WIS-344: once a year by its claim; this only backs that up.
   emailBirthdayNudge: { tokens: 2, window: '1 d', policy: 'fail-closed', keyKind: 'user' },
 } satisfies Record<string, LimiterSpec>;
@@ -171,6 +179,7 @@ const NEW_ACCOUNT_SPECS = {
   follow: { tokens: 20, window: '1 h' },
   shareLink: { tokens: 5, window: '1 h' },
   joinRequest: { tokens: 3, window: '1 h' },
+  wishlistAsk: { tokens: 3, window: '1 h' },
   linkJoin: { tokens: 5, window: '1 h' },
   booking: { tokens: 20, window: '1 h' },
   content: { tokens: 20, window: '1 h' },

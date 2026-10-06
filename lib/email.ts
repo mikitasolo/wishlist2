@@ -467,7 +467,9 @@ export type EmailedNotificationType =
   | 'invite_accepted'
   | 'proposal_approved'
   | 'occasion_reminder'
-  | 'birthday_reminder';
+  | 'birthday_reminder'
+  | 'wishlist_ask'
+  | 'asked_list_made';
 
 export interface NotificationEmailDetails {
   /** The recipient's account id, for the unsubscribe link (never shown). */
@@ -479,7 +481,7 @@ export interface NotificationEmailDetails {
    * it is on a `birthday_reminder`. Ignored on every other type.
    */
   actorUsername?: string | null;
-  /** The list it's about: null on a `birthday_reminder`, which is about a person. */
+  /** The list it's about: null on a `birthday_reminder` or `wishlist_ask`, which are about a person. */
   wishlistId: string | null;
   /** Free text: escaped in the HTML, isolated in the text part, never in the subject. */
   wishlistName: string | null;
@@ -500,6 +502,8 @@ const NAMES_ACTOR: ReadonlySet<EmailedNotificationType> = new Set([
   'invite_accepted',
   'link_join',
   'birthday_reminder',
+  'wishlist_ask',
+  'asked_list_made',
 ]);
 
 const OCCASION_SUBJECT_KIND: Record<OccasionKind, string> = {
@@ -577,6 +581,19 @@ function notificationEmailCopy(
         heading: 'A friend’s birthday is coming up',
         button: 'Open their profile',
       };
+    // WIS-324: to the person asked, never naming any list.
+    case 'wishlist_ask':
+      return {
+        subject: `${actor} wants to know what you’d like`,
+        heading: 'A friend asked for a wishlist',
+        button: 'Open Activity',
+      };
+    case 'asked_list_made':
+      return {
+        subject: `${actor} made a wishlist you asked for`,
+        heading: 'A wishlist you asked for',
+        button: 'Open the wishlist',
+      };
   }
 }
 
@@ -626,7 +643,11 @@ export async function sendNotificationEmail(email: string, details: Notification
     .map((part) => (typeof part === 'string' ? part : `“${part.listName}”`))
     .join('');
 
-  const path = notificationLink(view({})) ?? '/notifications';
+  // An ask is answered from its Activity row (Create a list), not the asker's profile.
+  const path =
+    details.type === 'wishlist_ask'
+      ? '/notifications'
+      : (notificationLink(view({})) ?? '/notifications');
   const url = `${env.NEXTAUTH_URL}${path}`;
   const copy = notificationEmailCopy(details, actorUsername ? `@${actorUsername}` : 'Someone');
   const event = notificationEventOf(details.type);

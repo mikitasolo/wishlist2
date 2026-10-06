@@ -19,7 +19,7 @@ describe('the settings table (operator decision, 2026-10-05)', () => {
   });
 
   it('keeps an in-app switch on by default for every event', () => {
-    expect(eventsOn('inApp')).toHaveLength(10);
+    expect(eventsOn('inApp')).toHaveLength(12);
     for (const event of eventsOn('inApp')) expect(notificationDefault(event, 'inApp')).toBe(true);
   });
 
@@ -33,6 +33,9 @@ describe('the settings table (operator decision, 2026-10-05)', () => {
       birthday_reminder: false,
       // WIS-344: once a year, three weeks before your own birthday.
       birthday_nudge: true,
+      // WIS-324: the operator's decision, off unless turned on.
+      wishlist_ask: false,
+      asked_list_made: false,
       join_request: true,
       // WIS-337: at most one a day per list per owner (`claimDailyListEmail`).
       link_join: true,

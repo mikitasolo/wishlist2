@@ -39,6 +39,7 @@ import Follow from '@/models/Follow';
 import Notification from '@/models/Notification';
 import WishlistJoinRequest from '@/models/WishlistJoinRequest';
 import WishlistCopy from '@/models/WishlistCopy';
+import WishlistAsk from '@/models/WishlistAsk';
 
 const session = vi.mocked(auth);
 
@@ -604,5 +605,35 @@ describe('deleteAccount: its "start a new list" records (WIS-325)', () => {
     expect(await Item.countDocuments({ wishlist: unfinished })).toBe(0);
     expect(await WishlistCopy.countDocuments({ user: bob })).toBe(1);
     expect(await Item.countDocuments({ wishlist: finished._id })).toBe(1);
+  });
+});
+
+describe('deleteAccount: its asks for a wishlist (WIS-324)', () => {
+  it('deletes the asks it made and received, and the notifications naming it, and nobody else’s', async () => {
+    const now = new Date();
+    await WishlistAsk.create({ asker: ann, person: bob, askedAt: now });
+    await WishlistAsk.create({ asker: cat, person: ann, askedAt: now });
+    await WishlistAsk.create({ asker: cat, person: bob, askedAt: now });
+    await Notification.create({
+      user: bob,
+      type: 'wishlist_ask',
+      actorUsername: 'ann',
+      actor: ann,
+    });
+    await Notification.create({
+      user: bob,
+      type: 'wishlist_ask',
+      actorUsername: 'cat',
+      actor: cat,
+    });
+
+    expect(await eraseAnn()).toBe('deleted');
+
+    expect(await WishlistAsk.countDocuments({ $or: [{ asker: annOid }, { person: annOid }] })).toBe(
+      0
+    );
+    expect(await WishlistAsk.countDocuments({ asker: cat, person: bob })).toBe(1);
+    expect(await Notification.countDocuments({ type: 'wishlist_ask', actor: annOid })).toBe(0);
+    expect(await Notification.countDocuments({ type: 'wishlist_ask', actor: cat })).toBe(1);
   });
 });

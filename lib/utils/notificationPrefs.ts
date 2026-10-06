@@ -62,6 +62,19 @@ export const NOTIFICATION_EVENTS = {
     label: 'Your birthday',
     description: 'Three weeks before your birthday, if you haven’t made a Birthday list yet.',
   },
+  // WIS-324: both off by email unless turned on (the operator's decision).
+  wishlist_ask: {
+    types: ['wishlist_ask'],
+    defaults: { inApp: true, email: false },
+    label: 'Requests for a wishlist',
+    description: 'When a friend asks you to make a wishlist.',
+  },
+  asked_list_made: {
+    types: ['asked_list_made'],
+    defaults: { inApp: true, email: false },
+    label: 'Wishlists you asked for',
+    description: 'When a friend you asked for a wishlist makes one you can open.',
+  },
   join_request: {
     types: ['join_request'],
     defaults: { inApp: true, email: true },
