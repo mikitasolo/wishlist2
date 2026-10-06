@@ -160,7 +160,7 @@ Read it before touching roles, invites, bookings, visibility, notifications or a
 - **A failed read is never shown as empty** (`LoadError`); later failed reads keep what's shown.
 - **Mutations are optimistic** and survive the 5s poll (`updateItemOptimistically`, `mutations.track`, `withRequestTimeout`, idempotency keys); per-card actions use `useBusyIds`.
 - **Navigation** lives in `AppHeader` (Home · Reserved · Activity · Me); the header holds its shape while the session loads; read the session with `useKnownSession`.
-- **Discreet mode** (device switch, WIS-46): reservations are hidden at render time only (`useDiscreetMode`, `withoutReservation`), never from fetched data; any new surface showing a reservation or its count honours it; `/booked` is covered until Show.
+- **Discreet mode** ("No spoiler mode" to people; a device switch in the header, WIS-46): reservations are hidden at render time only (`useDiscreetMode`, `withoutReservation`), never from fetched data; any new surface showing a reservation or its count honours it; `/booked` is covered until Show.
 - **Dashboard** (Needs you, Coming up, lists), **Activity** (invitations and the one unread badge), a list's **status chips** (never saved; sort is) and `/items`, the **item card** and its sheet, the owners' **Items · People · Settings tabs**, the **add tile** and item dialogs, and **settings forms that send only what changed**.
 
 - **Never print, commit, or expose secrets** (`.env*`). Never read or use production credentials (`.env.prod`, `.env.staging`), and only perform authorized DB operations.

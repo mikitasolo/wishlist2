@@ -93,12 +93,10 @@ describe('the header', () => {
   it.each([390, 640, 768, 1280])('has no New list at %ipx', (width) => {
     atWidth(width);
     render(<AppHeader />);
-    // Only the discreet-mode switch (WIS-46) is a button in it.
-    expect(
-      within(screen.getByRole('banner'))
-        .queryAllByRole('button')
-        .map((b) => b.getAttribute('aria-label'))
-    ).toEqual(['Discreet mode']);
+    // Its only control is the No spoiler mode switch (WIS-46), no button.
+    const banner = within(screen.getByRole('banner'));
+    expect(banner.queryAllByRole('button')).toEqual([]);
+    expect(banner.getByRole('switch', { name: 'No spoiler mode' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /New (list|wishlist)/ })).toBeNull();
     expect(createDialog()).toBeNull();
   });
