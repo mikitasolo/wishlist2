@@ -56,19 +56,26 @@ interface WishlistSettingsTabProps {
   liveLinkCount?: number;
   /** How many of those end the day after the occasion, and so move with it (WIS-342). */
   occasionLinkCount?: number;
+  /** Start a new list from this one (WIS-325): opens its dialog. */
+  onStartNew?: () => void;
 }
+
+/** What "Start a new list from this one" does, under its title in Settings. */
+export const START_NEW_LIST_TEXT =
+  'Make a new list with its settings and the items you pick, then invite its people again. This list stays as it is.';
 
 /** Under the occasion while some live links end the day after it (WIS-342). */
 export const OCCASION_LINKS_NOTE =
   'Share links set to end the day after the occasion move with it.';
 
 /**
- * The Settings tab of a list's page (owners only), in four sections:
+ * The Settings tab of a list's page (owners only), in five sections:
  *
  * 1. About: name, description, occasion, cover photo.
  * 2. Who can see it: the visibility, its helper under the control.
  * 3. Advanced: the currency, and the link, which warns once it's changed.
- * 4. Danger zone: Archive and Delete, which act at once (each confirmed),
+ * 4. Next occasion: Start a new list from this one (WIS-325), in its own dialog.
+ * 5. Danger zone: Archive and Delete, which act at once (each confirmed),
  *    apart from the form.
  *
  * The first three are one form. While it differs from the list as last filled
@@ -94,6 +101,7 @@ export default function WishlistSettingsTab({
   onDelete,
   liveLinkCount = 0,
   occasionLinkCount = 0,
+  onStartNew,
 }: WishlistSettingsTabProps) {
   // Share links open the list whatever its visibility (WIS-335).
   // An archived list's links are all dead until it's unarchived.
@@ -217,8 +225,18 @@ export default function WishlistSettingsTab({
         )}
       </form>
 
+      {onStartNew && (
+        <Panel variant="list" title="Next occasion">
+          <ActionRow title="Start a new list from this one" description={START_NEW_LIST_TEXT}>
+            <Button variant="secondary" size="sm" icon="plus" onClick={onStartNew}>
+              Start new list
+            </Button>
+          </ActionRow>
+        </Panel>
+      )}
+
       <Panel variant="list" title="Danger zone">
-        <DangerRow
+        <ActionRow
           title={archived ? 'Unarchive wishlist' : 'Archive wishlist'}
           description={
             archived
@@ -235,19 +253,19 @@ export default function WishlistSettingsTab({
           >
             {archived ? 'Unarchive' : 'Archive'}
           </Button>
-        </DangerRow>
-        <DangerRow title="Delete wishlist" description={DELETE_LIST_WARNING}>
+        </ActionRow>
+        <ActionRow title="Delete wishlist" description={DELETE_LIST_WARNING}>
           <Button variant="danger" size="sm" onClick={onDelete} disabled={deleting}>
             {deleting ? 'Deleting…' : 'Delete'}
           </Button>
-        </DangerRow>
+        </ActionRow>
       </Panel>
     </div>
   );
 }
 
-/** One act in the Danger zone: what it is and does, and its button. */
-function DangerRow({
+/** One act in Next occasion or the Danger zone: what it is and does, and its button. */
+function ActionRow({
   title,
   description,
   children,

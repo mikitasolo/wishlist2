@@ -10,6 +10,7 @@ import NotificationEmailClaim from '@/models/NotificationEmailClaim';
 import Follow from '@/models/Follow';
 import ShareLink from '@/models/ShareLink';
 import WishlistLinkBlock from '@/models/WishlistLinkBlock';
+import WishlistCopy from '@/models/WishlistCopy';
 import { clearJoinRequestNotifications } from '@/lib/utils/joinRequests';
 import Notification from '@/models/Notification';
 import { ownedByFilter } from '@/lib/utils/wishlistOwners';
@@ -166,6 +167,14 @@ async function eraseHoldings(userId: string, agreed: ReadonlySet<string>): Promi
   await ShareLink.updateMany({ createdBy: uid }, { $set: { createdBy: null } });
   // The lists that kicked it keeping it out of their share links (WIS-338).
   await WishlistLinkBlock.deleteMany({ user: uid });
+  // Its "start a new list" records (WIS-325): an unfinished one's items, whose
+  // list was never written (so no list delete takes them), then every row. The
+  // images copied for them are its uploads, which go next.
+  const copies = await WishlistCopy.find({ user: uid, done: false }).select('wishlist').lean();
+  for (const { wishlist } of copies) {
+    if (!(await Wishlist.exists({ _id: wishlist }))) await Item.deleteMany({ wishlist });
+  }
+  await WishlistCopy.deleteMany({ user: uid });
 }
 
 /**

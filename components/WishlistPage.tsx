@@ -32,6 +32,7 @@ import WishlistPeopleTab, {
   type WishlistPerson,
 } from '@/components/WishlistPeopleTab';
 import WishlistSettingsTab, { ARCHIVE_EXPLANATION } from '@/components/WishlistSettingsTab';
+import StartFromListModal from '@/components/StartFromListModal';
 import {
   ListControlsSkeleton,
   Skeleton,
@@ -310,6 +311,8 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
   // Archiving shuts everyone but the owners out of the list, so it's confirmed
   // first. Unarchiving only gives back the access they had, so it isn't.
   const [archiveConfirm, setArchiveConfirm] = useState(false);
+  // Start a new list from this one (WIS-325), from Settings.
+  const [startNewOpen, setStartNewOpen] = useState(false);
   // The ref turns a second click away before the disabled state has rendered.
   const archivingRef = useRef(false);
   const [isArchiving, setIsArchiving] = useState(false);
@@ -1492,8 +1495,9 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
   // Archive or unarchive the list: from Settings, from the confirmation, or
   // from the archived banner's Unarchive.
   const setArchived = useCallback(
-    async (archived: boolean) => {
-      if (!wishlistId || archivingRef.current) return;
+    // Resolves to whether it landed (Start a new list's last step waits on it).
+    async (archived: boolean): Promise<boolean> => {
+      if (!wishlistId || archivingRef.current) return false;
       archivingRef.current = true;
       setIsArchiving(true);
       try {
@@ -1506,11 +1510,13 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
         if (result.success) {
           setWishlist((prev) => (prev ? { ...prev, archived } : prev));
           showToast(archived ? 'Wishlist archived' : 'Wishlist unarchived', 'success');
-        } else {
-          showToast(result.error || 'Failed to update wishlist', 'error');
+          return true;
         }
+        showToast(result.error || 'Failed to update wishlist', 'error');
+        return false;
       } catch {
         showToast('Failed to update wishlist', 'error');
+        return false;
       } finally {
         archivingRef.current = false;
         setIsArchiving(false);
@@ -2259,6 +2265,7 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
               occasionLinkCount={
                 shareLinks.links.filter((l) => l.untilOccasion && isLinkLive(l, new Date())).length
               }
+              onStartNew={() => setStartNewOpen(true)}
             />
           </div>
         )}
@@ -2419,6 +2426,15 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
           links={shareLinks.links}
           onRevoke={shareLinks.revoke}
           onDone={() => setRevokeLinksFor(null)}
+        />
+      )}
+
+      {startNewOpen && isOwner && (
+        <StartFromListModal
+          sourceId={String(wishlist._id)}
+          isOpen={startNewOpen}
+          onClose={() => setStartNewOpen(false)}
+          onArchiveSource={() => setArchived(true)}
         />
       )}
 

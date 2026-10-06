@@ -38,6 +38,7 @@ import GiftLog from '@/models/GiftLog';
 import Follow from '@/models/Follow';
 import Notification from '@/models/Notification';
 import WishlistJoinRequest from '@/models/WishlistJoinRequest';
+import WishlistCopy from '@/models/WishlistCopy';
 
 const session = vi.mocked(auth);
 
@@ -585,5 +586,23 @@ describe('deleteAccount: the profile birthday (WIS-323)', () => {
     expect(await eraseAnn()).toBe('deleted');
     expect(await db().collection('users').countDocuments({ _id: annOid })).toBe(0);
     expect(await db().collection('users').countDocuments({ birthday: '2000-03-14' })).toBe(0);
+  });
+});
+
+describe('deleteAccount: its "start a new list" records (WIS-325)', () => {
+  it('deletes its records and an unfinished copy’s items, and nobody else’s', async () => {
+    const unfinished = new mongoose.Types.ObjectId();
+    await Item.create({ wishlist: unfinished, name: 'Half copied' });
+    await WishlistCopy.create({ user: ann, key: 'k-ann-1', wishlist: unfinished });
+    const finished = await Wishlist.create({ name: 'Next', owners: [bob], visibility: 'everyone' });
+    await Item.create({ wishlist: finished._id, name: 'Bob’s' });
+    await WishlistCopy.create({ user: bob, key: 'k-bob', wishlist: finished._id, done: true });
+
+    expect(await eraseAnn()).toBe('deleted');
+
+    expect(await WishlistCopy.countDocuments({ user: annOid })).toBe(0);
+    expect(await Item.countDocuments({ wishlist: unfinished })).toBe(0);
+    expect(await WishlistCopy.countDocuments({ user: bob })).toBe(1);
+    expect(await Item.countDocuments({ wishlist: finished._id })).toBe(1);
   });
 });

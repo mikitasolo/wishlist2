@@ -12,6 +12,7 @@ import { ITEM_NOTES_MAX, isHttpUrl, normalizeItemLink } from '@/lib/utils/itemFi
 import { notificationPrefsSchema } from '@/lib/utils/notificationPrefs';
 import { SHARE_LINK_LABEL_MAX, SHARE_LINK_LEVELS } from '@/lib/utils/shareLinkFields';
 import { isTimeZone } from '@/lib/utils/zonedDate';
+import { COPY_ITEMS_MAX } from '@/lib/utils/wishlistCopy';
 
 /**
  * Validation schemas for API endpoints
@@ -129,6 +130,22 @@ export const updateWishlistSchema = z
   .refine((data) => Object.keys(data).length > 0, {
     message: 'At least one field must be provided for update',
   });
+
+// "Start a new list from this one" (WIS-325): what the owner chose. The rest
+// of the new list (description, cover, currency) is read from the source list
+// on the server, never taken from the client. `itemIds` are the source items
+// picked to bring over, none by default; each must be one of the source list's
+// copyable items, which the route checks. Duplicates count once.
+export const copyWishlistSchema = z.object({
+  name: wishlistNameSchema,
+  visibility: z.enum(['everyone', 'friends', 'private']),
+  occasion: occasionSchema.nullable().optional(),
+  itemIds: z
+    .array(z.string().regex(/^[0-9a-f]{24}$/i, 'Invalid item id'))
+    .max(COPY_ITEMS_MAX, `Pick at most ${COPY_ITEMS_MAX} items`)
+    .default([])
+    .transform((ids) => [...new Set(ids.map((id) => id.toLowerCase()))]),
+});
 
 // User / profile schemas
 export const USERNAME_REGEX = /^[a-z][a-z0-9_]{2,19}$/;

@@ -18,6 +18,7 @@ import {
   DELETE as deleteWishlist,
 } from '@/app/api/wishlists/[id]/route';
 import { GET as getMembers, POST as invite } from '@/app/api/wishlists/[id]/members/route';
+import { GET as readCopy, POST as copyList } from '@/app/api/wishlists/[id]/copy/route';
 import { DELETE as kick } from '@/app/api/wishlists/[id]/members/[memberId]/route';
 import { GET as getInvites } from '@/app/api/wishlists/[id]/invites/route';
 import { DELETE as cancelInvite } from '@/app/api/wishlists/[id]/invites/[inviteId]/route';
@@ -137,6 +138,27 @@ const ROUTES: OwnerRoute[] = [
     send: (id) =>
       deleteWishlist(req(`/api/wishlists/${id}`, 'DELETE'), { params: Promise.resolve({ id }) }),
     ownerStatus: 200,
+  },
+  {
+    name: 'GET /api/wishlists/[id]/copy',
+    send: (id) => readCopy(req(`/api/wishlists/${id}/copy`), { params: Promise.resolve({ id }) }),
+    ownerStatus: 200,
+  },
+  {
+    name: 'POST /api/wishlists/[id]/copy',
+    send: (id) =>
+      copyList(
+        new NextRequest(`http://localhost/api/wishlists/${id}/copy`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'Idempotency-Key': 'archived-owner-routes-key',
+          },
+          body: JSON.stringify({ name: 'Next party', visibility: 'everyone' }),
+        }),
+        { params: Promise.resolve({ id }) }
+      ),
+    ownerStatus: 201,
   },
   {
     name: 'GET /api/wishlists/[id]/members',
