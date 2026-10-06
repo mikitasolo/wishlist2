@@ -1,11 +1,9 @@
 import mongoose from 'mongoose';
 import WishlistAsk from '@/models/WishlistAsk';
 import Wishlist, { type IWishlist } from '@/models/Wishlist';
-import WishlistMember from '@/models/WishlistMember';
 import Notification from '@/models/Notification';
 import { createNotifications } from '@/lib/notifications';
-import { getFriendIds } from '@/lib/utils/friends';
-import { getWishlistViewAccess, viewableWishlistsFilter } from '@/lib/utils/wishlistAccess';
+import { getWishlistViewAccess } from '@/lib/utils/wishlistAccess';
 import { ownedByFilter } from '@/lib/utils/wishlistOwners';
 import { isDuplicateKeyError } from '@/lib/utils/mongoErrors';
 import { errorKind } from '@/lib/utils/errorKind';
@@ -14,15 +12,15 @@ import { errorKind } from '@/lib/utils/errorKind';
  * Asking a friend to make a wishlist (WIS-324, the operator's decision of
  * 2026-10-07). Only a friend (mutual follow) who can open none of the
  * person's lists may ask; one ask per asker per person per
- * `WISHLIST_ASK_WINDOW_MS`, which then quietly expires (no decline). When the
- * person makes a list, each asker with a live ask who can open it
- * (`getWishlistViewAccess`) is told, once; an asker who can't is told nothing,
- * and their ask stays live for a later list.
+ * `WISHLIST_ASK_WINDOW_MS` from when it was made, answered or not, which then
+ * quietly expires (no decline). When the person makes a list, each asker with
+ * a live ask who can open it (`getWishlistViewAccess`) is told, once; an asker
+ * who can't is told nothing, and their ask stays live for a later list.
  */
 
 type Id = string | mongoose.Types.ObjectId;
 
-/** How long an ask stays live (and holds its asker off asking again). */
+/** How long an ask stays live, and holds its asker off asking again (answered or not). */
 export const WISHLIST_ASK_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 
 /** The oldest `askedAt` that is still live as of `now`. */
@@ -37,40 +35,41 @@ function liveAskFilter(now: Date = new Date()) {
 
 const oid = (id: Id) => new mongoose.Types.ObjectId(id.toString());
 
-/** Whether `asker` has a live ask to `person`. */
-export async function hasLiveAsk(asker: Id, person: Id): Promise<boolean> {
+/**
+ * Whether `asker` asked `person` within the window, answered or not: what the
+ * profile reads as Asked, and what holds them off asking again.
+ */
+export async function hasAskedRecently(asker: Id, person: Id): Promise<boolean> {
   return !!(await WishlistAsk.exists({
     asker: oid(asker),
     person: oid(person),
-    ...liveAskFilter(),
+    askedAt: { $gt: askCutoff() },
   }));
 }
 
+type ViewedList = Pick<IWishlist, '_id' | 'owners' | 'visibility' | 'archived'>;
+
 /**
  * Whether `viewerId` can open any of `personId`'s lists (owned alone or with
- * others), by the same rule as opening one (`viewableWishlistsFilter`, pinned
- * to `getWishlistViewAccess`): an archived one never counts.
+ * others), each checked by `getWishlistViewAccess` itself: an archived one
+ * counts only for a co-owner, a private one only for a member.
  */
 export async function canOpenAnyListOf(viewerId: Id, personId: Id): Promise<boolean> {
   const viewer = viewerId.toString();
-  const [memberOf, friendIds] = await Promise.all([
-    WishlistMember.distinct('wishlist', { user: oid(viewer) }),
-    getFriendIds(viewer),
-  ]);
-  return !!(await Wishlist.exists({
-    $and: [
-      ownedByFilter(personId.toString()),
-      viewableWishlistsFilter({ id: viewer, memberOf, friendIds }),
-    ],
-  }));
+  const lists = await Wishlist.find(ownedByFilter(personId.toString()))
+    .select('owners visibility archived')
+    .lean<ViewedList[]>();
+  const access = await Promise.all(lists.map((list) => getWishlistViewAccess(list, viewer)));
+  return access.some((a) => a.allowed);
 }
 
 /**
  * Record `asker`'s ask to `person`, in one conditional write: a new row, or
- * the existing one moved forward when it has expired or was answered. A live
- * ask already there makes the upsert insert a second row, which the unique
- * index refuses: `'already'`, and nothing changes. So of two asks at once,
- * exactly one lands.
+ * the existing one moved forward once its window is over. One within the
+ * window, answered or not, makes the upsert insert a second row, which the
+ * unique index refuses: `'already'`, and nothing changes. So of two asks at
+ * once exactly one lands, and an answered ask can't be renewed by hiding the
+ * list it was answered with.
  */
 export async function askForWishlist(
   asker: Id,
@@ -82,7 +81,7 @@ export async function askForWishlist(
       {
         asker: oid(asker),
         person: oid(person),
-        $or: [{ askedAt: { $lte: askCutoff(now) } }, { answeredAt: { $ne: null } }],
+        askedAt: { $lte: askCutoff(now) },
       },
       { $set: { askedAt: now, answeredAt: null } },
       { upsert: true }
@@ -96,15 +95,17 @@ export async function askForWishlist(
 
 /**
  * Take back the ask this request just wrote (its `askedAt` marks it), when a
- * re-check after the write refuses it. Never one a later ask moved forward.
+ * re-check after the write refuses it. Never one a later ask moved forward,
+ * nor one a new list has already answered (then false: the asker was told).
  */
-export async function takeBackAsk(asker: Id, person: Id, askedAt: Date): Promise<void> {
-  await WishlistAsk.deleteOne({
+export async function takeBackAsk(asker: Id, person: Id, askedAt: Date): Promise<boolean> {
+  const { deletedCount } = await WishlistAsk.deleteOne({
     asker: oid(asker),
     person: oid(person),
     askedAt,
     answeredAt: null,
   });
+  return deletedCount > 0;
 }
 
 /** The most askers one new list tells: asks are rate-limited, so this is a backstop. */
@@ -148,44 +149,52 @@ export async function notifyAskersOfNewList(
       .limit(MAX_ASKERS_TOLD)
       .select('_id asker')
       .lean();
-    for (const ask of asks) {
-      const askerId = ask.asker.toString();
-      try {
-        if (!(await canOpen(list, askerId))) continue;
-        const answeredAt = new Date();
-        const claimed = await WishlistAsk.updateOne(
-          { _id: ask._id, ...liveAskFilter(answeredAt) },
-          { $set: { answeredAt } }
-        );
-        if (claimed.modifiedCount === 0) continue;
-
-        // Re-checked once the row is written, before any email, and again for
-        // the row (the result is kept, so both see the same answer).
-        let holds: boolean | undefined;
-        const stillHolds = async () =>
-          (holds ??= await canOpen(await rereadList(list._id), askerId));
-        const ids = await createNotifications(
-          [askerId],
-          {
-            type: 'asked_list_made',
-            actorUsername: ownerUsername,
-            actor: owner,
-            wishlist: list._id,
-            wishlistName: list.name,
-            wishlistSlug: list.slug ?? null,
-          },
-          { stillHolds }
-        );
-        if (!(await stillHolds())) {
-          if (ids.length > 0) await Notification.deleteMany({ _id: { $in: ids } });
-          // Their ask stands again, for a list they can open.
-          await WishlistAsk.updateOne({ _id: ask._id, answeredAt }, { $set: { answeredAt: null } });
-        }
-      } catch (err) {
-        console.error('Failed to tell an asker about a new list:', errorKind(err));
-      }
-    }
+    // Each asker on their own, side by side: nothing one does touches another's.
+    await Promise.all(asks.map((ask) => tellAsker(list, ask, owner, ownerUsername)));
   } catch (err) {
     console.error('Failed to read the asks for a new list:', errorKind(err));
+  }
+}
+
+/** One asker's part of `notifyAskersOfNewList`. Never throws. */
+async function tellAsker(
+  list: NewList,
+  ask: { _id: mongoose.Types.ObjectId; asker: mongoose.Types.ObjectId },
+  owner: Id,
+  ownerUsername: string | null
+): Promise<void> {
+  const askerId = ask.asker.toString();
+  try {
+    if (!(await canOpen(list, askerId))) return;
+    const answeredAt = new Date();
+    const claimed = await WishlistAsk.updateOne(
+      { _id: ask._id, ...liveAskFilter(answeredAt) },
+      { $set: { answeredAt } }
+    );
+    if (claimed.modifiedCount === 0) return;
+
+    // Re-checked once the row is written, before any email, and again for
+    // the row (the result is kept, so both see the same answer).
+    let holds: boolean | undefined;
+    const stillHolds = async () => (holds ??= await canOpen(await rereadList(list._id), askerId));
+    const ids = await createNotifications(
+      [askerId],
+      {
+        type: 'asked_list_made',
+        actorUsername: ownerUsername,
+        actor: owner,
+        wishlist: list._id,
+        wishlistName: list.name,
+        wishlistSlug: list.slug ?? null,
+      },
+      { stillHolds }
+    );
+    if (!(await stillHolds())) {
+      if (ids.length > 0) await Notification.deleteMany({ _id: { $in: ids } });
+      // Their ask stands again, for a list they can open.
+      await WishlistAsk.updateOne({ _id: ask._id, answeredAt }, { $set: { answeredAt: null } });
+    }
+  } catch (err) {
+    console.error('Failed to tell an asker about a new list:', errorKind(err));
   }
 }

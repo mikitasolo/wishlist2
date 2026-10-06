@@ -271,7 +271,9 @@ describe('a new list tells the askers who can open it', () => {
     expect(rows[0]).toMatchObject({ actorUsername: 'anna', wishlistName: 'Birthday' });
     expect(rows[0].wishlist?.toString()).toBe(listId);
     expect(rows[0].actor?.toString()).toBe(anna);
-    expect(await askedBy(ivan)).toBe(false);
+    // Answered, yet still Asked for the rest of the window.
+    expect(await askedBy(ivan)).toBe(true);
+    expect((await WishlistAsk.findOne({ asker: ivan }).lean())?.answeredAt).toBeInstanceOf(Date);
 
     // A second list tells nobody again.
     await annaMakes('everyone', 'Christmas');
@@ -300,6 +302,36 @@ describe('a new list tells the askers who can open it', () => {
     expect(await Notification.countDocuments({ type: 'asked_list_made' })).toBe(1);
     // Anna herself learns nothing about who was told.
     expect(await madeFor(anna)).toHaveLength(0);
+  });
+
+  it('regression: an answered ask isn’t renewed by hiding the list it was answered with', async () => {
+    await askAs(ivan);
+    const listId = await annaMakes('friends');
+    await Wishlist.updateOne({ _id: listId }, { $set: { visibility: 'private' } });
+    // Ivan can open nothing again, but asked within 30 days: nobody is told twice.
+    const again = await askAs(ivan);
+    expect(again.status).toBe(200);
+    expect(await asksTo(anna)).toHaveLength(1);
+  });
+
+  it('regression: an ask a new list answers while it is written goes through, not as a 409', async () => {
+    // Anna's list is made (and tells Ivan) just after his ask is written.
+    const hold = holdFirstCall(
+      WishlistAsk,
+      'updateOne',
+      async () => {
+        const list = await Wishlist.create({ name: 'Now', owners: [anna], visibility: 'friends' });
+        await notifyAskersOfNewList(list, anna, 'anna');
+      },
+      { after: true }
+    );
+    const res = await askAs(ivan);
+    expect(hold.held()).toBe(true);
+    expect(res.status).toBe(200);
+    expect((await res.json()).data).toEqual({ asked: true });
+    expect(await madeFor(ivan)).toHaveLength(1);
+    // The person made a list: no ask reaches her.
+    expect(await asksTo(anna)).toHaveLength(0);
   });
 
   it('ignores an expired ask', async () => {

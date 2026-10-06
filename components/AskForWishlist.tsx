@@ -10,9 +10,19 @@ import { RequestTimeoutError, withRequestTimeout } from '@/lib/utils/requestTime
  * can open none of their lists. Reads whether you've already asked (a live ask
  * holds for 30 days), and shows Asked once you have. A failed read offers the
  * button anyway: asking again within the window is answered as already asked,
- * and tells them nothing twice.
+ * and tells them nothing twice. A refusal that means the page is out of date
+ * (no longer friends, or a list you can open now) calls `onStale`, so the
+ * profile reads its lists again.
  */
-export default function AskForWishlist({ userId, username }: { userId: string; username: string }) {
+export default function AskForWishlist({
+  userId,
+  username,
+  onStale,
+}: {
+  userId: string;
+  username: string;
+  onStale?: () => void;
+}) {
   const { showToast } = useToast();
   const [state, setState] = useState<'loading' | 'ask' | 'asking' | 'asked'>('loading');
 
@@ -37,13 +47,14 @@ export default function AskForWishlist({ userId, username }: { userId: string; u
   async function ask() {
     setState('asking');
     try {
-      const result = await withRequestTimeout(async (signal) => {
+      const { status, result } = await withRequestTimeout(async (signal) => {
         const res = await fetch(`/api/users/${userId}/ask`, { method: 'POST', signal });
-        return res.json();
+        return { status: res.status, result: await res.json() };
       });
       if (!result.success) {
         setState('ask');
         showToast(result.error || 'Something went wrong', 'error');
+        if (status === 403 || status === 409) onStale?.();
         return;
       }
       setState('asked');

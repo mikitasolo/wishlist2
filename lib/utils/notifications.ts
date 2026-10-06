@@ -374,7 +374,6 @@ export function notificationIcon(n: NotificationView): IconName {
     case 'birthday_reminder':
       return 'gift';
     case 'wishlist_ask':
-      return 'list';
     case 'asked_list_made':
       return 'list';
     default:

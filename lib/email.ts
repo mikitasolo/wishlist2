@@ -521,7 +521,7 @@ const OCCASION_SUBJECT_KIND: Record<OccasionKind, string> = {
 function notificationEmailCopy(
   details: NotificationEmailDetails,
   actor: string
-): { subject: string; heading: string; button: string } {
+): { subject: string; heading: string; button: string; path?: string } {
   switch (details.type) {
     case 'join_request':
       return {
@@ -587,6 +587,8 @@ function notificationEmailCopy(
         subject: `${actor} wants to know what you’d like`,
         heading: 'A friend asked for a wishlist',
         button: 'Open Activity',
+        // Answered from its Activity row (Create a list), not the asker's profile.
+        path: '/notifications',
       };
     case 'asked_list_made':
       return {
@@ -602,7 +604,8 @@ function notificationEmailCopy(
  * `notificationParts` from the same fields, so an email never says more than
  * the notification does (a proposal stays anonymous, a role change never names
  * who made it, nothing mentions bookings). It links where the row links, and
- * to Activity where the row links nowhere (a removal). Every one carries the
+ * to Activity where the row links nowhere (a removal) or where its copy says
+ * so (an ask for a wishlist, answered from its row there). Every one carries the
  * unsubscribe link and headers for its event.
  */
 export async function sendNotificationEmail(email: string, details: NotificationEmailDetails) {
@@ -643,13 +646,9 @@ export async function sendNotificationEmail(email: string, details: Notification
     .map((part) => (typeof part === 'string' ? part : `“${part.listName}”`))
     .join('');
 
-  // An ask is answered from its Activity row (Create a list), not the asker's profile.
-  const path =
-    details.type === 'wishlist_ask'
-      ? '/notifications'
-      : (notificationLink(view({})) ?? '/notifications');
-  const url = `${env.NEXTAUTH_URL}${path}`;
   const copy = notificationEmailCopy(details, actorUsername ? `@${actorUsername}` : 'Someone');
+  const path = copy.path ?? notificationLink(view({})) ?? '/notifications';
+  const url = `${env.NEXTAUTH_URL}${path}`;
   const event = notificationEventOf(details.type);
   const unsubscribe = notificationUnsubscribe(details.recipientId, event);
   const topic = NOTIFICATION_EVENTS[event].label.toLowerCase();

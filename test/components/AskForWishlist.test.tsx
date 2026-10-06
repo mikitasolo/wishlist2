@@ -54,10 +54,25 @@ describe('AskForWishlist', () => {
       .mockReturnValueOnce(
         answer(409, { success: false, error: 'They already have a wishlist you can open' })
       );
-    render(<AskForWishlist userId="u1" username="anna" />);
+    const onStale = vi.fn();
+    render(<AskForWishlist userId="u1" username="anna" onStale={onStale} />);
     await user.click(await screen.findByRole('button', { name: 'Ask for a wishlist' }));
     expect(await screen.findByRole('button', { name: 'Ask for a wishlist' })).toBeEnabled();
     expect(showToast).toHaveBeenCalledWith('They already have a wishlist you can open', 'error');
+    // The profile is out of date: it reads its lists again.
+    expect(onStale).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves the page alone on a refusal that isn’t about it', async () => {
+    const user = userEvent.setup();
+    fetchMock
+      .mockReturnValueOnce(answer(200, { success: true, data: { asked: false } }))
+      .mockReturnValueOnce(answer(429, { success: false, error: 'Too many requests.' }));
+    const onStale = vi.fn();
+    render(<AskForWishlist userId="u1" username="anna" onStale={onStale} />);
+    await user.click(await screen.findByRole('button', { name: 'Ask for a wishlist' }));
+    expect(await screen.findByRole('button', { name: 'Ask for a wishlist' })).toBeEnabled();
+    expect(onStale).not.toHaveBeenCalled();
   });
 
   it('offers the button when the state can’t be read', async () => {

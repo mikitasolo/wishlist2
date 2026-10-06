@@ -10,13 +10,14 @@ import { errorKind } from '@/lib/utils/errorKind';
 import {
   askForWishlist,
   canOpenAnyListOf,
-  hasLiveAsk,
+  hasAskedRecently,
   takeBackAsk,
 } from '@/lib/utils/wishlistAsks';
 
 /**
  * Asking a friend to make a wishlist (WIS-324). `GET` answers whether the
- * caller has a live ask to this person (the profile's "Asked"); `POST` asks.
+ * caller asked this person within the last 30 days (the profile's "Asked");
+ * `POST` asks.
  * Only the caller's own ask is ever read: nothing here says whether anyone
  * else asked, or anything about the person's lists beyond what the caller
  * could open anyway.
@@ -47,7 +48,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     const { id } = await params;
     if (!isObjectIdParam(id)) return userNotFound();
     await connectDB();
-    const asked = id === session.user.id ? false : await hasLiveAsk(session.user.id, id);
+    const asked = id === session.user.id ? false : await hasAskedRecently(session.user.id, id);
     return NextResponse.json({ success: true, data: { asked } }, { headers: NO_STORE });
   } catch (error) {
     console.error('Error reading a wishlist ask:', errorKind(error));
@@ -99,8 +100,9 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
       return notFriends();
     }
     if (await canOpenAnyListOf(askerId, personId)) {
-      await takeBackAsk(askerId, personId, ask.askedAt);
-      return hasList();
+      if (await takeBackAsk(askerId, personId, ask.askedAt)) return hasList();
+      // That list already answered the ask and told them: it went through.
+      return NextResponse.json({ success: true, data: { asked: true } }, { headers: NO_STORE });
     }
 
     // The person's own budget holds back only the notification: the ask

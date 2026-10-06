@@ -471,7 +471,13 @@ export default function UserProfile() {
                   body: `${profile ? `@${profile.username}` : 'This person'} hasn’t shared any wishlists with you yet.`,
                   // WIS-324: a friend can ask them to make one.
                   ...(profile?.isFriend && {
-                    actions: <AskForWishlist userId={profile._id} username={profile.username} />,
+                    actions: (
+                      <AskForWishlist
+                        userId={profile._id}
+                        username={profile.username}
+                        onStale={() => setAttempt((n) => n + 1)}
+                      />
+                    ),
                   }),
                 })}
           />
