@@ -122,13 +122,19 @@ export const BIRTHDAY_NUDGE_HOME_PATH = `/?${NEW_LIST_PARAM}=birthday`;
 /**
  * The older Birthday lists a new one can start from (WIS-348): the lists you
  * own (alone or co-owned, archived or not) whose occasion kind is `birthday`,
- * in the order given (`GET /api/wishlists` answers newest first, so the first
- * is last year's). Only `{ _id, name }` leaves it: the owner's own lists.
+ * newest created first (`createdAt`, the given order where it's missing). Only `{ _id, name }` leaves it: the owner's own lists.
  */
 export function olderBirthdayLists<
-  T extends { _id: unknown; name: string; occasion?: Pick<Occasion, 'kind'> | null },
+  T extends {
+    _id: unknown;
+    name: string;
+    createdAt?: unknown;
+    occasion?: Pick<Occasion, 'kind'> | null;
+  },
 >(ownLists: readonly T[] | null | undefined): { _id: string; name: string }[] {
+  const time = (w: T) => (w.createdAt ? new Date(w.createdAt as string).getTime() || 0 : 0);
   return (ownLists ?? [])
     .filter((w) => w.occasion?.kind === 'birthday')
+    .sort((a, b) => time(b) - time(a))
     .map((w) => ({ _id: String(w._id), name: w.name }));
 }

@@ -175,6 +175,14 @@ describe('olderBirthdayLists (WIS-348)', () => {
       { _id: 'c', name: '2025' },
     ]);
   });
+  it('puts the newest created first whatever the order given', () => {
+    expect(
+      olderBirthdayLists([
+        { _id: 'old', name: 'Old', occasion: birthday, createdAt: '2023-01-01T00:00:00Z' },
+        { _id: 'new', name: 'New', occasion: birthday, createdAt: '2025-01-01T00:00:00Z' },
+      ]).map((w) => w._id)
+    ).toEqual(['new', 'old']);
+  });
   it('is empty with no lists', () => {
     expect(olderBirthdayLists(null)).toEqual([]);
     expect(olderBirthdayLists([])).toEqual([]);

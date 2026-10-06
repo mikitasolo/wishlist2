@@ -78,6 +78,10 @@ const startingOccasion = (kind: OccasionKind | undefined): OccasionDraft =>
     ? { ...occasionToDraft(null), kind, yearly: YEARLY_BY_DEFAULT.has(kind) }
     : occasionToDraft(null);
 
+/** The list picked to start from, or the first (newest) when none is or it's gone. */
+const pickedStartId = (lists: { _id: string }[], picked: string | null) =>
+  lists.some((w) => w._id === picked) ? (picked as string) : lists[0]._id;
+
 const sameDraft = (a: OccasionDraft, b: OccasionDraft) =>
   a.kind === b.kind &&
   a.yearly === b.yearly &&
@@ -231,14 +235,14 @@ export default function CreateWishlistModal({
         }
       >
         <div className="space-y-4">
-          {startFrom && startFrom.lists.length > 0 && (
+          {startFrom && startFrom.lists.length > 0 && !hasUnsavedChanges && (
             <div className="space-y-3 rounded-xl border border-border p-3">
               <p className="text-sm text-muted-foreground">
                 Make this year’s list from an older one, keeping the items and people you pick.
               </p>
               {startFrom.lists.length > 1 && (
                 <Select
-                  value={startFromId ?? startFrom.lists[0]._id}
+                  value={pickedStartId(startFrom.lists, startFromId)}
                   onChange={setStartFromId}
                   options={startFrom.lists.map((w) => ({ value: w._id, label: w.name }))}
                   ariaLabel="List to start from"
@@ -251,7 +255,7 @@ export default function CreateWishlistModal({
                 type="button"
                 variant="secondary"
                 disabled={isSubmitting}
-                onClick={() => startFrom.onStart(startFromId ?? startFrom.lists[0]._id)}
+                onClick={() => startFrom.onStart(pickedStartId(startFrom.lists, startFromId))}
               >
                 Start from last year’s list
               </Button>
