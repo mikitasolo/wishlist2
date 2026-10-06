@@ -1,6 +1,6 @@
 'use client';
 
-import { useId, useMemo, useState } from 'react';
+import { useId, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import BaseModal from '@/components/BaseModal';
 import Badge from '@/components/Badge';
@@ -24,6 +24,7 @@ import {
   QR_CARD_SIZES,
   QR_CARD_SIZE_SPECS,
   SHEET_GAP,
+  cardPixelSize,
   clampCopies,
   defaultCardDesign,
   maxCopiesPerSheet,
@@ -89,9 +90,10 @@ interface ShareLinkDetailsDialogProps {
  * third party. Handing out the code is two steps (WIS-346): how it looks (the
  * bare code, or a card in one of the designs and sizes, some copies to a
  * sheet), then what to do with it (the code: Download PNG, Download SVG,
- * Print; a card: Print card, which also saves a PDF from the browser's print
- * dialog). What prints is mounted for as long as the dialog is open and is all
- * a print shows. Never for the list's own URL.
+ * Print; a card: Download PNG (WIS-350), to send it, and Print card, which
+ * also saves a PDF from the browser's print dialog). What prints is mounted
+ * for as long as the dialog is open and is all a print shows. Never for the
+ * list's own URL.
  */
 export default function ShareLinkDetailsDialog({
   link,
@@ -121,6 +123,8 @@ export default function ShareLinkDetailsDialog({
   const [size, setSize] = useState<QrCardSize>(DEFAULT_SIZE);
   const [copies, setCopies] = useState(() => maxCopiesPerSheet(DEFAULT_SIZE));
   const maxCopies = maxCopiesPerSheet(size);
+  const previewRef = useRef<SVGSVGElement>(null);
+  const [makingPng, setMakingPng] = useState(false);
   const cardProps = {
     shape,
     design,
@@ -148,10 +152,28 @@ export default function ShareLinkDetailsDialog({
     saveFile(new Blob([qrSvgFile(shape)], { type: 'image/svg+xml' }), `${fileName}.svg`);
   }
 
-  async function downloadPng() {
-    const blob = await qrPng(shape);
-    if (blob) saveFile(blob, `${fileName}.png`);
-    else showToast('Couldn’t make the PNG. Try the SVG.', 'error');
+  /** Saves the PNG `make` draws, or says it couldn't; one at a time. */
+  async function savePng(make: () => Promise<Blob | null>, name: string, fallback: string) {
+    if (makingPng) return;
+    setMakingPng(true);
+    try {
+      const blob = await make().catch(() => null);
+      if (blob) saveFile(blob, name);
+      else showToast(`Couldn’t make the PNG. ${fallback}`, 'error');
+    } finally {
+      setMakingPng(false);
+    }
+  }
+
+  const downloadPng = () => savePng(() => qrPng(shape), `${fileName}.png`, 'Try the SVG.');
+
+  function downloadCardPng() {
+    const svg = previewRef.current;
+    return savePng(
+      () => (svg ? cardPng(svg, cardPixelSize(size)) : Promise.resolve(null)),
+      `${fileName}-card.png`,
+      'Try Print card.'
+    );
   }
 
   return (
@@ -231,7 +253,12 @@ export default function ShareLinkDetailsDialog({
             {/* White whatever the theme: a scanner needs dark modules on light. */}
             {format === 'card' ? (
               <div className="mx-auto w-full max-w-80 overflow-hidden rounded-xl border border-border bg-white">
-                <QrCard {...cardProps} label={`Card preview for ${title}`} className="w-full" />
+                <QrCard
+                  {...cardProps}
+                  ref={previewRef}
+                  label={`Card preview for ${title}`}
+                  className="w-full"
+                />
               </div>
             ) : (
               <div className="mx-auto w-full max-w-56 overflow-hidden rounded-xl border border-border bg-white">
@@ -241,9 +268,26 @@ export default function ShareLinkDetailsDialog({
 
             <div className="flex flex-wrap justify-center gap-3">
               {format === 'card' ? (
-                <Button variant="secondary" size="sm" icon="printer" onClick={() => window.print()}>
-                  Print card
-                </Button>
+                <>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    icon="download"
+                    onClick={downloadCardPng}
+                    disabled={makingPng}
+                    aria-label="Download PNG"
+                  >
+                    PNG
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    icon="printer"
+                    onClick={() => window.print()}
+                  >
+                    Print card
+                  </Button>
+                </>
               ) : (
                 <>
                   <Button
@@ -251,6 +295,7 @@ export default function ShareLinkDetailsDialog({
                     size="sm"
                     icon="download"
                     onClick={downloadPng}
+                    disabled={makingPng}
                     aria-label="Download PNG"
                   >
                     PNG
@@ -332,19 +377,74 @@ function QrSvg({ shape, label }: { shape: QrShape; label?: string }) {
   );
 }
 
+/**
+ * A white `width` × `height` canvas that `draw` paints, as a PNG; null where
+ * the browser can't (no 2D context, a canvas too big for it, or one it won't
+ * read back).
+ */
+async function canvasPng(
+  width: number,
+  height: number,
+  draw: (ctx: CanvasRenderingContext2D) => void
+): Promise<Blob | null> {
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, width, height);
+    draw(ctx);
+    return await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
+  } catch {
+    return null;
+  }
+}
+
 /** The code as a PNG, whole pixels per module; null where the browser can't draw it. */
 function qrPng(shape: QrShape): Promise<Blob | null> {
   const scale = Math.ceil(PNG_MIN_PX / shape.size);
-  const canvas = document.createElement('canvas');
-  canvas.width = canvas.height = shape.size * scale;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return Promise.resolve(null);
-  ctx.fillStyle = '#fff';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.scale(scale, scale);
-  ctx.fillStyle = '#000';
-  ctx.fill(new Path2D(shape.path));
-  return new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+  const side = shape.size * scale;
+  return canvasPng(side, side, (ctx) => {
+    ctx.scale(scale, scale);
+    ctx.fillStyle = '#000';
+    ctx.fill(new Path2D(shape.path));
+  });
+}
+
+/**
+ * The card as a PNG of `px` (WIS-350): its own SVG, drawn through an `<img>` onto
+ * a canvas, all in the browser. The SVG has no web font or outside image to
+ * fetch (its text uses the system stack), so it draws as it shows and leaves
+ * the canvas readable. Null where the browser can't draw it.
+ */
+async function cardPng(
+  svg: SVGSVGElement,
+  px: { width: number; height: number }
+): Promise<Blob | null> {
+  const copy = svg.cloneNode(true) as SVGSVGElement;
+  copy.setAttribute('width', String(px.width));
+  copy.setAttribute('height', String(px.height));
+  // The preview's own: its classes and accessible name.
+  for (const attr of ['class', 'role', 'aria-label']) copy.removeAttribute(attr);
+  const source = URL.createObjectURL(
+    new Blob([new XMLSerializer().serializeToString(copy)], { type: 'image/svg+xml' })
+  );
+  try {
+    const img = await new Promise<HTMLImageElement | null>((resolve) => {
+      const image = new Image();
+      image.onload = () => resolve(image);
+      image.onerror = () => resolve(null);
+      image.src = source;
+    });
+    if (!img) return null;
+    return await canvasPng(px.width, px.height, (ctx) =>
+      ctx.drawImage(img, 0, 0, px.width, px.height)
+    );
+  } finally {
+    URL.revokeObjectURL(source);
+  }
 }
 
 function saveFile(blob: Blob, name: string) {

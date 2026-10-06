@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { ReactNode, Ref } from 'react';
 import type { QrShape } from '@/lib/utils/qrCode';
 import {
   QR_CARD_SIZE_SPECS,
@@ -39,6 +39,8 @@ interface QrCardProps {
   /** An accessible name, for the on-screen preview; the printed copies are hidden. */
   label?: string;
   className?: string;
+  /** The `<svg>`, to draw it as an image (`ShareLinkDetailsDialog`'s PNG). */
+  ref?: Ref<SVGSVGElement>;
 }
 
 interface Inset {
@@ -65,6 +67,7 @@ export default function QrCard({
   url,
   label,
   className = '',
+  ref,
 }: QrCardProps) {
   const { width: W, height: H } = QR_CARD_SIZE_SPECS[size];
   const u = Math.min(W, H);
@@ -83,6 +86,7 @@ export default function QrCard({
 
   return (
     <svg
+      ref={ref}
       xmlns="http://www.w3.org/2000/svg"
       viewBox={`0 0 ${W} ${H}`}
       width={`${W}mm`}

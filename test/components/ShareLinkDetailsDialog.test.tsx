@@ -52,6 +52,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe('ShareLinkDetailsDialog', () => {
@@ -181,6 +182,125 @@ describe('ShareLinkDetailsDialog', () => {
       />
     );
     expect(preview()).toHaveAttribute('data-design', 'ribbon');
+  });
+
+  it('downloads the card as a PNG of the design and size picked, at 300 dpi', async () => {
+    const user = userEvent.setup();
+    const blobs: Blob[] = [];
+    vi.spyOn(URL, 'createObjectURL').mockImplementation((b) => {
+      blobs.push(b as Blob);
+      return `blob:${blobs.length}`;
+    });
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    // jsdom draws nothing: an image that loads, and a canvas that hands back a PNG.
+    const drawn: { src?: string; w?: number; h?: number } = {};
+    vi.stubGlobal(
+      'Image',
+      class {
+        onload: (() => void) | null = null;
+        onerror: (() => void) | null = null;
+        set src(v: string) {
+          drawn.src = v;
+          queueMicrotask(() => this.onload?.());
+        }
+      }
+    );
+    const png = new Blob(['png'], { type: 'image/png' });
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(function (
+      this: HTMLCanvasElement
+    ) {
+      drawn.w = this.width;
+      drawn.h = this.height;
+      return { fillRect: vi.fn(), drawImage: vi.fn(), fillStyle: '' } as never;
+    });
+    vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation((cb) => cb(png));
+    const saved: string[] = [];
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+      this: HTMLAnchorElement
+    ) {
+      saved.push(`${this.download} ${this.href}`);
+    });
+
+    render(
+      <ShareLinkDetailsDialog
+        link={link()}
+        listName="Our wedding"
+        occasion={{ kind: 'wedding', date: '2026-06-20', recurrence: null }}
+        onClose={vi.fn()}
+      />
+    );
+    await pick(user, 'Size', 'Credit card · 85 × 54 mm');
+    await user.click(screen.getByRole('button', { name: 'Download PNG' }));
+
+    await vi.waitFor(() => expect(saved).toHaveLength(1));
+    // The card's own SVG, at the image's pixels, drawn into a canvas of them.
+    const svg = await blobs[0].text();
+    expect(blobs[0].type).toBe('image/svg+xml');
+    expect(drawn.src).toBe('blob:1');
+    expect(svg).toContain('width="1004" height="638"');
+    expect(svg).toContain('data-design="wedding"');
+    expect(svg).toContain(qrShape(URL_).path);
+    expect(svg).not.toContain('class=');
+    expect([drawn.w, drawn.h]).toEqual([1004, 638]);
+    expect(blobs[1]).toBe(png);
+    expect(saved[0]).toBe('our-wedding-qr-card.png blob:2');
+    expect(showToast).not.toHaveBeenCalled();
+  });
+
+  it('says so when the browser can’t draw the card', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:x');
+    const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    vi.stubGlobal(
+      'Image',
+      class {
+        onload: (() => void) | null = null;
+        onerror: (() => void) | null = null;
+        set src(_: string) {
+          queueMicrotask(() => this.onerror?.());
+        }
+      }
+    );
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click');
+    render(<ShareLinkDetailsDialog link={link()} listName="Our wedding" onClose={vi.fn()} />);
+    await user.click(screen.getByRole('button', { name: 'Download PNG' }));
+    await vi.waitFor(() =>
+      expect(showToast).toHaveBeenCalledWith('Couldn’t make the PNG. Try Print card.', 'error')
+    );
+    expect(click).not.toHaveBeenCalled();
+    expect(revoke).toHaveBeenCalledWith('blob:x');
+  });
+
+  it('says so, rather than hang, when the canvas can’t be read back', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:x');
+    const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    vi.stubGlobal(
+      'Image',
+      class {
+        onload: (() => void) | null = null;
+        set src(_: string) {
+          queueMicrotask(() => this.onload?.());
+        }
+      }
+    );
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
+      fillRect: vi.fn(),
+      drawImage: vi.fn(),
+    } as never);
+    // A tainted canvas (older WebKit) throws instead of handing back a blob.
+    vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation(() => {
+      throw new DOMException('Tainted canvas', 'SecurityError');
+    });
+    render(<ShareLinkDetailsDialog link={link()} listName="Our wedding" onClose={vi.fn()} />);
+    const button = screen.getByRole('button', { name: 'Download PNG' });
+    await user.click(button);
+    await vi.waitFor(() =>
+      expect(showToast).toHaveBeenCalledWith('Couldn’t make the PNG. Try Print card.', 'error')
+    );
+    expect(revoke).toHaveBeenCalledWith('blob:x');
+    // Free to try again.
+    expect(button).toBeEnabled();
   });
 
   it('downloads or prints the bare code once QR code only is picked', async () => {
