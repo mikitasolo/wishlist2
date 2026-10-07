@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import mongoose from 'mongoose';
 import { connectTestDB, disconnectTestDB, clearTestDB } from '../db';
@@ -65,6 +65,9 @@ describe('POST /api/migrations/backfill-usernames', () => {
     generate.mockReset();
     generate.mockImplementation(() => realGenerate());
   });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
 
   it('refuses a request without the migration secret', async () => {
     await seedLegacy();
@@ -87,6 +90,7 @@ describe('POST /api/migrations/backfill-usernames', () => {
       matched: 3,
       changed: 3,
       skipped: 0,
+      gone: 0,
       failed: 0,
     });
 
@@ -108,28 +112,41 @@ describe('POST /api/migrations/backfill-usernames', () => {
       matched: 0,
       changed: 0,
       skipped: 0,
+      gone: 0,
       failed: 0,
     });
     expect(await Promise.all(Object.values(ids).map(usernameOf))).toEqual(before);
   });
 
-  it('only counts on a dry run and writes nothing', async () => {
-    const ids = await seedLegacy();
+  it.each(['?dryRun=1', '?dryRun=true', '?dryRun', '?dryRun=yes'])(
+    'only counts on a dry run (%s) and writes nothing',
+    async (query) => {
+      const ids = await seedLegacy();
 
-    const res = await run('?dryRun=1');
-    expect(await res.json()).toEqual({
-      success: true,
-      dryRun: true,
-      matched: 3,
-      changed: 0,
-      skipped: 0,
-      failed: 0,
-    });
-    expect(generate).not.toHaveBeenCalled();
-    expect(await usernameOf(ids.missing)).toBeUndefined();
-    expect(await usernameOf(ids.nulled)).toBeNull();
-    expect(await usernameOf(ids.empty)).toBe('');
-  });
+      const res = await run(query);
+      expect(await res.json()).toEqual({
+        success: true,
+        dryRun: true,
+        matched: 3,
+        changed: 0,
+        skipped: 0,
+        gone: 0,
+        failed: 0,
+      });
+      expect(generate).not.toHaveBeenCalled();
+      expect(await usernameOf(ids.missing)).toBeUndefined();
+      expect(await usernameOf(ids.nulled)).toBeNull();
+      expect(await usernameOf(ids.empty)).toBe('');
+    }
+  );
+
+  it.each(['?dryRun=0', '?dryRun=false'])(
+    'writes when the dry run is turned off (%s)',
+    async (query) => {
+      await seedLegacy();
+      expect(await (await run(query)).json()).toMatchObject({ dryRun: false, changed: 3 });
+    }
+  );
 
   it('draws again when the generated name was taken between the check and the write', async () => {
     const id = await insertRaw({ email: 'legacy@example.com' });
@@ -143,7 +160,6 @@ describe('POST /api/migrations/backfill-usernames', () => {
     expect(await usernameOf(id)).toBe('user_fresh000');
     // The duplicate-key error quotes the clashing name: nothing is logged.
     expect(errors).not.toHaveBeenCalled();
-    errors.mockRestore();
   });
 
   it('counts an account failed after losing the race on every attempt, and a re-run finishes it', async () => {
@@ -173,5 +189,33 @@ describe('POST /api/migrations/backfill-usernames', () => {
     const res = await run();
     expect(await res.json()).toMatchObject({ matched: 1, changed: 0, skipped: 1, failed: 0 });
     expect(await usernameOf(id)).toBe('user_signin00');
+  });
+
+  it('counts an account deleted after the run read it as gone', async () => {
+    const id = await insertRaw({ email: 'legacy@example.com' });
+    generate.mockImplementationOnce(async () => {
+      await User.collection.deleteOne({ _id: id });
+      return 'user_migrate0';
+    });
+
+    expect(await (await run()).json()).toMatchObject({ matched: 1, changed: 0, gone: 1 });
+  });
+
+  it('counts an unexpected error as failed, carries on, and logs no personal data', async () => {
+    const first = await insertRaw({ email: 'first@example.com' });
+    const second = await insertRaw({ email: 'second@example.com', username: '' });
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    generate
+      .mockRejectedValueOnce(new Error('first@example.com user_leaky000'))
+      .mockImplementation(() => realGenerate());
+
+    const res = await run();
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ matched: 2, changed: 1, failed: 1 });
+    const named = [await usernameOf(first), await usernameOf(second)].filter(Boolean);
+    expect(named).toHaveLength(1);
+    const logged = JSON.stringify(errors.mock.calls);
+    expect(logged).not.toContain('example.com');
+    expect(logged).not.toContain('user_');
   });
 });
