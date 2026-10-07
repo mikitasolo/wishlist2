@@ -9,10 +9,10 @@ import type { GroupInviteResult } from '@/lib/utils/groupInviteResult';
 
 // WIS-37: the People tab's invite form can invite one of your groups.
 
-const person = (id: string, username: string | null = id) => ({
+const person = (id: string, username: string = id) => ({
   id,
   username,
-  displayName: username ?? 'Someone',
+  displayName: username,
   image: null,
 });
 const groups: GroupView[] = [
@@ -72,7 +72,7 @@ describe('InviteMemberForm — groups', () => {
     const result: GroupInviteResult = {
       invited: [
         { id: 'bo', username: 'bo', displayName: 'bo' },
-        { id: 'x', username: null, displayName: 'Sam' },
+        { id: 'sam', username: 'sam', displayName: 'sam' },
       ],
       skipped: [
         { id: 'cy', username: 'cy', displayName: 'cy', reason: 'This person is already a member' },
@@ -92,7 +92,7 @@ describe('InviteMemberForm — groups', () => {
 
     const status = await screen.findByRole('status');
     expect(status).toHaveTextContent('Invited 2 people.');
-    expect(status).toHaveTextContent('@bo, Sam');
+    expect(status).toHaveTextContent('@bo, @sam');
     expect(status).toHaveTextContent('Not invited (1)');
     expect(status).toHaveTextContent('@cy: This person is already a member');
     expect(status).toHaveTextContent('2 more people weren’t invited');

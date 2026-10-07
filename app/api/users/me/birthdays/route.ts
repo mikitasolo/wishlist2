@@ -33,7 +33,6 @@ export async function GET() {
       const friends = await User.find({
         ...birthdayVisibleFilter('friend'),
         _id: { $in: friendIds.map((id) => new mongoose.Types.ObjectId(id)) },
-        username: { $type: 'string', $ne: '' },
       })
         .select('username image birthday privacy')
         .lean();
@@ -41,7 +40,7 @@ export async function GET() {
         // The query already matched only these; the helper decides once more,
         // so the answer can't drift from the profile route's rule.
         const birthday = visibleBirthday(friend, 'friend');
-        if (!birthday || !friend.username) return [];
+        if (!birthday) return [];
         return [
           {
             id: friend._id.toString(),

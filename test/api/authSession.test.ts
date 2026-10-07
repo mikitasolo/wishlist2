@@ -111,42 +111,33 @@ describe('GET /api/auth/session', () => {
     expect(text).not.toContain('2026-10-02');
   });
 
-  it('backfills a legacy account’s username once, and fills in the defaults its raw row lacks', async () => {
-    // A row from before usernames, written raw: no username, no schema defaults.
-    const legacy = new mongoose.Types.ObjectId();
+  // WIS-357: every account has a username, so nothing is backfilled any more.
+  it('fills in the defaults a raw row lacks, and never reads or writes the account', async () => {
+    // A raw row with no schema defaults (and, though none should exist, no username).
+    const raw = new mongoose.Types.ObjectId();
     await mongoose.connection.collection('users').insertOne({
-      _id: legacy,
-      email: 'legacy@example.com',
+      _id: raw,
+      email: 'raw@example.com',
       emailVerified: new Date(),
     });
     await mongoose.connection.collection('sessions').insertOne({
-      sessionToken: 'legacy-session',
-      userId: legacy,
+      sessionToken: 'raw-session',
+      userId: raw,
       expires: new Date(Date.now() + 86_400_000),
     });
     const findOne = vi.spyOn(User, 'findOne');
 
-    const first = await (await getSession('authjs.session-token=legacy-session')).json();
+    const body = await (await getSession('authjs.session-token=raw-session')).json();
 
-    expect(first.user).toEqual({
-      id: legacy.toString(),
-      email: 'legacy@example.com',
-      username: expect.stringMatching(/^user_[a-z0-9]{8}$/),
+    expect(body.user).toEqual({
+      id: raw.toString(),
+      email: 'raw@example.com',
       defaultCurrency: 'USD',
       currencyChosen: false,
       newAccount: true,
     });
-    expect((await User.findById(legacy).lean())!.username).toBe(first.user.username);
-    // One read of the account (the generator's own `exists` checks also run
-    // through findOne, so count the lookup by email).
-    const accountReads = findOne.mock.calls.filter(([filter]) => filter && 'email' in filter);
-    expect(accountReads).toHaveLength(1);
-
-    // From then on its row has one, so checks are back to the adapter's read.
-    findOne.mockClear();
-    const next = await (await getSession('authjs.session-token=legacy-session')).json();
-    expect(next.user.username).toBe(first.user.username);
     expect(findOne).not.toHaveBeenCalled();
+    expect((await User.findById(raw).lean())!.username).toBeUndefined();
     findOne.mockRestore();
   });
 

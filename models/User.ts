@@ -25,10 +25,15 @@ const UserSchema = new Schema(
       type: Date,
       required: false,
     },
-    // Public identity. Unique + sparse so legacy rows without one are allowed
-    // until backfilled. Lowercased; validated at the API layer.
+    // Public identity, which every account has (WIS-357): the adapter's
+    // `createUser` generates one at sign-up. Lowercased; validated at the API
+    // layer. `sparse` stays only so the deployed `username_1` index keeps the
+    // options it was built with (Mongoose never rebuilds an index whose options
+    // changed, and an index that differed would need a migration); with the
+    // field required it indexes every row anyway.
     username: {
       type: String,
+      required: true,
       unique: true,
       sparse: true,
       lowercase: true,
@@ -116,7 +121,7 @@ export interface IUser {
   _id: mongoose.Types.ObjectId;
   email: string;
   emailVerified?: Date | null;
-  username?: string | null;
+  username: string;
   image?: string | null;
   bio?: string | null;
   birthday?: string | null;

@@ -164,17 +164,14 @@ curl -X POST -H "X-Migration-Secret: $MIGRATION_SECRET" \
   https://<your-host>/api/migrations/<name>
 ```
 
-One is in the tree: `backfill-usernames` (WIS-357) gives every account without a username a generated one. Add
-`?dryRun=1` to only count them. Run it on staging, then production, and re-run to confirm `matched: 0`; it's deleted
-once `username` becomes required.
-
-These have been applied to every environment and removed; recover any of them from git history if you ever need
+None is in the tree right now. These have been applied to every environment and removed; recover any of them from git history if you ever need
 to replay one against a restored backup:
 
 - the co-ownership set: `wishlist-owners`, `remove-admin-role`, `drop-legacy-owner-fields`;
 - `dedupe-pending-invites`, which deduped pending invites and built the unique pending-invite index;
 - `relabel-answered-invite-notifications` (WIS-255), which wrote the answer onto invite notifications answered before answers were recorded;
-- `uppercase-currency-codes` (WIS-49), which uppercased the currency code of item prices and of the booking snapshots copied from them.
+- `uppercase-currency-codes` (WIS-49), which uppercased the currency code of item prices and of the booking snapshots copied from them;
+- `backfill-usernames` (WIS-357), which gave every account without a username a generated one, before `username` became required.
 
 See [docs/agents/backend.md](docs/agents/backend.md) for the rules a new migration should follow.
 

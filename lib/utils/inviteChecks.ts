@@ -27,11 +27,6 @@ export interface InviteRefusal {
 
 type Invitee = Pick<IUser, 'username' | 'privacy'> & { _id: mongoose.Types.ObjectId };
 
-/** Invites go by username only: someone without one is never invited. */
-export function usernameRefusal(invitee: Pick<Invitee, 'username'>): InviteRefusal | null {
-  return invitee.username ? null : { error: INVITE_REFUSAL.noUsername, status: 400 };
-}
-
 /** The invitee's "who can invite me" preference (`privacy.whoCanInvite`). */
 export async function whoCanInviteRefusal(
   inviterId: string,

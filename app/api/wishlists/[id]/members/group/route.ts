@@ -13,12 +13,7 @@ import {
   isInvitePaused,
   withdrawUnlessInviterOwns,
 } from '@/lib/utils/wishlistInvites';
-import {
-  issueInvite,
-  listStandingRefusal,
-  usernameRefusal,
-  whoCanInviteRefusal,
-} from '@/lib/utils/inviteChecks';
+import { issueInvite, listStandingRefusal, whoCanInviteRefusal } from '@/lib/utils/inviteChecks';
 import { groupMemberIds } from '@/lib/utils/peopleGroups';
 import { publicDisplayName } from '@/lib/utils/displayName';
 import type { GroupInvitePerson, GroupInviteResult } from '@/lib/utils/groupInviteResult';
@@ -138,17 +133,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       if (!user) continue; // deleted since the group was read
       const person: GroupInvitePerson = {
         id: userId,
-        username: user.username ?? null,
+        username: user.username,
         displayName: publicDisplayName(user),
       };
       const skip = (reason: string) => skipped.push({ ...person, reason });
 
       // Free skips, from what the owner already sees (their group, the People
-      // tab), before any token is spent. Invites go by username only, so someone
-      // without one is never invited, as no single invite could reach them.
-      const upFront =
-        usernameRefusal(user) ??
-        listStandingRefusal(current.wishlist, userId, { isMember: memberSet.has(userId), role });
+      // tab), before any token is spent.
+      const upFront = listStandingRefusal(current.wishlist, userId, {
+        isMember: memberSet.has(userId),
+        role,
+      });
       if (upFront) {
         skip(upFront.error);
         continue;

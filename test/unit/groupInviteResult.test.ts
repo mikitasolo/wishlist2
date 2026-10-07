@@ -5,16 +5,11 @@ import {
   groupPersonLabel,
 } from '@/lib/utils/groupInviteResult';
 
-const p = (id: string, username: string | null = id) => ({
-  id,
-  username,
-  displayName: username ?? 'Someone',
-});
+const p = (id: string, username: string = id) => ({ id, username, displayName: username });
 
 describe('group invite result copy (WIS-37)', () => {
-  it('names people by handle, or their public name without one', () => {
+  it('names people by handle', () => {
     expect(groupPersonLabel(p('bo'))).toBe('@bo');
-    expect(groupPersonLabel({ id: 'x', username: null, displayName: 'Sam' })).toBe('Sam');
   });
 
   it('heads the result with how many were invited', () => {

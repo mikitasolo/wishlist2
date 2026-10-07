@@ -53,7 +53,8 @@ describe('console calls in app/ and lib/', () => {
 
     // Guards the scan itself: a broken parser would otherwise pass vacuously.
     expect(calls.length).toBeGreaterThan(50);
-    expect(calls.some(({ args }) => args.includes('Error in session callback'))).toBe(true);
+    // (lib/email.ts's send failure: the call nearest an address there is.)
+    expect(calls.some(({ args }) => args.includes('Error sending'))).toBe(true);
     expect(calls.filter(({ args }) => EMAIL_VALUE.test(args))).toEqual([]);
   });
 });

@@ -138,21 +138,15 @@ export default function GroupsSettings() {
                     {group.members.map((person) => (
                       <li key={person.id} className="flex items-center gap-3 px-4 py-2">
                         <Avatar name={person.displayName} src={person.image} size="sm" />
-                        {person.username ? (
-                          <Link
-                            href={`/users/${encodeURIComponent(person.username)}`}
-                            className="min-w-0 flex-1 truncate text-sm font-medium text-foreground transition-colors hover:text-accent"
-                          >
-                            @{person.username}
-                          </Link>
-                        ) : (
-                          <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
-                            {person.displayName}
-                          </span>
-                        )}
+                        <Link
+                          href={`/users/${encodeURIComponent(person.username)}`}
+                          className="min-w-0 flex-1 truncate text-sm font-medium text-foreground transition-colors hover:text-accent"
+                        >
+                          @{person.username}
+                        </Link>
                         <IconButton
                           icon="close"
-                          label={`Remove ${person.username ? `@${person.username}` : person.displayName} from ${group.name}`}
+                          label={`Remove @${person.username} from ${group.name}`}
                           onClick={() => untag(group, person)}
                           disabled={untagging.has(`${group.id}:${person.id}`)}
                         />

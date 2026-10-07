@@ -1,49 +1,13 @@
 import NextAuth from 'next-auth';
 import Nodemailer from 'next-auth/providers/nodemailer';
-import connectDB from './mongodb';
-import User from '@/models/User';
 import { adapter } from './authAdapter';
 import { getEnvVars } from './env';
-import { generateUniqueUsername } from './utils/username';
 import { endPreviousSession } from './utils/previousSession';
-import { sessionPayload, type SessionDbUser } from './utils/sessionPayload';
-import { isDuplicateKeyError } from './utils/mongoErrors';
+import { sessionPayload } from './utils/sessionPayload';
 import { isVerifiedSignIn, sendVerificationRequest } from './signInEmail';
 
 // Get validated environment variables
 const env = getEnvVars();
-
-/**
- * Give a legacy account that predates usernames a generated one, and return
- * the account as saved, or null when it isn't found or the read or save fails
- * (the session callback then falls back to the adapter's row, without one).
- */
-async function backfillUsername(email: string): Promise<SessionDbUser | null> {
-  try {
-    await connectDB();
-    const found = await User.findOne({ email: email.toLowerCase() });
-    if (!found) {
-      // This shouldn't happen, but handle gracefully. Logged without the email
-      // or any other identifier: anyone with project access reads these logs.
-      console.error('User not found in database during session callback');
-      return null;
-    }
-    // A concurrent check may have backfilled it since the adapter's read.
-    if (!found.username) {
-      found.username = await generateUniqueUsername();
-      await found.save();
-    }
-    return found;
-  } catch (error) {
-    // A duplicate-key error (the username backfill losing a race) quotes the
-    // clashing value, so only its kind is logged.
-    console.error(
-      'Error in session callback:',
-      isDuplicateKeyError(error) ? 'duplicate key' : error
-    );
-    return null;
-  }
-}
 
 // NextAuth v5 (Auth.js): a single config exports the route `handlers`, the
 // server-side `auth()` helper (replaces v4's getServerSession(authOptions)),
@@ -99,14 +63,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     //
     // `user` is the account's row, which the adapter read for this very check
     // (`getSessionAndUser`), so the session is built from it with no read of
-    // our own. The one exception is a legacy account with no username, which
-    // is read through the model to backfill one.
+    // our own.
     async session({ session, user }) {
-      const row = user as unknown as Record<string, unknown> | undefined;
-      const needsUsername = !(typeof row?.username === 'string' && row.username);
-      const dbUser = needsUsername && user?.email ? await backfillUsername(user.email) : null;
-      // Without a backfilled read (none found, or it failed), the row stands in.
-      return sessionPayload(row, dbUser, session.expires);
+      return sessionPayload(user as unknown as Record<string, unknown>, session.expires);
     },
   },
   events: {

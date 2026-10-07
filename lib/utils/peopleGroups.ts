@@ -63,7 +63,7 @@ export async function listGroups(ownerId: string): Promise<GroupView[]> {
       u._id.toString(),
       {
         id: u._id.toString(),
-        username: u.username ?? null,
+        username: u.username,
         displayName: publicDisplayName(u),
         image: u.image ?? null,
       },

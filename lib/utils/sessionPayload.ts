@@ -1,5 +1,4 @@
 import type { Session } from 'next-auth';
-import type { IUser } from '@/models/User';
 import { isNewAccount } from './accountAge';
 
 /**
@@ -36,13 +35,6 @@ function text(value: unknown): string | undefined {
   return typeof value === 'string' && value ? value : undefined;
 }
 
-/** The fields of the Mongoose read the session takes, when that read worked. */
-export type SessionDbUser = Pick<
-  IUser,
-  '_id' | 'username' | 'image' | 'defaultCurrency' | 'currencyChosenAt' | 'emailVerified'
-> &
-  Partial<Pick<IUser, 'createdAt'>>;
-
 /**
  * The session callback's result (lib/auth.ts): an explicit allowlist, built
  * fresh, never the object Auth.js passes in. With database sessions that
@@ -51,21 +43,20 @@ export type SessionDbUser = Pick<
  * cookie keeps from scripts, into `GET /api/auth/session`, along with every
  * field of the user's row.
  *
- * `row` is the adapter's user row Auth.js passed in, read for this very check,
- * and normally all there is. `dbUser` is the account as the callback just
- * backfilled a username into it (a legacy row without one), or null, in which
- * case the row stands in. A raw row has no schema defaults, hence the
- * fallbacks below (`defaultCurrency` 'USD'; `image` is null by default; an
- * account without `currencyChosenAt` hasn't answered the prompt; one
- * without `createdAt` or `emailVerified` is new). `now` is for tests.
+ * `row` is the adapter's user row Auth.js passed in, read for this very check.
+ * A raw row has no schema defaults, hence the fallbacks below
+ * (`defaultCurrency` 'USD'; `image` is null by default; an account without
+ * `currencyChosenAt` hasn't answered the prompt; one without `createdAt` or
+ * `emailVerified` is new). Every account has a username (WIS-357), but the row
+ * is still read defensively: a missing one is left out, never invented. `now`
+ * is for tests.
  */
 export function sessionPayload(
   row: Record<string, unknown> | null | undefined,
-  dbUser: SessionDbUser | null,
   expires: unknown,
   now: number = Date.now()
 ): Session {
-  const id = dbUser ? dbUser._id.toString() : text(row?.id);
+  const id = text(row?.id);
   // Fail closed: a session without its user's id would still read as signed
   // in. Auth.js answers a session callback that throws with no session at all.
   if (!id) throw new Error('No user id for the session');
@@ -74,12 +65,12 @@ export function sessionPayload(
   const user = {
     id,
     email: text(row?.email) ?? '',
-    username: (dbUser ? dbUser.username : text(row?.username)) || undefined,
+    username: text(row?.username),
     name: text(row?.name),
-    image: (dbUser ? dbUser.image : text(row?.image)) || undefined,
-    defaultCurrency: (dbUser ? dbUser.defaultCurrency : text(row?.defaultCurrency)) || 'USD',
-    currencyChosen: (dbUser ? dbUser.currencyChosenAt : row?.currencyChosenAt) instanceof Date,
-    newAccount: isNewAccount(dbUser ?? row ?? {}, now),
+    image: text(row?.image),
+    defaultCurrency: text(row?.defaultCurrency) ?? 'USD',
+    currencyChosen: row?.currencyChosenAt instanceof Date,
+    newAccount: isNewAccount(row ?? {}, now),
   } satisfies Record<(typeof SESSION_USER_FIELDS)[number], unknown>;
   return {
     user,

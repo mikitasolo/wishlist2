@@ -193,7 +193,7 @@ export async function POST(request: NextRequest) {
     });
 
     // WIS-324: friends who asked for a list, and can open this one, are told.
-    await notifyAskersOfNewList(wishlist, user._id, user.username ?? null);
+    await notifyAskersOfNewList(wishlist, user._id, user.username);
 
     return NextResponse.json(
       { success: true, data: serializeWishlist(wishlist, user._id.toString()) },

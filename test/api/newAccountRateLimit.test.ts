@@ -56,7 +56,7 @@ async function signInVerified(createdAgoMs: number | null) {
   const createdAt = createdAgoMs === null ? undefined : new Date(Date.now() - createdAgoMs);
   const emailVerified = createdAgoMs === null ? null : new Date();
   const row = { id: ownerId, email: 'owner@x.com', username: 'owner', createdAt, emailVerified };
-  session.mockResolvedValue(sessionPayload(row, null, new Date(Date.now() + HOUR)) as never);
+  session.mockResolvedValue(sessionPayload(row, new Date(Date.now() + HOUR)) as never);
 }
 
 function invite(username: string) {
