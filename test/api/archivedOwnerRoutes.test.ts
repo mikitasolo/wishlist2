@@ -18,6 +18,9 @@ import {
   DELETE as deleteWishlist,
 } from '@/app/api/wishlists/[id]/route';
 import { GET as getMembers, POST as invite } from '@/app/api/wishlists/[id]/members/route';
+import { POST as inviteGroup } from '@/app/api/wishlists/[id]/members/group/route';
+import { addGroupMember, createGroup } from '@/lib/utils/peopleGroups';
+import Follow from '@/models/Follow';
 import { GET as readCopy, POST as copyList } from '@/app/api/wishlists/[id]/copy/route';
 import { DELETE as kick } from '@/app/api/wishlists/[id]/members/[memberId]/route';
 import { GET as getInvites } from '@/app/api/wishlists/[id]/invites/route';
@@ -53,6 +56,7 @@ let frank: string; // has a pending invite to the list
 let carolMembership: string;
 let frankInvite: string;
 let dave: string;
+let aliceGroup: string; // alice's group with dave in it (WIS-37)
 let daveRequest: string; // dave asked to join (WIS-275)
 let shareLink: string; // one of the list's share links (WIS-334)
 
@@ -75,6 +79,12 @@ beforeEach(async () => {
   erin = await user('erin');
   frank = await user('frank');
   dave = await user('dave'); // invited by POST /members; has asked to join
+  // Alice's group of one, dave, for POST /members/group (WIS-37).
+  await Follow.create({ follower: alice, following: dave });
+  const group = await createGroup(alice, 'Party people');
+  if (group.status !== 'created') throw new Error('group not created');
+  aliceGroup = group.group.id;
+  await addGroupMember(alice, aliceGroup, dave);
 });
 
 /** The list every test acts on, archived or not, with a member and an invite on it. */
@@ -175,6 +185,16 @@ const ROUTES: OwnerRoute[] = [
         params: Promise.resolve({ id }),
       }),
     ownerStatus: 201,
+  },
+  {
+    name: 'POST /api/wishlists/[id]/members/group',
+    send: (id) =>
+      // An owner group invite, which an archived list still takes.
+      inviteGroup(
+        req(`/api/wishlists/${id}/members/group`, 'POST', { groupId: aliceGroup, role: 'owner' }),
+        { params: Promise.resolve({ id }) }
+      ),
+    ownerStatus: 200,
   },
   {
     name: 'DELETE /api/wishlists/[id]/members/[memberId]',

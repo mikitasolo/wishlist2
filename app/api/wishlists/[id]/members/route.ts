@@ -6,17 +6,20 @@ import Wishlist from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
 import User from '@/models/User';
 import { inviteMemberSchema, validateRequestBody } from '@/lib/validations';
-import { areFriends } from '@/lib/utils/friends';
 import { resolveWishlistId } from '@/lib/utils/wishlistSlug';
 import { getOwnerAccess } from '@/lib/utils/wishlistAccess';
 import { isWishlistOwner, ownerIds } from '@/lib/utils/wishlistOwners';
+import { isInvitePaused, withdrawUnlessInviterOwns } from '@/lib/utils/wishlistInvites';
 import {
-  isInvitePaused,
-  issueWishlistInvite,
-  pendingInviteCapResponse,
-  withdrawUnlessInviterOwns,
-} from '@/lib/utils/wishlistInvites';
+  issueInvite,
+  listStandingRefusal,
+  whoCanInviteRefusal,
+  type InviteRefusal,
+} from '@/lib/utils/inviteChecks';
 import { publicDisplayName } from '@/lib/utils/displayName';
+
+const refusalResponse = ({ error, status }: InviteRefusal) =>
+  NextResponse.json({ success: false, error }, { status });
 
 const notOwnerError = () =>
   NextResponse.json(
@@ -186,45 +189,20 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     // Respect the invitee's "who can invite me" preference
-    const policy = invitedUser.privacy?.whoCanInvite ?? 'everyone';
-    if (policy === 'nobody') {
-      return NextResponse.json(
-        { success: false, error: 'This person isn’t accepting wishlist invites.' },
-        { status: 403 }
-      );
-    }
-    if (policy === 'friends') {
-      const friends = await areFriends(session.user.id, invitedUser._id.toString());
-      if (!friends) {
-        return NextResponse.json(
-          { success: false, error: 'This person only accepts invites from friends.' },
-          { status: 403 }
-        );
-      }
-    }
+    const refusedByPolicy = await whoCanInviteRefusal(session.user.id, invitedUser);
+    if (refusedByPolicy) return refusalResponse(refusedByPolicy);
 
-    // Can't invite an existing owner.
-    if (isWishlistOwner(wishlist, invitedUser._id.toString())) {
-      return NextResponse.json(
-        { success: false, error: 'This person already owns this wishlist' },
-        { status: 400 }
-      );
-    }
-    // Someone already on the list is promoted, not re-invited — that path is
-    // POST /owners/[userId], so it can be driven from the members UI.
-    const existingMember = await WishlistMember.findOne({ wishlist: id, user: invitedUser._id });
-    if (existingMember) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            role === 'owner'
-              ? 'This person is already a member — promote them from the members list'
-              : 'This person is already a member',
-        },
-        { status: 400 }
-      );
-    }
+    // Can't invite an existing owner. Someone already on the list is promoted,
+    // not re-invited — that path is POST /owners/[userId], so it can be driven
+    // from the members UI.
+    const existingMember = isWishlistOwner(wishlist, invitedUser._id.toString())
+      ? null
+      : await WishlistMember.findOne({ wishlist: id, user: invitedUser._id });
+    const refusedByStanding = listStandingRefusal(wishlist, invitedUser._id.toString(), {
+      isMember: !!existingMember,
+      role,
+    });
+    if (refusedByStanding) return refusalResponse(refusedByStanding);
 
     // The owner check above ran against the list as it was read at the start of
     // the request. Re-read it right before the invite is issued: a co-owner may
@@ -246,7 +224,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // Create a pending invite (membership/ownership is granted only on accept),
     // and notify the invitee at their account email — fetched here, never stored
     // on the invite.
-    const invite = await issueWishlistInvite({
+    const issued = await issueInvite({
       wishlistId: id,
       wishlistName: wishlist.name,
       role,
@@ -257,14 +235,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       invitedUserEmail: invitedUser.email,
     });
 
-    if (!invite) {
-      return NextResponse.json(
-        { success: false, error: 'This person already has a pending invite' },
-        { status: 400 }
-      );
-    }
-    // Too many pending invites already wait for them (WIS-40): nothing was sent.
-    if (invite === 'capped') return pendingInviteCapResponse();
+    // Already pending, or too many pending invites already wait for them
+    // (WIS-40): nothing was sent.
+    if ('refusal' in issued) return refusalResponse(issued.refusal);
+    const { invite } = issued;
 
     // The re-read above only narrows the race with a co-owner removing or
     // demoting the caller: that removal's `cancelInvitesSentBy` may have read

@@ -16,6 +16,9 @@ import Panel from './Panel';
 import Button from './Button';
 import SearchField from './SearchField';
 import SegmentedControl from './SegmentedControl';
+import Select from './Select';
+import Callout from './Callout';
+import LoadError from './LoadError';
 import { POPOVER_NOTE, POPOVER_OPTION_ROW, POPOVER_SURFACE } from './popoverStyles';
 import {
   INVITE_SEARCH_MIN_CHARS,
@@ -23,6 +26,14 @@ import {
   type ListPerson,
 } from '@/lib/utils/inviteSuggestions';
 import { usernameQuery } from '@/lib/utils/searchQuery';
+import { plural } from '@/lib/utils/plural';
+import type { GroupView } from '@/lib/utils/groupRules';
+import {
+  groupInviteCutShortNote,
+  groupInviteHeadline,
+  groupPersonLabel,
+  type GroupInviteResult,
+} from '@/lib/utils/groupInviteResult';
 
 type Role = 'owner' | 'member';
 
@@ -39,6 +50,13 @@ const ROLE_OPTIONS = [
   { value: 'member', label: 'Member' },
   { value: 'owner', label: 'Co-owner' },
 ] as const;
+
+const TARGET_OPTIONS = [
+  { value: 'person', label: 'Person' },
+  { value: 'group', label: 'Group' },
+] as const;
+
+type Target = (typeof TARGET_OPTIONS)[number]['value'];
 
 /** How many suggestions show at once. */
 const MAX_SUGGESTIONS = 5;
@@ -67,6 +85,23 @@ interface InviteMemberFormProps {
    * invite. Without it, a member's suggestion offers nothing.
    */
   onPromote?: (member: { userId: string; username: string }) => void;
+  /**
+   * The caller's own groups (WIS-37). With at least one, the form can invite a
+   * whole group instead of one person: Person · Group above the field.
+   */
+  groups?: readonly GroupView[] | null;
+  /**
+   * Reading the groups failed: Group is still offered, with the failure and
+   * Try again in place of the picker, never as if there were no groups.
+   */
+  groupsFailed?: boolean;
+  onRetryGroups?: () => void;
+  /**
+   * Invite every person in a group, one ordinary invite each. Resolves to what
+   * happened to each of them, or null when the whole request was refused (the
+   * page says why).
+   */
+  onInviteGroup?: (payload: { groupId: string; role: Role }) => Promise<GroupInviteResult | null>;
   ref?: Ref<InviteMemberFormHandle>;
 }
 
@@ -102,9 +137,16 @@ export default function InviteMemberForm({
   isInviting,
   statuses,
   onPromote,
+  groups,
+  groupsFailed = false,
+  onRetryGroups,
+  onInviteGroup,
   ref,
 }: InviteMemberFormProps) {
   const [value, setValue] = useState('');
+  const [target, setTarget] = useState<Target>('person');
+  const [groupId, setGroupId] = useState('');
+  const [groupResult, setGroupResult] = useState<GroupInviteResult | null>(null);
   const [role, setRole] = useState<Role>('member');
   const [suggestions, setSuggestions] = useState<SuggestedUser[]>([]);
   const [answer, setAnswer] = useState<SearchAnswer | null>(null);
@@ -134,6 +176,7 @@ export default function InviteMemberForm({
     () => ({
       startOwnerInvite() {
         setRole('owner');
+        setTarget('person');
         // To its top, so the whole form shows. (jsdom has no scrollIntoView
         // or matchMedia.)
         const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -289,8 +332,34 @@ export default function InviteMemberForm({
     }
   }
 
+  // Groups are offered only once there's one to pick; a group picked and since
+  // deleted (in another tab) reads as nothing picked.
+  const groupsUnread = groupsFailed && !groups;
+  const canInviteGroup =
+    !!onInviteGroup && ((!!groups && groups.length > 0) || (groupsUnread && !!onRetryGroups));
+  const groupMode = canInviteGroup && target === 'group';
+  const pickedGroup = groupMode ? groups?.find((g) => g.id === groupId) : undefined;
+
+  function switchTarget(next: Target) {
+    setTarget(next);
+    setGroupResult(null);
+  }
+
+  async function submitGroup() {
+    if (!pickedGroup || !onInviteGroup) return;
+    setGroupResult(null);
+    const result = await onInviteGroup({ groupId: pickedGroup.id, role });
+    if (!result) return;
+    setGroupResult(result);
+    setRole('member');
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (groupMode) {
+      await submitGroup();
+      return;
+    }
     if (!term || looksLikeEmail) return;
     const sent = await onInvite({ username: term, role });
     // regression (WIS-307): a refused invite keeps what was typed and the
@@ -319,118 +388,191 @@ export default function InviteMemberForm({
     <Panel
       ref={cardRef}
       title="Invite someone"
-      description="Search for someone by username. They’ll join this wishlist once they accept."
+      description={
+        groupMode
+          ? 'Everyone in the group gets their own invite, and joins once they accept.'
+          : 'Search for someone by username. They’ll join this wishlist once they accept.'
+      }
       className="scroll-mt-20"
     >
-      <form
-        onSubmit={submit}
-        className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_13rem_auto] sm:items-center"
-        autoComplete="off"
-      >
-        {/* Field + suggestions */}
-        <div className="relative">
-          <SearchField
-            ref={inputRef}
-            role="combobox"
-            aria-autocomplete="list"
-            aria-expanded={listShown}
-            aria-controls={listShown ? listboxId : undefined}
-            aria-activedescendant={activeOption ? optionId(active) : undefined}
-            value={value}
-            onChange={(e) => {
-              setValue(e.target.value);
-              setOpen(true);
-              setActive(-1);
-            }}
-            // On a click, not on focus: focus coming back from the promotion's
-            // dialog, or from "Invite a co-owner", shouldn't pop the list open.
-            onClick={() => setOpen(true)}
-            onBlur={close}
-            onKeyDown={onKeyDown}
-            placeholder="Search by username"
-            aria-label="Search by username"
-            required
-            disabled={isInviting}
-            autoComplete="off"
-            autoCapitalize="none"
-            spellCheck={false}
-            aria-describedby={looksLikeEmail ? emailHintId : undefined}
-          />
-          {looksLikeEmail && (
-            <p id={emailHintId} role="status" className="mt-1.5 text-xs text-muted-foreground">
-              {EMAIL_HINT}
-            </p>
-          )}
-
-          {popoverShown && (
-            <div
-              // Keep focus in the field: a click in the list would otherwise
-              // blur it, and the blur close the list before the click lands.
-              onMouseDown={(e) => e.preventDefault()}
-              className={`animate-fade-in absolute left-0 right-0 z-20 mt-2 max-h-80 overflow-auto ${POPOVER_SURFACE}`}
-            >
-              {note !== null && (
-                <p role="status" className={POPOVER_NOTE}>
-                  {note}
+      {canInviteGroup && (
+        <SegmentedControl
+          options={TARGET_OPTIONS}
+          value={target}
+          onChange={switchTarget}
+          ariaLabel="Invite"
+          size="sm"
+          disabled={isInviting}
+          className="mb-3 sm:max-w-64"
+        />
+      )}
+      {groupMode && groupsUnread ? (
+        <LoadError
+          compact
+          level={3}
+          title="Couldn’t load your groups"
+          onRetry={() => onRetryGroups?.()}
+        />
+      ) : (
+        <form
+          onSubmit={submit}
+          className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_13rem_auto] sm:items-center"
+          autoComplete="off"
+        >
+          {groupMode ? (
+            <Select
+              value={pickedGroup?.id ?? ''}
+              onChange={(v) => {
+                setGroupId(v);
+                setGroupResult(null);
+              }}
+              options={(groups ?? []).map((g) => ({
+                value: g.id,
+                label: `${g.name} · ${plural(g.members.length, 'person', 'people')}`,
+              }))}
+              ariaLabel="Group"
+              placeholder="Choose a group"
+              size="lg"
+              disabled={isInviting}
+              triggerClassName="w-full"
+            />
+          ) : (
+            /* Field + suggestions */
+            <div className="relative">
+              <SearchField
+                ref={inputRef}
+                role="combobox"
+                aria-autocomplete="list"
+                aria-expanded={listShown}
+                aria-controls={listShown ? listboxId : undefined}
+                aria-activedescendant={activeOption ? optionId(active) : undefined}
+                value={value}
+                onChange={(e) => {
+                  setValue(e.target.value);
+                  setOpen(true);
+                  setActive(-1);
+                }}
+                // On a click, not on focus: focus coming back from the promotion's
+                // dialog, or from "Invite a co-owner", shouldn't pop the list open.
+                onClick={() => setOpen(true)}
+                onBlur={close}
+                onKeyDown={onKeyDown}
+                placeholder="Search by username"
+                aria-label="Search by username"
+                required
+                disabled={isInviting}
+                autoComplete="off"
+                autoCapitalize="none"
+                spellCheck={false}
+                aria-describedby={looksLikeEmail ? emailHintId : undefined}
+              />
+              {looksLikeEmail && (
+                <p id={emailHintId} role="status" className="mt-1.5 text-xs text-muted-foreground">
+                  {EMAIL_HINT}
                 </p>
               )}
-              {listShown && (
-                <div ref={listRef} id={listboxId} role="listbox" aria-label="People">
-                  {options.map((o, i) => {
-                    if (o.kind === 'promote') return null;
-                    const promote = options[i + 1]?.kind === 'promote' ? i + 1 : -1;
-                    return (
-                      <SuggestionRow
-                        key={o.user.username}
-                        option={o}
-                        optionId={optionId(i)}
-                        isActive={i === active}
-                        onPick={() => choose(o)}
-                        onHover={() => hover(i)}
-                        promote={
-                          promote === -1
-                            ? undefined
-                            : {
-                                optionId: optionId(promote),
-                                isActive: promote === active,
-                                onPick: () => choose(options[promote]),
-                                onHover: () => hover(promote),
-                              }
-                        }
-                      />
-                    );
-                  })}
+
+              {popoverShown && (
+                <div
+                  // Keep focus in the field: a click in the list would otherwise
+                  // blur it, and the blur close the list before the click lands.
+                  onMouseDown={(e) => e.preventDefault()}
+                  className={`animate-fade-in absolute left-0 right-0 z-20 mt-2 max-h-80 overflow-auto ${POPOVER_SURFACE}`}
+                >
+                  {note !== null && (
+                    <p role="status" className={POPOVER_NOTE}>
+                      {note}
+                    </p>
+                  )}
+                  {listShown && (
+                    <div ref={listRef} id={listboxId} role="listbox" aria-label="People">
+                      {options.map((o, i) => {
+                        if (o.kind === 'promote') return null;
+                        const promote = options[i + 1]?.kind === 'promote' ? i + 1 : -1;
+                        return (
+                          <SuggestionRow
+                            key={o.user.username}
+                            option={o}
+                            optionId={optionId(i)}
+                            isActive={i === active}
+                            onPick={() => choose(o)}
+                            onHover={() => hover(i)}
+                            promote={
+                              promote === -1
+                                ? undefined
+                                : {
+                                    optionId: optionId(promote),
+                                    isActive: promote === active,
+                                    onPick: () => choose(options[promote]),
+                                    onHover: () => hover(promote),
+                                  }
+                            }
+                          />
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
           )}
-        </div>
 
-        <SegmentedControl
-          options={ROLE_OPTIONS}
-          value={role}
-          onChange={setRole}
-          ariaLabel="Role"
-          ariaDescribedBy={helperId}
-          disabled={isInviting}
-        />
+          <SegmentedControl
+            options={ROLE_OPTIONS}
+            value={role}
+            onChange={setRole}
+            ariaLabel="Role"
+            ariaDescribedBy={helperId}
+            disabled={isInviting}
+          />
 
-        <p
-          id={helperId}
-          className="text-xs text-muted-foreground sm:col-span-2 sm:col-start-2 sm:row-start-2"
-        >
-          {ROLE_HELPER[role]}
-        </p>
+          <p
+            id={helperId}
+            className="text-xs text-muted-foreground sm:col-span-2 sm:col-start-2 sm:row-start-2"
+          >
+            {ROLE_HELPER[role]}
+          </p>
 
-        <Button
-          type="submit"
-          disabled={isInviting}
-          className="whitespace-nowrap sm:col-start-3 sm:row-start-1"
-        >
-          {isInviting ? 'Inviting…' : 'Invite'}
-        </Button>
-      </form>
+          <Button
+            type="submit"
+            disabled={isInviting || (groupMode && !pickedGroup)}
+            className="whitespace-nowrap sm:col-start-3 sm:row-start-1"
+          >
+            {isInviting ? 'Inviting…' : groupMode ? 'Invite group' : 'Invite'}
+          </Button>
+        </form>
+      )}
+      {groupMode && groupResult && <GroupInviteSummary result={groupResult} />}
     </Panel>
+  );
+}
+
+/**
+ * What a group invite did: who was invited, who wasn't and why (the single
+ * invite's words for each), and how many the rate limit left out.
+ */
+function GroupInviteSummary({ result }: { result: GroupInviteResult }) {
+  const cutShort = groupInviteCutShortNote(result);
+  return (
+    <Callout tone={result.invited.length > 0 ? 'info' : 'warning'} role="status" className="mt-3">
+      <p className="font-medium text-foreground">{groupInviteHeadline(result)}</p>
+      {result.invited.length > 0 && (
+        <p className="mt-1">{result.invited.map(groupPersonLabel).join(', ')}</p>
+      )}
+      {result.skipped.length > 0 && (
+        <>
+          <p className="mt-2 font-medium text-foreground">Not invited ({result.skipped.length})</p>
+          <ul className="mt-1 space-y-0.5">
+            {result.skipped.map((p) => (
+              <li key={p.id}>
+                {groupPersonLabel(p)}: {p.reason}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      {cutShort && <p className="mt-2">{cutShort}</p>}
+    </Callout>
   );
 }
 
