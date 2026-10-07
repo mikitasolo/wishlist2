@@ -25,7 +25,8 @@ import WishlistMember from '@/models/WishlistMember';
  * returned while the gifter may still open that list
  * (`getWishlistViewAccess`'s rules). Otherwise it's `null`. A list archived
  * out of their reach says only that (`listArchived`), and its reservation is
- * frozen: nothing live of the item either (WIS-124). (The gift history reads
+ * frozen: nothing live of the item either (WIS-124), as is one on any list
+ * they can't open, whatever the reason (WIS-295). (The gift history reads
  * nothing of the live list: `test/api/reservations.test.ts`.)
  */
 
@@ -462,7 +463,8 @@ describe('GET /api/users/me/reservations — the live item’s link and notes (W
       await removeGifter(id);
       expect(await details()).toEqual(NONE);
       const [row] = await read();
-      expect(row.stillReserved).toBe(true);
+      // Frozen, like an archived list's (WIS-295).
+      expect(row.stillReserved).toBe(null);
       expect((row as Row & { wishlistOwnerUsername?: unknown }).wishlistOwnerUsername).toBe(null);
     });
 
@@ -532,8 +534,8 @@ describe('GET /api/users/me/reservations — a reservation on an archived list i
   // A gifter the list was hidden from already (kicked from a private list, say)
   // isn't told it was archived, or unarchived: that would let them follow what
   // its owners do with a list they can't open, and tell an archived list from a
-  // deleted one. Their read is the same either way. (Whether it should keep the
-  // live item status at all is WIS-295.)
+  // deleted one. Their read is the same either way, and frozen (WIS-295: see
+  // below).
   it.each([
     ['removed from a private list', { visibility: 'private' }, removeGifter],
     [
@@ -583,6 +585,152 @@ describe('GET /api/users/me/reservations — a reservation on an archived list i
     const [row] = await read(coOwner);
     expect(of(row)).toEqual(visible(id));
     expect(liveItem(row)).toEqual({ itemStatus: 'booked', stillReserved: true });
+  });
+});
+
+describe('GET /api/users/me/reservations — a reservation on a list the gifter can no longer open is frozen', () => {
+  /** The ways a gifter loses a list, each leaving their reservation on it. */
+  const LOSE_ACCESS: Record<string, () => Promise<string>> = {
+    'they left a private list': async () => {
+      const id = await list({ visibility: 'private' });
+      await book(id);
+      await removeGifter(id);
+      return id;
+    },
+    'they were kicked from a friends-only list': async () => {
+      const id = await list({ visibility: 'friends' });
+      await book(id);
+      await removeGifter(id);
+      return id;
+    },
+    'the public list they left was made private': async () => {
+      const id = await list({ visibility: 'everyone' });
+      await book(id);
+      await removeGifter(id);
+      expect(await shown()).toEqual(visible(id));
+      await ownerEdits(id, { visibility: 'private' });
+      return id;
+    },
+    'their friendship with its owner ended': async () => {
+      await befriend(gifter, owner);
+      const id = await list({ visibility: 'friends', member: false });
+      await book(id);
+      await Follow.deleteMany({
+        $or: [
+          { follower: owner, following: gifter },
+          { follower: gifter, following: owner },
+        ],
+      });
+      return id;
+    },
+    'they were kicked, and it was archived since': async () => {
+      const id = await list({ visibility: 'private' });
+      await book(id);
+      await removeGifter(id);
+      await ownerEdits(id, { archived: true });
+      return id;
+    },
+    'it was deleted': async () => {
+      const id = await list();
+      await book(id);
+      await Wishlist.deleteOne({ _id: id });
+      return id;
+    },
+  };
+
+  // regression (WIS-295): a reservation on a list the gifter could no longer
+  // open (for any reason but archiving alone, which WIS-124 froze) still came
+  // back with the live item's `itemStatus` and `stillReserved`, so the Booked
+  // page kept telling them what its owners did to the item since (received,
+  // drafted, removed). It's frozen now, the same whatever the reason, and never
+  // says it's archived: a list they can't open looks the same either way.
+  describe.each(Object.entries(LOSE_ACCESS))('once %s', (_how, loseAccess) => {
+    it.each(Object.entries(OWNER_ACTIONS))(
+      'regression: says nothing live, whatever the owners %s',
+      async (_label, ownersAct) => {
+        const id = await loseAccess();
+        const item = await Item.findOne({ name: 'Blue Mug' }).lean();
+        await ownersAct();
+
+        const [row] = await read();
+        expect(row).toEqual({
+          _id: expect.any(String),
+          itemId: item!._id.toString(),
+          itemName: 'Blue Mug',
+          itemImage: null,
+          itemPrice: null,
+          wishlistName: 'Birthday',
+          wishlistId: id,
+          wishlistSlug: null,
+          wishlistOccasion: null,
+          wishlistOwnerUsername: null,
+          itemLink: null,
+          itemNotes: null,
+          itemStatus: null,
+          stillReserved: null,
+          listOpen: false,
+          listArchived: false,
+        });
+      }
+    );
+  });
+
+  it('comes back as before once they may open the list again', async () => {
+    const id = await list({ visibility: 'private' });
+    await book(id);
+    await removeGifter(id);
+    await OWNER_ACTIONS['mark it as received']();
+    expect(liveItem((await read())[0])).toEqual({ itemStatus: null, stillReserved: null });
+
+    await WishlistMember.create({ wishlist: id, user: gifter });
+    expect(liveItem((await read())[0])).toEqual({ itemStatus: 'completed', stillReserved: false });
+  });
+
+  // The issue's smaller leak: a reservation that still holds the item's own
+  // blob (booked before snapshots, or its copy failed) lost its thumbnail when
+  // the owners removed or replaced the image, frozen or not. A frozen card
+  // keeps only an image the owners can't change under it.
+  describe('its image', () => {
+    const HOST = 'https://teststore42.public.blob.vercel-storage.com';
+    const ITEM_BLOB = `${HOST}/uploads/${'a'.repeat(24)}/mug.webp`;
+    const SNAPSHOT = `${HOST}/snapshots/mug-copy.webp`;
+    const EXTERNAL = 'https://shop.example/mug.jpg';
+
+    beforeEach(() => {
+      vi.stubEnv('BLOB_READ_WRITE_TOKEN', 'vercel_blob_rw_teststore42_secret');
+    });
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    async function bookWithImage(fields: Record<string, unknown>, image: string) {
+      const id = await list(fields);
+      await book(id);
+      await Reservation.updateOne({ gifter }, { itemImage: image });
+      return id;
+    }
+
+    it.each([
+      ['its snapshot', SNAPSHOT],
+      ['an external URL', EXTERNAL],
+    ])('keeps %s', async (_label, image) => {
+      const id = await bookWithImage({ visibility: 'private' }, image);
+      await removeGifter(id);
+      expect((await read())[0]).toMatchObject({ listOpen: false, itemImage: image });
+    });
+
+    it("regression: leaves out the item's own blob", async () => {
+      const id = await bookWithImage({ visibility: 'private' }, ITEM_BLOB);
+      expect((await read())[0]).toMatchObject({ listOpen: true, itemImage: ITEM_BLOB });
+      await removeGifter(id);
+      expect((await read())[0]).toMatchObject({ listOpen: false, itemImage: null });
+    });
+
+    it("leaves out the item's own blob on an archived list too", async () => {
+      const id = await bookWithImage({ visibility: 'private' }, ITEM_BLOB);
+      await ownerEdits(id, { archived: true });
+      expect((await read())[0]).toMatchObject({ listArchived: true, itemImage: null });
+    });
   });
 });
 

@@ -299,7 +299,13 @@ describe('Release from the Reserved page', () => {
     await Wishlist.updateOne({ _id: wishlistId }, { visibility: 'private' });
 
     const row = await reservationFor('Lego set');
-    expect(row).toMatchObject({ stillReserved: true, listOpen: false, listArchived: false });
+    // Frozen there (WIS-295): nothing live of the item, though it's still theirs.
+    expect(row).toMatchObject({
+      itemStatus: null,
+      stillReserved: null,
+      listOpen: false,
+      listArchived: false,
+    });
     expect(row).not.toHaveProperty('archived');
 
     // A public list they're no longer a member of is open to them.

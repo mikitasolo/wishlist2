@@ -129,6 +129,12 @@ const ARCHIVED = {
   itemStatus: null,
   stillReserved: null,
 };
+/**
+ * A reservation on a list the gifter can't open for any other reason (they
+ * left or were kicked, it was made private, a friendship ended): frozen just
+ * the same (WIS-295), only not marked archived.
+ */
+const CLOSED = { ...ARCHIVED, listArchived: false };
 
 /** What one read of the page's two lists is answered with. */
 interface Lists {
@@ -200,14 +206,11 @@ function mockHeldFetch({
     },
     /**
      * The gifter can no longer open a reservation's list (they left it, and
-     * it was made private since, say), while the item is still booked by them:
-     * the read has no slug or occasion for it, and says only that it isn't
-     * open to them.
+     * it was made private since, say): the read is frozen, with nothing live
+     * of the list or the item, and says only that it isn't open to them.
      */
     closeList(id: string) {
-      lists.reservations = lists.reservations.map((r) =>
-        r._id === id ? { ...r, listOpen: false, wishlistSlug: null, wishlistOccasion: null } : r
-      );
+      lists.reservations = lists.reservations.map((r) => (r._id === id ? { ...r, ...CLOSED } : r));
     },
     /**
      * A reservation's list is archived: the read is frozen, with nothing live
@@ -779,7 +782,7 @@ describe('BookedPage — Release on an active card, Dismiss on a changed one', (
   it('regression: a card on a list no longer available to them says so, and offers Dismiss', async () => {
     mockHeldFetch({
       initial: [
-        { ...reservations[0], listOpen: false, wishlistSlug: null },
+        { ...reservations[0], ...CLOSED },
         // Booked by someone else since: really no longer theirs.
         {
           ...reservations[0],
@@ -1155,25 +1158,34 @@ describe('BookedPage — reading both lists again while the page is open', () =>
   // it, or it was archived or made private), its chip still linked the list by
   // id, and that page sent them home with two error toasts. The reservations
   // read says whether they may still open it (`listOpen`), and the chip names
-  // the list without a link. It says the list is no longer available to them,
-  // unless the card's note already does: one still reserved to them.
+  // the list without a link, and the card's note says it's no longer available
+  // to them, once.
+  //
+  // regression (WIS-295): the read is frozen too, so a card no longer says what
+  // the owners did to the item since ("The owner removed this item").
   it('regression: names a list the gifter can no longer open, with no link to it', async () => {
     const { answerRead } = await renderLoaded();
     expect(listLink('Lego set')).toHaveAttribute('href', '/wishlists/birthday');
+    expect(noteOn('Scarf')).toMatch(/removed/i);
 
     comeBack('focus');
     await answerRead(1, {
-      reservations: listed(
-        reservations.map((r) => ({ ...r, listOpen: false, wishlistSlug: null }))
-      ),
+      reservations: listed(reservations.map((r) => ({ ...r, ...CLOSED }))),
     });
     expect(screen.queryByRole('link', { name: /Birthday/ })).toBeNull();
-    // Detached from its item: the note says why, the chip that the list is gone.
-    expect(noteOn('Scarf')).toMatch(/removed/i);
-    expect(screen.getAllByText('Birthday · no longer available to you')).toHaveLength(1);
-    // Still reserved to them: the note says it, once.
-    expect(noteOn('Lego set')).toBe('This list is no longer available to you');
+    expect(screen.getAllByText('Birthday')).toHaveLength(2);
+    for (const name of ['Lego set', 'Scarf']) {
+      expect(noteOn(name)).toBe('This list is no longer available to you');
+      const buttons = reservationButtons(name);
+      expect(buttons.release).toBeNull();
+      expect(buttons.dismiss).toBeEnabled();
+      expect(buttons.gift).toBeEnabled();
+    }
     expect(screen.getAllByText(/no longer available to you/)).toHaveLength(2);
+    // Nothing of the item, and nothing that tells it from an archived list.
+    expect(document.body.textContent).not.toMatch(
+      /removed|received|draft|no longer reserved|archiv/i
+    );
     // The rest of the card is as it was.
     expect(reservationButtons('Lego set').gift).toBeEnabled();
 
@@ -1986,11 +1998,7 @@ describe('BookedPage — what to give next (WIS-263)', () => {
         changed({ itemStatus: 'booked' }),
         ['Dismiss', 'I gave it anyway'],
       ],
-      [
-        'the list is no longer available',
-        changed({ stillReserved: true, listOpen: false, wishlistSlug: null }),
-        ['I gave it', 'Dismiss'],
-      ],
+      ['the list is no longer available', changed(CLOSED), ['Dismiss', 'I gave it anyway']],
       ['the list was archived', changed(ARCHIVED), ['I gave it', 'Dismiss']],
     ])('%s', async (_note, r, expected) => {
       mockHeldFetch({ initial: [r] });

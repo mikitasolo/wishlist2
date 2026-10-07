@@ -68,15 +68,16 @@ interface Reservation {
   wishlistSlug: string | null;
   /** The live list's occasion, `null` for none or a list the gifter can no longer see. */
   wishlistOccasion: Occasion | null;
-  /** The live item's status, `null` on an archived list. */
+  /** The live item's status, `null` on a list the gifter can't open. */
   itemStatus: string | null;
-  /** The live item is still booked by the gifter (`null` on an archived list). */
+  /** The live item is still booked by the gifter (`null` on a list they can't open). */
   stillReserved: boolean | null;
   /**
    * The gifter can still open the list (never why not, unless it's archived).
    * Still reserved on a list they can open, the card is under "To give" and
    * offers Release; otherwise it needs their confirmation, and offers Dismiss.
-   * A card whose list isn't open names it without a link.
+   * A card whose list isn't open names it without a link, and is frozen: its
+   * snapshot only, with no hint of what has happened to the item since.
    */
   listOpen: boolean;
   /**
@@ -773,17 +774,12 @@ function ListName({ r }: { r: Reservation }) {
       </Link>
     );
   }
-  // A link would only lead to "not available": say so here instead, unless the
-  // note already says why it isn't (still reserved to them, it's the one thing
-  // it says, and on an archived list it says that).
+  // A link would only lead to "not available": the card's note says that
+  // instead ("This list is no longer available to you", or archived).
   return (
     <span className="inline-flex min-w-0 items-center gap-1 text-xs font-medium text-muted-foreground">
       <Icon name="gift" size={12} />
-      <span className="truncate">
-        {r.stillReserved || r.listArchived
-          ? r.wishlistName
-          : `${r.wishlistName} · no longer available to you`}
-      </span>
+      <span className="truncate">{r.wishlistName}</span>
     </span>
   );
 }

@@ -40,10 +40,12 @@ export interface ReservationLiveState extends ReservationStatusInfo {
  * `needsConfirmation`, so the two can never disagree about which need the
  * gifter's confirmation.
  *
- * A reservation on a list that only its archiving hides from the gifter
- * (`listArchived`) is frozen (WIS-124): nothing of what its owners have done
- * to the item since reaches the gifter, so its `itemStatus` and
- * `stillReserved` are `null`.
+ * A reservation on a list the gifter can't open is frozen, whatever the
+ * reason: archived (WIS-124, which says so with `listArchived` when that's all
+ * that hides it), or out of their reach otherwise (they left or were kicked,
+ * it was made private, a friendship ended, it was deleted: WIS-295). Nothing
+ * of what its owners have done to the item since reaches the gifter, so its
+ * `itemStatus` and `stillReserved` are `null`.
  */
 export async function readReservationLiveState(
   gifterId: string,
@@ -67,15 +69,16 @@ export async function readReservationLiveState(
     const entry = wishlists.get(r.wishlist.toString());
     const listArchived = !!entry?.archived;
     const wishlist = entry && !entry.archived ? entry : null;
-    const stillReserved = listArchived
-      ? null
-      : !!it && it.status === 'booked' && it.bookedBy?.toString() === gifterId;
+    // Frozen once the list isn't open to the gifter, for whatever reason
+    // (WIS-124, WIS-295): nothing of what its owners have done to the item
+    // since reaches them.
+    const stillReserved = wishlist
+      ? !!it && it.status === 'booked' && it.bookedBy?.toString() === gifterId
+      : null;
     // Live details only for a card that's still active: theirs, on a list they can open.
-    const live = stillReserved && wishlist ? it : null;
+    const live = stillReserved ? it : null;
     return {
-      // Frozen on an archived list: nothing of what its owners have done to the
-      // item since reaches the gifter.
-      itemStatus: listArchived ? null : it ? it.status : 'deleted',
+      itemStatus: wishlist ? (it ? it.status : 'deleted') : null,
       stillReserved,
       // Whether the gifter may still open the list: `readReservationWishlists`
       // has it (`viewableWishlistsFilter`'s rules). Only their own access, never

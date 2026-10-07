@@ -5,23 +5,30 @@ import Reservation from '@/models/Reservation';
 import User from '@/models/User';
 import { errorKind } from '@/lib/utils/errorKind';
 import { readReservationLiveState } from '@/lib/utils/reservationLiveState';
+import { isOwnBlob, isSnapshotBlob } from '@/lib/utils/blob';
 
 // GET /api/users/me/reservations - the current user's active reservations
 // (gifts they're holding), across all wishlists. Each carries a frozen snapshot
-// and its item's id, plus the live item's current status so the UI can hint
-// when the owner has since completed / drafted / removed it, whether the gifter
-// may still open the list (`listOpen`), and, only while they may, its live slug
+// and its item's id, plus, on a list they may still open, the live item's
+// current status so the UI can hint when the owner has since completed /
+// drafted / removed it, whether the gifter may still open the list
+// (`listOpen`), and, only while they may, its live slug
 // (for the card's link, which falls back to the id), occasion (which the page
 // groups the gifts still to give by) and primary owner's username (which its
 // headings name). While the item is still booked by the gifter on a list they
 // may open, it also carries the live item's link (http(s) only) and notes,
 // which they can read on the list anyway; once it isn't, those are `null`.
 //
-// A reservation on a list that only its archiving hides from the gifter
-// (`listArchived`) is frozen instead (WIS-124): an archived list is its owners'
-// alone, so it comes back as its snapshot only, with no live item status, no
-// `stillReserved` (both `null`), and no slug or occasion, until the list is
-// unarchived.
+// A reservation on a list the gifter can't open, for whatever reason, is
+// frozen instead (WIS-124, WIS-295): it comes back as its snapshot only, with
+// no live item status, no `stillReserved` (both `null`), and no slug or
+// occasion, until they may open the list again. One that only its archiving
+// hides from them says so (`listArchived`); every other one looks the same,
+// whether they left or were kicked, it was made private, a friendship ended or
+// it was deleted (and archived on top of any of those). Its image is the
+// snapshot's own copy, or an external URL; one that's still the item's own
+// blob (booked before snapshots, or its copy failed) is left out, since
+// whether it still loads would tell them what the owners did to the image.
 //
 // A card is active (Release) only while it's still reserved on a list they can
 // open, since the list's own unbook refuses anyone the list is hidden from. A
@@ -70,7 +77,7 @@ export async function GET() {
         // its unbook to.
         itemId: r.item.toString(),
         itemName: r.itemName,
-        itemImage: r.itemImage ?? null,
+        itemImage: listOpen ? (r.itemImage ?? null) : frozenImage(r.itemImage),
         itemPrice: r.itemPrice ?? null,
         wishlistName: r.wishlistName,
         wishlistId: r.wishlist.toString(),
@@ -99,4 +106,14 @@ export async function GET() {
       { status: 500 }
     );
   }
+}
+
+/**
+ * A frozen card's image: its snapshot, or an external URL (which no owner of
+ * the list controls), never the item's own blob in our store, whose deletion
+ * or replacement by the owners would show on the card.
+ */
+function frozenImage(url: string | null | undefined): string | null {
+  if (!url) return null;
+  return isOwnBlob(url) && !isSnapshotBlob(url) ? null : url;
 }
