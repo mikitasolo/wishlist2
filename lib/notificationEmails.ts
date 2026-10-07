@@ -47,6 +47,8 @@ export const EMAIL_LIMITERS: Record<EmailedNotificationType, EmailLimiterName> =
   proposal_approved: 'emailProposalApproved',
   occasion_reminder: 'emailOccasionReminder',
   birthday_reminder: 'emailBirthdayReminder',
+  wishlist_ask: 'emailWishlistAsk',
+  asked_list_made: 'emailAskedListMade',
 };
 
 /**
@@ -58,6 +60,8 @@ const NAMES_ACTOR: ReadonlySet<EmailedNotificationType> = new Set([
   'join_request',
   'invite_accepted',
   'link_join',
+  'wishlist_ask',
+  'asked_list_made',
 ]);
 
 /**
@@ -89,10 +93,13 @@ export interface NotificationEmailArgs {
   linkLabel?: string | null;
 }
 
+/** The emailed types that are about a person, not a list (WIS-324's ask). */
+const ABOUT_A_PERSON: ReadonlySet<EmailedNotificationType> = new Set(['wishlist_ask']);
+
 /**
  * Email `recipients` (already narrowed to those who want this event's email,
  * see `recipientsWanting`) about a notification just written. Every email here
- * is about a list: one with none is skipped. The caller has re-checked the
+ * is about a list, but for an ask (`ABOUT_A_PERSON`): one with none is skipped. The caller has re-checked the
  * list after the rows were written (`createNotifications`' `dropIfWishlistGone`),
  * so none goes out about a list deleted meanwhile.
  */
@@ -100,8 +107,9 @@ export async function emailNotification(
   recipients: string[],
   args: NotificationEmailArgs
 ): Promise<void> {
-  if (recipients.length === 0 || !emailedByNotifications(args.type) || !args.wishlist) return;
+  if (recipients.length === 0 || !emailedByNotifications(args.type)) return;
   const type = args.type;
+  if (!args.wishlist && !ABOUT_A_PERSON.has(type)) return;
   try {
     // The setting again, as a second guard: only those who still want it.
     const users = await User.find({
@@ -114,7 +122,7 @@ export async function emailNotification(
       users.map(async (user) => {
         if (!user.email) return;
         const recipientId = String(user._id);
-        const wishlistId = String(args.wishlist);
+        const wishlistId = args.wishlist ? String(args.wishlist) : null;
         await sendOne(
           user.email,
           {
@@ -130,7 +138,8 @@ export async function emailNotification(
             linkLabel: type === 'link_join' ? (args.linkLabel ?? null) : null,
           },
           DAILY_PER_LIST.has(type)
-            ? () => claimDailyListEmail(type as DailyListEmailKind, recipientId, wishlistId)
+            ? () =>
+                claimDailyListEmail(type as DailyListEmailKind, recipientId, String(args.wishlist))
             : null
         );
       })

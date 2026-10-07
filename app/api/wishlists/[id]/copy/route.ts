@@ -40,6 +40,7 @@ import {
   takeBackCopy,
 } from '@/lib/utils/wishlistCopies';
 import { errorKind } from '@/lib/utils/errorKind';
+import { notifyAskersOfNewList } from '@/lib/utils/wishlistAsks';
 
 // Copying many images runs past the default limit. Lined up with
 // `COPY_IMAGES_BUDGET_MS`, `COPY_STALE_MS` and the dialog's timeout
@@ -378,6 +379,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     } catch (err) {
       console.error(`Marking a list copy finished failed (${errorKind(err)})`);
     }
+
+    // WIS-324: friends who asked for a list, and can open this one, are told.
+    await notifyAskersOfNewList(made, userId, session.user.username ?? null);
 
     return NextResponse.json(
       {

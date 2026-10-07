@@ -16,6 +16,7 @@ import AppHeader from '@/components/AppHeader';
 import AuthButton from '@/components/AuthButton';
 import Avatar from '@/components/Avatar';
 import Button from '@/components/Button';
+import CreateWishlistModal from '@/components/CreateWishlistModal';
 import EmptyState from '@/components/EmptyState';
 import FollowListModal from '@/components/FollowListModal';
 import Icon from '@/components/Icon';
@@ -105,6 +106,8 @@ export default function ActivityPage() {
   // "You're all caught up".
   const [feedFailed, setFeedFailed] = useState(false);
   const [followersOpen, setFollowersOpen] = useState(false);
+  // A friend's ask for a wishlist (WIS-324) is answered by making one.
+  const [createOpen, setCreateOpen] = useState(false);
   // Follow backs in flight, per person.
   const { busy: followBusy, run: runFollow } = useBusyIds();
   // The account the feed is for: a read or a follow back started for another
@@ -321,6 +324,16 @@ export default function ActivityPage() {
               Follow back
             </Button>
           )}
+          {n.type === 'wishlist_ask' && (
+            <Button
+              size="sm"
+              variant="soft"
+              className="relative z-10 flex-shrink-0"
+              onClick={() => setCreateOpen(true)}
+            >
+              Create a list
+            </Button>
+          )}
           {!n.read && (
             <span
               className="h-2 w-2 flex-shrink-0 rounded-full bg-primary-500"
@@ -414,6 +427,7 @@ export default function ActivityPage() {
           onClose={() => setFollowersOpen(false)}
         />
       )}
+      <CreateWishlistModal isOpen={createOpen} onClose={() => setCreateOpen(false)} />
     </div>
   );
 }

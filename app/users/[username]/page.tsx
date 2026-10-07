@@ -20,6 +20,7 @@ import GlobalSearch from '@/components/GlobalSearch';
 import Badge from '@/components/Badge';
 import LoadError from '@/components/LoadError';
 import EmptyState from '@/components/EmptyState';
+import AskForWishlist from '@/components/AskForWishlist';
 import { buttonClassName, CONTROL_ICON_SIZE } from '@/components/buttonStyles';
 import { Skeleton, SkeletonGrid, WISHLIST_GRID_CLASSES } from '@/components/Skeleton';
 import { useToast } from '@/components/ToastProvider';
@@ -468,6 +469,16 @@ export default function UserProfile() {
               : {
                   title: 'No wishlists to show',
                   body: `${profile ? `@${profile.username}` : 'This person'} hasn’t shared any wishlists with you yet.`,
+                  // WIS-324: a friend can ask them to make one.
+                  ...(profile?.isFriend && {
+                    actions: (
+                      <AskForWishlist
+                        userId={profile._id}
+                        username={profile.username}
+                        onStale={() => setAttempt((n) => n + 1)}
+                      />
+                    ),
+                  }),
                 })}
           />
         ) : (

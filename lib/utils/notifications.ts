@@ -22,6 +22,8 @@ export const NOTIFICATION_TYPES = [
   'occasion_reminder',
   'link_join',
   'birthday_reminder',
+  'wishlist_ask',
+  'asked_list_made',
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
@@ -98,6 +100,10 @@ const ACTOR_TYPES: ReadonlySet<NotificationType> = new Set([
   'link_join',
   // Whose birthday it is: a friend of the recipient's, who could see it.
   'birthday_reminder',
+  // WIS-324: the friend who asked you for a wishlist, and the friend who made
+  // the one you asked for.
+  'wishlist_ask',
+  'asked_list_made',
 ]);
 
 /** Whether a notification of `type` may show its actor (see `ACTOR_TYPES`). */
@@ -237,6 +243,12 @@ export function notificationParts(n: NotificationView): NotificationPart[] {
     // (lib/utils/birthdayReminders.ts): about the person, never a list.
     case 'birthday_reminder':
       return [birthdayReminderText(n)];
+    // To the person asked only (WIS-324), naming the friend who asked.
+    case 'wishlist_ask':
+      return [`${actor(n)} wants to know what you’d like`];
+    // To an asker only, and only while they could open the list (WIS-324).
+    case 'asked_list_made':
+      return [`${actor(n)} made a wishlist you asked for: `, list(n)];
     default:
       return ['You have a new notification'];
   }
@@ -317,11 +329,13 @@ export function notificationLink(
     case 'proposal_approved':
     case 'role_changed':
     case 'occasion_reminder':
+    case 'asked_list_made':
       return listLink(n);
     case 'removed_from_wishlist':
       return null;
-    // Their profile, not a list.
+    // Their profile, not a list (an ask's Create a list is its own button).
     case 'birthday_reminder':
+    case 'wishlist_ask':
       return n.actorUsername ? profileHref(n.actorUsername) : '/notifications';
     // The list's People tab: its Requests, and its members and share links.
     case 'join_request':
@@ -359,6 +373,9 @@ export function notificationIcon(n: NotificationView): IconName {
       return 'calendar';
     case 'birthday_reminder':
       return 'gift';
+    case 'wishlist_ask':
+    case 'asked_list_made':
+      return 'list';
     default:
       return 'bell';
   }

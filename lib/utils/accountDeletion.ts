@@ -11,6 +11,7 @@ import Follow from '@/models/Follow';
 import ShareLink from '@/models/ShareLink';
 import WishlistLinkBlock from '@/models/WishlistLinkBlock';
 import WishlistCopy from '@/models/WishlistCopy';
+import WishlistAsk from '@/models/WishlistAsk';
 import { clearJoinRequestNotifications } from '@/lib/utils/joinRequests';
 import Notification from '@/models/Notification';
 import { ownedByFilter } from '@/lib/utils/wishlistOwners';
@@ -48,7 +49,7 @@ import { eraseGroupsOf } from '@/lib/utils/peopleGroups';
  *      `deleteGiftLogs`), freeing their snapshots.
  *   5. Its invites, requests to join (with the owners' `join_request`
  *      notifications about them), follows, groups (its own and its place in others') and notifications (its own, and any that name it as
- *      their actor), the record of notification emails sent to it, its proposals' link back to it, its dashboard pins, and its name on the share links it made.
+ *      their actor), the record of notification emails sent to it, its proposals' link back to it, its dashboard pins, its name on the share links it made, and its asks for a wishlist, made or received.
  *   6. Its uploads, once nothing points at them any more.
  *   7. Its sign-in accounts and verification tokens, and its sessions again.
  *   8. Steps 2–6 once more, for anything a request already in flight when the
@@ -178,6 +179,9 @@ async function eraseHoldings(userId: string, agreed: ReadonlySet<string>): Promi
     if (!(await Wishlist.exists({ _id: wishlist }))) await Item.deleteMany({ wishlist });
   }
   await WishlistCopy.deleteMany({ user: uid });
+  // Asks for a wishlist (WIS-324), made or received. The notifications they
+  // sent name the asker (or the list's maker) as their actor, so went above.
+  await WishlistAsk.deleteMany({ $or: [{ asker: uid }, { person: uid }] });
 }
 
 /**
