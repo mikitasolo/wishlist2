@@ -392,7 +392,7 @@ export default function InviteMemberForm({
           ariaLabel="Invite"
           size="sm"
           disabled={isInviting}
-          className="mb-3"
+          className="mb-3 sm:max-w-64"
         />
       )}
       <form
