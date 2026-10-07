@@ -22,7 +22,19 @@ vi.mock('next/navigation', () => ({
   usePathname: () => '/booked',
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
 }));
-vi.mock('@/components/GlobalSearch', () => ({ default: () => null }));
+// A stand-in that opens and closes like the real search, for the header's sake.
+vi.mock('@/components/GlobalSearch', () => ({
+  default: ({ onOpenChange }: { onOpenChange?: (open: boolean) => void }) => (
+    <>
+      <button type="button" onClick={() => onOpenChange?.(true)}>
+        Open search
+      </button>
+      <button type="button" onClick={() => onOpenChange?.(false)}>
+        Close search
+      </button>
+    </>
+  ),
+}));
 vi.mock('@/components/AppNav', () => ({ HeaderNav: () => null, TabBar: () => null }));
 vi.mock('@/lib/hooks/useUnreadNotifications', () => ({ useUnreadNotifications: () => 0 }));
 
@@ -131,7 +143,7 @@ describe('the header switch', () => {
     const toggle = screen.getByRole('switch', { name: 'No spoiler mode' });
     expect(toggle).toHaveAttribute('aria-checked', 'false');
     expect(toggle).toHaveAttribute('title', 'Turn on no spoiler mode');
-    // The name is on the pill too, from sm up.
+    // The name is on the pill too, from md up.
     expect(toggle).toHaveTextContent('No spoiler mode');
 
     await user.click(toggle);
@@ -160,6 +172,24 @@ describe('the header switch', () => {
     expect(
       screen.getByText('No spoiler mode is off. Your reservations show again.')
     ).toBeInTheDocument();
+  });
+
+  // regression: from `sm` up the switch showed its name, and beside the links
+  // (or the open search) the header came out wider than a 640px screen, which
+  // scrolled sideways and pushed the account button off it (WIS-355). The name
+  // now shows from `md` up, and below `lg` steps aside while the search is open.
+  it('drops its name below lg while the search is open, and gets it back when it closes', async () => {
+    const user = userEvent.setup();
+    render(<AppHeader actions={<AuthButton />} />, { wrapper: ToastProvider });
+    const name = () =>
+      within(screen.getByRole('switch', { name: 'No spoiler mode' })).getByText('No spoiler mode');
+    expect(name()).not.toHaveClass('max-lg:hidden');
+
+    await user.click(screen.getByRole('button', { name: 'Open search' }));
+    expect(name()).toHaveClass('max-md:hidden', 'max-lg:hidden');
+
+    await user.click(screen.getByRole('button', { name: 'Close search' }));
+    expect(name()).not.toHaveClass('max-lg:hidden');
   });
 
   it('is not in the account menu', async () => {
