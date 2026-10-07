@@ -5,7 +5,7 @@ import Reservation from '@/models/Reservation';
 import User from '@/models/User';
 import { errorKind } from '@/lib/utils/errorKind';
 import { readReservationLiveState } from '@/lib/utils/reservationLiveState';
-import { isOwnBlob, isSnapshotBlob } from '@/lib/utils/blob';
+import { frozenImage } from '@/lib/utils/blob';
 
 // GET /api/users/me/reservations - the current user's active reservations
 // (gifts they're holding), across all wishlists. Each carries a frozen snapshot
@@ -106,14 +106,4 @@ export async function GET() {
       { status: 500 }
     );
   }
-}
-
-/**
- * A frozen card's image: its snapshot, or an external URL (which no owner of
- * the list controls), never the item's own blob in our store, whose deletion
- * or replacement by the owners would show on the card.
- */
-function frozenImage(url: string | null | undefined): string | null {
-  if (!url) return null;
-  return isOwnBlob(url) && !isSnapshotBlob(url) ? null : url;
 }

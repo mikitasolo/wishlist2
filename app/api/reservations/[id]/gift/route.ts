@@ -5,7 +5,7 @@ import Reservation from '@/models/Reservation';
 import GiftLog from '@/models/GiftLog';
 import User from '@/models/User';
 import { isObjectIdParam } from '@/lib/utils/objectId';
-import { serializeGiftLog } from '@/lib/utils/giftHistory';
+import { giftLogImage, serializeGiftLog } from '@/lib/utils/giftHistory';
 
 // POST /api/reservations/[id]/gift - mark a reservation as gifted. Writes a
 // permanent GiftLog entry from the reservation's snapshot and removes the
@@ -39,14 +39,19 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     let entry;
     try {
-      // Snapshot the recipient's username at gift time (best-effort).
-      const recipient = await User.findById(reservation.owner).select('username');
+      // Snapshot the recipient's username at gift time (best-effort), and the
+      // image the entry may keep: on a list the gifter can't open, never the
+      // item's own blob (`giftLogImage`, WIS-359).
+      const [recipient, itemImage] = await Promise.all([
+        User.findById(reservation.owner).select('username'),
+        giftLogImage(session.user.id, reservation),
+      ]);
 
       entry = await GiftLog.create({
         gifter: session.user.id,
         giftedAt: new Date(),
         itemName: reservation.itemName,
-        itemImage: reservation.itemImage ?? null,
+        itemImage,
         itemPrice: reservation.itemPrice ?? null,
         recipient: reservation.owner,
         recipientUsername: recipient?.username ?? null,

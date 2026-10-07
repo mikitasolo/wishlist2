@@ -201,6 +201,18 @@ export function isSnapshotBlob(url: string | null | undefined): url is string {
 }
 
 /**
+ * The image a gifter's frozen record of an item may show (WIS-295, WIS-359):
+ * its snapshot, or an external URL (which no owner of the list controls), never
+ * the item's own blob in our store (a booking from before snapshots, or one
+ * whose copy failed), whose deletion or replacement by the owners would show.
+ * Only ever leaves the URL out: the blob is the item's, never freed for this.
+ */
+export function frozenImage(url: string | null | undefined): string | null {
+  if (!url) return null;
+  return isOwnBlob(url) && !isSnapshotBlob(url) ? null : url;
+}
+
+/**
  * The image URL to freeze onto a new reservation: a fresh snapshot copy of
  * `url` when it's one of our blobs, or `url` itself when it's external (we never
  * delete those, so there's nothing to protect) or empty.
