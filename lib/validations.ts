@@ -241,6 +241,15 @@ export const inviteMemberSchema = z.object({
   role: wishlistRoleSchema.optional().default('member'),
 });
 
+// Inviting one of your groups to a list (WIS-37): one ordinary invite per
+// person in it, all with the same role. The id's shape is checked where the
+// group is read (`groupMemberIds`), so a malformed one is the same 404 as
+// someone else's group.
+export const inviteGroupSchema = z.object({
+  groupId: z.string().min(1).max(64),
+  role: wishlistRoleSchema.optional().default('member'),
+});
+
 // An owner's answer to a request to join their list (WIS-275): Invite issues a
 // member invite, Decline ends it without telling anyone.
 export const joinRequestAnswerSchema = z.object({

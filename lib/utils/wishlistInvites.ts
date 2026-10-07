@@ -54,6 +54,23 @@ export const PENDING_INVITE_CAP_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 /** What the invite routes answer when `issueWishlistInvite` returns `'capped'`. */
 export const PENDING_INVITE_CAP_ERROR = 'This person has too many pending invitations right now';
 
+/**
+ * Why one person wasn't invited, as `POST /members` answers it and as a group
+ * invite (`POST /members/group`, WIS-37) reports each person it skipped: one
+ * wording for both, so a skip in a group's result reads as that person's single
+ * invite would have.
+ */
+export const INVITE_REFUSAL = {
+  nobody: 'This person isn’t accepting wishlist invites.',
+  friendsOnly: 'This person only accepts invites from friends.',
+  owner: 'This person already owns this wishlist',
+  member: 'This person is already a member',
+  /** An owner invite to a member: that's a promotion, from their row. */
+  memberAsOwner: 'This person is already a member — promote them from the members list',
+  pending: 'This person already has a pending invite',
+  capped: PENDING_INVITE_CAP_ERROR,
+} as const;
+
 /** The 429 for an invitee at the cap: the cap's own wording, and nothing else about them. */
 export function pendingInviteCapResponse() {
   return NextResponse.json({ success: false, error: PENDING_INVITE_CAP_ERROR }, { status: 429 });

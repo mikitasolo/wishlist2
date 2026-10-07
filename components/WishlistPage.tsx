@@ -17,6 +17,8 @@ import Button from '@/components/Button';
 import SearchField from '@/components/SearchField';
 import Icon from '@/components/Icon';
 import InviteMemberForm, { type InviteMemberFormHandle } from '@/components/InviteMemberForm';
+import { usePeopleGroups } from '@/lib/hooks/usePeopleGroups';
+import type { GroupInviteResult } from '@/lib/utils/groupInviteResult';
 import { listStatusByUsername } from '@/lib/utils/inviteSuggestions';
 import ShareButton from '@/components/ShareButton';
 import Select from '@/components/Select';
@@ -248,6 +250,8 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
   // shown Items whatever the URL says, and their URL is left as it is.
   const [urlTab, chooseTab] = useListTab();
   const tab: ListTab = isOwner ? urlTab : 'items';
+  // Your own groups, for the People tab's invite form (WIS-37): read when it opens.
+  const peopleGroups = usePeopleGroups(tab === 'people');
   const onItems = tab === 'items';
   const tabsId = useId();
   const [sortBy, setSortBy] = useState<SortType>(DEFAULT_WISHLIST_SORT);
@@ -1130,6 +1134,40 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
         console.error('Error inviting user:', error);
         showToast('Failed to send invitation', 'error');
         return false;
+      } finally {
+        setIsInviting(false);
+      }
+    },
+    [apiId, wishlistId, showToast, refreshInvites]
+  );
+
+  // Invite a whole group (WIS-37): one invite per person, answered with who was
+  // invited and who wasn't, which the form shows. A refusal of the whole request
+  // (a group gone, an archived list's member invite) is a toast, as for one person.
+  const handleInviteGroup = useCallback(
+    async (payload: {
+      groupId: string;
+      role: 'owner' | 'member';
+    }): Promise<GroupInviteResult | null> => {
+      if (!wishlistId) return null;
+      setIsInviting(true);
+      try {
+        const response = await fetch(`/api/wishlists/${apiId()}/members/group`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const result = await response.json();
+        if (!result.success) {
+          showToast(result.error || 'Failed to invite the group', 'error');
+          return null;
+        }
+        if (result.data.invited.length > 0) await refreshInvites();
+        return result.data as GroupInviteResult;
+      } catch (error) {
+        console.error('Error inviting a group:', error);
+        showToast('Failed to invite the group', 'error');
+        return null;
       } finally {
         setIsInviting(false);
       }
@@ -2283,6 +2321,8 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
                   ref={inviteFormRef}
                   onInvite={handleInvite}
                   isInviting={isInviting}
+                  groups={peopleGroups.groups}
+                  onInviteGroup={handleInviteGroup}
                   statuses={inviteStatuses}
                   // A member's suggestion makes them a co-owner through the same
                   // confirmation and promotion invite as their Make owner.

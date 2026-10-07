@@ -11,6 +11,7 @@ import { resolveWishlistId } from '@/lib/utils/wishlistSlug';
 import { getOwnerAccess } from '@/lib/utils/wishlistAccess';
 import { isWishlistOwner, ownerIds } from '@/lib/utils/wishlistOwners';
 import {
+  INVITE_REFUSAL,
   isInvitePaused,
   issueWishlistInvite,
   pendingInviteCapResponse,
@@ -188,16 +189,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // Respect the invitee's "who can invite me" preference
     const policy = invitedUser.privacy?.whoCanInvite ?? 'everyone';
     if (policy === 'nobody') {
-      return NextResponse.json(
-        { success: false, error: 'This person isn’t accepting wishlist invites.' },
-        { status: 403 }
-      );
+      return NextResponse.json({ success: false, error: INVITE_REFUSAL.nobody }, { status: 403 });
     }
     if (policy === 'friends') {
       const friends = await areFriends(session.user.id, invitedUser._id.toString());
       if (!friends) {
         return NextResponse.json(
-          { success: false, error: 'This person only accepts invites from friends.' },
+          { success: false, error: INVITE_REFUSAL.friendsOnly },
           { status: 403 }
         );
       }
@@ -205,10 +203,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     // Can't invite an existing owner.
     if (isWishlistOwner(wishlist, invitedUser._id.toString())) {
-      return NextResponse.json(
-        { success: false, error: 'This person already owns this wishlist' },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, error: INVITE_REFUSAL.owner }, { status: 400 });
     }
     // Someone already on the list is promoted, not re-invited — that path is
     // POST /owners/[userId], so it can be driven from the members UI.
@@ -217,10 +212,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json(
         {
           success: false,
-          error:
-            role === 'owner'
-              ? 'This person is already a member — promote them from the members list'
-              : 'This person is already a member',
+          error: role === 'owner' ? INVITE_REFUSAL.memberAsOwner : INVITE_REFUSAL.member,
         },
         { status: 400 }
       );
@@ -258,10 +250,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     });
 
     if (!invite) {
-      return NextResponse.json(
-        { success: false, error: 'This person already has a pending invite' },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, error: INVITE_REFUSAL.pending }, { status: 400 });
     }
     // Too many pending invites already wait for them (WIS-40): nothing was sent.
     if (invite === 'capped') return pendingInviteCapResponse();
