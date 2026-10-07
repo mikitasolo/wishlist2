@@ -8,11 +8,13 @@ import { useDiscreetMode } from '@/lib/hooks/useDiscreetMode';
  * No spoiler mode's switch in the header (discreet mode, WIS-46), one tap from
  * every page: a pill with an eye, the name and a small track. Off it's quiet;
  * on, the eye is struck through, the knob slides over and the pill takes the
- * accent tint. On a phone the name gives way to keep the header on one line,
- * and a tooltip never shows on touch, so each switch says what it did in a
- * toast: often nothing on the page changes to show it (WIS-353).
+ * accent tint. Below `md` the name gives way to keep the header on one line
+ * beside the links (at 640px it didn't fit, WIS-355), and below `lg` the open
+ * search needs its room too, so the header passes `compact` while it's open. A
+ * tooltip never shows on touch, so each switch says what it did in a toast:
+ * often nothing on the page changes to show it (WIS-353).
  */
-export default function NoSpoilerSwitch() {
+export default function NoSpoilerSwitch({ compact = false }: { compact?: boolean }) {
   const { discreet, setDiscreet } = useDiscreetMode();
   const { showToast } = useToast();
 
@@ -45,7 +47,7 @@ export default function NoSpoilerSwitch() {
         size={16}
         className="transition-transform duration-200 group-hover:scale-110 motion-reduce:transition-none"
       />
-      <span className="max-sm:hidden">No spoiler mode</span>
+      <span className={`max-md:hidden ${compact ? 'max-lg:hidden' : ''}`}>No spoiler mode</span>
       <span
         aria-hidden="true"
         className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 motion-reduce:transition-none ${

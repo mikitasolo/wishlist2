@@ -37,8 +37,10 @@ interface AppHeaderProps {
  * 320px phone, so the brand is just its logo there (the link keeps its
  * accessible name) and `AuthButton` just its avatar, beside the round 40px
  * search. None of those can shrink, so a new action has to fit in what's left
- * at 320px (`e2e/header-mobile.authed.spec.ts`). From `sm` up the open search
- * needs the room the links take below `lg`, so they step aside while it's open.
+ * at 320px (`e2e/header-mobile.authed.spec.ts`). No spoiler mode's switch
+ * shows its name only from `md` up, where it fits beside the links (WIS-355).
+ * From `sm` up the open search needs the room the links and that name take
+ * below `lg`, so both step aside while it's open.
  *
  * While the session loads, the row holds the shape it's about to take, so
  * nothing in it moves when the session lands (WIS-209): the signed-in one (the
@@ -80,10 +82,14 @@ export default function AppHeader({ actions, search = true, minimal = false }: A
           </div>
           <div className="flex min-w-0 items-center gap-2 sm:gap-3">
             {signedIn ? (
-              <NoSpoilerSwitch />
+              <NoSpoilerSwitch compact={searchOpen} />
             ) : pending ? (
               // Its place while the session loads, where it's known to be signed in.
-              <Skeleton className="hidden h-10 w-[90px] flex-shrink-0 rounded-full session-hint:block sm:w-52" />
+              <Skeleton
+                className={`hidden h-10 w-[90px] flex-shrink-0 rounded-full session-hint:block ${
+                  searchOpen ? 'lg:w-52' : 'md:w-52'
+                }`}
+              />
             ) : null}
             {search && !minimal && <GlobalSearch onOpenChange={setSearchOpen} />}
             {actions}
