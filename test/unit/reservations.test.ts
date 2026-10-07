@@ -31,17 +31,11 @@ const detachedAvailable = {
   listOpen: true,
   listArchived: false,
 };
-// Still booked by the gifter, on a list they can no longer open (left, and made private since).
+// On a list they can no longer open (left, and made private since, say): frozen
+// like an archived one's (WIS-295), so the read says nothing live of the item.
 const listClosed = {
-  itemStatus: 'booked',
-  stillReserved: true,
-  listOpen: false,
-  listArchived: false,
-};
-// Booked by someone else since, on a list they can no longer open either.
-const takenListClosed = {
-  itemStatus: 'booked',
-  stillReserved: false,
+  itemStatus: null,
+  stillReserved: null,
   listOpen: false,
   listArchived: false,
 };
@@ -57,7 +51,6 @@ describe('needsConfirmation', () => {
     expect(needsConfirmation(detachedAvailable)).toBe(true);
     // Release can't reach a list they can't open, so it needs their confirmation.
     expect(needsConfirmation(listClosed)).toBe(true);
-    expect(needsConfirmation(takenListClosed)).toBe(true);
     // Nor can it reach an archived one, whatever the item's state.
     expect(needsConfirmation(archived)).toBe(true);
   });
@@ -86,10 +79,16 @@ describe('reservationNote', () => {
     expect(reservationNote(listClosed)).not.toMatch(/archiv|reserved/i);
   });
 
-  it('keeps the item-based note when the item really is no longer theirs', () => {
-    expect(reservationNote(takenListClosed)).toBe('No longer reserved to you');
-    expect(reservationNote({ ...deleted, listOpen: false })).toMatch(/removed/i);
-    expect(reservationNote({ ...completed, listOpen: false })).toMatch(/received/i);
+  // regression (WIS-295): on a list they'd lost access to, the note went on
+  // saying what its owners did to the item since (received, drafted, removed,
+  // someone else's now). Such a reservation is frozen: the note says only that
+  // the list isn't available to them, whatever the item's state.
+  it('regression: says nothing of the item on a list they can no longer open', () => {
+    for (const item of [active, deleted, completed, draft, detachedAvailable]) {
+      expect(reservationNote({ ...item, listOpen: false })).toBe(
+        'This list is no longer available to you'
+      );
+    }
   });
 
   // regression (WIS-124): a reservation on an archived list kept hinting at what
@@ -232,15 +231,27 @@ describe('changedCardPrimary (WIS-263)', () => {
     expect(changedCardPrimary({ ...changed, itemStatus })).toBe(expected);
   });
 
-  it('still theirs on a list they can’t open, or frozen on an archived one → gave', () => {
+  // Leaving or being removed frees the booking, so a gift on a list they've
+  // lost (and that says nothing of its item: WIS-295) most likely didn't go
+  // ahead; an archived one most likely still did.
+  it('frozen on a list they can’t open → dismiss, or gave when it was archived', () => {
     expect(
       changedCardPrimary({
-        itemStatus: 'booked',
+        itemStatus: null,
+        stillReserved: null,
+        listOpen: false,
+        listArchived: false,
+      })
+    ).toBe('dismiss');
+    // Even were a live status to come with it, it isn't read.
+    expect(
+      changedCardPrimary({
+        itemStatus: 'completed',
         stillReserved: true,
         listOpen: false,
         listArchived: false,
       })
-    ).toBe('gave');
+    ).toBe('dismiss');
     expect(
       changedCardPrimary({
         itemStatus: null,

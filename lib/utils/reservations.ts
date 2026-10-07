@@ -8,13 +8,14 @@ import { convertPrice, normalizeCurrency } from '@/lib/utils/currency';
 import { NO_UPCOMING_OCCASION, occasionSortKey, type Occasion } from '@/lib/utils/occasion';
 
 export interface ReservationStatusInfo {
-  /** The live item's status: `null` on an archived list, which shows none. */
+  /** The live item's status: `null` on a list the gifter can't open, which shows none. */
   itemStatus: string | null;
-  /** The live item is still booked by the gifter: `null` on an archived list. */
+  /** The live item is still booked by the gifter: `null` on a list they can't open. */
   stillReserved: boolean | null;
   /**
    * The gifter can still open the reservation's list. Only their own access:
    * never why they can't, except that an archived list says so (`listArchived`).
+   * One they can't open is frozen (WIS-124, WIS-295): its snapshot only.
    */
   listOpen: boolean;
   /**
@@ -48,10 +49,9 @@ export function needsConfirmation(r: ReservationStatusInfo): boolean {
 export function reservationNote(r: ReservationStatusInfo): string | null {
   // Frozen: there's no live item to say anything of, only the list's state.
   if (r.listArchived) return 'This list was archived';
-  if (r.stillReserved) {
-    // Still theirs, on a list they can't open: say only that, never why.
-    return r.listOpen ? null : 'This list is no longer available to you';
-  }
+  // Any other list they can't open: say only that, never why (WIS-295).
+  if (!r.listOpen) return 'This list is no longer available to you';
+  if (r.stillReserved) return null;
   switch (r.itemStatus) {
     case 'deleted':
       return 'The owner removed this item';
@@ -168,11 +168,16 @@ export function groupByOccasion<T extends OccasionGroupable>(
  *
  * - The owner marked it received: they've had it, so most likely from the gifter.
  * - Removed, moved to draft, or reserved by someone else now: most likely not.
- * - Still theirs on a list they can't open, or frozen on an archived list:
- *   nothing says it didn't go ahead, so it's still the gift they reserved.
+ * - Frozen on an archived list: nothing says it didn't go ahead, so it's
+ *   still the gift they reserved.
+ * - Frozen on a list they can't open for any other reason (WIS-295): most
+ *   often they left or were removed, which frees the booking, so most likely
+ *   not. It says nothing of the item, so it can't tell.
  */
 export function changedCardPrimary(r: ReservationStatusInfo): 'gave' | 'dismiss' {
-  if (r.listArchived || r.stillReserved) return 'gave';
+  if (r.listArchived) return 'gave';
+  if (!r.listOpen) return 'dismiss';
+  if (r.stillReserved) return 'gave';
   return r.itemStatus === 'completed' ? 'gave' : 'dismiss';
 }
 
