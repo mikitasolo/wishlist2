@@ -168,7 +168,9 @@ describe('POST /api/reservations/[id]/gift', () => {
   // The answer used to read the entry's list (for its slug) once the gift was
   // logged, a read that could fail after the gift had landed. Neither it nor
   // the history reads any list, membership or friendship now, so no list read
-  // can change or fail either answer.
+  // can change or fail either answer. (Marking reads the gifter's access to the
+  // list only for an image that's the item's own blob, before the entry is
+  // written: `giftLogImage`, WIS-359.)
   it('answers, and lists the history, without reading any list', async () => {
     const wishlist = await Wishlist.create({
       name: 'Birthday',

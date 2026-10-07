@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import { NextRequest } from 'next/server';
 import { connectTestDB, disconnectTestDB, clearTestDB } from '../db';
 
@@ -14,6 +14,7 @@ import { PATCH as PATCH_ITEM } from '@/app/api/items/[id]/route';
 import { GET as LIST_ITEMS } from '@/app/api/wishlists/[id]/items/route';
 import { GET as LIST_RESERVATIONS } from '@/app/api/users/me/reservations/route';
 import { POST as GIFT } from '@/app/api/reservations/[id]/gift/route';
+import { GET as LIST_GIFTS } from '@/app/api/users/me/gifts/route';
 import { DELETE as DISMISS } from '@/app/api/reservations/[id]/route';
 import User from '@/models/User';
 import Wishlist from '@/models/Wishlist';
@@ -124,7 +125,7 @@ async function reservationFor(itemName: string) {
   return row;
 }
 
-/** "Mark as given" on the Reserved page. */
+/** "Mark as given" on the Reserved page; resolves to the new gift-history entry. */
 async function markGiven(reservationId: string) {
   signIn(gifter);
   const res = await GIFT(
@@ -132,6 +133,7 @@ async function markGiven(reservationId: string) {
     { params: Promise.resolve({ id: reservationId }) }
   );
   expect(res.status).toBe(201);
+  return (await res.json()).data as { _id: string; itemImage: string | null };
 }
 
 async function dismiss(reservationId: string) {
@@ -517,5 +519,112 @@ describe('"Given by you" on the items read (givenByMe)', () => {
       bookedBy: gifter,
       givenByMe: false,
     });
+  });
+});
+
+describe('Mark as given on a frozen card: the image the gift history keeps', () => {
+  const HOST = 'https://teststore42.public.blob.vercel-storage.com';
+  const ITEM_BLOB = `${HOST}/uploads/${'a'.repeat(24)}/lego.webp`;
+  const SNAPSHOT = `${HOST}/snapshots/lego-copy.webp`;
+  const EXTERNAL = 'https://shop.example/lego.jpg';
+
+  beforeEach(() => {
+    vi.stubEnv('BLOB_READ_WRITE_TOKEN', 'vercel_blob_rw_teststore42_secret');
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  /**
+   * The gifter's reservation of an item whose image is our blob, the
+   * reservation showing `image`: the item's own blob stays on one booked
+   * before snapshots, or whose copy failed. (The image is set after booking,
+   * so booking makes no snapshot copy.)
+   */
+  async function bookWithImage(image: string) {
+    const lego = await makeItem('Lego set');
+    await book(gifter, lego);
+    await Item.updateOne({ _id: lego }, { imageUrl: ITEM_BLOB });
+    await Reservation.updateOne({ gifter, item: lego }, { itemImage: image });
+    return lego;
+  }
+
+  /** Off the list, and it's private: out of the gifter's reach (WIS-295). */
+  async function loseAccess() {
+    await WishlistMember.deleteOne({ wishlist: wishlistId, user: gifter });
+    await Wishlist.updateOne({ _id: wishlistId }, { visibility: 'private' });
+  }
+
+  /** Marks the gift; the answer, the stored entry and the history must agree. */
+  async function giveAndRead() {
+    const entry = await markGiven((await reservationFor('Lego set'))._id);
+    const stored = await GiftLog.findById(entry._id).lean();
+    expect(stored?.itemImage ?? null).toBe(entry.itemImage);
+    signIn(gifter);
+    expect((await (await LIST_GIFTS()).json()).data).toEqual([entry]);
+    return entry.itemImage;
+  }
+
+  // regression (WIS-359): a frozen card leaves out an image that's still the
+  // item's own blob (WIS-295), but marking it as given copied that blob into
+  // the GiftLog, so the gift history showed the owners' current image again
+  // (or lost it once they replaced it). The entry keeps none now, and the
+  // blob, which is the item's, stays on the item.
+  it.each([
+    ['out of their reach', loseAccess],
+    ['archived', () => Wishlist.updateOne({ _id: wishlistId }, { archived: true })],
+  ])("regression: leaves out the item's own blob on a list %s", async (_how, freeze) => {
+    const lego = await bookWithImage(ITEM_BLOB);
+    await freeze();
+    expect(await reservationFor('Lego set')).toMatchObject({ listOpen: false });
+
+    expect(await giveAndRead()).toBeNull();
+    expect(await Item.findById(lego).lean()).toMatchObject({ imageUrl: ITEM_BLOB });
+  });
+
+  it.each([
+    ['its snapshot', SNAPSHOT],
+    ['an external URL', EXTERNAL],
+  ])('keeps %s on a list out of their reach, reading no list', async (_label, image) => {
+    await bookWithImage(image);
+    await loseAccess();
+    const { _id } = await reservationFor('Lego set');
+    const listRead = vi.spyOn(Wishlist, 'find');
+    try {
+      const entry = await markGiven(_id);
+      expect(listRead).not.toHaveBeenCalled();
+      expect(entry.itemImage).toBe(image);
+    } finally {
+      listRead.mockRestore();
+    }
+    signIn(gifter);
+    expect((await (await LIST_GIFTS()).json()).data[0].itemImage).toBe(image);
+  });
+
+  // A failed access read never fails the gift: the entry keeps no image, as
+  // for a list out of reach, and the log line carries only the error's kind.
+  it('a failed access read still logs the gift, with no image', async () => {
+    await bookWithImage(ITEM_BLOB);
+    const { _id } = await reservationFor('Lego set');
+    const distinct = vi
+      .spyOn(WishlistMember, 'distinct')
+      .mockRejectedValueOnce(Object.assign(new Error(`read ${gifter}`), { code: 6 }));
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const entry = await markGiven(_id);
+      expect(entry.itemImage).toBeNull();
+      expect(errorLog).toHaveBeenCalledTimes(1);
+      expect(JSON.stringify(errorLog.mock.calls)).not.toContain(gifter);
+    } finally {
+      distinct.mockRestore();
+      errorLog.mockRestore();
+    }
+    expect(await Reservation.countDocuments({ gifter })).toBe(0);
+  });
+
+  it("keeps the item's own blob, as before, on a list they may still open", async () => {
+    await bookWithImage(ITEM_BLOB);
+    expect(await reservationFor('Lego set')).toMatchObject({ listOpen: true });
+    expect(await giveAndRead()).toBe(ITEM_BLOB);
   });
 });

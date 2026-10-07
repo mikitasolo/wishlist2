@@ -1,7 +1,9 @@
 import type { Types } from 'mongoose';
 import GiftLog, { type IGiftLog } from '@/models/GiftLog';
-import Reservation from '@/models/Reservation';
+import Reservation, { type IReservation } from '@/models/Reservation';
 import { errorKind } from '@/lib/utils/errorKind';
+import { isOwnBlob, isSnapshotBlob } from '@/lib/utils/blob';
+import { readReservationWishlists } from '@/lib/utils/reservationWishlists';
 
 // Server-side shaping of the gifter's gift history (`GiftLog`), shared by the
 // routes that return an entry: `GET /api/users/me/gifts` lists them, and
@@ -47,8 +49,40 @@ export async function itemsGivenBy(
 }
 
 /**
+ * The image a new gift-history entry keeps of the reservation it's made from:
+ * the reservation's own, except on a list the gifter can't open (archived
+ * included, as `readReservationWishlists` has it), whose card the Booked page
+ * shows frozen. There it keeps only what that card shows (`frozenImage`): never
+ * the item's own blob, which the owners can still delete or replace, so the
+ * gift history can't show their current image once the gift is marked
+ * (WIS-359). The blob itself stays: it's the item's.
+ *
+ * The list is read only for an image that's the item's own blob (a booking from
+ * before snapshots, or a failed copy), so marking a gift otherwise reads no
+ * list. Read before the entry is written; if the read fails, the entry keeps
+ * no image rather than fail the gift (logged by its kind: the query holds the
+ * gifter's id).
+ */
+export async function giftLogImage(
+  gifterId: string,
+  reservation: Pick<IReservation, 'itemImage' | 'wishlist'>
+): Promise<string | null> {
+  const image = reservation.itemImage || null;
+  if (!image || !isOwnBlob(image) || isSnapshotBlob(image)) return image;
+  try {
+    const lists = await readReservationWishlists(gifterId, [reservation.wishlist]);
+    const list = lists.get(reservation.wishlist.toString());
+    return list && !list.archived ? image : null;
+  } catch (err) {
+    console.error("Reading a gift's list access failed, keeping no image:", errorKind(err));
+    return null;
+  }
+}
+
+/**
  * A gift-history entry as the API returns it: what the entry took when the gift
- * was logged, and its list's id. Nothing in it is read from the live list, so
+ * was logged (its image as `giftLogImage` chose it), and its list's id. Nothing
+ * in it is read from the live list when it's answered, so
  * building it costs no query, and the gift route's answer needs no read after
  * the gift is logged.
  */
