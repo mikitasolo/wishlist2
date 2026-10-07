@@ -86,8 +86,9 @@ beforeEach(async () => {
   session.mockReset();
   sendEmail.mockReset();
 
-  // A legacy account that predates usernames, so it has none.
-  inviterId = (await User.create({ email: INVITER_EMAIL }))._id.toString();
+  // A row with no username: the model no longer allows one (WIS-357), so it's
+  // written raw, to pin that the names below never fall back to the email.
+  inviterId = (await User.collection.insertOne({ email: INVITER_EMAIL })).insertedId.toString();
   friendId = (await User.create({ email: 'friend@x.com', username: 'friend' }))._id.toString();
   memberId = (await User.create({ email: 'carol@x.com', username: 'carol' }))._id.toString();
 

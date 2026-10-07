@@ -237,15 +237,12 @@ describe('who is reminded', () => {
     }
   );
 
-  it('nobody, for a birthday not set, outside the window, or with no username', async () => {
+  it('nobody, for a birthday not set or outside the window', async () => {
     const mia = await friend('mia');
     const ben = await user('ben', { birthday: '2000-10-20' });
     await befriend(ben, mia);
     const cleo = await user('cleo', { birthday: null });
     await befriend(cleo, mia);
-    const dan = await user('dan', { birthday: BIRTHDAY });
-    await User.updateOne({ _id: dan }, { $unset: { username: 1 } });
-    await befriend(dan, mia);
     await User.updateOne({ _id: anna }, { $set: { birthday: null } });
 
     await run();

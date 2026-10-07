@@ -72,7 +72,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       return [
         {
           _id: row._id.toString(),
-          user: { _id: userId, username: user.username ?? null, image: user.image ?? null },
+          user: { _id: userId, username: user.username, image: user.image ?? null },
           createdAt: row.createdAt.toISOString(),
         },
       ];

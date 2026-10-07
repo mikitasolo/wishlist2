@@ -59,7 +59,7 @@ export async function GET() {
         : await User.find({ _id: { $in: ownerIds } })
             .select('username')
             .lean();
-    const usernames = new Map(owners.map((u) => [u._id.toString(), u.username ?? null]));
+    const usernames = new Map(owners.map((u) => [u._id.toString(), u.username]));
 
     const data = reservations.map((r, i) => {
       const { wishlist, itemStatus, stillReserved, listOpen, listArchived, itemLink, itemNotes } =

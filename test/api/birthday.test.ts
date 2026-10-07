@@ -288,14 +288,11 @@ describe('GET /api/users/me/birthdays: friends’ birthdays for Coming up', () =
     expect(JSON.stringify(listed)).not.toMatch(/@x\.com|30th|privacy|bio/);
   });
 
-  it('leaves out friends with no birthday, and friends with no username to name them by', async () => {
+  it('leaves out friends with no birthday', async () => {
     const me = await person('me');
     const anna = await person('anna', { birthday: '2000-03-14' });
     const none = await person('none');
-    const nameless = (
-      await User.create({ email: 'nameless@x.com', birthday: '2000-03-15' })
-    )._id.toString();
-    for (const friend of [anna, none, nameless]) await befriend(me, friend);
+    for (const friend of [anna, none]) await befriend(me, friend);
 
     expect((await birthdaysOf(me)).map((p) => p.username)).toEqual(['anna']);
   });

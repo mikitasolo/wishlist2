@@ -8,7 +8,7 @@ import { plural } from '@/lib/utils/plural';
 /** Someone from the caller's own group, named as everywhere else: never an email. */
 export interface GroupInvitePerson {
   id: string;
-  username: string | null;
+  username: string;
   displayName: string;
 }
 
@@ -21,9 +21,9 @@ export interface GroupInviteResult {
   notInvited: number;
 }
 
-/** "@ann", or the public name of someone with no username yet. */
+/** "@ann": everyone has a username (WIS-357). */
 export function groupPersonLabel(person: GroupInvitePerson): string {
-  return person.username ? `@${person.username}` : person.displayName;
+  return `@${person.username}`;
 }
 
 /** The headline of a group invite's result: how many were invited. */

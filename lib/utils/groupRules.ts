@@ -12,7 +12,7 @@ export const GROUP_MEMBER_LIMIT = 100;
 /** A group as its owner sees it. People are named with `publicDisplayName`, never an email. */
 export interface GroupPerson {
   id: string;
-  username: string | null;
+  username: string;
   displayName: string;
   image: string | null;
 }

@@ -62,8 +62,8 @@ beforeEach(async () => {
   const [a, b, c, e] = await User.create([
     { email: 'ann@x.com', username: 'ann' },
     { email: 'bo@x.com', username: 'bo' },
-    // No username: named by `publicDisplayName`, never by her email.
-    { email: 'cy.secret@x.com' },
+    // Named by `publicDisplayName` (her username), never by her email or `name`.
+    { email: 'cy.secret@x.com', username: 'cy' },
     { email: 'eve@x.com', username: 'eve' },
   ]);
   [ann, bo, cy, eve] = [a, b, c, e].map((u) => u._id.toString());
@@ -164,7 +164,7 @@ describe('managing your groups', () => {
         name: 'Close friends',
         members: [
           { id: bo, username: 'bo', displayName: 'bo', image: null },
-          { id: cy, username: null, displayName: 'Cy', image: null },
+          { id: cy, username: 'cy', displayName: 'cy', image: null },
         ],
       },
     ]);
@@ -260,7 +260,10 @@ describe('limits', () => {
 
   it(`allows ${GROUP_MEMBER_LIMIT} people in a group, racing adds included`, async () => {
     const people = await User.insertMany(
-      Array.from({ length: GROUP_MEMBER_LIMIT + 1 }, (_, i) => ({ email: `p${i}@x.com` }))
+      Array.from({ length: GROUP_MEMBER_LIMIT + 1 }, (_, i) => ({
+        email: `p${i}@x.com`,
+        username: `p${i}`,
+      }))
     );
     await Follow.insertMany(people.map((p) => ({ follower: ann, following: p._id })));
     const family = (await create(ann, 'Family')).body.data.id;

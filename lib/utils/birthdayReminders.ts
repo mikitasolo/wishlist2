@@ -89,17 +89,12 @@ function fallsOn(birthday: string | null | undefined, occasionDate: string): boo
 
 /**
  * The people with a birthday their friends may see, whose next one falls
- * within the reminder window from `today`, nearest first. Someone with no
- * username has no way to be named, so is left out.
+ * within the reminder window from `today`, nearest first.
  */
 export async function birthdaysDueForReminder(today: string): Promise<DueBirthday[]> {
   const offsets = reminderDayOffsets();
   const people = await User.find({
-    $and: [
-      birthdayVisibleFilter('friend'),
-      { birthday: { $in: storedBirthdaysDue(today) } },
-      { username: { $type: 'string', $ne: '' } },
-    ],
+    $and: [birthdayVisibleFilter('friend'), { birthday: { $in: storedBirthdaysDue(today) } }],
   })
     .select('username birthday privacy')
     .lean();
@@ -107,7 +102,7 @@ export async function birthdaysDueForReminder(today: string): Promise<DueBirthda
   const due: DueBirthday[] = [];
   for (const person of people) {
     // The helper's own answer too: the filter is its query form.
-    if (!person.username || !canSeeBirthday(person.privacy as BirthdayPrivacy, 'friend')) continue;
+    if (!canSeeBirthday(person.privacy as BirthdayPrivacy, 'friend')) continue;
     const next = nextOccurrence(person.birthday ?? '', 'yearly', today);
     const days = next === null ? null : daysBetween(today, next);
     if (next === null || days === null || !offsets.includes(days)) continue;
@@ -316,7 +311,7 @@ async function stillDuePerson(
 ): Promise<{ username: string } | null> {
   const person = await User.findById(personId).select('username birthday privacy').lean();
   if (
-    !person?.username ||
+    !person ||
     !canSeeBirthday(person.privacy as BirthdayPrivacy, 'friend') ||
     !fallsOn(person.birthday, occasionDate)
   ) {
