@@ -150,6 +150,37 @@ describe('POST /api/wishlists/[id]/members/group', () => {
     expect(sendEmail).toHaveBeenCalledOnce();
   });
 
+  // Operator decision (2026-10-07): invites go by username only, so a group
+  // never reaches someone a single invite couldn't.
+  it('skips someone with no username, named by their public name, spending no token', async () => {
+    const bo = await person('bo');
+    // `name` comes only from an identity provider, through the adapter, so
+    // it's written as the adapter does, outside the schema.
+    const { insertedId } = await User.collection.insertOne({
+      email: 'sam.ivanov@x.com',
+      name: 'Sam Ivanov',
+    });
+    const nameless = insertedId.toString();
+    const group = await groupOf(ann, 'Family', [nameless, bo]);
+    const { limiter, state } = countingLimiter(10);
+    __setRateLimiters({ invite: limiter });
+
+    const body = await (await inviteGroup({ groupId: group })).json();
+    expect(body.data.invited.map((p: { id: string }) => p.id)).toEqual([bo]);
+    expect(body.data.skipped).toEqual([
+      {
+        id: nameless,
+        username: null,
+        displayName: 'Sam Ivanov',
+        reason: INVITE_REFUSAL.noUsername,
+      },
+    ]);
+    expect(JSON.stringify(body)).not.toContain('sam.ivanov');
+    expect(state.calls).toBe(1);
+    expect(await WishlistInvite.exists({ invitedUser: nameless })).toBeNull();
+    expect(sendEmail).toHaveBeenCalledOnce();
+  });
+
   it('invites a friends-only person who is a friend', async () => {
     const fay = await person('fay', 'friends');
     const group = await groupOf(ann, 'Friends', [fay]);

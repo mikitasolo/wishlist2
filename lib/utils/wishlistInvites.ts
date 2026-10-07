@@ -12,7 +12,7 @@ import { endPendingJoinRequest } from '@/lib/utils/joinRequests';
 
 type Id = string | mongoose.Types.ObjectId;
 
-interface IssueInviteArgs {
+export interface IssueInviteArgs {
   wishlistId: Id;
   wishlistName: string;
   role: IWishlistInvite['role'];
@@ -68,6 +68,11 @@ export const INVITE_REFUSAL = {
   /** An owner invite to a member: that's a promotion, from their row. */
   memberAsOwner: 'This person is already a member — promote them from the members list',
   pending: 'This person already has a pending invite',
+  /**
+   * Invites go by username only: someone without one (only a group can name
+   * them, WIS-37) is never sent one, as no single invite could reach them.
+   */
+  noUsername: 'This person hasn’t picked a username yet',
   capped: PENDING_INVITE_CAP_ERROR,
 } as const;
 

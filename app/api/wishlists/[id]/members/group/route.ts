@@ -6,16 +6,19 @@ import WishlistMember from '@/models/WishlistMember';
 import WishlistInvite, { type IWishlistInvite } from '@/models/WishlistInvite';
 import User from '@/models/User';
 import { inviteGroupSchema, validateRequestBody } from '@/lib/validations';
-import { areFriends } from '@/lib/utils/friends';
 import { resolveWishlistId } from '@/lib/utils/wishlistSlug';
 import { getOwnerAccess } from '@/lib/utils/wishlistAccess';
-import { isWishlistOwner } from '@/lib/utils/wishlistOwners';
 import {
   INVITE_REFUSAL,
   isInvitePaused,
-  issueWishlistInvite,
   withdrawUnlessInviterOwns,
 } from '@/lib/utils/wishlistInvites';
+import {
+  issueInvite,
+  listStandingRefusal,
+  usernameRefusal,
+  whoCanInviteRefusal,
+} from '@/lib/utils/inviteChecks';
 import { groupMemberIds } from '@/lib/utils/peopleGroups';
 import { publicDisplayName } from '@/lib/utils/displayName';
 import type { GroupInvitePerson, GroupInviteResult } from '@/lib/utils/groupInviteResult';
@@ -42,6 +45,8 @@ const listNotFound = () =>
  * owner, a member or with a pending invite, `PENDING_INVITE_CAP`, and one
  * `invite` rate-limit token per person invited. Nothing links the group to the
  * list afterwards: each person accepts or declines their own invite.
+ * The checks are `lib/utils/inviteChecks.ts`, which the single invite uses too.
+ * Someone with no username is skipped (invites go by username only).
  *
  * Answers who was invited and who was skipped, each skip with the single
  * invite's wording for its reason (`INVITE_REFUSAL`), plus `notInvited`: how many
@@ -138,12 +143,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       };
       const skip = (reason: string) => skipped.push({ ...person, reason });
 
-      if (isWishlistOwner(current.wishlist, userId)) {
-        skip(INVITE_REFUSAL.owner);
-        continue;
-      }
-      if (memberSet.has(userId)) {
-        skip(role === 'owner' ? INVITE_REFUSAL.memberAsOwner : INVITE_REFUSAL.member);
+      // Free skips, from what the owner already sees (their group, the People
+      // tab), before any token is spent. Invites go by username only, so someone
+      // without one is never invited, as no single invite could reach them.
+      const upFront =
+        usernameRefusal(user) ??
+        listStandingRefusal(current.wishlist, userId, { isMember: memberSet.has(userId), role });
+      if (upFront) {
+        skip(upFront.error);
         continue;
       }
       if (pendingSet.has(userId)) {
@@ -163,17 +170,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         continue;
       }
 
-      const policy = user.privacy?.whoCanInvite ?? 'everyone';
-      if (policy === 'nobody') {
-        skip(INVITE_REFUSAL.nobody);
-        continue;
-      }
-      if (policy === 'friends' && !(await areFriends(callerId, userId))) {
-        skip(INVITE_REFUSAL.friendsOnly);
+      const refusedByPolicy = await whoCanInviteRefusal(callerId, user);
+      if (refusedByPolicy) {
+        skip(refusedByPolicy.error);
         continue;
       }
 
-      const invite = await issueWishlistInvite({
+      const result = await issueInvite({
         wishlistId: id,
         wishlistName: current.wishlist.name,
         role,
@@ -183,14 +186,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         invitedUserId: user._id,
         invitedUserEmail: user.email,
       });
-      if (!invite) {
-        skip(INVITE_REFUSAL.pending);
+      // Already pending (a racing invite), or at the pending-invite cap.
+      if ('refusal' in result) {
+        skip(result.refusal.error);
         continue;
       }
-      if (invite === 'capped') {
-        skip(INVITE_REFUSAL.capped);
-        continue;
-      }
+      const { invite } = result;
       // As the single invite does: a removal's `cancelInvitesSentBy` may have read
       // the caller's pending invites before this one existed. If they've lost the
       // list, this one is taken back, and so is every other this request issued
