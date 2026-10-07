@@ -95,6 +95,9 @@ const SPECS = {
   uploadRelease: { tokens: 40, window: '10 m', policy: 'fail-open', keyKind: 'user' },
   invite: { tokens: 30, window: '1 h', policy: 'fail-open', keyKind: 'user' },
   follow: { tokens: 60, window: '1 h', policy: 'fail-open', keyKind: 'user' },
+  // Every change to your own groups (WIS-27): private and reaching nobody, so
+  // a generous budget for ticking boxes, not a loop of writes.
+  groups: { tokens: 300, window: '1 h', policy: 'fail-open', keyKind: 'user' },
   // Making a list's share links (WIS-334): each is a way in for anyone holding
   // it, so it's budgeted like an invite. Only creation: edits and revokes, and
   // opening a live link, are never limited.

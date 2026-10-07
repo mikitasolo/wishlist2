@@ -25,6 +25,7 @@ import { cancelInvitesSentBy, cancelPendingInvites } from '@/lib/utils/wishlistI
 import { deleteGiftLogs, deleteReservations } from '@/lib/utils/reservationSnapshots';
 import { deleteOwnBlobs, listUserUploads } from '@/lib/utils/blob';
 import { purgeShareCards } from '@/lib/og/purge';
+import { eraseGroupsOf } from '@/lib/utils/peopleGroups';
 
 /**
  * Deleting an account and everything in it (WIS-276), at once, with no grace
@@ -46,7 +47,7 @@ import { purgeShareCards } from '@/lib/og/purge';
  *   4. Its own reservations and gift history go (`deleteReservations`,
  *      `deleteGiftLogs`), freeing their snapshots.
  *   5. Its invites, requests to join (with the owners' `join_request`
- *      notifications about them), follows and notifications (its own, and any that name it as
+ *      notifications about them), follows, groups (its own and its place in others') and notifications (its own, and any that name it as
  *      their actor), the record of notification emails sent to it, its proposals' link back to it, its dashboard pins, and its name on the share links it made.
  *   6. Its uploads, once nothing points at them any more.
  *   7. Its sign-in accounts and verification tokens, and its sessions again.
@@ -152,6 +153,8 @@ async function eraseHoldings(userId: string, agreed: ReadonlySet<string>): Promi
   await WishlistJoinRequest.deleteMany({ user: uid });
 
   await Follow.deleteMany({ $or: [{ follower: uid }, { following: uid }] });
+  // Its groups (WIS-27), and its place in everyone else's.
+  await eraseGroupsOf(uid);
   await Notification.deleteMany({ $or: [{ user: uid }, { actor: uid }] });
   // Its own record of emails sent, and the birthday reminder emails about it
   // (WIS-345), which hold no list to be deleted with.

@@ -12,6 +12,7 @@ import Avatar from '@/components/Avatar';
 import Icon from '@/components/Icon';
 import ShareButton from '@/components/ShareButton';
 import FollowListModal, { type FollowTab } from '@/components/FollowListModal';
+import TagIntoGroups from '@/components/TagIntoGroups';
 import CreateWishlistModal from '@/components/CreateWishlistModal';
 import Button from '@/components/Button';
 import ConfirmDialog from '@/components/ConfirmDialog';
@@ -397,6 +398,18 @@ export default function UserProfile() {
                   'Follow'
                 )}
               </Button>
+            )}
+            {/* Only people you follow can be in your groups (WIS-27): not
+                until the follow has been saved. */}
+            {profile && !profile.isSelf && profile.isFollowing && !followBusy && (
+              <TagIntoGroups
+                person={{
+                  id: profile._id,
+                  username: profile.username,
+                  displayName: profile.username,
+                  image: profile.image ?? null,
+                }}
+              />
             )}
             <ShareButton
               url={profile ? `/users/${encodeURIComponent(profile.username)}` : undefined}

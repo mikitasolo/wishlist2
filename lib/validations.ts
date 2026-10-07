@@ -51,6 +51,17 @@ function visibleLineName(requiredMessage: string, max: number) {
 
 const wishlistNameSchema = visibleLineName('Wishlist name is required', 100);
 
+/** A group's name (WIS-27): one visible line, like a list's, and short. */
+export const GROUP_NAME_MAX = 40;
+export const groupNameSchema = z.object({
+  name: visibleLineName('Group name is required', GROUP_NAME_MAX),
+});
+
+/** Who to add to a group: someone the caller follows, by id. */
+export const groupMemberSchema = z.object({
+  userId: z.string().max(64),
+});
+
 // A list's occasion. `date` is a plain calendar date, `YYYY-MM-DD`. A one-off's
 // must exist as it is: `2028-02-29` passes, `2027-02-29` and `2026-02-30`
 // don't. A yearly one keeps only its month and day: its year, whatever was sent
