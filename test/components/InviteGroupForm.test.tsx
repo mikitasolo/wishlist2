@@ -102,6 +102,26 @@ describe('InviteMemberForm — groups', () => {
     expect(screen.queryByRole('status')).toBeNull();
   });
 
+  it('says a failed read of the groups failed, with Try again, never as no groups', async () => {
+    const user = userEvent.setup();
+    const onRetryGroups = vi.fn();
+    render(
+      <InviteMemberForm
+        onInvite={vi.fn()}
+        isInviting={false}
+        groups={null}
+        groupsFailed
+        onRetryGroups={onRetryGroups}
+        onInviteGroup={vi.fn()}
+      />
+    );
+    await user.click(screen.getByRole('radio', { name: 'Group' }));
+    expect(screen.getByText('Couldn’t load your groups')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Invite group' })).toBeNull();
+    await user.click(screen.getByRole('button', { name: /try again/i }));
+    expect(onRetryGroups).toHaveBeenCalledOnce();
+  });
+
   it('shows nothing new when the whole request was refused', async () => {
     const user = userEvent.setup();
     const onInviteGroup = vi.fn().mockResolvedValue(null);

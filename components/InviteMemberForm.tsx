@@ -18,6 +18,7 @@ import SearchField from './SearchField';
 import SegmentedControl from './SegmentedControl';
 import Select from './Select';
 import Callout from './Callout';
+import LoadError from './LoadError';
 import { POPOVER_NOTE, POPOVER_OPTION_ROW, POPOVER_SURFACE } from './popoverStyles';
 import {
   INVITE_SEARCH_MIN_CHARS,
@@ -90,6 +91,12 @@ interface InviteMemberFormProps {
    */
   groups?: readonly GroupView[] | null;
   /**
+   * Reading the groups failed: Group is still offered, with the failure and
+   * Try again in place of the picker, never as if there were no groups.
+   */
+  groupsFailed?: boolean;
+  onRetryGroups?: () => void;
+  /**
    * Invite every person in a group, one ordinary invite each. Resolves to what
    * happened to each of them, or null when the whole request was refused (the
    * page says why).
@@ -131,6 +138,8 @@ export default function InviteMemberForm({
   statuses,
   onPromote,
   groups,
+  groupsFailed = false,
+  onRetryGroups,
   onInviteGroup,
   ref,
 }: InviteMemberFormProps) {
@@ -325,7 +334,9 @@ export default function InviteMemberForm({
 
   // Groups are offered only once there's one to pick; a group picked and since
   // deleted (in another tab) reads as nothing picked.
-  const canInviteGroup = !!onInviteGroup && !!groups && groups.length > 0;
+  const groupsUnread = groupsFailed && !groups;
+  const canInviteGroup =
+    !!onInviteGroup && ((!!groups && groups.length > 0) || (groupsUnread && !!onRetryGroups));
   const groupMode = canInviteGroup && target === 'group';
   const pickedGroup = groupMode ? groups?.find((g) => g.id === groupId) : undefined;
 
@@ -395,133 +406,142 @@ export default function InviteMemberForm({
           className="mb-3 sm:max-w-64"
         />
       )}
-      <form
-        onSubmit={submit}
-        className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_13rem_auto] sm:items-center"
-        autoComplete="off"
-      >
-        {groupMode ? (
-          <Select
-            value={pickedGroup?.id ?? ''}
-            onChange={(v) => {
-              setGroupId(v);
-              setGroupResult(null);
-            }}
-            options={(groups ?? []).map((g) => ({
-              value: g.id,
-              label: `${g.name} · ${plural(g.members.length, 'person', 'people')}`,
-            }))}
-            ariaLabel="Group"
-            placeholder="Choose a group"
-            size="lg"
-            disabled={isInviting}
-            triggerClassName="w-full"
-          />
-        ) : (
-          /* Field + suggestions */
-          <div className="relative">
-            <SearchField
-              ref={inputRef}
-              role="combobox"
-              aria-autocomplete="list"
-              aria-expanded={listShown}
-              aria-controls={listShown ? listboxId : undefined}
-              aria-activedescendant={activeOption ? optionId(active) : undefined}
-              value={value}
-              onChange={(e) => {
-                setValue(e.target.value);
-                setOpen(true);
-                setActive(-1);
-              }}
-              // On a click, not on focus: focus coming back from the promotion's
-              // dialog, or from "Invite a co-owner", shouldn't pop the list open.
-              onClick={() => setOpen(true)}
-              onBlur={close}
-              onKeyDown={onKeyDown}
-              placeholder="Search by username"
-              aria-label="Search by username"
-              required
-              disabled={isInviting}
-              autoComplete="off"
-              autoCapitalize="none"
-              spellCheck={false}
-              aria-describedby={looksLikeEmail ? emailHintId : undefined}
-            />
-            {looksLikeEmail && (
-              <p id={emailHintId} role="status" className="mt-1.5 text-xs text-muted-foreground">
-                {EMAIL_HINT}
-              </p>
-            )}
-
-            {popoverShown && (
-              <div
-                // Keep focus in the field: a click in the list would otherwise
-                // blur it, and the blur close the list before the click lands.
-                onMouseDown={(e) => e.preventDefault()}
-                className={`animate-fade-in absolute left-0 right-0 z-20 mt-2 max-h-80 overflow-auto ${POPOVER_SURFACE}`}
-              >
-                {note !== null && (
-                  <p role="status" className={POPOVER_NOTE}>
-                    {note}
-                  </p>
-                )}
-                {listShown && (
-                  <div ref={listRef} id={listboxId} role="listbox" aria-label="People">
-                    {options.map((o, i) => {
-                      if (o.kind === 'promote') return null;
-                      const promote = options[i + 1]?.kind === 'promote' ? i + 1 : -1;
-                      return (
-                        <SuggestionRow
-                          key={o.user.username}
-                          option={o}
-                          optionId={optionId(i)}
-                          isActive={i === active}
-                          onPick={() => choose(o)}
-                          onHover={() => hover(i)}
-                          promote={
-                            promote === -1
-                              ? undefined
-                              : {
-                                  optionId: optionId(promote),
-                                  isActive: promote === active,
-                                  onPick: () => choose(options[promote]),
-                                  onHover: () => hover(promote),
-                                }
-                          }
-                        />
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
-        <SegmentedControl
-          options={ROLE_OPTIONS}
-          value={role}
-          onChange={setRole}
-          ariaLabel="Role"
-          ariaDescribedBy={helperId}
-          disabled={isInviting}
+      {groupMode && groupsUnread ? (
+        <LoadError
+          compact
+          level={3}
+          title="Couldn’t load your groups"
+          onRetry={() => onRetryGroups?.()}
         />
-
-        <p
-          id={helperId}
-          className="text-xs text-muted-foreground sm:col-span-2 sm:col-start-2 sm:row-start-2"
+      ) : (
+        <form
+          onSubmit={submit}
+          className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_13rem_auto] sm:items-center"
+          autoComplete="off"
         >
-          {ROLE_HELPER[role]}
-        </p>
+          {groupMode ? (
+            <Select
+              value={pickedGroup?.id ?? ''}
+              onChange={(v) => {
+                setGroupId(v);
+                setGroupResult(null);
+              }}
+              options={(groups ?? []).map((g) => ({
+                value: g.id,
+                label: `${g.name} · ${plural(g.members.length, 'person', 'people')}`,
+              }))}
+              ariaLabel="Group"
+              placeholder="Choose a group"
+              size="lg"
+              disabled={isInviting}
+              triggerClassName="w-full"
+            />
+          ) : (
+            /* Field + suggestions */
+            <div className="relative">
+              <SearchField
+                ref={inputRef}
+                role="combobox"
+                aria-autocomplete="list"
+                aria-expanded={listShown}
+                aria-controls={listShown ? listboxId : undefined}
+                aria-activedescendant={activeOption ? optionId(active) : undefined}
+                value={value}
+                onChange={(e) => {
+                  setValue(e.target.value);
+                  setOpen(true);
+                  setActive(-1);
+                }}
+                // On a click, not on focus: focus coming back from the promotion's
+                // dialog, or from "Invite a co-owner", shouldn't pop the list open.
+                onClick={() => setOpen(true)}
+                onBlur={close}
+                onKeyDown={onKeyDown}
+                placeholder="Search by username"
+                aria-label="Search by username"
+                required
+                disabled={isInviting}
+                autoComplete="off"
+                autoCapitalize="none"
+                spellCheck={false}
+                aria-describedby={looksLikeEmail ? emailHintId : undefined}
+              />
+              {looksLikeEmail && (
+                <p id={emailHintId} role="status" className="mt-1.5 text-xs text-muted-foreground">
+                  {EMAIL_HINT}
+                </p>
+              )}
 
-        <Button
-          type="submit"
-          disabled={isInviting || (groupMode && !pickedGroup)}
-          className="whitespace-nowrap sm:col-start-3 sm:row-start-1"
-        >
-          {isInviting ? 'Inviting…' : groupMode ? 'Invite group' : 'Invite'}
-        </Button>
-      </form>
+              {popoverShown && (
+                <div
+                  // Keep focus in the field: a click in the list would otherwise
+                  // blur it, and the blur close the list before the click lands.
+                  onMouseDown={(e) => e.preventDefault()}
+                  className={`animate-fade-in absolute left-0 right-0 z-20 mt-2 max-h-80 overflow-auto ${POPOVER_SURFACE}`}
+                >
+                  {note !== null && (
+                    <p role="status" className={POPOVER_NOTE}>
+                      {note}
+                    </p>
+                  )}
+                  {listShown && (
+                    <div ref={listRef} id={listboxId} role="listbox" aria-label="People">
+                      {options.map((o, i) => {
+                        if (o.kind === 'promote') return null;
+                        const promote = options[i + 1]?.kind === 'promote' ? i + 1 : -1;
+                        return (
+                          <SuggestionRow
+                            key={o.user.username}
+                            option={o}
+                            optionId={optionId(i)}
+                            isActive={i === active}
+                            onPick={() => choose(o)}
+                            onHover={() => hover(i)}
+                            promote={
+                              promote === -1
+                                ? undefined
+                                : {
+                                    optionId: optionId(promote),
+                                    isActive: promote === active,
+                                    onPick: () => choose(options[promote]),
+                                    onHover: () => hover(promote),
+                                  }
+                            }
+                          />
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          <SegmentedControl
+            options={ROLE_OPTIONS}
+            value={role}
+            onChange={setRole}
+            ariaLabel="Role"
+            ariaDescribedBy={helperId}
+            disabled={isInviting}
+          />
+
+          <p
+            id={helperId}
+            className="text-xs text-muted-foreground sm:col-span-2 sm:col-start-2 sm:row-start-2"
+          >
+            {ROLE_HELPER[role]}
+          </p>
+
+          <Button
+            type="submit"
+            disabled={isInviting || (groupMode && !pickedGroup)}
+            className="whitespace-nowrap sm:col-start-3 sm:row-start-1"
+          >
+            {isInviting ? 'Inviting…' : groupMode ? 'Invite group' : 'Invite'}
+          </Button>
+        </form>
+      )}
       {groupMode && groupResult && <GroupInviteSummary result={groupResult} />}
     </Panel>
   );

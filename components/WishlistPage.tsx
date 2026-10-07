@@ -19,6 +19,9 @@ import Icon from '@/components/Icon';
 import InviteMemberForm, { type InviteMemberFormHandle } from '@/components/InviteMemberForm';
 import { usePeopleGroups } from '@/lib/hooks/usePeopleGroups';
 import type { GroupInviteResult } from '@/lib/utils/groupInviteResult';
+
+/** How long the page waits on a group invite (its route may take up to 60s). */
+const GROUP_INVITE_TIMEOUT_MS = 65_000;
 import { listStatusByUsername } from '@/lib/utils/inviteSuggestions';
 import ShareButton from '@/components/ShareButton';
 import Select from '@/components/Select';
@@ -1152,12 +1155,17 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
       if (!wishlistId) return null;
       setIsInviting(true);
       try {
-        const response = await fetch(`/api/wishlists/${apiId()}/members/group`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-        const result = await response.json();
+        // Bounded a little past the route's own `maxDuration` (60s): one invite
+        // per person, one after another, so it can take a while.
+        const result = await withRequestTimeout(async (signal) => {
+          const response = await fetch(`/api/wishlists/${apiId()}/members/group`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+            signal,
+          });
+          return response.json();
+        }, GROUP_INVITE_TIMEOUT_MS);
         if (!result.success) {
           showToast(result.error || 'Failed to invite the group', 'error');
           return null;
@@ -1166,7 +1174,12 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
         return result.data as GroupInviteResult;
       } catch (error) {
         console.error('Error inviting a group:', error);
-        showToast('Failed to invite the group', 'error');
+        showToast(
+          error instanceof RequestTimeoutError ? error.message : 'Failed to invite the group',
+          'error'
+        );
+        // Some invites may have gone out before it failed: Invited shows them.
+        void refreshInvites();
         return null;
       } finally {
         setIsInviting(false);
@@ -2322,6 +2335,8 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
                   onInvite={handleInvite}
                   isInviting={isInviting}
                   groups={peopleGroups.groups}
+                  groupsFailed={peopleGroups.failed}
+                  onRetryGroups={peopleGroups.retry}
                   onInviteGroup={handleInviteGroup}
                   statuses={inviteStatuses}
                   // A member's suggestion makes them a co-owner through the same

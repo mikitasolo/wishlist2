@@ -20,6 +20,10 @@ import { groupMemberIds } from '@/lib/utils/peopleGroups';
 import { publicDisplayName } from '@/lib/utils/displayName';
 import type { GroupInvitePerson, GroupInviteResult } from '@/lib/utils/groupInviteResult';
 
+// One invite (and its email) per person, one after another: up to the `invite`
+// budget of them (30), so more time than a single invite gets.
+export const maxDuration = 60;
+
 const notOwnerError = () =>
   NextResponse.json(
     { success: false, error: 'Unauthorized - Owner access required' },
@@ -100,30 +104,23 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       );
     }
 
-    const users = await User.find({ _id: { $in: memberIds } })
-      .select('username name email privacy')
-      .lean();
+    // Who's a member or has a pending invite is what the owner already sees on
+    // the People tab, so it's checked for everyone up front without spending an
+    // invite token on them.
+    const [users, members, pending] = await Promise.all([
+      User.find({ _id: { $in: memberIds } })
+        .select('username name email privacy')
+        .lean(),
+      WishlistMember.find({ wishlist: id, user: { $in: memberIds } })
+        .select('user')
+        .lean(),
+      WishlistInvite.find({ wishlist: id, invitedUser: { $in: memberIds }, status: 'pending' })
+        .select('invitedUser')
+        .lean(),
+    ]);
     const userById = new Map(users.map((u) => [u._id.toString(), u]));
-    // What the owner can already see on the People tab, so it's checked for
-    // everyone up front without spending an invite token on them.
-    const memberSet = new Set(
-      (
-        await WishlistMember.find({ wishlist: id, user: { $in: memberIds } })
-          .select('user')
-          .lean()
-      ).map((m) => m.user.toString())
-    );
-    const pendingSet = new Set(
-      (
-        await WishlistInvite.find({
-          wishlist: id,
-          invitedUser: { $in: memberIds },
-          status: 'pending',
-        })
-          .select('invitedUser')
-          .lean()
-      ).map((i) => i.invitedUser.toString())
-    );
+    const memberSet = new Set(members.map((m) => m.user.toString()));
+    const pendingSet = new Set(pending.map((i) => i.invitedUser.toString()));
 
     const invited: GroupInvitePerson[] = [];
     const skipped: (GroupInvitePerson & { reason: string })[] = [];
@@ -178,7 +175,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
       const invite = await issueWishlistInvite({
         wishlistId: id,
-        wishlistName: wishlist.name,
+        wishlistName: current.wishlist.name,
         role,
         invitedBy: callerId,
         inviterName: publicDisplayName(session.user),
@@ -194,18 +191,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         skip(INVITE_REFUSAL.capped);
         continue;
       }
-      issued.push(invite);
-
       // As the single invite does: a removal's `cancelInvitesSentBy` may have read
       // the caller's pending invites before this one existed. If they've lost the
       // list, this one is taken back, and so is every other this request issued
       // (any of them may postdate that read), and the answer is a non-owner's.
       if (await withdrawUnlessInviterOwns(invite)) {
-        for (const earlier of issued) await withdrawUnlessInviterOwns(earlier);
+        await Promise.all(issued.map((earlier) => withdrawUnlessInviterOwns(earlier)));
         const after = await getOwnerAccess(id, callerId);
         if (!after.wishlist) return listNotFound();
         return notOwnerError();
       }
+      issued.push(invite);
       invited.push(person);
     }
 
