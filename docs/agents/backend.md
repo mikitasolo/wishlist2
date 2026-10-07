@@ -37,7 +37,7 @@ Server and platform rules, linked from `AGENTS.md`.
 
 ## Migrations
 
-- **Schema migrations are HTTP endpoints** at `app/api/migrations/<name>/route.ts`, built with `createMigration` (`lib/utils/migration.ts`), gated on the `X-Migration-Secret` header: `curl -X POST -H "X-Migration-Secret: $MIGRATION_SECRET" <host>/api/migrations/<name>`. None exists now; earlier ones ran everywhere and were deleted (the co-ownership set, `dedupe-pending-invites`, `relabel-answered-invite-notifications`, `uppercase-currency-codes`; see git history). A new one:
+- **Schema migrations are HTTP endpoints** at `app/api/migrations/<name>/route.ts`, built with `createMigration` (`lib/utils/migration.ts`), gated on the `X-Migration-Secret` header: `curl -X POST -H "X-Migration-Secret: $MIGRATION_SECRET" <host>/api/migrations/<name>`. One exists now: `backfill-usernames` (WIS-357), giving every account with no username a generated one (`?dryRun=1` only counts them), run after its release on staging then production and re-run to confirm `matched: 0`, then deleted when `username` becomes required. Earlier ones ran everywhere and were deleted (the co-ownership set, `dedupe-pending-invites`, `relabel-answered-invite-notifications`, `uppercase-currency-codes`; see git history). A new one:
   - Is **idempotent**: re-running is free and finishes a partial run.
   - States its **deploy ordering** in the docstring. _Additive_ (only writes new fields) is safe before the deploy; one removing or moving data old code depends on runs **after**, or it breaks the running deployment.
   - Gates any reader fallback for the un-migrated shape on the new field being absent, and deletes it in a follow-up once run everywhere; never leave fallbacks behind.
