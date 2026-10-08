@@ -8,7 +8,7 @@ import ConfirmDialog from './ConfirmDialog';
 import { defaultItemCurrency } from '@/lib/utils/currencies';
 import { useViewerLocale } from '@/lib/hooks/useViewerLocale';
 import type { ApiItem } from '@/types/api';
-import type { ItemRef } from '@/lib/utils/itemLinks';
+import type { LinkOption } from '@/components/ItemLinkPicker';
 
 /** What a copy of an item ("Save to my list") starts from. */
 export type ItemPrefill = Pick<ApiItem, 'name' | 'imageUrl' | 'price' | 'link'>;
@@ -48,7 +48,7 @@ interface AddItemModalProps {
   back?: { label: string; onBack: () => void };
   // The list's items the new one can go with (WIS-29): shows "Goes with".
   // Never for a copy of an item, whose list may be another.
-  linkOptions?: readonly ItemRef[];
+  linkOptions?: readonly LinkOption[];
 }
 
 export default function AddItemModal({

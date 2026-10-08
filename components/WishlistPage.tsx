@@ -1,5 +1,6 @@
 'use client';
 
+import type { LinkOption } from '@/components/ItemLinkPicker';
 import { useEffect, useState, useMemo, useCallback, useRef, useId, type FormEvent } from 'react';
 import { useKnownSession } from '@/lib/hooks/useKnownSession';
 import { useRouter } from 'next/navigation';
@@ -1965,12 +1966,12 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
 
   // What an owner's add and edit dialogs offer in "Goes with": the list's
   // items but proposals (and, editing, the item itself).
-  const linkOptions = useMemo<ItemRef[] | undefined>(
+  const linkOptions = useMemo<LinkOption[] | undefined>(
     () =>
       isOwner
         ? items
             .filter((item) => isLinkableStatus(item.status))
-            .map((item) => ({ id: item._id, name: item.name }))
+            .map((item) => ({ id: item._id, name: item.name, imageUrl: item.imageUrl }))
         : undefined,
     [isOwner, items]
   );

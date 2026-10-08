@@ -21,8 +21,7 @@ import {
 import { currencySymbol, formatPriceInput, parsePriceInput } from '@/lib/utils/currency';
 import { useViewerLocale } from '@/lib/hooks/useViewerLocale';
 import { useFreshUploads } from '@/lib/hooks/useFreshUploads';
-import ItemLinkPicker from './ItemLinkPicker';
-import type { ItemRef } from '@/lib/utils/itemLinks';
+import ItemLinkPicker, { type LinkOption } from './ItemLinkPicker';
 
 export { itemToFormData, type ItemFormData } from '@/lib/utils/itemForm';
 
@@ -96,7 +95,7 @@ interface ItemFormProps {
   initialFocus?: 'link';
   // The other items on the list it can go with (WIS-29), for an owner's add
   // or edit: shows "Goes with". Never given for a proposal or a review.
-  linkOptions?: readonly ItemRef[];
+  linkOptions?: readonly LinkOption[];
 }
 
 /**

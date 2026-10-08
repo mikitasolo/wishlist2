@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useId } from 'react';
 import type { ApiItem, ItemUpdate } from '@/types/api';
-import type { ItemRef } from '@/lib/utils/itemLinks';
+import type { LinkOption } from '@/components/ItemLinkPicker';
 import BaseModal from './BaseModal';
 import ItemForm, { itemToFormData } from './ItemForm';
 import ItemFormFooter from './ItemFormFooter';
@@ -29,7 +29,7 @@ interface EditItemModalProps {
   initialFocus?: 'link';
   // The list's other items it can go with (WIS-29), for an owner: shows "Goes
   // with", and a save sends the links added and removed.
-  linkOptions?: readonly ItemRef[];
+  linkOptions?: readonly LinkOption[];
 }
 
 export default function EditItemModal({
