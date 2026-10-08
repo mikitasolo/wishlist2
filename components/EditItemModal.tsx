@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect, useId } from 'react';
-import { ApiItem } from '@/types/api';
+import type { ApiItem, ItemUpdate } from '@/types/api';
+import type { ItemRef } from '@/lib/utils/itemLinks';
 import BaseModal from './BaseModal';
 import ItemForm, { itemToFormData } from './ItemForm';
 import ItemFormFooter from './ItemFormFooter';
@@ -16,7 +17,7 @@ interface EditItemModalProps {
   // Given only the fields the user changed, and never called when there are
   // none. Must reject when the request fails: the modal only closes on success,
   // so the user's changes survive a failure.
-  onSave: (updates: Partial<ApiItem>) => Promise<void>;
+  onSave: (updates: ItemUpdate) => Promise<void>;
   onDelete?: () => Promise<void>;
   item: ApiItem;
   // A priceless item's currency starts on the wishlist's, else the viewer's
@@ -26,6 +27,9 @@ interface EditItemModalProps {
   userCurrency: string | null | undefined;
   // Opens with focus on the Link field (an owner's "+ link" on a card).
   initialFocus?: 'link';
+  // The list's other items it can go with (WIS-29), for an owner: shows "Goes
+  // with", and a save sends the links added and removed.
+  linkOptions?: readonly ItemRef[];
 }
 
 export default function EditItemModal({
@@ -37,6 +41,7 @@ export default function EditItemModal({
   wishlistCurrency,
   userCurrency,
   initialFocus,
+  linkOptions,
 }: EditItemModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const formId = useId();
@@ -73,7 +78,7 @@ export default function EditItemModal({
     // Editing content never changes status — that would silently clobber a
     // booking (owners can't see bookings). Publishing / moving to draft is a
     // separate, explicit action on the item card, and itemChanges leaves it out.
-    const updates: Partial<ApiItem> = name ? changes : rest;
+    const updates: ItemUpdate = name ? changes : rest;
     if (Object.keys(updates).length === 0) {
       // Nothing to save (the API would refuse an empty update): just close.
       setHasUnsavedChanges(false);
@@ -165,6 +170,7 @@ export default function EditItemModal({
           isSubmitting={isSubmitting || isDeleting}
           formId={formId}
           initialFocus={initialFocus}
+          linkOptions={linkOptions}
         />
       </BaseModal>
 

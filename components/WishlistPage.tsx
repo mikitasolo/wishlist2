@@ -88,7 +88,13 @@ import {
   type ShownOwners,
 } from '@/lib/utils/shownOwners';
 import { useToast } from '@/components/ToastProvider';
-import { ApiItem, ApiResponse } from '@/types/api';
+import { ApiItem, ApiResponse, type ItemUpdate } from '@/types/api';
+import {
+  applyLinkChanges,
+  isLinkableStatus,
+  syncPartnerChips,
+  type ItemRef,
+} from '@/lib/utils/itemLinks';
 import { IWishlist } from '@/models/Wishlist';
 import {
   searchItemsByName,
@@ -873,6 +879,7 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
       notes?: string | null;
       mostWanted?: boolean;
       status?: 'draft' | 'available';
+      linkItems?: string[];
     }) => {
       if (!wishlistId) return;
       // The hook toasts a failure and resolves null. Reject so AddItemModal
@@ -880,6 +887,8 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
       const key = addKeys.keyFor(itemData);
       const created = await mutations.track(() => createItemHook(apiId(), itemData, key));
       if (!created) throw new Error('Failed to create item');
+      // Its partners show it as theirs straight away (WIS-29).
+      if (created.relatedItems?.length) setItems((prev) => syncPartnerChips(prev, created));
       addKeys.reset();
     },
     [apiId, createItemHook, wishlistId, mutations, addKeys]
@@ -892,11 +901,14 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
   // change is undone at once, the list is reconciled with the server, and this
   // resolves null (see updateItemOptimistically).
   const handleUpdateItem = useCallback(
-    (id: string, updates: Partial<ApiItem>, options?: ReviewRequestOptions) =>
+    (id: string, updates: ItemUpdate, options?: ReviewRequestOptions) =>
       updateItemOptimistically({
         id,
         apply: (item) => {
-          const optimistic = { ...item, ...updates };
+          // Links are sent as what changed, and shown as the `relatedItems`
+          // the caller worked out (WIS-29); never sent as shown.
+          const { linkItems: _link, unlinkItems: _unlink, ...shown } = updates;
+          const optimistic = { ...item, ...shown };
           if (updates.status === 'booked' && session?.user?.id) {
             optimistic.bookedBy = session.user.id;
           } else if (
@@ -909,7 +921,10 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
           }
           return optimistic;
         },
-        request: () => updateItemHook(id, updates, options),
+        request: () => {
+          const { relatedItems: _shown, ...body } = updates;
+          return updateItemHook(id, body, options);
+        },
         setItems,
         mutations,
         reconcile: () => fetchItems(true),
@@ -1078,15 +1093,41 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
     [deleteItemHook, showToast, mutations]
   );
 
+  // The items as last rendered, for handleSaveEdit's optimistic links without
+  // making it a new callback on every poll.
+  const itemsRef = useRef(items);
+  useEffect(() => {
+    itemsRef.current = items;
+  }, [items]);
+
   const handleSaveEdit = useCallback(
-    async (updates: Partial<ApiItem>) => {
+    async (updates: ItemUpdate) => {
       if (!itemToEdit) return;
       const itemId = itemToEdit._id;
+      // Links changed (WIS-29): the card shows its new partners at once, named
+      // from the list as it is.
+      const changesLinks = !!(updates.linkItems || updates.unlinkItems);
+      const items = itemsRef.current;
+      const current = items.find((item) => item._id === itemId);
+      const shown: ItemUpdate = changesLinks
+        ? {
+            ...updates,
+            relatedItems: applyLinkChanges(
+              current?.relatedItems ?? [],
+              updates,
+              new Map(items.map((item) => [item._id, item.name]))
+            ),
+          }
+        : updates;
       // handleUpdateItem toasts a failure, puts the item back as it was and
       // resolves null. Reject so EditItemModal stays open with the user's
       // changes; it closes itself on success.
-      const updated = await handleUpdateItem(itemId, updates);
+      const updated = await handleUpdateItem(itemId, shown);
       if (!updated) throw new Error('Failed to update item');
+      // Its partners' chips follow: added, removed, or renamed with it.
+      if (changesLinks || updates.name !== undefined) {
+        setItems((prev) => syncPartnerChips(prev, updated));
+      }
     },
     [itemToEdit, handleUpdateItem]
   );
@@ -1900,13 +1941,43 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
     (id: string) => sortedItems.some((i) => i._id === id),
     [sortedItems]
   );
-  const highlightedItemId = useItemDeepLink({
+  // A "Goes with" chip (WIS-29) goes to its item the same way (`showItem`).
+  const { highlightedId: highlightedItemId, showItem } = useItemDeepLink({
     listKey: wishlistId,
     ready: itemsLoaded && onItems,
     itemIds,
     isShown: isItemShown,
     reveal: showAllItems,
   });
+
+  // Each card's "Goes with" chips (WIS-29): the partners the server gave, less
+  // any not among the items shown to this viewer (an owner's Preview as
+  // visitor drops drafts; an item deleted here is gone before the next read).
+  const relatedById = useMemo(() => {
+    const shown = new Set(viewItems.map((item) => item._id));
+    const byId = new Map<string, ItemRef[]>();
+    for (const item of viewItems) {
+      const refs = (item.relatedItems ?? []).filter((ref) => shown.has(ref.id));
+      if (refs.length) byId.set(item._id, refs);
+    }
+    return byId;
+  }, [viewItems]);
+
+  // What an owner's add and edit dialogs offer in "Goes with": the list's
+  // items but proposals (and, editing, the item itself).
+  const linkOptions = useMemo<ItemRef[] | undefined>(
+    () =>
+      isOwner
+        ? items
+            .filter((item) => isLinkableStatus(item.status))
+            .map((item) => ({ id: item._id, name: item.name }))
+        : undefined,
+    [isOwner, items]
+  );
+  const editLinkOptions = useMemo(
+    () => linkOptions?.filter((option) => option.id !== itemToEdit?._id),
+    [linkOptions, itemToEdit?._id]
+  );
 
   // The grid's first cell: an owner's Add item or a member's Propose an item,
   // under All (and a member's Your proposals), never while a search is on.
@@ -2317,6 +2388,8 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
                         rates={prices.rates}
                         dimmed={activeChip === 'all' && isDimmedInAll(item, viewerRole, viewerId)}
                         highlighted={item._id === highlightedItemId}
+                        related={relatedById.get(item._id)}
+                        onShowItem={showItem}
                       />
                     ))}
                   </div>
@@ -2412,6 +2485,7 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
           onAdd={handleCreateItem}
           wishlistCurrency={wishlist?.currency}
           userCurrency={session?.user?.defaultCurrency}
+          linkOptions={linkOptions}
         />
       )}
 
@@ -2438,6 +2512,7 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
           item={itemToEdit}
           wishlistCurrency={wishlist?.currency}
           userCurrency={session?.user?.defaultCurrency}
+          linkOptions={isOwner ? editLinkOptions : undefined}
         />
       )}
 

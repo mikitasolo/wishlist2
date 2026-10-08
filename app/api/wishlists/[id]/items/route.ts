@@ -10,6 +10,8 @@ import { createItemSchema, validateRequestBody } from '@/lib/validations';
 import { ensureCurrencyRatesUpToDate } from '@/lib/utils/currencyRates';
 import { hasRate, normalizeCurrency } from '@/lib/utils/currency';
 import { readGivenByViewer, serializeItem, type ItemViewer } from '@/lib/utils/itemSerializer';
+import { linkedItemRefs } from '@/lib/utils/itemLinks';
+import { checkItemLinks, readItemRefs, writeItemLinks } from '@/lib/utils/itemLinkWrites';
 import { resolveWishlistId } from '@/lib/utils/wishlistSlug';
 import { createNotifications } from '@/lib/notifications';
 import { isWishlistOwner, ownerIds } from '@/lib/utils/wishlistOwners';
@@ -139,7 +141,10 @@ async function replayCreate(
   const viewer: ItemViewer = isOwner
     ? { role: 'owner' }
     : { role: 'member', id: userId, givenByViewer: await readGivenByViewer(userId, [existing]) };
-  return NextResponse.json({ success: true, data: serializeItem(existing, viewer, rates) });
+  return NextResponse.json({
+    success: true,
+    data: serializeItem(existing, viewer, rates, await readItemRefs(existing, isOwner)),
+  });
 }
 
 // GET /api/wishlists/[id]/items - Get all items for a wishlist
@@ -211,7 +216,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           }
         : { role: 'visitor' };
 
-    const filteredItems = visibleItems.map((item) => serializeItem(item, viewer, rates));
+    // "Goes with" chips (WIS-29), worked out from the items already read: only
+    // partners this viewer was given above (so never a draft for a non-owner,
+    // nor a proposal), and only where both sides record the link.
+    const related = linkedItemRefs(visibleItems);
+    const filteredItems = visibleItems.map((item) =>
+      serializeItem(item, viewer, rates, related.get(item._id.toString()) ?? [])
+    );
 
     return answer(NextResponse.json({ success: true, data: filteredItems }, { status: 200 }));
   } catch (error) {
@@ -297,6 +308,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const { name, imageUrl, price, link, notes, mostWanted, status, sourceItemId } =
       validation.data;
     const isCopy = sourceItemId !== undefined;
+    // A copy of an item never takes links: its partners are on another list.
+    const linkItems = isCopy ? [] : (validation.data.linkItems ?? []);
 
     // Covers owner-created items and member proposals alike. A copy's image is
     // checked against its source, below.
@@ -337,12 +350,34 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       );
     }
 
+    // Only owners link items (WIS-29), and a proposal (all a member makes) never
+    // goes with anything.
+    if (linkItems.length && !isOwner) {
+      return NextResponse.json(
+        { success: false, error: 'Only owners can link items' },
+        { status: 403 }
+      );
+    }
+
     // A retry of a create that was saved answers with that item. Checked once
     // everything that could refuse the request has passed again, and before a
     // copy's image is copied, which a retry mustn't do twice.
     if (scopedKey) {
       const replayed = await replayCreate(wishlistId, scopedKey, isOwner, session.user.id, rates);
       if (replayed) return replayed;
+    }
+
+    // The links are checked once a retry has been answered (its first attempt
+    // may already have filled a partner with this very item), and before
+    // anything is written.
+    if (linkItems.length) {
+      const checked = await checkItemLinks(wishlistId, null, { linkItems });
+      if (!checked.ok) {
+        return NextResponse.json(
+          { success: false, error: checked.error },
+          { status: checked.status }
+        );
+      }
     }
 
     // "Save to my list": a copy goes into a list of your own (members only ever
@@ -451,6 +486,20 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return wishlistGone();
     }
 
+    // The items it goes with, both sides. A partner that filled up or went
+    // since the check above is left out, and the answer says so: the item
+    // itself is saved.
+    if (linkItems.length) {
+      const linked = await writeItemLinks(item._id.toString(), wishlistId, { linkItems });
+      const now = await Item.findById(item._id);
+      // Deleted meanwhile (a co-owner): answered as gone, never as saved.
+      if (!now || (!linked.ok && linked.status === 404)) {
+        return NextResponse.json({ success: false, error: 'Item not found' }, { status: 404 });
+      }
+      if (!linked.ok) notice = linked.error;
+      item = now;
+    }
+
     // A visible new item changes the count on the list's share card.
     if (isCountedOnShareCard(item.status)) await purgeShareCards({ wishlistIds: [wishlistId] });
 
@@ -480,7 +529,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json(
       {
         success: true,
-        data: serializeItem(item, viewer, rates),
+        data: serializeItem(item, viewer, rates, await readItemRefs(item, isOwner)),
         ...(notice ? { notice } : {}),
       },
       { status: 201 }

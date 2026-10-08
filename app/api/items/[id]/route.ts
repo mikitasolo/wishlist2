@@ -12,6 +12,13 @@ import { ensureCurrencyRatesUpToDate } from '@/lib/utils/currencyRates';
 import { hasRate, normalizeCurrency } from '@/lib/utils/currency';
 import { readGivenByViewer, serializeItem, type ItemViewer } from '@/lib/utils/itemSerializer';
 import {
+  checkItemLinks,
+  readItemRefs,
+  unlinkDeletedItem,
+  writeItemLinks,
+} from '@/lib/utils/itemLinkWrites';
+import type { LinkChanges } from '@/lib/utils/itemLinks';
+import {
   canAttachImage,
   deleteOwnBlob,
   FOREIGN_IMAGE_ERROR,
@@ -185,12 +192,37 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         {
           success: false,
           error: PROPOSAL_EDITED_ERROR,
-          data: serializeItem(edited, { role: 'owner' }, rates),
+          // A proposal goes with nothing (WIS-29).
+          data: serializeItem(edited, { role: 'owner' }, rates, []),
         },
         { status: 409 }
       );
     if (expectedVersion && currentItem.updatedAt.getTime() !== expectedVersion.getTime()) {
       return editedResponse(currentItem);
+    }
+
+    // Linking (WIS-29) is the owners' alone, on an item that isn't a proposal,
+    // to items on the same list, within the cap on both sides. Checked before
+    // anything is written, so a refused link leaves the item as it was.
+    let linkChanges: LinkChanges = {};
+    if (validatedData.linkItems !== undefined || validatedData.unlinkItems !== undefined) {
+      if (!isOwner) {
+        return NextResponse.json(
+          { success: false, error: 'Only owners can link items' },
+          { status: 403 }
+        );
+      }
+      const checked = await checkItemLinks(wishlist._id.toString(), currentItem, {
+        linkItems: validatedData.linkItems,
+        unlinkItems: validatedData.unlinkItems,
+      });
+      if (!checked.ok) {
+        return NextResponse.json(
+          { success: false, error: checked.error },
+          { status: checked.status }
+        );
+      }
+      linkChanges = checked.changes;
     }
 
     // Validate currency exists in rates if price is being updated
@@ -466,16 +498,34 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     // member booking it in between keeps their booking.
     // An approve's version (above) is a condition on its write too: an edit
     // landing after the read is caught here.
-    let written = await Item.findOneAndUpdate(
-      {
-        _id: id,
-        ...writeGuard?.filter,
-        ...(expectedVersion && { updatedAt: expectedVersion }),
-        ...(publishesLiveItem && { status: { $ne: 'booked' } }),
-      },
-      { $set: updateData },
-      writeOptions
-    );
+    // The links, both sides (WIS-29), before the rest of the edit: each side's
+    // write is conditional, so a partner filled up or gone since the check
+    // above refuses it, and the request is answered with that before anything
+    // else of it is written.
+    if (linkChanges.linkItems || linkChanges.unlinkItems) {
+      const linked = await writeItemLinks(id, wishlist._id.toString(), linkChanges);
+      if (!linked.ok) {
+        return NextResponse.json(
+          { success: false, error: linked.error },
+          { status: linked.status }
+        );
+      }
+    }
+
+    // A links-only edit has nothing to set here: the item is read as it is.
+    let written =
+      Object.keys(updateData).length === 0 && !writeGuard && !expectedVersion
+        ? await Item.findById(id)
+        : await Item.findOneAndUpdate(
+            {
+              _id: id,
+              ...writeGuard?.filter,
+              ...(expectedVersion && { updatedAt: expectedVersion }),
+              ...(publishesLiveItem && { status: { $ne: 'booked' } }),
+            },
+            { $set: updateData },
+            writeOptions
+          );
     if (!written && publishesLiveItem) {
       // Booked (or gone). The status change is dropped, and whatever else the
       // owner sent lands as any content edit would, unconditionally. The answer
@@ -580,7 +630,10 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         : { role: 'proposer', id: session.user.id };
 
     return NextResponse.json(
-      { success: true, data: serializeItem(item, viewer, rates) },
+      {
+        success: true,
+        data: serializeItem(item, viewer, rates, await readItemRefs(item, isOwner)),
+      },
       { status: 200 }
     );
   } catch (error) {
@@ -680,6 +733,10 @@ export async function DELETE(
       // Either way this deleted nothing, so frees nothing.
       return unmatchedItemResponse(id, withdrawalGuard);
     }
+
+    // Take it off the items it went with (WIS-29). Best-effort: a partner
+    // still naming it shows no chip for it, as it no longer exists.
+    await unlinkDeletedItem(deleted._id, deleted.wishlist);
 
     // Free the item's uploaded image, if it was one of ours: the one it had when
     // it was deleted, since an edit since the read may have replaced it.

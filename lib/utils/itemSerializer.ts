@@ -2,6 +2,7 @@ import type { Types } from 'mongoose';
 import type { IItem } from '@/models/Item';
 import { itemPriceInUsdCents } from '@/lib/utils/itemPrice';
 import { itemsGivenBy } from '@/lib/utils/giftHistory';
+import type { ItemRef } from '@/lib/utils/itemLinks';
 
 /**
  * Who an item response is built for, which decides what of the item they get.
@@ -23,11 +24,16 @@ export type ItemViewer =
   | { role: 'visitor' };
 
 /** An item as every item response carries it (see `ApiItem` for the client's view). */
-export type SerializedItem = Omit<IItem, 'bookedBy' | 'proposedBy' | 'idempotencyKey'> & {
+export type SerializedItem = Omit<
+  IItem,
+  'bookedBy' | 'proposedBy' | 'idempotencyKey' | 'relatedItems'
+> & {
   bookedBy?: string;
   proposedBy?: string;
   priceInUsdCents: number | null;
   givenByMe?: boolean;
+  /** The partners this viewer may see ("Goes with", WIS-29): `{ id, name }` only. */
+  relatedItems: ItemRef[];
 };
 
 type ItemSource = IItem & { toObject?: () => unknown };
@@ -47,6 +53,9 @@ type ItemSource = IItem & { toObject?: () => unknown };
  *   (proposals are anonymous to the owners).
  * - `givenByMe` is only ever on a member's answer, and only true on an item
  *   they hold the booking of.
+ * - The stored `relatedItems` ids are never answered: `related` replaces them,
+ *   the partners the route worked out this viewer may see (`linkedItemRefs` /
+ *   `readItemRefs`), each only an id and a name, never a status (WIS-29).
  *
  * Which items a viewer may see at all (drafts, others' proposals) is the
  * route's to decide; this only shapes the ones it returns.
@@ -54,13 +63,19 @@ type ItemSource = IItem & { toObject?: () => unknown };
 export function serializeItem(
   item: ItemSource,
   viewer: ItemViewer,
-  rates: Map<string, number>
+  rates: Map<string, number>,
+  related: readonly ItemRef[]
 ): SerializedItem {
   const raw = (typeof item.toObject === 'function' ? item.toObject() : { ...item }) as IItem;
   // The create request's key is the server's, never anyone's to read: a freshly
-  // created document still carries it (WIS-158).
-  const { idempotencyKey: _idempotencyKey, ...fields } = raw;
-  const base = { ...fields, priceInUsdCents: itemPriceInUsdCents(raw.price, rates) };
+  // created document still carries it (WIS-158). The stored links are replaced
+  // by the partners the viewer may see.
+  const { idempotencyKey: _idempotencyKey, relatedItems: _relatedItems, ...fields } = raw;
+  const base = {
+    ...fields,
+    priceInUsdCents: itemPriceInUsdCents(raw.price, rates),
+    relatedItems: related.map(({ id, name }) => ({ id, name })),
+  };
   const isViewers = (id: Types.ObjectId | null | undefined) =>
     viewer.role !== 'owner' && viewer.role !== 'visitor' && id?.toString() === viewer.id;
 

@@ -121,6 +121,7 @@ const existing: ItemFormData = {
   notes: '',
   mostWanted: false,
   isDraft: false,
+  relatedItems: [],
 };
 
 describe('ItemForm — editing while its image uploads', () => {

@@ -7,6 +7,7 @@ import {
   normalizeCurrency,
   parsePriceInput,
 } from '@/lib/utils/currency';
+import { linkChanges, type LinkChanges } from '@/lib/utils/itemLinks';
 
 /**
  * The item form (`components/ItemForm.tsx`, behind the add, edit, propose and
@@ -37,6 +38,8 @@ export interface ItemFormData {
   notes: string;
   mostWanted: boolean;
   isDraft: boolean;
+  /** The ids of the items it goes with (WIS-29), sorted. */
+  relatedItems: string[];
 }
 
 /**
@@ -53,8 +56,8 @@ export interface ItemContent {
   mostWanted: boolean;
 }
 
-/** What an edit sends: only the content the owner changed. */
-export type ItemContentChanges = Partial<ItemContent>;
+/** What an edit sends: only the content the owner changed, and the links added and removed. */
+export type ItemContentChanges = Partial<ItemContent> & LinkChanges;
 
 /**
  * The form filled from an item. An item with a price keeps its own currency; a
@@ -66,7 +69,8 @@ export type ItemContentChanges = Partial<ItemContent>;
  * where the card reads "349,00 €".
  */
 export function itemToFormData(
-  item: Pick<ApiItem, 'name' | 'imageUrl' | 'price' | 'link' | 'notes' | 'mostWanted' | 'status'>,
+  item: Pick<ApiItem, 'name' | 'imageUrl' | 'price' | 'link' | 'notes' | 'mostWanted' | 'status'> &
+    Partial<Pick<ApiItem, 'relatedItems'>>,
   defaultCurrency: string,
   locale: string = PRICE_FALLBACK_LOCALE
 ): ItemFormData {
@@ -88,6 +92,7 @@ export function itemToFormData(
     notes: item.notes || '',
     mostWanted: item.mostWanted === true,
     isDraft: item.status === 'draft',
+    relatedItems: (item.relatedItems ?? []).map((ref) => ref.id).sort(),
   };
 }
 
@@ -158,7 +163,9 @@ export function itemChanges(
     if (next[field] !== saved[field]) copyField(changes, next, field);
   }
   if (!samePrice(next.price, saved.price)) changes.price = next.price;
-  return changes;
+  // Links as what was added and removed, so a co-owner's other link changes
+  // meanwhile stay (WIS-29).
+  return { ...changes, ...linkChanges(filledFrom.relatedItems ?? [], form.relatedItems ?? []) };
 }
 
 /**
@@ -174,8 +181,11 @@ export function rebaseItemForm(
   next: ItemFormData
 ): ItemFormData {
   const rebased = { ...next };
+  // By value: the links are an array, rebuilt by every tick in the picker.
+  const same = (a: unknown, b: unknown) =>
+    Array.isArray(a) && Array.isArray(b) ? a.join() === b.join() : a === b;
   const keep = <K extends keyof ItemFormData>(...keys: K[]) => {
-    if (keys.some((key) => form[key] !== filledFrom[key])) {
+    if (keys.some((key) => !same(form[key], filledFrom[key]))) {
       for (const key of keys) rebased[key] = form[key];
     }
   };
@@ -186,5 +196,6 @@ export function rebaseItemForm(
   keep('notes');
   keep('mostWanted');
   keep('isDraft');
+  keep('relatedItems');
   return rebased;
 }

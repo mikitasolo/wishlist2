@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ITEM_PARAM, itemAnchorId } from '@/lib/utils/itemDeepLink';
 
 interface ItemDeepLinkInput {
@@ -25,15 +25,16 @@ interface ItemDeepLinkInput {
  * or a chip picked later doesn't scroll back to it, and the highlight goes at
  * the viewer's first click or key press. The URL is left as it is.
  *
- * Returns the id of the item to highlight, or `null`.
+ * `showItem` does the same for an item picked on the page (a "Goes with" chip,
+ * WIS-29): scrolls to it and highlights it, clearing a chip or search that
+ * hides it; nothing for an item the viewer wasn't given.
+ *
+ * Returns the id of the item to highlight (or `null`), and `showItem`.
  */
-export function useItemDeepLink({
-  listKey,
-  ready,
-  itemIds,
-  isShown,
-  reveal,
-}: ItemDeepLinkInput): string | null {
+export function useItemDeepLink({ listKey, ready, itemIds, isShown, reveal }: ItemDeepLinkInput): {
+  highlightedId: string | null;
+  showItem: (itemId: string) => void;
+} {
   // The item the URL asked for, until it's been acted on, keyed on the list.
   const [target, setTarget] = useState<{ listKey: string; itemId: string } | null>(null);
   const [highlighted, setHighlighted] = useState<string | null>(null);
@@ -97,5 +98,14 @@ export function useItemDeepLink({
     };
   }, [highlighted]);
 
-  return highlighted;
+  const showItem = useCallback(
+    (itemId: string) => {
+      if (!listKey) return;
+      setHighlighted(null);
+      setTarget({ listKey, itemId });
+    },
+    [listKey]
+  );
+
+  return { highlightedId: highlighted, showItem };
 }

@@ -41,6 +41,7 @@ import {
 } from '@/lib/utils/wishlistCopies';
 import { errorKind } from '@/lib/utils/errorKind';
 import { notifyAskersOfNewList } from '@/lib/utils/wishlistAsks';
+import { remapLinks } from '@/lib/utils/itemLinks';
 
 // Copying many images runs past the default limit. Lined up with
 // `COPY_IMAGES_BUDGET_MS`, `COPY_STALE_MS` and the dialog's timeout
@@ -319,8 +320,16 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       // new list shows them in the order the source does. Nothing reads them
       // until their list exists.
       const base = Date.now() - items.length;
+      // Links between items both copied go with them, onto the copies; one to
+      // an item left out is dropped (WIS-29). The copies' ids are picked here
+      // so each can name its partners' in the same write.
+      const copyIds = new Map(
+        items.map((item) => [item._id.toString(), new mongoose.Types.ObjectId()])
+      );
+      const links = remapLinks(items, copyIds);
       await Item.insertMany(
         items.map((item, i) => ({
+          _id: copyIds.get(item._id.toString()),
           wishlist: newId,
           name: item.name,
           imageUrl: itemImages[i] ?? undefined,
@@ -333,6 +342,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           status: copiedStatus(item.status),
           // Never reserved, never anyone's proposal: a new item on a new list.
           bookedBy: null,
+          relatedItems: links.get(item._id.toString()) ?? [],
           createdAt: new Date(base + i),
           updatedAt: new Date(base + i),
         })),

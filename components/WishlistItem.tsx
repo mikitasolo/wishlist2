@@ -18,6 +18,8 @@ import { useDiscreetMode } from '@/lib/hooks/useDiscreetMode';
 import { withoutReservation } from '@/lib/utils/discreet';
 import IconButton from '@/components/IconButton';
 import ItemSheet from '@/components/ItemSheet';
+import RelatedItemChips from '@/components/RelatedItemChips';
+import type { ItemRef } from '@/lib/utils/itemLinks';
 import {
   buttonClassName,
   iconButtonClassName,
@@ -132,7 +134,20 @@ interface WishlistItemProps {
   dimmed?: boolean;
   /** Outlined, as the item a link to it (`?item=`) pointed at; never dimmed then. */
   highlighted?: boolean;
+  /**
+   * "Goes with" (WIS-29): the partners to show, the ones the viewer is shown
+   * on the page (the page filters `item.relatedItems`, e.g. for an owner's
+   * Preview as visitor). The card shows 2 and "+N more"; the sheet shows all.
+   */
+  related?: readonly ItemRef[];
+  /** Goes to a partner on the page (scrolls to it and highlights it). */
+  onShowItem?: (itemId: string) => void;
 }
+
+/** How many "Goes with" chips the card shows before "+N more". */
+export const CARD_RELATED_LIMIT = 2;
+
+const NO_RELATED: readonly ItemRef[] = [];
 
 function WishlistItem({
   item: shownItem,
@@ -149,6 +164,8 @@ function WishlistItem({
   rates = null,
   dimmed = false,
   highlighted = false,
+  related = NO_RELATED,
+  onShowItem,
 }: WishlistItemProps) {
   const { data: session } = useSession();
   // Discreet mode (WIS-46): a member's card is drawn as plain available, with
@@ -638,6 +655,16 @@ function WishlistItem({
       priceText={priceText}
       originalPriceText={originalPriceText}
       onCoverClick={() => setSheetOpen(true)}
+      related={
+        related.length > 0 ? (
+          <RelatedItemChips
+            items={related}
+            limit={CARD_RELATED_LIMIT}
+            onShow={onShowItem}
+            onMore={() => setSheetOpen(true)}
+          />
+        ) : undefined
+      }
       statusBadge={
         isBookedByCurrentUser && !isOwner && item.status === 'booked' ? (
           // Your own reservation's badge leads to Reserved (WIS-260).
@@ -680,6 +707,14 @@ function WishlistItem({
           price={priceText}
           originalPrice={originalPriceText}
           actions={sheetActions}
+          related={related}
+          onShowItem={
+            onShowItem &&
+            ((itemId: string) => {
+              setSheetOpen(false);
+              onShowItem(itemId);
+            })
+          }
         />
       )}
 

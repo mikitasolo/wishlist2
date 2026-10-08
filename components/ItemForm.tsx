@@ -21,6 +21,8 @@ import {
 import { currencySymbol, formatPriceInput, parsePriceInput } from '@/lib/utils/currency';
 import { useViewerLocale } from '@/lib/hooks/useViewerLocale';
 import { useFreshUploads } from '@/lib/hooks/useFreshUploads';
+import ItemLinkPicker from './ItemLinkPicker';
+import type { ItemRef } from '@/lib/utils/itemLinks';
 
 export { itemToFormData, type ItemFormData } from '@/lib/utils/itemForm';
 
@@ -34,6 +36,7 @@ const BLANK_ITEM_FIELDS: Omit<ItemFormData, 'currency'> = {
   notes: '',
   mostWanted: false,
   isDraft: false,
+  relatedItems: [],
 };
 
 // The notes' counter appears once the text is this close to the limit.
@@ -53,6 +56,8 @@ interface ItemFormProps {
       notes?: string | null;
       mostWanted?: boolean; // omitted in propose mode — only owners set it
       status: 'draft' | 'available' | 'proposed';
+      // A new item's partners (WIS-29): only with `linkOptions`, only if any.
+      linkItems?: string[];
     },
     changes: ItemContentChanges
   ) => Promise<void>;
@@ -89,6 +94,9 @@ interface ItemFormProps {
   // The field focus starts on, when the form isn't the name's (Edit opened by
   // an owner's "+ link"). The dialog leaves focus to a field with `autoFocus`.
   initialFocus?: 'link';
+  // The other items on the list it can go with (WIS-29), for an owner's add
+  // or edit: shows "Goes with". Never given for a proposal or a review.
+  linkOptions?: readonly ItemRef[];
 }
 
 /**
@@ -125,6 +133,7 @@ export default function ItemForm({
   rebaseVersion,
   defaultCurrency,
   formId: externalFormId,
+  linkOptions,
 }: ItemFormProps) {
   // The blank form a new item starts from — a stable snapshot, so effects can
   // depend on it. It is also the "unsaved changes" baseline, so a prefilled
@@ -262,6 +271,10 @@ export default function ItemForm({
     }));
   };
 
+  // "Goes with" (WIS-29): an owner's add or edit, on a list with other items.
+  const showLinks =
+    !!linkOptions && linkOptions.length > 0 && (mode === 'create' || mode === 'edit');
+
   // Check if form has changes and notify parent
   useEffect(() => {
     if (!onFormChange) return;
@@ -336,6 +349,9 @@ export default function ItemForm({
           notes: isEditing ? content.notes : content.notes || undefined,
           mostWanted: mode === 'propose' ? undefined : content.mostWanted,
           status,
+          ...(!isEditing && showLinks && formData.relatedItems.length
+            ? { linkItems: formData.relatedItems }
+            : {}),
         },
         itemChanges(formData, initialDataRef.current, locale)
       ).catch((error: unknown) => {
@@ -502,6 +518,15 @@ export default function ItemForm({
           description="Gifters see a star on it, and it's listed first."
           checked={formData.mostWanted}
           onChange={(mostWanted) => setFormData({ ...formData, mostWanted })}
+          disabled={submitting}
+        />
+      )}
+
+      {showLinks && (
+        <ItemLinkPicker
+          options={linkOptions!}
+          selected={formData.relatedItems}
+          onChange={(relatedItems) => setFormData((f) => ({ ...f, relatedItems }))}
           disabled={submitting}
         />
       )}
