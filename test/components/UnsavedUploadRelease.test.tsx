@@ -107,6 +107,7 @@ const existing: ItemFormData = {
   notes: '',
   mostWanted: false,
   isDraft: false,
+  relatedItems: [],
 };
 
 function renderForm(props: Partial<Parameters<typeof ItemForm>[0]> = {}) {

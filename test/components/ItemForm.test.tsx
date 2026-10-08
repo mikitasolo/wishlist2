@@ -19,6 +19,7 @@ const filled: ItemFormData = {
   notes: '',
   mostWanted: false,
   isDraft: false,
+  relatedItems: [],
 };
 
 beforeEach(() => cleanup());

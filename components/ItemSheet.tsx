@@ -8,6 +8,8 @@ import Cover from '@/components/Cover';
 import Icon from '@/components/Icon';
 import type { StatusMeta } from '@/lib/utils/itemStatus';
 import { linkDomain } from '@/lib/utils/itemFields';
+import RelatedItemChips from '@/components/RelatedItemChips';
+import type { ItemRef } from '@/lib/utils/itemLinks';
 
 /**
  * An item's details (WIS-258): a bottom sheet on a phone and a dialog from
@@ -29,6 +31,8 @@ export default function ItemSheet({
   price,
   originalPrice,
   actions,
+  related = [],
+  onShowItem,
 }: {
   item: ApiItem;
   isOpen: boolean;
@@ -40,6 +44,9 @@ export default function ItemSheet({
   originalPrice: string | null;
   /** The card's actions: its primary and its "More actions" menu. */
   actions: ReactNode;
+  /** "Goes with" (WIS-29): every partner the card was given, each going to it. */
+  related?: readonly ItemRef[];
+  onShowItem?: (itemId: string) => void;
 }) {
   const titleId = useId();
   const domain = linkDomain(item.link);
@@ -86,6 +93,8 @@ export default function ItemSheet({
         {item.notes && (
           <p className="whitespace-pre-wrap break-words text-body text-foreground">{item.notes}</p>
         )}
+
+        <RelatedItemChips items={related} onShow={onShowItem} />
 
         {/* Only an http(s) link is offered (`linkDomain`), in a new tab. */}
         {domain && item.link && (

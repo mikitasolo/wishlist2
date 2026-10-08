@@ -27,10 +27,23 @@ function ListPage({
   const itemIds = useMemo(() => items.map((i) => i.id), [items]);
   const isShown = useCallback((id: string) => shown.some((i) => i.id === id), [shown]);
   const reveal = useCallback(() => setChip('all'), []);
-  const highlighted = useItemDeepLink({ listKey: 'birthday', ready, itemIds, isShown, reveal });
+  const { highlightedId: highlighted, showItem } = useItemDeepLink({
+    listKey: 'birthday',
+    ready,
+    itemIds,
+    isShown,
+    reveal,
+  });
   return (
     <div>
       <p data-testid="chip">{chip}</p>
+      {/* A "Goes with" chip on the page (WIS-29). */}
+      <button type="button" onClick={() => showItem('b')}>
+        Go to b
+      </button>
+      <button type="button" onClick={() => showItem('hidden')}>
+        Go to hidden
+      </button>
       {(grid ? shown : []).map((i) => (
         <div
           key={i.id}
@@ -115,5 +128,28 @@ describe('?item= on a list (WIS-263)', () => {
       fireEvent.pointerDown(window);
     });
     expect(document.querySelector('[data-highlighted]')).toBeNull();
+  });
+});
+
+describe('showItem: a "Goes with" chip (WIS-29)', () => {
+  it('scrolls to the item and highlights it, clearing a chip that hides it', () => {
+    render(<ListPage items={[{ id: 'a' }, { id: 'b', received: true }]} startOn="live" />);
+    expect(scrollIntoView).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Go to b' }));
+
+    expect(screen.getByTestId('chip')).toHaveTextContent('all');
+    expect(screen.getByTestId('b')).toHaveAttribute('data-highlighted', 'true');
+    expect(scrollIntoView.mock.contexts.at(-1)).toBe(screen.getByTestId('b'));
+  });
+
+  it('does nothing for an item the viewer wasn’t given', () => {
+    render(<ListPage items={[{ id: 'a' }, { id: 'b', received: true }]} startOn="live" />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Go to hidden' }));
+
+    expect(screen.getByTestId('chip')).toHaveTextContent('live');
+    expect(document.querySelector('[data-highlighted]')).toBeNull();
+    expect(scrollIntoView).not.toHaveBeenCalled();
   });
 });

@@ -8,6 +8,7 @@ import ConfirmDialog from './ConfirmDialog';
 import { defaultItemCurrency } from '@/lib/utils/currencies';
 import { useViewerLocale } from '@/lib/hooks/useViewerLocale';
 import type { ApiItem } from '@/types/api';
+import type { ItemRef } from '@/lib/utils/itemLinks';
 
 /** What a copy of an item ("Save to my list") starts from. */
 export type ItemPrefill = Pick<ApiItem, 'name' | 'imageUrl' | 'price' | 'link'>;
@@ -21,6 +22,8 @@ export interface NewItemData {
   notes?: string;
   mostWanted?: boolean;
   status?: 'draft' | 'available';
+  /** The items on the list it goes with (WIS-29). */
+  linkItems?: string[];
 }
 
 interface AddItemModalProps {
@@ -43,6 +46,9 @@ interface AddItemModalProps {
   // list), shown in the header. Like closing, it asks first if there are
   // unsaved changes, since the form and its edits go.
   back?: { label: string; onBack: () => void };
+  // The list's items the new one can go with (WIS-29): shows "Goes with".
+  // Never for a copy of an item, whose list may be another.
+  linkOptions?: readonly ItemRef[];
 }
 
 export default function AddItemModal({
@@ -54,6 +60,7 @@ export default function AddItemModal({
   initialItem,
   title = 'Add new item',
   back,
+  linkOptions,
 }: AddItemModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const formId = useId();
@@ -107,6 +114,7 @@ export default function AddItemModal({
     notes?: string | null;
     mostWanted?: boolean;
     status: 'draft' | 'available' | 'proposed';
+    linkItems?: string[];
   }) => {
     setIsSubmitting(true);
     // No catch: a failed add must reject through to ItemForm, which then keeps
@@ -186,6 +194,7 @@ export default function AddItemModal({
           onFormChange={setHasUnsavedChanges}
           defaultCurrency={defaultCurrency}
           formId={formId}
+          linkOptions={linkOptions}
         />
       </BaseModal>
 

@@ -12,7 +12,7 @@
  */
 
 import { useCallback } from 'react';
-import { ApiItem, ApiResponse } from '@/types/api';
+import { ApiItem, ApiResponse, type ItemUpdate } from '@/types/api';
 import { deduplicateRequest, createRequestKey } from '@/lib/utils/requestDeduplication';
 import { withRequestTimeout } from '@/lib/utils/requestTimeout';
 import { IDEMPOTENCY_HEADER } from '@/lib/utils/submissionKey';
@@ -78,7 +78,7 @@ export function useUpdateItem(
   return useCallback(
     async (
       id: string,
-      updates: Partial<ApiItem>,
+      updates: ItemUpdate,
       { expectProposal = false, expectedVersion }: ReviewRequestOptions = {}
     ): Promise<ApiItem | null> => {
       const body = expectProposal
@@ -147,6 +147,7 @@ export function useCreateItem(
         notes?: string | null;
         mostWanted?: boolean;
         status?: 'draft' | 'available';
+        linkItems?: string[];
       },
       /** The submission's key (`createSubmissionKeys`), the same on each retry of it. */
       idempotencyKey?: string

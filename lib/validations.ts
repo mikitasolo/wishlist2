@@ -13,6 +13,7 @@ import { notificationPrefsSchema } from '@/lib/utils/notificationPrefs';
 import { SHARE_LINK_LABEL_MAX, SHARE_LINK_LEVELS } from '@/lib/utils/shareLinkFields';
 import { isTimeZone } from '@/lib/utils/zonedDate';
 import { COPY_ITEMS_MAX } from '@/lib/utils/wishlistCopy';
+import { ITEM_LINKS_MAX } from '@/lib/utils/itemLinks';
 
 /**
  * Validation schemas for API endpoints
@@ -336,6 +337,17 @@ const itemNotesSchema = z
  */
 const itemCurrencySchema = z.string().trim().toUpperCase().min(1, 'Currency code is required');
 
+/**
+ * Items to link to or unlink from (WIS-29): ids of items on the same list, at
+ * most `ITEM_LINKS_MAX`, repeats counted once. Only an owner's create or edit
+ * takes them; the route checks the rest (same list, no proposal, the cap on
+ * both sides).
+ */
+const itemLinkIdsSchema = z
+  .array(z.string().regex(/^[0-9a-f]{24}$/i, 'Invalid item id'))
+  .max(ITEM_LINKS_MAX, `An item can go with up to ${ITEM_LINKS_MAX} others`)
+  .transform((ids) => [...new Set(ids.map((id) => id.toLowerCase()))]);
+
 export const createItemSchema = z.object({
   name: visibleLineName('Item name is required', 200),
   imageUrl: z.url('Invalid image URL').optional(),
@@ -363,6 +375,9 @@ export const createItemSchema = z.object({
   // that the caller can see the source, and copy its image blob for them
   // rather than share it. The route checks its shape (`isObjectIdParam`).
   sourceItemId: z.string().optional(),
+  // The items it goes with (WIS-29), owners only. A copy ("Save to my list")
+  // never takes any: they'd be on another list.
+  linkItems: itemLinkIdsSchema.optional(),
 });
 
 export const updateItemSchema = z
@@ -394,12 +409,19 @@ export const updateItemSchema = z
     // And the version (`updatedAt`) of the proposal it shows (WIS-320). Only
     // with `expectedStatus`; not a change either.
     expectedUpdatedAt: z.string().datetime().optional(),
+    // Links added and removed (WIS-29), owners only: only what changed, so a
+    // co-owner's other link changes meanwhile aren't undone.
+    linkItems: itemLinkIdsSchema.optional(),
+    unlinkItems: itemLinkIdsSchema.optional(),
   })
   .refine(
     (data) =>
       Object.keys(data).some((key) => key !== 'expectedStatus' && key !== 'expectedUpdatedAt'),
     { message: 'At least one field must be provided for update' }
   )
+  .refine((data) => !data.linkItems?.some((id) => data.unlinkItems?.includes(id)), {
+    message: 'An item can’t be linked and unlinked at once',
+  })
   .refine((data) => data.expectedUpdatedAt === undefined || data.expectedStatus === 'proposed', {
     message: 'expectedUpdatedAt needs expectedStatus',
   });

@@ -66,6 +66,15 @@ const ItemSchema = new Schema(
       ref: 'User',
       required: false,
     },
+    // The items on the same list this one goes with (WIS-29): soft, symmetric
+    // links, each stored on both items, at most ITEM_LINKS_MAX
+    // (lib/utils/itemLinks.ts). Written only through `itemLinkWrites.ts`, and
+    // never answered as stored: `serializeItem` turns it into `{ id, name }`
+    // for the partners the viewer may see, and only where both sides agree.
+    relatedItems: {
+      type: [{ type: Schema.Types.ObjectId, ref: 'Item' }],
+      default: undefined,
+    },
     // The create request's idempotency key, scoped to its sender
     // (`scopedIdempotencyKey`, lib/utils/itemIdempotency.ts: a hash of their
     // user id and the key their browser sent), so a retried POST answers with
@@ -109,6 +118,7 @@ export interface IItem {
   status: 'draft' | 'available' | 'booked' | 'completed' | 'proposed';
   bookedBy?: mongoose.Types.ObjectId | null;
   proposedBy?: mongoose.Types.ObjectId | null;
+  relatedItems?: mongoose.Types.ObjectId[];
   idempotencyKey?: string;
   createdAt: Date;
   updatedAt: Date;

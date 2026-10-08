@@ -1,3 +1,5 @@
+import type { ItemRef, LinkChanges } from '@/lib/utils/itemLinks';
+
 /**
  * API response types - these match what the API actually returns
  * Separate from database models to allow API to transform/enrich data
@@ -32,9 +34,22 @@ export interface ApiItem {
    * see booking status, and for anyone who isn't a member.
    */
   givenByMe?: boolean;
+  /**
+   * "Goes with" (WIS-29): the partners this viewer may see, `{ id, name }` only
+   * (never a draft or proposal to a non-owner, never a status). Absent on an
+   * answer from before the field existed: treat as none.
+   */
+  relatedItems?: ItemRef[];
   createdAt: string; // ISO date string
   updatedAt: string; // ISO date string
 }
+
+/**
+ * An item edit as the page sends it: the item's fields, plus the links added
+ * and removed (an owner's, WIS-29), which the server answers with the item's
+ * new `relatedItems`.
+ */
+export type ItemUpdate = Partial<ApiItem> & LinkChanges;
 
 /**
  * Generic API response wrapper

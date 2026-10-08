@@ -126,8 +126,10 @@ describe('POST /api/wishlists/[id]/items — priceInUsdCents', () => {
       price: { value: 1000, currency: 'eur' },
       link: 'https://example.com/bike',
     });
-    const { priceInUsdCents, ...rest } = data;
+    // The partners it goes with (WIS-29) replace the stored ids: none here.
+    const { priceInUsdCents, relatedItems, ...rest } = data;
     expect(priceInUsdCents).toBe(2000);
+    expect(relatedItems).toEqual([]);
     const { bookedBy: storedBookedBy, ...stored } = JSON.parse(
       JSON.stringify(await Item.findById(data._id))
     );
@@ -139,8 +141,9 @@ describe('POST /api/wishlists/[id]/items — priceInUsdCents', () => {
   it("gives a member's proposal the shape of their own list read: their own id, givenByMe false", async () => {
     as(memberId);
     const { data } = await create({ name: 'Lamp', status: 'proposed' });
-    const { priceInUsdCents, givenByMe, ...rest } = data;
+    const { priceInUsdCents, givenByMe, relatedItems, ...rest } = data;
     expect(priceInUsdCents).toBeNull();
+    expect(relatedItems).toEqual([]);
     expect(givenByMe).toBe(false);
     expect(data.proposedBy).toBe(memberId);
     expect(data).not.toHaveProperty('bookedBy');

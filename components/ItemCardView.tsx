@@ -33,6 +33,8 @@ interface ItemCardViewProps {
   dimmed?: boolean;
   /** Outlined: the item a link to it pointed at. */
   highlighted?: boolean;
+  /** Under the body, above the actions: the "Goes with" chips (WIS-29). */
+  related?: ReactNode;
   /** The row under the body (one line of actions, or the list's name). */
   actions?: ReactNode;
   /**
@@ -61,6 +63,7 @@ export default function ItemCardView({
   originalPriceText,
   dimmed,
   highlighted,
+  related,
   actions,
   titleCoversCard,
   children,
@@ -154,6 +157,9 @@ export default function ItemCardView({
             </p>
           )}
         </div>
+
+        {/* Outside the body, so its chips aren't under the title's ::after. */}
+        {related && <div className="mb-2 sm:mb-3">{related}</div>}
 
         {actions}
       </div>
