@@ -9,8 +9,9 @@ import { removeFromListCopy } from '@/lib/utils/confirmationCopy';
 export interface WishlistPeopleDialogsProps {
   people: WishlistPeopleControl;
   shareLinks: Pick<ShareLinksControl, 'links' | 'revoke'>;
-  /** Leave list's or Delete wishlist's confirmation is open. */
-  listConfirmOpen: boolean;
+  /** The page's removal confirmation (see `DeleteConfirm`), while open. */
+  deleteConfirmOpen: boolean;
+  closeDeleteConfirm: () => void;
 }
 
 /**
@@ -22,11 +23,11 @@ export interface WishlistPeopleDialogsProps {
 export default function WishlistPeopleDialogs({
   people,
   shareLinks,
-  listConfirmOpen,
+  deleteConfirmOpen,
+  closeDeleteConfirm,
 }: WishlistPeopleDialogsProps) {
   const {
     removeConfirm,
-    setRemoveConfirm,
     confirmKickMember,
     promoteConfirm,
     setPromoteConfirm,
@@ -41,14 +42,14 @@ export default function WishlistPeopleDialogs({
 
   return (
     <>
-      {removeConfirm && removeConfirm.memberId && (
+      {removeConfirm && (
         <ConfirmDialog
           isOpen={!!removeConfirm}
           {...removeFromListCopy(removeConfirm.memberUsername, removeConfirm.type, {
             liveLinks: hasLiveLinks,
           })}
           onConfirm={confirmKickMember}
-          onCancel={() => setRemoveConfirm(null)}
+          onCancel={closeDeleteConfirm}
           confirmText="Remove"
           pendingText="Removing…"
           cancelText="Cancel"
@@ -86,7 +87,7 @@ export default function WishlistPeopleDialogs({
       )}
 
       {/* After its confirmation has closed, never stacked on it. */}
-      {revokeLinksFor && !demoteConfirm && !removeConfirm && !listConfirmOpen && (
+      {revokeLinksFor && !demoteConfirm && !deleteConfirmOpen && (
         <RevokeShareLinksDialog
           username={revokeLinksFor.username}
           links={shareLinks.links}

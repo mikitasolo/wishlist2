@@ -1,6 +1,15 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type Dispatch,
+  type RefObject,
+  type SetStateAction,
+} from 'react';
 import { track } from '@/lib/analytics';
 import type { InviteMemberFormHandle } from '@/components/InviteMemberForm';
 import type { ShareLinksSectionHandle } from '@/components/ShareLinksSection';
@@ -39,6 +48,9 @@ export interface WishlistPeopleOptions {
   inviteFormRef: RefObject<InviteMemberFormHandle | null>;
   /** People's Share links section, which Share's "Share links" goes to. */
   shareLinksRef: RefObject<ShareLinksSectionHandle | null>;
+  /** The page's one removal confirmation, shared with Leave list and Delete. */
+  deleteConfirm: DeleteConfirm | null;
+  setDeleteConfirm: Dispatch<SetStateAction<DeleteConfirm | null>>;
 }
 
 /** Who a Remove on People is for, until its confirmation closes. */
@@ -50,6 +62,13 @@ export interface RemoveConfirm {
   memberUserId: string;
   memberUsername: string | null;
 }
+
+/**
+ * The page's one removal confirmation: a person's Remove, Leave list or Delete
+ * wishlist. One state, as before the split, so opening one replaces another
+ * and closing any closes whichever is open.
+ */
+export type DeleteConfirm = RemoveConfirm | { type: 'leave' | 'wishlist' };
 
 /**
  * The owners' People tab on the wishlist page (WIS-372): the people, pending
@@ -69,6 +88,8 @@ export function useWishlistPeople({
   shareLinks,
   inviteFormRef,
   shareLinksRef,
+  deleteConfirm,
+  setDeleteConfirm,
 }: WishlistPeopleOptions) {
   const { showToast } = useToast();
   // Everyone on the list, owners and members (owners only ever read it).
@@ -83,7 +104,10 @@ export function useWishlistPeople({
   // Your own groups, for the People tab's invite form (WIS-37): read when it opens.
   const peopleGroups = usePeopleGroups(tab === 'people');
   const [isInviting, setIsInviting] = useState(false);
-  const [removeConfirm, setRemoveConfirm] = useState<RemoveConfirm | null>(null);
+  const removeConfirm =
+    deleteConfirm && (deleteConfirm.type === 'member' || deleteConfirm.type === 'owner')
+      ? (deleteConfirm as RemoveConfirm)
+      : null;
   // Promoting someone to co-owner is destructive for them (it cancels the
   // reservations they hold here) and irreversible without their consent, so it
   // always goes through an explicit warning first.
@@ -366,7 +390,7 @@ export function useWishlistPeople({
 
   const handleKickMember = useCallback(
     (person: { id: string; userId: string; username: string | null; role: 'owner' | 'member' }) => {
-      setRemoveConfirm({
+      setDeleteConfirm({
         // Owners aren't memberships — they're removed through the owners endpoint.
         type: person.role,
         memberId: person.id,
@@ -374,11 +398,11 @@ export function useWishlistPeople({
         memberUsername: person.username,
       });
     },
-    []
+    [setDeleteConfirm]
   );
 
   const confirmKickMember = useCallback(async () => {
-    if (!wishlistId || !removeConfirm || !removeConfirm.memberId) return;
+    if (!wishlistId || !removeConfirm) return;
 
     const { type, memberId, memberUsername } = removeConfirm;
     const path =
@@ -387,7 +411,7 @@ export function useWishlistPeople({
         : `/api/wishlists/${apiId()}/members/${memberId}`;
 
     try {
-      await runRowAction(removeConfirm.memberUserId ?? memberId, async () => {
+      await runRowAction(removeConfirm.memberUserId, async () => {
         try {
           const response = await fetch(path, { method: 'DELETE' });
           const result = await response.json();
@@ -399,8 +423,8 @@ export function useWishlistPeople({
             );
             // Removing someone also cancels any invite they still had pending here.
             if (type === 'owner') {
-              dropOwner({ id: memberId, username: memberUsername ?? null });
-              offerLinkRevoke(memberUsername ?? null);
+              dropOwner({ id: memberId, username: memberUsername });
+              offerLinkRevoke(memberUsername);
               await Promise.all([refreshMembers(), refreshInvites(), refreshOwners()]);
             } else {
               await Promise.all([refreshMembers(), refreshInvites()]);
@@ -420,12 +444,13 @@ export function useWishlistPeople({
         }
       });
     } finally {
-      setRemoveConfirm(null);
+      setDeleteConfirm(null);
     }
   }, [
     apiId,
     wishlistId,
     removeConfirm,
+    setDeleteConfirm,
     showToast,
     refreshMembers,
     refreshInvites,
@@ -574,7 +599,6 @@ export function useWishlistPeople({
     cancelInvite,
     answerJoinRequest,
     removeConfirm,
-    setRemoveConfirm,
     handleKickMember,
     confirmKickMember,
     promoteConfirm,

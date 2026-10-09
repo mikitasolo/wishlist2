@@ -15,7 +15,8 @@ import { ITEM_GRID_CLASSES, ListControlsSkeleton, SkeletonGrid } from '@/compone
 import WishlistItem from '@/components/WishlistItem';
 import type { ItemCards } from '@/lib/hooks/useItemCards';
 import type { ListFilters } from '@/lib/hooks/useListFilters';
-import type { ItemDialogsControl, WishlistItemActions } from '@/lib/hooks/useWishlistItemActions';
+import type { ItemDialogsControl } from '@/lib/hooks/useItemDialogs';
+import type { WishlistItemActions } from '@/lib/hooks/useWishlistItemActions';
 import type { WishlistItemsControl } from '@/lib/hooks/useWishlistItems';
 import { canCopyItem } from '@/lib/utils/itemCopy';
 import { SORT_OPTIONS, SORT_SHORT_LABELS } from '@/lib/utils/itemFilters';

@@ -31,9 +31,10 @@ import { useJoinRequest } from '@/lib/hooks/useJoinRequest';
 import { useLinkJoin } from '@/lib/hooks/useLinkJoin';
 import { useSettingsForm } from '@/lib/hooks/useSettingsForm';
 import { useWishlistLoad } from '@/lib/hooks/useWishlistLoad';
-import { useWishlistPeople } from '@/lib/hooks/useWishlistPeople';
+import { useWishlistPeople, type DeleteConfirm } from '@/lib/hooks/useWishlistPeople';
 import { useWishlistListActions } from '@/lib/hooks/useWishlistListActions';
-import { useItemDialogs, useWishlistItemActions } from '@/lib/hooks/useWishlistItemActions';
+import { useItemDialogs } from '@/lib/hooks/useItemDialogs';
+import { useWishlistItemActions } from '@/lib/hooks/useWishlistItemActions';
 import { useItemCards } from '@/lib/hooks/useItemCards';
 import { useToast } from '@/components/ToastProvider';
 import { IWishlist } from '@/models/Wishlist';
@@ -176,6 +177,10 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
   // Its invite form and Share links section, which the header's Share and
   // Leave list's notice open too.
   const inviteFormRef = useRef<InviteMemberFormHandle>(null);
+  // Remove, Leave list and Delete wishlist share one confirmation, so only one
+  // is ever open.
+  const [deleteConfirm, setDeleteConfirm] = useState<DeleteConfirm | null>(null);
+  const closeDeleteConfirm = useCallback(() => setDeleteConfirm(null), []);
   const shareLinksRef = useRef<ShareLinksSectionHandle>(null);
   const people = useWishlistPeople({
     wishlistId,
@@ -189,6 +194,8 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
     shareLinks,
     inviteFormRef,
     shareLinksRef,
+    deleteConfirm,
+    setDeleteConfirm,
   });
 
   const itemDialogs = useItemDialogs();
@@ -246,6 +253,8 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
     inviteFormRef,
     settings,
     reloadShareLinks: shareLinks.reload,
+    deleteConfirm,
+    setDeleteConfirm,
   });
 
   // What the list shows, and the chips, search, sort, budget and Prices that
@@ -552,11 +561,13 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
       <WishlistPeopleDialogs
         people={people}
         shareLinks={shareLinks}
-        listConfirmOpen={listActions.listConfirm !== null}
+        deleteConfirmOpen={deleteConfirm !== null}
+        closeDeleteConfirm={closeDeleteConfirm}
       />
       <WishlistListDialogs
         wishlist={wishlist}
         actions={listActions}
+        closeDeleteConfirm={closeDeleteConfirm}
         isOwner={isOwner}
         hasMembers={people.memberRows.length > 0}
         reservedByYou={itemsLoaded ? reservedByYou : null}

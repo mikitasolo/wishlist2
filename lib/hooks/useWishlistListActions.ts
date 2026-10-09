@@ -7,7 +7,6 @@ import {
   useState,
   type Dispatch,
   type FormEvent,
-  type MutableRefObject,
   type RefObject,
   type SetStateAction,
 } from 'react';
@@ -16,6 +15,7 @@ import type { InviteMemberFormHandle } from '@/components/InviteMemberForm';
 import { useToast } from '@/components/ToastProvider';
 import { onCurrentListTab, type ListTab } from '@/lib/hooks/useListTab';
 import type { SettingsFormControl } from '@/lib/hooks/useSettingsForm';
+import type { DeleteConfirm } from '@/lib/hooks/useWishlistPeople';
 import { leftListToast } from '@/lib/utils/confirmationCopy';
 import { missingFromDraft } from '@/lib/utils/occasion';
 import type { ShownOwners } from '@/lib/utils/shownOwners';
@@ -29,7 +29,7 @@ export interface WishlistListActionsOptions {
   wishlist: IWishlist | null;
   setWishlist: Dispatch<SetStateAction<IWishlist | null>>;
   /** Set while the page leaves or deletes the list (see `useWishlistLoad`). */
-  departedRef: MutableRefObject<boolean>;
+  departedRef: RefObject<boolean>;
   isOwner: boolean;
   isMember: boolean;
   ownerCount: number;
@@ -40,6 +40,9 @@ export interface WishlistListActionsOptions {
   inviteFormRef: RefObject<InviteMemberFormHandle | null>;
   settings: SettingsFormControl;
   reloadShareLinks: () => void;
+  /** The page's one removal confirmation (see `DeleteConfirm`). */
+  deleteConfirm: DeleteConfirm | null;
+  setDeleteConfirm: Dispatch<SetStateAction<DeleteConfirm | null>>;
 }
 
 /**
@@ -62,11 +65,16 @@ export function useWishlistListActions({
   inviteFormRef,
   settings,
   reloadShareLinks,
+  deleteConfirm,
+  setDeleteConfirm,
 }: WishlistListActionsOptions) {
   const router = useRouter();
   const { showToast } = useToast();
   // Leave list's or Delete wishlist's confirmation, while open.
-  const [listConfirm, setListConfirm] = useState<'leave' | 'wishlist' | null>(null);
+  const listConfirm =
+    deleteConfirm?.type === 'leave' || deleteConfirm?.type === 'wishlist'
+      ? deleteConfirm.type
+      : null;
   const [isDeletingWishlist, setIsDeletingWishlist] = useState(false);
   // Archiving shuts everyone but the owners out of the list, so it's confirmed
   // first. Unarchiving only gives back the access they had, so it isn't.
@@ -93,8 +101,8 @@ export function useWishlistListActions({
   const [isSavingSettings, setIsSavingSettings] = useState(false);
 
   const handleLeaveWishlist = useCallback(() => {
-    setListConfirm('leave');
-  }, []);
+    setDeleteConfirm({ type: 'leave' });
+  }, [setDeleteConfirm]);
 
   const inviteCoOwnerInstead = useCallback(() => {
     inviteOwnerOnClose.current = true;
@@ -136,13 +144,22 @@ export function useWishlistListActions({
       showToast('Failed to leave wishlist', 'error');
     } finally {
       if (!left) departedRef.current = false;
-      setListConfirm(null);
+      setDeleteConfirm(null);
     }
-  }, [apiId, wishlistId, listConfirm, wishlist?.name, router, showToast, departedRef]);
+  }, [
+    apiId,
+    wishlistId,
+    listConfirm,
+    wishlist?.name,
+    router,
+    showToast,
+    departedRef,
+    setDeleteConfirm,
+  ]);
 
   const handleDeleteWishlist = useCallback(() => {
-    setListConfirm('wishlist');
-  }, []);
+    setDeleteConfirm({ type: 'wishlist' });
+  }, [setDeleteConfirm]);
 
   const confirmDeleteWishlist = useCallback(async () => {
     if (!wishlistId || listConfirm !== 'wishlist') return;
@@ -170,10 +187,10 @@ export function useWishlistListActions({
       showToast('Failed to delete wishlist', 'error');
     } finally {
       if (!deleted) departedRef.current = false;
-      setListConfirm(null);
+      setDeleteConfirm(null);
       setIsDeletingWishlist(false);
     }
-  }, [apiId, wishlistId, listConfirm, router, showToast, departedRef]);
+  }, [apiId, wishlistId, listConfirm, router, showToast, departedRef, setDeleteConfirm]);
 
   // Archive or unarchive the list: from Settings, from the confirmation, or
   // from the archived banner's Unarchive.
@@ -367,7 +384,6 @@ export function useWishlistListActions({
 
   return {
     listConfirm,
-    setListConfirm,
     confirmLeaveWishlist,
     handleDeleteWishlist,
     confirmDeleteWishlist,

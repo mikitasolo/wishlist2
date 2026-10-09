@@ -10,6 +10,7 @@ import type { IWishlist } from '@/models/Wishlist';
 export interface WishlistListDialogsProps {
   wishlist: IWishlist;
   actions: WishlistListActions;
+  closeDeleteConfirm: () => void;
   isOwner: boolean;
   /** The list has members besides its owners (the sole owner's notice). */
   hasMembers: boolean;
@@ -30,6 +31,7 @@ export interface WishlistListDialogsProps {
 export default function WishlistListDialogs({
   wishlist,
   actions,
+  closeDeleteConfirm,
   isOwner,
   hasMembers,
   reservedByYou,
@@ -38,7 +40,6 @@ export default function WishlistListDialogs({
 }: WishlistListDialogsProps) {
   const {
     listConfirm,
-    setListConfirm,
     confirmLeaveWishlist,
     confirmDeleteWishlist,
     soleOwnerNotice,
@@ -62,7 +63,7 @@ export default function WishlistListDialogs({
             : // Their own reservations, from the items already on the page.
               memberLeaveCopy(wishlist.name, reservedByYou, hideReservations))}
           onConfirm={confirmLeaveWishlist}
-          onCancel={() => setListConfirm(null)}
+          onCancel={closeDeleteConfirm}
           confirmText="Leave"
           pendingText="Leaving…"
           cancelText="Cancel"
@@ -120,7 +121,7 @@ export default function WishlistListDialogs({
           // the gifters'), and an owner is told nothing about them.
           {...deleteListCopy(wishlist.name, itemCount)}
           onConfirm={confirmDeleteWishlist}
-          onCancel={() => setListConfirm(null)}
+          onCancel={closeDeleteConfirm}
           confirmText="Delete"
           pendingText="Deleting…"
           cancelText="Cancel"

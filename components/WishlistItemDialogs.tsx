@@ -5,7 +5,8 @@ import EditItemModal from '@/components/EditItemModal';
 import ProposeItemModal from '@/components/ProposeItemModal';
 import ReviewItemModal from '@/components/ReviewItemModal';
 import SaveToListModal from '@/components/SaveToListModal';
-import type { ItemDialogsControl, WishlistItemActions } from '@/lib/hooks/useWishlistItemActions';
+import type { ItemDialogsControl } from '@/lib/hooks/useItemDialogs';
+import type { WishlistItemActions } from '@/lib/hooks/useWishlistItemActions';
 import type { WishlistItemsControl } from '@/lib/hooks/useWishlistItems';
 import { proposalReviewState } from '@/lib/utils/proposalReview';
 

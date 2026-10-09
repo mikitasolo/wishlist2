@@ -6,7 +6,7 @@ import {
   useRef,
   useState,
   type Dispatch,
-  type MutableRefObject,
+  type RefObject,
   type SetStateAction,
 } from 'react';
 import { useRouter } from 'next/navigation';
@@ -92,7 +92,7 @@ export function useWishlistLoad({
   const apiId = useCallback((): string => listId.current ?? wishlistId ?? '', [wishlistId]);
   // Set while this page leaves or deletes the list itself: what a poll says
   // about it then, before the page moves on, doesn't matter any more.
-  const departed: MutableRefObject<boolean> = useRef(false);
+  const departed: RefObject<boolean> = useRef(false);
   const [isOwner, setIsOwner] = useState(false);
   const [isMember, setIsMember] = useState(false);
 
