@@ -204,20 +204,35 @@ describe('POST /api/upload/from-url', () => {
       expect(spent).toEqual(['uploadFromUrl', 'upload']);
     });
 
-    it.each(['uploadFromUrl', 'upload'] as const)(
-      'stops at %s’s limit before fetching',
-      async (name) => {
-        const spent: string[] = [];
-        __setRateLimiters({
-          uploadFromUrl: allow(spent, 'uploadFromUrl'),
-          upload: allow(spent, 'upload'),
-          [name]: deny,
-        });
-        const res = await POST(post({ url: IMAGE_URL }));
-        expect(res.status).toBe(429);
-        expect(fetchPublicBytes).not.toHaveBeenCalled();
-      }
-    );
+    it('stops at its own limit before fetching', async () => {
+      const spent: string[] = [];
+      __setRateLimiters({ uploadFromUrl: deny, upload: allow(spent, 'upload') });
+      const res = await POST(post({ url: IMAGE_URL }));
+      expect(res.status).toBe(429);
+      expect(fetchPublicBytes).not.toHaveBeenCalled();
+      expect(spent).toEqual([]);
+    });
+
+    it('stops at the upload limit before storing anything', async () => {
+      __setRateLimiters({ uploadFromUrl: allow([], 'uploadFromUrl'), upload: deny });
+      fetchPublicBytes.mockResolvedValue(await png());
+      const res = await POST(post({ url: IMAGE_URL }));
+      expect(res.status).toBe(429);
+      expect(put).not.toHaveBeenCalled();
+    });
+
+    it('spends no upload on a URL that yields no image', async () => {
+      const spent: string[] = [];
+      __setRateLimiters({
+        uploadFromUrl: allow(spent, 'uploadFromUrl'),
+        upload: allow(spent, 'upload'),
+      });
+      fetchPublicBytes.mockRejectedValueOnce(new SafeFetchError('blocked_address'));
+      expect((await POST(post({ url: IMAGE_URL }))).status).toBe(422);
+      fetchPublicBytes.mockResolvedValueOnce(Buffer.from('<html></html>'));
+      expect((await POST(post({ url: IMAGE_URL }))).status).toBe(422);
+      expect(spent).toEqual(['uploadFromUrl', 'uploadFromUrl']);
+    });
 
     it('holds a new account to the stricter tier', async () => {
       session.mockResolvedValue({ user: { id: USER_ID, newAccount: true } });

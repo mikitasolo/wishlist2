@@ -8,6 +8,9 @@ import { storeUploadImage, UPLOAD_MAX_BYTES } from '@/lib/utils/uploadPipeline';
 
 // undici's pinned Agent and node:dns need Node, never the edge runtime.
 export const runtime = 'nodejs';
+// Up to 10 s of fetching (SAFE_FETCH_TIMEOUT_MS), then the re-encode, the
+// quota check and the blob write.
+export const maxDuration = 30;
 
 /**
  * Every failure to get an image out of the URL says this, and nothing else:
@@ -39,12 +42,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Its own budget, since each call is a fetch our server makes, then the
-    // upload one, since each is also an upload.
+    // Its own budget before any fetch, since each call is a request our server
+    // makes; the upload one only once there's an image to store, so URLs that
+    // lead nowhere don't use up the user's file uploads.
     const tier = { newAccount: session.user.newAccount };
-    const limited =
-      (await enforce('uploadFromUrl', userKey(session.user.id), tier)) ??
-      (await enforce('upload', userKey(session.user.id), tier));
+    const limited = await enforce('uploadFromUrl', userKey(session.user.id), tier);
     if (limited) return limited;
 
     const body: unknown = await request.json().catch(() => null);
@@ -62,6 +64,9 @@ export async function POST(request: NextRequest) {
     // The remote `Content-Type` is the remote server's say-so; the bytes decide.
     const type = sniffUploadImageType(input);
     if (!type) return failed('not_an_image');
+
+    const uploadLimited = await enforce('upload', userKey(session.user.id), tier);
+    if (uploadLimited) return uploadLimited;
 
     const stored = await storeUploadImage(session.user.id, input, type);
     if (!stored.ok) {

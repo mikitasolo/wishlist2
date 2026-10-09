@@ -59,6 +59,9 @@ describe('isPublicAddress', () => {
     ['192.0.0.8', 'IETF protocol assignments'],
     ['192.0.2.1', 'documentation'],
     ['192.88.99.1', '6to4 relay anycast'],
+    ['192.31.196.1', 'AS112'],
+    ['192.52.193.1', 'AMT'],
+    ['192.175.48.1', 'AS112 direct delegation'],
     ['192.168.1.1', 'RFC 1918'],
     ['198.18.0.1', 'benchmarking'],
     ['198.19.255.255', 'benchmarking'],
@@ -288,6 +291,35 @@ describe('fetchPublicBytes', () => {
       h.deps
     );
     expect(h.request.mock.calls[0][1].headers.referer).toBe('https://shop.example.com/');
+  });
+
+  it('keeps the Referer to the image’s own host, dropping it on a hop elsewhere', async () => {
+    const h = harness({ 'cdn.example.com': [PUBLIC], 'tracker.example.net': [PUBLIC_2] });
+    h.request
+      .mockResolvedValueOnce(redirect('/moved.jpg'))
+      .mockResolvedValueOnce(redirect('https://tracker.example.net/x.jpg'))
+      .mockResolvedValueOnce(respond(200, {}, [Buffer.from('x')]));
+    await fetchPublicBytes(
+      'https://cdn.example.com/a.jpg',
+      { referer: 'https://shop.example.com/p/1' },
+      h.deps
+    );
+    const referers = h.request.mock.calls.map(([, init]) => init.headers.referer);
+    expect(referers).toEqual(['https://shop.example.com/', 'https://shop.example.com/', undefined]);
+  });
+
+  it('pins IPv4 when the host has both families, whatever order DNS gave', async () => {
+    const h = harness({ 'cdn.example.com': ['2606:4700:4700::1111', PUBLIC] });
+    h.request.mockResolvedValueOnce(respond(200, {}, [Buffer.from('x')]));
+    await fetchPublicBytes('https://cdn.example.com/a.jpg', {}, h.deps);
+    expect(h.agents[0].pinned).toEqual({ address: PUBLIC, family: 4 });
+  });
+
+  it('pins IPv6 when that is all the host has', async () => {
+    const h = harness({ 'cdn.example.com': ['2606:4700:4700::1111'] });
+    h.request.mockResolvedValueOnce(respond(200, {}, [Buffer.from('x')]));
+    await fetchPublicBytes('https://cdn.example.com/a.jpg', {}, h.deps);
+    expect(h.agents[0].pinned).toEqual({ address: '2606:4700:4700::1111', family: 6 });
   });
 
   it('refuses a host if any of its addresses isn’t public, before connecting', async () => {

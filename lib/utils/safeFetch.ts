@@ -98,8 +98,9 @@ function inV4Range(ip: Bytes, base: Bytes, bits: number): boolean {
   return true;
 }
 
-// Everything that isn't the public internet (RFC 6890's special-purpose
-// registry, minus the globally reachable anycast blocks no image is served from).
+// Everything that isn't the public internet: RFC 6890's special-purpose
+// registry, plus the anycast blocks no image is served from (6to4 relays, AS112,
+// AMT), which are refused too, since nothing legitimate here needs them.
 const NON_PUBLIC_V4: [Bytes, number][] = [
   [[0, 0, 0, 0], 8], // "this network"
   [[10, 0, 0, 0], 8], // private
@@ -109,8 +110,11 @@ const NON_PUBLIC_V4: [Bytes, number][] = [
   [[172, 16, 0, 0], 12], // private
   [[192, 0, 0, 0], 24], // IETF protocol assignments
   [[192, 0, 2, 0], 24], // documentation
+  [[192, 31, 196, 0], 24], // AS112
+  [[192, 52, 193, 0], 24], // AMT
   [[192, 88, 99, 0], 24], // 6to4 relay anycast
   [[192, 168, 0, 0], 16], // private
+  [[192, 175, 48, 0], 24], // AS112 direct delegation
   [[198, 18, 0, 0], 15], // benchmarking
   [[198, 51, 100, 0], 24], // documentation
   [[203, 0, 113, 0], 24], // documentation
@@ -260,9 +264,12 @@ export async function resolvePublicAddress(
   if (answers.some((answer) => !isPublicAddress(answer.address))) {
     throw new SafeFetchError('blocked_address');
   }
-  const family = isIP(answers[0].address);
+  // IPv4 when the host has it: the pin leaves no happy-eyeballs fallback, and
+  // a function's egress may have no IPv6 route.
+  const chosen = answers.find((answer) => isIP(answer.address) === 4) ?? answers[0];
+  const family = isIP(chosen.address);
   if (family !== 4 && family !== 6) throw new SafeFetchError('dns');
-  return { address: answers[0].address, family };
+  return { address: chosen.address, family };
 }
 
 /**
@@ -373,17 +380,21 @@ export async function fetchPublicBytes(
     'user-agent': 'Mozilla/5.0 (compatible; WishlistImageFetcher/1.0)',
   };
   const referer = refererFor(options.referer);
-  if (referer) headers.referer = referer;
 
   let url = parseFetchableUrl(input);
+  const imageHost = url.hostname;
   for (let hop = 0; ; hop++) {
+    // The product page's origin goes only to the image's own host: a redirect
+    // elsewhere mustn't tell a third party which store the user was on.
+    const hopHeaders =
+      referer && url.hostname === imageHost ? { ...headers, referer } : { ...headers };
     const pinned = await resolvePublicAddress(url.hostname, resolve, signal);
     const agent = createAgent(pinned, { connectTimeoutMs });
     try {
       const response = await request(url, {
         method: 'GET',
         dispatcher: agent,
-        headers,
+        headers: hopHeaders,
         signal,
       }).catch((error: unknown) => {
         throw asFailure(error, signal);
