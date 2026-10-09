@@ -22,6 +22,11 @@ fi
 MONGOMS_DOWNLOAD_DIR="$HOME/.cache/mongodb-binaries" npm ci
 npx playwright install chromium
 
+# Tracked hooks: .githooks/pre-push runs the quick checks before a push
+# (`--no-verify` skips). The path is relative, so this one shared setting
+# works in every worktree.
+git config core.hooksPath .githooks
+
 touch .env.local
 grep -v '^NEXTAUTH_URL=' .env.local > .env.local.tmp || true
 echo "NEXTAUTH_URL=http://localhost:$(node scripts/dev-port.mjs)" >> .env.local.tmp

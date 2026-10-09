@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Fast subset of the must-pass checks (lint, format, types, tests) before a
+# push. The full list, with the build, is `npm run verify`. Skip with
+# `git push --no-verify`. Installed by scripts/workspace-setup.sh.
+set -e
+cd "$(git rev-parse --show-toplevel)"
+exec node scripts/verify.mjs --quick
