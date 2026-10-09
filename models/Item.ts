@@ -75,6 +75,21 @@ const ItemSchema = new Schema(
       type: [{ type: Schema.Types.ObjectId, ref: 'Item' }],
       default: undefined,
     },
+    // The live group gift holding this item (WIS-361, `models/GroupGift.ts`),
+    // set with its booking and removed when the gift ends, so a release that
+    // isn't the gift's (`releaseUserBookings`, a solo unbook) can skip it in its
+    // own write's filter. `groupGiftRev` is the gift's `rev` the item last
+    // followed (`syncGiftItem`). Neither is ever answered: `serializeItem`
+    // drops both and gives a member the gift as a summary.
+    groupGift: {
+      type: Schema.Types.ObjectId,
+      ref: 'GroupGift',
+      required: false,
+    },
+    groupGiftRev: {
+      type: Number,
+      required: false,
+    },
     // The create request's idempotency key, scoped to its sender
     // (`scopedIdempotencyKey`, lib/utils/itemIdempotency.ts: a hash of their
     // user id and the key their browser sent), so a retried POST answers with
@@ -119,6 +134,8 @@ export interface IItem {
   bookedBy?: mongoose.Types.ObjectId | null;
   proposedBy?: mongoose.Types.ObjectId | null;
   relatedItems?: mongoose.Types.ObjectId[];
+  groupGift?: mongoose.Types.ObjectId | null;
+  groupGiftRev?: number;
   idempotencyKey?: string;
   createdAt: Date;
   updatedAt: Date;

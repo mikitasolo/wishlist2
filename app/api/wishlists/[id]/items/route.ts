@@ -9,6 +9,7 @@ import WishlistMember from '@/models/WishlistMember';
 import { createItemSchema, validateRequestBody } from '@/lib/validations';
 import { ensureCurrencyRatesUpToDate } from '@/lib/utils/currencyRates';
 import { hasRate, normalizeCurrency } from '@/lib/utils/currency';
+import { readGroupGiftSummaries } from '@/lib/utils/groupGifts';
 import { readGivenByViewer, serializeItem, type ItemViewer } from '@/lib/utils/itemSerializer';
 import { linkedItemRefs } from '@/lib/utils/itemLinks';
 import { checkItemLinks, readItemRefs, writeItemLinks } from '@/lib/utils/itemLinkWrites';
@@ -206,14 +207,19 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // an owner (booking-blind; `isMember` never includes one), a visitor, or
     // anyone else's bookings. serializeItem then shapes each item for the viewer.
     const viewerId = session?.user?.id;
+    // Live group gifts (WIS-361) likewise: a member's alone, like the bookings.
     const viewer: ItemViewer = isOwner
       ? { role: 'owner' }
       : viewerId && isMember
-        ? {
-            role: 'member',
+        ? await Promise.all([
+            readGivenByViewer(viewerId, visibleItems),
+            readGroupGiftSummaries(viewerId, visibleItems),
+          ]).then(([givenByViewer, groupGifts]) => ({
+            role: 'member' as const,
             id: viewerId,
-            givenByViewer: await readGivenByViewer(viewerId, visibleItems),
-          }
+            givenByViewer,
+            groupGifts,
+          }))
         : { role: 'visitor' };
 
     // "Goes with" chips (WIS-29), worked out from the items already read: only

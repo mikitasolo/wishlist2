@@ -18,9 +18,16 @@ export function parseDiscreet(stored: string | null | undefined): boolean {
 /**
  * The item as discreet mode draws it: a reserved item is plain available (no
  * badge, tone, dimming or sort position of its own), and nothing says who
- * reserved it or that it was given. Any other item is returned as is.
+ * reserved it, that it was given or that it's a group gift. Any other item is
+ * returned as is.
  */
 export function withoutReservation<T extends Pick<ApiItem, 'status' | 'bookedBy'>>(item: T): T {
   if (item.status !== 'booked') return item;
-  return { ...item, status: 'available', bookedBy: null, givenByMe: undefined };
+  return {
+    ...item,
+    status: 'available',
+    bookedBy: null,
+    givenByMe: undefined,
+    groupGift: undefined,
+  };
 }

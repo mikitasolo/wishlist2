@@ -22,6 +22,14 @@ describe('withoutReservation', () => {
     }
   });
 
+  it('hides a group gift like any reservation (WIS-361)', () => {
+    const shown = withoutReservation(
+      item({ status: 'booked', groupGift: { contributing: false, percentFunded: 40 } })
+    );
+    expect(shown.status).toBe('available');
+    expect(shown.groupGift).toBeUndefined();
+  });
+
   it('keeps the rest of the item, and never mutates it', () => {
     const original = item({ status: 'booked', bookedBy: 'me', name: 'Kettle' });
     expect(withoutReservation(original).name).toBe('Kettle');

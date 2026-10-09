@@ -1,4 +1,5 @@
 import type { ItemRef, LinkChanges } from '@/lib/utils/itemLinks';
+import type { GroupGiftSummary } from '@/lib/utils/groupGiftSummary';
 
 /**
  * API response types - these match what the API actually returns
@@ -40,6 +41,12 @@ export interface ApiItem {
    * answer from before the field existed: treat as none.
    */
   relatedItems?: ItemRef[];
+  /**
+   * A live group gift on a booked item (WIS-361), on a member's own read only:
+   * the full split for a contributor, only the percent funded for any other
+   * member. Never on an owner's or visitor's answer.
+   */
+  groupGift?: GroupGiftSummary;
   createdAt: string; // ISO date string
   updatedAt: string; // ISO date string
 }

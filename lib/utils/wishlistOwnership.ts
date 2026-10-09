@@ -9,6 +9,7 @@ import { isOwnerOfWishlist } from '@/lib/utils/wishlistAccess';
 import { errorKind } from '@/lib/utils/errorKind';
 import { purgeShareCards } from '@/lib/og/purge';
 import { cancelPendingInvites } from '@/lib/utils/wishlistInvites';
+import { withdrawFromListGroupGifts } from '@/lib/utils/groupGifts';
 
 /**
  * Changing who owns a wishlist. Ownership is consequential in both directions,
@@ -34,16 +35,22 @@ export async function releaseGifterHoldings(
 ): Promise<{ unbookedItems: number; cancelledReservations: number }> {
   await connectDB();
 
+  // Their group gifts first (WIS-361): taken out of each, a gift they organize
+  // handed to its earliest remaining contributor (or ended, and its item
+  // released, with nobody left), so the item-wide release below, which skips a
+  // gift's item, never strands one. Their contribution's Reservation goes with
+  // the rest below.
+  const organized = await withdrawFromListGroupGifts(wishlistId, userId);
   const [items, reservations] = await Promise.all([
     Item.updateMany(
-      { wishlist: wishlistId, bookedBy: userId, status: 'booked' },
+      { wishlist: wishlistId, bookedBy: userId, status: 'booked', groupGift: null },
       { $set: { status: 'available', bookedBy: null } }
     ),
     deleteReservations({ wishlist: wishlistId, gifter: userId }),
   ]);
 
   return {
-    unbookedItems: items.modifiedCount ?? 0,
+    unbookedItems: (items.modifiedCount ?? 0) + organized,
     cancelledReservations: reservations,
   };
 }
@@ -52,18 +59,23 @@ export async function releaseGifterHoldings(
  * Free the items a user booked on a wishlist without touching their durable
  * reservations — used when they leave or are removed. They keep the ability to
  * mark the gift as given from their reservations page; the list just stops
- * showing the item as claimed.
+ * showing the item as claimed. Their place in a group gift goes too: an
+ * organizer's role passes to the earliest remaining contributor, and a gift
+ * left with nobody ends and frees its item (WIS-361).
  *
  * A member's leave or kick runs it before the membership delete, and
  * `releaseLateBookings` after it.
  */
 export async function releaseUserBookings(wishlistId: string, userId: string): Promise<number> {
   await connectDB();
+  // Out of their group gifts first (WIS-361), handing on any they organize, as
+  // `releaseGifterHoldings` does; their Reservations stay, as for a booking.
+  const organized = await withdrawFromListGroupGifts(wishlistId, userId);
   const result = await Item.updateMany(
-    { wishlist: wishlistId, bookedBy: userId, status: 'booked' },
+    { wishlist: wishlistId, bookedBy: userId, status: 'booked', groupGift: null },
     { $set: { status: 'available', bookedBy: null } }
   );
-  return result.modifiedCount ?? 0;
+  return (result.modifiedCount ?? 0) + organized;
 }
 
 /**
@@ -126,7 +138,9 @@ export async function leaveAsMember(
  * unbookable by everyone else.
  *
  *   - owner  → free the items *and* delete the reservations. They're now a
- *              recipient of this list; you can't be your own gifter.
+ *              recipient of this list; you can't be your own gifter. Their
+ *              contributions to group gifts go too, any they organize handed
+ *              on (WIS-361), after the grant like the rest.
  *   - member → nothing. Members see their own bookings and can unbook normally.
  */
 export async function releaseHoldingsForRole(

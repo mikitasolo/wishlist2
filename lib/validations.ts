@@ -14,6 +14,7 @@ import { SHARE_LINK_LABEL_MAX, SHARE_LINK_LEVELS } from '@/lib/utils/shareLinkFi
 import { isTimeZone } from '@/lib/utils/zonedDate';
 import { COPY_ITEMS_MAX } from '@/lib/utils/wishlistCopy';
 import { ITEM_LINKS_MAX } from '@/lib/utils/itemLinks';
+import { GROUP_GIFT_MAX_CENTS } from '@/lib/utils/groupGiftSummary';
 
 /**
  * Validation schemas for API endpoints
@@ -425,6 +426,26 @@ export const updateItemSchema = z
   .refine((data) => data.expectedUpdatedAt === undefined || data.expectedStatus === 'proposed', {
     message: 'expectedUpdatedAt needs expectedStatus',
   });
+
+/** A pledge or a group gift's target: whole cents, at least 1, at most `GROUP_GIFT_MAX_CENTS`. */
+const groupGiftCentsSchema = z
+  .number()
+  .int('Amounts are whole cents')
+  .min(1, 'Amounts must be more than zero')
+  .max(GROUP_GIFT_MAX_CENTS, 'That amount is too large');
+
+/**
+ * `POST /api/items/[id]/group-gift` (WIS-361): the organizer's own pledge, and a
+ * target when it isn't the item's price (required for an item with none). The
+ * route normalizes the currency and checks it against the day's rates.
+ */
+export const startGroupGiftSchema = z.object({
+  pledged: groupGiftCentsSchema,
+  target: z.object({ value: groupGiftCentsSchema, currency: itemCurrencySchema }).optional(),
+});
+
+/** `PUT /api/items/[id]/group-gift/me`: join with a pledge, or change it. */
+export const pledgeGroupGiftSchema = z.object({ pledged: groupGiftCentsSchema });
 
 /**
  * `DELETE /api/users/me`: what the person typed to confirm it, their username

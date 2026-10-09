@@ -27,6 +27,28 @@ type PreviousReservation = Pick<
 export type LostBookingReason = 'owner' | 'archived' | 'not-member';
 
 /**
+ * Why `userId` is no longer a plain member of the list, read now: what
+ * `undoBookingUnlessMember` and a group gift's start or join (WIS-361) check
+ * once their writes have landed. `null` when they still are one, or the list is
+ * gone (its items go with it, so nothing is stranded).
+ */
+export async function lostMemberReason(
+  wishlistId: Id,
+  userId: string
+): Promise<LostBookingReason | null> {
+  // The membership first. Deleting a list removes the list before its memberships,
+  // so a row that's gone because the list was deleted can't be followed by a read
+  // that still finds the list.
+  const membership = await WishlistMember.exists({ wishlist: wishlistId, user: userId });
+  const wishlist = await Wishlist.findById(wishlistId).select('owners archived').lean();
+  if (!wishlist) return null;
+  if (isWishlistOwner(wishlist, userId)) return 'owner';
+  if (isHiddenByArchive(wishlist, userId)) return 'archived';
+  if (!membership) return 'not-member';
+  return null;
+}
+
+/**
  * Re-check, once a member's booking has written the item and its Reservation, that
  * they're still a plain member of the list, and undo the booking if not. Returns
  * why it was undone, or `null` when it stands.
@@ -76,23 +98,15 @@ export async function undoBookingUnlessMember({
   gifterId: string;
   previous: PreviousReservation | null;
 }): Promise<LostBookingReason | null> {
-  // The membership first. Deleting a list removes the list before its memberships,
-  // so a row that's gone because the list was deleted can't be followed by a read
-  // that still finds the list.
-  const membership = await WishlistMember.exists({ wishlist: wishlistId, user: gifterId });
-  const wishlist = await Wishlist.findById(wishlistId).select('owners archived').lean();
-  if (!wishlist) return null;
-
-  let reason: LostBookingReason | null = null;
-  if (isWishlistOwner(wishlist, gifterId)) reason = 'owner';
-  else if (isHiddenByArchive(wishlist, gifterId)) reason = 'archived';
-  else if (!membership) reason = 'not-member';
+  const reason = await lostMemberReason(wishlistId, gifterId);
   if (!reason) return null;
 
   // The item first: a reservation left behind is one the gifter can dismiss from
   // their Booked page, while an item left booked is the stranding this undoes.
+  // Never a group gift's item: those are undone through the gift
+  // (`lib/utils/groupGifts.ts`).
   await Item.updateOne(
-    { _id: itemId, status: 'booked', bookedBy: gifterId },
+    { _id: itemId, status: 'booked', bookedBy: gifterId, groupGift: null },
     { $set: { status: 'available', bookedBy: null } }
   );
   if (previous && reason !== 'owner') {
