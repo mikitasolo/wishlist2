@@ -18,6 +18,7 @@ npm run test:cov     # full Vitest suite (unit + component + API) + the coverage
 npm run build        # production build — must pass before done
 npm run check:trace  # after a build: sharp's native libvips ships with every route that ships sharp (the upload routes, share cards), and NextAuth's route ships none (CI runs it)
 npm run smoke:deploy -- <url>  # read-only GET smoke of a deployed host (auth + upload routes start, a share card draws); safe on staging
+npm run generate:bookmarklet  # rebuild lib/bookmarklet/code.ts; rerun after changing lib/bookmarklet/**, productExtract.ts or productFragment.ts
 npm run generate:email-logo    # re-render the email logo (lib/emailLogo.ts) from app/icon.svg; rerun when the logo changes
 npm run test:e2e     # Playwright end-to-end suite
 npm run test:watch   # watch mode

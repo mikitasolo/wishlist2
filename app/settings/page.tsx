@@ -7,6 +7,7 @@ import { useKnownSession } from '@/lib/hooks/useKnownSession';
 import AppHeader from '@/components/AppHeader';
 import AuthButton from '@/components/AuthButton';
 import BirthdayField from '@/components/BirthdayField';
+import BookmarkletCard from '@/components/BookmarkletCard';
 import Button from '@/components/Button';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import DeleteAccount from '@/components/DeleteAccount';
@@ -594,6 +595,8 @@ export default function SettingsPage() {
             note={(key) => <SaveNote state={notes[key]} />}
           />
         </Panel>
+
+        <BookmarkletCard />
 
         <Panel className="mb-6" title="Preferences">
           <div id={SETTINGS_CURRENCY_FIELD_ID} ref={currencyField}>

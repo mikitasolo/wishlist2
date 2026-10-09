@@ -35,3 +35,6 @@ export function useMediaQuery(query: string): boolean | null {
  * `sm` up, false below it, null until known (see `useMediaQuery`).
  */
 export const SM_UP_QUERY = '(min-width: 40rem)';
+
+/** A mouse or trackpad is the main pointer (not a phone or tablet): where dragging a link to the bookmarks bar makes sense. */
+export const FINE_POINTER_QUERY = '(hover: hover) and (pointer: fine)';

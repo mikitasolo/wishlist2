@@ -48,8 +48,13 @@ function strings(file: string): string[] {
   return out;
 }
 
+// The bookmarklet's generated code (`lib/bookmarklet/code.ts`) is minified
+// script, not copy: it holds schema.org's `Book` type, not a word a user reads.
+const GENERATED = path.join(process.cwd(), 'lib', 'bookmarklet', 'code.ts');
 const ALL = ['app', 'components', 'lib'].flatMap((dir) =>
-  sourceFiles(path.join(process.cwd(), dir)).flatMap(strings)
+  sourceFiles(path.join(process.cwd(), dir))
+    .filter((file) => file !== GENERATED)
+    .flatMap(strings)
 );
 const textOf = (s: string) => s.slice(s.indexOf(' ') + 1);
 
