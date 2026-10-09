@@ -27,7 +27,6 @@ import { ownedByFilter } from '@/lib/utils/wishlistOwners';
 import {
   activityBump,
   walkthroughDue,
-  walkthroughVariant,
   walkthroughWrite,
   type WalkthroughStatus,
 } from '@/lib/utils/walkthrough';
@@ -62,7 +61,7 @@ export async function GET() {
     const { walkthrough: tourState, ...profile } = user.toObject();
     const walkthrough: WalkthroughStatus = {
       due: walkthroughDue(tourState),
-      variant: walkthroughVariant(!!ownsAList),
+      ownsList: !!ownsAList,
     };
 
     return NextResponse.json(

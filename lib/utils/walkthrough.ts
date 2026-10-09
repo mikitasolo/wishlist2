@@ -26,7 +26,6 @@ export const ACTIVITY_BUMP_MS = 24 * 60 * 60 * 1000;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-export type WalkthroughVariant = 'owner' | 'member';
 export type WalkthroughDue = 'tour' | 'offer' | null;
 
 /** `User.walkthrough`: absent fields read as never. */
@@ -41,7 +40,8 @@ export interface WalkthroughState {
 /** What `GET /api/users/me` answers about the tour: never the raw state. */
 export interface WalkthroughStatus {
   due: WalkthroughDue;
-  variant: WalkthroughVariant;
+  /** Whether they own or co-own a list (archived included): without one, the tour ends on Create a list. */
+  ownsList: boolean;
 }
 
 /** Whether the current tour has been finished or skipped. */
@@ -57,11 +57,6 @@ export function walkthroughDue(state: WalkthroughState | null | undefined): Walk
   if (!offeredAt) return null;
   const answeredAt = state?.offerAnsweredAt;
   return !answeredAt || answeredAt.getTime() < offeredAt.getTime() ? 'offer' : null;
-}
-
-/** The owner tour for anyone who owns or co-owns a list, archived or not; else the member tour. */
-export function walkthroughVariant(ownsAList: boolean): WalkthroughVariant {
-  return ownsAList ? 'owner' : 'member';
 }
 
 /** Whether `lastActiveAt` is at least `RETURN_GAP_DAYS` before `now` (never, for none). */

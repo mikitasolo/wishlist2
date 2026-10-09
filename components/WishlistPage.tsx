@@ -2418,7 +2418,7 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
                     }
                   />
                 ) : (
-                  <div className={ITEM_GRID_CLASSES} data-tour="items">
+                  <div className={ITEM_GRID_CLASSES}>
                     {addTile && (
                       <AddItemTile
                         label={addTile === 'add' ? 'Add item' : 'Propose an item'}

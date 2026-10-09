@@ -5,7 +5,6 @@ import {
   TOUR_VERSION,
   tourDone,
   walkthroughDue,
-  walkthroughVariant,
   walkthroughWrite,
 } from '@/lib/utils/walkthrough';
 import { countedSteps, tourAllowedOn, tourSteps } from '@/lib/utils/tourSteps';
@@ -85,46 +84,54 @@ describe('walkthroughWrite', () => {
   });
 });
 
-describe('walkthroughVariant', () => {
-  it('is the owner tour for anyone owning a list, else the member tour', () => {
-    expect(walkthroughVariant(true)).toBe('owner');
-    expect(walkthroughVariant(false)).toBe('member');
-  });
-});
-
 describe('tourSteps', () => {
-  it('has six owner steps on a desktop, five without the bookmarklet, and a closing card', () => {
-    const desktop = tourSteps('owner', { desktop: true });
-    const phone = tourSteps('owner', { desktop: false });
+  it('is one tour: six steps on a desktop, five without the bookmarklet, then a closing card', () => {
+    const desktop = tourSteps({ desktop: true, ownsList: true });
+    const phone = tourSteps({ desktop: false, ownsList: true });
+    expect(desktop.map((s) => s.key)).toEqual([
+      'lists',
+      'items',
+      'sharing',
+      'reserving',
+      'reserved',
+      'bookmarklet',
+      'closing',
+    ]);
     expect(countedSteps(desktop)).toBe(6);
     expect(countedSteps(phone)).toBe(5);
     expect(phone.some((s) => s.key === 'bookmarklet')).toBe(false);
-    expect(desktop.at(-1)?.closing).toBe(true);
   });
 
-  it('has four member steps, ending on Create a list', () => {
-    const steps = tourSteps('member', { desktop: true });
-    expect(countedSteps(steps)).toBe(4);
-    expect(steps.at(-1)?.createList).toBe(true);
+  it('offers Create a list at the end only to someone who owns no list', () => {
+    expect(tourSteps({ desktop: true, ownsList: false }).at(-1)).toMatchObject({
+      closing: true,
+      createList: true,
+    });
+    expect(tourSteps({ desktop: true, ownsList: true }).at(-1)?.createList).toBeFalsy();
+    // The same steps either way: nothing depends on having a list.
+    expect(tourSteps({ desktop: true, ownsList: false }).map((s) => s.key)).toEqual(
+      tourSteps({ desktop: true, ownsList: true }).map((s) => s.key)
+    );
+  });
+
+  it('gives every step about a feature a made-up picture', () => {
+    for (const key of ['lists', 'items', 'sharing', 'reserving']) {
+      const step = tourSteps({ desktop: true, ownsList: true }).find((s) => s.key === key);
+      expect(step?.illustration, key).toBeDefined();
+    }
   });
 
   it('can report every skippable step to analytics', () => {
     const allowed: readonly string[] = ANALYTICS_EVENTS.tour_skipped.step;
-    for (const variant of ['owner', 'member'] as const) {
-      for (const step of tourSteps(variant, { desktop: true })) {
-        if (!step.closing) expect(allowed).toContain(step.key);
-      }
+    for (const step of tourSteps({ desktop: true, ownsList: false })) {
+      if (!step.closing) expect(allowed).toContain(step.key);
     }
   });
 
-  it('never says anything a step must not', () => {
-    const copy = [
-      ...tourSteps('owner', { desktop: true }),
-      ...tourSteps('member', { desktop: true }),
-    ]
+  it('says reserve, never book (D1)', () => {
+    const copy = tourSteps({ desktop: true, ownsList: false })
       .map((s) => `${s.title} ${s.body}`)
       .join(' ');
-    // D1 vocabulary: reserve, never book.
     expect(copy).not.toMatch(/\bbook(ed|ing)?\b/i);
   });
 });

@@ -16,6 +16,7 @@ import BaseModal from '@/components/BaseModal';
 import Button from '@/components/Button';
 import { useToast } from '@/components/ToastProvider';
 import { POPOVER_SURFACE } from '@/components/popoverStyles';
+import TourIllustration from '@/components/TourIllustration';
 import { track } from '@/lib/analytics';
 import { useFocusTrap } from '@/lib/hooks/useFocusTrap';
 import { FINE_POINTER_QUERY, SM_UP_QUERY } from '@/lib/hooks/useMediaQuery';
@@ -32,21 +33,18 @@ import {
   type TourStep,
   type TourTarget,
 } from '@/lib/utils/tourSteps';
-import type {
-  WalkthroughAction,
-  WalkthroughStatus,
-  WalkthroughVariant,
-} from '@/lib/utils/walkthrough';
+import type { WalkthroughAction, WalkthroughStatus } from '@/lib/utils/walkthrough';
 
 /**
  * The guided walkthrough (WIS-371), mounted by `AppHeader` for someone signed
  * in, so it can carry on across pages. Once per tab it reads what's due from
  * `GET /api/users/me` (which also records the visit) and then shows:
  *
- * - **the tour**, owner or member variant (`tourSteps`), one step at a time:
- *   a popover beside the real UI it's about (a `data-tour` target), or a
- *   centred card where the page doesn't have it on screen. Skip (or Escape)
- *   at any step counts as done.
+ * - **the tour** (`tourSteps`), one for everyone, one step at a time: a
+ *   popover beside the real UI it's about (a `data-tour` target), or a
+ *   centred card where the page doesn't have it on screen, each with its
+ *   made-up picture (`TourIllustration`). Skip (or Escape) at any step counts
+ *   as done. Someone who owns no list is offered Create a list at the end.
  * - **the offer** after three months away: a card asking "Want a quick look
  *   around?".
  *
@@ -64,14 +62,14 @@ const TARGET_WAIT_MS = 600;
 const TARGET_POLL_MS = 100;
 
 interface TourRun {
-  variant: WalkthroughVariant;
   steps: TourStep[];
   index: number;
 }
 
 interface TourStore {
   run: TourRun | null;
-  offer: WalkthroughVariant | null;
+  /** The offer, while it's showing: whether they own a list, for the tour it starts. */
+  offer: { ownsList: boolean } | null;
 }
 
 // One tour per tab, across the page changes that remount the header.
@@ -155,14 +153,11 @@ export default function Walkthrough({ userId }: { userId: string }) {
   const { showToast } = useToast();
   const allowed = tourAllowedOn(pathname);
 
-  const start = useCallback(
-    (variant: WalkthroughVariant, source: 'auto' | 'offer' | 'settings') => {
-      const steps = tourSteps(variant, { desktop: isDesktop() });
-      setStore({ run: { variant, steps, index: 0 }, offer: null });
-      if (source !== 'offer') track('tour_started', { variant, source });
-    },
-    []
-  );
+  const start = useCallback((ownsList: boolean, source: 'auto' | 'offer' | 'settings') => {
+    const steps = tourSteps({ desktop: isDesktop(), ownsList });
+    setStore({ run: { steps, index: 0 }, offer: null });
+    if (source !== 'offer') track('tour_started', { source });
+  }, []);
 
   // What's due: read once per tab, or again when Settings sends here to start it.
   useEffect(() => {
@@ -192,9 +187,9 @@ export default function Walkthrough({ userId }: { userId: string }) {
       if (!status && checkedFor === userId) checkedFor = null;
       // Another account may have signed in since, or a tour be running already.
       if (!status || checkedFor !== userId || store.run) return;
-      if (fromSettings) start(status.variant, 'settings');
-      else if (status.due === 'tour') start(status.variant, 'auto');
-      else if (status.due === 'offer') setStore({ offer: status.variant });
+      if (fromSettings) start(status.ownsList, 'settings');
+      else if (status.due === 'tour') start(status.ownsList, 'auto');
+      else if (status.due === 'offer') setStore({ offer: { ownsList: status.ownsList } });
     })();
   }, [allowed, pathname, userId, start]);
 
@@ -207,18 +202,17 @@ export default function Walkthrough({ userId }: { userId: string }) {
   const finish = useCallback(
     (then?: () => void) => {
       if (!store.run) return;
-      const { variant } = store.run;
       setStore({ run: null });
       then?.();
       remind();
-      void sendAnswer('completed').then((ok) => ok && track('tour_finished', { variant }));
+      void sendAnswer('completed').then((ok) => ok && track('tour_finished'));
     },
     [remind]
   );
 
   const skip = useCallback(() => {
     if (!store.run) return;
-    const { variant, steps, index } = store.run;
+    const { steps, index } = store.run;
     const current = steps[index];
     if (!current || current.closing) return finish();
     setStore({ run: null });
@@ -227,7 +221,6 @@ export default function Walkthrough({ userId }: { userId: string }) {
       (ok) =>
         ok &&
         track('tour_skipped', {
-          variant,
           step: current.key as Exclude<typeof current.key, 'closing'>,
         })
     );
@@ -252,24 +245,20 @@ export default function Walkthrough({ userId }: { userId: string }) {
   }, [finish, pathname, router]);
 
   const acceptOffer = useCallback(() => {
-    const variant = store.offer;
-    if (!variant) return;
-    start(variant, 'offer');
+    if (!store.offer) return;
+    start(store.offer.ownsList, 'offer');
     void sendAnswer('offer_accepted').then((ok) => {
       if (!ok) return;
-      track('tour_offer_accepted', { variant });
-      track('tour_started', { variant, source: 'offer' });
+      track('tour_offer_accepted');
+      track('tour_started', { source: 'offer' });
     });
   }, [start]);
 
   const dismissOffer = useCallback(() => {
-    const variant = store.offer;
-    if (!variant) return;
+    if (!store.offer) return;
     setStore({ offer: null });
     remind();
-    void sendAnswer('offer_dismissed').then(
-      (ok) => ok && track('tour_offer_dismissed', { variant })
-    );
+    void sendAnswer('offer_dismissed').then((ok) => ok && track('tour_offer_dismissed'));
   }, [remind]);
 
   if (!allowed) return null;
@@ -397,6 +386,7 @@ function StepCounter({ position, total }: { position: number | null; total: numb
 function StepBody({ step }: { step: TourStep }) {
   return (
     <>
+      {step.illustration && <TourIllustration kind={step.illustration} />}
       <p className="text-sm text-foreground">{step.body}</p>
       {step.link && (
         <Link

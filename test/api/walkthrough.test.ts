@@ -65,18 +65,18 @@ describe('GET /api/users/me walkthrough', () => {
 
   it('has the tour due for a new account, and records the visit', async () => {
     const data = await status();
-    expect(data.walkthrough).toEqual({ due: 'tour', variant: 'member' });
+    expect(data.walkthrough).toEqual({ due: 'tour', ownsList: false });
     expect((await stored()).lastActiveAt).toBeInstanceOf(Date);
   });
 
   it('answers what is due, never the stored state or the last visit', async () => {
     await finishedAndLastSeen(daysAgo(2));
     const data = await status();
-    expect(Object.keys(data.walkthrough).sort()).toEqual(['due', 'variant']);
+    expect(Object.keys(data.walkthrough).sort()).toEqual(['due', 'ownsList']);
     expect(data).not.toHaveProperty('lastActiveAt');
   });
 
-  it('picks the owner tour for anyone who owns or co-owns a list', async () => {
+  it('says whether they own or co-own a list', async () => {
     await Wishlist.create({
       name: 'Bob and Alice',
       owners: [bob, alice],
@@ -84,7 +84,7 @@ describe('GET /api/users/me walkthrough', () => {
       slug: 'shared-owners',
       currency: 'USD',
     });
-    expect((await status()).walkthrough.variant).toBe('owner');
+    expect((await status()).walkthrough.ownsList).toBe(true);
   });
 
   it('bumps the last visit at most once a day', async () => {

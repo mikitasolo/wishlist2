@@ -213,7 +213,7 @@ describe('dashboard — the greeting row', () => {
     expect(window.location.search).toBe('');
   });
 
-  it('opens a plain New list from the member tour’s Create a list on another page (WIS-371)', async () => {
+  it('opens a plain New list from the tour’s Create a list on another page (WIS-371)', async () => {
     window.history.replaceState(null, '', '/?newList=new');
     render(<Home />);
     const dialog = await screen.findByRole('dialog', { name: 'Create new wishlist' });
@@ -221,7 +221,7 @@ describe('dashboard — the greeting row', () => {
     expect(window.location.search).toBe('');
   });
 
-  it('opens New list when the member tour asks on Home itself (WIS-371)', async () => {
+  it('opens New list when the tour asks on Home itself (WIS-371)', async () => {
     render(<Home />);
     await screen.findByRole('button', { name: 'New list' });
     act(() => {

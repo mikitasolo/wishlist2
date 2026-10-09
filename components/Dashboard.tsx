@@ -162,7 +162,7 @@ export default function Dashboard() {
 
   // The birthday nudge email's link (WIS-344): New list on a Birthday list,
   // once, the query taken off so a reload doesn't open it again. `new` (the
-  // member tour's Create a list, WIS-371, from another page) opens a plain one.
+  // tour's Create a list, WIS-371, from another page) opens a plain one.
   useEffect(() => {
     if (status !== 'authenticated') return;
     const url = new URL(window.location.href);
@@ -177,7 +177,7 @@ export default function Dashboard() {
     openCreate(kind === 'birthday' ? 'birthday' : undefined);
   }, [status, openCreate]);
 
-  // The member tour's Create a list, from Home itself.
+  // The tour's Create a list, from Home itself.
   useEffect(() => {
     const open = () => openCreate();
     window.addEventListener(OPEN_NEW_LIST_EVENT, open);
