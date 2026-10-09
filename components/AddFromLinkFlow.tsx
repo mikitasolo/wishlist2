@@ -9,7 +9,11 @@ import Icon from './Icon';
 import { Skeleton } from './Skeleton';
 import { useToast } from './ToastProvider';
 import type { ApiItem, ApiResponse } from '@/types/api';
-import { RequestTimeoutError, withRequestTimeout } from '@/lib/utils/requestTimeout';
+import {
+  REHOST_REQUEST_TIMEOUT_MS,
+  RequestTimeoutError,
+  withRequestTimeout,
+} from '@/lib/utils/requestTimeout';
 import { formatItemCount } from '@/lib/utils/itemCounts';
 import type { ProductPrefill } from '@/lib/utils/productFragment';
 import { useFreshUploads } from '@/lib/hooks/useFreshUploads';
@@ -123,7 +127,8 @@ export default function AddFromLinkFlow({ product, userCurrency }: AddFromLinkFl
               signal,
             });
             return await res.json();
-          }
+          },
+          REHOST_REQUEST_TIMEOUT_MS
         );
         // Landed after the flow closed: handed back by `add`, never shown.
         if (result.success && typeof result.url === 'string' && uploads.add(result.url)) {

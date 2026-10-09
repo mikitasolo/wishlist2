@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, cleanup, within, act } from '@testing-library/react';
 
 const { showToast, push } = vi.hoisted(() => ({ showToast: vi.fn(), push: vi.fn() }));
 
@@ -204,6 +204,13 @@ describe('AddFromLinkFlow image re-hosting (WIS-366)', () => {
   const calls = (fetchMock: ReturnType<typeof stubFetch>, method: string, path: string) =>
     fetchMock.mock.calls.filter(([url, init]) => url === path && init?.method === method);
 
+  // Lets every pending promise chain (the mocked fetch, `res.json()`, the
+  // timeout race) run to its end, and React flush what they set: no polling.
+  const flush = () =>
+    act(async () => {
+      for (let i = 0; i < 20; i++) await Promise.resolve();
+    });
+
   function deferred<T>() {
     let resolve!: (v: T) => void;
     const promise = new Promise<T>((r) => (resolve = r));
@@ -224,14 +231,14 @@ describe('AddFromLinkFlow image re-hosting (WIS-366)', () => {
     });
 
     d.resolve({ success: true, url: BLOB });
-    await waitFor(() =>
-      expect(within(form).getByTestId('image-upload')).toHaveAttribute('data-busy', 'false')
-    );
+    await flush();
+    expect(within(form).getByTestId('image-upload')).toHaveAttribute('data-busy', 'false');
     expect(within(form).getByTestId('image-upload')).toHaveTextContent(BLOB);
 
     // A save keeps it: sent as the item's image, never handed back.
     fireEvent.click(within(form).getByRole('button', { name: /^add to list$/i }));
-    await waitFor(() => expect(push).toHaveBeenCalled());
+    await flush();
+    expect(push).toHaveBeenCalled();
     const post = fetchMock.mock.calls.find(([url]) => String(url).includes('/items'))!;
     expect(JSON.parse(String(post[1]?.body)).imageUrl).toBe(BLOB);
     expect(calls(fetchMock, 'DELETE', '/api/upload')).toHaveLength(0);
@@ -245,13 +252,10 @@ describe('AddFromLinkFlow image re-hosting (WIS-366)', () => {
     const form = await pick('Birthday');
     expect(within(form).getByTestId('image-upload')).toHaveAttribute('data-busy', 'true');
     d.resolve({ success: false });
-    await waitFor(() =>
-      expect(within(form).getByTestId('image-upload')).toHaveAttribute('data-busy', 'false')
-    );
-    await waitFor(() =>
-      expect(within(form).getByTestId('image-upload')).toHaveTextContent(
-        'https://cdn.example.com/mug.jpg'
-      )
+    await flush();
+    expect(within(form).getByTestId('image-upload')).toHaveAttribute('data-busy', 'false');
+    expect(within(form).getByTestId('image-upload')).toHaveTextContent(
+      'https://cdn.example.com/mug.jpg'
     );
   });
 
@@ -262,9 +266,8 @@ describe('AddFromLinkFlow image re-hosting (WIS-366)', () => {
     render(<AddFromLinkFlow product={PRODUCT} userCurrency="USD" />);
 
     const form = await pick('Birthday');
-    await waitFor(() =>
-      expect(within(form).getByTestId('image-upload')).toHaveAttribute('data-busy', 'false')
-    );
+    await flush();
+    expect(within(form).getByTestId('image-upload')).toHaveAttribute('data-busy', 'false');
     expect(within(form).getByTestId('image-upload')).toHaveTextContent(
       'https://cdn.example.com/mug.jpg'
     );
@@ -282,7 +285,8 @@ describe('AddFromLinkFlow image re-hosting (WIS-366)', () => {
     const { unmount } = render(<AddFromLinkFlow product={PRODUCT} userCurrency="USD" />);
 
     let form = await pick('Birthday');
-    await waitFor(() => expect(within(form).getByTestId('image-upload')).toHaveTextContent(BLOB));
+    await flush();
+    expect(within(form).getByTestId('image-upload')).toHaveTextContent(BLOB);
     fireEvent.click(within(form).getByRole('button', { name: /change list/i }));
     // Unsaved changes aren't asked about: the prefill is the baseline, blob included.
     form = await pick('Home');
@@ -303,7 +307,8 @@ describe('AddFromLinkFlow image re-hosting (WIS-366)', () => {
 
     unmount();
     d.resolve({ success: true, url: BLOB });
-    await waitFor(() => expect(calls(fetchMock, 'DELETE', '/api/upload')).toHaveLength(1));
+    await flush();
+    expect(calls(fetchMock, 'DELETE', '/api/upload')).toHaveLength(1);
   });
 
   // regression: a save pressed while the photo was still being fetched went out
@@ -327,10 +332,12 @@ describe('AddFromLinkFlow image re-hosting (WIS-366)', () => {
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/items'))).toBe(false);
 
     d.resolve({ success: true, url: BLOB });
-    await waitFor(() => expect(within(form).getByTestId('image-upload')).toHaveTextContent(BLOB));
+    await flush();
+    expect(within(form).getByTestId('image-upload')).toHaveTextContent(BLOB);
     expect(add).toBeEnabled();
     fireEvent.click(add);
-    await waitFor(() => expect(push).toHaveBeenCalled());
+    await flush();
+    expect(push).toHaveBeenCalled();
     const post = fetchMock.mock.calls.find(([url]) => String(url).includes('/items'))!;
     expect(JSON.parse(String(post[1]?.body)).imageUrl).toBe(BLOB);
   });
