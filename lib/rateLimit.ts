@@ -93,6 +93,10 @@ const SPECS = {
   // cancelled form never spends an upload, and twice the upload's, since each
   // upload is handed back at most once.
   uploadRelease: { tokens: 40, window: '10 m', policy: 'fail-open', keyKind: 'user' },
+  // Re-hosting an image from its URL (WIS-366): besides `upload`, which it
+  // spends like any upload, since each one is also a fetch our server makes to
+  // an address a user chose.
+  uploadFromUrl: { tokens: 20, window: '10 m', policy: 'fail-open', keyKind: 'user' },
   invite: { tokens: 30, window: '1 h', policy: 'fail-open', keyKind: 'user' },
   follow: { tokens: 60, window: '1 h', policy: 'fail-open', keyKind: 'user' },
   // Every change to your own groups (WIS-27): private and reaching nobody, so
@@ -178,6 +182,7 @@ export type LimiterName = keyof typeof SPECS;
  */
 const NEW_ACCOUNT_SPECS = {
   upload: { tokens: 5, window: '10 m' },
+  uploadFromUrl: { tokens: 5, window: '10 m' },
   invite: { tokens: 5, window: '1 h' },
   follow: { tokens: 20, window: '1 h' },
   shareLink: { tokens: 5, window: '1 h' },

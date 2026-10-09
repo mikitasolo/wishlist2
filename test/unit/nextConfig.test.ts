@@ -89,14 +89,19 @@ describe('next.config.js', () => {
   // libvips ships only with what runs sharp: the share cards above and the
   // upload route. Sign-in used to need it for the email logo, which is now
   // pre-rendered (WIS-208); `npm run check:trace` checks the build itself.
-  it('ships libvips with the upload route, and with nothing else but the share cards', () => {
+  it('ships libvips with the upload routes, and with nothing else but the share cards', () => {
     const includes = nextConfig.outputFileTracingIncludes ?? {};
     expect(includes['/api/upload']).toEqual(['./node_modules/@img/sharp-libvips-*/lib/**/*']);
+    // WIS-366: re-hosting an image from its URL runs the same sharp pipeline.
+    expect(includes['/api/upload/from-url']).toEqual([
+      './node_modules/@img/sharp-libvips-*/lib/**/*',
+    ]);
     const withLibvips = Object.keys(includes).filter((route) =>
       includes[route].some((file) => file.includes('sharp-libvips'))
     );
     expect(withLibvips.sort()).toEqual([
       '/api/upload',
+      '/api/upload/from-url',
       '/l/[token]/opengraph-image',
       '/opengraph-image',
       '/users/[username]/opengraph-image',

@@ -25,11 +25,12 @@ import { fileURLToPath } from 'node:url';
 const APP = '.next/server/app';
 
 // What runs sharp, and so has to ship it with libvips. Also makes sure the check
-// can't pass by finding nothing: the upload route re-encodes every upload with
-// sharp, and next/og draws a list's, share link's or profile's share card with it, which also
+// can't pass by finding nothing: the upload routes re-encode every upload with
+// sharp (a file, or an image fetched from its URL), and next/og draws a list's, share link's or profile's share card with it, which also
 // converts the card's banner or avatar (lib/og/photo.ts).
 export const RUNS_SHARP = [
   'api/upload/route.js.nft.json',
+  'api/upload/from-url/route.js.nft.json',
   'wishlists/[id]/opengraph-image/route.js.nft.json',
   'users/[username]/opengraph-image/route.js.nft.json',
   'l/[token]/opengraph-image/route.js.nft.json',
