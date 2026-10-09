@@ -22,6 +22,7 @@ import {
 } from '@/lib/utils/groupGiftSummary';
 import { errorKind } from '@/lib/utils/errorKind';
 import { isDuplicateKeyError } from '@/lib/utils/mongoErrors';
+import { notifyGroupGiftOrganizer } from '@/lib/groupGiftNotifications';
 
 /**
  * Every write to a group gift (WIS-361, `models/GroupGift.ts`), and keeping its
@@ -336,6 +337,8 @@ export async function withdrawFromGift(
     { new: false, lean: true, projection: { organizer: 1, item: 1 } }
   );
   if (before) await syncGiftItem(giftId);
+  // WIS-364: an organizer's leave (of any kind) tells whoever holds it now.
+  if (before?.organizer.equals(uid)) await notifyGroupGiftOrganizer(giftId, userId);
   return before;
 }
 

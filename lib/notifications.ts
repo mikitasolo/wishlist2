@@ -34,6 +34,8 @@ interface CreateNotificationArgs {
   inviteRole?: InviteRole | null;
   /** `link_join` only: the share link's label, if it has one. */
   linkLabel?: string | null;
+  /** `group_gift_joined` only: the gift, for its email's daily claim. Not stored. */
+  groupGift?: Id | null;
 }
 
 /**
@@ -106,6 +108,14 @@ export async function createNotifications(
      * email can't be taken back, so it isn't sent.
      */
     stillHolds?: () => Promise<boolean>;
+    /**
+     * Re-checked per recipient once the rows are written, before any email:
+     * of the recipients given, those who still qualify (WIS-364's group gift
+     * rows: still a contributor and a plain member of the list). Anyone else's
+     * row is taken back, and they get no email. A failed re-check keeps
+     * nobody.
+     */
+    recheck?: (users: string[]) => Promise<string[]>;
   } = {}
 ): Promise<mongoose.Types.ObjectId[]> {
   // `String`, not `.toString()`: a missing recipient must fail in the guarded
@@ -117,19 +127,57 @@ export async function createNotifications(
     emailedByNotifications(args.type) ? recipientsWanting(everyone, event, 'email') : [],
   ]);
   const ids = await Promise.all(inApp.map((user) => writeNotification({ ...args, user })));
-  const written = ids.filter((id): id is mongoose.Types.ObjectId => id !== null);
+  let written = ids.filter((id): id is mongoose.Types.ObjectId => id !== null);
+  let emailTo = byEmail;
+  if (options.recheck && (written.length > 0 || byEmail.length > 0)) {
+    const keep = await recheckRecipients(
+      options.recheck,
+      Array.from(new Set([...inApp, ...byEmail]))
+    );
+    const dropped = ids.filter(
+      (id, i): id is mongoose.Types.ObjectId => id !== null && !keep.has(inApp[i])
+    );
+    if (dropped.length > 0) {
+      await deleteNotifications(dropped);
+      const droppedSet = new Set(dropped.map(String));
+      written = written.filter((id) => !droppedSet.has(String(id)));
+    }
+    emailTo = byEmail.filter((user) => keep.has(user));
+  }
   // One re-check of the list for the rows and the emails alike.
   const gone =
     !!args.wishlist &&
-    (written.length > 0 || byEmail.length > 0) &&
+    (written.length > 0 || emailTo.length > 0) &&
     (await dropIfWishlistGone(args.wishlist, written));
   // Each recipient's email follows its own setting, whatever their in-app one
   // (`emailNotification` skips the types that email elsewhere or not at all),
   // and none goes out about a list that's gone.
-  if (!gone && byEmail.length > 0 && (!options.stillHolds || (await options.stillHolds()))) {
-    await emailNotification(byEmail, args);
+  if (!gone && emailTo.length > 0 && (!options.stillHolds || (await options.stillHolds()))) {
+    await emailNotification(emailTo, args);
   }
   return written;
+}
+
+/** `createNotifications`' per-recipient re-check: who still qualifies, or nobody if it fails. */
+async function recheckRecipients(
+  recheck: (users: string[]) => Promise<string[]>,
+  users: string[]
+): Promise<Set<string>> {
+  try {
+    return new Set((await recheck(users)).map(String));
+  } catch (err) {
+    console.error('Failed to re-check the recipients of a notification:', errorKind(err));
+    return new Set();
+  }
+}
+
+/** Take back rows just written. Best-effort: a failure is logged by its kind only. */
+async function deleteNotifications(ids: mongoose.Types.ObjectId[]): Promise<void> {
+  try {
+    await Notification.deleteMany({ _id: { $in: ids } });
+  } catch (err) {
+    console.error('Failed to take back notifications:', errorKind(err));
+  }
 }
 
 /**

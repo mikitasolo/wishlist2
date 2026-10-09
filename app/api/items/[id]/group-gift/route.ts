@@ -18,6 +18,7 @@ import {
   writeContributorReservation,
 } from '@/lib/utils/groupGifts';
 import { lostMemberReason } from '@/lib/utils/lateBooking';
+import { notifyGroupGiftFunded } from '@/lib/groupGiftNotifications';
 import {
   admitGiftCaller,
   giftError,
@@ -112,6 +113,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return giftError(GROUP_GIFT_ENDED, 409);
     }
     await settleContributorReservation(userId, started.item, previous);
+    // WIS-364: a gift funded from the start is claimed as told (nobody else is in it).
+    await notifyGroupGiftFunded(started.gift, userId);
     return giftItemAnswer(caller, 201);
   } catch (error) {
     console.error('Error starting group gift:', error);

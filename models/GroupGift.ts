@@ -85,6 +85,9 @@ const GroupGiftSchema = new Schema(
     // a retry is answered as the first attempt was. Never read back.
     startKey: { type: String, select: false, default: undefined },
     endKey: { type: String, select: false, default: undefined },
+    // WIS-364: when its contributors were told it's fully funded, claimed once
+    // by a conditional write (`notifyGroupGiftFunded`). Absent until then.
+    fundedNotifiedAt: { type: Date, default: undefined },
   },
   { timestamps: true }
 );
@@ -122,6 +125,7 @@ export interface IGroupGift {
   endedAt?: Date;
   startKey?: string;
   endKey?: string;
+  fundedNotifiedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }

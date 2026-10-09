@@ -9,6 +9,27 @@ import {
   type OccasionKind,
 } from '@/lib/utils/occasion';
 
+/**
+ * The group gift notifications (WIS-364): to the gift's contributors who are
+ * still plain members of its list, never its owners or anyone else, re-checked
+ * when they're sent and again whenever the feed is read.
+ */
+export const GROUP_GIFT_NOTIFICATION_TYPES = [
+  'group_gift_joined',
+  'group_gift_funded',
+  'group_gift_organizer',
+  'group_gift_cancelled',
+  'group_gift_converted',
+  'group_gift_given',
+] as const;
+
+export type GroupGiftNotificationType = (typeof GROUP_GIFT_NOTIFICATION_TYPES)[number];
+
+/** Whether `type` is about a group gift (`GROUP_GIFT_NOTIFICATION_TYPES`). */
+export function isGroupGiftNotification(type: string): type is GroupGiftNotificationType {
+  return (GROUP_GIFT_NOTIFICATION_TYPES as readonly string[]).includes(type);
+}
+
 // The one list of notification types: the model's enum is built from it too.
 export const NOTIFICATION_TYPES = [
   'follow',
@@ -24,6 +45,8 @@ export const NOTIFICATION_TYPES = [
   'birthday_reminder',
   'wishlist_ask',
   'asked_list_made',
+  // WIS-364: to a group gift's contributors only (`lib/groupGiftNotifications.ts`).
+  ...GROUP_GIFT_NOTIFICATION_TYPES,
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
@@ -104,6 +127,10 @@ const ACTOR_TYPES: ReadonlySet<NotificationType> = new Set([
   // the one you asked for.
   'wishlist_ask',
   'asked_list_made',
+  // WIS-364: who joined a group gift, to its other contributors, who see each
+  // other by name anyway. No other group gift row names anyone: an organizer
+  // handover may follow a kick or a removal, which never says who did it.
+  'group_gift_joined',
 ]);
 
 /** Whether a notification of `type` may show its actor (see `ACTOR_TYPES`). */
@@ -202,7 +229,15 @@ function inviteParts(n: NotificationView): NotificationPart[] {
  * A notification's line in pieces, so the feed can set list names apart. Never
  * assumes a non-null actor.
  */
-export function notificationParts(n: NotificationView): NotificationPart[] {
+export function notificationParts(
+  n: NotificationView,
+  { discreet = false }: { discreet?: boolean } = {}
+): NotificationPart[] {
+  // No spoiler mode (WIS-46): a group gift is a reservation, so its rows say
+  // nothing about it on this device, not even which list or item.
+  if (discreet && isGroupGiftNotification(n.type)) {
+    return ['A group gift update, hidden by No spoiler mode'];
+  }
   switch (n.type) {
     case 'follow':
       return [followText(n)];
@@ -249,9 +284,36 @@ export function notificationParts(n: NotificationView): NotificationPart[] {
     // To an asker only, and only while they could open the list (WIS-324).
     case 'asked_list_made':
       return [`${actor(n)} made a wishlist you asked for: `, list(n)];
+    // To the gift's other contributors only (WIS-364): never an owner's.
+    case 'group_gift_joined':
+      return [`${actor(n)} joined `, ...groupGiftParts(n)];
+    case 'group_gift_funded':
+      return [...capitalized(groupGiftParts(n)), ' is fully funded'];
+    // To the new organizer only, never naming who handed it on or why.
+    case 'group_gift_organizer':
+      return ['You’re now organizing ', ...groupGiftParts(n)];
+    case 'group_gift_cancelled':
+      return [...capitalized(groupGiftParts(n)), ' was cancelled'];
+    case 'group_gift_converted':
+      return [...capitalized(groupGiftParts(n)), ' is now the organizer’s own reservation'];
+    case 'group_gift_given':
+      return [...capitalized(groupGiftParts(n)), ' was marked as given'];
     default:
       return ['You have a new notification'];
   }
+}
+
+/** "the group gift for “Lego” on <list>", or "a group gift on <list>" with no item name. */
+function groupGiftParts(n: NotificationView): NotificationPart[] {
+  return n.itemName
+    ? [`the group gift for “${n.itemName}” on `, list(n)]
+    : ['a group gift on ', list(n)];
+}
+
+/** `parts` with its first letter capitalized, to start a line. */
+function capitalized([first, ...rest]: NotificationPart[]): NotificationPart[] {
+  if (typeof first !== 'string') return [first, ...rest];
+  return [first.charAt(0).toUpperCase() + first.slice(1), ...rest];
 }
 
 /**
@@ -330,6 +392,12 @@ export function notificationLink(
     case 'role_changed':
     case 'occasion_reminder':
     case 'asked_list_made':
+    case 'group_gift_joined':
+    case 'group_gift_funded':
+    case 'group_gift_organizer':
+    case 'group_gift_cancelled':
+    case 'group_gift_converted':
+    case 'group_gift_given':
       return listLink(n);
     case 'removed_from_wishlist':
       return null;
@@ -376,6 +444,15 @@ export function notificationIcon(n: NotificationView): IconName {
     case 'wishlist_ask':
     case 'asked_list_made':
       return 'list';
+    case 'group_gift_joined':
+    case 'group_gift_organizer':
+      return 'users';
+    case 'group_gift_funded':
+    case 'group_gift_given':
+      return 'check-circle';
+    case 'group_gift_cancelled':
+    case 'group_gift_converted':
+      return 'gift';
     default:
       return 'bell';
   }

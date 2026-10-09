@@ -11,7 +11,10 @@ import { holdFirstCall } from '../interleave';
 
 vi.mock('@/lib/mongodb', () => ({ default: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('@/lib/auth', () => ({ auth: vi.fn() }));
-vi.mock('@/lib/email', () => ({ sendWishlistInvitationEmail: vi.fn() }));
+vi.mock('@/lib/email', () => ({
+  sendWishlistInvitationEmail: vi.fn(),
+  sendNotificationEmail: vi.fn(),
+}));
 vi.mock('@/lib/utils/currencyRates', () => ({
   ensureCurrencyRatesUpToDate: vi.fn().mockResolvedValue({ rates: new Map([['usd', 1]]) }),
   convertToUsdCents: vi.fn(),

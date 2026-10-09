@@ -110,6 +110,10 @@ const NotificationSchema = new Schema<INotification>(
 // Feed queries (newest first per user) and the unread-count query.
 NotificationSchema.index({ user: 1, createdAt: -1 });
 NotificationSchema.index({ user: 1, read: 1 });
+// WIS-364: every feed read looks up the lists of the reader's group gift rows
+// (`distinct('wishlist', { user, type })`, to hide those on lists they're no
+// longer a plain member of), which this covers without reading their rows.
+NotificationSchema.index({ user: 1, type: 1, wishlist: 1 });
 // Deleting a wishlist clears its notifications (`deleteMany({ wishlist })` in
 // DELETE /api/wishlists/[id]), which without this is a full collection scan.
 // Partial, so notifications that carry no list (follows) stay out of it. The

@@ -113,6 +113,46 @@ export const NOTIFICATION_EVENTS = {
     label: 'Proposals approved',
     description: 'When an owner adds an item you proposed to their list.',
   },
+  // WIS-364: a group gift you're in, one setting per event. Off by email where
+  // it's only news (someone joined, it was given); on where it changes what you
+  // hold or owe (it's funded, yours to organize, cancelled or made solo).
+  group_gift_joined: {
+    types: ['group_gift_joined'],
+    defaults: { inApp: true, email: false },
+    label: 'Group gift joins',
+    description:
+      'When someone joins a group gift you’re in. At most one email a day per group gift.',
+  },
+  group_gift_funded: {
+    types: ['group_gift_funded'],
+    defaults: { inApp: true, email: true },
+    label: 'Group gifts fully funded',
+    description: 'When a group gift you’re in reaches its target.',
+  },
+  group_gift_organizer: {
+    types: ['group_gift_organizer'],
+    defaults: { inApp: true, email: true },
+    label: 'Group gifts handed to you',
+    description: 'When you become the organizer of a group gift you’re in.',
+  },
+  group_gift_cancelled: {
+    types: ['group_gift_cancelled'],
+    defaults: { inApp: true, email: true },
+    label: 'Group gifts cancelled',
+    description: 'When the organizer cancels a group gift you’re in.',
+  },
+  group_gift_converted: {
+    types: ['group_gift_converted'],
+    defaults: { inApp: true, email: true },
+    label: 'Group gifts made solo',
+    description: 'When the organizer takes over a group gift you’re in as their own reservation.',
+  },
+  group_gift_given: {
+    types: ['group_gift_given'],
+    defaults: { inApp: true, email: false },
+    label: 'Group gifts given',
+    description: 'When the organizer marks a group gift you’re in as given.',
+  },
   follow: {
     types: ['follow'],
     defaults: { inApp: true },

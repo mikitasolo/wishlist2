@@ -727,3 +727,91 @@ describe('the birthday nudge email (WIS-344)', () => {
     );
   });
 });
+
+describe('group gift emails (WIS-364)', () => {
+  type Details = import('@/lib/email').NotificationEmailDetails;
+  type Message = ReturnType<typeof sentMessage> & { headers?: Record<string, string> };
+  const MARKUP = `<a href="https://evil.example">Win</a>`;
+  const MARKUP_HTML = '&lt;a href=&quot;https://evil.example&quot;&gt;Win&lt;/a&gt;';
+
+  async function send(overrides: Partial<Details>): Promise<Message> {
+    const { sendNotificationEmail } = await loadEmail('smtp');
+    await sendNotificationEmail(RECIPIENT, {
+      recipientId: RECIPIENT_ID,
+      type: 'group_gift_cancelled',
+      wishlistId: '64b7f0c2a1b2c3d4e5f60799',
+      wishlistName: 'Birthday',
+      wishlistSlug: 'birthday',
+      itemName: 'Camera',
+      ...overrides,
+    });
+    return sentMessage() as Message;
+  }
+
+  it.each([
+    ['group_gift_joined', '@ivan joined a group gift you’re in'],
+    ['group_gift_funded', 'A group gift you’re in is fully funded'],
+    ['group_gift_organizer', 'You’re now organizing a group gift'],
+    ['group_gift_cancelled', 'A group gift you were in was cancelled'],
+    ['group_gift_converted', 'A group gift you were in is now a solo reservation'],
+    ['group_gift_given', 'A group gift you were in was marked as given'],
+  ] as const)('%s: a subject with no free text', async (type, subject) => {
+    const message = await send({
+      type,
+      actorUsername: 'ivan',
+      wishlistName: 'Claim your gift at https://evil.example/login',
+      itemName: 'https://evil.example',
+    });
+    expect(message.subject).toBe(subject);
+  });
+
+  it('says what the row says, the item and list escaped, linking to the list', async () => {
+    const message = await send({
+      type: 'group_gift_funded',
+      itemName: `${MARKUP}\r\nline`,
+      wishlistName: MARKUP,
+    });
+    expect(message.html).toContain('The group gift for “');
+    expect(message.html).toContain(`on <strong>${MARKUP_HTML}</strong> is fully funded.`);
+    expect(message.html).not.toContain(MARKUP);
+    expect(message.html).toContain('href="http://localhost:3000/wishlists/birthday"');
+    expect(message.text).not.toMatch(/[\r\u2028\u2029]/);
+    expect(message.text.split('\n')).toHaveLength(7);
+  });
+
+  // A handover may follow a kick or a removal: nobody is named but a joiner.
+  it.each([
+    'group_gift_funded',
+    'group_gift_organizer',
+    'group_gift_cancelled',
+    'group_gift_converted',
+    'group_gift_given',
+  ] as const)('%s never names anyone, even one passed in', async (type) => {
+    const message = await send({ type, actorUsername: 'secret_kicker' });
+    expect(message.subject + message.html + message.text).not.toContain('secret_kicker');
+  });
+
+  it('a join names who joined', async () => {
+    const message = await send({ type: 'group_gift_joined', actorUsername: 'ivan' });
+    expect(message.html).toContain(
+      '@ivan joined the group gift for “Camera” on <strong>Birthday</strong>.'
+    );
+  });
+
+  it('unsubscribes from that event’s emails only, in one click', async () => {
+    const { verifyUnsubscribe } = await import('@/lib/utils/unsubscribe');
+    const message = await send({ type: 'group_gift_organizer' });
+    const oneClick = new URL((message.headers?.['List-Unsubscribe'] ?? '').replace(/^<|>$/g, ''));
+    expect(message.headers?.['List-Unsubscribe-Post']).toBe('List-Unsubscribe=One-Click');
+    expect(
+      verifyUnsubscribe({
+        u: oneClick.searchParams.get('u'),
+        e: oneClick.searchParams.get('e'),
+        t: oneClick.searchParams.get('t'),
+      })
+    ).toEqual({ userId: RECIPIENT_ID, event: 'group_gift_organizer' });
+    expect(message.text).toContain(
+      'Unsubscribe from group gifts handed to you emails: http://localhost:3000/unsubscribe?'
+    );
+  });
+});

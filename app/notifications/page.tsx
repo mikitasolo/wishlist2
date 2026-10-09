@@ -12,6 +12,7 @@ import {
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useKnownSession } from '@/lib/hooks/useKnownSession';
+import { useDiscreetMode } from '@/lib/hooks/useDiscreetMode';
 import AppHeader from '@/components/AppHeader';
 import AuthButton from '@/components/AuthButton';
 import Avatar from '@/components/Avatar';
@@ -37,15 +38,20 @@ import {
   notificationIcon,
   notificationLink,
   notificationParts,
+  isGroupGiftNotification,
   showsActor,
   withInviteAnswers,
 } from '@/lib/utils/notifications';
 
-/** A notification's line, with any list's name in semibold. */
+/**
+ * A notification's line, with any list's name in semibold. No spoiler mode
+ * hides what a group gift row says (a reservation), as it renders.
+ */
 function NotificationLine({ n }: { n: NotificationView }) {
+  const { discreet } = useDiscreetMode();
   return (
     <>
-      {notificationParts(n).map((part, i) =>
+      {notificationParts(n, { discreet }).map((part, i) =>
         typeof part === 'string' ? (
           part
         ) : (
@@ -78,7 +84,10 @@ function relativeTime(iso: string): string {
  * say which owner did it) shows its type's icon, whatever the row holds.
  */
 function RowLeading({ n }: { n: NotificationView }) {
-  if (showsActor(n.type) && n.actorUsername) {
+  const { discreet } = useDiscreetMode();
+  // No spoiler mode: a group gift row shows no face either (WIS-364).
+  const hidden = discreet && isGroupGiftNotification(n.type);
+  if (showsActor(n.type) && n.actorUsername && !hidden) {
     return <Avatar name={n.actorUsername} src={n.actorImage} size="md" />;
   }
   return (
@@ -95,6 +104,7 @@ const STRETCHED = 'text-left after:absolute after:inset-0 after:rounded-2xl';
 
 export default function ActivityPage() {
   const { data: session, status } = useKnownSession();
+  const { discreet } = useDiscreetMode();
   const viewerUsername = session?.user?.username ?? null;
   const viewerId = session?.user?.id ?? null;
   const router = useRouter();
@@ -284,7 +294,11 @@ export default function ActivityPage() {
     // Several followers: the list of them, in place (or, with no account id to
     // read it by, on the profile).
     const group = isGroupFollow(n) && viewerId;
-    const href = group ? null : notificationLink(n, viewerUsername);
+    // No spoiler mode: a group gift row doesn't point at its list either.
+    const href =
+      group || (discreet && isGroupGiftNotification(n.type))
+        ? null
+        : notificationLink(n, viewerUsername);
     let target: ReactNode;
     if (group) {
       target = (

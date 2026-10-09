@@ -12,6 +12,7 @@ import {
   writeContributorReservation,
 } from '@/lib/utils/groupGifts';
 import { lostMemberReason } from '@/lib/utils/lateBooking';
+import { notifyGroupGiftFunded, notifyGroupGiftJoined } from '@/lib/groupGiftNotifications';
 import {
   admitGiftCaller,
   giftError,
@@ -43,6 +44,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     if (gift.contributors.some((c) => c.user.toString() === userId)) {
       if (!(await changePledge(gift._id, userId, pledged))) return giftError(GROUP_GIFT_ENDED, 409);
+      await notifyGroupGiftFunded(gift._id, userId);
       return giftItemAnswer(caller);
     }
 
@@ -52,6 +54,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     if (joined === 'already') {
       // Their join from another tab landed first: this one sets the pledge.
       if (!(await changePledge(gift._id, userId, pledged))) return giftError(GROUP_GIFT_ENDED, 409);
+      await notifyGroupGiftFunded(gift._id, userId);
       return giftItemAnswer(caller);
     }
 
@@ -73,6 +76,11 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       return giftError(GROUP_GIFT_ENDED, 409);
     }
     await settleContributorReservation(userId, item, previous);
+    // WIS-364: only once the join stands.
+    await Promise.all([
+      notifyGroupGiftJoined(gift._id, userId),
+      notifyGroupGiftFunded(gift._id, userId),
+    ]);
     return giftItemAnswer(caller);
   } catch (error) {
     console.error('Error joining group gift:', error);
