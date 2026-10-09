@@ -471,6 +471,19 @@ export async function writeContributorReservation(
 }
 
 /**
+ * Whether `userId` is in the live group gift on the item (WIS-363): their
+ * Reservation of it is the gift's, which they give with everyone (the
+ * organizer's Mark as given) or leave, never log or dismiss on its own.
+ */
+export async function inLiveGroupGift(userId: string, itemId: Id): Promise<boolean> {
+  return !!(await GroupGift.exists({
+    item: itemId,
+    active: true,
+    'contributors.user': oid(userId),
+  }));
+}
+
+/**
  * Bring a contributor's Reservation's `pledge` (their share, which Mark as
  * given on their Booked page logs, WIS-363) in step with the live gift, after a
  * write to their pledge. Read back from the gift rather than taken from the

@@ -7,7 +7,7 @@ import Item, { type IItem } from '@/models/Item';
 import User from '@/models/User';
 import Wishlist, { type IWishlist } from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
-import type { HydratedDocument } from 'mongoose';
+import type { HydratedDocument, Types } from 'mongoose';
 import { isObjectIdParam } from '@/lib/utils/objectId';
 import { isHiddenByArchive } from '@/lib/utils/wishlistAccess';
 import { isWishlistOwner } from '@/lib/utils/wishlistOwners';
@@ -140,6 +140,11 @@ export async function giftItemAnswer(caller: GiftCaller, status = 200) {
   return NextResponse.json({ success: true, data }, { status });
 }
 
+/** A converted gift's organizer now holds the whole item alone: no share left on it. */
+function clearOrganizerPledge(userId: string, itemId: Types.ObjectId) {
+  return Reservation.updateOne({ gifter: userId, item: itemId }, { $set: { pledge: null } });
+}
+
 /**
  * The organizer's ending of the item's live gift (cancel, convert to solo, mark
  * as given): one conditional write that matches only while the gift is live and
@@ -167,7 +172,15 @@ export async function organizerAction(
   const key = readIdempotencyKey(request.headers);
   if (key === undefined) return giftError(`Invalid ${IDEMPOTENCY_HEADER} header`, 400);
   const endKey = key ? scopedIdempotencyKey(userId, key) : undefined;
-  if (endKey && (await GroupGift.exists({ item: item._id, endKey }))) {
+  const replayed = endKey
+    ? await GroupGift.findOne({ item: item._id, endKey }).select('organizer endedAs').lean()
+    : null;
+  if (replayed) {
+    // A retry of a convert whose first attempt stopped short: its own share
+    // still goes, as the first attempt would have done (idempotent).
+    if (replayed.endedAs === 'converted' && replayed.organizer.equals(userId)) {
+      await clearOrganizerPledge(userId, item._id);
+    }
     return giftItemAnswer(caller);
   }
 
@@ -192,8 +205,7 @@ export async function organizerAction(
   } else if (endedAs === 'converted') {
     const others = contributors.filter((u) => !u.equals(userId));
     if (others.length) await deleteReservations({ item: item._id, gifter: { $in: others } });
-    // The organizer's now a solo booking of the whole item: no share left on it.
-    await Reservation.updateOne({ gifter: userId, item: item._id }, { $set: { pledge: null } });
+    await clearOrganizerPledge(userId, item._id);
   } else {
     await logGivenGroupGift(ended, wishlist, item.name);
   }

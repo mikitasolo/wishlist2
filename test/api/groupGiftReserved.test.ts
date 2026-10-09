@@ -24,6 +24,9 @@ vi.mock('@vercel/blob', () => ({ copy: vi.fn(), del: vi.fn(), list: vi.fn(), put
 import { GET as getReservations } from '@/app/api/users/me/reservations/route';
 import { GET as getSummary } from '@/app/api/users/me/reservations/summary/route';
 import { POST as giveReservation } from '@/app/api/reservations/[id]/gift/route';
+import { DELETE as dismissReservation } from '@/app/api/reservations/[id]/route';
+import { undoBookingUnlessMember } from '@/lib/utils/lateBooking';
+import WishlistMember from '@/models/WishlistMember';
 import { GET as getWishlists } from '@/app/api/wishlists/route';
 import { DELETE as kickRoute } from '@/app/api/wishlists/[id]/members/[memberId]/route';
 import Item from '@/models/Item';
@@ -89,6 +92,13 @@ async function changedCount(user: string): Promise<number> {
 function give(user: string, reservationId: string) {
   as(user);
   return giveReservation(json(`/api/reservations/${reservationId}/gift`, 'POST'), {
+    params: Promise.resolve({ id: reservationId }),
+  });
+}
+
+function dismiss(user: string, reservationId: string) {
+  as(user);
+  return dismissReservation(json(`/api/reservations/${reservationId}`, 'DELETE'), {
     params: Promise.resolve({ id: reservationId }),
   });
 }
@@ -226,13 +236,29 @@ describe('Mark as given from the Reserved page', () => {
     expect((await res.json()).data.itemPrice).toEqual({ value: 2000, currency: 'USD' });
   });
 
-  it('a frozen card on an archived list logs the share too', async () => {
+  it('a frozen card on an archived list can’t be logged or dismissed while you’re still in the gift', async () => {
     await aliceAndBob();
     await Wishlist.updateOne({ _id: w.wishlistId }, { archived: true });
     const [card] = (await reservedBy(w.bob)).cards;
-    const res = await give(w.bob, card._id);
-    expect(res.status).toBe(201);
-    expect((await res.json()).data.itemPrice).toEqual({ value: 2000, currency: 'USD' });
+    expect((await give(w.bob, card._id)).status).toBe(409);
+    expect((await dismiss(w.bob, card._id)).status).toBe(409);
+    expect(await Reservation.exists({ _id: card._id })).toBeTruthy();
+    expect(await GiftLog.countDocuments()).toBe(0);
+  });
+
+  it('a contributor still in the live gift can’t dismiss their card either', async () => {
+    await aliceAndBob();
+    const [card] = (await reservedBy(w.bob)).cards;
+    expect((await dismiss(w.bob, card._id)).status).toBe(409);
+    expect(await Reservation.exists({ _id: card._id })).toBeTruthy();
+  });
+
+  it('a Reservation written before shares were recorded is still guarded, and reads its share from the gift', async () => {
+    await aliceAndBob();
+    await Reservation.updateOne({ gifter: w.bob }, { $unset: { pledge: 1 } });
+    const [card] = (await reservedBy(w.bob)).cards;
+    expect(card.pledge).toEqual({ value: 2000, currency: 'USD' });
+    expect((await give(w.bob, card._id)).status).toBe(409);
   });
 
   it('the organizer’s Mark as given logs each contributor’s own pledge', async () => {
@@ -262,6 +288,39 @@ describe('the Reservation’s share follows the pledge', () => {
     const [card] = (await reservedBy(w.alice)).cards;
     expect(card.stillReserved).toBe(true);
     expect(card.groupGift).toBeNull();
+  });
+
+  it('regression: a convert retried after it stopped short still clears the organizer’s share', async () => {
+    // Cause: the Idempotency-Key replay answered without the convert's follow-up.
+    await aliceAndBob();
+    const key = { 'Idempotency-Key': '6f1c2a9e-3b4d-4e5f-8a7b-9c0d1e2f3a4b' };
+    expect((await a.convert(w.alice, key)).status).toBe(200);
+    // As if the first attempt had died before clearing it.
+    await Reservation.updateOne({ gifter: w.alice }, { pledge: { value: 3000, currency: 'USD' } });
+    expect((await a.convert(w.alice, key)).status).toBe(200);
+    expect((await Reservation.findOne({ gifter: w.alice }).lean())?.pledge).toBeNull();
+  });
+
+  it('regression: a solo rebooking undone for a lost membership puts the old share back', async () => {
+    // Cause: undoBookingUnlessMember restored every snapshot field but `pledge`.
+    await aliceAndBob();
+    expect((await a.patchItem(w.owner, { status: 'draft' })).status).toBe(200);
+    const previous = await Reservation.findOne({ gifter: w.bob }).lean();
+    expect(previous?.pledge).toMatchObject({ value: 2000 });
+    // Bob's rebooking wrote its Reservation (no share), then he was removed.
+    await Reservation.updateOne({ gifter: w.bob }, { pledge: null });
+    await WishlistMember.deleteOne({ wishlist: w.wishlistId, user: w.bob });
+    const reason = await undoBookingUnlessMember({
+      wishlistId: w.wishlistId,
+      itemId: w.itemId,
+      gifterId: w.bob,
+      previous,
+    });
+    expect(reason).toBe('not-member');
+    expect((await Reservation.findOne({ gifter: w.bob }).lean())?.pledge).toMatchObject({
+      value: 2000,
+      currency: 'USD',
+    });
   });
 
   it('a solo booking replacing an old contribution’s Reservation drops the share', async () => {

@@ -6,7 +6,7 @@ import GiftLog from '@/models/GiftLog';
 import User from '@/models/User';
 import { isObjectIdParam } from '@/lib/utils/objectId';
 import { giftLogImage, serializeGiftLog } from '@/lib/utils/giftHistory';
-import { readReservationLiveState } from '@/lib/utils/reservationLiveState';
+import { inLiveGroupGift } from '@/lib/utils/groupGifts';
 
 /** A contributor's own Mark as given on a live group gift they're in (WIS-363). */
 const GROUP_GIFT_GIVEN_BY_ORGANIZER =
@@ -32,24 +32,20 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const { id } = await params;
     await connectDB();
 
-    // A contributor still in a live group gift on a list they can open gives
-    // it with everyone else, when its organizer marks it as given (WIS-363):
-    // logging it alone here would leave them in the gift with no card for it.
-    // Frozen, or once they're out of the gift, it's theirs to log, with their
-    // share (`pledge`).
+    // A contributor still in a live group gift gives it with everyone else,
+    // when its organizer marks it as given (WIS-363): logging it alone here
+    // would leave them in the gift, their share still counted, with no card
+    // for it. That holds on an archived list too, where nobody can act on the
+    // gift until it's unarchived. Once they're out of the gift (kicked, left the
+    // list, the owner ended the item), it's theirs to log, with their share.
     const held = isObjectIdParam(id)
-      ? await Reservation.findOne({ _id: id, gifter: session.user.id })
-          .select('item wishlist pledge')
-          .lean()
+      ? await Reservation.findOne({ _id: id, gifter: session.user.id }).select('item').lean()
       : null;
-    if (held?.pledge) {
-      const liveState = await readReservationLiveState(session.user.id, [held]);
-      if (liveState(held).groupGift) {
-        return NextResponse.json(
-          { success: false, error: GROUP_GIFT_GIVEN_BY_ORGANIZER },
-          { status: 409 }
-        );
-      }
+    if (held && (await inLiveGroupGift(session.user.id, held.item))) {
+      return NextResponse.json(
+        { success: false, error: GROUP_GIFT_GIVEN_BY_ORGANIZER },
+        { status: 409 }
+      );
     }
 
     // Take the reservation in one atomic step, so that of a double submit, or of

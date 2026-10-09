@@ -12,7 +12,7 @@ type Id = string | Types.ObjectId;
 /** What a booking's Reservation write replaced, for putting it back. */
 type PreviousReservation = Pick<
   IReservation,
-  'wishlist' | 'owner' | 'itemName' | 'itemImage' | 'itemPrice' | 'wishlistName'
+  'wishlist' | 'owner' | 'itemName' | 'itemImage' | 'itemPrice' | 'wishlistName' | 'pledge'
 >;
 
 /**
@@ -111,9 +111,11 @@ export async function undoBookingUnlessMember({
   );
   if (previous && reason !== 'owner') {
     const { wishlist: list, owner, itemName, itemImage, itemPrice, wishlistName } = previous;
+    // A group gift share it had (WIS-363) comes back with it.
+    const pledge = previous.pledge ?? null;
     await Reservation.updateOne(
       { gifter: gifterId, item: itemId },
-      { $set: { wishlist: list, owner, itemName, itemImage, itemPrice, wishlistName } }
+      { $set: { wishlist: list, owner, itemName, itemImage, itemPrice, wishlistName, pledge } }
     );
   } else {
     await deleteReservations({ gifter: gifterId, item: itemId });

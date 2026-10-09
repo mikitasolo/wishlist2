@@ -109,9 +109,12 @@ export function api(w: () => World) {
         p(item())
       );
     },
-    convert(user: string) {
+    convert(user: string, headers?: HeadersInit) {
       as(user);
-      return convertRoute(json(`/api/items/${item()}/group-gift/convert`, 'POST'), p(item()));
+      return convertRoute(
+        json(`/api/items/${item()}/group-gift/convert`, 'POST', undefined, headers),
+        p(item())
+      );
     },
     give(user: string, headers?: HeadersInit) {
       as(user);

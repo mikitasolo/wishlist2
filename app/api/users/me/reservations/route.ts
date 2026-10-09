@@ -6,6 +6,7 @@ import User from '@/models/User';
 import { errorKind } from '@/lib/utils/errorKind';
 import { readReservationLiveState } from '@/lib/utils/reservationLiveState';
 import { frozenImage } from '@/lib/utils/blob';
+import type { ContributingGroupGift } from '@/lib/utils/groupGiftSummary';
 
 // GET /api/users/me/reservations - the current user's active reservations
 // (gifts they're holding), across all wishlists. Each carries a frozen snapshot
@@ -43,6 +44,12 @@ import { frozenImage } from '@/lib/utils/blob';
 // contributor in the live gift still holds it, so their card stays active and
 // carries the gift (`groupGift`: target, progress, every contributor's display
 // name and pledge) and their own share (`pledge`), which Mark as given logs.
+/** The viewer's own pledge in a live gift they're in, as the gift has it. */
+function livePledge(gift: ContributingGroupGift | null) {
+  const mine = gift?.contributors.find((c) => c.you);
+  return gift && mine ? { value: mine.pledged, currency: gift.target.currency } : null;
+}
+
 export async function GET() {
   try {
     const session = await auth();
@@ -92,9 +99,10 @@ export async function GET() {
         itemName: r.itemName,
         itemImage: listOpen ? (r.itemImage ?? null) : frozenImage(r.itemImage),
         itemPrice: r.itemPrice ?? null,
-        // Their own share of a group gift (WIS-363), as their Reservation
-        // records it: what Mark as given logs. `null` for a solo booking.
-        pledge: r.pledge ?? null,
+        // Their own share of a group gift (WIS-363): the live gift's while
+        // they're in it, else as their Reservation records it (what Mark as
+        // given logs). `null` for a solo booking.
+        pledge: livePledge(groupGift) ?? r.pledge ?? null,
         wishlistName: r.wishlistName,
         wishlistId: r.wishlist.toString(),
         wishlistSlug: wishlist?.slug ?? null,

@@ -977,7 +977,7 @@ function ReservationCard({
           <p id={nameId} className="w-full truncate text-body font-semibold text-foreground">
             {r.itemName}
           </p>
-          {gift && r.pledge ? (
+          {r.pledge ? (
             <span className="flex flex-wrap items-baseline gap-x-1.5">
               <span className="text-sm text-muted-foreground">Your share</span>
               <ReservationPrice price={r.pledge} viewerCurrency={viewerCurrency} rates={rates} />
