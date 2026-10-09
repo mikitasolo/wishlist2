@@ -54,8 +54,7 @@ import ShareLinksSection, { type ShareLinksSectionHandle } from '@/components/Sh
 import RevokeShareLinksDialog from '@/components/RevokeShareLinksDialog';
 import { isLinkLive, useShareLinks } from '@/lib/hooks/useShareLinks';
 import { SHARE_TOKEN_HEADER, type ShareLinkLevel } from '@/lib/utils/shareLinkFields';
-import { isPublishedItem } from '@/lib/utils/itemCounts';
-import { readResource, ReadRefusedError } from '@/lib/utils/resourceRead';
+import { readResource } from '@/lib/utils/resourceRead';
 import { missingFromDraft } from '@/lib/utils/occasion';
 import { getVisibility } from '@/lib/utils/visibility';
 import { onCurrentListTab, useListTab, type ListTab } from '@/lib/hooks/useListTab';
@@ -70,8 +69,7 @@ import {
   type WishlistSettings,
   type WishlistSettingsForm,
 } from '@/lib/utils/wishlistSettings';
-import { prependCreatedItem, updateItemOptimistically } from '@/lib/utils/itemListMerge';
-import { createMutationTracker } from '@/lib/utils/mutationTracker';
+import { prependCreatedItem } from '@/lib/utils/itemListMerge';
 import { RequestTimeoutError, withRequestTimeout } from '@/lib/utils/requestTimeout';
 import { createSubmissionKeys, IDEMPOTENCY_HEADER } from '@/lib/utils/submissionKey';
 import { canCopyItem } from '@/lib/utils/itemCopy';
@@ -98,48 +96,22 @@ import {
   type ItemRef,
 } from '@/lib/utils/itemLinks';
 import { IWishlist } from '@/models/Wishlist';
-import {
-  searchItemsByName,
-  savedWishlistSort,
-  forgetSavedStatusFilters,
-  DEFAULT_WISHLIST_SORT,
-  SORT_OPTIONS,
-  SORT_SHORT_LABELS,
-  WISHLIST_SORT_STORAGE_KEY,
-  type SortType,
-} from '@/lib/utils/itemFilters';
+import { SORT_OPTIONS, SORT_SHORT_LABELS } from '@/lib/utils/itemFilters';
 import FilterChips from '@/components/FilterChips';
 import type { ViewerRole } from '@/lib/utils/itemStatus';
-import {
-  addTileFor,
-  countListChips,
-  isDimmedInAll,
-  listChips,
-  LIST_CHIP_LABELS,
-  type ListChip,
-  orderListItems,
-} from '@/lib/utils/listChips';
-import { useListChip } from '@/lib/hooks/useListChip';
-import { useDiscreetMode } from '@/lib/hooks/useDiscreetMode';
-import { withoutReservation } from '@/lib/utils/discreet';
+import { countListChips, isDimmedInAll, listChips, orderListItems } from '@/lib/utils/listChips';
+import { useListFilters } from '@/lib/hooks/useListFilters';
+import { useWishlistItems, type PageLoad } from '@/lib/hooks/useWishlistItems';
 import { useItemDeepLink } from '@/lib/hooks/useItemDeepLink';
-import { useStickyItems } from '@/lib/hooks/useStickyItems';
-import { useListPrices } from '@/lib/hooks/useListPrices';
-import { useCurrencyRates } from '@/lib/hooks/useCurrencyRates';
-import { useViewerLocale } from '@/lib/hooks/useViewerLocale';
 import BudgetFilter from '@/components/BudgetFilter';
-import { filterByBudget, hasPricedItem, parseBudget } from '@/lib/utils/budgetFilter';
-import { needsPricesControl, ORIGINAL_PRICES, viewerPriceCurrency } from '@/lib/utils/listPrices';
 import { TONE_CLASSES } from '@/lib/utils/statusTones';
 import { useReceivedToast } from '@/lib/hooks/useReceivedToast';
 import { useReserveToast } from '@/lib/hooks/useReserveToast';
 import {
-  useFetchItems,
   useUpdateItem,
   useCreateItem,
   useDeleteItem,
   type ItemRequestFailure,
-  type ReviewRequestOptions,
 } from '@/lib/hooks/useItems';
 import {
   PROPOSAL_REMOVED_NOTE,
@@ -155,8 +127,6 @@ import {
   type GroupGiftAction,
 } from '@/lib/utils/groupGiftClient';
 import { GROUP_GIFT_TOASTS } from '@/lib/utils/groupGiftCopy';
-
-type PageLoad = 'loading' | 'ready' | 'unavailable' | 'failed';
 
 /**
  * How the page was reached (WIS-335):
@@ -224,7 +194,6 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
   const [owners, setOwners] = useState<ShownOwners>({ ids: [], usernames: [] });
   const [ownerRemovals] = useState(createOwnerRemovalLog);
   const ownerUsernames = owners.usernames;
-  const [items, setItems] = useState<ApiItem[]>([]);
   // Everyone on the list, owners and members (owners only ever read it).
   const [members, setMembers] = useState<WishlistPerson[]>([]);
   const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
@@ -259,7 +228,6 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
   // Set while this page leaves or deletes the list itself: what a poll says
   // about it then, before the page moves on, doesn't matter any more.
   const departed = useRef(false);
-  const [loadingItems, setLoadingItems] = useState(true);
   // Where the first read of the people on the list stands (owners only):
   // until it has landed there's no count on People and no rows in it, and if
   // it failed, People says so, with Try again.
@@ -274,8 +242,6 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
   const peopleGroups = usePeopleGroups(tab === 'people');
   const onItems = tab === 'items';
   const tabsId = useId();
-  const [sortBy, setSortBy] = useState<SortType>(DEFAULT_WISHLIST_SORT);
-  const [searchQuery, setSearchQuery] = useState('');
   const [itemToEdit, setItemToEdit] = useState<ApiItem | null>(null);
   // Edit opened from a card's "+ link" starts on the Link field.
   const [editOnLink, setEditOnLink] = useState(false);
@@ -364,8 +330,6 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
   const pinningRef = useRef(false);
   const [isPinning, setIsPinning] = useState(false);
 
-  const fetchItemsHook = useFetchItems();
-
   // The viewer's role decides which status chips they get (none for a visitor).
   const viewerRole: ViewerRole = isOwner ? 'owner' : isMember ? 'member' : 'visitor';
   const viewerId = session?.user?.id ?? null;
@@ -418,40 +382,6 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
     if (shareLinks.read === 'loaded' && shareLinks.links.length === 0) section.openNewLink();
     else section.reveal();
   }, [toShareLinks, tab, shareLinks.read, shareLinks.links.length]);
-
-  // The status chip the list is shown on: All on every list the page opens
-  // (or the URL's ?show=), kept only for this list and role, and never saved.
-  const [chosenChip, chooseChip] = useListChip(
-    wishlist ? { id: String(wishlist._id), slug: wishlist.slug } : null,
-    wishlistId,
-    viewerRole
-  );
-
-  // Discreet mode (WIS-46) keeps a member's reservations off the screen. It's
-  // applied as the page renders (`viewItems`, below), never to `items`, which
-  // the poll and the mutations keep as the server has it, so nothing flashes
-  // the real state back. The chip for their own reservations goes, and a list
-  // opened on it shows All.
-  const { discreet } = useDiscreetMode();
-  const hideReservations = discreet && isMember && !isOwner;
-  const activeChip: ListChip =
-    hideReservations && chosenChip === 'reserved-by-you' ? 'all' : chosenChip;
-
-  // Restore the visitor's saved sort, else the default. It's one setting for
-  // every list, so it's read once rather than per wishlist. A status filter an
-  // earlier version saved is deleted, so it can't come back.
-  useEffect(() => {
-    setSortBy(savedWishlistSort(localStorage));
-    forgetSavedStatusFilters(localStorage);
-  }, []);
-
-  // Save only a sort the visitor picks, so the default can change for everyone
-  // who never chose one.
-  const handleSortChange = useCallback((value: string) => {
-    const next = value as SortType;
-    setSortBy(next);
-    localStorage.setItem(WISHLIST_SORT_STORAGE_KEY, next);
-  }, []);
 
   // The list is missing, or hidden from this viewer: say so, and stop polling.
   // `sentNo` is the refused read's number (see `readsSent`).
@@ -691,163 +621,6 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
     void refreshRequests();
   }, [refreshMembers, refreshInvites, refreshRequests]);
 
-  // The page's item mutations. A background poll that lands while one is in
-  // flight, or whose read was in flight across one, is stale and must be
-  // discarded, otherwise it clobbers the optimistic state and the UI flickers;
-  // the list is read again once they've settled. Every item mutation's request
-  // goes through `mutations.track`, and is given up on after
-  // ITEM_REQUEST_TIMEOUT_MS (`withRequestTimeout`), so a stalled one can't hold
-  // off the polls for longer than that.
-  const [mutations] = useState(createMutationTracker);
-
-  // Whether a read of the items has landed yet (`itemsShown` too, for
-  // `fetchItems` to read). Until one has, an empty `items` doesn't mean the
-  // list has no items, so the page shows no counts or controls for them: the
-  // skeleton while the first read is on its way, and if it failed
-  // (`itemsFailed`) a panel saying so, with Try again. A poll that lands
-  // meanwhile fills the list in.
-  const [itemsLoaded, setItemsLoaded] = useState(false);
-  const itemsShown = useRef(false);
-  const [itemsFailed, setItemsFailed] = useState(false);
-  // Failed items reads the page showed the skeleton for once the items had
-  // been shown (the one after coming back to Items), and how many of them have been
-  // answered (see the effect after `fetchItems`).
-  const [itemsReadFailures, setItemsReadFailures] = useState(0);
-  const itemsReadFailuresSeen = useRef(0);
-
-  const fetchItems = useCallback(
-    async (silent = false) => {
-      if (!wishlistId) return;
-
-      if (!silent) {
-        setLoadingItems(true);
-        // The skeleton again, not the panel, while this read is on its way.
-        setItemsFailed(false);
-      }
-
-      // The number the request went out as (see `readsSent`). It stays 0 for a
-      // call that joins a read already on its way, whose own caller answers
-      // for that read's refusal.
-      let sentNo = 0;
-      try {
-        // Rejects when the read fails, so a failed poll or reconcile keeps the
-        // list on screen: only a successful read replaces it. A call that joins
-        // a read already in flight gets that read's `sentAt`, not a later one.
-        const read = await fetchItemsHook(
-          wishlistId,
-          () => {
-            sentNo = ++readsSent.current;
-            return mutations.stamp();
-          },
-          readInit
-        );
-        // A read that raced with a mutation (landed while one was in flight, or
-        // was sent before one settled) may predate fresher local state, so the
-        // list is read again once no mutation is in flight. A background read's
-        // result is dropped; a non-silent one (the first load, or the one after
-        // coming back to Items) still lands, so the list isn't left empty.
-        if (mutations.isStale(read.sentAt)) {
-          mutations.rereadWhenIdle();
-          if (silent) return;
-        }
-        // An owner's Preview as visitor: only what a visitor is shown.
-        setItems(
-          previewAsVisitor ? read.items.filter((item) => isPublishedItem(item.status)) : read.items
-        );
-        setItemsLoaded(true);
-        setItemsFailed(false);
-        itemsShown.current = true;
-      } catch (error) {
-        // The list was deleted, archived or made private, or the viewer taken
-        // off it, since the page loaded (or it never was theirs to see): the
-        // list read's own answer, so the same state, and no more polls.
-        if (error instanceof ReadRefusedError) {
-          if (sentNo) void readRefused(sentNo);
-          return;
-        }
-        console.error('Error fetching items:', error);
-        if (!silent) {
-          // Until the items have been shown, the panel in their place says so.
-          if (itemsShown.current) setItemsReadFailures((n) => n + 1);
-          else setItemsFailed(true);
-        }
-      } finally {
-        if (!silent) {
-          setLoadingItems(false);
-        }
-      }
-    },
-    [fetchItemsHook, wishlistId, mutations, readRefused, readInit, previewAsVisitor]
-  );
-
-  // Try again, after the first items read failed: the skeleton, then a fresh read.
-  const retryItems = useCallback(() => {
-    void fetchItems();
-  }, [fetchItems]);
-
-  // A failed items read the page showed the skeleton for, once the items had
-  // been shown, is toasted, but only about a list on screen. It waits for the
-  // list read to have landed: a list that turns out unavailable, or couldn't be
-  // read, says so itself.
-  useEffect(() => {
-    if (pageLoad === 'loading' || itemsReadFailures === itemsReadFailuresSeen.current) return;
-    itemsReadFailuresSeen.current = itemsReadFailures;
-    if (pageLoad === 'ready') showToast('Failed to load items', 'error');
-  }, [pageLoad, itemsReadFailures, showToast]);
-
-  useEffect(() => {
-    // Not while the list is unavailable (every read would be refused again) or
-    // couldn't be read: Try again starts it over.
-    if (!polling) return;
-    if (wishlistId && onItems) {
-      // Reset loading state when switching to items tab
-      setLoadingItems(true);
-      // While this tab polls, a read that turns out stale is followed by a
-      // background one (see fetchItems).
-      mutations.setReread(() => fetchItems(true));
-      fetchItems();
-
-      // Poll for updates every 5 seconds when tab is active
-      const pollInterval = setInterval(() => {
-        if (document.visibilityState === 'visible') {
-          fetchItems(true);
-        }
-      }, 5000);
-
-      const handleVisibilityChange = () => {
-        if (document.visibilityState === 'visible') {
-          fetchItems(true);
-        }
-      };
-      document.addEventListener('visibilitychange', handleVisibilityChange);
-
-      return () => {
-        clearInterval(pollInterval);
-        document.removeEventListener('visibilitychange', handleVisibilityChange);
-        // Coming back to the items tab reads the list anyway, and a read still
-        // in flight from here mustn't send another.
-        mutations.setReread(null);
-      };
-    } else if (!onItems) {
-      // Reset loading state when switching away from items tab
-      setLoadingItems(false);
-    }
-  }, [wishlistId, onItems, fetchItems, mutations, polling]);
-
-  const createItemHook = useCreateItem(
-    (newItem) => {
-      // handleCreateItem tracks the request until after this runs, so a poll
-      // whose read started before it settled is dropped instead of replacing
-      // the list without the new item. One that read after the write may
-      // already list it: don't add a second copy.
-      setItems((prevItems) => prependCreatedItem(prevItems, newItem));
-      showToast('Item added successfully', 'success');
-    },
-    (error) => {
-      showToast(error, 'error');
-    }
-  );
-
   // No success refetch here — handleUpdateItem merges the server response into
   // the single item, avoiding a full-list refetch that races with polling.
   // A review request refused because the item is no longer a proposal (a
@@ -876,6 +649,50 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
     [showToast]
   );
   const updateItemHook = useUpdateItem(undefined, onItemRequestError);
+
+  const failedItemsToast = useCallback(
+    () => showToast('Failed to load items', 'error'),
+    [showToast]
+  );
+  // The items: the first read, the 5s poll while Items is on screen, and the
+  // optimistic updates that survive it (`mutations.track`).
+  const {
+    items,
+    setItems,
+    itemsLoaded,
+    itemsFailed,
+    loadingItems,
+    mutations,
+    retryItems,
+    updateOptimistically,
+    handleUpdateItem,
+  } = useWishlistItems({
+    wishlistId,
+    readInit,
+    previewAsVisitor,
+    polling,
+    pageLoad,
+    onItems,
+    readsSent,
+    onRefused: readRefused,
+    onReadFailed: failedItemsToast,
+    viewerId,
+    updateItem: updateItemHook,
+  });
+
+  const createItemHook = useCreateItem(
+    (newItem) => {
+      // handleCreateItem tracks the request until after this runs, so a poll
+      // whose read started before it settled is dropped instead of replacing
+      // the list without the new item. One that read after the write may
+      // already list it: don't add a second copy.
+      setItems((prevItems) => prependCreatedItem(prevItems, newItem));
+      showToast('Item added successfully', 'success');
+    },
+    (error) => {
+      showToast(error, 'error');
+    }
+  );
 
   // No success toast here — each delete handler says what it removed, and only
   // once the delete has succeeded.
@@ -910,45 +727,7 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
       if (created.relatedItems?.length) setItems((prev) => syncPartnerChips(prev, created));
       addKeys.reset();
     },
-    [apiId, createItemHook, wishlistId, mutations, addKeys]
-  );
-
-  // Every item update (edit, book, publish, approve, ...) goes through here.
-  // On success the server's item is merged into just this one: the PATCH
-  // response carries a fresh priceInUsdCents, so a re-priced item sorts by its
-  // new price straight away. On failure the hook has toasted the error, the
-  // change is undone at once, the list is reconciled with the server, and this
-  // resolves null (see updateItemOptimistically).
-  const handleUpdateItem = useCallback(
-    (id: string, updates: ItemUpdate, options?: ReviewRequestOptions) =>
-      updateItemOptimistically({
-        id,
-        apply: (item) => {
-          // Links are sent as what changed, and shown as the `relatedItems`
-          // the caller worked out (WIS-29); never sent as shown.
-          const { linkItems: _link, unlinkItems: _unlink, ...shown } = updates;
-          const optimistic = { ...item, ...shown };
-          if (updates.status === 'booked' && session?.user?.id) {
-            optimistic.bookedBy = session.user.id;
-          } else if (
-            (updates.status === 'available' ||
-              updates.status === 'draft' ||
-              updates.status === 'completed') &&
-            item.status === 'booked'
-          ) {
-            optimistic.bookedBy = null;
-          }
-          return optimistic;
-        },
-        request: () => {
-          const { relatedItems: _shown, ...body } = updates;
-          return updateItemHook(id, body, options);
-        },
-        setItems,
-        mutations,
-        reconcile: () => fetchItems(true),
-      }),
-    [updateItemHook, session?.user?.id, fetchItems, mutations]
+    [apiId, createItemHook, wishlistId, mutations, addKeys, setItems]
   );
 
   // A member's reserve says what it means and where it lives (WIS-260).
@@ -1013,7 +792,7 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
       setItems((prevItems) => prependCreatedItem(prevItems, proposed));
       showToast('Item proposed successfully', 'success');
     },
-    [apiId, wishlistId, showToast, mutations, proposeKeys]
+    [apiId, wishlistId, showToast, mutations, proposeKeys, setItems]
   );
 
   const handleReviewItem = useCallback(
@@ -1054,7 +833,7 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
     if (!deleted) throw new Error('Failed to delete item');
     setItems((prevItems) => prevItems.filter((item) => item._id !== itemId));
     showToast('Proposal declined', 'success');
-  }, [itemToReview, deleteItemHook, showToast, mutations]);
+  }, [itemToReview, deleteItemHook, showToast, mutations, setItems]);
 
   // A read brings a later version of the proposal under review (the proposer
   // edited it): the dialog refills from it, keeping the owner's own edits, and
@@ -1110,7 +889,7 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
         'success'
       );
     },
-    [deleteItemHook, showToast, mutations]
+    [deleteItemHook, showToast, mutations, setItems]
   );
 
   // The items as last rendered, for handleSaveEdit's optimistic links without
@@ -1149,7 +928,7 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
         setItems((prev) => syncPartnerChips(prev, updated));
       }
     },
-    [itemToEdit, handleUpdateItem]
+    [itemToEdit, handleUpdateItem, setItems]
   );
 
   const handleDeleteItem = useCallback(async () => {
@@ -1167,7 +946,7 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
     if (!deleted) throw new Error('Failed to delete item');
     setItems((prevItems) => prevItems.filter((item) => item._id !== itemId));
     showToast('Item deleted successfully', 'success');
-  }, [itemToEdit, deleteItemHook, showToast, mutations, isOwner]);
+  }, [itemToEdit, deleteItemHook, showToast, mutations, isOwner, setItems]);
 
   const handleInvite = useCallback(
     async (payload: { username: string; role: 'owner' | 'member' }) => {
@@ -1848,16 +1627,41 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
     [owners.usernames, memberRows, pendingInvites]
   );
 
-  // Each chip's count, by the rules the chips filter with (lib/utils/listChips.ts).
-  // The items as this screen draws them: in discreet mode, none reserved.
-  const viewItems = useMemo(
-    () => (hideReservations ? items.map(withoutReservation) : items),
-    [items, hideReservations]
-  );
-  const chipCounts = useMemo(
-    () => countListChips(viewItems, viewerRole, viewerId),
-    [viewItems, viewerRole, viewerId]
-  );
+  // What the list shows, and the chips, search, sort, budget and Prices that
+  // narrow it (discreet mode applied at render time only).
+  const {
+    sortBy,
+    handleSortChange,
+    searchQuery,
+    setSearchQuery,
+    activeChip,
+    chooseChip,
+    chips,
+    hideReservations,
+    viewItems,
+    prices,
+    budgetText,
+    setBudgetText,
+    budgetOffered,
+    budgetInvalid,
+    budgetLimit,
+    viewerCurrency,
+    sortedItems,
+    pinItem,
+    listIsEmpty,
+    showAllItems,
+    addTile,
+  } = useListFilters({
+    list: wishlist ? { id: String(wishlist._id), slug: wishlist.slug } : null,
+    wishlistId,
+    viewerRole,
+    viewerId,
+    isOwner,
+    isMember,
+    defaultCurrency: session?.user?.defaultCurrency,
+    items,
+    itemsLoaded,
+  });
   // What they've reserved, for Leave list's copy: not hidden from them there,
   // since it says what they keep.
   const reservedByYou = useMemo(
@@ -1865,59 +1669,6 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
     [items, viewerRole, viewerId]
   );
 
-  // The items under the chip, actionable ones first under All, in the
-  // viewer's sort within each group.
-  const chipItems = useMemo(
-    () => orderListItems(viewItems, activeChip, viewerRole, viewerId, sortBy),
-    [viewItems, activeChip, viewerRole, viewerId, sortBy]
-  );
-
-  // Prices (D9): someone else's list starts in the viewer's currency, their
-  // own on each item's; offered only when some price is in another currency.
-  const prices = useListPrices({
-    viewerId,
-    defaultCurrency: session?.user?.defaultCurrency,
-    ownList: isOwner,
-    items,
-  });
-
-  // The budget filter ("Under X", WIS-326): for gifters only (a signed-in
-  // non-owner of someone else's list; a signed-out link visitor has no known
-  // currency), never saved. The amount is in the currency Prices shows, so a
-  // new pick re-reads the typed text in it; on each item's own currency (or
-  // with Prices not offered) it's the account's default. It narrows what's
-  // shown after the chips have counted, so a chip's count never moves with it.
-  const accountCurrency = viewerPriceCurrency(session?.user?.defaultCurrency);
-  const viewerCurrency = prices.value === ORIGINAL_PRICES ? accountCurrency : prices.value;
-  const viewerLocale = useViewerLocale();
-  const [budgetText, setBudgetText] = useState('');
-  const budgetOffered = !isOwner && !!viewerId && hasPricedItem(items);
-  const budget = budgetOffered ? parseBudget(budgetText, viewerLocale) : null;
-  const budgetLimit = budget === 'invalid' ? null : budget;
-  // Rates are only needed to compare a price in another currency.
-  const ownRates = useCurrencyRates(
-    budgetLimit !== null && prices.rates === null && needsPricesControl(items, viewerCurrency)
-  );
-  const budgetRates = prices.rates ?? ownRates;
-
-  const filteredItems = useMemo(
-    () =>
-      filterByBudget(
-        searchItemsByName(chipItems, searchQuery),
-        budgetLimit,
-        viewerCurrency,
-        budgetRates
-      ),
-    [chipItems, searchQuery, budgetLimit, viewerCurrency, budgetRates]
-  );
-
-  // A card the viewer reserves, releases, publishes or marks stays in its
-  // slot, and in view, until they change the chip, search or sort (WIS-297).
-  const { items: sortedItems, pin: pinItem } = useStickyItems(
-    filteredItems,
-    viewItems,
-    JSON.stringify([wishlistId, viewerRole, activeChip, sortBy, searchQuery, budgetLimit])
-  );
   // A member's group gift actions (WIS-362): shown at once, merged from the
   // server's answer, undone on a failure like any item update. A retry of a
   // start or ending whose answer was lost sends the same Idempotency-Key.
@@ -1936,16 +1687,13 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
       const keys = groupGiftKeys.get(id) ?? createSubmissionKeys();
       groupGiftKeys.set(id, keys);
       const key = keys.keyFor(action);
-      const updated = await updateItemOptimistically({
+      const updated = await updateOptimistically({
         id,
         apply: (item) => applyGroupGiftAction(item, action, viewerUserId),
         request: async () => {
           const answer = await requestGroupGift(id, action, key);
           return answer && withServerGroupGift(answer);
         },
-        setItems,
-        mutations,
-        reconcile: () => fetchItems(true),
       });
       if (updated) {
         groupGiftKeys.delete(id);
@@ -1953,16 +1701,7 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
       }
       return updated;
     },
-    [
-      viewerUserId,
-      pinItem,
-      groupGiftKeys,
-      requestGroupGift,
-      setItems,
-      mutations,
-      fetchItems,
-      showToast,
-    ]
+    [viewerUserId, pinItem, groupGiftKeys, requestGroupGift, updateOptimistically, showToast]
   );
 
   const handleStickyCardUpdate = useCallback(
@@ -1972,34 +1711,6 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
     },
     [pinItem, handleCardUpdate]
   );
-
-  // The list has no items at all, as far as this viewer can see: no filter is
-  // hiding anything, so the chips and the toolbar step aside for an empty
-  // state that says so and offers the add itself. Only once a read has
-  // landed: before that, no items means it hasn't loaded.
-  const listIsEmpty = itemsLoaded && items.length === 0;
-
-  // With the toolbar gone, a chip or search still in force couldn't be seen,
-  // and could hide the next item added (Received, a search for the item just
-  // deleted), so a list that empties goes back to All.
-  useEffect(() => {
-    if (!listIsEmpty) return;
-    chooseChip('all');
-    setSearchQuery('');
-  }, [listIsEmpty, chooseChip]);
-
-  // The way out of a search or chip that hides every item: All, and no search.
-  const showAllItems = useCallback(() => {
-    chooseChip('all');
-    setSearchQuery('');
-    setBudgetText('');
-  }, [chooseChip]);
-
-  // Clear the item search when switching to a different wishlist.
-  useEffect(() => {
-    setSearchQuery('');
-    setBudgetText('');
-  }, [wishlistId]);
 
   // `?item=<id>` (the Reserved page's View on list): scroll to that item and
   // highlight it, clearing a chip or search that would hide it.
@@ -2050,22 +1761,6 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
     () => linkOptions?.filter((option) => option.id !== itemToEdit?._id),
     [linkOptions, itemToEdit?._id]
   );
-
-  // The grid's first cell: an owner's Add item or a member's Propose an item,
-  // under All (and a member's Your proposals), never while a search is on.
-  const addTile = addTileFor(
-    viewerRole,
-    activeChip,
-    searchQuery.trim() !== '' || budgetLimit !== null
-  );
-
-  const chips = listChips(viewerRole)
-    .filter((chip) => !(hideReservations && chip === 'reserved-by-you'))
-    .map((chip) => ({
-      value: chip,
-      label: LIST_CHIP_LABELS[chip],
-      count: chipCounts[chip],
-    }));
 
   // The tab on screen is the panel an owner's tab bar controls. Nobody else
   // has tabs, so their items are just the page.
@@ -2330,7 +2025,7 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
                           value={budgetText}
                           onChange={setBudgetText}
                           currency={viewerCurrency}
-                          invalid={budget === 'invalid'}
+                          invalid={budgetInvalid}
                         />
                       )}
                     </div>
