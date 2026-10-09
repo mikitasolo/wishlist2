@@ -92,7 +92,12 @@ export default function AppHeader({ actions, search = true, minimal = false }: A
                 }`}
               />
             ) : null}
-            {search && !minimal && <GlobalSearch onOpenChange={setSearchOpen} />}
+            {search && !minimal && (
+              // Where the guided walkthrough's Find your friends step points (WIS-371).
+              <span className="contents" data-tour="search">
+                <GlobalSearch onOpenChange={setSearchOpen} />
+              </span>
+            )}
             {actions}
           </div>
         </div>

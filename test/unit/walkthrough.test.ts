@@ -85,20 +85,21 @@ describe('walkthroughWrite', () => {
 });
 
 describe('tourSteps', () => {
-  it('is one tour: six steps on a desktop, five without the bookmarklet, then a closing card', () => {
+  it('is one tour: seven steps on a desktop, six without the bookmarklet, then a closing card', () => {
     const desktop = tourSteps({ desktop: true, ownsList: true });
     const phone = tourSteps({ desktop: false, ownsList: true });
     expect(desktop.map((s) => s.key)).toEqual([
       'lists',
       'items',
       'sharing',
+      'friends',
       'reserving',
       'reserved',
       'bookmarklet',
       'closing',
     ]);
-    expect(countedSteps(desktop)).toBe(6);
-    expect(countedSteps(phone)).toBe(5);
+    expect(countedSteps(desktop)).toBe(7);
+    expect(countedSteps(phone)).toBe(6);
     expect(phone.some((s) => s.key === 'bookmarklet')).toBe(false);
   });
 
@@ -115,7 +116,7 @@ describe('tourSteps', () => {
   });
 
   it('gives every step about a feature a made-up picture', () => {
-    for (const key of ['lists', 'items', 'sharing', 'reserving']) {
+    for (const key of ['lists', 'items', 'sharing', 'friends', 'reserving']) {
       const step = tourSteps({ desktop: true, ownsList: true }).find((s) => s.key === key);
       expect(step?.illustration, key).toBeDefined();
     }

@@ -25,6 +25,7 @@ export default function TourIllustration({ kind }: { kind: TourIllustrationKind 
       {kind === 'list' && <ListCard />}
       {kind === 'item' && <ItemRow />}
       {kind === 'sharing' && <Sharing />}
+      {kind === 'friends' && <Friends />}
       {kind === 'reserving' && <Reserving />}
     </div>
   );
@@ -91,6 +92,33 @@ function Sharing() {
       <div className="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-1.5 text-xs text-muted-foreground">
         <Icon name="user-plus" size={12} />
         @anna
+      </div>
+    </div>
+  );
+}
+
+/** A made-up search result: a person who follows you, and Follow back. */
+function Friends() {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-1.5 text-xs text-muted-foreground">
+        <Icon name="search" size={12} />
+        @maya
+      </div>
+      <div className="flex items-center gap-3 rounded-lg border border-border bg-surface px-3 py-2">
+        <span
+          className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-xs font-semibold text-white/90"
+          style={{ background: coverGradient('maya') }}
+        >
+          M
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium text-foreground">@maya</p>
+          <p className="text-xs text-muted-foreground">Follows you</p>
+        </div>
+        <span className="flex-shrink-0 rounded-full bg-primary-600 px-3 py-1 text-xs font-semibold text-white">
+          Follow back
+        </span>
       </div>
     </div>
   );

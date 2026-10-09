@@ -24,7 +24,7 @@ test('a fresh account sees the tour, skips it, and it stays gone on reload', asy
   // The one tour, from its first step: New list is on Home, so it points there.
   const step = page.getByRole('dialog', { name: 'Lists for every occasion' });
   await expect(step).toBeVisible();
-  await expect(step).toContainText(/^1 of [56]/);
+  await expect(step).toContainText(/^1 of [67]/);
 
   const skipped = page.waitForResponse(
     (r) => r.url().endsWith('/api/users/me') && r.request().method() === 'PATCH'

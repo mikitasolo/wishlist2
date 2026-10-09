@@ -9,13 +9,13 @@
  */
 
 /** The `data-tour` attribute values the tour looks for on the page. */
-export type TourTarget = 'new-list' | 'add-item' | 'share' | 'no-spoiler';
+export type TourTarget = 'new-list' | 'add-item' | 'share' | 'search' | 'no-spoiler';
 
 /** The made-up pictures a step can carry (`components/TourIllustration.tsx`). */
-export type TourIllustrationKind = 'list' | 'item' | 'sharing' | 'reserving';
+export type TourIllustrationKind = 'list' | 'item' | 'sharing' | 'friends' | 'reserving';
 
 export type TourStepKey =
-  'lists' | 'items' | 'sharing' | 'reserving' | 'reserved' | 'bookmarklet' | 'closing';
+  'lists' | 'items' | 'sharing' | 'friends' | 'reserving' | 'reserved' | 'bookmarklet' | 'closing';
 
 export interface TourStep {
   /** Also what `tour_skipped` reports (lib/analytics.ts), so letters and `_` only. */
@@ -69,6 +69,13 @@ const STEPS: TourStep[] = [
     body: 'Share a link or invite people by username. Choose who can see it: Public, Friends or Invite only.',
     target: 'share',
     illustration: 'sharing',
+  },
+  {
+    key: 'friends',
+    title: 'Find your friends',
+    body: 'Search for someone by @username and follow them. Follow each other and you’re friends: you’ll see each other’s Friends lists.',
+    target: 'search',
+    illustration: 'friends',
   },
   {
     key: 'reserving',

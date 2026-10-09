@@ -71,6 +71,7 @@ const PHONE_STEPS = [
   'Lists for every occasion',
   'Adding items',
   'Sharing',
+  'Find your friends',
   'The surprise stays a surprise',
   'Reserved and No spoiler mode',
 ];
@@ -98,7 +99,7 @@ describe('Walkthrough', () => {
     render(<Walkthrough userId="u1" />);
     const card = await step('Lists for every occasion');
     expect(card).toHaveAttribute('aria-modal', 'true');
-    expect(card).toHaveTextContent('1 of 5');
+    expect(card).toHaveTextContent('1 of 6');
     // Its made-up picture, decorative only.
     expect(card).toHaveTextContent('Maya’s birthday');
     expect(track).toHaveBeenCalledWith('tour_started', { source: 'auto' });
@@ -219,7 +220,7 @@ describe('Walkthrough', () => {
     device(true);
     answer({ due: 'tour', ownsList: true });
     render(<Walkthrough userId="u1" />);
-    expect(await step('Lists for every occasion')).toHaveTextContent('1 of 6');
+    expect(await step('Lists for every occasion')).toHaveTextContent('1 of 7');
     await nextThrough(PHONE_STEPS);
     const bookmarklet = await step('Add from any store');
     expect(within(bookmarklet).getByRole('link', { name: 'Open Settings' })).toHaveAttribute(
@@ -231,11 +232,27 @@ describe('Walkthrough', () => {
   it('shows the owner and friend views side by side, the owner’s with no reservation', async () => {
     answer({ due: 'tour', ownsList: true });
     render(<Walkthrough userId="u1" />);
-    await nextThrough(PHONE_STEPS.slice(0, 3));
+    await nextThrough(PHONE_STEPS.slice(0, 4));
     const card = await step('The surprise stays a surprise');
     expect(card).toHaveTextContent('Maya sees');
     expect(card).toHaveTextContent('Friends see');
     expect(card).toHaveTextContent('Group gift · 40% funded');
+  });
+
+  it('explains friends with a made-up search result, pointing at the header search', async () => {
+    const search = addTarget('search');
+    try {
+      answer({ due: 'tour', ownsList: true });
+      render(<Walkthrough userId="u1" />);
+      await nextThrough(PHONE_STEPS.slice(0, 3));
+      const popover = await step('Find your friends');
+      expect(popover).not.toHaveAttribute('aria-modal');
+      expect(search.scrollIntoView).toHaveBeenCalled();
+      expect(popover).toHaveTextContent('Follow each other and you’re friends');
+      expect(popover).toHaveTextContent('Follow back');
+    } finally {
+      search.remove();
+    }
   });
 
   it('offers the tour after time away; dismissing it says where to find it', async () => {

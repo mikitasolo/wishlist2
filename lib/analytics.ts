@@ -71,7 +71,7 @@ export const ANALYTICS_EVENTS = {
   tour_finished: {},
   /** Skipped, at which step (`TourStep.key`, lib/utils/tourSteps.ts). */
   tour_skipped: {
-    step: ['lists', 'items', 'sharing', 'reserving', 'reserved', 'bookmarklet'],
+    step: ['lists', 'items', 'sharing', 'friends', 'reserving', 'reserved', 'bookmarklet'],
   },
   /** The offer made after three months away, answered. */
   tour_offer_accepted: {},
