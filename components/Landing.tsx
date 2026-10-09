@@ -4,8 +4,8 @@ import Badge from '@/components/Badge';
 import GlobalSearch from '@/components/GlobalSearch';
 import Icon, { type IconName } from '@/components/Icon';
 import LandingCta from '@/components/LandingCta';
+import { MOCK_ITEMS, MOCK_RESERVED, MockThumb, mockPrice } from '@/components/MockList';
 import { coverGradient, coverInitial } from '@/lib/utils/cover';
-import { formatPrice } from '@/lib/utils/currency';
 import { statusMeta } from '@/lib/utils/itemStatus';
 import { plural } from '@/lib/utils/plural';
 
@@ -82,16 +82,6 @@ const FEATURES: { icon: IconName; title: string; body: string }[] = [
   },
 ];
 
-/** The made-up list the mock shows: no real account's data, ever. */
-const MOCK_ITEMS = [
-  { name: 'Ceramic pour-over set', cents: 4800 },
-  { name: 'Linen apron', cents: 3200 },
-  { name: 'Hiking day pack', cents: 8900 },
-];
-const MOCK_RESERVED = MOCK_ITEMS[0];
-
-const price = (cents: number) => formatPrice({ value: cents, currency: 'usd' });
-
 /**
  * One list, two views, in static markup: the owner's card, where the item a
  * friend reserved looks like any other, beside a friend's view of that same
@@ -130,7 +120,7 @@ function ProductMock() {
                     <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
                       {item.name}
                     </span>
-                    <span className="text-sm text-muted-foreground">{price(item.cents)}</span>
+                    <span className="text-sm text-muted-foreground">{mockPrice(item.cents)}</span>
                   </li>
                 ))}
               </ul>
@@ -156,7 +146,7 @@ function ProductMock() {
                 </p>
                 <Badge status={statusMeta('booked', 'member')} />
               </div>
-              <p className="mt-1 text-sm text-muted-foreground">{price(MOCK_RESERVED.cents)}</p>
+              <p className="mt-1 text-sm text-muted-foreground">{mockPrice(MOCK_RESERVED.cents)}</p>
             </div>
           </div>
           <MockNote>Someone’s already giving it, so nobody buys it twice.</MockNote>
@@ -177,16 +167,4 @@ function MockCaption({ icon, children }: { icon: IconName; children: string }) {
 
 function MockNote({ children }: { children: string }) {
   return <p className="mt-3 px-1 text-center text-sm text-muted-foreground">{children}</p>;
-}
-
-function MockThumb({ name }: { name: string }) {
-  return (
-    <span
-      aria-hidden
-      className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg text-sm font-semibold text-white/90"
-      style={{ background: coverGradient(name) }}
-    >
-      {coverInitial(name)}
-    </span>
-  );
 }

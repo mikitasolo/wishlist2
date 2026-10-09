@@ -8,6 +8,7 @@ import AppHeader from '@/components/AppHeader';
 import AuthButton from '@/components/AuthButton';
 import BirthdayField from '@/components/BirthdayField';
 import BookmarkletCard from '@/components/BookmarkletCard';
+import TourSetting from '@/components/TourSetting';
 import Button from '@/components/Button';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import DeleteAccount from '@/components/DeleteAccount';
@@ -620,6 +621,8 @@ export default function SettingsPage() {
 
           <ThemeSetting />
         </Panel>
+
+        <TourSetting />
 
         <Panel title="Account">
           <div className="flex flex-wrap items-center justify-between gap-4">

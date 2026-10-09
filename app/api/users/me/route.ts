@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth';
 import connectDB from '@/lib/mongodb';
 import User, { type IUser, type IUserPrivacy } from '@/models/User';
 import Follow from '@/models/Follow';
+import Wishlist from '@/models/Wishlist';
 import { deleteAccountSchema, updateProfileSchema, validateRequestBody } from '@/lib/validations';
 import { enforce, userKey } from '@/lib/rateLimit';
 import { deleteAccount } from '@/lib/utils/accountDeletion';
@@ -22,8 +23,18 @@ import {
 } from '@/lib/utils/blob';
 import { purgeShareCards } from '@/lib/og/purge';
 import { notificationPrefWrites } from '@/lib/utils/notificationPrefs';
+import { ownedByFilter } from '@/lib/utils/wishlistOwners';
+import {
+  activityBump,
+  walkthroughDue,
+  walkthroughWrite,
+  type WalkthroughStatus,
+} from '@/lib/utils/walkthrough';
 
-// GET /api/users/me - current user's profile + privacy settings
+// GET /api/users/me - current user's profile + privacy settings, and what the
+// guided walkthrough has due for them (WIS-371). Every read is a visit: it
+// records one first (`recordVisit`), so a visit back after three months away
+// is what offers the tour.
 export async function GET() {
   try {
     const session = await auth();
@@ -32,20 +43,29 @@ export async function GET() {
     }
 
     await connectDB();
+    await recordVisit(session.user.id);
     const user = await User.findById(session.user.id).select(
-      'email username image bio birthday defaultCurrency privacy notificationPrefs'
+      'email username image bio birthday defaultCurrency privacy notificationPrefs walkthrough'
     );
     if (!user) {
       return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
     }
 
-    const [followerCount, followingCount] = await Promise.all([
+    const [followerCount, followingCount, ownsAList] = await Promise.all([
       Follow.countDocuments({ following: user._id }),
       Follow.countDocuments({ follower: user._id }),
+      Wishlist.exists(ownedByFilter(session.user.id)),
     ]);
 
+    // What's due, never the stored state itself.
+    const { walkthrough: tourState, ...profile } = user.toObject();
+    const walkthrough: WalkthroughStatus = {
+      due: walkthroughDue(tourState),
+      ownsList: !!ownsAList,
+    };
+
     return NextResponse.json(
-      { success: true, data: { ...user.toObject(), followerCount, followingCount } },
+      { success: true, data: { ...profile, followerCount, followingCount, walkthrough } },
       { status: 200 }
     );
   } catch (error) {
@@ -99,6 +119,7 @@ export async function PATCH(request: NextRequest) {
       currencyChosen,
       privacy,
       notificationPrefs,
+      walkthrough,
     } = validation.data;
 
     if (!canAttachImage(image, session.user.id, user.image)) {
@@ -168,6 +189,9 @@ export async function PATCH(request: NextRequest) {
     // (`notificationPrefs.occasion_reminder.inApp`).
     Object.assign(changes, notificationPrefWrites(notificationPrefs));
 
+    // An answer from the guided walkthrough, on the server's clock.
+    const tourWrite = walkthrough ? walkthroughWrite(walkthrough, new Date()) : undefined;
+
     // One write, which hands back the profile as it was just before it landed,
     // so what follows works from what it replaced, not from the read above. Two
     // tabs replacing the avatar at once both read the same one, and freeing that
@@ -176,7 +200,11 @@ export async function PATCH(request: NextRequest) {
     try {
       before = await User.findOneAndUpdate(
         { _id: user._id },
-        { $set: changes, ...(answered && { $min: { currencyChosenAt: new Date() } }) },
+        {
+          $set: { ...changes, ...tourWrite?.$set },
+          ...(tourWrite && '$unset' in tourWrite && { $unset: tourWrite.$unset }),
+          ...(answered && { $min: { currencyChosenAt: new Date() } }),
+        },
         { returnDocument: 'before', runValidators: true }
       );
     } catch (error) {
@@ -312,6 +340,21 @@ export async function DELETE(request: NextRequest) {
       { success: false, error: 'Failed to delete account' },
       { status: 500 }
     );
+  }
+}
+
+/**
+ * Records a visit (WIS-371): bumps `lastActiveAt` at most once a day, and, on
+ * a visit back after `RETURN_GAP_DAYS` away, offers the tour in the same write
+ * (`activityBump`). Best-effort: the profile is answered whether or not it
+ * landed.
+ */
+async function recordVisit(userId: string) {
+  try {
+    const { filter, update } = activityBump(new Date());
+    await User.updateOne({ _id: userId, ...filter }, update);
+  } catch (error) {
+    console.error('Error recording a visit:', errorKind(error));
   }
 }
 

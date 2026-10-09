@@ -34,6 +34,7 @@ export default function NoSpoilerSwitch({ compact = false }: { compact?: boolean
       role="switch"
       aria-checked={discreet}
       aria-label="No spoiler mode"
+      data-tour="no-spoiler"
       title={discreet ? 'No spoiler mode is on. Turn it off' : 'Turn on no spoiler mode'}
       onClick={toggle}
       className={`group inline-flex h-10 flex-shrink-0 items-center gap-2 rounded-full border pr-1.5 pl-3.5 text-sm font-medium whitespace-nowrap shadow-xs transition-[background-color,border-color,color,box-shadow] duration-200 active:scale-[0.97] motion-reduce:transition-none ${

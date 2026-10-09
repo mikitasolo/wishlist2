@@ -66,6 +66,16 @@ export const ANALYTICS_EVENTS = {
   share_link_opened: { level: ['view', 'join'] },
   /** An owner shared their list: its link copied or shared, or a share link made. */
   list_shared: { method: ['copy', 'share_sheet', 'share_link'] },
+  /** The guided walkthrough (WIS-371) began: on its own, from the offer, or from Settings. */
+  tour_started: { source: ['auto', 'offer', 'settings'] },
+  tour_finished: {},
+  /** Skipped, at which step (`TourStep.key`, lib/utils/tourSteps.ts). */
+  tour_skipped: {
+    step: ['lists', 'items', 'sharing', 'friends', 'reserving', 'reserved', 'bookmarklet'],
+  },
+  /** The offer made after three months away, answered. */
+  tour_offer_accepted: {},
+  tour_offer_dismissed: {},
 } as const satisfies Record<string, Record<string, readonly string[]>>;
 
 export type AnalyticsEvent = keyof typeof ANALYTICS_EVENTS;

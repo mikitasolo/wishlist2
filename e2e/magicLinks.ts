@@ -42,3 +42,6 @@ export const FRIEND_SESSION_TOKEN = 'e2e-friend-session';
  * spec ends `FRIEND_SESSION_TOKEN`, so this one is separate.
  */
 export const FRIEND_API_SESSION_TOKEN = 'e2e-friend-api-session';
+
+/** A session for `e2etour`, a fresh account that hasn't seen the guided walkthrough (WIS-371). */
+export const TOUR_SESSION_TOKEN = 'e2e-tour-session';

@@ -6,6 +6,7 @@ import { useKnownSession } from '@/lib/hooks/useKnownSession';
 import AuthButton from '@/components/AuthButton';
 import AppHeader from '@/components/AppHeader';
 import CreateWishlistModal from '@/components/CreateWishlistModal';
+import { OPEN_NEW_LIST_EVENT } from '@/lib/utils/tourSteps';
 import ComingUp from '@/components/ComingUp';
 import NeedsYou from '@/components/NeedsYou';
 import WishlistList, { ArchivedLists } from '@/components/WishlistList';
@@ -160,19 +161,28 @@ export default function Dashboard() {
   }, [status, userId]);
 
   // The birthday nudge email's link (WIS-344): New list on a Birthday list,
-  // once, the query taken off so a reload doesn't open it again.
+  // once, the query taken off so a reload doesn't open it again. `new` (the
+  // tour's Create a list, WIS-371, from another page) opens a plain one.
   useEffect(() => {
     if (status !== 'authenticated') return;
     const url = new URL(window.location.href);
-    if (url.searchParams.get(NEW_LIST_PARAM) !== 'birthday') return;
+    const kind = url.searchParams.get(NEW_LIST_PARAM);
+    if (kind !== 'birthday' && kind !== 'new') return;
     url.searchParams.delete(NEW_LIST_PARAM);
     window.history.replaceState(
       window.history.state,
       '',
       `${url.pathname}${url.search}${url.hash}`
     );
-    openCreate('birthday');
+    openCreate(kind === 'birthday' ? 'birthday' : undefined);
   }, [status, openCreate]);
+
+  // The tour's Create a list, from Home itself.
+  useEffect(() => {
+    const open = () => openCreate();
+    window.addEventListener(OPEN_NEW_LIST_EVENT, open);
+    return () => window.removeEventListener(OPEN_NEW_LIST_EVENT, open);
+  }, [openCreate]);
 
   const retryLoad = useCallback(() => {
     setLoadFailed(false);
@@ -255,6 +265,7 @@ export default function Dashboard() {
             icon="plus"
             onClick={() => openCreate()}
             className="sm:mb-1"
+            data-tour="new-list"
           >
             New list
           </Button>
