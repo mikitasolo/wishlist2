@@ -106,6 +106,7 @@ const STATIC_PATHS = new Set([
   '/booked',
   '/invites',
   '/items',
+  '/items/new',
   '/notifications',
   '/settings',
   '/unsubscribe',

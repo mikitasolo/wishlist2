@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   AUTH_ONLY_PATHS,
+  CALLBACK_URL_MAX,
   isAuthOnlyPath,
   safeCallbackPath,
   signInPath,
@@ -90,6 +91,85 @@ describe('signInPath', () => {
   });
 });
 
+describe('signInPath with a fragment', () => {
+  const FRAGMENT =
+    '#name=Mug&price=9.99&currency=EUR&link=https%3A%2F%2Fshop.example.com%2Fp%3Fa%3D1';
+  const continuesTo = (hash: string) => {
+    const url = new URL(signInPath('/items/new', hash), ORIGIN);
+    return safeCallbackPath(url.searchParams.get('callbackUrl'), ORIGIN, '/auth');
+  };
+
+  it('keeps the fragment in the callback, and the sign-in page continues to it intact', () => {
+    expect(signInPath('/items/new', FRAGMENT)).toBe(
+      `/auth/signin?callbackUrl=${encodeURIComponent(`/items/new${FRAGMENT}`)}`
+    );
+    expect(continuesTo(FRAGMENT)).toBe(`/items/new${FRAGMENT}`);
+  });
+
+  it('is the old path without a fragment, or with an empty one', () => {
+    expect(signInPath('/items/new')).toBe('/auth/signin?callbackUrl=%2Fitems%2Fnew');
+    expect(signInPath('/items/new', '')).toBe(signInPath('/items/new'));
+    expect(signInPath('/items/new', '#')).toBe(signInPath('/items/new'));
+  });
+
+  // The fragment is attacker-controlled (anyone can link to /items/new#…); it is
+  // only ever appended to a fixed path, so it can't move the callback off the site.
+  it('cannot escape the origin, whatever the fragment says', () => {
+    for (const hash of [
+      '#//evil.example/phish',
+      '#https://evil.example/',
+      '#@evil.example',
+      '#/\\evil.example',
+      '#\\\\evil.example',
+      '#javascript:alert(1)',
+      '#name=x&link=https://evil.example',
+      '#%0d%0aLocation:%20https://evil.example',
+    ]) {
+      const callback = new URL(signInPath('/items/new', hash), ORIGIN).searchParams.get(
+        'callbackUrl'
+      );
+      expect(callback?.startsWith('/items/new#'), hash).toBe(true);
+      const target = safeCallbackPath(callback, ORIGIN, '/auth');
+      expect(new URL(target, ORIGIN).origin, hash).toBe(ORIGIN);
+      expect(new URL(target, ORIGIN).pathname, hash).toBe('/items/new');
+    }
+  });
+
+  it('ignores a "hash" that is not a fragment', () => {
+    expect(signInPath('/items/new', 'https://evil.example/')).toBe(signInPath('/items/new'));
+    expect(signInPath('/items/new', '//evil.example')).toBe(signInPath('/items/new'));
+  });
+
+  it('drops a fragment that would make the callback too long for the sign-in form', () => {
+    const huge = `#name=${'x'.repeat(CALLBACK_URL_MAX)}`;
+    expect(signInPath('/items/new', huge)).toBe(signInPath('/items/new'));
+    const fits = `#name=${'x'.repeat(CALLBACK_URL_MAX - '/items/new#name='.length)}`;
+    expect(signInPath('/items/new', fits)).toContain('xxxx');
+  });
+});
+
+describe('safeCallbackPath with a hostile callbackUrl on the add-from-link page', () => {
+  it('keeps the page’s own fragment, and nothing that leaves the site', () => {
+    expect(safeCallbackPath('/items/new#name=Mug', ORIGIN, '/auth')).toBe('/items/new#name=Mug');
+    expect(safeCallbackPath(`${ORIGIN}/items/new#name=Mug`, ORIGIN, '/auth')).toBe(
+      '/items/new#name=Mug'
+    );
+    for (const hostile of [
+      'https://evil.example/items/new#name=Mug',
+      '//evil.example/items/new#name=Mug',
+      '/\\evil.example#name=Mug',
+      '/items/new#',
+      `${ORIGIN}//evil.example#name=Mug`,
+      'javascript:alert(1)//#/items/new',
+    ]) {
+      const target = safeCallbackPath(hostile, ORIGIN, '/auth');
+      expect(new URL(target, ORIGIN).origin, hostile).toBe(ORIGIN);
+    }
+    expect(safeCallbackPath('https://evil.example/items/new#name=Mug', ORIGIN)).toBe('/');
+    expect(safeCallbackPath(`${ORIGIN}//evil.example#name=Mug`, ORIGIN)).toBe('/');
+  });
+});
+
 describe('isAuthOnlyPath', () => {
   it('matches each page that needs an account', () => {
     for (const path of AUTH_ONLY_PATHS) expect(isAuthOnlyPath(path), path).toBe(true);
@@ -101,6 +181,7 @@ describe('isAuthOnlyPath', () => {
       '/wishlists/abc123',
       '/users/alice',
       '/items/x',
+      '/items/new/',
       '/wishlists/mine-too',
       '/wishlists',
       '/auth/signin',

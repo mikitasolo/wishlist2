@@ -16,6 +16,7 @@ vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast: vi.
 import BookedPage from '@/app/booked/page';
 import SettingsPage from '@/app/settings/page';
 import ItemsPage from '@/app/items/page';
+import NewItemFromLinkPage from '@/app/items/new/page';
 import NotificationsPage from '@/app/notifications/page';
 import MyWishlistsPage from '@/app/wishlists/mine/page';
 import SharedWishlistsPage from '@/app/wishlists/shared/page';
@@ -25,6 +26,7 @@ const PAGES = [
   ['/booked', BookedPage],
   ['/settings', SettingsPage],
   ['/items', ItemsPage],
+  ['/items/new', NewItemFromLinkPage],
   ['/notifications', NotificationsPage],
   ['/wishlists/mine', MyWishlistsPage],
   ['/wishlists/shared', SharedWishlistsPage],
