@@ -4,6 +4,8 @@ interface AddItemTileProps {
   /** "Add item" (an owner's) or "Propose an item" (a member's); its accessible name too. */
   label: string;
   onClick: () => void;
+  /** Where the guided walkthrough points (WIS-371): an owner's Add item only. */
+  'data-tour'?: string;
 }
 
 /**
@@ -13,11 +15,12 @@ interface AddItemTileProps {
  * compact card's on a phone, the full card's from `sm` up. It isn't a link, so
  * it doesn't lift on hover; it tints.
  */
-export default function AddItemTile({ label, onClick }: AddItemTileProps) {
+export default function AddItemTile({ label, onClick, 'data-tour': tourTarget }: AddItemTileProps) {
   return (
     <button
       type="button"
       onClick={onClick}
+      data-tour={tourTarget}
       className="group flex min-h-40 min-w-0 flex-col items-center justify-center gap-3 rounded-3xl border-2 border-dashed border-border-strong p-3 text-center text-accent transition-colors hover:border-primary-500/50 hover:bg-primary-500/6 sm:p-5"
     >
       <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-500/12 transition-colors group-hover:bg-primary-500/18">

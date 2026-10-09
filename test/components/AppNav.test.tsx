@@ -42,6 +42,9 @@ import { HeaderNav, TabBar } from '@/components/AppNav';
 
 const me: User = { id: 'me', email: 'me@example.com', username: 'mikita' };
 
+// The guided walkthrough reads its own status; it has its own tests (Walkthrough.test.tsx).
+vi.mock('@/components/Walkthrough', () => ({ default: () => null }));
+
 // The unread count's reads (`useUnreadNotifications`): `unread` is what they answer.
 const fetchMock = vi.fn();
 let unread = 0;

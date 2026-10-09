@@ -2158,26 +2158,31 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
           // share it with gets the answer a missing list gets.
           share={
             !wishlist.archived && (
-              <ShareButton
-                // A link visitor shares the link they came by: the list's own
-                // URL may not open for whoever they send it to.
-                url={linkToken ? `/l/${linkToken}` : `/wishlists/${wishlist.slug || wishlist._id}`}
-                title={wishlist.name}
-                // Inviting happens on People, with its invite form on top.
-                owner={
-                  isOwner
-                    ? {
-                        visibility: wishlist.visibility,
-                        archived: wishlist.archived,
-                        onInvite: () => chooseTab('people'),
-                        onShareLinks: openShareLinks,
-                        // Unknown until read: no hint either way.
-                        liveLinkCount:
-                          shareLinks.read === 'loaded' ? shareLinks.liveCount : undefined,
-                      }
-                    : undefined
-                }
-              />
+              // An owner's Share is where the guided walkthrough's Sharing step points (WIS-371).
+              <span className="contents" data-tour={isOwner ? 'share' : undefined}>
+                <ShareButton
+                  // A link visitor shares the link they came by: the list's own
+                  // URL may not open for whoever they send it to.
+                  url={
+                    linkToken ? `/l/${linkToken}` : `/wishlists/${wishlist.slug || wishlist._id}`
+                  }
+                  title={wishlist.name}
+                  // Inviting happens on People, with its invite form on top.
+                  owner={
+                    isOwner
+                      ? {
+                          visibility: wishlist.visibility,
+                          archived: wishlist.archived,
+                          onInvite: () => chooseTab('people'),
+                          onShareLinks: openShareLinks,
+                          // Unknown until read: no hint either way.
+                          liveLinkCount:
+                            shareLinks.read === 'loaded' ? shareLinks.liveCount : undefined,
+                        }
+                      : undefined
+                  }
+                />
+              </span>
             )
           }
         />
@@ -2413,10 +2418,11 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
                     }
                   />
                 ) : (
-                  <div className={ITEM_GRID_CLASSES}>
+                  <div className={ITEM_GRID_CLASSES} data-tour="items">
                     {addTile && (
                       <AddItemTile
                         label={addTile === 'add' ? 'Add item' : 'Propose an item'}
+                        data-tour={addTile === 'add' ? 'add-item' : undefined}
                         onClick={() =>
                           addTile === 'add'
                             ? setShowAddItemModal(true)

@@ -128,6 +128,11 @@ describe('ANALYTICS_EVENTS', () => {
         'reserve',
         'save_to_my_list',
         'share_link_opened',
+        'tour_finished',
+        'tour_offer_accepted',
+        'tour_offer_dismissed',
+        'tour_skipped',
+        'tour_started',
       ].sort()
     );
   });

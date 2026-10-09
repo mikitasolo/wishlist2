@@ -36,6 +36,7 @@ export const UMAMI_BEFORE_SEND = '__wishlistUmamiBeforeSend';
 
 const VISIBILITY = ['everyone', 'friends', 'private'] as const;
 const ROLE = ['owner', 'member'] as const;
+const TOUR_VARIANT = ['owner', 'member'] as const;
 
 /**
  * Every event, and the props each may carry: a closed set of values per prop,
@@ -66,6 +67,27 @@ export const ANALYTICS_EVENTS = {
   share_link_opened: { level: ['view', 'join'] },
   /** An owner shared their list: its link copied or shared, or a share link made. */
   list_shared: { method: ['copy', 'share_sheet', 'share_link'] },
+  /** The guided walkthrough (WIS-371) began: on its own, from the offer, or from Settings. */
+  tour_started: { variant: TOUR_VARIANT, source: ['auto', 'offer', 'settings'] },
+  tour_finished: { variant: TOUR_VARIANT },
+  /** Skipped, at which step (`TourStep.key`, lib/utils/tourSteps.ts). */
+  tour_skipped: {
+    variant: TOUR_VARIANT,
+    step: [
+      'lists',
+      'items',
+      'bookmarklet',
+      'sharing',
+      'surprise',
+      'reserved',
+      'list',
+      'group_gifts',
+      'own_list',
+    ],
+  },
+  /** The offer made after three months away, answered. */
+  tour_offer_accepted: { variant: TOUR_VARIANT },
+  tour_offer_dismissed: { variant: TOUR_VARIANT },
 } as const satisfies Record<string, Record<string, readonly string[]>>;
 
 export type AnalyticsEvent = keyof typeof ANALYTICS_EVENTS;

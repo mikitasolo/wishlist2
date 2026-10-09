@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, within, act, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
+import { OPEN_NEW_LIST_EVENT } from '@/lib/utils/tourSteps';
 
 const { showToast, auth } = vi.hoisted(() => {
   // The session's status, which the dashboard reads its lists again on:
@@ -210,6 +211,23 @@ describe('dashboard — the greeting row', () => {
     expect(dialog).toHaveAttribute('data-occasion-kind', 'birthday');
     // Taken off the address, so a reload doesn't open it again.
     expect(window.location.search).toBe('');
+  });
+
+  it('opens a plain New list from the member tour’s Create a list on another page (WIS-371)', async () => {
+    window.history.replaceState(null, '', '/?newList=new');
+    render(<Home />);
+    const dialog = await screen.findByRole('dialog', { name: 'Create new wishlist' });
+    expect(dialog).not.toHaveAttribute('data-occasion-kind', 'birthday');
+    expect(window.location.search).toBe('');
+  });
+
+  it('opens New list when the member tour asks on Home itself (WIS-371)', async () => {
+    render(<Home />);
+    await screen.findByRole('button', { name: 'New list' });
+    act(() => {
+      window.dispatchEvent(new Event(OPEN_NEW_LIST_EVENT));
+    });
+    expect(await screen.findByRole('dialog', { name: 'Create new wishlist' })).toBeInTheDocument();
   });
 
   describe('start from an earlier list (WIS-348)', () => {

@@ -15,6 +15,7 @@ import { isTimeZone } from '@/lib/utils/zonedDate';
 import { COPY_ITEMS_MAX } from '@/lib/utils/wishlistCopy';
 import { ITEM_LINKS_MAX } from '@/lib/utils/itemLinks';
 import { GROUP_GIFT_MAX_CENTS } from '@/lib/utils/groupGiftSummary';
+import { WALKTHROUGH_ACTIONS } from '@/lib/utils/walkthrough';
 
 /**
  * Validation schemas for API endpoints
@@ -211,6 +212,9 @@ export const updateProfileSchema = z
       .optional(),
     // Each notification setting it's sent, per event and channel.
     notificationPrefs: notificationPrefsSchema.optional(),
+    // An answer from the guided walkthrough (WIS-371): the server stamps the
+    // time itself (`walkthroughWrite`, lib/utils/walkthrough.ts).
+    walkthrough: z.enum(WALKTHROUGH_ACTIONS).optional(),
   })
   .refine((data) => Object.keys(data).length > 0, {
     message: 'At least one field must be provided for update',

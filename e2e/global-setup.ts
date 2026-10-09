@@ -18,7 +18,9 @@ import {
   FRIEND_API_SESSION_TOKEN,
   FRIEND_SESSION_TOKEN,
   MAGIC_LINKS,
+  TOUR_SESSION_TOKEN,
 } from './magicLinks';
+import { TOUR_VERSION } from '../lib/utils/walkthrough';
 
 const BASE_URL = `http://localhost:${E2E_PORT}`;
 
@@ -49,6 +51,10 @@ async function waitForServer(url: string, timeoutMs: number): Promise<void> {
   throw new Error(`E2E: server at ${url} did not become ready in ${timeoutMs}ms`);
 }
 
+// The seeded accounts have seen the guided walkthrough (WIS-371), so it never
+// opens over another spec's page; `e2etour` hasn't, for the spec about it.
+const TOUR_SEEN = { version: TOUR_VERSION, completedAt: new Date() };
+
 export default async function globalSetup(_config: FullConfig) {
   const mongo = await MongoMemoryServer.create();
   const uri = mongo.getUri('e2e');
@@ -61,6 +67,7 @@ export default async function globalSetup(_config: FullConfig) {
     email: 'e2e-user@example.com',
     username: 'e2euser',
     defaultCurrency: 'USD',
+    walkthrough: TOUR_SEEN,
   });
   const wishlist = await Wishlist.create({
     name: 'E2E Birthday List',
@@ -77,6 +84,7 @@ export default async function globalSetup(_config: FullConfig) {
     email: 'e2e-friend@example.com',
     username: 'e2efriend',
     defaultCurrency: 'USD',
+    walkthrough: TOUR_SEEN,
   });
   const friendList = await Wishlist.create({
     name: 'E2E Friend List',
@@ -113,6 +121,7 @@ export default async function globalSetup(_config: FullConfig) {
     email: 'e2e-host@example.com',
     username: 'e2ehost',
     defaultCurrency: 'USD',
+    walkthrough: TOUR_SEEN,
   });
   const joinableList = await Wishlist.create({
     name: 'E2E Joinable List',
@@ -134,6 +143,13 @@ export default async function globalSetup(_config: FullConfig) {
     createdBy: host._id,
   });
 
+  // A fresh account, with no list and no walkthrough state yet (WIS-371).
+  const tourUser = await User.create({
+    email: 'e2e-tour@example.com',
+    username: 'e2etour',
+    defaultCurrency: 'USD',
+  });
+
   const sessionToken = randomUUID();
   const expires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
   await mongoose.connection.collection('sessions').insertMany([
@@ -142,6 +158,8 @@ export default async function globalSetup(_config: FullConfig) {
     { sessionToken: FRIEND_SESSION_TOKEN, userId: friend._id, expires },
     // For a spec that acts as the friend through the API (magicLinks.ts).
     { sessionToken: FRIEND_API_SESSION_TOKEN, userId: friend._id, expires },
+    // For the walkthrough spec's fresh account (magicLinks.ts).
+    { sessionToken: TOUR_SESSION_TOKEN, userId: tourUser._id, expires },
   ]);
 
   // Unused magic links (see magicLinks.ts), stored the way Auth.js stores the

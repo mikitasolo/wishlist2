@@ -8,6 +8,7 @@ import { HeaderNav, TabBar } from '@/components/AppNav';
 import { Skeleton } from '@/components/Skeleton';
 import NoSpoilerSwitch from '@/components/NoSpoilerSwitch';
 import { useUnreadNotifications } from '@/lib/hooks/useUnreadNotifications';
+import Walkthrough from '@/components/Walkthrough';
 
 interface AppHeaderProps {
   /** Right-aligned actions (e.g. AuthButton, wishlist-scoped buttons). */
@@ -96,6 +97,8 @@ export default function AppHeader({ actions, search = true, minimal = false }: A
           </div>
         </div>
       </header>
+      {/* The guided walkthrough (WIS-371): on every page with the app's navigation. */}
+      {!minimal && session?.user?.id && <Walkthrough userId={session.user.id} />}
       {minimal ? null : signedIn ? (
         <TabBar username={username} unread={unread} />
       ) : pending ? (

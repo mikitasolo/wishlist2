@@ -8,6 +8,7 @@ import {
   DEFAULT_BIRTHDAY_VISIBILITY,
   type BirthdayVisibility,
 } from '@/lib/utils/birthday';
+import type { WalkthroughState } from '@/lib/utils/walkthrough';
 
 export type InvitePolicy = 'everyone' | 'friends' | 'nobody';
 export type ProfileVisibility = 'everyone' | 'friends';
@@ -103,6 +104,23 @@ const UserSchema = new Schema(
     // `notificationOptInFilter`), so changing a default later reaches every
     // account that never touched it.
     notificationPrefs: notificationPrefsMongooseShape(),
+    // The guided walkthrough (WIS-371, lib/utils/walkthrough.ts): when they
+    // finished or skipped which version of the tour, and when they were last
+    // offered it (back after three months away) and answered that offer.
+    // Their own only: `GET /api/users/me` answers what's due, never this.
+    walkthrough: {
+      version: { type: Number },
+      completedAt: { type: Date },
+      skippedAt: { type: Date },
+      offeredAt: { type: Date },
+      offerAnsweredAt: { type: Date },
+    },
+    // When they last used the app, to the day: bumped at most once a day by
+    // `GET /api/users/me` (`activityBumps`), for the walkthrough's re-offer.
+    // Absent until their first visit after it shipped.
+    lastActiveAt: {
+      type: Date,
+    },
   },
   {
     timestamps: true,
@@ -129,6 +147,8 @@ export interface IUser {
   currencyChosenAt?: Date;
   privacy?: IUserPrivacy;
   notificationPrefs?: NotificationPrefs;
+  walkthrough?: WalkthroughState;
+  lastActiveAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
