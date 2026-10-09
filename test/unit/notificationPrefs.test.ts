@@ -19,7 +19,7 @@ describe('the settings table (operator decision, 2026-10-05)', () => {
   });
 
   it('keeps an in-app switch on by default for every event', () => {
-    expect(eventsOn('inApp')).toHaveLength(12);
+    expect(eventsOn('inApp')).toHaveLength(18);
     for (const event of eventsOn('inApp')) expect(notificationDefault(event, 'inApp')).toBe(true);
   });
 
@@ -43,6 +43,13 @@ describe('the settings table (operator decision, 2026-10-05)', () => {
       access_changed: false,
       invite_accepted: false,
       proposal_approved: false,
+      // WIS-364: on where it changes what you hold, off where it's only news.
+      group_gift_joined: false,
+      group_gift_funded: true,
+      group_gift_organizer: true,
+      group_gift_cancelled: true,
+      group_gift_converted: true,
+      group_gift_given: false,
     });
   });
 

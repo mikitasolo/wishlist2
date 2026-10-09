@@ -28,6 +28,7 @@ import {
   scopedIdempotencyKey,
 } from '@/lib/utils/itemIdempotency';
 import type { LostBookingReason } from '@/lib/utils/lateBooking';
+import { notifyGroupGiftEnded } from '@/lib/groupGiftNotifications';
 
 /**
  * What the group gift routes (`app/api/items/[id]/group-gift/**`, WIS-361)
@@ -193,5 +194,7 @@ export async function organizerAction(
   } else {
     await logGivenGroupGift(ended, wishlist, item.name);
   }
+  // WIS-364: once it's settled, everyone else who was in it is told how it ended.
+  await notifyGroupGiftEnded(ended, endedAs);
   return giftItemAnswer(caller);
 }

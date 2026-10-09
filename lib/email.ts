@@ -8,7 +8,12 @@ import {
   notificationEventOf,
   type NotificationEvent,
 } from './utils/notificationPrefs';
-import { notificationLink, notificationParts, type NotificationView } from './utils/notifications';
+import {
+  notificationLink,
+  notificationParts,
+  type GroupGiftNotificationType,
+  type NotificationView,
+} from './utils/notifications';
 import type { OccasionKind } from './utils/occasion';
 import {
   BIRTHDAY_NUDGE_DETAIL,
@@ -469,7 +474,8 @@ export type EmailedNotificationType =
   | 'occasion_reminder'
   | 'birthday_reminder'
   | 'wishlist_ask'
-  | 'asked_list_made';
+  | 'asked_list_made'
+  | GroupGiftNotificationType;
 
 export interface NotificationEmailDetails {
   /** The recipient's account id, for the unsubscribe link (never shown). */
@@ -486,7 +492,7 @@ export interface NotificationEmailDetails {
   /** Free text: escaped in the HTML, isolated in the text part, never in the subject. */
   wishlistName: string | null;
   wishlistSlug?: string | null;
-  /** `proposal_approved` only: the item, as its in-app row names it. Free text. */
+  /** `proposal_approved` and the group gift types: the item, as the in-app row names it. Free text. */
   itemName?: string | null;
   /** `occasion_reminder` only. */
   occasionKind?: OccasionKind | null;
@@ -504,6 +510,7 @@ const NAMES_ACTOR: ReadonlySet<EmailedNotificationType> = new Set([
   'birthday_reminder',
   'wishlist_ask',
   'asked_list_made',
+  'group_gift_joined',
 ]);
 
 const OCCASION_SUBJECT_KIND: Record<OccasionKind, string> = {
@@ -594,6 +601,44 @@ function notificationEmailCopy(
       return {
         subject: `${actor} made a wishlist you asked for`,
         heading: 'A wishlist you asked for',
+        button: 'Open the wishlist',
+      };
+    // WIS-364: to contributors only. The item and list are free text: in the
+    // body only, never the subject.
+    case 'group_gift_joined':
+      return {
+        subject: `${actor} joined a group gift you’re in`,
+        heading: 'Someone joined your group gift',
+        button: 'Open the wishlist',
+      };
+    case 'group_gift_funded':
+      return {
+        subject: 'A group gift you’re in is fully funded',
+        heading: 'Your group gift is fully funded',
+        button: 'Open the wishlist',
+      };
+    case 'group_gift_organizer':
+      return {
+        subject: 'You’re now organizing a group gift',
+        heading: 'You’re now the organizer',
+        button: 'Open the wishlist',
+      };
+    case 'group_gift_cancelled':
+      return {
+        subject: 'A group gift you were in was cancelled',
+        heading: 'Your group gift was cancelled',
+        button: 'Open the wishlist',
+      };
+    case 'group_gift_converted':
+      return {
+        subject: 'A group gift you were in is now a solo reservation',
+        heading: 'Your group gift is now a solo reservation',
+        button: 'Open the wishlist',
+      };
+    case 'group_gift_given':
+      return {
+        subject: 'A group gift you were in was marked as given',
+        heading: 'Your group gift was marked as given',
         button: 'Open the wishlist',
       };
   }

@@ -137,6 +137,7 @@ const KEY_KINDS: Record<LimiterName, KeyKind> = {
   emailBirthdayNudge: 'user',
   emailWishlistAsk: 'user',
   emailAskedListMade: 'user',
+  emailGroupGift: 'user',
 };
 const LIMITERS = Object.entries(KEY_KINDS) as [LimiterName, KeyKind][];
 

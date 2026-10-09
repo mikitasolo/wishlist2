@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup, within, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { NotificationView } from '@/lib/utils/notifications';
+import { setDiscreetMode } from '@/lib/hooks/useDiscreetMode';
 
 const { push, showToast, signedIn } = vi.hoisted(() => ({
   push: vi.fn(),
@@ -154,6 +155,39 @@ describe('Activity', () => {
       expect(within(el).getByText(name)).toHaveClass('font-semibold');
     }
     expect(document.body.textContent).not.toMatch(/[“”]/);
+  });
+
+  // WIS-364: a group gift is a reservation, so No spoiler mode hides its rows'
+  // words (which gift, which list) as they render; the data is untouched.
+  it('hides what a group gift row says in No spoiler mode, and shows it again after', async () => {
+    serve([
+      row({
+        type: 'group_gift_joined',
+        actorUsername: 'bob',
+        actorImage: 'https://blob.example/bob.jpg',
+        itemName: 'Camera',
+        wishlistName: 'Kitchen',
+        wishlistSlug: 'kitchen',
+        wishlistId: 'w1',
+      }),
+    ]);
+    act(() => setDiscreetMode(true));
+    try {
+      render(<ActivityPage />);
+      await line('A group gift update, hidden by No spoiler mode');
+      expect(document.body.textContent).not.toContain('Camera');
+      expect(document.body.textContent).not.toContain('Kitchen');
+      // No link to the list, and no face.
+      expect(document.querySelector('a[href*="kitchen"]')).toBeNull();
+      expect(document.querySelector('img[src*="bob"]')).toBeNull();
+      expect(document.body.textContent).not.toContain('bob');
+      act(() => setDiscreetMode(false));
+      await line('@bob joined the group gift for “Camera” on Kitchen');
+      expect(document.querySelector('img[src*="bob"]')).not.toBeNull();
+      expect(document.querySelector('a[href="/wishlists/kitchen"]')).not.toBeNull();
+    } finally {
+      act(() => setDiscreetMode(false));
+    }
   });
 
   it('shows an answered invite as the answer, linking only an accepted one', async () => {

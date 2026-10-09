@@ -25,7 +25,9 @@ import { notificationEventOf, notificationOptInFilter } from '@/lib/utils/notifi
  * - **Not**: `follow` (no email at all), and `wishlist_invite`, whose email
  *   `issueWishlistInvite` sends itself once the invite is known to stand.
  * - **Proposals** and **link joins** are coalesced: at most one email per list
- *   per owner a day each (`claimDailyListEmail`), however many arrive.
+ *   per owner a day each (`claimDailyListEmail`), however many arrive; **group
+ *   gift joins** at most one per group gift per contributor a day
+ *   (`claimGroupGiftJoinEmail`).
  * - **Limited** per recipient and kind (`EMAIL_LIMITERS`, fail-closed).
  * - **Best-effort**: called only once the action has landed, never for a list
  *   that's gone by then; a failure is logged by its kind, never with the
@@ -49,6 +51,12 @@ export const EMAIL_LIMITERS: Record<EmailedNotificationType, EmailLimiterName> =
   birthday_reminder: 'emailBirthdayReminder',
   wishlist_ask: 'emailWishlistAsk',
   asked_list_made: 'emailAskedListMade',
+  group_gift_joined: 'emailGroupGift',
+  group_gift_funded: 'emailGroupGift',
+  group_gift_organizer: 'emailGroupGift',
+  group_gift_cancelled: 'emailGroupGift',
+  group_gift_converted: 'emailGroupGift',
+  group_gift_given: 'emailGroupGift',
 };
 
 /**
@@ -62,6 +70,7 @@ const NAMES_ACTOR: ReadonlySet<EmailedNotificationType> = new Set([
   'link_join',
   'wishlist_ask',
   'asked_list_made',
+  'group_gift_joined',
 ]);
 
 /**
@@ -91,6 +100,8 @@ export interface NotificationEmailArgs {
   wishlistSlug?: string | null;
   itemName?: string | null;
   linkLabel?: string | null;
+  /** `group_gift_joined` only: the gift, whose join emails are one a day per contributor. */
+  groupGift?: Id | null;
 }
 
 /** The emailed types that are about a person, not a list (WIS-324's ask). */
@@ -110,6 +121,8 @@ export async function emailNotification(
   if (recipients.length === 0 || !emailedByNotifications(args.type)) return;
   const type = args.type;
   if (!args.wishlist && !ABOUT_A_PERSON.has(type)) return;
+  // A join's email is claimed per gift: none without one to claim it by.
+  if (type === 'group_gift_joined' && !args.groupGift) return;
   try {
     // The setting again, as a second guard: only those who still want it.
     const users = await User.find({
@@ -140,7 +153,14 @@ export async function emailNotification(
           DAILY_PER_LIST.has(type)
             ? () =>
                 claimDailyListEmail(type as DailyListEmailKind, recipientId, String(args.wishlist))
-            : null
+            : type === 'group_gift_joined'
+              ? () =>
+                  claimGroupGiftJoinEmail(
+                    recipientId,
+                    String(args.wishlist),
+                    String(args.groupGift)
+                  )
+              : null
         );
       })
     );
@@ -233,6 +253,38 @@ export async function claimDailyListEmail(
   } catch (err) {
     if (isDuplicateKeyError(err)) return null;
     console.error(`Failed to claim a ${kind} email:`, errorKind(err));
+    return null;
+  }
+}
+
+/**
+ * Claim the day's email about someone joining a group gift (WIS-364) for one
+ * contributor and gift: taken when none was sent in the last day, by one caller
+ * only, as `claimDailyListEmail` does for a list (the gift's id is the key).
+ */
+export async function claimGroupGiftJoinEmail(
+  userId: string,
+  wishlistId: string,
+  giftId: string,
+  now: Date = new Date()
+): Promise<Claim | null> {
+  const since = new Date(now.getTime() - PROPOSAL_EMAIL_WINDOW_MS);
+  try {
+    const row = await NotificationEmailClaim.findOneAndUpdate(
+      {
+        user: userId,
+        kind: 'group_gift_join',
+        wishlist: wishlistId,
+        key: giftId,
+        sentAt: { $lte: since },
+      },
+      { $set: { sentAt: now } },
+      { upsert: true, returnDocument: 'after', projection: { _id: 1 }, lean: true }
+    );
+    return row ? claimOf(row._id, now) : null;
+  } catch (err) {
+    if (isDuplicateKeyError(err)) return null;
+    console.error('Failed to claim a group gift join email:', errorKind(err));
     return null;
   }
 }

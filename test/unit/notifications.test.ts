@@ -441,6 +441,70 @@ describe('notificationIcon', () => {
   });
 });
 
+describe('group gift rows (WIS-364)', () => {
+  const gift = (type: NotificationView['type'], extra: Partial<NotificationView> = {}) =>
+    make({
+      type,
+      wishlistName: 'Mum’s 60th',
+      wishlistSlug: 'mum-60',
+      wishlistId: 'w1',
+      itemName: 'Camera',
+      ...extra,
+    });
+
+  it('says what happened to which gift, naming only who joined', () => {
+    expect(notificationText(gift('group_gift_joined', { actorUsername: 'bob' }))).toBe(
+      '@bob joined the group gift for “Camera” on Mum’s 60th'
+    );
+    expect(notificationText(gift('group_gift_funded'))).toBe(
+      'The group gift for “Camera” on Mum’s 60th is fully funded'
+    );
+    expect(notificationText(gift('group_gift_organizer'))).toBe(
+      'You’re now organizing the group gift for “Camera” on Mum’s 60th'
+    );
+    expect(notificationText(gift('group_gift_cancelled'))).toBe(
+      'The group gift for “Camera” on Mum’s 60th was cancelled'
+    );
+    expect(notificationText(gift('group_gift_converted'))).toBe(
+      'The group gift for “Camera” on Mum’s 60th is now the organizer’s own reservation'
+    );
+    expect(notificationText(gift('group_gift_given'))).toBe(
+      'The group gift for “Camera” on Mum’s 60th was marked as given'
+    );
+  });
+
+  it('never names anyone on a handover or an ending, whatever the row holds', () => {
+    for (const type of [
+      'group_gift_funded',
+      'group_gift_organizer',
+      'group_gift_cancelled',
+      'group_gift_converted',
+      'group_gift_given',
+    ] as const) {
+      expect(notificationText(gift(type, { actorUsername: 'kicker' }))).not.toContain('kicker');
+      expect(showsActor(type)).toBe(false);
+    }
+  });
+
+  it('reads without an item name, and links to the list', () => {
+    const row = gift('group_gift_given', { itemName: null });
+    expect(notificationText(row)).toBe('A group gift on Mum’s 60th was marked as given');
+    expect(notificationLink(row)).toBe('/wishlists/mum-60');
+  });
+
+  it('says nothing about the gift in No spoiler mode', () => {
+    for (const type of ['group_gift_joined', 'group_gift_given'] as const) {
+      const parts = notificationParts(gift(type, { actorUsername: 'bob' }), { discreet: true });
+      expect(parts).toEqual(['A group gift update, hidden by No spoiler mode']);
+    }
+    // Other rows are unaffected.
+    expect(notificationText(gift('proposal_approved'))).toContain('Camera');
+    expect(notificationParts(gift('proposal_approved'), { discreet: true })).toEqual(
+      notificationParts(gift('proposal_approved'))
+    );
+  });
+});
+
 describe('showsActor', () => {
   it('shows who did it on a follow, an invite, an accepted invite, a request to join, a link join, whose birthday it is and who asked for or made a list only', () => {
     expect(NOTIFICATION_TYPES.filter(showsActor)).toEqual([
@@ -452,6 +516,8 @@ describe('showsActor', () => {
       'birthday_reminder',
       'wishlist_ask',
       'asked_list_made',
+      // WIS-364: to the gift's other contributors, who see each other by name.
+      'group_gift_joined',
     ]);
   });
 

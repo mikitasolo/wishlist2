@@ -9,6 +9,8 @@ import { holdFirstCall } from '../interleave';
 
 vi.mock('@/lib/mongodb', () => ({ default: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('@/lib/auth', () => ({ auth: vi.fn() }));
+// WIS-364: group gift actions now email their contributors.
+vi.mock('@/lib/email', () => ({ sendNotificationEmail: vi.fn() }));
 vi.mock('@/lib/utils/currencyRates', () => ({
   ensureCurrencyRatesUpToDate: vi.fn().mockResolvedValue({
     rates: new Map([
