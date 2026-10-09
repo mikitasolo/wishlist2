@@ -33,7 +33,11 @@ vi.mock('@/components/ConfirmDialog', () => ({
 import WishlistItem from '@/components/WishlistItem';
 import { resetDiscreetModeForTests, setDiscreetMode } from '@/lib/hooks/useDiscreetMode';
 
-const notIn: GroupGiftSummary = { contributing: false, percentFunded: 40 };
+const notIn: GroupGiftSummary = {
+  contributing: false,
+  percentFunded: 40,
+  target: { currency: 'USD' },
+};
 const contributor = (organizer: boolean): GroupGiftSummary => ({
   contributing: true,
   organizer,
@@ -161,6 +165,15 @@ describe('group gift: another member’s view', () => {
     await waitFor(() =>
       expect(onGroupGift).toHaveBeenCalledWith('item-1', { type: 'join', pledged: 2000 })
     );
+  });
+
+  it('regression: asks for a pledge in the gift’s currency, not the item price’s (WIS-363)', () => {
+    // Cause: the summary had no currency, so Join assumed the item's price's.
+    renderCard(booked({ ...notIn, target: { currency: 'EUR' } }));
+    fireEvent.click(screen.getByRole('button', { name: 'Join this group gift' }));
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveTextContent('€');
+    expect(dialog).not.toHaveTextContent('$');
   });
 
   it('offers no way to leave or end it', () => {

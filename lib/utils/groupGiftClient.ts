@@ -126,7 +126,11 @@ export function applyGroupGiftAction(
       return {
         ...item,
         bookedBy: null,
-        groupGift: { contributing: false, percentFunded: percentFunded(left, gift.target.value) },
+        groupGift: {
+          contributing: false,
+          percentFunded: percentFunded(left, gift.target.value),
+          target: { currency: gift.target.currency },
+        },
       };
     }
     case 'cancel':

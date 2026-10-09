@@ -869,9 +869,9 @@ function WishlistItem({
           mode={giftDialog}
           itemName={item.name}
           price={item.price}
-          // A pledge change knows the gift's currency; a join only the item's
-          // (a member outside the gift isn't told its target).
-          currency={gift?.contributing ? gift.target.currency : undefined}
+          // The gift's currency, which every member's summary carries (a
+          // member outside the gift gets the currency only, never an amount).
+          currency={gift?.target.currency}
           pledged={
             giftDialog === 'pledge' && gift?.contributing
               ? gift.contributors.find((c) => c.you)?.pledged
