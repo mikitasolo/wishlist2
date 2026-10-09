@@ -16,7 +16,7 @@ npm run format:check # prettier --check — must pass before done (npm run forma
 npx tsc --noEmit     # typecheck — must pass before done
 npm run test:cov     # full Vitest suite (unit + component + API) + the coverage floor in vitest.config.mts — must pass before done
 npm run build        # production build — must pass before done
-npm run check:trace  # after a build: sharp's native libvips ships with every route that ships sharp (the upload route, share cards), and NextAuth's route ships none (CI runs it)
+npm run check:trace  # after a build: sharp's native libvips ships with every route that ships sharp (the upload routes, share cards), and NextAuth's route ships none (CI runs it)
 npm run smoke:deploy -- <url>  # read-only GET smoke of a deployed host (auth + upload routes start, a share card draws); safe on staging
 npm run generate:email-logo    # re-render the email logo (lib/emailLogo.ts) from app/icon.svg; rerun when the logo changes
 npm run test:e2e     # Playwright end-to-end suite
@@ -143,7 +143,7 @@ Read it before touching roles, invites, bookings, visibility, notifications or a
 - **Money** is integer cents; currency codes are uppercase everywhere (normalize client input with `normalizeCurrency`); other people's prices show in the viewer's currency, always through `formatPrice`. A user's currency is suggested, never guessed. An occasion date is a `YYYY-MM-DD` calendar date: use `lib/utils/occasion.ts` and `useLocalToday`.
 - **Auth**: accounts are created on the first verified sign-in (the adapter's `createUser`); the session callback returns the `sessionPayload` allowlist; only the home page reads the session on the server (and `/l/[token]` and `/welcome`, for a kick block); a magic link is sent only by the sign-in form's Turnstile-checked server action.
 - **sharp** needs libvips shipped by hand (`outputFileTracingIncludes`, `check:trace`); load it lazily outside the upload route.
-- **Uploads** are re-encoded, type-checked, owned (`uploads/<userId>/`, `canAttachImage`) and freed only via the `blob.ts` helpers from what the write replaced; unsaved uploads are handed back; snapshots have their own helpers.
+- **Uploads** are re-encoded, type-checked, owned (`uploads/<userId>/`, `canAttachImage`) and freed only via the `blob.ts` helpers from what the write replaced; unsaved uploads are handed back; snapshots have their own helpers. An image from a URL is re-hosted only by `POST /api/upload/from-url` through `safeFetch` (https, public addresses only, pinned connection, every redirect re-checked, one generic error); no other server code fetches a user's URL.
 - **Link previews** show only what a signed-out visitor could see (a live share link's: its list, whatever the visibility); a write that changes a card calls `purgeShareCards`.
 - **Email** HTML escapes every user value, and subjects carry no free text; every notification email has a signed one-click unsubscribe for its event (`unsubscribeUrls`), and each event's email follows its setting in `NOTIFICATION_EVENTS`, says no more than its in-app row (`sendNotificationEmail`), and is limited per recipient (proposals and link joins: one per list per owner a day). **Logs** carry no personal data. **Analytics** (Umami, production only) goes only through `lib/analytics.ts`: route patterns for URLs (never a share token or id), coarse enum props, fired after a write succeeds, never a reservation event from an owner's view.
 - **Rate limiting** only through `enforce()` in `lib/rateLimit.ts`, with branded keys and the new-account tier.

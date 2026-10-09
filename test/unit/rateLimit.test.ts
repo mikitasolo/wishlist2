@@ -108,6 +108,7 @@ const KEY_KINDS: Record<LimiterName, KeyKind> = {
   signinIp: 'ip',
   upload: 'user',
   uploadRelease: 'user',
+  uploadFromUrl: 'user',
   invite: 'user',
   shareLink: 'user',
   follow: 'user',
@@ -764,6 +765,8 @@ const NEW_ACCOUNT_LIMITS: Record<NewAccountLimiterName, { tokens: number; window
   // WIS-325: starting a new list from one, up to 100 items a time.
   listCopy: { tokens: 3, window: '1 h' },
   upload: { tokens: 5, window: '10 m' },
+  // WIS-366: re-hosting an image from its URL, a server fetch per call.
+  uploadFromUrl: { tokens: 5, window: '10 m' },
   // WIS-334: making share links, budgeted like invites.
   shareLink: { tokens: 5, window: '1 h' },
   // WIS-335: each ask notifies every owner of a list a share link opened.

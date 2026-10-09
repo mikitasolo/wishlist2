@@ -76,7 +76,7 @@ const securityHeaders = [
 // so on Vercel the first `import('sharp')` in a function fails with
 // ERR_DLOPEN_FAILED (libvips-cpp.so…) and takes the whole route down with it
 // (WIS-156: sign-in and uploads returned 500). So libvips ships with what runs
-// sharp: the upload route, and the share cards below. Nothing else needs it any
+// sharp: the upload routes, and the share cards below. Nothing else needs it any
 // more. Sending an email used to render its logo with sharp, which put sharp in
 // every API route (they import lib/auth) and in the sign-in page's server
 // action, but the logo is pre-rendered now (lib/emailLogo.ts), so sign-in
@@ -139,6 +139,7 @@ const nextConfig = {
   htmlLimitedBots,
   outputFileTracingIncludes: {
     '/api/upload': SHARP_NATIVE_LIBS,
+    '/api/upload/from-url': SHARP_NATIVE_LIBS,
     '/opengraph-image': SHARE_CARD_FILES,
     '/wishlists/[id]/opengraph-image': SHARE_CARD_FILES,
     '/users/[username]/opengraph-image': SHARE_CARD_FILES,

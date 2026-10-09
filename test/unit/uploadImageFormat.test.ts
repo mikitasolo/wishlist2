@@ -6,6 +6,7 @@ import {
   decodedAsDeclared,
   hasDeclaredSignature,
   isUploadImageType,
+  sniffUploadImageType,
   sniffsAsSvg,
   type UploadImageType,
 } from '@/lib/utils/uploadImageFormat';
@@ -108,6 +109,27 @@ describe('hasDeclaredSignature', () => {
     expect(hasDeclaredSignature(ftyp('avif', brands((2048 - 16) / 4 + 1)), 'image/avif')).toBe(
       false
     );
+  });
+});
+
+// WIS-366: an image fetched from a URL comes with nobody's word for its type.
+describe('sniffUploadImageType', () => {
+  it('names the type whose signature each real encoding carries', () => {
+    for (const type of UPLOAD_IMAGE_TYPES) expect(sniffUploadImageType(encoded[type])).toBe(type);
+  });
+
+  it('names none for any other format, or for too few bytes', async () => {
+    for (const bytes of [
+      latin1('<svg xmlns="http://www.w3.org/2000/svg"/>'),
+      latin1('<!doctype html><html></html>'),
+      await solid().tiff().toBuffer(),
+      ftyp('heic', ['mif1', 'heic']),
+      latin1('%PDF-1.7\n'),
+      Buffer.alloc(0),
+      latin1('\xff\xd8'),
+    ]) {
+      expect(sniffUploadImageType(bytes)).toBeNull();
+    }
   });
 });
 

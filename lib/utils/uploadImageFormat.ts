@@ -84,6 +84,16 @@ export function hasDeclaredSignature(bytes: Buffer, type: UploadImageType): bool
   return SIGNATURES[type](bytes);
 }
 
+/**
+ * The accepted type whose signature the bytes carry, or null. For bytes that
+ * come with no type anyone vouches for (an image fetched from a URL, WIS-366,
+ * whose `Content-Type` is the remote server's say-so): the signature becomes
+ * the declared type, and every check after it runs as for a file upload.
+ */
+export function sniffUploadImageType(bytes: Buffer): UploadImageType | null {
+  return UPLOAD_IMAGE_TYPES.find((type) => SIGNATURES[type](bytes)) ?? null;
+}
+
 const GZIP_MAGIC = bytesOf('\x1f\x8b');
 const isContinuation = (byte: number) => (byte & 0xc0) === 0x80;
 
