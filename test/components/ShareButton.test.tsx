@@ -3,9 +3,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import ShareButton, { type ShareOwnerInfo } from '@/components/ShareButton';
+import { track } from '@/lib/analytics';
 
 const { showToast } = vi.hoisted(() => ({ showToast: vi.fn() }));
 vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }));
+vi.mock('@/lib/analytics', () => ({ track: vi.fn() }));
 
 const share = vi.fn();
 const onInvite = vi.fn();
@@ -30,6 +32,7 @@ const LIST_URL = () => `${window.location.origin}/wishlists/birthday`;
 
 beforeEach(() => {
   showToast.mockReset();
+  vi.mocked(track).mockReset();
   share.mockReset();
   share.mockResolvedValue(undefined);
   onInvite.mockReset();
@@ -92,6 +95,8 @@ describe('ShareButton — the plain share (members, visitors, profiles)', () => 
     expect(share).not.toHaveBeenCalled();
     expect(await navigator.clipboard.readText()).toBe(LIST_URL());
     expect(showToast).toHaveBeenCalledWith('Link copied to clipboard', 'success');
+    // Only an owner sharing their own list is counted.
+    expect(track).not.toHaveBeenCalled();
   });
 
   it('says nothing when the share sheet is cancelled (AbortError): no toast, nothing copied', async () => {
@@ -215,6 +220,11 @@ describe('ShareButton — the owner popover', () => {
     await user.click(screen.getByRole('menuitem', { name: 'Copy link' }));
     expect(share).toHaveBeenCalledTimes(1);
     expect(await navigator.clipboard.readText()).toBe(LIST_URL());
+    // WIS-329: an owner's share counts once per share, by how it went out.
+    expect(vi.mocked(track).mock.calls).toEqual([
+      ['list_shared', { method: 'share_sheet' }],
+      ['list_shared', { method: 'copy' }],
+    ]);
   });
 
   it('says nothing when the owner cancels the share sheet', async () => {
@@ -226,6 +236,8 @@ describe('ShareButton — the owner popover', () => {
 
     await waitFor(() => expect(share).toHaveBeenCalled());
     expect(showToast).not.toHaveBeenCalled();
+    // A cancelled share isn't a share.
+    expect(track).not.toHaveBeenCalled();
   });
 
   // The page's onInvite opens People, where the invite form is (see

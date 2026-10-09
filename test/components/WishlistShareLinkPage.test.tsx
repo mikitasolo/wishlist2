@@ -24,9 +24,11 @@ vi.mock('next/navigation', () => ({ useRouter: () => router }));
 vi.mock('@/components/AppHeader', () => ({ default: () => null }));
 vi.mock('@/components/AuthButton', () => ({ default: () => null }));
 vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }));
+vi.mock('@/lib/analytics', () => ({ track: vi.fn() }));
 
 import WishlistPage, { type WishlistAddress } from '@/components/WishlistPage';
 import { KEEP_LINK_TEXT } from '@/components/JoinListCallout';
+import { track } from '@/lib/analytics';
 
 const TOKEN = 'AbCdEfGhIjKlMnOpQrStUv';
 const reply = (body: unknown, status = 200) => ({
@@ -210,6 +212,44 @@ describe('a list opened through its share link', () => {
       expect(router.replace).not.toHaveBeenCalled();
       cleanup();
     }
+  });
+});
+
+// WIS-329: a live link opened is counted once a visit, by its level only;
+// the token never goes anywhere near analytics.
+describe('analytics on a share link', () => {
+  const tracked = vi.mocked(track);
+  const opened = () => tracked.mock.calls.filter(([event]) => event === 'share_link_opened');
+  beforeEach(() => tracked.mockReset());
+
+  it('counts a visitor opening a live link once, by its level', async () => {
+    viewAs(null);
+    render(<WishlistPage address={link({ level: 'join' })} />);
+    await screen.findByText('Kettle');
+    expect(opened()).toEqual([['share_link_opened', { level: 'join' }]]);
+    expect(JSON.stringify(tracked.mock.calls)).not.toContain(TOKEN);
+  });
+
+  it('counts an owner or member opening it before sending them on', async () => {
+    role = 'member';
+    viewAs({ id: 'u0' });
+    render(<WishlistPage address={link()} />);
+    await waitFor(() => expect(router.replace).toHaveBeenCalledWith('/wishlists/wedding'));
+    expect(opened()).toEqual([['share_link_opened', { level: 'view' }]]);
+  });
+
+  it('counts no owner’s Preview as visitor, and no dead link', async () => {
+    role = 'owner';
+    viewAs({ id: 'u0', username: 'anna_m' });
+    render(<WishlistPage address={link({ preview: true })} />);
+    await screen.findByText('Kettle');
+    cleanup();
+
+    refused = true;
+    viewAs(null);
+    render(<WishlistPage address={link()} />);
+    await screen.findByRole('heading', { name: 'This link doesn’t work anymore' });
+    expect(opened()).toEqual([]);
   });
 });
 

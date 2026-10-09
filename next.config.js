@@ -21,14 +21,28 @@ const isDev = process.env.NODE_ENV !== 'production';
 // to the sign-in page keeps the CSP of the page the visitor landed on.
 const TURNSTILE_ORIGIN = 'https://challenges.cloudflare.com';
 
+// Product analytics (WIS-329, lib/analytics.ts): Umami Cloud's script, and the
+// endpoint it posts to, are allowed only where the app loads it: on Vercel's
+// Production with NEXT_PUBLIC_UMAMI_WEBSITE_ID set to a UUID, the condition
+// getUmamiWebsiteId (lib/env.ts) checks. Everywhere else the CSP is unchanged.
+// The origins match UMAMI_SCRIPT_URL / UMAMI_HOST_URL in lib/analytics.ts (a
+// test keeps them in step).
+const UMAMI_SCRIPT_ORIGIN = 'https://cloud.umami.is';
+const UMAMI_HOST_ORIGIN = 'https://gateway.umami.is';
+const umamiEnabled =
+  process.env.VERCEL_ENV === 'production' &&
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+    (process.env.NEXT_PUBLIC_UMAMI_WEBSITE_ID || '').trim()
+  );
+
 const csp = [
   "default-src 'self'",
-  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ''} ${TURNSTILE_ORIGIN}`,
+  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ''} ${TURNSTILE_ORIGIN}${umamiEnabled ? ` ${UMAMI_SCRIPT_ORIGIN}` : ''}`,
   "style-src 'self' 'unsafe-inline'",
   // Vercel Blob serves public images over https; next/image also emits data URIs.
   "img-src 'self' data: blob: https:",
   "font-src 'self' data:",
-  `connect-src 'self'${isDev ? ' ws:' : ''}`,
+  `connect-src 'self'${isDev ? ' ws:' : ''}${umamiEnabled ? ` ${UMAMI_HOST_ORIGIN}` : ''}`,
   "frame-ancestors 'none'",
   `frame-src ${TURNSTILE_ORIGIN}`,
   "object-src 'none'",

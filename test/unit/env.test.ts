@@ -3,6 +3,7 @@ import {
   validateEnvVars,
   getEnvVars,
   getTurnstileKeys,
+  getUmamiWebsiteId,
   SMTP_ENV_VARS,
   TURNSTILE_ENV_VARS,
 } from '@/lib/env';
@@ -241,4 +242,31 @@ describe('getTurnstileKeys', () => {
     for (const [name, value] of Object.entries(vars)) vi.stubEnv(name, value);
     expect(getTurnstileKeys()).toBeNull();
   });
+});
+
+// WIS-329: analytics runs only on Vercel's Production with a real website id,
+// so dev, CI, E2E, previews and staging send nothing.
+describe('getUmamiWebsiteId', () => {
+  const ID = '8f14e45f-ceea-467a-9575-0c3c1a4b2e6d';
+
+  it('returns the id on Production', () => {
+    vi.stubEnv('VERCEL_ENV', 'production');
+    vi.stubEnv('NEXT_PUBLIC_UMAMI_WEBSITE_ID', ` ${ID} `);
+    expect(getUmamiWebsiteId()).toBe(ID);
+  });
+
+  it.each([undefined, 'development', 'preview'])('is off with VERCEL_ENV=%s', (env) => {
+    vi.stubEnv('VERCEL_ENV', env);
+    vi.stubEnv('NEXT_PUBLIC_UMAMI_WEBSITE_ID', ID);
+    expect(getUmamiWebsiteId()).toBeNull();
+  });
+
+  it.each([undefined, '', 'not-a-uuid', `${ID}" onload="x`])(
+    'is off on Production with the id %j',
+    (id) => {
+      vi.stubEnv('VERCEL_ENV', 'production');
+      vi.stubEnv('NEXT_PUBLIC_UMAMI_WEBSITE_ID', id);
+      expect(getUmamiWebsiteId()).toBeNull();
+    }
+  );
 });

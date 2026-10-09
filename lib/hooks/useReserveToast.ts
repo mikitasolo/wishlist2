@@ -1,5 +1,6 @@
 'use client';
 
+import { track } from '@/lib/analytics';
 import { useCallback } from 'react';
 import { useToast } from '@/components/ToastProvider';
 import { RESERVE_VIEW_LABEL, RESERVED_PATH, takeReserveToastCopy } from '@/lib/utils/reserveToast';
@@ -21,7 +22,13 @@ export function useReserveToast<T>(
   return useCallback(
     async (id: string, updates: { status?: string }) => {
       const result = await update(id, updates);
-      if (result && updates.status === 'booked' && !isOwner) {
+      // A failed or rolled-back update resolves null: no toast, nothing
+      // counted. Owners never reserve, and nothing an owner does is counted
+      // as a reservation (WIS-329).
+      if (!result || isOwner) return result;
+      if (updates.status === 'available') track('release', { from: 'list' });
+      if (updates.status === 'booked') {
+        track('reserve');
         showToast(takeReserveToastCopy(ownerUsernames), 'success', {
           action: { label: RESERVE_VIEW_LABEL, href: RESERVED_PATH },
         });

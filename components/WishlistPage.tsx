@@ -1,5 +1,6 @@
 'use client';
 
+import { track } from '@/lib/analytics';
 import type { LinkOption } from '@/components/ItemLinkPicker';
 import { useEffect, useState, useMemo, useCallback, useRef, useId, type FormEvent } from 'react';
 import { useKnownSession } from '@/lib/hooks/useKnownSession';
@@ -193,6 +194,8 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
   const previewAsVisitor = address?.kind === 'link' && !!address.preview;
   // A Join link (WIS-337): Join this list in place of Ask to join.
   const joinLink = address?.kind === 'link' && address.level === 'join';
+  const linkLevel = address?.kind === 'link' ? address.level : undefined;
+  const linkOpenTracked = useRef(false);
   const readInit = useMemo<RequestInit | undefined>(
     () => (linkToken ? { headers: { [SHARE_TOKEN_HEADER]: linkToken } } : undefined),
     [linkToken]
@@ -541,6 +544,12 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
         userRole?: 'owner' | 'member' | null;
         ownerUsernames?: string[];
       };
+      // A share link opened (counted once a visit), whoever opened it, but not
+      // an owner's Preview as visitor.
+      if (linkToken && !previewAsVisitor && !linkOpenTracked.current) {
+        linkOpenTracked.current = true;
+        track('share_link_opened', { level: linkLevel ?? 'view' });
+      }
       // An owner or member who opened a share link belongs at the list's own
       // URL (only the client knows who's viewing). An owner's Preview as
       // visitor stays, and is shown the page as a visitor.
@@ -586,6 +595,7 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
     readInit,
     linkToken,
     previewAsVisitor,
+    linkLevel,
   ]);
 
   // Try again, after the list couldn't be read: the skeleton, then a fresh
@@ -895,6 +905,7 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
       const key = addKeys.keyFor(itemData);
       const created = await mutations.track(() => createItemHook(apiId(), itemData, key));
       if (!created) throw new Error('Failed to create item');
+      track('item_added', { kind: 'own' });
       // Its partners show it as theirs straight away (WIS-29).
       if (created.relatedItems?.length) setItems((prev) => syncPartnerChips(prev, created));
       addKeys.reset();
@@ -997,6 +1008,7 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
         throw new Error(message);
       }
       proposeKeys.reset();
+      track('item_added', { kind: 'proposal' });
       // Same poll guards as an owner's add (see createItemHook).
       setItems((prevItems) => prependCreatedItem(prevItems, proposed));
       showToast('Item proposed successfully', 'success');
@@ -1174,6 +1186,7 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
         const result = await response.json();
 
         if (result.success) {
+          track('invite_sent', { role: payload.role, to: 'person' });
           showToast('Invitation sent', 'success');
           // Membership is created only when they accept — refresh pending invites.
           await refreshInvites();
@@ -1219,7 +1232,10 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
           showToast(result.error || 'Failed to invite the group', 'error');
           return null;
         }
-        if (result.data.invited.length > 0) await refreshInvites();
+        if (result.data.invited.length > 0) {
+          track('invite_sent', { role: payload.role, to: 'group' });
+          await refreshInvites();
+        }
         return result.data as GroupInviteResult;
       } catch (error) {
         console.error('Error inviting a group:', error);
@@ -1439,6 +1455,7 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
           });
           const result = await res.json();
           if (result.success) {
+            track('invite_sent', { role: 'owner', to: 'person' });
             showToast(
               `Invitation sent — @${username} becomes an owner once they accept`,
               'success'

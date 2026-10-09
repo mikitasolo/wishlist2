@@ -1,5 +1,6 @@
 'use client';
 
+import { track } from '@/lib/analytics';
 import { withWelcomeMarker } from '@/lib/utils/memberWelcome';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -228,6 +229,7 @@ export function usePendingInvites({ onAnswered }: PendingInvitesOptions = {}) {
           // re-counts.
           window.dispatchEvent(new Event('notifications-changed'));
           if (action === 'accept') {
+            track('invite_accepted', { role: invite.role });
             // An owner invite ends the reservations they held on the list, which
             // go from their Reserved page. They're the gifter, so the count is
             // theirs to see.

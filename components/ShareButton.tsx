@@ -1,5 +1,6 @@
 'use client';
 
+import { track } from '@/lib/analytics';
 import { useEffect, useRef, useState } from 'react';
 import { useShareSheetAvailable } from '@/lib/hooks/useShareSheetAvailable';
 import Button from './Button';
@@ -79,6 +80,10 @@ export default function ShareButton({
 
   async function share(sheet: boolean) {
     const outcome = await shareOrCopy({ url: resolveShareUrl(url), title }, { sheet });
+    // An owner sharing their own list (the funnel's "first share").
+    if (owner && (outcome === 'copied' || outcome === 'shared')) {
+      track('list_shared', { method: outcome === 'shared' ? 'share_sheet' : 'copy' });
+    }
     if (outcome === 'copied') {
       setCopied(true);
       showToast('Link copied to clipboard', 'success');

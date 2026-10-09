@@ -30,12 +30,14 @@ vi.mock('next/navigation', () => ({
 vi.mock('@/components/AppHeader', () => ({ default: () => null }));
 vi.mock('@/components/AuthButton', () => ({ default: () => null }));
 vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }));
+vi.mock('@/lib/analytics', () => ({ track: vi.fn() }));
 // ImageUpload pulls in react-easy-crop; stub it out.
 vi.mock('@/components/ImageUpload', () => ({
   default: () => <div data-testid="image-upload" />,
 }));
 
 import WishlistDetail from '@/app/wishlists/[id]/page';
+import { track } from '@/lib/analytics';
 
 let userRole: 'owner' | 'member' | null;
 let listItems: ApiItem[];
@@ -295,5 +297,57 @@ describe('Keep adding, from the tile', () => {
       'Item: Bike',
       'Item: Lamp',
     ]);
+  });
+});
+
+// WIS-329: each add or proposal is counted once the server has saved it, by
+// kind only; a refused one counts nothing.
+describe('analytics on adding an item', () => {
+  const tracked = vi.mocked(track);
+  const added = () => tracked.mock.calls.filter(([event]) => event === 'item_added');
+  beforeEach(() => tracked.mockReset());
+
+  /** The items POST refused, everything else as usual. */
+  function refuseAdds() {
+    const base = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) =>
+      url === '/api/wishlists/birthday/items' && init?.method === 'POST'
+        ? reply({ success: false, error: 'Too many requests' }, 429)
+        : base(url, init)
+    );
+  }
+
+  async function submit(tileName: string, dialogName: string, button: string) {
+    const user = userEvent.setup();
+    await open();
+    await user.click(tile(tileName)!);
+    const dialog = await screen.findByRole('dialog', { name: dialogName });
+    await user.type(within(dialog).getByLabelText(/item name/i), 'Bike');
+    await user.click(within(dialog).getByRole('button', { name: button }));
+  }
+
+  it('counts an owner’s add once', async () => {
+    await submit('Add item', 'Add new item', 'Add to list');
+    await screen.findByRole('article', { name: 'Item: Bike' });
+    expect(added()).toEqual([['item_added', { kind: 'own' }]]);
+  });
+
+  it('counts a member’s proposal once', async () => {
+    userRole = 'member';
+    await submit('Propose an item', 'Propose new item', 'Propose');
+    await screen.findByRole('article', { name: 'Item: Bike' });
+    expect(added()).toEqual([['item_added', { kind: 'proposal' }]]);
+  });
+
+  it('counts no refused add or proposal', async () => {
+    refuseAdds();
+    await submit('Add item', 'Add new item', 'Add to list');
+    await waitFor(() => expect(showToast).toHaveBeenCalledWith('Too many requests', 'error'));
+    cleanup();
+    userRole = 'member';
+    showToast.mockReset();
+    await submit('Propose an item', 'Propose new item', 'Propose');
+    await waitFor(() => expect(showToast).toHaveBeenCalledWith('Too many requests', 'error'));
+    expect(added()).toEqual([]);
   });
 });

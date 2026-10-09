@@ -1,5 +1,6 @@
 'use client';
 
+import { track } from '@/lib/analytics';
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -347,6 +348,7 @@ export default function BookedPage() {
         if (result.success) {
           dropReservation(id);
           addGift(result.data);
+          track('mark_given');
           showToast('Added to your gift history', 'success');
         } else {
           showToast(result.error || 'Something went wrong', 'error');
@@ -410,6 +412,7 @@ export default function BookedPage() {
         if (account.current !== actedFor) return;
         if (result.success) {
           dropReservation(id);
+          track('release', { from: 'reserved_page' });
           showToast('Released. Others on the list can reserve it now.', 'success');
         } else if (RELEASE_REFUSED.has(res.status)) {
           showToast(RELEASE_REFUSED_MESSAGE, 'info');

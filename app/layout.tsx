@@ -3,7 +3,8 @@ import SessionProvider from '@/components/SessionProvider';
 import { ToastProvider } from '@/components/ToastProvider';
 import { ThemeProvider } from '@/components/ThemeProvider';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
-import { validateEnvVars } from '@/lib/env';
+import Analytics from '@/components/Analytics';
+import { getUmamiWebsiteId, validateEnvVars } from '@/lib/env';
 import { SESSION_HINT_SCRIPT } from '@/lib/utils/sessionHint';
 import './globals.css';
 
@@ -55,6 +56,9 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  // Product analytics (lib/analytics.ts): production only, and only once its
+  // website id is set. Otherwise no script tag at all.
+  const umamiWebsiteId = getUmamiWebsiteId();
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
@@ -78,6 +82,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </ThemeProvider>
           </SessionProvider>
         </ErrorBoundary>
+        {umamiWebsiteId && <Analytics websiteId={umamiWebsiteId} />}
       </body>
     </html>
   );

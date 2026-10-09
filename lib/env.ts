@@ -95,6 +95,26 @@ export function getTurnstileKeys(): TurnstileKeys | null {
   return siteKey && secretKey ? { siteKey, secretKey } : null;
 }
 
+export const UMAMI_WEBSITE_ID_VAR = 'NEXT_PUBLIC_UMAMI_WEBSITE_ID';
+
+/** Umami's website ids are UUIDs; anything else is a typo, not a site. */
+const UMAMI_WEBSITE_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * The Umami website id that turns product analytics on (`lib/analytics.ts`),
+ * or `null` while it's off: only on Vercel's Production (`VERCEL_ENV`), with
+ * `NEXT_PUBLIC_UMAMI_WEBSITE_ID` set to a UUID, so local dev, CI, E2E, previews
+ * and staging send nothing. next.config.js allows Umami in the CSP under the
+ * same condition (`umamiEnabled`), and a test keeps the two in step. Read at
+ * call time by a computed name, like the Turnstile keys, so Next never inlines
+ * it into a client bundle.
+ */
+export function getUmamiWebsiteId(): string | null {
+  if (process.env.VERCEL_ENV !== 'production') return null;
+  const id = process.env[UMAMI_WEBSITE_ID_VAR]?.trim();
+  return id && UMAMI_WEBSITE_ID_RE.test(id) ? id : null;
+}
+
 /**
  * The configured email transport. Unset (or empty) means `smtp`; anything else
  * that isn't a known transport throws rather than silently falling back.

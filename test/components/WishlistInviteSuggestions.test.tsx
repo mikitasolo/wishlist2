@@ -23,8 +23,10 @@ vi.mock('next/navigation', () => ({
 vi.mock('@/components/AppHeader', () => ({ default: () => null }));
 vi.mock('@/components/AuthButton', () => ({ default: () => null }));
 vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }));
+vi.mock('@/lib/analytics', () => ({ track: vi.fn() }));
 
 import WishlistDetail from '@/app/wishlists/[id]/page';
+import { track } from '@/lib/analytics';
 import { openListTab } from './listMenu';
 
 // User ids double as usernames. Alice (signed in) and Bob own the list, Carol
@@ -43,6 +45,7 @@ const requests = (url: string, method: string) =>
 beforeEach(() => {
   fetchMock.mockReset();
   showToast.mockReset();
+  vi.mocked(track).mockReset();
   fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
     const method = init?.method ?? 'GET';
     if (url === '/api/wishlists/birthday' && method === 'GET') {
@@ -155,6 +158,9 @@ describe('Invite suggestions on the wishlist page', () => {
     // Never the members invite, and never a role write.
     expect(requests('/api/wishlists/birthday/members', 'POST')).toHaveLength(0);
     expect(requests('/api/wishlists/birthday/owners/carol', 'PATCH')).toHaveLength(0);
+    // WIS-329: one owner invite, counted by role only.
+    expect(track).toHaveBeenCalledTimes(1);
+    expect(track).toHaveBeenCalledWith('invite_sent', { role: 'owner', to: 'person' });
     await waitFor(() => expect(field).toHaveFocus());
     // Focus coming back doesn't pop the suggestions open again.
     expect(screen.queryByRole('listbox')).toBeNull();
@@ -171,5 +177,70 @@ describe('Invite suggestions on the wishlist page', () => {
 
     await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
     expect(requests('/api/wishlists/birthday/owners/carol', 'POST')).toHaveLength(0);
+    expect(track).not.toHaveBeenCalled();
+  });
+});
+
+// WIS-329: an invite is counted once the server has sent it, by role and
+// whether it went to a person or a group; a refused one counts nothing.
+describe('analytics on invites from the wishlist page', () => {
+  /** Adds answers, by "METHOD url", for the invite POSTs and the groups read. */
+  function answer(routes: Record<string, unknown>) {
+    const base = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      const key = `${init?.method ?? 'GET'} ${url}`;
+      return key in routes ? reply(routes[key]) : base(url, init);
+    });
+  }
+
+  async function inviteErin() {
+    const user = userEvent.setup();
+    render(<WishlistDetail />);
+    await searchFor(user, 'xyz');
+    await user.click(screen.getByRole('option', { name: '@erin' }));
+    await user.click(screen.getByRole('button', { name: 'Invite' }));
+    await waitFor(() =>
+      expect(requests('/api/wishlists/birthday/members', 'POST')).toHaveLength(1)
+    );
+  }
+
+  it('counts an invite to one person once it has gone out', async () => {
+    answer({ 'POST /api/wishlists/birthday/members': { success: true, data: {} } });
+    await inviteErin();
+    await waitFor(() => expect(showToast).toHaveBeenCalledWith('Invitation sent', 'success'));
+    expect(track).toHaveBeenCalledTimes(1);
+    expect(track).toHaveBeenCalledWith('invite_sent', { role: 'member', to: 'person' });
+  });
+
+  it('counts no refused invite', async () => {
+    await inviteErin();
+    await waitFor(() => expect(showToast).toHaveBeenCalledWith('Not mocked', 'error'));
+    expect(track).not.toHaveBeenCalled();
+  });
+
+  it('counts a group invite once, when it invited anyone', async () => {
+    answer({
+      'GET /api/users/me/groups': {
+        success: true,
+        data: [{ id: 'g1', name: 'Family', members: [person('erin')] }],
+      },
+      'POST /api/wishlists/birthday/members/group': {
+        success: true,
+        data: {
+          invited: [{ id: 'erin', username: 'erin', displayName: 'erin' }],
+          skipped: [],
+          notInvited: 0,
+        },
+      },
+    });
+    const user = userEvent.setup();
+    render(<WishlistDetail />);
+    await openListTab(user, 'People');
+    await user.click(await screen.findByRole('radio', { name: 'Group' }));
+    await user.click(screen.getByRole('combobox', { name: 'Group' }));
+    await user.click(screen.getByRole('option', { name: /^Family/ }));
+    await user.click(screen.getByRole('button', { name: 'Invite group' }));
+    await waitFor(() => expect(track).toHaveBeenCalledTimes(1));
+    expect(track).toHaveBeenCalledWith('invite_sent', { role: 'member', to: 'group' });
   });
 });
