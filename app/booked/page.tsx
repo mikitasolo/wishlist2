@@ -1026,6 +1026,12 @@ function ReservationCard({
             Mark as given
           </Button>
         )}
+        {/* With no link to fill the row, say who gives it instead. */}
+        {!canGive && !link && (
+          <p className="flex min-w-0 flex-1 items-center text-meta text-muted-foreground">
+            The organizer marks it as given
+          </p>
+        )}
         <Menu
           label="More actions"
           icon="more"

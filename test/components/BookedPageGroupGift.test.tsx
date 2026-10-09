@@ -123,6 +123,8 @@ describe('BookedPage — a group gift you’re in', () => {
     render(<BookedPage />);
     await screen.findByText('Camera');
     expect(within(card('Camera')).queryByRole('button', { name: 'Mark as given' })).toBeNull();
+    expect(within(card('Camera')).getByText('The organizer marks it as given')).toBeInTheDocument();
+    expect(within(card('Bike')).queryByText('The organizer marks it as given')).toBeNull();
     fireEvent.click(within(card('Camera')).getByRole('button', { name: 'More actions' }));
     expect(screen.queryByRole('menuitem', { name: 'Release' })).toBeNull();
     fireEvent.click(screen.getByRole('menuitem', { name: 'Leave group gift' }));
