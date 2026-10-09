@@ -500,6 +500,7 @@ describe('GET /api/users/me/reservations — a reservation on an archived list i
         itemName: 'Blue Mug',
         itemImage: null,
         itemPrice: null,
+        pledge: null,
         wishlistName: 'Birthday',
         wishlistId: id,
         // Nothing live: no link, no date, no item status.
@@ -508,6 +509,8 @@ describe('GET /api/users/me/reservations — a reservation on an archived list i
         wishlistOwnerUsername: null,
         itemLink: null,
         itemNotes: null,
+        // Nor any group gift (WIS-363).
+        groupGift: null,
         itemStatus: null,
         stillReserved: null,
         listOpen: false,
@@ -659,6 +662,7 @@ describe('GET /api/users/me/reservations — a reservation on a list the gifter 
           itemName: 'Blue Mug',
           itemImage: null,
           itemPrice: null,
+          pledge: null,
           wishlistName: 'Birthday',
           wishlistId: id,
           wishlistSlug: null,
@@ -666,6 +670,7 @@ describe('GET /api/users/me/reservations — a reservation on a list the gifter 
           wishlistOwnerUsername: null,
           itemLink: null,
           itemNotes: null,
+          groupGift: null,
           itemStatus: null,
           stillReserved: null,
           listOpen: false,

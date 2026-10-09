@@ -4,7 +4,7 @@ import Item, { type IItem } from '@/models/Item';
 import GiftLog from '@/models/GiftLog';
 import Reservation, { type IReservation } from '@/models/Reservation';
 import User from '@/models/User';
-import type { IWishlist } from '@/models/Wishlist';
+import Wishlist, { type IWishlist } from '@/models/Wishlist';
 import { writeBookingReservation } from '@/lib/utils/bookingReservations';
 import {
   deleteReservations,
@@ -88,7 +88,7 @@ function endingUpdate(endedAs: GroupGiftEnding, endKey?: string) {
  *                organizer.
  *  - given or converted → a normal booking of the organizer's: `groupGift` goes,
  *                the item stays booked by them (a gift given stays given).
- *  - cancelled or emptied → the item is released.
+ *  - cancelled, emptied or list-archived → the item is released.
  *  - item-ended → nothing: the owner's write already took the item off it.
  *
  * Every write is filtered on the item still holding this gift, so it never
@@ -113,7 +113,11 @@ export async function syncGiftItem(giftId: Id): Promise<void> {
       $set: { bookedBy: gift.organizer },
       $unset: { groupGift: 1, groupGiftRev: 1 },
     });
-  } else if (gift.endedAs === 'cancelled' || gift.endedAs === 'emptied') {
+  } else if (
+    gift.endedAs === 'cancelled' ||
+    gift.endedAs === 'emptied' ||
+    gift.endedAs === 'list-archived'
+  ) {
     await Item.updateOne(held, {
       $set: { status: 'available', bookedBy: null },
       $unset: { groupGift: 1, groupGiftRev: 1 },
@@ -408,6 +412,32 @@ export async function endGroupGiftsOnItem(itemId: Id): Promise<void> {
 }
 
 /**
+ * An owner archived the list (WIS-363, operator decision 2026-10-09): every
+ * live gift on it ends (`list-archived`) and its item is released, as an
+ * owner's draft / received / delete ends an item's gift. Every contributor
+ * keeps their Reservation with its `pledge`, a frozen card they can mark as
+ * given at their share or dismiss. Nobody is notified (an owner action).
+ *
+ * Conditional on the list being archived as this runs, so an unarchive that
+ * landed first ends nothing; each gift ends only while it's live, so a second
+ * run (a retry, a co-owner's archive) changes nothing. Unarchiving doesn't
+ * revive anything. A start or join crossing the archive is taken back by its
+ * own re-check (`lostMemberReason`: archived).
+ */
+export async function endGroupGiftsOnArchivedList(wishlistId: Id): Promise<number> {
+  if (!(await Wishlist.exists({ _id: wishlistId, archived: true }))) return 0;
+  const gifts = await GroupGift.find({ wishlist: wishlistId, active: true }).select('_id').lean();
+  let ended = 0;
+  for (const { _id } of gifts) {
+    const res = await GroupGift.updateOne({ _id, active: true }, endingUpdate('list-archived'));
+    // Synced either way: a first run cut short left this one ended, its item unreleased.
+    await syncGiftItem(_id);
+    ended += res.modifiedCount;
+  }
+  return ended;
+}
+
+/**
  * An organizer's ending of their live gift: one conditional write that only
  * matches while it's live and they're its organizer. Returns the gift as ended
  * (its contributors as they were at that moment), or null. The item follows.
@@ -451,7 +481,7 @@ type ReservedItem = Pick<IItem, '_id' | 'name' | 'imageUrl' | 'price'>;
 /** What a contributor's Reservation write replaced: an earlier booking's, kept on purpose. */
 export type PreviousReservation = Pick<
   IReservation,
-  'wishlist' | 'owner' | 'itemName' | 'itemImage' | 'itemPrice' | 'wishlistName'
+  'wishlist' | 'owner' | 'itemName' | 'itemImage' | 'itemPrice' | 'wishlistName' | 'pledge'
 > | null;
 
 /**
@@ -464,9 +494,44 @@ export type PreviousReservation = Pick<
 export async function writeContributorReservation(
   userId: string,
   wishlist: ReservationWishlist,
-  item: ReservedItem
+  item: ReservedItem,
+  pledge: { value: number; currency: string } | null = null
 ): Promise<PreviousReservation> {
-  return writeBookingReservation(userId, wishlist, item);
+  return writeBookingReservation(userId, wishlist, item, pledge);
+}
+
+/**
+ * Whether `userId` is in the live group gift on the item (WIS-363): their
+ * Reservation of it is the gift's, which they give with everyone (the
+ * organizer's Mark as given) or leave, never log or dismiss on its own.
+ */
+export async function inLiveGroupGift(userId: string, itemId: Id): Promise<boolean> {
+  return !!(await GroupGift.exists({
+    item: itemId,
+    active: true,
+    'contributors.user': oid(userId),
+  }));
+}
+
+/**
+ * Bring a contributor's Reservation's `pledge` (their share, which Mark as
+ * given on their Booked page logs, WIS-363) in step with the live gift, after a
+ * write to their pledge. Read back from the gift rather than taken from the
+ * request, so of two changes racing, the one landing last writes what the gift
+ * holds. Only while they're in the live gift: a Reservation outliving their
+ * place keeps the share it had.
+ */
+export async function syncContributorPledge(itemId: Id, userId: string): Promise<void> {
+  const uid = oid(userId);
+  const gift = await GroupGift.findOne({ item: itemId, active: true, 'contributors.user': uid })
+    .select('item target contributors')
+    .lean();
+  const mine = gift?.contributors.find((c) => c.user.equals(uid));
+  if (!gift || !mine) return;
+  await Reservation.updateOne(
+    { gifter: uid, item: gift.item },
+    { $set: { pledge: { value: mine.pledged, currency: gift.target.currency } } }
+  );
 }
 
 /**
@@ -484,9 +549,10 @@ export async function undoContributorReservation(
 ): Promise<void> {
   if (previous && restore) {
     const { wishlist, owner, itemName, itemImage, itemPrice, wishlistName } = previous;
+    const pledge = previous.pledge ?? null;
     await Reservation.updateOne(
       { gifter: userId, item: itemId },
-      { $set: { wishlist, owner, itemName, itemImage, itemPrice, wishlistName } }
+      { $set: { wishlist, owner, itemName, itemImage, itemPrice, wishlistName, pledge } }
     );
   } else {
     await deleteReservations({ gifter: userId, item: itemId });
@@ -518,6 +584,7 @@ export async function endContributorReservation(
   try {
     if (await holdsItem(userId, item._id)) {
       const previous = await writeContributorReservation(userId, wishlist, item);
+      await syncContributorPledge(item._id, userId);
       await settleContributorReservation(userId, item, previous);
     }
   } catch (err) {
@@ -656,4 +723,17 @@ async function summarize(
     );
   }
   return summaries;
+}
+
+/**
+ * As `readGroupGiftSummaries`, for a read where a missing summary would say the
+ * wrong thing rather than less (a contributor's Booked page, WIS-363, where a
+ * gift's item not booked by them would read as released): a failed read
+ * throws, for the caller to fail as a whole.
+ */
+export function readGroupGiftSummariesOrThrow(
+  viewerId: string,
+  items: ReadonlyArray<Pick<IItem, '_id' | 'status' | 'groupGift'>>
+): Promise<Map<string, GroupGiftSummary>> {
+  return summarize(viewerId, items);
 }

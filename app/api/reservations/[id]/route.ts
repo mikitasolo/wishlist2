@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth';
 import connectDB from '@/lib/mongodb';
 import Reservation from '@/models/Reservation';
 import { deleteReservations } from '@/lib/utils/reservationSnapshots';
+import { inLiveGroupGift } from '@/lib/utils/groupGifts';
 import { isObjectIdParam } from '@/lib/utils/objectId';
 
 // DELETE /api/reservations/[id] - dismiss a reservation without logging a gift
@@ -26,6 +27,16 @@ export async function DELETE(
     const reservation = isObjectIdParam(id) ? await Reservation.findById(id) : null;
     if (!reservation || reservation.gifter.toString() !== session.user.id) {
       return NextResponse.json({ success: false, error: 'Reservation not found' }, { status: 404 });
+    }
+
+    // A contributor still in a live group gift leaves it instead (WIS-363):
+    // dismissing would leave them in it, their share still counted, with no
+    // card for it.
+    if (await inLiveGroupGift(session.user.id, reservation.item)) {
+      return NextResponse.json(
+        { success: false, error: 'You’re still in this group gift: leave it from its list' },
+        { status: 409 }
+      );
     }
 
     await deleteReservations({ _id: reservation._id });

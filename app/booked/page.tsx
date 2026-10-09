@@ -47,6 +47,13 @@ import {
 } from '@/lib/utils/reservations';
 import Button from '@/components/Button';
 import { useDiscreetMode } from '@/lib/hooks/useDiscreetMode';
+import ReservedGroupGift, { leaveGroupGiftMessage } from '@/components/ReservedGroupGift';
+import type { ContributingGroupGift } from '@/lib/utils/groupGiftSummary';
+import {
+  createSubmissionKeys,
+  IDEMPOTENCY_HEADER,
+  type SubmissionKeys,
+} from '@/lib/utils/submissionKey';
 
 interface Price {
   value: number;
@@ -95,6 +102,18 @@ interface Reservation {
   itemLink?: string | null;
   /** The live item's notes ("size M, blue"), on the same terms as its link. */
   itemNotes?: string | null;
+  /**
+   * Their own share of a group gift (WIS-363), in the gift's currency: what
+   * Mark as given logs. `null` (or absent) for a solo booking.
+   */
+  pledge?: Price | null;
+  /**
+   * The live group gift they're in on this item, only while it's still theirs
+   * on a list they can open: its progress and everyone in it. Its organizer's
+   * card offers the gift's own Mark as given; every contributor's offers
+   * Leave group gift in place of Release.
+   */
+  groupGift?: ContributingGroupGift | null;
 }
 
 type Gift = GiftEntry;
@@ -113,6 +132,9 @@ const RELEASE_REFUSED = new Set([400, 403, 404, 409]);
  * and never why. The read it sends then shows the card's own note.
  */
 const RELEASE_REFUSED_MESSAGE = 'This gift can’t be released from its list any more.';
+
+/** A group gift action refused without the route's own reason (WIS-363). */
+const GROUP_GIFT_OUT_OF_DATE = 'This group gift has changed. Here’s how it is now.';
 
 /** The gift history's order, as `GET /api/users/me/gifts` gives it: newest first. */
 const newestFirst = (a: Gift, b: Gift) => Date.parse(b.giftedAt) - Date.parse(a.giftedAt);
@@ -165,6 +187,13 @@ export default function BookedPage() {
   const [giftConfirm, setGiftConfirm] = useState<string | null>(null);
   const [dismissConfirm, setDismissConfirm] = useState<string | null>(null);
   const [releaseConfirm, setReleaseConfirm] = useState<string | null>(null);
+  // A group gift card's own actions (WIS-363): its organizer's Mark as given,
+  // and anyone's Leave.
+  const [groupGiveConfirm, setGroupGiveConfirm] = useState<string | null>(null);
+  const [leaveConfirm, setLeaveConfirm] = useState<string | null>(null);
+  // The Idempotency-Key of each card's group Mark as given, kept until it
+  // succeeds, so a retry after a timeout is answered as the first attempt was.
+  const groupGiveKeys = useRef(new Map<string, SubmissionKeys>());
   const [deleteGiftConfirm, setDeleteGiftConfirm] = useState<string | null>(null);
   // The page's own changes to both lists (their ids never clash), so a read of
   // them is merged with the changes made while it was on its way instead of
@@ -195,6 +224,8 @@ export default function BookedPage() {
     setGiftConfirm(null);
     setDismissConfirm(null);
     setReleaseConfirm(null);
+    setGroupGiveConfirm(null);
+    setLeaveConfirm(null);
     setDeleteGiftConfirm(null);
     setLoading(true);
     setLoadFailed(false);
@@ -426,6 +457,73 @@ export default function BookedPage() {
     });
   }
 
+  // A group gift card's organizer marks the whole gift as given
+  // (`POST /api/items/[itemId]/group-gift/given`): every contributor gets their
+  // own gift-history entry with their share, and their cards go. Its answer is
+  // the item, so both lists are read again for the new entry. A refusal (the
+  // gift ended, or was handed on, meanwhile) says so and reads them again too.
+  function giveGroupGift(id: string) {
+    const r = reservations.find((x) => x._id === id);
+    if (!r?.groupGift?.organizer) return;
+    let keys = groupGiveKeys.current.get(id);
+    if (!keys) {
+      keys = createSubmissionKeys();
+      groupGiveKeys.current.set(id, keys);
+    }
+    const idempotencyKey = keys.keyFor(id);
+    return run(id, async () => {
+      const actedFor = account.current;
+      try {
+        const { res, result } = await send(`/api/items/${r.itemId}/group-gift/given`, {
+          method: 'POST',
+          headers: { [IDEMPOTENCY_HEADER]: idempotencyKey },
+        });
+        if (account.current !== actedFor) return;
+        if (result.success) {
+          groupGiveKeys.current.delete(id);
+          dropReservation(id);
+          showToast('Marked as given', 'success');
+          load();
+        } else if (RELEASE_REFUSED.has(res.status)) {
+          showToast((res.status === 409 && result.error) || GROUP_GIFT_OUT_OF_DATE, 'info');
+          load();
+        } else {
+          showToast(result.error || 'Something went wrong', 'error');
+        }
+      } catch (error) {
+        if (account.current === actedFor) showToast(failureMessage(error), 'error');
+      }
+    });
+  }
+
+  // Leave group gift, in place of Release on a group gift's card
+  // (`DELETE /api/items/[itemId]/group-gift/me`): their Reservation goes, and an
+  // organizer leaving hands the gift on (or ends it, as its last one).
+  function leaveGroupGift(id: string) {
+    const r = reservations.find((x) => x._id === id);
+    if (!r?.groupGift) return;
+    return run(id, async () => {
+      const actedFor = account.current;
+      try {
+        const { res, result } = await send(`/api/items/${r.itemId}/group-gift/me`, {
+          method: 'DELETE',
+        });
+        if (account.current !== actedFor) return;
+        if (result.success) {
+          dropReservation(id);
+          showToast('You left the group gift', 'success');
+        } else if (RELEASE_REFUSED.has(res.status)) {
+          showToast((res.status === 409 && result.error) || GROUP_GIFT_OUT_OF_DATE, 'info');
+          load();
+        } else {
+          showToast(result.error || 'Something went wrong', 'error');
+        }
+      } catch (error) {
+        if (account.current === actedFor) showToast(failureMessage(error), 'error');
+      }
+    });
+  }
+
   function deleteGift(id: string) {
     return run(id, async () => {
       const actedFor = account.current;
@@ -457,14 +555,15 @@ export default function BookedPage() {
   const rates = useCurrencyRates(
     needsPricesControl(
       [
-        ...reservations.map((r) => ({ price: r.itemPrice })),
+        ...reservations.map((r) => ({ price: r.pledge ?? r.itemPrice })),
         ...gifts.map((g) => ({ price: g.itemPrice })),
       ],
       viewerCurrency
     )
   );
+  // A group gift counts as the viewer's own share of it, not the whole price.
   const toGiveTotal = totalInCurrency(
-    active.map((r) => r.itemPrice),
+    active.map((r) => r.pledge ?? r.itemPrice),
     viewerCurrency,
     rates
   );
@@ -594,6 +693,8 @@ export default function BookedPage() {
                                   // leave it reserved under their name, with
                                   // nothing tracking it.
                                   onRelease={() => setReleaseConfirm(r._id)}
+                                  onGiveGroupGift={() => setGroupGiveConfirm(r._id)}
+                                  onLeaveGroupGift={() => setLeaveConfirm(r._id)}
                                 />
                               ))}
                             </ReservationGroup>
@@ -698,6 +799,42 @@ export default function BookedPage() {
         />
       )}
 
+      {groupGiveConfirm && (
+        <ConfirmDialog
+          isOpen
+          title="Mark the group gift as given?"
+          message="Everyone in it gets it in their gift history, with their own share. It won’t change the owner’s list — they’ll mark it received themselves."
+          confirmText="Mark as given"
+          cancelText="Cancel"
+          type="info"
+          onConfirm={() => {
+            giveGroupGift(groupGiveConfirm);
+            setGroupGiveConfirm(null);
+          }}
+          onCancel={() => setGroupGiveConfirm(null)}
+        />
+      )}
+
+      {leaveConfirm &&
+        (() => {
+          const gift = reservations.find((x) => x._id === leaveConfirm)?.groupGift;
+          return (
+            <ConfirmDialog
+              isOpen
+              title="Leave this group gift?"
+              message={gift ? leaveGroupGiftMessage(gift) : 'Your share comes off the total.'}
+              confirmText="Leave"
+              cancelText="Cancel"
+              type="warning"
+              onConfirm={() => {
+                leaveGroupGift(leaveConfirm);
+                setLeaveConfirm(null);
+              }}
+              onCancel={() => setLeaveConfirm(null)}
+            />
+          );
+        })()}
+
       {deleteGiftConfirm && (
         <ConfirmDialog
           isOpen
@@ -793,6 +930,13 @@ function ListName({ r }: { r: Reservation }) {
  * item: `?item=`) and Release. The item's notes ("size M, blue") are under
  * its name. The list's name is left out under a dated group's heading, which
  * names it already.
+ *
+ * A group gift's card (WIS-363) shows the viewer's own share in place of the
+ * price, then the gift's progress and everyone in it. Its organizer's Mark as
+ * given gives the whole gift; anyone else's card has none (the organizer gives
+ * it for everyone). Leave group gift stands in for Release, which a group
+ * gift's item refuses; cancelling or converting it is on the list's item sheet
+ * (View on list).
  */
 function ReservationCard({
   r,
@@ -802,6 +946,8 @@ function ReservationCard({
   rates,
   onGift,
   onRelease,
+  onGiveGroupGift,
+  onLeaveGroupGift,
 }: {
   r: Reservation;
   busy: boolean;
@@ -810,8 +956,14 @@ function ReservationCard({
   rates: Record<string, number> | null;
   onGift: () => void;
   onRelease: () => void;
+  onGiveGroupGift: () => void;
+  onLeaveGroupGift: () => void;
 }) {
   const nameId = useId();
+  const locale = useViewerLocale();
+  const gift = r.groupGift ?? null;
+  // A contributor who isn't the organizer has no Mark as given of their own.
+  const canGive = !gift || gift.organizer;
   // The API only sends an http(s) link; checked again, since it's an href.
   const link = r.itemLink && isHttpUrl(r.itemLink) ? r.itemLink : null;
   return (
@@ -825,8 +977,15 @@ function ReservationCard({
           <p id={nameId} className="w-full truncate text-body font-semibold text-foreground">
             {r.itemName}
           </p>
-          {r.itemPrice && (
-            <ReservationPrice price={r.itemPrice} viewerCurrency={viewerCurrency} rates={rates} />
+          {r.pledge ? (
+            <span className="flex flex-wrap items-baseline gap-x-1.5">
+              <span className="text-sm text-muted-foreground">Your share</span>
+              <ReservationPrice price={r.pledge} viewerCurrency={viewerCurrency} rates={rates} />
+            </span>
+          ) : (
+            r.itemPrice && (
+              <ReservationPrice price={r.itemPrice} viewerCurrency={viewerCurrency} rates={rates} />
+            )
           )}
           {showList && <ListName r={r} />}
           {r.itemNotes && (
@@ -837,6 +996,7 @@ function ReservationCard({
               {r.itemNotes}
             </p>
           )}
+          {gift && <ReservedGroupGift gift={gift} locale={locale} />}
         </div>
       </div>
       <div className="flex gap-2 border-t border-border p-3">
@@ -853,21 +1013,29 @@ function ReservationCard({
         )}
         {/* One row at every width: beside Open link it keeps its own width,
             and drops its check below `sm`, so both fit on one line at 360. */}
-        <Button
-          size="sm"
-          icon={link ? undefined : 'check'}
-          variant={link ? 'secondary' : 'primary'}
-          disabled={busy}
-          onClick={onGift}
-          className={`whitespace-nowrap ${link ? '' : 'flex-1 sm:flex-none'}`}
-        >
-          {link && <Icon name="check" size={16} className="max-sm:hidden" />}
-          Mark as given
-        </Button>
+        {canGive && (
+          <Button
+            size="sm"
+            icon={link ? undefined : 'check'}
+            variant={link ? 'secondary' : 'primary'}
+            disabled={busy}
+            onClick={gift ? onGiveGroupGift : onGift}
+            className={`whitespace-nowrap ${link ? '' : 'flex-1 sm:flex-none'}`}
+          >
+            {link && <Icon name="check" size={16} className="max-sm:hidden" />}
+            Mark as given
+          </Button>
+        )}
+        {/* With no link to fill the row, say who gives it instead. */}
+        {!canGive && !link && (
+          <p className="flex min-w-0 flex-1 items-center text-meta text-muted-foreground">
+            The organizer marks it as given
+          </p>
+        )}
         <Menu
           label="More actions"
           icon="more"
-          className="relative flex sm:ml-auto"
+          className="relative ml-auto flex"
           triggerClassName={MENU_TRIGGER}
           items={[
             {
@@ -875,7 +1043,14 @@ function ReservationCard({
               icon: 'arrow-right',
               href: itemDeepLink(r.wishlistSlug ?? r.wishlistId, r.itemId),
             },
-            { label: 'Release', icon: 'undo', onSelect: onRelease, disabled: busy },
+            gift
+              ? {
+                  label: 'Leave group gift',
+                  icon: 'undo',
+                  onSelect: onLeaveGroupGift,
+                  disabled: busy,
+                }
+              : { label: 'Release', icon: 'undo', onSelect: onRelease, disabled: busy },
           ]}
         />
       </div>
@@ -940,15 +1115,28 @@ function ChangedRow({
         </p>
         <div className="flex min-w-0 flex-wrap items-center gap-x-2">
           <ListName r={r} />
-          {r.itemPrice && (
+          {/* A group gift's: their own share, which "I gave it" logs. */}
+          {r.pledge ? (
             <span className="text-xs text-muted-foreground">
+              Your share{' '}
               <ReservationPrice
-                price={r.itemPrice}
+                price={r.pledge}
                 viewerCurrency={viewerCurrency}
                 rates={rates}
                 compact
               />
             </span>
+          ) : (
+            r.itemPrice && (
+              <span className="text-xs text-muted-foreground">
+                <ReservationPrice
+                  price={r.itemPrice}
+                  viewerCurrency={viewerCurrency}
+                  rates={rates}
+                  compact
+                />
+              </span>
+            )
           )}
         </div>
         {note && (

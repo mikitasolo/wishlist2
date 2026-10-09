@@ -105,7 +105,11 @@ describe('applyGroupGiftAction', () => {
     const out = applyGroupGiftAction(inGift(true), { type: 'leave' }, ME);
     expect(out.status).toBe('booked');
     expect(out.bookedBy).toBeNull();
-    expect(out.groupGift).toEqual({ contributing: false, percentFunded: 23 });
+    expect(out.groupGift).toEqual({
+      contributing: false,
+      percentFunded: 23,
+      target: { currency: 'USD' },
+    });
   });
 
   it('cancel releases; convert keeps the viewer’s booking; give marks it given', () => {
@@ -192,7 +196,7 @@ describe('list chips and group gifts', () => {
   it('does not dim a group gift that someone else started, which can be joined', () => {
     const other = base({
       status: 'booked',
-      groupGift: { contributing: false, percentFunded: 10 },
+      groupGift: { contributing: false, percentFunded: 10, target: { currency: 'USD' } },
     });
     expect(isDimmedInAll(other, 'member', ME)).toBe(false);
     expect(isDimmedInAll({ ...other, groupGift: undefined, bookedBy: 'x' }, 'member', ME)).toBe(

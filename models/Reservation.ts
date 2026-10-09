@@ -35,6 +35,12 @@ const ReservationSchema = new Schema(
     itemImage: { type: String, default: null },
     itemPrice: { type: ReservationPriceSchema, default: null },
     wishlistName: { type: String, required: true },
+    // A group gift contributor's own share (WIS-363), in cents of the gift's
+    // target currency: what Mark as given logs instead of the item's price.
+    // Kept in step with their pledge while the gift is live, and kept as it was
+    // once they're out of it (left the list, the owner ended the item), so the
+    // gift can still be logged with their share. `null` for a solo booking.
+    pledge: { type: ReservationPriceSchema, default: null },
   },
   { timestamps: true }
 );
@@ -53,6 +59,7 @@ export interface IReservation {
   itemImage?: string | null;
   itemPrice?: { value: number; currency: string } | null;
   wishlistName: string;
+  pledge?: { value: number; currency: string } | null;
   createdAt: Date;
   updatedAt: Date;
 }

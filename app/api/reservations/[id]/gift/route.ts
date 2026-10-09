@@ -6,6 +6,11 @@ import GiftLog from '@/models/GiftLog';
 import User from '@/models/User';
 import { isObjectIdParam } from '@/lib/utils/objectId';
 import { giftLogImage, serializeGiftLog } from '@/lib/utils/giftHistory';
+import { inLiveGroupGift } from '@/lib/utils/groupGifts';
+
+/** A contributor's own Mark as given on a live group gift they're in (WIS-363). */
+const GROUP_GIFT_GIVEN_BY_ORGANIZER =
+  'This is a group gift: its organizer marks it as given for everyone';
 
 // POST /api/reservations/[id]/gift - mark a reservation as gifted. Writes a
 // permanent GiftLog entry from the reservation's snapshot and removes the
@@ -26,6 +31,22 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
     const { id } = await params;
     await connectDB();
+
+    // A contributor still in a live group gift gives it with everyone else,
+    // when its organizer marks it as given (WIS-363): logging it alone here
+    // would leave them in the gift, their share still counted, with no card
+    // for it. That holds on an archived list too, where nobody can act on the
+    // gift until it's unarchived. Once they're out of the gift (kicked, left the
+    // list, the owner ended the item), it's theirs to log, with their share.
+    const held = isObjectIdParam(id)
+      ? await Reservation.findOne({ _id: id, gifter: session.user.id }).select('item').lean()
+      : null;
+    if (held && (await inLiveGroupGift(session.user.id, held.item))) {
+      return NextResponse.json(
+        { success: false, error: GROUP_GIFT_GIVEN_BY_ORGANIZER },
+        { status: 409 }
+      );
+    }
 
     // Take the reservation in one atomic step, so that of a double submit, or of
     // this and a dismiss or release (which free its snapshot image), exactly one
@@ -52,7 +73,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         giftedAt: new Date(),
         itemName: reservation.itemName,
         itemImage,
-        itemPrice: reservation.itemPrice ?? null,
+        // A group gift contributor's own share, never the whole price (WIS-363).
+        itemPrice: reservation.pledge ?? reservation.itemPrice ?? null,
         recipient: reservation.owner,
         recipientUsername: recipient?.username ?? null,
         wishlistName: reservation.wishlistName,

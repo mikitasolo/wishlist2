@@ -12,6 +12,7 @@ import {
   holdsItem,
   settleContributorReservation,
   startGroupGift,
+  syncContributorPledge,
   syncGiftItem,
   undoContributorReservation,
   withdrawFromGift,
@@ -95,7 +96,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // an organizer who can't release it. The paths that change the role take
     // them out of gifts too, after their own write, so between the two every
     // order is covered (as for `undoBookingUnlessMember`).
-    const previous = await writeContributorReservation(userId, wishlist, started.item);
+    // Their Reservation carries their share, which Mark as given on their
+    // Booked page logs instead of the item's price (WIS-363).
+    const previous = await writeContributorReservation(userId, wishlist, started.item, {
+      value: pledged,
+      currency: target.currency,
+    });
     const lost = await lostMemberReason(wishlist._id, userId);
     if (lost) {
       await withdrawFromGift(started.gift, userId);
@@ -112,6 +118,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       await undoContributorReservation(userId, item._id, previous, { restore: true });
       return giftError(GROUP_GIFT_ENDED, 409);
     }
+    // A pledge change from another tab may have landed before the write.
+    await syncContributorPledge(item._id, userId);
     await settleContributorReservation(userId, started.item, previous);
     // WIS-364: a gift funded from the start is claimed as told (nobody else is in it).
     await notifyGroupGiftFunded(started.gift, userId);
