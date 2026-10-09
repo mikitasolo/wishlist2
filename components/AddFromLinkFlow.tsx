@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import BaseModal from './BaseModal';
 import AddItemModal, { type NewItemData } from './AddItemModal';
@@ -12,6 +12,7 @@ import type { ApiItem, ApiResponse } from '@/types/api';
 import { RequestTimeoutError, withRequestTimeout } from '@/lib/utils/requestTimeout';
 import { formatItemCount } from '@/lib/utils/itemCounts';
 import type { ProductPrefill } from '@/lib/utils/productFragment';
+import { useFreshUploads } from '@/lib/hooks/useFreshUploads';
 
 // `cameFrom` for the picker's "Create a wishlist" (a list's is its id).
 const CREATE = 'create';
@@ -31,8 +32,8 @@ interface AddFromLinkFlowProps {
    * What the form starts from: a product read from the bookmarklet's fragment,
    * or null for the plain add flow. Read when the form opens (`AddItemModal`
    * takes it on mount), so whatever owns this (the page) settles it, image
-   * included, before rendering the flow: that is the seam where WIS-366 swaps
-   * the store's image URL for a re-hosted one.
+   * included, is the store's image URL: the flow re-hosts it (WIS-366), see
+   * below.
    */
   product: ProductPrefill | null;
   userCurrency: string | null | undefined;
@@ -45,6 +46,14 @@ interface AddFromLinkFlowProps {
  * Nothing is saved until one of them is pressed. The form's "‹ Change list"
  * goes back to the picker; closing anywhere leaves for Home; a save lands on
  * the list.
+ *
+ * The product's image is re-hosted on landing (WIS-366): `POST
+ * /api/upload/from-url` runs while the picker is up, and the form's photo shows
+ * it uploading if it isn't done by then. On success the form holds our own blob;
+ * on any failure the store's URL stays as the image (hotlinked), still
+ * replaceable or removable. The blob is an unsaved upload held here, not by the
+ * form, so "Change list" (which unmounts the form) doesn't hand it back; it is
+ * handed back when the flow goes (cancel, leaving) unless a save took it.
  *
  * It mirrors `SaveToListModal`'s picker, without a source item: the item is a
  * plain new one (no `sourceItemId`), so an image is whatever URL the form
@@ -84,6 +93,66 @@ export default function AddFromLinkFlow({ product, userCurrency }: AddFromLinkFl
       cancelled = true;
     };
   }, [attempt]);
+
+  // The unsaved upload of the re-hosted image (`useFreshUploads`: handed back
+  // when this unmounts), and where the re-hosting stands: undefined while it
+  // runs, the blob's URL once it's in, null when it failed (or there was none).
+  const uploads = useFreshUploads();
+  const imageSource = product?.imageUrl;
+  const [rehosted, setRehosted] = useState<string | null | undefined>(
+    imageSource ? undefined : null
+  );
+  // The form let go of the blob (removed or replaced it): a new form starts on
+  // the store's URL again rather than a blob that has been handed back.
+  const [blobDropped, setBlobDropped] = useState(false);
+  const rehostStarted = useRef(false);
+
+  useEffect(() => {
+    // Once: StrictMode runs this twice, and each run would store an upload.
+    if (!imageSource || rehostStarted.current) return;
+    rehostStarted.current = true;
+    (async () => {
+      let url: string | null = null;
+      try {
+        const result: { success?: boolean; url?: string } = await withRequestTimeout(
+          async (signal) => {
+            const res = await fetch('/api/upload/from-url', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ url: imageSource, page: product?.link }),
+              signal,
+            });
+            return await res.json();
+          }
+        );
+        // Landed after the flow closed: handed back by `add`, never shown.
+        if (result.success && typeof result.url === 'string' && uploads.add(result.url)) {
+          url = result.url;
+        }
+      } catch {
+        // Any failure falls back to the store's URL below.
+      }
+      setRehosted(url);
+    })();
+    // Runs once, with what the page opened on.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // What the form is handed: the same uploads, noting when the blob is let go.
+  const formUploads = useMemo(
+    () => ({
+      ...uploads,
+      discard(url: string | null | undefined) {
+        if (url && url === rehosted) setBlobDropped(true);
+        uploads.discard(url);
+      },
+      discardAll() {
+        setBlobDropped(true);
+        uploads.discardAll();
+      },
+    }),
+    [uploads, rehosted]
+  );
 
   const retry = () => {
     setLoadFailed(false);
@@ -160,6 +229,9 @@ export default function AddFromLinkFlow({ product, userCurrency }: AddFromLinkFl
   );
 
   if (target) {
+    const pending = rehosted === undefined;
+    // Settled: our copy, or the store's own URL when that failed or was let go.
+    const settledImage = rehosted && !blobDropped ? rehosted : (imageSource ?? null);
     return (
       <AddItemModal
         isOpen
@@ -167,7 +239,13 @@ export default function AddFromLinkFlow({ product, userCurrency }: AddFromLinkFl
         onAdd={handleSave}
         wishlistCurrency={target.currency}
         userCurrency={userCurrency}
-        initialItem={product ?? undefined}
+        initialItem={
+          product
+            ? { ...product, imageUrl: pending ? undefined : (settledImage ?? undefined) }
+            : undefined
+        }
+        uploads={formUploads}
+        image={imageSource ? { pending, url: pending ? null : settledImage } : undefined}
         title={`Add to ${target.name}`}
         back={{ label: 'Change list', onBack: () => setTarget(null) }}
       />

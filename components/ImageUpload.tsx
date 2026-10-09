@@ -28,6 +28,12 @@ interface ImageUploadProps {
    * that lands once the form has closed never reaches it.
    */
   uploads?: FreshUploads;
+  /**
+   * An upload the caller is running (the product photo re-hosted from its store,
+   * WIS-366): shown as the control's own uploading state, and nothing else is
+   * taken until it's done.
+   */
+  busy?: boolean;
 }
 
 /**
@@ -43,11 +49,13 @@ export default function ImageUpload({
   circle = false,
   compact = false,
   uploads,
+  busy = false,
 }: ImageUploadProps) {
   // Avatars crop square and display round.
   const effectiveAspect = circle ? 1 : aspect;
   const cropShape = circle ? 'round' : 'rect';
-  const [uploading, setUploading] = useState(false);
+  const [uploadingOwn, setUploading] = useState(false);
+  const uploading = uploadingOwn || busy;
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
@@ -62,15 +70,18 @@ export default function ImageUpload({
   // Open the cropper for a chosen file. Nothing is taken while an upload runs
   // (the picker is held then too): a second upload would race the first, and
   // the field would keep whichever answered last, not the image picked last.
-  const handleFile = useCallback((file: File) => {
-    if (uploadingRef.current) return;
-    setError(null);
-    if (!file.type.startsWith('image/')) {
-      setError('Please choose an image file.');
-      return;
-    }
-    setPendingFile(file);
-  }, []);
+  const handleFile = useCallback(
+    (file: File) => {
+      if (uploadingRef.current || busy) return;
+      setError(null);
+      if (!file.type.startsWith('image/')) {
+        setError('Please choose an image file.');
+        return;
+      }
+      setPendingFile(file);
+    },
+    [busy]
+  );
 
   const uploadBlob = useCallback(
     async (blob: Blob) => {
