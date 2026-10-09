@@ -171,7 +171,6 @@ function parseJsonLd(text: string): unknown {
   } catch {
     try {
       // Raw control characters inside strings are the commonest breakage.
-      // eslint-disable-next-line no-control-regex
       return JSON.parse(t.replace(/[\u0000-\u001f]+/g, ' '));
     } catch {
       return undefined;
@@ -185,15 +184,8 @@ function typesOf(node: Json): string[] {
   return list.map((x) => String(x).replace(/^.*[/:#]/, ''));
 }
 
-const PRODUCT_TYPES = new Set([
-  'Product',
-  'ProductGroup',
-  'IndividualProduct',
-  'ProductModel',
-  'Book',
-  'Car',
-  'Vehicle',
-]);
+// schema.org types (not app copy) that carry a product's name, image and offer.
+const PRODUCT_TYPE = /^(?:Product|ProductGroup|IndividualProduct|ProductModel|Book|Car|Vehicle)$/;
 
 function collectNodes(root: unknown, out: Json[], depth = 0) {
   if (depth > 8 || root == null) return;
@@ -203,7 +195,7 @@ function collectNodes(root: unknown, out: Json[], depth = 0) {
   }
   if (typeof root !== 'object') return;
   const node = root as Json;
-  if (typesOf(node).some((t) => PRODUCT_TYPES.has(t))) out.push(node);
+  if (typesOf(node).some((t) => PRODUCT_TYPE.test(t))) out.push(node);
   for (const [k, v] of Object.entries(node)) {
     if (k === 'offers' || k === 'review' || k === 'aggregateRating') continue;
     if (v && typeof v === 'object') collectNodes(v, out, depth + 1);
