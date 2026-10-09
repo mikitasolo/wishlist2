@@ -537,15 +537,15 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
         userRole?: 'owner' | 'member' | null;
         ownerUsernames?: string[];
       };
-      // An owner or member who opened a share link belongs at the list's own
-      // URL (only the client knows who's viewing). An owner's Preview as
-      // visitor stays, and is shown the page as a visitor.
       // A share link opened (counted once a visit), whoever opened it, but not
       // an owner's Preview as visitor.
       if (linkToken && !previewAsVisitor && !linkOpenTracked.current) {
         linkOpenTracked.current = true;
         track('share_link_opened', { level: linkLevel ?? 'view' });
       }
+      // An owner or member who opened a share link belongs at the list's own
+      // URL (only the client knows who's viewing). An owner's Preview as
+      // visitor stays, and is shown the page as a visitor.
       if (linkToken && wishlistData.userRole && !previewAsVisitor) {
         routerRef.current.replace(`/wishlists/${wishlistData.slug || wishlistData._id}`);
         return;

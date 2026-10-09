@@ -22,14 +22,13 @@ export function useReserveToast<T>(
   return useCallback(
     async (id: string, updates: { status?: string }) => {
       const result = await update(id, updates);
-      // Counted only once the server has taken it (a failed or rolled-back
-      // update resolves null), and never on a list the viewer owns: owners
-      // never reserve, and nothing an owner does is counted as a reservation.
-      if (result && !isOwner) {
-        if (updates.status === 'booked') track('reserve');
-        else if (updates.status === 'available') track('release', { from: 'list' });
-      }
-      if (result && updates.status === 'booked' && !isOwner) {
+      // A failed or rolled-back update resolves null: no toast, nothing
+      // counted. Owners never reserve, and nothing an owner does is counted
+      // as a reservation (WIS-329).
+      if (!result || isOwner) return result;
+      if (updates.status === 'available') track('release', { from: 'list' });
+      if (updates.status === 'booked') {
+        track('reserve');
         showToast(takeReserveToastCopy(ownerUsernames), 'success', {
           action: { label: RESERVE_VIEW_LABEL, href: RESERVED_PATH },
         });

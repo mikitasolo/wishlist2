@@ -21,7 +21,12 @@ vi.mock('@/lib/analytics', async (importOriginal) => ({
 }));
 
 import Analytics from '@/components/Analytics';
-import { UMAMI_BEFORE_SEND, UMAMI_HOST_URL, UMAMI_SCRIPT_URL, trackPageView } from '@/lib/analytics';
+import {
+  UMAMI_BEFORE_SEND,
+  UMAMI_HOST_URL,
+  UMAMI_SCRIPT_URL,
+  trackPageView,
+} from '@/lib/analytics';
 
 const ID = '8f14e45f-ceea-467a-9575-0c3c1a4b2e6d';
 

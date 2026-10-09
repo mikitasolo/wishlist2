@@ -70,9 +70,9 @@ export const ANALYTICS_EVENTS = {
 
 export type AnalyticsEvent = keyof typeof ANALYTICS_EVENTS;
 export type AnalyticsProps<E extends AnalyticsEvent> = {
-  [K in keyof (typeof ANALYTICS_EVENTS)[E]]?: (typeof ANALYTICS_EVENTS)[E][K] extends readonly (infer V)[]
-    ? V
-    : never;
+  [
+    K in keyof (typeof ANALYTICS_EVENTS)[E]
+  ]?: (typeof ANALYTICS_EVENTS)[E][K] extends readonly (infer V)[] ? V : never;
 };
 
 export function isAnalyticsEvent(name: unknown): name is AnalyticsEvent {
@@ -256,7 +256,7 @@ export function trackPageView(pathname: string): boolean {
  * Umami isn't loaded.
  */
 export function track<E extends AnalyticsEvent>(event: E, props?: AnalyticsProps<E>): boolean {
-  if (!tracker()) return false;
+  if (!tracker() || !isAnalyticsEvent(event)) return false;
   const origin = window.location.origin;
   return send(
     (base) =>
