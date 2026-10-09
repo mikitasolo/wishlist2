@@ -7,8 +7,14 @@
 //
 //   node scripts/release.mjs            release (operator only)
 //   node scripts/release.mjs --dry-run  print what would ship and the tag, push nothing
+//
+// After the push lands it posts the changelog to Telegram and moves the issues
+// the release closes to Done (scripts/releaseNotify.mjs), using TELEGRAM_BOT_TOKEN /
+// TELEGRAM_CHAT_ID / LINEAR_API_KEY from your shell; unset, it prints a preview.
+// A failure there warns but never fails the release. --dry-run posts nothing.
 import { execFileSync } from 'node:child_process';
 import { basename } from 'node:path';
+import { announceRelease } from './releaseNotify.mjs';
 
 export const RELEASE_TAG_PREFIX = 'release-';
 
@@ -35,7 +41,7 @@ function isAncestor(ancestor, descendant) {
   }
 }
 
-function release(dryRun) {
+async function release(dryRun) {
   git('fetch', 'origin', '--quiet', '--tags', '--force');
   // Pin the commit once: a PR merged into staging mid-release must not slip into
   // the push without being in the tag's changelog.
@@ -64,13 +70,33 @@ function release(dryRun) {
     throw error;
   }
   console.log(`Released ${tag}.`);
+
+  // The release has happened: announcing it can only warn, never fail it.
+  try {
+    const commits = git('log', '--no-merges', '--format=%s%x1f%b%x1e', `${main}..${target}`)
+      .split('\x1e')
+      .filter((c) => c.trim())
+      .map((c) => {
+        const [subject, body = ''] = c.trim().split('\x1f');
+        return { subject, body };
+      });
+    const repo = git('remote', 'get-url', 'origin').match(/github\.com[:/](.+?)(?:\.git)?$/)?.[1];
+    await announceRelease(commits, {
+      title: repo?.split('/')[1],
+      compare: repo && {
+        url: `https://github.com/${repo}/compare/${main}...${target}`,
+        from: main.slice(0, 7),
+        to: target.slice(0, 7),
+      },
+    });
+  } catch (error) {
+    console.warn(`Warning: release announcement failed: ${error.message}`);
+  }
 }
 
 if (process.argv[1] && basename(process.argv[1]) === 'release.mjs') {
-  try {
-    release(process.argv.includes('--dry-run'));
-  } catch (error) {
+  release(process.argv.includes('--dry-run')).catch((error) => {
     console.error(error.message);
     process.exit(1);
-  }
+  });
 }
