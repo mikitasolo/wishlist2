@@ -35,6 +35,7 @@ import Wishlist from '@/models/Wishlist';
 import Reservation from '@/models/Reservation';
 import GiftLog from '@/models/GiftLog';
 import GroupGift from '@/models/GroupGift';
+import Notification from '@/models/Notification';
 import { __setRateLimiters } from '@/lib/rateLimit';
 import { needsConfirmation } from '@/lib/utils/reservations';
 import { api, as, json, seedWorld, session, type World } from './groupGiftHarness';
@@ -372,8 +373,11 @@ describe('archiving a list ends its group gifts (operator decision 2026-10-09)',
 
   it('ends the gift and releases the item; contributors keep their shares', async () => {
     await aliceAndBob();
+    const before = await Notification.countDocuments();
     const res = await archive(true);
     expect(res.status).toBe(200);
+    // An owner action: nobody is notified (WIS-364's sends stay out of it).
+    expect(await Notification.countDocuments()).toBe(before);
 
     const gift = await GroupGift.findOne({ item: w.itemId }).lean();
     expect(gift?.active).toBeUndefined();
