@@ -234,3 +234,5 @@ export function useListFilters({
     addTile,
   };
 }
+
+export type ListFilters = ReturnType<typeof useListFilters>;
