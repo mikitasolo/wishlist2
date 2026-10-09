@@ -27,6 +27,7 @@ import { deleteGiftLogs, deleteReservations } from '@/lib/utils/reservationSnaps
 import { deleteOwnBlobs, listUserUploads } from '@/lib/utils/blob';
 import { purgeShareCards } from '@/lib/og/purge';
 import { eraseGroupsOf } from '@/lib/utils/peopleGroups';
+import { eraseGroupGiftsOf } from '@/lib/utils/groupGifts';
 
 /**
  * Deleting an account and everything in it (WIS-276), at once, with no grace
@@ -44,7 +45,8 @@ import { eraseGroupsOf } from '@/lib/utils/peopleGroups';
  *      the last one), and the invites it sent for them are cancelled.
  *   3. Lists it's a member of are left as a member leaves (`leaveAsMember`:
  *      bookings freed, pending invites cancelled), and any other item it still
- *      holds booked is freed.
+ *      holds booked is freed. Its group gifts are handed on or ended
+ *      (`eraseGroupGiftsOf`), so none is left with an organizer who's gone.
  *   4. Its own reservations and gift history go (`deleteReservations`,
  *      `deleteGiftLogs`), freeing their snapshots.
  *   5. Its invites, requests to join (with the owners' `join_request`
@@ -122,6 +124,10 @@ async function eraseHoldings(userId: string, agreed: ReadonlySet<string>): Promi
     status: 'booked',
   });
   for (const wishlistId of booked) await releaseUserBookings(wishlistId.toString(), userId);
+  // Any group gift it's still in (WIS-361), each it organizes handed to the
+  // earliest remaining contributor or ended with its item freed, and its place
+  // in finished ones. Before its reservations go, which are its own.
+  await eraseGroupGiftsOf(userId);
 
   // 4. Its reservations and gift history, with their snapshots.
   await deleteReservations({ gifter: uid });

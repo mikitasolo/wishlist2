@@ -35,6 +35,12 @@ import { isWishlistOwner } from '@/lib/utils/wishlistOwners';
 import { isHiddenByArchive } from '@/lib/utils/wishlistAccess';
 import { isObjectIdParam } from '@/lib/utils/objectId';
 import { undoBookingUnlessMember, type LostBookingReason } from '@/lib/utils/lateBooking';
+import {
+  endGroupGiftsOnItem,
+  GROUP_GIFT_UNBOOK_ERROR,
+  readGroupGiftSummaries,
+} from '@/lib/utils/groupGifts';
+import { errorKind } from '@/lib/utils/errorKind';
 import { isCountedOnShareCard } from '@/lib/og/data';
 import { purgeShareCards } from '@/lib/og/purge';
 import {
@@ -253,6 +259,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     // An owner's publish or reopen (`available` on a live item): set only on an
     // item that isn't booked, see the write below.
     let publishesLiveItem = false;
+    // An owner's draft or received, which ends any group gift on the item.
+    let endsGroupGift = false;
 
     let updateData: Partial<
       Pick<
@@ -399,6 +407,10 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         // and never refused: the owner's answer folds `booked` into `available`,
         // so it's the same as on an unbooked item (WIS-108).
         publishesLiveItem = status === 'available';
+        // Draft or received ends a group gift on it (WIS-361) as it unassigns a
+        // solo booking: the write takes the item off the gift, and the gift is
+        // ended after it, its contributors keeping their Reservations.
+        endsGroupGift = status !== 'available';
       }
     } else {
       // Regular members can only update status (for booking/unbooking)
@@ -421,11 +433,19 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
               { status: 403 }
             );
           }
+          if (currentItem.groupGift) {
+            return NextResponse.json(
+              { success: false, error: GROUP_GIFT_UNBOOK_ERROR },
+              { status: 409 }
+            );
+          }
           updateData.status = 'available';
           updateData.bookedBy = null;
           reservationAction = 'delete';
+          // Never a group gift's item (one started since the read above): the
+          // gift is released only through its own actions.
           bookingGuard = {
-            filter: { status: 'booked', bookedBy: session.user.id },
+            filter: { status: 'booked', bookedBy: session.user.id, groupGift: null },
             conflict: 'This item is no longer reserved by you',
           };
         }
@@ -523,7 +543,10 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
               ...(expectedVersion && { updatedAt: expectedVersion }),
               ...(publishesLiveItem && { status: { $ne: 'booked' } }),
             },
-            { $set: updateData },
+            {
+              $set: updateData,
+              ...(endsGroupGift && { $unset: { groupGift: 1, groupGiftRev: 1 } }),
+            },
             writeOptions
           );
     if (!written && publishesLiveItem) {
@@ -570,6 +593,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       }
       item = now;
     }
+
+    if (endsGroupGift) await endItemGroupGifts(item._id);
 
     // An owner's status change or review can move the item in or out of the count
     // on the list's share card (a member's booking never does).
@@ -626,6 +651,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
             role: 'member',
             id: session.user.id,
             givenByViewer: await readGivenByViewer(session.user.id, [item]),
+            groupGifts: await readGroupGiftSummaries(session.user.id, [item]),
           }
         : { role: 'proposer', id: session.user.id };
 
@@ -639,6 +665,20 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   } catch (error) {
     console.error('Error updating item:', error);
     return NextResponse.json({ success: false, error: 'Failed to update item' }, { status: 500 });
+  }
+}
+
+/**
+ * End the group gifts of an item an owner's write has just taken off them
+ * (draft, received or deleted). Best-effort, as the owner's change has landed:
+ * a gift left live is no longer its item's, shows nowhere, and is ended by the
+ * next start on the item (`startGroupGift`).
+ */
+async function endItemGroupGifts(itemId: mongoose.Types.ObjectId): Promise<void> {
+  try {
+    await endGroupGiftsOnItem(itemId);
+  } catch (err) {
+    console.error('Ending the group gift of an item failed:', errorKind(err));
   }
 }
 
@@ -733,6 +773,10 @@ export async function DELETE(
       // Either way this deleted nothing, so frees nothing.
       return unmatchedItemResponse(id, withdrawalGuard);
     }
+
+    // A group gift on it ends with it (WIS-361), its contributors keeping their
+    // Reservations, as a solo gifter keeps theirs.
+    await endItemGroupGifts(deleted._id);
 
     // Take it off the items it went with (WIS-29). Best-effort: a partner
     // still naming it shows no chip for it, as it no longer exists.

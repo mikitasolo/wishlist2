@@ -6,6 +6,7 @@ import ShareLink from '@/models/ShareLink';
 import WishlistLinkBlock from '@/models/WishlistLinkBlock';
 import Notification from '@/models/Notification';
 import Item from '@/models/Item';
+import GroupGift from '@/models/GroupGift';
 import { deleteOwnBlob, deleteOwnBlobs } from '@/lib/utils/blob';
 import { ownedByFilter } from '@/lib/utils/wishlistOwners';
 import { purgeShareCards } from '@/lib/og/purge';
@@ -56,6 +57,7 @@ export async function deleteOwnedWishlist(
   //    `createNotification(s)` (lib/notifications.ts), which re-checks the
   //    list once it's written.
   //  - Our own uploaded cover image.
+  //  - Its group gifts.
   // Reservations and gift logs deliberately stay: they're the gifter's, so
   // they can still see what they claimed and log the gift.
   await Promise.all([
@@ -70,6 +72,9 @@ export async function deleteOwnedWishlist(
       WishlistLinkBlock.deleteMany({ wishlist: wishlistId })
     ),
     bestEffort('Notification', wishlistId, () => Notification.deleteMany({ wishlist: wishlistId })),
+    // Its group gifts (WIS-361): their items are gone, and each contributor
+    // keeps their own Reservation, as with any booking on a deleted list.
+    bestEffort('Group gift', wishlistId, () => GroupGift.deleteMany({ wishlist: wishlistId })),
     deleteOwnBlob(wishlist.bannerUrl),
     // Its cached share card, which would otherwise go on naming it for a day.
     purgeShareCards({ wishlistIds: [wishlistId] }),

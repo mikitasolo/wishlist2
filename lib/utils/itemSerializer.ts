@@ -3,6 +3,7 @@ import type { IItem } from '@/models/Item';
 import { itemPriceInUsdCents } from '@/lib/utils/itemPrice';
 import { itemsGivenBy } from '@/lib/utils/giftHistory';
 import type { ItemRef } from '@/lib/utils/itemLinks';
+import type { GroupGiftSummary } from '@/lib/utils/groupGiftSummary';
 
 /**
  * Who an item response is built for, which decides what of the item they get.
@@ -12,21 +13,27 @@ import type { ItemRef } from '@/lib/utils/itemLinks';
  * - `member`: a member who isn't an owner. Sees which items are booked, but
  *   only their own id in `bookedBy` / `proposedBy`, plus `givenByMe` on the
  *   gifts they hold the booking of: `givenByViewer` is the ids of those they've
- *   marked as given (`readGivenByViewer`).
+ *   marked as given (`readGivenByViewer`), and the summary of a live group
+ *   gift on an item (`groupGifts`, from `readGroupGiftSummaries`, WIS-361).
  * - `proposer`: a non-member writing their own proposal (`PATCH /api/items/[id]`
  *   lets them edit it). Sees what a visitor does, plus their own `proposedBy`.
  * - `visitor`: anyone else, signed out or not, reading a list they can open.
  */
 export type ItemViewer =
   | { role: 'owner' }
-  | { role: 'member'; id: string; givenByViewer: ReadonlySet<string> }
+  | {
+      role: 'member';
+      id: string;
+      givenByViewer: ReadonlySet<string>;
+      groupGifts?: ReadonlyMap<string, GroupGiftSummary>;
+    }
   | { role: 'proposer'; id: string }
   | { role: 'visitor' };
 
 /** An item as every item response carries it (see `ApiItem` for the client's view). */
 export type SerializedItem = Omit<
   IItem,
-  'bookedBy' | 'proposedBy' | 'idempotencyKey' | 'relatedItems'
+  'bookedBy' | 'proposedBy' | 'idempotencyKey' | 'relatedItems' | 'groupGift' | 'groupGiftRev'
 > & {
   bookedBy?: string;
   proposedBy?: string;
@@ -34,6 +41,8 @@ export type SerializedItem = Omit<
   givenByMe?: boolean;
   /** The partners this viewer may see ("Goes with", WIS-29): `{ id, name }` only. */
   relatedItems: ItemRef[];
+  /** A live group gift on the item, as this member may see it (WIS-361). Members only. */
+  groupGift?: GroupGiftSummary;
 };
 
 type ItemSource = IItem & { toObject?: () => unknown };
@@ -57,6 +66,11 @@ type ItemSource = IItem & { toObject?: () => unknown };
  *   the partners the route worked out this viewer may see (`linkedItemRefs` /
  *   `readItemRefs`), each only an id and a name, never a status (WIS-29).
  *
+ * - The item's link to its group gift (`groupGift`, `groupGiftRev`) is never
+ *   answered. A member gets the gift's summary instead, on a booked item only;
+ *   nobody else gets a hint of it, so an owner's (or a visitor's) answer is the
+ *   same whether an item is reserved whole, split or not at all (WIS-361).
+ *
  * Which items a viewer may see at all (drafts, others' proposals) is the
  * route's to decide; this only shapes the ones it returns.
  */
@@ -70,7 +84,13 @@ export function serializeItem(
   // The create request's key is the server's, never anyone's to read: a freshly
   // created document still carries it (WIS-158). The stored links are replaced
   // by the partners the viewer may see.
-  const { idempotencyKey: _idempotencyKey, relatedItems: _relatedItems, ...fields } = raw;
+  const {
+    idempotencyKey: _idempotencyKey,
+    relatedItems: _relatedItems,
+    groupGift: _groupGift,
+    groupGiftRev: _groupGiftRev,
+    ...fields
+  } = raw;
   const base = {
     ...fields,
     priceInUsdCents: itemPriceInUsdCents(raw.price, rates),
@@ -87,6 +107,10 @@ export function serializeItem(
       bookedBy: bookedByMe ? viewer.id : undefined,
       proposedBy: isViewers(raw.proposedBy) ? viewer.id : undefined,
       givenByMe: bookedByMe && viewer.givenByViewer.has(raw._id.toString()),
+      ...(raw.status === 'booked' &&
+        viewer.groupGifts?.has(raw._id.toString()) && {
+          groupGift: viewer.groupGifts.get(raw._id.toString()),
+        }),
     };
   }
 
