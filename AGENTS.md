@@ -11,6 +11,7 @@ A wishlist app: **Next.js 16 (App Router), React 19, TypeScript (`strict`, keep 
 ```bash
 npm ci               # install deps (scripts/workspace-setup.sh runs this for you)
 npm run dev          # local dev server, on this checkout's own port (scripts/dev-port.mjs: 3000 in the main checkout)
+npm run verify       # every must-pass check below, in order, stopping at the first failure; `-- --quick` is the pre-push subset
 npm run lint         # eslint — must pass before done
 npm run format:check # prettier --check — must pass before done (npm run format fixes it)
 npx tsc --noEmit     # typecheck — must pass before done
@@ -58,7 +59,7 @@ Labels: one **Type** (Feature / Bug / Improvement / Tech debt — maps to the co
 2. **Move the issue to In Progress.**
 3. **Stay in your workspace branch.** Don't rename it, and never check out, commit to, or push `staging` or `main`.
 4. **Implement with tests** (see Testing policy), after reading the topic files for the areas you touch. Stay in scope: an unrelated bug or idea becomes a **new Linear issue in Backlog** (linked from the PR).
-5. **Verify**: everything marked "must pass before done" under Commands, plus `npm run test:e2e` if you touched a flow the E2E smoke tests cover.
+5. **Verify**: `npm run verify` (everything marked "must pass before done" under Commands; the pre-push hook runs the quick subset, `--no-verify` skips it), plus `npm run test:e2e` if you touched a flow the E2E smoke tests cover.
 6. **Review your own diff** (`git diff origin/staging...`) as a skeptical reviewer: correctness, the domain invariants, missing tests, leftover debug code, docs the change makes stale. Fix what you find.
 7. **Commit, push your branch, open a PR into `staging`** (`gh pr create --base staging`), following the rules below.
 8. **Get CI green** (`gh pr checks --watch`). There's no branch protection on the free plan, so nothing else stops a red PR being merged.

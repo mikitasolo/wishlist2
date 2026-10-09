@@ -13,6 +13,7 @@
     "generate:email-logo": "node scripts/generate-email-logo.mjs",
     "generate:bookmarklet": "node scripts/build-bookmarklet.mjs",
     "start": "next start",
+    "verify": "node scripts/verify.mjs",
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",

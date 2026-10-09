@@ -124,6 +124,7 @@ npm run smoke:deploy -- <url>  # read-only GET smoke of a deployed host: auth an
 npm run generate:bookmarklet  # rebuild the bookmarklet's code (lib/bookmarklet/code.ts); rerun when lib/bookmarklet/** or the product extractor changes
 npm run generate:email-logo  # re-render the email header's logo (lib/emailLogo.ts) from app/icon.svg; rerun when the logo changes
 npm start            # run the production build
+npm run verify       # lint, format check, typecheck, test:cov, build, check:trace; stops at the first failure
 npm run lint         # eslint (flat config)
 npm test             # full Vitest suite (unit + component + API)
 npm run test:e2e     # Playwright end-to-end suite
