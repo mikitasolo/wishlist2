@@ -3,7 +3,7 @@
 // on the list (signed out, or signed in but neither an owner nor a member), and
 // never to its owners or members.
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen, cleanup, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 const { router, showToast, signIn, auth } = vi.hoisted(() => ({
@@ -26,8 +26,10 @@ vi.mock('next/navigation', () => ({
 vi.mock('@/components/AppHeader', () => ({ default: () => null }));
 vi.mock('@/components/AuthButton', () => ({ default: () => null }));
 vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }));
+vi.mock('@/lib/analytics', () => ({ track: vi.fn() }));
 
 import WishlistDetail from '@/app/wishlists/[id]/page';
+import { track } from '@/lib/analytics';
 
 let list: { owners: string[]; userRole: 'owner' | 'member' | null };
 
@@ -150,10 +152,39 @@ describe('the wishlist page’s note on getting invited', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/wishlists/w1/requests', { method: 'POST' });
     expect(await screen.findByRole('button', { name: 'Requested' })).toBeDisabled();
     expect(showToast).toHaveBeenCalledWith('Request sent to the owners', 'success');
+    // WIS-329: counted once it's sent, with nothing about the list.
+    expect(vi.mocked(track).mock.calls.filter(([e]) => e === 'join_requested')).toEqual([
+      ['join_requested'],
+    ]);
 
     await user.click(screen.getByRole('button', { name: 'Cancel request' }));
     expect(fetchMock).toHaveBeenCalledWith('/api/wishlists/w1/requests/me', { method: 'DELETE' });
     expect(await screen.findByRole('button', { name: 'Ask to join' })).toBeEnabled();
+    // A cancel isn't another ask.
+    expect(vi.mocked(track).mock.calls.filter(([e]) => e === 'join_requested')).toHaveLength(1);
+  });
+
+  it('counts no ask to join that was refused', async () => {
+    vi.mocked(track).mockReset();
+    viewAs({ id: 'ivan', username: 'ivan_petrov' });
+    list = { owners: ['anna_m'], userRole: null };
+    const user = userEvent.setup();
+    const base = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      const method = init?.method ?? 'GET';
+      if (url === '/api/wishlists/w1/requests' && method === 'POST') {
+        return reply({ success: false, error: 'Too many requests' }, 429);
+      }
+      if (url === '/api/wishlists/w1/requests/me') {
+        return reply({ success: true, data: { requested: false } });
+      }
+      return base(url, init);
+    });
+    render(<WishlistDetail />);
+    await listShown();
+    await user.click(await screen.findByRole('button', { name: 'Ask to join' }));
+    await waitFor(() => expect(showToast).toHaveBeenCalledWith('Too many requests', 'error'));
+    expect(track).not.toHaveBeenCalledWith('join_requested');
   });
 
   it('shows Requested to someone who has already asked', async () => {

@@ -5,12 +5,14 @@ import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-li
 const { showToast, push } = vi.hoisted(() => ({ showToast: vi.fn(), push: vi.fn() }));
 
 vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }));
+vi.mock('@/lib/analytics', () => ({ track: vi.fn() }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push }) }));
 vi.mock('next-auth/react', () => ({
   useSession: () => ({ status: 'authenticated', data: { user: { id: 'me' } } }),
 }));
 
 import StartFromListModal from '@/components/StartFromListModal';
+import { track } from '@/lib/analytics';
 
 // What GET /api/wishlists/[id]/copy answers.
 const SOURCE = {
@@ -49,6 +51,7 @@ beforeEach(() => {
   inviteReply = () => ({ status: 201, body: { success: true, data: {} } });
   showToast.mockReset();
   push.mockReset();
+  vi.mocked(track).mockReset();
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: string, init: RequestInit = {}) => {
@@ -134,6 +137,9 @@ describe('StartFromListModal', () => {
     expect(carol).toBeChecked();
     expect(screen.getByRole('combobox', { name: 'Role for @bob' })).toHaveTextContent('Owner');
     expect(screen.getByRole('combobox', { name: 'Role for @carol' })).toHaveTextContent('Member');
+    // WIS-329: one new list, counted with its visibility only.
+    expect(track).toHaveBeenCalledTimes(1);
+    expect(track).toHaveBeenCalledWith('list_created', { visibility: 'friends', source: 'copy' });
   });
 
   it('invites only those still ticked, each with their role, and shows who couldn’t be invited', async () => {
@@ -160,6 +166,9 @@ describe('StartFromListModal', () => {
     // Bob's row says he was invited; carol's can be tried again.
     const dialog = screen.getByRole('dialog', { name: 'Invite people again' });
     expect(within(dialog).getByText('Invited')).toBeInTheDocument();
+    // WIS-329: only the invite that went out is counted, with its role.
+    const invites = vi.mocked(track).mock.calls.filter(([event]) => event === 'invite_sent');
+    expect(invites).toEqual([['invite_sent', { role: 'owner', to: 'person' }]]);
     expect(screen.getByRole('button', { name: 'Invite 1 person' })).toBeEnabled();
 
     // Moving on offers to archive the old list, which is only done when asked.
@@ -246,6 +255,7 @@ describe('StartFromListModal', () => {
     await waitFor(() =>
       expect(showToast).toHaveBeenCalledWith('Couldn’t create the list. Try again.', 'error')
     );
+    expect(track).not.toHaveBeenCalled();
     copyGateway = false;
     fireEvent.click(screen.getByRole('button', { name: 'Create list' }));
     await screen.findByRole('dialog', { name: 'Invite people again' });

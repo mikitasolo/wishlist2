@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, within, act } from '@testing-library/react';
+import { render, screen, within, act, fireEvent } from '@testing-library/react';
 import { renderToString } from 'react-dom/server';
 import { hydrateRoot } from 'react-dom/client';
 import type { ReactNode } from 'react';
@@ -9,6 +9,7 @@ import type { ReactNode } from 'react';
 // an occasion in the next 30 days, nearest first, from the viewer's local date.
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
+vi.mock('@/lib/analytics', () => ({ track: vi.fn() }));
 vi.mock('next/link', () => ({
   default: ({ href, children, ...rest }: { href: string; children: ReactNode }) => (
     <a href={href} {...rest}>
@@ -26,6 +27,7 @@ vi.mock('@/components/ShareButton', () => ({
 }));
 
 import ComingUp from '@/components/ComingUp';
+import { track } from '@/lib/analytics';
 import type { WishlistSummary } from '@/components/WishlistCard';
 import type { Occasion, OccasionKind } from '@/lib/utils/occasion';
 
@@ -139,6 +141,20 @@ describe('Coming up', () => {
       '/wishlists/camping-trip'
     );
     expect(within(camping).queryByRole('link', { name: /Find a gift/ })).toBeNull();
+  });
+
+  // WIS-329: counted on the click, with nothing about the list or its owner.
+  it('counts Find a gift once per click', () => {
+    vi.mocked(track).mockReset();
+    render(<ComingUp own={own} shared={others} viewerId="me" />);
+    expect(track).not.toHaveBeenCalled();
+    fireEvent.click(
+      within(card('Dmitri’s birthday')).getByRole('link', {
+        name: 'Find a gift on Dmitri’s birthday',
+      })
+    );
+    expect(track).toHaveBeenCalledTimes(1);
+    expect(track).toHaveBeenCalledWith('find_a_gift');
   });
 
   // regression: an owner never learns what has been reserved on their own

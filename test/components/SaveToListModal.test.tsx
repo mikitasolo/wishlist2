@@ -9,6 +9,7 @@ const { showToast, push } = vi.hoisted(() => ({ showToast: vi.fn(), push: vi.fn(
 vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }));
 // For CreateWishlistModal, which the picker opens when there's no list to pick.
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push }) }));
+vi.mock('@/lib/analytics', () => ({ track: vi.fn() }));
 vi.mock('next-auth/react', () => ({
   useSession: () => ({ data: { user: { id: 'me', defaultCurrency: 'USD' } } }),
 }));
@@ -32,6 +33,7 @@ vi.mock('next/link', () => ({
 }));
 
 import SaveToListModal from '@/components/SaveToListModal';
+import { track as trackEvent } from '@/lib/analytics';
 import { ITEM_REQUEST_TIMEOUT_MS, REQUEST_TIMEOUT_MESSAGE } from '@/lib/utils/requestTimeout';
 
 const IMAGE = 'https://store.public.blob.vercel-storage.com/uploads/alice/image-abc.jpg';
@@ -135,6 +137,7 @@ beforeAll(() => {
   vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
 });
 afterAll(() => vi.restoreAllMocks());
+beforeEach(() => vi.mocked(trackEvent).mockReset());
 beforeEach(() => {
   cleanup();
   showToast.mockReset();
@@ -423,6 +426,9 @@ describe('SaveToListModal — the prefilled form', () => {
       sourceItemId: 'item-1',
     });
     expect(showToast).toHaveBeenCalledWith('Saved to Birthday', 'success');
+    // WIS-329: counted once, with nothing about the item or either list.
+    expect(trackEvent).toHaveBeenCalledTimes(1);
+    expect(trackEvent).toHaveBeenCalledWith('save_to_my_list');
     // Through the page's tracker, with a signal to drop it on a timeout, like
     // every other item request on the page.
     expect(trackCalls).toHaveBeenCalledTimes(1);
@@ -498,5 +504,6 @@ describe('SaveToListModal — the prefilled form', () => {
     expect(within(form).getByLabelText(/item name/i)).toHaveValue('Edited');
     expect(within(form).getByRole('button', { name: /^add to list$/i })).toBeEnabled();
     expect(showToast).not.toHaveBeenCalledWith(expect.stringMatching(/^Saved/), 'success');
+    expect(trackEvent).not.toHaveBeenCalled();
   });
 });

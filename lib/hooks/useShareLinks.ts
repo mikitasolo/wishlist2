@@ -1,5 +1,6 @@
 'use client';
 
+import { track } from '@/lib/analytics';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useToast } from '@/components/ToastProvider';
 import type { ShareLinkLevel } from '@/lib/utils/shareLinkFields';
@@ -135,6 +136,7 @@ export function useShareLinks(listId: string | null, enabled: boolean): ShareLin
         }
         const row: ShareLinkRow = result.data;
         setLinks((prev) => [row, ...prev.filter((l) => l._id !== row._id)]);
+        track('list_shared', { method: 'share_link' });
         showToast('Share link created', 'success');
         return row;
       } catch {

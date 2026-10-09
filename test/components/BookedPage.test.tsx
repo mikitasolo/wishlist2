@@ -24,8 +24,10 @@ vi.mock('@/components/AppHeader', () => ({ default: () => null }));
 vi.mock('@/components/AuthButton', () => ({ default: () => null }));
 
 vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }));
+vi.mock('@/lib/analytics', () => ({ track: vi.fn() }));
 
 import BookedPage from '@/app/booked/page';
+import { track } from '@/lib/analytics';
 import type { Occasion } from '@/lib/utils/occasion';
 import { setDiscreetMode } from '@/lib/hooks/useDiscreetMode';
 import { ITEM_REQUEST_TIMEOUT_MS, REQUEST_TIMEOUT_MESSAGE } from '@/lib/utils/requestTimeout';
@@ -2089,5 +2091,44 @@ describe('BookedPage in discreet mode', () => {
     render(<BookedPage />);
     expect(await screen.findByText('Lego set')).toBeInTheDocument();
     expect(screen.queryByText('No spoiler mode is on')).toBeNull();
+  });
+});
+
+// WIS-329: Mark as given and Release are counted once each, and only once the
+// server has taken them; a failure counts nothing.
+describe('BookedPage — analytics', () => {
+  const tracked = vi.mocked(track);
+  beforeEach(() => tracked.mockReset());
+
+  it('counts a mark as given once it has succeeded', async () => {
+    const { answer } = await renderHeld();
+    markGifted('Lego set');
+    expect(tracked).not.toHaveBeenCalled();
+    await answer(markGiftedKey('res-lego'), gifted(legoGift));
+    await waitFor(() => expect(cardName('Lego set')).toBeNull());
+    expect(tracked).toHaveBeenCalledTimes(1);
+    expect(tracked).toHaveBeenCalledWith('mark_given');
+  });
+
+  it('counts a release once it has succeeded', async () => {
+    const { answer } = await renderHeld();
+    release('Lego set');
+    expect(tracked).not.toHaveBeenCalled();
+    await answer(releaseKey('item-lego'), ok);
+    await waitFor(() => expect(cardName('Lego set')).toBeNull());
+    expect(tracked).toHaveBeenCalledTimes(1);
+    expect(tracked).toHaveBeenCalledWith('release', { from: 'reserved_page' });
+  });
+
+  it('counts nothing when either fails', async () => {
+    const { answer } = await renderHeld();
+    markGifted('Lego set');
+    await answer(markGiftedKey('res-lego'), failed('Server error'));
+    await waitFor(() => expect(showToast).toHaveBeenCalledWith('Server error', 'error'));
+    await waitFor(() => expectReservationEnabled('Lego set'));
+    release('Lego set');
+    await answer(releaseKey('item-lego'), failed('Nope'));
+    await waitFor(() => expect(showToast).toHaveBeenCalledWith('Nope', 'error'));
+    expect(tracked).not.toHaveBeenCalled();
   });
 });

@@ -1,5 +1,6 @@
 'use client';
 
+import { track } from '@/lib/analytics';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useToast } from '@/components/ToastProvider';
 import { SHARE_TOKEN_HEADER } from '@/lib/utils/shareLinkFields';
@@ -87,6 +88,7 @@ export function useJoinRequest(
         if (result.success) {
           const next: JoinRequestState = result.data?.requested ? 'requested' : 'none';
           setRead({ key: sentFor, state: next });
+          if (method === 'POST' && next === 'requested') track('join_requested');
           showToast(
             next === 'requested' ? 'Request sent to the owners' : 'Request cancelled',
             'success'

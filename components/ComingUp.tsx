@@ -1,5 +1,6 @@
 'use client';
 
+import { track } from '@/lib/analytics';
 import { useId } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -140,6 +141,7 @@ export default function ComingUp({
                   <Link
                     href={`${listPath(list)}?${LIST_CHIP_PARAM}=available`}
                     aria-label={`Find a gift on ${list.name}`}
+                    onClick={() => track('find_a_gift')}
                     className={buttonClassName({ size: 'sm', shape: 'pill' })}
                   >
                     <Icon name="gift" size={16} />

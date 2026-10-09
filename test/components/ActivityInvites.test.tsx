@@ -21,8 +21,10 @@ vi.mock('@/components/AppHeader', () => ({ default: () => null }));
 vi.mock('@/components/AuthButton', () => ({ default: () => null }));
 
 vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }));
+vi.mock('@/lib/analytics', () => ({ track: vi.fn() }));
 
 import ActivityPage from '@/app/notifications/page';
+import { track } from '@/lib/analytics';
 import type { NotificationView } from '@/lib/utils/notifications';
 import { ITEM_REQUEST_TIMEOUT_MS, REQUEST_TIMEOUT_MESSAGE } from '@/lib/utils/requestTimeout';
 
@@ -352,6 +354,7 @@ describe('Activity, pinned invites — answering an invite', () => {
   const notificationsChanged = vi.fn();
   beforeEach(() => {
     notificationsChanged.mockReset();
+    vi.mocked(track).mockReset();
     window.addEventListener('notifications-changed', notificationsChanged);
   });
   afterEach(() => window.removeEventListener('notifications-changed', notificationsChanged));
@@ -363,6 +366,8 @@ describe('Activity, pinned invites — answering an invite', () => {
     await waitFor(() => expect(screen.queryByText('Birthday')).toBeNull());
     expect(invitesChanged).toHaveBeenCalledTimes(1);
     expect(showToast).toHaveBeenCalledWith('Invitation declined', 'info');
+    // WIS-329: only an accept is counted.
+    expect(track).not.toHaveBeenCalled();
   });
 
   // regression: answering marks the invite's notification read on the server,
@@ -387,6 +392,14 @@ describe('Activity, pinned invites — answering an invite', () => {
     expect(notificationsChanged).not.toHaveBeenCalled();
   });
 
+  it('counts no accept that failed', async () => {
+    mockFetch({ status: 500, body: { success: false, error: 'Failed to update invite' } });
+    await clickOnFirstCard('Accept');
+
+    await waitFor(() => expect(showToast).toHaveBeenCalledWith('Failed to update invite', 'error'));
+    expect(track).not.toHaveBeenCalled();
+  });
+
   it('accepting drops the card and opens the list', async () => {
     mockFetch({
       status: 200,
@@ -401,6 +414,9 @@ describe('Activity, pinned invites — answering an invite', () => {
     expect(screen.queryByText('Birthday')).toBeNull();
     expect(invitesChanged).toHaveBeenCalledTimes(1);
     expect(showToast).toHaveBeenCalledWith('Joined “Birthday”', 'success');
+    // WIS-329: counted once, by role, with nothing about the list.
+    expect(track).toHaveBeenCalledTimes(1);
+    expect(track).toHaveBeenCalledWith('invite_accepted', { role: 'member' });
   });
 });
 

@@ -1,4 +1,5 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { UMAMI_HOST_URL, UMAMI_SCRIPT_URL } from '@/lib/analytics';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
@@ -101,5 +102,54 @@ describe('next.config.js', () => {
       '/users/[username]/opengraph-image',
       '/wishlists/[id]/opengraph-image',
     ]);
+  });
+});
+
+// WIS-329: Umami is allowed by the CSP exactly where the app loads it
+// (getUmamiWebsiteId): on Production with a website id. Anywhere else the
+// policy stays as it was, so nothing could load or post to it.
+describe('next.config.js — the CSP for analytics', () => {
+  const CONFIG = require.resolve('../../next.config.js');
+  const ID = '8f14e45f-ceea-467a-9575-0c3c1a4b2e6d';
+
+  /** next.config.js evaluated afresh under the env stubbed for the test. */
+  async function csp(): Promise<Record<string, string>> {
+    delete require.cache[CONFIG];
+    const fresh = require(CONFIG) as {
+      headers: () => Promise<{ headers: { key: string; value: string }[] }[]>;
+    };
+    const [{ headers }] = await fresh.headers();
+    const value = headers.find((h) => h.key === 'Content-Security-Policy')!.value;
+    return Object.fromEntries(
+      value.split('; ').map((d) => [d.split(' ')[0], d.slice(d.indexOf(' ') + 1)])
+    );
+  }
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    delete require.cache[CONFIG];
+  });
+
+  it('allows Umami’s script and endpoint on Production with a website id', async () => {
+    vi.stubEnv('VERCEL_ENV', 'production');
+    vi.stubEnv('NEXT_PUBLIC_UMAMI_WEBSITE_ID', ID);
+    const policy = await csp();
+    expect(policy['script-src']).toContain(new URL(UMAMI_SCRIPT_URL).origin);
+    expect(policy['connect-src']).toContain(new URL(UMAMI_HOST_URL).origin);
+    // Nothing else of Umami's.
+    expect(policy['img-src']).not.toContain('umami');
+    expect(policy['frame-src']).not.toContain('umami');
+  });
+
+  it.each([
+    ['no website id on Production', 'production', undefined],
+    ['a malformed website id on Production', 'production', 'abc'],
+    ['staging / previews', 'preview', ID],
+    ['local dev, CI and E2E', undefined, ID],
+  ])('allows nothing of Umami’s with %s', async (_label, env, id) => {
+    vi.stubEnv('VERCEL_ENV', env);
+    vi.stubEnv('NEXT_PUBLIC_UMAMI_WEBSITE_ID', id);
+    const policy = await csp();
+    expect(Object.values(policy).join(' ')).not.toContain('umami');
   });
 });

@@ -12,6 +12,7 @@ vi.mock('next-auth/react', () => ({
 }));
 const showToast = vi.fn();
 vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }));
+vi.mock('@/lib/analytics', () => ({ track: vi.fn() }));
 // ImageUpload pulls in react-easy-crop, and its hidden file input would be a
 // Tab stop in jsdom, which applies no CSS; a button stands in for it.
 vi.mock('@/components/ImageUpload', () => ({
@@ -23,6 +24,7 @@ vi.mock('@/components/ImageUpload', () => ({
 }));
 
 import CreateWishlistModal from '@/components/CreateWishlistModal';
+import { track } from '@/lib/analytics';
 
 // useBodyScrollLock restores the scroll position on close; jsdom lacks scrollTo.
 beforeAll(() => {
@@ -357,6 +359,8 @@ describe('CreateWishlistModal — keyboard focus while it creates the wishlist',
     expect(showToast).toHaveBeenCalledWith('Something went wrong', 'error');
     expect(nameField()).toBeEnabled();
     expect(nameField()).toHaveFocus();
+    // WIS-329: a refused create counts nothing.
+    expect(track).not.toHaveBeenCalled();
   });
 
   it('hands focus back to the opener when the wishlist is created', async () => {
@@ -366,6 +370,9 @@ describe('CreateWishlistModal — keyboard focus while it creates the wishlist',
     expect(push).toHaveBeenCalledWith('/wishlists/birthday');
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(button('New wishlist')).toHaveFocus();
+    // WIS-329: counted once, with its visibility and nothing that names it.
+    expect(track).toHaveBeenCalledTimes(1);
+    expect(track).toHaveBeenCalledWith('list_created', { visibility: 'everyone', source: 'new' });
   });
 });
 

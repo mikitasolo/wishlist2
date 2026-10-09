@@ -1,5 +1,6 @@
 'use client';
 
+import { track } from '@/lib/analytics';
 import { useState, useEffect, useCallback, useId } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
@@ -175,6 +176,7 @@ export default function CreateWishlistModal({
 
       outcome = result.success ? 'saved' : 'refused';
       if (result.success) {
+        track('list_created', { visibility: formData.visibility, source: 'new' });
         showToast('Wishlist created successfully', 'success');
         setHasUnsavedChanges(false);
         onClose();

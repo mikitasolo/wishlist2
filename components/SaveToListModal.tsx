@@ -1,5 +1,6 @@
 'use client';
 
+import { track } from '@/lib/analytics';
 import { useCallback, useEffect, useState } from 'react';
 import BaseModal from './BaseModal';
 import AddItemModal, { type NewItemData } from './AddItemModal';
@@ -162,6 +163,7 @@ export default function SaveToListModal({
         showToast(message, 'error');
         throw new Error(message);
       }
+      track('save_to_my_list');
       showToast(`Saved to ${target.name}`, 'success');
       if (result.notice) showToast(result.notice, 'info');
     },

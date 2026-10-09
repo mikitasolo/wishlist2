@@ -1,5 +1,6 @@
 'use client';
 
+import { track } from '@/lib/analytics';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import BaseModal from './BaseModal';
@@ -223,6 +224,7 @@ export default function StartFromListModal({
         return;
       }
       keys.current.reset();
+      track('list_created', { visibility, source: 'copy' });
       setCreated(result.data);
       showToast(
         result.notice ?? `“${result.data.name}” is ready`,
@@ -517,6 +519,7 @@ function PeopleStep({
         next[person.userId] = body?.success
           ? { ok: true }
           : { ok: false, error: body?.error || 'Couldn’t invite them' };
+        if (body?.success) track('invite_sent', { role: roles[person.userId], to: 'person' });
       } catch {
         next[person.userId] = { ok: false, error: 'Couldn’t invite them' };
       }
