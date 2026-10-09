@@ -14,6 +14,7 @@ export const AUTH_ONLY_PATHS = [
   '/booked',
   '/settings',
   '/items',
+  '/items/new',
   '/notifications',
   '/wishlists/mine',
   '/wishlists/shared',
@@ -26,13 +27,29 @@ export function isAuthOnlyPath(pathname: string): boolean {
   return (AUTH_ONLY_PATHS as readonly string[]).includes(pathname);
 }
 
+/** The longest `callbackUrl` the sign-in form sends on: a longer one becomes `/` (`magicLinkRequestSchema`). */
+export const CALLBACK_URL_MAX = 2048;
+
 /**
  * The sign-in page, continuing to `page` once signed in: where a page that
  * needs an account sends a signed-out visitor, so where they were going isn't
  * lost.
+ *
+ * `hash` is the page's own fragment (`location.hash`), kept through the
+ * sign-in: a fragment never reaches the server, so the page that holds it (the
+ * bookmarklet's `/items/new#…`) has to carry it through the client-side
+ * redirect itself. It's only ever appended to `page`, a fixed path from the
+ * list above, so it can't change where the callback points; a fragment that
+ * would make the callback too long for the sign-in form is dropped, and the
+ * page opens without it. `safeCallbackPath` still gates the callback where it's
+ * used.
  */
-export function signInPath(page: AuthOnlyPath): string {
-  return `${SIGN_IN_PATH}?callbackUrl=${encodeURIComponent(page)}`;
+export function signInPath(page: AuthOnlyPath, hash = ''): string {
+  const fragment = hash.length > 1 && hash.startsWith('#') ? hash : '';
+  const callback = `${page}${fragment}`;
+  return `${SIGN_IN_PATH}?callbackUrl=${encodeURIComponent(
+    callback.length <= CALLBACK_URL_MAX ? callback : page
+  )}`;
 }
 
 /**
