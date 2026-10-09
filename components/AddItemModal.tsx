@@ -9,6 +9,7 @@ import { defaultItemCurrency } from '@/lib/utils/currencies';
 import { useViewerLocale } from '@/lib/hooks/useViewerLocale';
 import type { ApiItem } from '@/types/api';
 import type { LinkOption } from '@/components/ItemLinkPicker';
+import type { FreshUploads } from '@/lib/utils/freshUploads';
 
 /** What a copy of an item ("Save to my list") starts from. */
 export type ItemPrefill = Pick<ApiItem, 'name' | 'imageUrl' | 'price' | 'link'>;
@@ -49,6 +50,10 @@ interface AddItemModalProps {
   // The list's items the new one can go with (WIS-29): shows "Goes with".
   // Never for a copy of an item, whose list may be another.
   linkOptions?: readonly LinkOption[];
+  // The form's unsaved uploads, when this caller holds them (see ItemForm).
+  uploads?: FreshUploads;
+  // A photo still being fetched when the form opens (see ItemForm).
+  image?: { pending: boolean; url: string | null };
 }
 
 export default function AddItemModal({
@@ -61,6 +66,8 @@ export default function AddItemModal({
   title = 'Add new item',
   back,
   linkOptions,
+  uploads,
+  image,
 }: AddItemModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const formId = useId();
@@ -177,6 +184,7 @@ export default function AddItemModal({
           <ItemFormFooter
             formId={formId}
             busy={isSubmitting}
+            holdSave={image?.pending}
             saving={isSubmitting}
             onCancel={handleClose}
             submitLabel="Add to list"
@@ -195,6 +203,8 @@ export default function AddItemModal({
           defaultCurrency={defaultCurrency}
           formId={formId}
           linkOptions={linkOptions}
+          uploads={uploads}
+          image={image}
         />
       </BaseModal>
 

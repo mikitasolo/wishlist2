@@ -8,6 +8,8 @@ interface ItemFormFooterProps {
   formId: string;
   /** While the form is saving or its item is being deleted: every button is held. */
   busy: boolean;
+  /** A photo the form is still waiting for: saving is held (Cancel isn't), see `ItemForm`'s `image`. */
+  holdSave?: boolean;
   /** Only a save reads `submittingLabel`; a delete also holds the buttons. */
   saving: boolean;
   onCancel: () => void;
@@ -43,6 +45,7 @@ const BUTTON_CLASS = 'max-sm:flex-1 max-sm:px-3 whitespace-nowrap';
 export default function ItemFormFooter({
   formId,
   busy,
+  holdSave = false,
   saving,
   onCancel,
   submitLabel,
@@ -98,7 +101,7 @@ export default function ItemFormFooter({
           type="button"
           variant="secondary"
           onClick={() => submitItemFormAs(formId, 'draft')}
-          disabled={busy}
+          disabled={busy || holdSave}
           className={BUTTON_CLASS}
         >
           {saving && savingDraft && draftSubmittingLabel ? draftSubmittingLabel : draftLabel}
@@ -107,7 +110,7 @@ export default function ItemFormFooter({
       <Button
         type="submit"
         form={formId}
-        disabled={busy}
+        disabled={busy || holdSave}
         className={`${BUTTON_CLASS} ${saveAsDraft ? 'max-sm:basis-full' : ''}`}
       >
         {saving && !(savingDraft && draftSubmittingLabel) ? submittingLabel : submitLabel}

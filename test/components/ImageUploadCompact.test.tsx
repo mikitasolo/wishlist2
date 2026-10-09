@@ -31,6 +31,17 @@ describe('ImageUpload — compact photo row (the item form)', () => {
     expect(onChange).toHaveBeenCalledWith(null);
   });
 
+  it('shows the uploading state while the caller is busy, and takes no file then', () => {
+    const { container } = render(<ImageUpload compact value={null} onChange={vi.fn()} busy />);
+    expect(screen.getByText('Uploading…')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add photo' })).toBeDisabled();
+    const input = container.querySelector<HTMLInputElement>('input[type="file"]')!;
+    fireEvent.change(input, {
+      target: { files: [new File(['x'], 'gift.png', { type: 'image/png' })] },
+    });
+    expect(screen.queryByTestId('crop')).toBeNull();
+  });
+
   it('opens the crop step for a chosen file', () => {
     const { container } = render(<ImageUpload compact value={null} onChange={vi.fn()} />);
     const input = container.querySelector<HTMLInputElement>('input[type="file"]')!;

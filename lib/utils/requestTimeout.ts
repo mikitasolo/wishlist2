@@ -21,6 +21,16 @@
  */
 export const ITEM_REQUEST_TIMEOUT_MS = 20_000;
 
+/**
+ * How long the add-from-link flow waits for `POST /api/upload/from-url`: 35 s.
+ *
+ * It must stay above that route's `maxDuration` (30 s): the server then always
+ * answers, or is killed, before the browser gives up, so a blob the route
+ * stored always reaches the flow's hand-back (`useFreshUploads`) instead of
+ * being orphaned by a client timeout. Raise it with `maxDuration`.
+ */
+export const REHOST_REQUEST_TIMEOUT_MS = 35_000;
+
 /** The error toast for a request the page gave up on. */
 export const REQUEST_TIMEOUT_MESSAGE = 'The request took too long. Please try again.';
 

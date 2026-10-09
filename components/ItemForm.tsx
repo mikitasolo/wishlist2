@@ -21,6 +21,7 @@ import {
 import { currencySymbol, formatPriceInput, parsePriceInput } from '@/lib/utils/currency';
 import { useViewerLocale } from '@/lib/hooks/useViewerLocale';
 import { useFreshUploads } from '@/lib/hooks/useFreshUploads';
+import type { FreshUploads } from '@/lib/utils/freshUploads';
 import ItemLinkPicker, { type LinkOption } from './ItemLinkPicker';
 
 export { itemToFormData, type ItemFormData } from '@/lib/utils/itemForm';
@@ -85,6 +86,13 @@ interface ItemFormProps {
   // Read once on mount so it never overwrites what the user picked; ignored when
   // initialData is given, which carries its own currency (see itemToFormData).
   defaultCurrency?: string;
+  // The unsaved uploads, when the caller holds them (see `useFreshUploads`).
+  uploads?: FreshUploads;
+  // A photo the caller is still fetching when the form opens (WIS-366): the
+  // photo field shows it uploading, then takes `url` (null: none) as the form's
+  // starting photo, not as an edit. A photo settled before the form opens
+  // comes in through `initialData` instead.
+  image?: { pending: boolean; url: string | null };
   // The form's id, for the buttons of a pinned footer outside it (a
   // `type="submit"` button with `form={formId}`: see ItemFormFooter). One is made
   // up if omitted. The form clears itself after a new item is saved, whether or
@@ -133,6 +141,8 @@ export default function ItemForm({
   defaultCurrency,
   formId: externalFormId,
   linkOptions,
+  uploads: sharedUploads,
+  image,
 }: ItemFormProps) {
   // The blank form a new item starts from — a stable snapshot, so effects can
   // depend on it. It is also the "unsaved changes" baseline, so a prefilled
@@ -177,7 +187,10 @@ export default function ItemForm({
   // Photos uploaded here that no save has taken: one replaced or removed before
   // a save, a late one for an item already saved, and whatever is left when the
   // form goes (the dialog is cancelled or closed) are handed back (WIS-181).
-  const uploads = useFreshUploads();
+  const ownUploads = useFreshUploads();
+  // A caller that outlives the form (the add-from-link flow, whose "Change list"
+  // unmounts it) can hold the uploads itself.
+  const uploads = sharedUploads ?? ownUploads;
   useEffect(() => {
     if (!focusNameNext || submitting) return;
     setFocusNameNext(false);
@@ -186,6 +199,19 @@ export default function ItemForm({
 
   // Track initial data for comparison
   const initialDataRef = useRef<ItemFormData>(initialData || blankFormData);
+
+  // The photo the caller was still fetching when the form opened lands as the
+  // form's starting photo (and baseline), once.
+  const awaitingImage = useRef(image?.pending ?? false);
+  const imagePending = image?.pending ?? false;
+  const imageUrl = image?.url ?? null;
+  useEffect(() => {
+    if (imagePending || !awaitingImage.current) return;
+    awaitingImage.current = false;
+    if (!imageUrl) return;
+    setFormData((f) => ({ ...f, imageUrl }));
+    initialDataRef.current = { ...initialDataRef.current, imageUrl };
+  }, [imagePending, imageUrl]);
 
   // Track the last item ID we initialized from
   // Only update form data on initial load or when switching to a different item
@@ -284,6 +310,12 @@ export default function ItemForm({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    // The photo being fetched is part of the item: a save waits for it (the
+    // footer's buttons are held, and so is Enter in a field).
+    if (imagePending) {
+      delete (e.currentTarget as HTMLFormElement).dataset.status;
+      return;
+    }
     const currentSubmitting =
       externalIsSubmitting !== undefined ? externalIsSubmitting : isSubmitting;
     // The status a footer's Save as draft asked for (see submitItemFormAs),
@@ -505,6 +537,7 @@ export default function ItemForm({
             setFormData((f) => ({ ...f, imageUrl: url ?? '' }));
           }}
           uploads={uploads}
+          busy={imagePending}
           disabled={submitting}
           aspect={1}
         />
