@@ -48,6 +48,8 @@ const ReservationSchema = new Schema(
 // One active reservation per gifter+item.
 ReservationSchema.index({ gifter: 1, item: 1 }, { unique: true });
 ReservationSchema.index({ gifter: 1, createdAt: -1 });
+// WIS-384: the daily gift reminders read a due list's reservations by list.
+ReservationSchema.index({ wishlist: 1, gifter: 1 });
 
 export interface IReservation {
   _id: mongoose.Types.ObjectId;

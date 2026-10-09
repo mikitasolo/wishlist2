@@ -6,11 +6,22 @@ import Notification, { type INotification } from '@/models/Notification';
 import User from '@/models/User';
 import Follow from '@/models/Follow';
 import { pausedInviteWishlistIds } from '@/lib/utils/wishlistInvites';
-import { GROUP_GIFT_NOTIFICATION_TYPES, showsActor } from '@/lib/utils/notifications';
+import {
+  GIFT_REMINDER_NOTIFICATION_TYPES,
+  GROUP_GIFT_NOTIFICATION_TYPES,
+  showsActor,
+} from '@/lib/utils/notifications';
 import { hiddenGroupGiftWishlists } from '@/lib/groupGiftNotifications';
 import { dropHiddenBirthdayReminders } from '@/lib/utils/birthdayReminders';
+import { hiddenGiftReminderWishlists } from '@/lib/utils/giftReminders';
 
 const FEED_LIMIT = 30;
+
+/** The types whose row carries a list's occasion: its kind and day. */
+const OCCASION_KIND_TYPES: ReadonlySet<string> = new Set([
+  'occasion_reminder',
+  ...GIFT_REMINDER_NOTIFICATION_TYPES,
+]);
 
 /**
  * The current user's notifications, less the ones about a paused invite: an
@@ -19,9 +30,10 @@ const FEED_LIMIT = 30;
  * comes back once the list is unarchived. Answered ones ("You joined …") stay.
  */
 async function visibleNotifications(userId: string): Promise<FilterQuery<INotification>> {
-  const [paused, hiddenGifts] = await Promise.all([
+  const [paused, hiddenGifts, hiddenReminders] = await Promise.all([
     pausedInviteWishlistIds(userId),
     hiddenGroupGiftRowWishlists(userId),
+    hiddenGiftReminderWishlists(userId),
   ]);
   const nor: FilterQuery<INotification>[] = [];
   if (paused.length > 0) {
@@ -29,6 +41,14 @@ async function visibleNotifications(userId: string): Promise<FilterQuery<INotifi
   }
   if (hiddenGifts.length > 0) {
     nor.push({ type: { $in: GROUP_GIFT_NOTIFICATION_TYPES }, wishlist: { $in: hiddenGifts } });
+  }
+  // WIS-384: a reminder about what you reserved shows only while you still
+  // hold something on its list as a plain member.
+  if (hiddenReminders.length > 0) {
+    nor.push({
+      type: { $in: GIFT_REMINDER_NOTIFICATION_TYPES },
+      wishlist: { $in: hiddenReminders },
+    });
   }
   return nor.length > 0 ? { user: userId, $nor: nor } : { user: userId };
 }
@@ -159,9 +179,9 @@ export async function GET(request: NextRequest) {
         actorId: actor?.id ?? null,
         actorImage: actor?.image ?? null,
         followingActor: oneFollower && actor ? followed.has(actor.id) : null,
-        occasionKind: n.type === 'occasion_reminder' ? (n.occasionKind ?? null) : null,
+        occasionKind: OCCASION_KIND_TYPES.has(n.type) ? (n.occasionKind ?? null) : null,
         occasionDate:
-          n.type === 'occasion_reminder' || n.type === 'birthday_reminder'
+          OCCASION_KIND_TYPES.has(n.type) || n.type === 'birthday_reminder'
             ? (n.occasionDate ?? null)
             : null,
         linkLabel: n.type === 'link_join' ? (n.linkLabel ?? null) : null,

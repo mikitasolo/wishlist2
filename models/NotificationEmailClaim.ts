@@ -20,6 +20,9 @@ import mongoose, { Schema, Model } from 'mongoose';
  * - **Someone joining a group gift you're in** (WIS-364): at most one email
  *   per contributor and group gift a day (`kind: 'group_gift_join'`, `key`:
  *   the gift's id), claimed again once its `sentAt` is a day old.
+ * - **A reminder about what you've reserved on a list** (WIS-384), before its
+ *   occasion (`kind: 'gift_reminder'`) or after it (`kind: 'gift_nudge'`):
+ *   one email per person, list and occurrence (`key`: the occurrence's date).
  * - **The nudge before your own birthday** (WIS-344): one email per person a
  *   year (`kind: 'birthday_nudge'`, no list, `key`: the birthday's year), from
  *   the daily birthday cron.
@@ -39,6 +42,8 @@ const CLAIM_KINDS = [
   'birthday_reminder',
   'birthday_nudge',
   'group_gift_join',
+  'gift_reminder',
+  'gift_nudge',
 ] as const;
 
 /** The kinds about a person, not a list: their claims have no `wishlist`. */

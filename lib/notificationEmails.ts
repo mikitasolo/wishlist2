@@ -57,6 +57,8 @@ export const EMAIL_LIMITERS: Record<EmailedNotificationType, EmailLimiterName> =
   group_gift_cancelled: 'emailGroupGift',
   group_gift_converted: 'emailGroupGift',
   group_gift_given: 'emailGroupGift',
+  gift_reminder: 'emailGiftReminder',
+  gift_nudge: 'emailGiftReminder',
 };
 
 /**
@@ -82,13 +84,18 @@ export const PROPOSAL_EMAIL_WINDOW_MS = 24 * 60 * 60 * 1000;
 /** The types emailed at most once per list per owner a day, by their claim. */
 const DAILY_PER_LIST: ReadonlySet<EmailedNotificationType> = new Set(['proposal', 'link_join']);
 
-/** The types `createNotifications` emails about (occasion and birthday reminders go through the cron). */
+/**
+ * The types `createNotifications` emails about (occasion, birthday and gift
+ * reminders go through their crons).
+ */
 export function emailedByNotifications(type: NotificationType): type is EmailedNotificationType {
   return (
     type !== 'follow' &&
     type !== 'wishlist_invite' &&
     type !== 'occasion_reminder' &&
-    type !== 'birthday_reminder'
+    type !== 'birthday_reminder' &&
+    type !== 'gift_reminder' &&
+    type !== 'gift_nudge'
   );
 }
 
@@ -303,7 +310,26 @@ export function claimProposalEmail(
  * once, ever (until the row expires, long after the occurrence's reminder
  * window has passed).
  */
-export async function claimOccasionReminderEmail(
+export function claimOccasionReminderEmail(
+  userId: Id,
+  wishlistId: Id,
+  occasionDate: string,
+  now: Date = new Date()
+): Promise<Claim | null> {
+  return claimOccurrenceEmail('occasion_reminder', userId, wishlistId, occasionDate, now);
+}
+
+/** The kinds of email claimed once per person, list and occurrence. */
+export type OccurrenceEmailKind = 'occasion_reminder' | 'gift_reminder' | 'gift_nudge';
+
+/**
+ * Claim an email of `kind` about one occurrence of a list's occasion for one
+ * person (an occasion reminder; WIS-384's reminders about what they've
+ * reserved): taken once, ever, by one caller only (until the row expires, long
+ * after the occurrence's window has passed).
+ */
+export async function claimOccurrenceEmail(
+  kind: OccurrenceEmailKind,
   userId: Id,
   wishlistId: Id,
   occasionDate: string,
@@ -312,7 +338,7 @@ export async function claimOccasionReminderEmail(
   try {
     const row = await NotificationEmailClaim.create({
       user: userId,
-      kind: 'occasion_reminder',
+      kind,
       wishlist: wishlistId,
       key: occasionDate,
       sentAt: now,
@@ -320,7 +346,7 @@ export async function claimOccasionReminderEmail(
     return claimOf(row._id, now);
   } catch (err) {
     if (!isDuplicateKeyError(err)) {
-      console.error('Failed to claim an occasion reminder email:', errorKind(err));
+      console.error(`Failed to claim a ${kind} email:`, errorKind(err));
     }
     return null;
   }

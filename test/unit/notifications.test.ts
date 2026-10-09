@@ -6,6 +6,7 @@ import {
   notificationLink,
   notificationIcon,
   showsActor,
+  hiddenByDiscreetMode,
   isGroupFollow,
   followBackTarget,
   withInviteAnswers,
@@ -690,6 +691,55 @@ describe('occasion reminder', () => {
     expect(notificationLink(reminder())).toBe('/wishlists/anna-30');
     expect(notificationIcon(reminder())).toBe('calendar');
     expect(showsActor('occasion_reminder')).toBe(false);
+  });
+});
+
+describe('reminders about what you reserved (WIS-384)', () => {
+  const reminder = (over: Partial<NotificationView> = {}) =>
+    make({
+      type: 'gift_reminder',
+      wishlistName: 'Anna’s 30th',
+      wishlistSlug: 'anna-30',
+      wishlistId: 'w1',
+      occasionKind: 'birthday',
+      occasionDate: '2026-10-17',
+      ...over,
+    });
+
+  it('before: the kind, the day and the list, no item and no count', () => {
+    const parts = notificationParts(reminder());
+    expect(parts).toHaveLength(2);
+    expect(parts[0]).toMatch(/^Birthday on .*17.*: don’t forget what you reserved on $/);
+    expect(parts[1]).toEqual({ listName: 'Anna’s 30th' });
+    expect(notificationText(reminder({ occasionKind: null, occasionDate: null }))).toBe(
+      'An occasion coming up: don’t forget what you reserved on Anna’s 30th'
+    );
+  });
+
+  it('after: asks whether it was given, pointing at Mark as given', () => {
+    expect(notificationText(reminder({ type: 'gift_nudge' }))).toBe(
+      'Did you give what you reserved on Anna’s 30th? Mark it as given on Reserved'
+    );
+  });
+
+  it('both link to Reserved, never the list, and show no actor', () => {
+    for (const type of ['gift_reminder', 'gift_nudge'] as const) {
+      expect(notificationLink(reminder({ type }))).toBe('/booked');
+      expect(showsActor(type)).toBe(false);
+    }
+    expect(notificationIcon(reminder())).toBe('gift');
+    expect(notificationIcon(reminder({ type: 'gift_nudge' }))).toBe('check-circle');
+  });
+
+  it('No spoiler mode hides what either says, as it does a group gift’s', () => {
+    for (const type of ['gift_reminder', 'gift_nudge', 'group_gift_funded'] as const) {
+      expect(hiddenByDiscreetMode(type)).toBe(true);
+    }
+    expect(hiddenByDiscreetMode('occasion_reminder')).toBe(false);
+    for (const type of ['gift_reminder', 'gift_nudge'] as const) {
+      const text = notificationParts(reminder({ type }), { discreet: true }).join('');
+      expect(text).toBe('A gift reminder, hidden by No spoiler mode');
+    }
   });
 });
 

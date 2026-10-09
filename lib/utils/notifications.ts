@@ -30,6 +30,31 @@ export function isGroupGiftNotification(type: string): type is GroupGiftNotifica
   return (GROUP_GIFT_NOTIFICATION_TYPES as readonly string[]).includes(type);
 }
 
+/**
+ * The reminders about what you've reserved (WIS-384): a week before a list's
+ * occasion (`gift_reminder`) and a few days after it, while something is still
+ * not marked as given (`gift_nudge`). To the holder only, a plain member of
+ * the list, re-checked when sent and whenever the feed is read
+ * (`lib/utils/giftReminders.ts`).
+ */
+export const GIFT_REMINDER_NOTIFICATION_TYPES = ['gift_reminder', 'gift_nudge'] as const;
+
+export type GiftReminderNotificationType = (typeof GIFT_REMINDER_NOTIFICATION_TYPES)[number];
+
+/** Whether `type` is a reminder about your reservations (`GIFT_REMINDER_NOTIFICATION_TYPES`). */
+export function isGiftReminderNotification(type: string): type is GiftReminderNotificationType {
+  return (GIFT_REMINDER_NOTIFICATION_TYPES as readonly string[]).includes(type);
+}
+
+/**
+ * Whether No spoiler mode (WIS-46) hides what a row of `type` says, its face
+ * and its link: every row about a reservation (a group gift's, a reminder
+ * about what you've reserved).
+ */
+export function hiddenByDiscreetMode(type: string): boolean {
+  return isGroupGiftNotification(type) || isGiftReminderNotification(type);
+}
+
 // The one list of notification types: the model's enum is built from it too.
 export const NOTIFICATION_TYPES = [
   'follow',
@@ -47,6 +72,8 @@ export const NOTIFICATION_TYPES = [
   'asked_list_made',
   // WIS-364: to a group gift's contributors only (`lib/groupGiftNotifications.ts`).
   ...GROUP_GIFT_NOTIFICATION_TYPES,
+  // WIS-384: to whoever holds a reservation on the list only.
+  ...GIFT_REMINDER_NOTIFICATION_TYPES,
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
@@ -96,6 +123,8 @@ export interface NotificationView {
   followingActor?: boolean | null;
   // An `occasion_reminder`: the occasion's kind and the day it falls on (its
   // next occurrence, a real `YYYY-MM-DD`, never a yearly one's stored year).
+  // A `gift_reminder` / `gift_nudge` carries both too: the occurrence it's
+  // about (the coming one, or the one just passed).
   // A `birthday_reminder` carries the day too (the birthday's next one), and
   // no kind. Null on every other type. Optional, like `count`.
   occasionKind?: OccasionKind | null;
@@ -238,6 +267,10 @@ export function notificationParts(
   if (discreet && isGroupGiftNotification(n.type)) {
     return ['A group gift update, hidden by No spoiler mode'];
   }
+  // Likewise a reminder about what you've reserved (WIS-384).
+  if (discreet && isGiftReminderNotification(n.type)) {
+    return ['A gift reminder, hidden by No spoiler mode'];
+  }
   switch (n.type) {
     case 'follow':
       return [followText(n)];
@@ -298,6 +331,12 @@ export function notificationParts(
       return [...capitalized(groupGiftParts(n)), ' is now the organizer’s own reservation'];
     case 'group_gift_given':
       return [...capitalized(groupGiftParts(n)), ' was marked as given'];
+    // To whoever holds a reservation on the list only (WIS-384): no item, no
+    // count, nothing about anyone else's.
+    case 'gift_reminder':
+      return giftReminderParts(n);
+    case 'gift_nudge':
+      return ['Did you give what you reserved on ', list(n), '? Mark it as given on Reserved'];
     default:
       return ['You have a new notification'];
   }
@@ -329,6 +368,22 @@ function occasionReminderParts(n: NotificationView): NotificationPart[] {
   const day =
     n.occasionDate && isCalendarDate(n.occasionDate) ? formatOccasionDay(n.occasionDate) : null;
   return day ? [`${kind} coming up on ${day}: `, list(n)] : [`${kind} coming up: `, list(n)];
+}
+
+/**
+ * "Birthday on Sat 17 Oct: don’t forget what you reserved on <list>": the
+ * occasion's kind and day, as the occasion reminder says them, and the list.
+ * No item, no count (which would go stale as the row sits in the feed).
+ */
+function giftReminderParts(n: NotificationView): NotificationPart[] {
+  const kind =
+    n.occasionKind && (OCCASION_KINDS as readonly string[]).includes(n.occasionKind)
+      ? OCCASION_REMINDER_KIND[n.occasionKind]
+      : 'An occasion';
+  const day =
+    n.occasionDate && isCalendarDate(n.occasionDate) ? formatOccasionDay(n.occasionDate) : null;
+  const when = day ? `${kind} on ${day}` : `${kind} coming up`;
+  return [`${when}: don’t forget what you reserved on `, list(n)];
 }
 
 /**
@@ -401,6 +456,10 @@ export function notificationLink(
       return listLink(n);
     case 'removed_from_wishlist':
       return null;
+    // What you've reserved, where it's given or released (WIS-384).
+    case 'gift_reminder':
+    case 'gift_nudge':
+      return '/booked';
     // Their profile, not a list (an ask's Create a list is its own button).
     case 'birthday_reminder':
     case 'wishlist_ask':
@@ -453,6 +512,10 @@ export function notificationIcon(n: NotificationView): IconName {
     case 'group_gift_cancelled':
     case 'group_gift_converted':
       return 'gift';
+    case 'gift_reminder':
+      return 'gift';
+    case 'gift_nudge':
+      return 'check-circle';
     default:
       return 'bell';
   }

@@ -19,7 +19,7 @@ describe('the settings table (operator decision, 2026-10-05)', () => {
   });
 
   it('keeps an in-app switch on by default for every event', () => {
-    expect(eventsOn('inApp')).toHaveLength(18);
+    expect(eventsOn('inApp')).toHaveLength(20);
     for (const event of eventsOn('inApp')) expect(notificationDefault(event, 'inApp')).toBe(true);
   });
 
@@ -29,6 +29,9 @@ describe('the settings table (operator decision, 2026-10-05)', () => {
     ).toEqual({
       wishlist_invite: true,
       occasion_reminder: true,
+      // WIS-384: off unless turned on (orchestrator default, for the operator to confirm).
+      gift_reminder: false,
+      gift_nudge: false,
       // WIS-345: the operator's decision, off unless turned on.
       birthday_reminder: false,
       // WIS-344: once a year, three weeks before your own birthday.

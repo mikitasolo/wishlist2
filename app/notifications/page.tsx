@@ -38,7 +38,7 @@ import {
   notificationIcon,
   notificationLink,
   notificationParts,
-  isGroupGiftNotification,
+  hiddenByDiscreetMode,
   showsActor,
   withInviteAnswers,
 } from '@/lib/utils/notifications';
@@ -85,8 +85,9 @@ function relativeTime(iso: string): string {
  */
 function RowLeading({ n }: { n: NotificationView }) {
   const { discreet } = useDiscreetMode();
-  // No spoiler mode: a group gift row shows no face either (WIS-364).
-  const hidden = discreet && isGroupGiftNotification(n.type);
+  // No spoiler mode: a group gift row shows no face either (WIS-364), nor a
+  // reminder about what you reserved (WIS-384).
+  const hidden = discreet && hiddenByDiscreetMode(n.type);
   if (showsActor(n.type) && n.actorUsername && !hidden) {
     return <Avatar name={n.actorUsername} src={n.actorImage} size="md" />;
   }
@@ -294,9 +295,10 @@ export default function ActivityPage() {
     // Several followers: the list of them, in place (or, with no account id to
     // read it by, on the profile).
     const group = isGroupFollow(n) && viewerId;
-    // No spoiler mode: a group gift row doesn't point at its list either.
+    // No spoiler mode: a row about a reservation (a group gift, a reminder of
+    // what you reserved) doesn’t point anywhere either.
     const href =
-      group || (discreet && isGroupGiftNotification(n.type))
+      group || (discreet && hiddenByDiscreetMode(n.type))
         ? null
         : notificationLink(n, viewerUsername);
     let target: ReactNode;

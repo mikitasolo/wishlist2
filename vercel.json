@@ -20,6 +20,10 @@
     {
       "path": "/api/cron/birthdays",
       "schedule": "15 6 * * *"
+    },
+    {
+      "path": "/api/cron/gift-reminders",
+      "schedule": "30 6 * * *"
     }
   ]
 }

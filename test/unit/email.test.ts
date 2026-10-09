@@ -564,6 +564,8 @@ describe('notification emails (WIS-321)', () => {
     ['proposal_approved', 'Your proposed item was accepted'],
     ['occasion_reminder', 'A birthday is coming up on a wishlist you’re on'],
     ['birthday_reminder', '@ivan’s birthday is coming up'],
+    ['gift_reminder', 'A reminder about what you’ve reserved'],
+    ['gift_nudge', 'Did you give what you reserved?'],
   ] as const)('%s: a subject with no free text', async (type, subject) => {
     const message = await send({
       type,
@@ -652,6 +654,34 @@ describe('notification emails (WIS-321)', () => {
     expect(message.html).not.toMatch(/reserv|book/i);
   });
 
+  // WIS-384: to the holder only; says what the row says, links to Reserved.
+  it('a gift reminder names the kind, the day and the list (escaped), no item, and links to Reserved', async () => {
+    const message = await send({
+      type: 'gift_reminder',
+      wishlistName: MARKUP,
+      itemName: 'Secret camera',
+      occasionKind: 'wedding',
+      occasionDate: '2026-10-12',
+    });
+    expect(message.html).toMatch(
+      new RegExp(
+        `Wedding on [^<]+: don’t forget what you reserved on <strong>${escapeRegExp(MARKUP_HTML)}</strong>\\.`
+      )
+    );
+    expect(message.html).not.toContain(MARKUP);
+    expect(message.html).not.toContain('Secret camera');
+    expect(message.text).not.toContain('Secret camera');
+    expect(message.html).toContain('href="http://localhost:3000/booked"');
+  });
+
+  it('a gift nudge asks whether it was given and links to Reserved', async () => {
+    const message = await send({ type: 'gift_nudge', occasionDate: '2026-10-02' });
+    expect(message.html).toContain(
+      'Did you give what you reserved on <strong>Birthday</strong>? Mark it as given on Reserved.'
+    );
+    expect(message.html).toContain('href="http://localhost:3000/booked"');
+  });
+
   it('a friend’s birthday reminder names them and the day, links to their profile, and names no list', async () => {
     const message = await send({
       type: 'birthday_reminder',
@@ -678,6 +708,8 @@ describe('notification emails (WIS-321)', () => {
     ['proposal_approved', 'proposal_approved'],
     ['occasion_reminder', 'occasion_reminder'],
     ['birthday_reminder', 'birthday_reminder'],
+    ['gift_reminder', 'gift_reminder'],
+    ['gift_nudge', 'gift_nudge'],
   ] as const)('%s unsubscribes from %s emails only', async (type, event) => {
     const message = await send({ type });
     const oneClick = new URL((message.headers?.['List-Unsubscribe'] ?? '').replace(/^<|>$/g, ''));
@@ -815,3 +847,7 @@ describe('group gift emails (WIS-364)', () => {
     );
   });
 });
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}

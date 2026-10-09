@@ -47,6 +47,22 @@ export const NOTIFICATION_EVENTS = {
     label: 'Occasion reminders',
     description: 'A week before the occasion on a list you’re a member of.',
   },
+  // WIS-384: to whoever holds a reservation on the list, before and after its
+  // occasion. Off by email unless turned on (orchestrator default, for the
+  // operator to confirm).
+  gift_reminder: {
+    types: ['gift_reminder'],
+    defaults: { inApp: true, email: false },
+    label: 'Gifts you’ve reserved',
+    description: 'A week before the occasion on a list where you’ve reserved something.',
+  },
+  gift_nudge: {
+    types: ['gift_nudge'],
+    defaults: { inApp: true, email: false },
+    label: 'Gifts to mark as given',
+    description:
+      'A few days after the occasion, if something you reserved isn’t marked as given yet.',
+  },
   // Off by email unless turned on (the operator's decision, WIS-345).
   birthday_reminder: {
     types: ['birthday_reminder'],
