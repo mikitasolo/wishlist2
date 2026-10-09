@@ -30,6 +30,7 @@ import { admitListViewer, linkModeAnswer } from '@/lib/utils/shareLinkAccess';
 import { SHARE_TOKEN_HEADER } from '@/lib/utils/shareLinkFields';
 import { deleteOwnedWishlist } from '@/lib/utils/wishlistDeletion';
 import { enforce, userKey } from '@/lib/rateLimit';
+import { endGroupGiftsOnArchivedList } from '@/lib/utils/groupGifts';
 
 /**
  * The settings a list's share card depends on: its name, banner and owner, and
@@ -264,6 +265,19 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     // that it has landed (lib/og/purge.ts).
     if (SHARE_CARD_FIELDS.some((field) => field in updateData)) {
       await purgeShareCards({ wishlistIds: [id] });
+    }
+
+    // Archiving ends every live group gift on the list and releases its items
+    // (WIS-363), as an owner's draft ends an item's: contributors keep their
+    // Reservations, with their shares. After the archive has landed, and
+    // re-checked against it; best-effort, like the draft path, since the
+    // owner's change stands either way and the answer doesn't change.
+    if (updateData.archived === true) {
+      try {
+        await endGroupGiftsOnArchivedList(id);
+      } catch (error) {
+        console.error('Ending the group gifts of an archived list failed:', errorKind(error));
+      }
     }
 
     // At most one of the caller's lists is pinned at a time, so unpin whichever

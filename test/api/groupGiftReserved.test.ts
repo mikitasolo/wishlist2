@@ -25,6 +25,7 @@ import { GET as getReservations } from '@/app/api/users/me/reservations/route';
 import { GET as getSummary } from '@/app/api/users/me/reservations/summary/route';
 import { POST as giveReservation } from '@/app/api/reservations/[id]/gift/route';
 import { DELETE as dismissReservation } from '@/app/api/reservations/[id]/route';
+import { PATCH as patchWishlist } from '@/app/api/wishlists/[id]/route';
 import { undoBookingUnlessMember } from '@/lib/utils/lateBooking';
 import WishlistMember from '@/models/WishlistMember';
 import { GET as getWishlists } from '@/app/api/wishlists/route';
@@ -236,7 +237,7 @@ describe('Mark as given from the Reserved page', () => {
     expect((await res.json()).data.itemPrice).toEqual({ value: 2000, currency: 'USD' });
   });
 
-  it('a frozen card on an archived list can’t be logged or dismissed while you’re still in the gift', async () => {
+  it('a gift left live on an archived list (its ending failed) can’t be logged or dismissed alone', async () => {
     await aliceAndBob();
     await Wishlist.updateOne({ _id: w.wishlistId }, { archived: true });
     const [card] = (await reservedBy(w.bob)).cards;
@@ -358,5 +359,87 @@ describe('"N reserved by you" on the dashboard', () => {
     await a.cancel(w.alice);
     expect(await GroupGift.exists({ active: true })).toBeNull();
     expect(await reservedByYou(w.bob)).toBe(0);
+  });
+});
+
+describe('archiving a list ends its group gifts (operator decision 2026-10-09)', () => {
+  function archive(archived: boolean) {
+    as(w.owner);
+    return patchWishlist(json(`/api/wishlists/${w.wishlistId}`, 'PATCH', { archived }), {
+      params: Promise.resolve({ id: w.wishlistId }),
+    });
+  }
+
+  it('ends the gift and releases the item; contributors keep their shares', async () => {
+    await aliceAndBob();
+    const res = await archive(true);
+    expect(res.status).toBe(200);
+
+    const gift = await GroupGift.findOne({ item: w.itemId }).lean();
+    expect(gift?.active).toBeUndefined();
+    expect(gift?.status).toBe('cancelled');
+    expect(gift?.endedAs).toBe('list-archived');
+    const item = await Item.findById(w.itemId).lean();
+    expect(item?.status).toBe('available');
+    expect(item?.bookedBy).toBeNull();
+    expect(item?.groupGift).toBeUndefined();
+
+    const pledges = (await Reservation.find().lean()).map((r) => [
+      r.gifter.toString(),
+      r.pledge?.value,
+    ]);
+    expect(pledges).toEqual(
+      expect.arrayContaining([
+        [w.alice, 3000],
+        [w.bob, 2000],
+      ])
+    );
+  });
+
+  it('each contributor can log their frozen card at their pledge, or dismiss it', async () => {
+    await aliceAndBob();
+    await archive(true);
+    const [bobCard] = (await reservedBy(w.bob)).cards;
+    expect(bobCard.listArchived).toBe(true);
+    expect(bobCard.groupGift).toBeNull();
+    const given = await give(w.bob, bobCard._id);
+    expect(given.status).toBe(201);
+    expect((await given.json()).data.itemPrice).toEqual({ value: 2000, currency: 'USD' });
+
+    const [aliceCard] = (await reservedBy(w.alice)).cards;
+    expect((await dismiss(w.alice, aliceCard._id)).status).toBe(200);
+    expect(await Reservation.countDocuments()).toBe(0);
+  });
+
+  it('the owner’s archive answer is the same with or without a gift on the list', async () => {
+    const plain = await (await archive(true)).json();
+    await archive(false);
+    await aliceAndBob();
+    const withGift = await (await archive(true)).json();
+    const strip = (d: Record<string, unknown>) => ({ ...d, updatedAt: undefined });
+    expect(strip(withGift.data)).toEqual(strip(plain.data));
+    for (const leak of ['groupGift', 'pledge', 'alice', 'bob', w.alice, w.bob]) {
+      expect(JSON.stringify(withGift)).not.toContain(leak);
+    }
+  });
+
+  it('is idempotent, and unarchiving revives nothing', async () => {
+    await aliceAndBob();
+    await archive(true);
+    const ended = await GroupGift.findOne({ item: w.itemId }).lean();
+    expect((await archive(true)).status).toBe(200);
+    expect((await GroupGift.findOne({ item: w.itemId }).lean())?.rev).toBe(ended?.rev);
+    expect((await archive(false)).status).toBe(200);
+    expect(await GroupGift.exists({ active: true })).toBeNull();
+    expect((await Item.findById(w.itemId).lean())?.status).toBe('available');
+    // A new booking of the item after the unarchive stands on its own.
+    expect((await a.patchItem(w.carol, { status: 'booked' })).status).toBe(200);
+  });
+
+  it('ends nothing when the list is no longer archived as it runs', async () => {
+    await aliceAndBob();
+    const { endGroupGiftsOnArchivedList } = await import('@/lib/utils/groupGifts');
+    expect(await endGroupGiftsOnArchivedList(w.wishlistId)).toBe(0);
+    expect(await GroupGift.exists({ active: true })).toBeTruthy();
   });
 });

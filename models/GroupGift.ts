@@ -55,6 +55,9 @@ export type GroupGiftStatus = (typeof GROUP_GIFT_STATUSES)[number];
  *  - item-ended → an owner moved the item to draft, marked it received or
  *                 deleted it, or deleted the list (reservations kept, as for a
  *                 solo booking).
+ *  - list-archived → an owner archived the list (WIS-363): item released,
+ *                 reservations kept, as for item-ended; unarchiving doesn't
+ *                 bring it back.
  */
 export const GROUP_GIFT_ENDINGS = [
   'given',
@@ -62,6 +65,7 @@ export const GROUP_GIFT_ENDINGS = [
   'cancelled',
   'emptied',
   'item-ended',
+  'list-archived',
 ] as const;
 export type GroupGiftEnding = (typeof GROUP_GIFT_ENDINGS)[number];
 
