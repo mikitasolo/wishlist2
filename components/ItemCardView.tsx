@@ -33,6 +33,8 @@ interface ItemCardViewProps {
   dimmed?: boolean;
   /** Outlined: the item a link to it pointed at. */
   highlighted?: boolean;
+  /** Under the body, above the "Goes with" chips: a member's group gift progress (WIS-362). */
+  groupGift?: ReactNode;
   /** Under the body, above the actions: the "Goes with" chips (WIS-29). */
   related?: ReactNode;
   /** The row under the body (one line of actions, or the list's name). */
@@ -63,6 +65,7 @@ export default function ItemCardView({
   originalPriceText,
   dimmed,
   highlighted,
+  groupGift,
   related,
   actions,
   titleCoversCard,
@@ -159,6 +162,7 @@ export default function ItemCardView({
         </div>
 
         {/* Outside the body, so its chips aren't under the title's ::after. */}
+        {groupGift && <div className="mb-2 sm:mb-3">{groupGift}</div>}
         {related && <div className="mb-2 sm:mb-3">{related}</div>}
 
         {actions}
