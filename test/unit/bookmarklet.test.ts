@@ -95,7 +95,15 @@ describe('bookmarklet build', () => {
   });
 
   it('refuses an origin that is not plain http(s)', () => {
-    for (const bad of ['', 'null', 'javascript:alert(1)', 'https://a.test/x', 'https://a.test"']) {
+    for (const bad of [
+      '',
+      'null',
+      'javascript:alert(1)',
+      'https://a.test/x',
+      'https://a.test"',
+      'https://a.`b.test',
+      'https://a${x}.test',
+    ]) {
       expect(bookmarkletHref(bad)).toBeNull();
     }
   });

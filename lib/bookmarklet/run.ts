@@ -4,8 +4,8 @@ import { buildProductFragment } from '@/lib/utils/productFragment';
 /**
  * What the bookmarklet does (WIS-367), as plain functions so a unit test can
  * drive them; `main.ts` is the thin entry `scripts/build-bookmarklet.mjs`
- * bundles around them. Keep the imports here import-free modules: the whole
- * thing ships as one self-contained, frozen snippet in someone's bookmarks bar.
+ * bundles around them. Everything imported here ends up in the frozen bookmark, so
+ * keep these modules free of server-only or heavy imports (the size test is the backstop).
  */
 
 function linkOnlyFragment(href: string): string {

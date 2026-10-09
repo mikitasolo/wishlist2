@@ -35,6 +35,7 @@ export default function BookmarkletCard() {
     >
       <a
         ref={link}
+        href="#"
         draggable
         className={buttonClassName({ variant: 'secondary' })}
         onClick={(e) => {

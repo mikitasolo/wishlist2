@@ -10,6 +10,6 @@ export const BOOKMARKLET_MAX_BYTES = 15_000;
  * reads it back exactly. Null for an origin that isn't plain http(s).
  */
 export function bookmarkletHref(origin: string): string | null {
-  if (!/^https?:\/\/[^\s/?#'"\\]+$/.test(origin)) return null;
+  if (!/^https?:\/\/[^\s/?#'"`$\\]+$/.test(origin)) return null;
   return `javascript:${encodeURIComponent(BOOKMARKLET_CODE.split(APP_ORIGIN_PLACEHOLDER).join(origin))}`;
 }
