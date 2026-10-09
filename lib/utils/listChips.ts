@@ -68,7 +68,7 @@ export function listChips(role: ViewerRole): readonly ListChip[] {
 }
 
 /** What a list item needs to be sorted into a chip. */
-export type ChipItem = Pick<ApiItem, 'status' | 'bookedBy' | 'proposedBy'>;
+export type ChipItem = Pick<ApiItem, 'status' | 'bookedBy' | 'proposedBy' | 'groupGift'>;
 
 /**
  * How an item looks to this viewer, or null when it isn't theirs to see: a
@@ -81,7 +81,10 @@ function viewOf(item: ChipItem, role: ViewerRole, viewerId: string | null): Disp
     if (item.status === 'draft') return null;
     if (item.status === 'proposed' && !(viewerId && item.proposedBy === viewerId)) return null;
   }
-  return displayStatus(item.status, role, !!viewerId && item.bookedBy === viewerId);
+  // A contributor to a group gift (WIS-362) holds the item as much as the organizer
+  // does, though only the organizer is `bookedBy`.
+  const holds = !!viewerId && item.bookedBy === viewerId;
+  return displayStatus(item.status, role, holds || item.groupGift?.contributing === true);
 }
 
 /** The chip, other than All, an item seen as `view` is under, if any. */
@@ -152,6 +155,8 @@ const DIMMED: ReadonlySet<DisplayStatus> = new Set<DisplayStatus>(['bookedByOthe
  */
 export function isDimmedInAll(item: ChipItem, role: ViewerRole, viewerId: string | null): boolean {
   const view = viewOf(item, role, viewerId);
+  // A group gift someone else started is still there to join: not dimmed.
+  if (view === 'bookedByOthers' && item.groupGift) return false;
   return view !== null && DIMMED.has(view);
 }
 

@@ -32,6 +32,9 @@ import {
   type CardActionContext,
 } from '@/lib/utils/itemCardActions';
 import { SM_UP_QUERY, useMediaQuery } from '@/lib/hooks/useMediaQuery';
+import GroupGiftProgress from '@/components/GroupGiftProgress';
+import GroupGiftDialog, { type GroupGiftDialogResult } from '@/components/GroupGiftDialog';
+import type { GroupGiftAction } from '@/lib/utils/groupGiftClient';
 
 // The card's actions are one row, the same height on every card: one labelled
 // primary action, then the product link as a square icon button (unless the
@@ -142,10 +145,53 @@ interface WishlistItemProps {
   related?: readonly ItemRef[];
   /** Goes to a partner on the page (scrolls to it and highlights it). */
   onShowItem?: (itemId: string) => void;
+  /**
+   * Group gifts (WIS-362): sends one action on the item (start, join, change
+   * pledge, leave, cancel, convert, give). Given only where a member may use
+   * them; resolves once it settles, and the page has said if it failed.
+   */
+  onGroupGift?: (id: string, action: GroupGiftAction) => Promise<unknown>;
 }
 
 /** How many "Goes with" chips the card shows before "+N more". */
 export const CARD_RELATED_LIMIT = 2;
+
+/**
+ * What each way of ending or leaving a group gift asks (WIS-362), worded to
+ * match what the server does to the others' reservations (`organizerAction`):
+ * cancel and convert release them, give moves them into gift history.
+ */
+const GIFT_CONFIRM = {
+  give: {
+    title: 'Mark as given?',
+    message:
+      'The group gift ends. Everyone in it gets this gift in their history with their pledge, and their reservations move there.',
+    confirm: 'Mark as given',
+  },
+  convert: {
+    title: 'Reserve it just for you?',
+    message:
+      'The group gift ends and the reservation is yours alone. Everyone else’s reservation of it is released, and their pledges are dropped.',
+    confirm: 'Reserve for me',
+  },
+  cancel: {
+    title: 'Cancel this group gift?',
+    message:
+      'The item is available again. Everyone’s reservation of it is released, yours too, and the pledges are dropped.',
+    confirm: 'Cancel group gift',
+  },
+  leave: { title: 'Leave this group gift?', message: '', confirm: 'Leave' },
+} as const;
+
+/** Leaving: your pledge and reservation go; an organizer's role is handed on. */
+function leaveMessage(organizer: boolean, people: number): string {
+  if (people <= 1) {
+    return 'You’re the only one in it, so leaving ends the group gift and the item is available again.';
+  }
+  return organizer
+    ? 'Your pledge and reservation are removed. The person who joined first takes over as organizer.'
+    : 'Your pledge and reservation are removed. The item stays reserved by the others.';
+}
 
 const NO_RELATED: readonly ItemRef[] = [];
 
@@ -166,6 +212,7 @@ function WishlistItem({
   highlighted = false,
   related = NO_RELATED,
   onShowItem,
+  onGroupGift,
 }: WishlistItemProps) {
   const { data: session } = useSession();
   // Discreet mode (WIS-46): a member's card is drawn as plain available, with
@@ -194,6 +241,11 @@ function WishlistItem({
   const [showReleaseConfirm, setShowReleaseConfirm] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  // A group gift's pledge dialog, and the confirmation of what ends or leaves it.
+  const [giftDialog, setGiftDialog] = useState<'start' | 'join' | 'pledge' | null>(null);
+  const [giftConfirm, setGiftConfirm] = useState<'give' | 'convert' | 'cancel' | 'leave' | null>(
+    null
+  );
 
   const isBookedByCurrentUser = useMemo(
     () => item.bookedBy && session?.user?.id && item.bookedBy === session.user.id,
@@ -215,10 +267,18 @@ function WishlistItem({
     [item.status, item.proposedBy, session?.user?.id]
   );
 
+  // The group gift on the item, as this member may see it (never an owner's, and
+  // not drawn in discreet mode: `withoutReservation` has taken it off `item`).
+  const gift = !isOwner && isMember ? item.groupGift : undefined;
+  const inGroup = gift?.contributing === true;
+  const giftRole: 'organizer' | 'contributor' | null =
+    gift?.contributing === true ? (gift.organizer ? 'organizer' : 'contributor') : null;
+  const holdsItem = !!isBookedByCurrentUser || inGroup;
+
   // How the item's status looks to this viewer. For owners, a booked item is
   // available (bookings are hidden), so they never get a booked badge or border.
   const status = statusMeta(item.status, isOwner ? 'owner' : isMember ? 'member' : 'visitor', {
-    bookedByViewer: !!isBookedByCurrentUser,
+    bookedByViewer: holdsItem,
   });
 
   // The cover links to the product page.
@@ -293,6 +353,29 @@ function WishlistItem({
     if (isOwner || isUpdating || item.status !== 'booked' || !isBookedByCurrentUser) return;
     applyStatus('available');
   }, [isOwner, isUpdating, item.status, isBookedByCurrentUser, applyStatus]);
+
+  // A group gift action, held like the card's other updates while it runs.
+  const runGroupGift = useCallback(
+    async (action: GroupGiftAction) => {
+      // Not held on `isUpdating`: the dialog or confirmation that asked has closed,
+      // so a dropped call would lose what was typed with no word.
+      if (!onGroupGift) return;
+      setIsUpdating(true);
+      try {
+        await onGroupGift(item._id, action);
+      } finally {
+        setIsUpdating(false);
+      }
+    },
+    [onGroupGift, item._id]
+  );
+  const handleGiftDialog = (result: GroupGiftDialogResult) => {
+    if (giftDialog === 'start') {
+      runGroupGift({ type: 'start', pledged: result.pledged, target: result.target });
+    } else if (giftDialog) {
+      runGroupGift({ type: giftDialog, pledged: result.pledged });
+    }
+  };
 
   const handleToggleCompleted = useCallback(() => {
     if (!isOwner || isUpdating) return;
@@ -378,6 +461,25 @@ function WishlistItem({
       onClick: handleToggleBooked,
       changesStatus: true,
     };
+  } else if (isAuthenticated && isMember && item.status === 'booked' && gift && onGroupGift) {
+    // A group gift (WIS-362): join it, or change your pledge. Leaving and the
+    // organizer's endings are in the menu.
+    primary = inGroup
+      ? {
+          label: 'Change pledge',
+          shortLabel: 'Pledge',
+          ariaLabel: 'Change your pledge',
+          icon: 'edit',
+          tone: 'soft',
+          onClick: () => setGiftDialog('pledge'),
+        }
+      : {
+          label: 'Join',
+          ariaLabel: 'Join this group gift',
+          icon: 'users',
+          tone: 'book',
+          onClick: () => setGiftDialog('join'),
+        };
   } else if (isAuthenticated && isMember && item.status === 'booked') {
     // Owners never get here: for them a booked item is just available.
     primary = isGivenByCurrentUser
@@ -423,6 +525,8 @@ function WishlistItem({
     canSave: !!onSaveToList,
     canDelete: !!onDelete,
     canAddLink: !!onAddLink,
+    canStartGroupGift: !!onGroupGift && !hideBooking && item.status === 'available',
+    groupGiftRole: onGroupGift ? giftRole : null,
   };
   // No link and nothing else to do with it: a signed-in non-member saves the
   // item instead, as the primary.
@@ -474,6 +578,43 @@ function WishlistItem({
           icon: 'undo',
           onSelect: () => setShowReleaseConfirm(true),
           disabled: isUpdating,
+        };
+      case 'startGroupGift':
+        return {
+          label: 'Start a group gift',
+          icon: 'users',
+          onSelect: () => setGiftDialog('start'),
+          disabled: isUpdating,
+        };
+      case 'giveGroupGift':
+        return {
+          label: 'Mark as given',
+          icon: 'check-circle',
+          onSelect: () => setGiftConfirm('give'),
+          disabled: isUpdating,
+        };
+      case 'convertGroupGift':
+        return {
+          label: 'Reserve it just for me',
+          icon: 'gift',
+          onSelect: () => setGiftConfirm('convert'),
+          disabled: isUpdating,
+        };
+      case 'leaveGroupGift':
+        return {
+          label: 'Leave group gift',
+          icon: 'logout',
+          onSelect: () => setGiftConfirm('leave'),
+          disabled: isUpdating,
+        };
+      case 'cancelGroupGift':
+        return {
+          label: 'Cancel group gift',
+          icon: 'close',
+          onSelect: () => setGiftConfirm('cancel'),
+          disabled: isUpdating,
+          separated: true,
+          danger: true,
         };
       case 'saveToList':
         return {
@@ -655,6 +796,7 @@ function WishlistItem({
       priceText={priceText}
       originalPriceText={originalPriceText}
       onCoverClick={() => setSheetOpen(true)}
+      groupGift={gift && <GroupGiftProgress gift={gift} locale={locale} />}
       related={
         related.length > 0 ? (
           <RelatedItemChips
@@ -666,7 +808,7 @@ function WishlistItem({
         ) : undefined
       }
       statusBadge={
-        isBookedByCurrentUser && !isOwner && item.status === 'booked' ? (
+        holdsItem && !isOwner && item.status === 'booked' ? (
           // Your own reservation's badge leads to Reserved (WIS-260).
           <Link
             href={RESERVED_PATH}
@@ -707,6 +849,7 @@ function WishlistItem({
           price={priceText}
           originalPrice={originalPriceText}
           actions={sheetActions}
+          groupGift={gift && <GroupGiftProgress gift={gift} locale={locale} showPeople />}
           related={related}
           onShowItem={
             onShowItem &&
@@ -721,9 +864,56 @@ function WishlistItem({
       {/* The confirmations are portalled to <body>, as the sheet is, so one
           asked from the sheet opens over it whatever the card's own stacking
           (a dimmed card's opacity would otherwise trap it under the sheet). */}
-      {(showCompleteConfirm || showToDraftConfirm || showDeleteConfirm || showReleaseConfirm) &&
+      {giftDialog && (
+        <GroupGiftDialog
+          mode={giftDialog}
+          itemName={item.name}
+          price={item.price}
+          // A pledge change knows the gift's currency; a join only the item's
+          // (a member outside the gift isn't told its target).
+          currency={gift?.contributing ? gift.target.currency : undefined}
+          pledged={
+            giftDialog === 'pledge' && gift?.contributing
+              ? gift.contributors.find((c) => c.you)?.pledged
+              : undefined
+          }
+          onSubmit={handleGiftDialog}
+          onClose={() => setGiftDialog(null)}
+        />
+      )}
+
+      {(showCompleteConfirm ||
+        showToDraftConfirm ||
+        showDeleteConfirm ||
+        showReleaseConfirm ||
+        giftConfirm) &&
         createPortal(
           <>
+            {giftConfirm && (
+              <ConfirmDialog
+                isOpen
+                title={GIFT_CONFIRM[giftConfirm].title}
+                message={
+                  giftConfirm === 'leave'
+                    ? leaveMessage(
+                        giftRole === 'organizer',
+                        gift?.contributing ? gift.contributors.length : 0
+                      )
+                    : GIFT_CONFIRM[giftConfirm].message
+                }
+                confirmText={GIFT_CONFIRM[giftConfirm].confirm}
+                cancelText="Cancel"
+                type={giftConfirm === 'cancel' ? 'danger' : 'warning'}
+                icon={giftConfirm === 'cancel' ? 'close' : undefined}
+                onConfirm={() => {
+                  const type = giftConfirm;
+                  setGiftConfirm(null);
+                  runGroupGift({ type });
+                }}
+                onCancel={() => setGiftConfirm(null)}
+              />
+            )}
+
             {showCompleteConfirm && (
               <ConfirmDialog
                 isOpen

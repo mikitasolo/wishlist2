@@ -147,6 +147,13 @@ import {
   proposalReviewState,
 } from '@/lib/utils/proposalReview';
 import { useFreshUploads } from '@/lib/hooks/useFreshUploads';
+import { useGroupGiftRequest } from '@/lib/hooks/useGroupGiftRequest';
+import {
+  applyGroupGiftAction,
+  withServerGroupGift,
+  type GroupGiftAction,
+} from '@/lib/utils/groupGiftClient';
+import { GROUP_GIFT_TOASTS } from '@/lib/utils/groupGiftCopy';
 
 type PageLoad = 'loading' | 'ready' | 'unavailable' | 'failed';
 
@@ -1894,6 +1901,53 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
     viewItems,
     JSON.stringify([wishlistId, viewerRole, activeChip, sortBy, searchQuery, budgetLimit])
   );
+  // A member's group gift actions (WIS-362): shown at once, merged from the
+  // server's answer, undone on a failure like any item update. A retry of a
+  // start or ending whose answer was lost sends the same Idempotency-Key.
+  const requestGroupGift = useGroupGiftRequest(
+    useCallback((message: string) => showToast(message, 'error'), [showToast])
+  );
+  // One key set per item, so another item's success doesn't drop the key a retry needs.
+  const [groupGiftKeys] = useState(
+    () => new Map<string, ReturnType<typeof createSubmissionKeys>>()
+  );
+  const viewerUserId = session?.user?.id;
+  const handleGroupGift = useCallback(
+    async (id: string, action: GroupGiftAction) => {
+      if (!viewerUserId) return null;
+      pinItem(id);
+      const keys = groupGiftKeys.get(id) ?? createSubmissionKeys();
+      groupGiftKeys.set(id, keys);
+      const key = keys.keyFor(action);
+      const updated = await updateItemOptimistically({
+        id,
+        apply: (item) => applyGroupGiftAction(item, action, viewerUserId),
+        request: async () => {
+          const answer = await requestGroupGift(id, action, key);
+          return answer && withServerGroupGift(answer);
+        },
+        setItems,
+        mutations,
+        reconcile: () => fetchItems(true),
+      });
+      if (updated) {
+        groupGiftKeys.delete(id);
+        showToast(GROUP_GIFT_TOASTS[action.type], 'success');
+      }
+      return updated;
+    },
+    [
+      viewerUserId,
+      pinItem,
+      groupGiftKeys,
+      requestGroupGift,
+      setItems,
+      mutations,
+      fetchItems,
+      showToast,
+    ]
+  );
+
   const handleStickyCardUpdate = useCallback(
     (id: string, updates: Partial<ApiItem>) => {
       if (updates.status !== undefined) pinItem(id);
@@ -2391,6 +2445,9 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
                         highlighted={item._id === highlightedItemId}
                         related={relatedById.get(item._id)}
                         onShowItem={showItem}
+                        onGroupGift={
+                          isMember && !isOwner && !linkToken ? handleGroupGift : undefined
+                        }
                       />
                     ))}
                   </div>

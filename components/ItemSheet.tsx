@@ -33,6 +33,7 @@ export default function ItemSheet({
   actions,
   related = [],
   onShowItem,
+  groupGift,
 }: {
   item: ApiItem;
   isOpen: boolean;
@@ -47,6 +48,8 @@ export default function ItemSheet({
   /** "Goes with" (WIS-29): every partner the card was given, each going to it. */
   related?: readonly ItemRef[];
   onShowItem?: (itemId: string) => void;
+  /** A member's group gift on the item (WIS-362), with its contributors. */
+  groupGift?: ReactNode;
 }) {
   const titleId = useId();
   const domain = linkDomain(item.link);
@@ -89,6 +92,8 @@ export default function ItemSheet({
             {originalPrice && <p className="text-xs text-muted-foreground">{originalPrice}</p>}
           </div>
         )}
+
+        {groupGift}
 
         {item.notes && (
           <p className="whitespace-pre-wrap break-words text-body text-foreground">{item.notes}</p>

@@ -20,6 +20,12 @@ export interface CardActionContext {
   canSave: boolean;
   canDelete: boolean;
   canAddLink: boolean;
+  /**
+   * Group gifts (WIS-362), for a member's card: they may start one on this
+   * available item; or, on an item with a live one, their part in it.
+   */
+  canStartGroupGift?: boolean;
+  groupGiftRole?: 'organizer' | 'contributor' | null;
   /** Save to my list is already the row's primary (so the menu doesn't repeat it). */
   primaryIsSave?: boolean;
 }
@@ -30,6 +36,11 @@ export type CardMenuAction =
   | 'editDraft'
   | 'mostWanted'
   | 'releaseGiven'
+  | 'startGroupGift'
+  | 'giveGroupGift'
+  | 'convertGroupGift'
+  | 'leaveGroupGift'
+  | 'cancelGroupGift'
   | 'saveToList'
   | 'decline'
   | 'delete';
@@ -48,6 +59,13 @@ export function cardMenuActions(c: CardActionContext): CardMenuAction[] {
   if (c.isOwner && draft && c.canEdit) out.push('editDraft');
   if (c.isOwner && !proposed) out.push('mostWanted');
   if (c.isMember && c.isGivenByViewer) out.push('releaseGiven');
+  if (c.isMember && !c.isOwner && c.canStartGroupGift) out.push('startGroupGift');
+  if (c.isMember && !c.isOwner && c.groupGiftRole) {
+    // The organizer's own: end it one of three ways. Anyone in it may leave.
+    if (c.groupGiftRole === 'organizer') out.push('giveGroupGift', 'convertGroupGift');
+    out.push('leaveGroupGift');
+    if (c.groupGiftRole === 'organizer') out.push('cancelGroupGift');
+  }
   if (c.canSave && !c.primaryIsSave) out.push('saveToList');
   if (c.isOwner && c.canDelete) out.push(proposed ? 'decline' : 'delete');
   return out;
