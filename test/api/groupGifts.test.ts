@@ -254,7 +254,11 @@ describe('PUT/DELETE /api/items/[id]/group-gift/me — join, change pledge, leav
     await a.pledge(w.bob, 2000);
     const res = await a.leaveGift(w.bob);
     expect(res.status).toBe(200);
-    expect((await res.json()).data.groupGift).toEqual({ contributing: false, percentFunded: 30 });
+    expect((await res.json()).data.groupGift).toEqual({
+      contributing: false,
+      percentFunded: 30,
+      target: { currency: 'USD' },
+    });
     expect(await reservationsOf()).toEqual([w.alice]);
     expect((await liveGift(w.itemId))?.organizer.toString()).toBe(w.alice);
   });
@@ -456,7 +460,11 @@ describe('owners and everyone off the list never see a group gift', () => {
   it('a member not in it sees only how far it is funded', async () => {
     const [item] = (await (await a.readItems(w.carol)).json()).data;
     expect(item.status).toBe('booked');
-    expect(item.groupGift).toEqual({ contributing: false, percentFunded: 100 });
+    expect(item.groupGift).toEqual({
+      contributing: false,
+      percentFunded: 100,
+      target: { currency: 'USD' },
+    });
     const raw = JSON.stringify(item);
     for (const leak of [w.alice, w.bob, 'alice', 'bob', 'pledged', 'contributors']) {
       expect(raw).not.toContain(leak);

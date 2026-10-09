@@ -451,7 +451,7 @@ type ReservedItem = Pick<IItem, '_id' | 'name' | 'imageUrl' | 'price'>;
 /** What a contributor's Reservation write replaced: an earlier booking's, kept on purpose. */
 export type PreviousReservation = Pick<
   IReservation,
-  'wishlist' | 'owner' | 'itemName' | 'itemImage' | 'itemPrice' | 'wishlistName'
+  'wishlist' | 'owner' | 'itemName' | 'itemImage' | 'itemPrice' | 'wishlistName' | 'pledge'
 > | null;
 
 /**
@@ -464,9 +464,31 @@ export type PreviousReservation = Pick<
 export async function writeContributorReservation(
   userId: string,
   wishlist: ReservationWishlist,
-  item: ReservedItem
+  item: ReservedItem,
+  pledge: { value: number; currency: string } | null = null
 ): Promise<PreviousReservation> {
-  return writeBookingReservation(userId, wishlist, item);
+  return writeBookingReservation(userId, wishlist, item, pledge);
+}
+
+/**
+ * Bring a contributor's Reservation's `pledge` (their share, which Mark as
+ * given on their Booked page logs, WIS-363) in step with the live gift, after a
+ * write to their pledge. Read back from the gift rather than taken from the
+ * request, so of two changes racing, the one landing last writes what the gift
+ * holds. Only while they're in the live gift: a Reservation outliving their
+ * place keeps the share it had.
+ */
+export async function syncContributorPledge(itemId: Id, userId: string): Promise<void> {
+  const uid = oid(userId);
+  const gift = await GroupGift.findOne({ item: itemId, active: true, 'contributors.user': uid })
+    .select('item target contributors')
+    .lean();
+  const mine = gift?.contributors.find((c) => c.user.equals(uid));
+  if (!gift || !mine) return;
+  await Reservation.updateOne(
+    { gifter: uid, item: gift.item },
+    { $set: { pledge: { value: mine.pledged, currency: gift.target.currency } } }
+  );
 }
 
 /**
@@ -484,9 +506,10 @@ export async function undoContributorReservation(
 ): Promise<void> {
   if (previous && restore) {
     const { wishlist, owner, itemName, itemImage, itemPrice, wishlistName } = previous;
+    const pledge = previous.pledge ?? null;
     await Reservation.updateOne(
       { gifter: userId, item: itemId },
-      { $set: { wishlist, owner, itemName, itemImage, itemPrice, wishlistName } }
+      { $set: { wishlist, owner, itemName, itemImage, itemPrice, wishlistName, pledge } }
     );
   } else {
     await deleteReservations({ gifter: userId, item: itemId });
@@ -518,6 +541,7 @@ export async function endContributorReservation(
   try {
     if (await holdsItem(userId, item._id)) {
       const previous = await writeContributorReservation(userId, wishlist, item);
+      await syncContributorPledge(item._id, userId);
       await settleContributorReservation(userId, item, previous);
     }
   } catch (err) {
@@ -656,4 +680,17 @@ async function summarize(
     );
   }
   return summaries;
+}
+
+/**
+ * As `readGroupGiftSummaries`, for a read where a missing summary would say the
+ * wrong thing rather than less (a contributor's Booked page, WIS-363, where a
+ * gift's item not booked by them would read as released): a failed read
+ * throws, for the caller to fail as a whole.
+ */
+export function readGroupGiftSummariesOrThrow(
+  viewerId: string,
+  items: ReadonlyArray<Pick<IItem, '_id' | 'status' | 'groupGift'>>
+): Promise<Map<string, GroupGiftSummary>> {
+  return summarize(viewerId, items);
 }

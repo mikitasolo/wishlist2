@@ -6,6 +6,8 @@ import {
 } from '@/lib/utils/reservationWishlists';
 import { isHttpUrl } from '@/lib/utils/itemFields';
 import type { ReservationStatusInfo } from '@/lib/utils/reservations';
+import { readGroupGiftSummariesOrThrow } from '@/lib/utils/groupGifts';
+import type { ContributingGroupGift } from '@/lib/utils/groupGiftSummary';
 
 /** What a reservation records of where it was made: its item and its list. */
 interface ReservationRef {
@@ -25,6 +27,14 @@ export interface ReservationLiveState extends ReservationStatusInfo {
    */
   itemLink: string | null;
   itemNotes: string | null;
+  /**
+   * The live group gift the gifter is in on this item (WIS-361/363): its
+   * target, progress and contributors, as their own read of the list shows it.
+   * Only while it's still theirs on a list they may open, like `itemLink`;
+   * otherwise `null`, and a reservation they still hold for a gift they're no
+   * longer in (or on a list they can't open) says nothing of it.
+   */
+  groupGift: ContributingGroupGift | null;
 }
 
 /**
@@ -46,6 +56,12 @@ export interface ReservationLiveState extends ReservationStatusInfo {
  * it was made private, a friendship ended, it was deleted: WIS-295). Nothing
  * of what its owners have done to the item since reaches the gifter, so its
  * `itemStatus` and `stillReserved` are `null`.
+ *
+ * A group gift's item is booked by its organizer alone, so it's still reserved
+ * by each of its contributors too, while they're in the live gift (WIS-363).
+ * Its summary is read only for items on lists the gifter may open, and a failed
+ * read fails the whole read: without it a contributor's card would read as
+ * released.
  */
 export async function readReservationLiveState(
   gifterId: string,
@@ -55,7 +71,7 @@ export async function readReservationLiveState(
     reservations.length === 0
       ? []
       : Item.find({ _id: { $in: reservations.map((r) => r.item) } })
-          .select('status bookedBy link notes')
+          .select('status bookedBy link notes groupGift')
           .lean(),
     readReservationWishlists(
       gifterId,
@@ -63,6 +79,18 @@ export async function readReservationLiveState(
     ),
   ]);
   const itemMap = new Map(items.map((i) => [i._id.toString(), i]));
+  // Only items reserved on a list open to the gifter: a frozen card says
+  // nothing live.
+  const onOpenLists = new Set(
+    reservations.flatMap((r) => {
+      const entry = wishlists.get(r.wishlist.toString());
+      return entry && !entry.archived ? [r.item.toString()] : [];
+    })
+  );
+  const giftSummaries = await readGroupGiftSummariesOrThrow(
+    gifterId,
+    items.filter((i) => i.groupGift && onOpenLists.has(i._id.toString()))
+  );
 
   return (r) => {
     const it = itemMap.get(r.item.toString());
@@ -72,8 +100,12 @@ export async function readReservationLiveState(
     // Frozen once the list isn't open to the gifter, for whatever reason
     // (WIS-124, WIS-295): nothing of what its owners have done to the item
     // since reaches them.
+    const summary = wishlist && it ? giftSummaries.get(it._id.toString()) : undefined;
+    const groupGift = summary?.contributing ? summary : null;
     const stillReserved = wishlist
-      ? !!it && it.status === 'booked' && it.bookedBy?.toString() === gifterId
+      ? !!it &&
+        it.status === 'booked' &&
+        (groupGift !== null || (!it.groupGift && it.bookedBy?.toString() === gifterId))
       : null;
     // Live details only for a card that's still active: theirs, on a list they can open.
     const live = stillReserved ? it : null;
@@ -89,6 +121,7 @@ export async function readReservationLiveState(
       wishlist,
       itemLink: live?.link && isHttpUrl(live.link) ? live.link : null,
       itemNotes: live?.notes?.trim() ? live.notes : null,
+      groupGift: stillReserved ? groupGift : null,
     };
   };
 }

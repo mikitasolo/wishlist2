@@ -21,6 +21,7 @@ import {
   readGroupGiftSummaries,
 } from '@/lib/utils/groupGifts';
 import GroupGift from '@/models/GroupGift';
+import Reservation from '@/models/Reservation';
 import { deleteReservations } from '@/lib/utils/reservationSnapshots';
 import {
   IDEMPOTENCY_HEADER,
@@ -191,6 +192,8 @@ export async function organizerAction(
   } else if (endedAs === 'converted') {
     const others = contributors.filter((u) => !u.equals(userId));
     if (others.length) await deleteReservations({ item: item._id, gifter: { $in: others } });
+    // The organizer's now a solo booking of the whole item: no share left on it.
+    await Reservation.updateOne({ gifter: userId, item: item._id }, { $set: { pledge: null } });
   } else {
     await logGivenGroupGift(ended, wishlist, item.name);
   }

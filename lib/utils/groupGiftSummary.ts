@@ -7,8 +7,9 @@
  *  - A contributor sees the target, every contributor's display name
  *    (`publicDisplayName`) and pledge, and which of them is the organizer and
  *    which is them. Never anyone's user id.
- *  - Any other member sees only how far it's funded, so the card can read
- *    "Group gift · N% funded · Join". No names, amounts or count.
+ *  - Any other member sees only how far it's funded, and the target's currency
+ *    (so Join asks for a pledge in it), so the card can read "Group gift · N%
+ *    funded · Join". No names, amounts or count.
  */
 
 /** The most people one group gift can have. */
@@ -41,7 +42,12 @@ export type GroupGiftSummary =
   | {
       contributing: false;
       percentFunded: number;
+      /** The currency a pledge is made in. Never an amount. */
+      target: { currency: string };
     };
+
+/** A live group gift as one of its contributors sees it. */
+export type ContributingGroupGift = Extract<GroupGiftSummary, { contributing: true }>;
 
 /** Whether pledges of `total` cents fund a target of `target` cents. */
 export function isFunded(total: number, target: number): boolean {
@@ -73,7 +79,11 @@ export function summarizeGroupGift(
   const total = gift.contributors.reduce((sum, c) => sum + c.pledged, 0);
   const percent = percentFunded(total, gift.target.value);
   if (!gift.contributors.some((c) => c.user === viewerId)) {
-    return { contributing: false, percentFunded: percent };
+    return {
+      contributing: false,
+      percentFunded: percent,
+      target: { currency: gift.target.currency },
+    };
   }
   return {
     contributing: true,

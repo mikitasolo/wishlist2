@@ -7,6 +7,7 @@ import {
   joinGroupGift,
   liveGiftOf,
   settleContributorReservation,
+  syncContributorPledge,
   undoContributorReservation,
   withdrawFromGift,
   writeContributorReservation,
@@ -44,6 +45,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     if (gift.contributors.some((c) => c.user.toString() === userId)) {
       if (!(await changePledge(gift._id, userId, pledged))) return giftError(GROUP_GIFT_ENDED, 409);
+      await syncContributorPledge(item._id, userId);
       await notifyGroupGiftFunded(gift._id, userId);
       return giftItemAnswer(caller);
     }
@@ -54,6 +56,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     if (joined === 'already') {
       // Their join from another tab landed first: this one sets the pledge.
       if (!(await changePledge(gift._id, userId, pledged))) return giftError(GROUP_GIFT_ENDED, 409);
+      await syncContributorPledge(item._id, userId);
       await notifyGroupGiftFunded(gift._id, userId);
       return giftItemAnswer(caller);
     }
@@ -62,7 +65,12 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     // join landing after they left, were removed, became an owner or the list
     // was archived is taken back; the role change's own withdrawal covers one
     // that landed before it.
-    const previous = await writeContributorReservation(userId, wishlist, item);
+    // Their Reservation carries their share, which Mark as given on their
+    // Booked page logs instead of the item's price (WIS-363).
+    const previous = await writeContributorReservation(userId, wishlist, item, {
+      value: pledged,
+      currency: gift.target.currency,
+    });
     const lost = await lostMemberReason(wishlist._id, userId);
     if (lost) {
       await withdrawFromGift(gift._id, userId);
@@ -75,6 +83,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       await undoContributorReservation(userId, item._id, previous, { restore: true });
       return giftError(GROUP_GIFT_ENDED, 409);
     }
+    // A pledge change from another tab may have landed before the write.
+    await syncContributorPledge(item._id, userId);
     await settleContributorReservation(userId, item, previous);
     // WIS-364: only once the join stands.
     await Promise.all([

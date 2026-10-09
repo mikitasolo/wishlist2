@@ -99,16 +99,21 @@ export async function bookingWasReleased(
  * rebooking replaces the one they had, and the document as it was is returned
  * (or null), for `settleBookingReservation` to free the snapshot it held. The
  * two are separate steps so that a check on the booking can run between them.
+ *
+ * `pledge` is a group gift contributor's share (WIS-363); a solo booking sets
+ * none, so one replacing an earlier contribution's Reservation doesn't keep
+ * that share.
  */
 export async function writeBookingReservation(
   gifter: string,
   wishlist: BookingWishlist,
-  item: BookedItem
+  item: BookedItem,
+  pledge: { value: number; currency: string } | null = null
 ) {
   // Awaited as is (`lean` as an option, not chained), so a race test can hold it.
   return Reservation.findOneAndUpdate(
     { gifter, item: item._id },
-    { $set: reservationFields(wishlist, item) },
+    { $set: { ...reservationFields(wishlist, item), pledge } },
     // The document as it was, so a rebooking can free the snapshot it replaces.
     { upsert: true, new: false, lean: true }
   );

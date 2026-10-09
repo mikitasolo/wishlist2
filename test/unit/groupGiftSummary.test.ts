@@ -37,10 +37,12 @@ describe('summarizeGroupGift', () => {
     ['b', 'ben'],
   ]);
 
-  it('a member who isn’t in it gets only the percent funded', () => {
+  it('a member who isn’t in it gets only the percent funded and the currency to pledge in', () => {
     expect(summarizeGroupGift(gift, 'c', names)).toEqual({
       contributing: false,
       percentFunded: 80,
+      // The currency only: never the target's amount.
+      target: { currency: 'USD' },
     });
   });
 

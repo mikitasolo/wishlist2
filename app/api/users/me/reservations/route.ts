@@ -38,6 +38,11 @@ import { frozenImage } from '@/lib/utils/blob';
 // and offers Dismiss, which leaves the item as it is anyway, out of their
 // reach. The dashboard's "N reservations changed" (`./summary`) counts those
 // cards, from the same live state (`readReservationLiveState`).
+//
+// A group gift (WIS-363): its item is booked by the organizer alone, yet every
+// contributor in the live gift still holds it, so their card stays active and
+// carries the gift (`groupGift`: target, progress, every contributor's display
+// name and pledge) and their own share (`pledge`), which Mark as given logs.
 export async function GET() {
   try {
     const session = await auth();
@@ -69,8 +74,16 @@ export async function GET() {
     const usernames = new Map(owners.map((u) => [u._id.toString(), u.username]));
 
     const data = reservations.map((r, i) => {
-      const { wishlist, itemStatus, stillReserved, listOpen, listArchived, itemLink, itemNotes } =
-        states[i];
+      const {
+        wishlist,
+        itemStatus,
+        stillReserved,
+        listOpen,
+        listArchived,
+        itemLink,
+        itemNotes,
+        groupGift,
+      } = states[i];
       return {
         _id: r._id.toString(),
         // The gifter's own record of which item they reserved: what Release sends
@@ -79,6 +92,9 @@ export async function GET() {
         itemName: r.itemName,
         itemImage: listOpen ? (r.itemImage ?? null) : frozenImage(r.itemImage),
         itemPrice: r.itemPrice ?? null,
+        // Their own share of a group gift (WIS-363), as their Reservation
+        // records it: what Mark as given logs. `null` for a solo booking.
+        pledge: r.pledge ?? null,
         wishlistName: r.wishlistName,
         wishlistId: r.wishlist.toString(),
         wishlistSlug: wishlist?.slug ?? null,
@@ -90,6 +106,11 @@ export async function GET() {
         // list they may open (see `readReservationLiveState`).
         itemLink,
         itemNotes,
+        // The live group gift they're in on this item, while it's still theirs
+        // on a list they may open (see `readReservationLiveState`): `null`
+        // otherwise. Only ever a gift they're in, so other contributors' names
+        // and pledges reach only them.
+        groupGift,
         itemStatus,
         stillReserved,
         listOpen,
