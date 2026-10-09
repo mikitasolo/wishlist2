@@ -184,6 +184,7 @@ export default function AddItemModal({
           <ItemFormFooter
             formId={formId}
             busy={isSubmitting}
+            holdSave={image?.pending}
             saving={isSubmitting}
             onCancel={handleClose}
             submitLabel="Add to list"

@@ -248,8 +248,10 @@ describe('AddFromLinkFlow image re-hosting (WIS-366)', () => {
     await waitFor(() =>
       expect(within(form).getByTestId('image-upload')).toHaveAttribute('data-busy', 'false')
     );
-    expect(within(form).getByTestId('image-upload')).toHaveTextContent(
-      'https://cdn.example.com/mug.jpg'
+    await waitFor(() =>
+      expect(within(form).getByTestId('image-upload')).toHaveTextContent(
+        'https://cdn.example.com/mug.jpg'
+      )
     );
   });
 
@@ -302,5 +304,34 @@ describe('AddFromLinkFlow image re-hosting (WIS-366)', () => {
     unmount();
     d.resolve({ success: true, url: BLOB });
     await waitFor(() => expect(calls(fetchMock, 'DELETE', '/api/upload')).toHaveLength(1));
+  });
+
+  // regression: a save pressed while the photo was still being fetched went out
+  // with no photo, and the blob that landed later was handed back.
+  it('holds both save buttons until the photo has settled, then saves it', async () => {
+    const d = deferred<{ success: boolean; url?: string }>();
+    const fetchMock = stubFetch(OWNED, undefined, () => d.promise);
+    render(<AddFromLinkFlow product={PRODUCT} userCurrency="USD" />);
+
+    const form = await pick('Birthday');
+    const add = within(form).getByRole('button', { name: /^add to list$/i });
+    const draft = within(form).getByRole('button', { name: /^save as draft$/i });
+    expect(add).toBeDisabled();
+    expect(draft).toBeDisabled();
+    // Enter in a field is held too.
+    fireEvent.submit(
+      within(form)
+        .getByLabelText(/item name/i)
+        .closest('form')!
+    );
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/items'))).toBe(false);
+
+    d.resolve({ success: true, url: BLOB });
+    await waitFor(() => expect(within(form).getByTestId('image-upload')).toHaveTextContent(BLOB));
+    expect(add).toBeEnabled();
+    fireEvent.click(add);
+    await waitFor(() => expect(push).toHaveBeenCalled());
+    const post = fetchMock.mock.calls.find(([url]) => String(url).includes('/items'))!;
+    expect(JSON.parse(String(post[1]?.body)).imageUrl).toBe(BLOB);
   });
 });

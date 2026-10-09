@@ -310,6 +310,12 @@ export default function ItemForm({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    // The photo being fetched is part of the item: a save waits for it (the
+    // footer's buttons are held, and so is Enter in a field).
+    if (imagePending) {
+      delete (e.currentTarget as HTMLFormElement).dataset.status;
+      return;
+    }
     const currentSubmitting =
       externalIsSubmitting !== undefined ? externalIsSubmitting : isSubmitting;
     // The status a footer's Save as draft asked for (see submitItemFormAs),
