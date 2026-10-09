@@ -41,7 +41,9 @@ export const CALLBACK_URL_MAX = 2048;
  * redirect itself. It's only ever appended to `page`, a fixed path from the
  * list above, so it can't change where the callback points; a fragment that
  * would make the callback too long for the sign-in form is dropped, and the
- * page opens without it. `safeCallbackPath` still gates the callback where it's
+ * page opens without it. Trade-off: inside `callbackUrl` the fragment is a query
+ * value, so on this signed-out detour (only) it does reach the server, and the
+ * magic-link email, which a signed-in visit never does. `safeCallbackPath` still gates the callback where it's
  * used.
  */
 export function signInPath(page: AuthOnlyPath, hash = ''): string {

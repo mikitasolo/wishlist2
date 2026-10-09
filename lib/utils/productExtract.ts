@@ -110,12 +110,12 @@ export function cleanProductName(name: string): string {
 const SYMBOLS: [RegExp, string][] = [
   [/₽|руб|rub|р\./i, 'RUB'],
   [/zł|pln/i, 'PLN'],
-  [/byn|br\b/i, 'BYN'],
+  [/byn/i, 'BYN'],
   [/€|eur/i, 'EUR'],
   [/£|gbp/i, 'GBP'],
   [/₴|грн|uah/i, 'UAH'],
   [/₸|kzt/i, 'KZT'],
-  [/us\$|usd|\$/i, 'USD'],
+  [/us\$|usd|(?<![a-z])\$/i, 'USD'],
 ];
 
 /** A currency code from an ISO code or a symbol; null when it isn't recognised (never guessed). */
@@ -147,7 +147,8 @@ export function parseAmount(raw: unknown): number | null {
       /,\d{1,2}$/.test(s) && s.split(',').length === 2
         ? s.replace(',', '.')
         : s.split(',').join('');
-  } else if ((s.match(/\./g) || []).length > 1) {
+  } else if ((s.match(/\./g) || []).length > 1 || /^\d{1,3}\.\d{3}$/.test(s)) {
+    // "1.299": a European thousands separator, not three decimals.
     s = s.split('.').join('');
   }
   const n = parseFloat(s);

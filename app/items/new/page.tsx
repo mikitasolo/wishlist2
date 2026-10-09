@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useKnownSession } from '@/lib/hooks/useKnownSession';
 import AppHeader from '@/components/AppHeader';
@@ -25,18 +25,23 @@ export default function NewItemFromLinkPage() {
   // undefined until the fragment has been read; null when it held nothing usable.
   const [product, setProduct] = useState<ProductPrefill | null | undefined>(undefined);
 
+  // The fragment is read once: StrictMode runs the effect twice, and the second
+  // run would see the address already stripped.
+  const read = useRef(false);
+
   useEffect(() => {
     if (status === 'unauthenticated') {
       router.replace(signInPath('/items/new', window.location.hash));
       return;
     }
-    if (status !== 'authenticated' || product !== undefined) return;
+    if (status !== 'authenticated' || read.current) return;
+    read.current = true;
     setProduct(parseProductFragment(window.location.hash));
     // The product is out of the address bar and the history entry once read.
     if (window.location.hash) {
       window.history.replaceState(null, '', window.location.pathname + window.location.search);
     }
-  }, [status, product, router]);
+  }, [status, router]);
 
   return (
     <div className="min-h-screen">

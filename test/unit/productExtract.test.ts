@@ -183,6 +183,7 @@ describe('parseAmount', () => {
     ['12,99', 12.99],
     ['1,299', 1299],
     ['1.299.000', 1299000],
+    ['1.299', 1299],
     ['$ 24.90', 24.9],
   ])('%s', (raw, n) => {
     expect(parseAmount(raw)).toBe(n);
@@ -192,5 +193,14 @@ describe('parseAmount', () => {
     expect(parseAmount('0')).toBeNull();
     expect(parseAmount('free')).toBeNull();
     expect(parseAmount(null)).toBeNull();
+  });
+});
+
+describe('currency symbols', () => {
+  // regression: "CA$29.99" matched the bare "$" and was taken for USD.
+  it('does not take a prefixed dollar for USD', () => {
+    const html =
+      '<div itemscope itemtype="https://schema.org/Product"><span itemprop="price">CA$29.99</span></div>';
+    expect(extractProduct(html, 'https://x.example/p').price).toBeUndefined();
   });
 });
