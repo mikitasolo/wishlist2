@@ -35,6 +35,12 @@ interface ToastOptions {
    * dropped from a full stack. An Undo toast commits on it (`useUndoableAction`).
    */
   onDismiss?: () => void;
+  /**
+   * Called with true when the stack is hovered or focused (the toast's timer
+   * holds) and false when it lets go, so an Undo toast's deferred commit holds
+   * with it (WIS-387).
+   */
+  onPause?: (paused: boolean) => void;
 }
 
 interface Toast {
@@ -43,6 +49,7 @@ interface Toast {
   type: ToastType;
   action?: ToastAction;
   duration?: number;
+  onPause?: (paused: boolean) => void;
   /** How many identical toasts this one stands for (shown as "×2"). */
   count: number;
   /** Bumped when an identical toast merges in, which restarts the timer. */
@@ -105,7 +112,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
   const showToast = useCallback(
     (message: string, type: ToastType = 'info', options: ToastOptions = {}) => {
-      const { action, duration, onDismiss } = options;
+      const { action, duration, onDismiss, onPause } = options;
       // A toast with its own dismiss handler is its own: it never merges. The
       // id returned is a merged toast's only while it's unmerged, so only one
       // with `onDismiss` can be relied on to be taken down by it.
@@ -131,7 +138,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         // Registered with the toast itself, so the effect below can't see the
         // handler before the toast it belongs to.
         if (onDismiss) dismissHandlers.current.set(id, onDismiss);
-        const next = [...prev, { id, message, type, action, duration, count: 1, stamp: 0 }];
+        const next = [
+          ...prev,
+          { id, message, type, action, duration, onPause, count: 1, stamp: 0 },
+        ];
         return next.slice(-MAX_TOASTS);
       });
       return id;
@@ -212,6 +222,13 @@ function ToastItem({
   const { icon, tone } = config[toast.type];
   const { id, action, stamp } = toast;
   const duration = toast.duration ?? (action ? TOAST_WITH_ACTION_MS : TOAST_MS);
+
+  // Whoever asked to follow the pause (an Undo toast's deferred commit) is told
+  // when it starts and ends.
+  const { onPause } = toast;
+  useEffect(() => {
+    onPause?.(paused);
+  }, [paused, onPause]);
 
   // The time left on this toast: a pause keeps it, a merge resets it.
   const remaining = useRef(duration);

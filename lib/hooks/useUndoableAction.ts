@@ -74,6 +74,9 @@ export function useUndoableAction() {
         action: { label: UNDO_LABEL, onClick: () => pending.undo() },
         duration: UNDO_WINDOW_MS,
         onDismiss: () => pending.flush(),
+        // Hovered or focused, the toast holds, and so does the commit; it runs
+        // on with the time it had left. Leaving the page still sends it.
+        onPause: (paused) => (paused ? pending.pause() : pending.resume()),
       });
       // Undone some other way than its button (e.g. Reserve tapped again
       // during a Release's window): the toast goes too, so it can't go on

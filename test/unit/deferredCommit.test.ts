@@ -53,6 +53,42 @@ describe('createDeferredQueue', () => {
     expect(onUndo).not.toHaveBeenCalled();
   });
 
+  it('holds its window while paused, and resumes with the time it had left', () => {
+    const queue = createDeferredQueue();
+    const commit = vi.fn();
+    const pending = queue.defer({ commit });
+    vi.advanceTimersByTime(2000);
+    pending.pause();
+    vi.advanceTimersByTime(UNDO_WINDOW_MS * 3);
+    expect(commit).not.toHaveBeenCalled();
+    pending.pause();
+    pending.resume();
+    vi.advanceTimersByTime(UNDO_WINDOW_MS - 2000 - 1);
+    expect(commit).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(commit).toHaveBeenCalledTimes(1);
+    pending.resume();
+    vi.advanceTimersByTime(UNDO_WINDOW_MS);
+    expect(commit).toHaveBeenCalledTimes(1);
+  });
+
+  it('still sends a paused commit when flushed, and undoes a paused one', () => {
+    const queue = createDeferredQueue();
+    const sent = vi.fn();
+    const undone = vi.fn();
+    const a = queue.defer({ commit: sent });
+    const b = queue.defer({ commit: undone });
+    a.pause();
+    b.pause();
+    expect(b.undo()).toBe(true);
+    queue.flushAll(true);
+    expect(sent).toHaveBeenCalledExactlyOnceWith({ keepalive: true });
+    expect(undone).not.toHaveBeenCalled();
+    b.resume();
+    vi.advanceTimersByTime(UNDO_WINDOW_MS);
+    expect(undone).not.toHaveBeenCalled();
+  });
+
   it('flushes everything pending with keepalive when the page goes away', () => {
     const queue = createDeferredQueue();
     const a = vi.fn();

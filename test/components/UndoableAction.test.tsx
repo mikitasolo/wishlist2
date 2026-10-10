@@ -75,6 +75,33 @@ describe('useUndoableAction', () => {
     expect(commit).not.toHaveBeenCalled();
   });
 
+  it('holds the commit while the toast is hovered or focused, then runs on with the time left', () => {
+    setup();
+    const { commit } = defer();
+    const region = screen.getByRole('status').closest('.toast-region')!;
+    act(() => vi.advanceTimersByTime(2000));
+    fireEvent.pointerEnter(region, { pointerType: 'mouse' });
+    act(() => vi.advanceTimersByTime(UNDO_WINDOW_MS * 2));
+    expect(commit).not.toHaveBeenCalled();
+    expect(screen.getByText('Item deleted')).toBeInTheDocument();
+
+    fireEvent.pointerLeave(region, { pointerType: 'mouse' });
+    act(() => vi.advanceTimersByTime(UNDO_WINDOW_MS - 2000 - 10));
+    expect(commit).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(10));
+    expect(commit).toHaveBeenCalledTimes(1);
+
+    // Keyboard focus holds it the same way; leaving the page still sends it.
+    const second = defer('Released');
+    act(() => screen.getByRole('button', { name: 'Undo' }).focus());
+    act(() => vi.advanceTimersByTime(UNDO_WINDOW_MS * 2));
+    expect(second.commit).not.toHaveBeenCalled();
+    act(() => {
+      window.dispatchEvent(new Event('pagehide'));
+    });
+    expect(second.commit).toHaveBeenCalledExactlyOnceWith({ keepalive: true });
+  });
+
   it('commits at once when the toast is dismissed', () => {
     setup();
     const { commit } = defer();

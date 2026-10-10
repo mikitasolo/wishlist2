@@ -54,6 +54,13 @@ export interface PendingCommit {
   /** Whether it's still waiting: neither sent nor undone. */
   isPending(): boolean;
   /**
+   * Hold its window (its toast is hovered or focused): the timer stops with
+   * the time left. A flush still sends it.
+   */
+  pause(): void;
+  /** Let its window run on, with the time it had left when paused. */
+  resume(): void;
+  /**
    * Settles once it's undone, or once its commit has settled (resolved or
    * rejected). Never rejects. Hold a page's read guard on it (e.g.
    * `mutations.track(() => pending.settled)`) so a poll can't bring the thing
@@ -73,11 +80,13 @@ export interface DeferredQueue {
 interface Timers {
   set: (fn: () => void, ms: number) => unknown;
   clear: (handle: unknown) => void;
+  now: () => number;
 }
 
 const defaultTimers: Timers = {
   set: (fn, ms) => setTimeout(fn, ms),
   clear: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+  now: () => Date.now(),
 };
 
 export function createDeferredQueue(timers: Timers = defaultTimers): DeferredQueue {
@@ -90,10 +99,26 @@ export function createDeferredQueue(timers: Timers = defaultTimers): DeferredQue
       resolveSettled = resolve;
     });
 
+    // The window's timer, null while paused, and the time it has left.
+    let timer: unknown = null;
+    let remaining = delayMs;
+    let startedAt = 0;
+    const stopTimer = () => {
+      if (timer === null) return;
+      timers.clear(timer);
+      timer = null;
+      remaining = Math.max(0, remaining - (timers.now() - startedAt));
+    };
+    const startTimer = () => {
+      if (timer !== null || state !== 'pending') return;
+      startedAt = timers.now();
+      timer = timers.set(() => commitNow(false), remaining);
+    };
+
     const commitNow = (keepalive: boolean) => {
       if (state !== 'pending') return;
       state = 'committed';
-      timers.clear(timer);
+      stopTimer();
       pending.delete(handle);
       let result: unknown;
       try {
@@ -112,7 +137,7 @@ export function createDeferredQueue(timers: Timers = defaultTimers): DeferredQue
       undo() {
         if (state !== 'pending') return false;
         state = 'undone';
-        timers.clear(timer);
+        stopTimer();
         pending.delete(handle);
         try {
           action.onUndo?.();
@@ -125,10 +150,12 @@ export function createDeferredQueue(timers: Timers = defaultTimers): DeferredQue
         commitNow(keepalive);
       },
       isPending: () => state === 'pending',
+      pause: stopTimer,
+      resume: startTimer,
       settled,
     };
 
-    const timer = timers.set(() => commitNow(false), delayMs);
+    startTimer();
     pending.add(handle);
     return handle;
   }
