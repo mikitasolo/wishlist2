@@ -5,7 +5,7 @@ import { withWelcomeMarker } from '@/lib/utils/memberWelcome';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useKnownSession } from '@/lib/hooks/useKnownSession';
-import { useRefreshOnReturn } from '@/lib/hooks/useLiveRead';
+import { useLiveRead } from '@/lib/hooks/useLiveRead';
 import { useToast } from '@/components/ToastProvider';
 import { useUndoableAction } from '@/lib/hooks/useUndoableAction';
 import { restoreRemoved } from '@/lib/utils/deferredCommit';
@@ -13,7 +13,7 @@ import type { PendingInvite } from '@/components/InviteCard';
 import { useBusyIds } from '@/lib/hooks/useBusyIds';
 import { createAcceptRedirect } from '@/lib/utils/acceptRedirect';
 import { acceptedInviteToast, alreadyAnsweredInviteToast } from '@/lib/utils/confirmationCopy';
-import { createMutationTracker } from '@/lib/utils/mutationTracker';
+import { createMutationTracker, type MutationTracker } from '@/lib/utils/mutationTracker';
 import { RequestTimeoutError, withRequestTimeout } from '@/lib/utils/requestTimeout';
 import type { InviteAnswer } from '@/lib/utils/notifications';
 
@@ -34,37 +34,40 @@ interface PendingInvitesOptions {
  * them. Activity pins them above its feed with `InviteCard`; a new surface that
  * offers them (the dashboard's "Needs you", WIS-252) uses this hook the same way.
  *
- * Kept fresh without polling: read on sign-in and whenever another account
- * signs in, then again on every return (`useRefreshOnReturn`) and `invites-changed` event. A read sent
- * while an answer was in flight, or before one landed, may predate it, so it
- * would bring back the card that answer just took off, or take off the card
- * still waiting on it. Such a read is dropped, and the list is read again once
- * no answer is in flight (`createMutationTracker`). Each answer is bounded by
+ * Kept fresh without polling (`useLiveRead`, no timer): read on sign-in and
+ * whenever another account signs in, then again on every return and
+ * `invites-changed` event. A read sent while an answer was in flight, or before
+ * one landed, may predate it, so it would bring back the card that answer just
+ * took off, or take off the card still waiting on it. Such a read is dropped,
+ * and the list is read again once no answer is in flight (the answers'
+ * `MutationTracker`, one per account). Each answer is bounded by
  * `withRequestTimeout`, so one that stalls can't hold every read off.
  *
  * The first read of an account reports `loading`, and `loadFailed` if it
  * fails (shown in place, with `retry`, never as "no invitations"). A later read
  * that fails keeps the cards.
  */
+/** Before the first read: no invites known (see `loading`). */
+const NO_INVITES: PendingInvite[] = [];
+
 export function usePendingInvites({ onAnswered }: PendingInvitesOptions = {}) {
   const { data: session, status } = useKnownSession();
   const userId = session?.user?.id;
   const router = useRouter();
   const { showToast } = useToast();
   const offerUndo = useUndoableAction();
-  const [invites, setInvites] = useState<PendingInvite[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadFailed, setLoadFailed] = useState(false);
   // Invites whose answer is still in flight, per invite.
   const { busy, run, running } = useBusyIds();
   // One tracker per account, so an answer the previous account still has on
-  // its way can't hold up this one's reads.
-  const answerTracker = useRef(createMutationTracker());
-  // The stamp of the latest list request sent.
-  const latestSent = useRef(0);
-  // List requests sent at or before this stamp are outdated: a newer one has
-  // already landed, or they were sent for the previous account.
-  const outdatedUpTo = useRef(0);
+  // its way can't hold up this one's reads: made in the render that sees the
+  // new account, with the read keyed on it.
+  const [answers, setAnswers] = useState<{ userId: string | undefined; tracker: MutationTracker }>(
+    () => ({ userId, tracker: createMutationTracker() })
+  );
+  if (answers.userId !== userId) setAnswers({ userId, tracker: createMutationTracker() });
+  // The tracker for answers given from here on (an answer keeps the one it
+  // started with).
+  const answerTracker = useRef(answers.tracker);
   // The account whose invites these are.
   const account = useRef(userId);
   // Which accept gets to open its list when several are in flight: the last one
@@ -83,62 +86,52 @@ export function usePendingInvites({ onAnswered }: PendingInvitesOptions = {}) {
   // settles, and the new account has no card with that id.
   useLayoutEffect(() => {
     account.current = userId;
-    answerTracker.current = createMutationTracker();
+    answerTracker.current = answers.tracker;
     acceptRedirect.current.reset();
-    outdatedUpTo.current = answerTracker.current.stamp();
-    setInvites((prev) => (prev.length ? [] : prev));
-    setLoading(true);
-    setLoadFailed(false);
-  }, [userId]);
+  }, [userId, answers.tracker]);
 
-  // A refetch (`quiet`) updates the cards in place, and a failed one keeps them.
-  const load = useCallback((quiet: boolean) => {
-    const tracker = answerTracker.current;
-    const sentAt = tracker.stamp();
-    latestSent.current = sentAt;
-    fetch('/api/users/me/invites', { cache: 'no-store' })
-      .then((r) => r.json())
-      .then((res) => {
-        if (sentAt <= outdatedUpTo.current) return;
-        if (!res.success) throw new Error(res.error);
-        if (tracker.isStale(sentAt)) {
-          // Read again, unless a read sent since the answers settled is
-          // already on its way.
-          if (tracker.isStale(latestSent.current)) tracker.rereadWhenIdle();
-          return;
-        }
-        outdatedUpTo.current = sentAt;
-        setInvites(res.data);
-        setLoadFailed(false);
-        setLoading(false);
-      })
-      .catch(() => {
-        if (sentAt <= outdatedUpTo.current || quiet) return;
-        setLoadFailed(true);
-        setLoading(false);
-      });
-  }, []);
+  // The account's invites (`useLiveRead`): the first read reports `loading`,
+  // and `loadFailed` if it fails; a later read updates the cards in place, and
+  // a failed one keeps them. Keyed on the account, so the previous account's
+  // cards go in the render that sees the new one, and nothing still on its way
+  // for it lands. A read stale against an answer is dropped and read again once
+  // none is in flight.
+  const read = useCallback(
+    async (stamp: () => number) => {
+      if (!userId) return null;
+      const sentAt = stamp();
+      const res = await fetch('/api/users/me/invites', { cache: 'no-store' });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error);
+      return { data: json.data as PendingInvite[], sentAt };
+    },
+    [userId]
+  );
+  const enabled = status === 'authenticated' && !!userId;
+  const {
+    data: invites,
+    setData: setInvites,
+    loaded,
+    failed: loadFailed,
+    refresh: reread,
+  } = useLiveRead<PendingInvite[]>({
+    enabled,
+    initialData: NO_INVITES,
+    read,
+    mutations: answers.tracker,
+    resetOnNewRead: true,
+  });
+  const loading = !loaded && !loadFailed;
 
   // Try again, after the first load failed: loading again, then a fresh read.
-  const retry = useCallback(() => {
-    setLoadFailed(false);
-    setLoading(true);
-    load(false);
-  }, [load]);
+  const retry = useCallback(() => void reread(), [reread]);
 
-  const refresh = useCallback(() => load(true), [load]);
   useEffect(() => {
-    if (status !== 'authenticated') return;
-    const tracker = answerTracker.current;
-    load(false);
-    tracker.setReread(refresh);
+    if (!enabled) return;
+    const refresh = () => void reread(true);
     window.addEventListener('invites-changed', refresh);
-    return () => {
-      tracker.setReread(null);
-      window.removeEventListener('invites-changed', refresh);
-    };
-  }, [status, userId, load, refresh]);
-  useRefreshOnReturn(refresh, { enabled: status === 'authenticated' });
+    return () => window.removeEventListener('invites-changed', refresh);
+  }, [enabled, reread]);
 
   // Leaving the page forgets the accepts still in flight, so one landing (or
   // failing) after the user went elsewhere never pulls them onto a list.

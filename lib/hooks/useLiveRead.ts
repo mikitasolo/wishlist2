@@ -22,8 +22,9 @@
  * reservations, an owner's never does), so an answer kept for one view and
  * shown in another, even briefly before a re-read, could leak. Only requests in
  * flight are shared. Within a mount, a new `read` (another list, Preview as
- * visitor) starts over from nothing shown, and an answer to the read it
- * replaced is dropped.
+ * visitor, another account) starts over from nothing shown, and an answer to
+ * the read it replaced is dropped; with `resetOnNewRead` (a read keyed on the
+ * signed-in account) what the old read showed goes in that same render.
  */
 
 import {
@@ -227,6 +228,23 @@ export interface LiveReadOptions<T> {
   mutations?: MutationTracker;
   /** A failed read, after the hook has kept or failed its state. Keep it memoized. */
   onError?: (error: unknown, failure: LiveReadFailure) => void;
+  /**
+   * How an answer lands, for a screen that changes its copy itself and merges
+   * a read into it (Reserved's `mergeRefreshedList`) instead of replacing it.
+   * Called once per answer that would land, outside rendering (so it may record
+   * that the answer landed): returns how to bring the shown data up to date
+   * with it (given the read's own data shown so far, or `initialData` before
+   * any), or `null` to drop the answer. Without it, an answer replaces the data.
+   * Keep it memoized: a new one sends the first read again.
+   */
+  merge?: (answer: StampedRead<T>) => ((shown: T) => T) | null;
+  /**
+   * A new `read` clears what's shown in the same render (back to
+   * `initialData`, not loaded), instead of keeping it until the new read
+   * answers. For a read keyed on the signed-in account: another account's
+   * data never shows, not even for a frame.
+   */
+  resetOnNewRead?: boolean;
 }
 
 export interface LiveRead<T> {
@@ -269,6 +287,8 @@ export function useLiveRead<T>({
   pollMs,
   mutations: given,
   onError,
+  merge,
+  resetOnNewRead = false,
 }: LiveReadOptions<T>): LiveRead<T> {
   const [own] = useState(createMutationTracker);
   const mutations = given ?? own;
@@ -285,7 +305,13 @@ export function useLiveRead<T>({
     loaded: false,
     failed: false,
   }));
-  if (state.current !== read) setState((prev) => ({ ...prev, current: read }));
+  if (state.current !== read) {
+    setState((prev) =>
+      resetOnNewRead
+        ? { current: read, from: null, data: initialData, loaded: false, failed: false }
+        : { ...prev, current: read }
+    );
+  }
   const [loading, setLoading] = useState(enabled);
   // The read in use, for what a late answer does besides showing data (its
   // error report, a re-read): set before effects run, so never behind a read.
@@ -299,6 +325,8 @@ export function useLiveRead<T>({
   const landed = useRef(0);
   // The latest non-silent read: only it ends `loading`.
   const loadsSent = useRef(0);
+  // The stamp of the latest request sent (see the stale check in `refresh`).
+  const latestSent = useRef(0);
   // What a failed first read leaves shown (the first value given).
   const initial = useRef(initialData);
 
@@ -323,23 +351,27 @@ export function useLiveRead<T>({
         ownState((prev) => ({ ...prev, failed: false }));
       }
       try {
-        const answer = await read(mutations.stamp);
+        const answer = await read(() => (latestSent.current = mutations.stamp()));
         if (!answer || superseded()) return;
         const shown = shownFor.current === read;
         // Raced with a mutation: it may predate the screen's optimistic state.
-        // Dropped, then read again once idle, unless nothing is shown yet (a
-        // first load lands, so the screen isn't left empty).
+        // Dropped, then read again once idle (unless a read sent since the
+        // mutations settled is already on its way, which decides), unless
+        // nothing is shown yet (a first load lands, so the screen isn't left
+        // empty).
         if (mutations.isStale(answer.sentAt)) {
-          mutations.rereadWhenIdle();
+          if (mutations.isStale(latestSent.current)) mutations.rereadWhenIdle();
           if (silent || shown) return;
         }
         if (shown && answer.sentAt < landed.current) return;
+        const update = merge ? merge(answer) : () => answer.data;
+        if (!update) return;
         shownFor.current = read;
         landed.current = answer.sentAt;
         ownState((prev) => ({
           ...prev,
           from: read,
-          data: answer.data,
+          data: update(prev.from === read ? prev.data : initial.current),
           loaded: true,
           failed: false,
         }));
@@ -362,7 +394,7 @@ export function useLiveRead<T>({
         if (loadNo && loadNo === loadsSent.current) setLoading(false);
       }
     },
-    [read, mutations, onError]
+    [read, mutations, onError, merge]
   );
 
   const background = useCallback(() => void refresh(true), [refresh]);

@@ -10,6 +10,7 @@ import {
   afterEach,
   onTestFinished,
 } from 'vitest';
+import { StrictMode } from 'react';
 import { render, screen, fireEvent, cleanup, waitFor, act, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
@@ -1321,6 +1322,21 @@ describe('BookedPage — reading both lists again while the page is open', () =>
     expect(showToast).not.toHaveBeenCalled();
   });
 
+  // regression (review of WIS-441): StrictMode's remount re-ran the account
+  // reset after the first read was stamped, and the remount's read joined it,
+  // so both answers were dropped as outdated and the skeleton stayed.
+  it('loads under StrictMode, whose remount joins the first read', async () => {
+    const { answerRead } = mockHeldFetch({ holdReads: true });
+    render(
+      <StrictMode>
+        <BookedPage />
+      </StrictMode>
+    );
+    await answerRead(0);
+    expect(screen.getByText('Lego set')).toBeInTheDocument();
+    expect(skeleton()).toBeNull();
+  });
+
   it('a return while the first load is on its way sends no second read', async () => {
     const { reads, answerRead } = mockHeldFetch({ holdReads: true });
     render(<BookedPage />);
@@ -1358,6 +1374,24 @@ describe('BookedPage — reading both lists again while the page is open', () =>
     await answerRead(1);
     expect(cardName('Scarf')).toBeNull();
     expect(historyNames()).toEqual(['Scarf', 'Mug']);
+  });
+
+  // WIS-441: a return's read joins one already on its way, but the read an
+  // action asks for never does: that one was sent before the action's change.
+  it("the read a 404 asks for goes out afresh, even with a return's read on its way", async () => {
+    const { server, answer, reads, answerRead } = await renderLoaded();
+
+    comeBack('focus');
+    expect(reads()).toBe(2);
+    server.gift('res-scarf', scarfGift);
+    dismiss('Scarf');
+    await answer(dismissKey('res-scarf'), notFound('Reservation not found'));
+    expect(reads()).toBe(3);
+
+    await answerRead(2);
+    await answerRead(1);
+    expect(cardName('Scarf')).toBeNull();
+    expect(historyNames()).toEqual(['Scarf', 'Cookbook', 'Mug']);
   });
 
   // regression: a read of the gift history the server answered before a delete

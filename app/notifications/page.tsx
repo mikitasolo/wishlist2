@@ -5,6 +5,7 @@ import {
   useEffect,
   useId,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -12,7 +13,7 @@ import {
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useKnownSession } from '@/lib/hooks/useKnownSession';
-import { useRefreshOnReturn } from '@/lib/hooks/useLiveRead';
+import { useLiveRead } from '@/lib/hooks/useLiveRead';
 import { useDiscreetMode } from '@/lib/hooks/useDiscreetMode';
 import { useLocalToday } from '@/lib/hooks/useLocalToday';
 import AppHeader from '@/components/AppHeader';
@@ -106,6 +107,16 @@ function RowLeading({ n }: { n: NotificationView }) {
 // action in it (Follow back) sits above that and stays its own button.
 const STRETCHED = 'text-left after:absolute after:inset-0 after:rounded-2xl';
 
+/** The feed as last read: its rows, and the stamp its request went out with. */
+interface Feed {
+  rows: NotificationView[];
+  unreadCount: number;
+  sentAt: number;
+}
+
+/** Before the first read: no rows known (see `feedLoaded`). */
+const NO_FEED: Feed = { rows: [], unreadCount: 0, sentAt: 0 };
+
 export default function ActivityPage() {
   const { data: session, status } = useKnownSession();
   const { discreet } = useDiscreetMode();
@@ -116,32 +127,25 @@ export default function ActivityPage() {
   const invitesHeadingId = useId();
   const feedHeadingId = useId();
   const today = useLocalToday();
-  const [items, setItems] = useState<NotificationView[]>([]);
-  const [feedLoading, setFeedLoading] = useState(true);
-  // The feed couldn't be read: said in place, with Try again, never as
-  // the empty state.
-  const [feedFailed, setFeedFailed] = useState(false);
   const [followersOpen, setFollowersOpen] = useState(false);
   // A friend's ask for a wishlist (WIS-324) is answered by making one.
   const [createOpen, setCreateOpen] = useState(false);
   // Follow backs in flight, per person.
   const { busy: followBusy, run: runFollow } = useBusyIds();
-  // The account the feed is for: a read or a follow back started for another
-  // (one that signed out from another tab) changes nothing here.
+  // The account the feed is for: a follow back started for another (one that
+  // signed out from another tab) changes nothing here.
   const account = useRef(viewerId);
-  // Feed reads are numbered as they're sent. One that lands at or below
-  // `feedLanded` is dropped: a later one has already landed, or it was sent for
-  // the previous account.
+  // The stamp of the latest feed read sent (see `answers`).
   const feedSent = useRef(0);
-  const feedLanded = useRef(0);
   // Rows that were unread when read on this visit (state, as rows render from it). The page marks everything read
   // as it opens, so a later read (focus) says `read`; the rows keep standing out
   // until the visit ends.
   const [unreadThisVisit, setUnreadThisVisit] = useState<ReadonlySet<string>>(() => new Set());
   // The invites answered on this page, each with the last feed read sent before
-  // it landed. Such a read can still be on its way, and would bring the row back
-  // as a pending invite, so the answer is put on it again when it lands.
-  const answers = useRef<(RecordedInviteAnswer & { readsBefore: number })[]>([]);
+  // it landed. The rows of such a read (the one shown, or one still on its way)
+  // would show the row as a pending invite, so the answer is put on them as
+  // they render (`items`).
+  const [answers, setAnswers] = useState<(RecordedInviteAnswer & { readsBefore: number })[]>([]);
 
   // An answered invite's row reads as the answer, as the server now has it
   // (`recordInviteAnswer`), without waiting for the feed to be read again.
@@ -152,8 +156,7 @@ export default function ActivityPage() {
       since: invite.createdAt ?? null,
       readsBefore: feedSent.current,
     };
-    answers.current = [...answers.current, recorded];
-    setItems((prev) => withInviteAnswers(prev, [recorded]));
+    setAnswers((prev) => [...prev, recorded]);
   }, []);
   // Pinned above the feed, from the invites read: an invite's notification is
   // best-effort, so the invites themselves are the source of truth.
@@ -175,83 +178,89 @@ export default function ActivityPage() {
     if (status === 'unauthenticated') router.replace(signInPath('/notifications'));
   }, [status, router]);
 
-  // Another account signed in (from another tab): the previous account's rows
-  // go before the browser paints, nothing still on its way for it lands, and
-  // the feed loads afresh for this one.
+  // Another account signed in (from another tab): what this visit kept for the
+  // previous account goes before the browser paints (its rows go with the read
+  // keyed on the account, below).
   useLayoutEffect(() => {
     account.current = viewerId;
-    feedLanded.current = feedSent.current;
-    answers.current = [];
+    setAnswers((prev) => (prev.length ? [] : prev));
     setUnreadThisVisit((prev) => (prev.size ? new Set() : prev));
-    setItems((prev) => (prev.length ? [] : prev));
-    setFeedLoading(true);
-    setFeedFailed(false);
     setFollowersOpen(false);
   }, [viewerId]);
 
-  // The first read of an account shows the skeleton, and says so in its place
-  // if it fails. A refetch (`quiet`) updates the rows in place, and a failed one
-  // keeps them.
-  const loadFeed = useCallback(async (quiet: boolean) => {
-    const sent = ++feedSent.current;
-    const forAccount = account.current;
-    let feed: { data: NotificationView[]; unreadCount?: number };
-    try {
+  // The feed (`useLiveRead`): the first read of an account shows the skeleton,
+  // and says so in its place if it fails (`feedFailed`, never the empty state).
+  // Read again whenever the viewer comes back to the tab in a focused window
+  // (or the browser back online there), never for a tab shown in a window
+  // they aren't in, and when invites change (an answer here or in another tab,
+  // a card gone), as the invitations above do, so a row and its card agree;
+  // such a read updates the rows in place, and a failed one keeps them. No
+  // timed poll (WIS-376): every feed read with something unread marks it all
+  // read (below), so a poll would clear the badge for rows nobody looked at.
+  // Keyed on the account: the previous one's rows go in the render that sees
+  // the new one, and nothing still on its way for it lands.
+  const readFeed = useCallback(
+    async (stamp: () => number) => {
+      if (!viewerId) return null;
+      const sentAt = stamp();
+      feedSent.current = sentAt;
       const res = await fetch('/api/notifications?actors=1', { cache: 'no-store' });
       const json = await res.json();
       if (!json.success) throw new Error(json.error || 'Failed to load notifications');
-      feed = json;
-    } catch {
-      if (quiet || sent <= feedLanded.current || account.current !== forAccount) return;
-      setFeedFailed(true);
-      setFeedLoading(false);
-      return;
-    }
-    if (sent <= feedLanded.current || account.current !== forAccount) return;
-    feedLanded.current = sent;
-    const fresh = feed.data.filter((n) => !n.read).map((n) => n._id);
-    if (fresh.length) setUnreadThisVisit((prev) => new Set([...prev, ...fresh]));
-    setItems(
+      const feed: Feed = { rows: json.data, unreadCount: json.unreadCount ?? 0, sentAt };
+      return { data: feed, sentAt };
+    },
+    [viewerId]
+  );
+  const {
+    data: feed,
+    setData: setFeed,
+    loaded: feedLoaded,
+    failed: feedFailed,
+    refresh: reloadFeed,
+  } = useLiveRead<Feed>({
+    enabled: status === 'authenticated' && viewerId !== null,
+    initialData: NO_FEED,
+    read: readFeed,
+    resetOnNewRead: true,
+  });
+  const feedLoading = !feedLoaded && !feedFailed;
+  // The rows, with the answers given here since their read was sent.
+  const items = useMemo(
+    () =>
       withInviteAnswers(
-        feed.data,
-        answers.current.filter((a) => sent <= a.readsBefore)
-      )
-    );
-    setFeedFailed(false);
-    setFeedLoading(false);
-    // Visiting the page clears the unread badge. If that fails, the badge
-    // stays, and the next visit clears it: the feed itself is on screen.
-    if ((feed.unreadCount ?? 0) > 0) {
-      try {
-        await fetch('/api/notifications', { method: 'PATCH' });
-        window.dispatchEvent(new Event('notifications-changed'));
-      } catch {
-        /* see above */
-      }
-    }
-  }, []);
+        feed.rows,
+        answers.filter((a) => feed.sentAt <= a.readsBefore)
+      ),
+    [feed, answers]
+  );
 
-  // Load, then read again whenever the viewer comes back to the tab (or the
-  // browser back online) or invites change (an answer here or in another tab,
-  // a card gone), as the invitations above do, so a row and its card agree.
-  // No timed poll (WIS-376): every feed read with something unread marks it
-  // all read, so a poll would clear the badge for rows nobody looked at.
-  const refreshFeed = useCallback(() => void loadFeed(true), [loadFeed]);
   useEffect(() => {
     if (status !== 'authenticated') return;
-    loadFeed(false);
+    const refreshFeed = () => void reloadFeed(true);
     window.addEventListener('invites-changed', refreshFeed);
-    return () => {
-      window.removeEventListener('invites-changed', refreshFeed);
-    };
-  }, [status, viewerId, loadFeed, refreshFeed]);
-  useRefreshOnReturn(refreshFeed, { enabled: status === 'authenticated' });
+    return () => window.removeEventListener('invites-changed', refreshFeed);
+  }, [status, reloadFeed]);
 
-  const retryFeed = useCallback(() => {
-    setFeedFailed(false);
-    setFeedLoading(true);
-    loadFeed(false);
-  }, [loadFeed]);
+  // Each read that lands: its unread rows stay marked for the visit, and
+  // visiting the page clears the unread badge. If that fails, the badge stays,
+  // and the next visit clears it: the feed itself is on screen.
+  const feedHandled = useRef(0);
+  useEffect(() => {
+    if (!feedLoaded || feed.sentAt === feedHandled.current) return;
+    feedHandled.current = feed.sentAt;
+    const fresh = feed.rows.filter((n) => !n.read).map((n) => n._id);
+    if (fresh.length) setUnreadThisVisit((prev) => new Set([...prev, ...fresh]));
+    if (feed.unreadCount > 0) {
+      fetch('/api/notifications', { method: 'PATCH' })
+        .then(() => window.dispatchEvent(new Event('notifications-changed')))
+        .catch(() => {
+          /* see above */
+        });
+    }
+  }, [feed, feedLoaded]);
+
+  const retryFeed = useCallback(() => void reloadFeed(), [reloadFeed]);
 
   const retryInvitesInPlace = useCallback(() => {
     setRetryingInvites(true);
@@ -273,9 +282,12 @@ export default function ActivityPage() {
           return;
         }
         // Every row from them stops offering it.
-        setItems((prev) =>
-          prev.map((row) => (row.actorId === actorId ? { ...row, followingActor: true } : row))
-        );
+        setFeed((prev) => ({
+          ...prev,
+          rows: prev.rows.map((row) =>
+            row.actorId === actorId ? { ...row, followingActor: true } : row
+          ),
+        }));
         showToast(`You’re now following @${n.actorUsername}`, 'success');
       } catch (err) {
         if (account.current !== forAccount) return;
