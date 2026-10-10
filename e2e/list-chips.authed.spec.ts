@@ -56,7 +56,7 @@ test('a member filters a list to Available and back to All', async ({ page }) =>
   // cards scrolled visibly through the stuck row (WIS-420). It scrolls with the page.
   const stuck = await chips.evaluate((el) => {
     for (let n: Element | null = el; n; n = n.parentElement) {
-      if (getComputedStyle(n).position === 'sticky' && n.tagName !== 'HEADER') return true;
+      if (getComputedStyle(n).position === 'sticky') return true;
     }
     return false;
   });
