@@ -67,8 +67,6 @@ export default function Avatar({ name, src, size = 'md', className = '' }: Avata
         <img
           src={src as string}
           alt=""
-          loading="lazy"
-          decoding="async"
           className="absolute inset-0 h-full w-full object-cover"
           onError={() => setBroken(true)}
         />
