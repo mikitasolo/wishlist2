@@ -210,11 +210,11 @@ export function ListControlsSkeleton({
   stacked = false,
 }: {
   chips: number;
-  /** `/items`' own layout: chips, then a search row of its own on a phone (not the list page's sticky row). */
+  /** `/items`' own layout: chips, then a search row of its own on a phone (not the list page's one-row layout). */
   stacked?: boolean;
 }) {
   return (
-    <div className={stacked ? '' : 'mb-3 pb-3 sm:mb-5'}>
+    <div className={stacked ? '' : 'mb-6 sm:mb-8'}>
       {chips > 0 && (
         <div
           className={`-mx-4 flex gap-2 overflow-hidden px-4 py-1 sm:mx-0 sm:px-0 ${stacked ? 'mb-4' : 'mb-2'}`}
