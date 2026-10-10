@@ -244,9 +244,9 @@ describe('the add tile', () => {
     const user = userEvent.setup();
     await open();
 
-    await user.type(screen.getByRole('textbox', { name: 'Search items by name' }), 'lamp');
+    await user.type(screen.getByRole('textbox', { name: 'Search items' }), 'lamp');
     await waitFor(() => expect(gridCells()).toEqual(['Item: Lamp']));
-    await user.clear(screen.getByRole('textbox', { name: 'Search items by name' }));
+    await user.clear(screen.getByRole('textbox', { name: 'Search items' }));
     await waitFor(() => expect(gridCells()[0]).toBe('Add item'));
   });
 

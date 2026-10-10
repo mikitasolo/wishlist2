@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ApiItem } from '@/types/api';
 import type { ViewerRole } from '@/lib/utils/itemStatus';
 import {
-  searchItemsByName,
+  searchItems,
   savedWishlistSort,
   forgetSavedStatusFilters,
   DEFAULT_WISHLIST_SORT,
@@ -20,6 +20,7 @@ import {
   orderListItems,
 } from '@/lib/utils/listChips';
 import { useListChip } from '@/lib/hooks/useListChip';
+import { useListSearch } from '@/lib/hooks/useListSearch';
 import { useDiscreetMode } from '@/lib/hooks/useDiscreetMode';
 import { withoutReservation } from '@/lib/utils/discreet';
 import { useStickyItems } from '@/lib/hooks/useStickyItems';
@@ -52,8 +53,9 @@ export interface ListFiltersOptions {
  *
  * - the status chip (`?show=`, `useListChip`), never saved;
  * - the sort, one saved setting for every list, saved only once picked;
- * - the name search and the budget filter ("Under X", gifters only, WIS-326),
- *   both page state, cleared by Show all and on another list;
+ * - the item search (name and notes, in the URL's `?q=`, `useListSearch`, WIS-389)
+ *   and the budget filter ("Under X", gifters only, WIS-326, page state),
+ *   both cleared by Show all and on another list;
  * - the Prices currency pick (`useListPrices`), which the budget is read in;
  * - discreet mode (WIS-46), applied here at render time only (`viewItems`),
  *   never to `items`, so the poll can't flash the real state back.
@@ -74,7 +76,8 @@ export function useListFilters({
   itemsLoaded,
 }: ListFiltersOptions) {
   const [sortBy, setSortBy] = useState<SortType>(DEFAULT_WISHLIST_SORT);
-  const [searchQuery, setSearchQuery] = useState('');
+  // The item search (`?q=`, WIS-389): name and notes, kept in the URL, never saved.
+  const [searchQuery, setSearchQuery] = useListSearch(list, wishlistId);
 
   // The status chip the list is shown on: All on every list the page opens
   // (or the URL's ?show=), kept only for this list and role, and never saved.
@@ -149,12 +152,7 @@ export function useListFilters({
 
   const filteredItems = useMemo(
     () =>
-      filterByBudget(
-        searchItemsByName(chipItems, searchQuery),
-        budgetLimit,
-        viewerCurrency,
-        budgetRates
-      ),
+      filterByBudget(searchItems(chipItems, searchQuery), budgetLimit, viewerCurrency, budgetRates),
     [chipItems, searchQuery, budgetLimit, viewerCurrency, budgetRates]
   );
 
@@ -179,18 +177,18 @@ export function useListFilters({
     if (!listIsEmpty) return;
     chooseChip('all');
     setSearchQuery('');
-  }, [listIsEmpty, chooseChip]);
+  }, [listIsEmpty, chooseChip, setSearchQuery]);
 
   // The way out of a search or chip that hides every item: All, and no search.
   const showAllItems = useCallback(() => {
     chooseChip('all');
     setSearchQuery('');
     setBudgetText('');
-  }, [chooseChip]);
+  }, [chooseChip, setSearchQuery]);
 
-  // Clear the item search when switching to a different wishlist.
+  // Clear the budget when switching to a different wishlist (the search is
+  // kept per list by `useListSearch`).
   useEffect(() => {
-    setSearchQuery('');
     setBudgetText('');
   }, [wishlistId]);
 

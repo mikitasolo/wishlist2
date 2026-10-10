@@ -44,6 +44,9 @@ export type ListChip =
 /** The `?show=` parameter that names the chip a list is shown on. */
 export const LIST_CHIP_PARAM = 'show';
 
+/** The `?q=` parameter that holds a list's item search (WIS-389). */
+export const LIST_SEARCH_PARAM = 'q';
+
 /** Each chip's name. The statuses' come from the status map. */
 export const LIST_CHIP_LABELS: Record<ListChip, string> = {
   all: 'All',

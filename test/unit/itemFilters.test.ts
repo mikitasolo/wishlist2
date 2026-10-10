@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   sortItems,
   compareItems,
-  searchItemsByName,
+  searchItems,
   compareMostWanted,
   savedWishlistSort,
   isSortType,
@@ -291,7 +291,7 @@ describe('isSortType', () => {
   });
 });
 
-describe('searchItemsByName', () => {
+describe('searchItems', () => {
   const items = [
     item({ name: 'Sony Headphones' }),
     item({ name: 'Coffee Grinder' }),
@@ -299,28 +299,52 @@ describe('searchItemsByName', () => {
   ];
 
   it('returns all items for an empty or whitespace query', () => {
-    expect(searchItemsByName(items, '')).toHaveLength(3);
-    expect(searchItemsByName(items, '   ')).toHaveLength(3);
+    expect(searchItems(items, '')).toHaveLength(3);
+    expect(searchItems(items, '   ')).toHaveLength(3);
   });
 
   it('matches a case-insensitive substring anywhere in the name', () => {
-    expect(searchItemsByName(items, 'grinder').map((i) => i.name)).toEqual([
+    expect(searchItems(items, 'grinder').map((i) => i.name)).toEqual([
       'Coffee Grinder',
       'Grinder Brush',
     ]);
-    expect(searchItemsByName(items, 'SONY').map((i) => i.name)).toEqual(['Sony Headphones']);
+    expect(searchItems(items, 'SONY').map((i) => i.name)).toEqual(['Sony Headphones']);
   });
 
   it('trims surrounding whitespace before matching', () => {
-    expect(searchItemsByName(items, '  coffee  ').map((i) => i.name)).toEqual(['Coffee Grinder']);
+    expect(searchItems(items, '  coffee  ').map((i) => i.name)).toEqual(['Coffee Grinder']);
   });
 
   it('returns an empty array when nothing matches', () => {
-    expect(searchItemsByName(items, 'zzz')).toEqual([]);
+    expect(searchItems(items, 'zzz')).toEqual([]);
   });
 
   it('does not throw on an item with no name', () => {
     const nameless = [item({ name: undefined as unknown as string })];
-    expect(searchItemsByName(nameless, 'x')).toEqual([]);
+    expect(searchItems(nameless, 'x')).toEqual([]);
+  });
+
+  it('matches the notes too, case-insensitively', () => {
+    const withNotes = [
+      item({ name: 'Lamp', notes: 'Brass, the Ikea one' }),
+      item({ name: 'Rug', notes: null }),
+      item({ name: 'Mug' }),
+    ];
+    expect(searchItems(withNotes, 'IKEA').map((i) => i.name)).toEqual(['Lamp']);
+    expect(searchItems(withNotes, 'mug').map((i) => i.name)).toEqual(['Mug']);
+  });
+
+  it('never matches a booking or proposer field', () => {
+    const booked = [
+      item({
+        name: 'Lamp',
+        status: 'booked',
+        bookedBy: 'carol',
+        proposedBy: 'dave',
+      } as Partial<ApiItem>),
+    ];
+    expect(searchItems(booked, 'booked')).toEqual([]);
+    expect(searchItems(booked, 'carol')).toEqual([]);
+    expect(searchItems(booked, 'dave')).toEqual([]);
   });
 });
