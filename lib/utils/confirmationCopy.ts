@@ -115,7 +115,7 @@ export function deleteListCopy(listName: string, itemCount: number | null): Conf
  * is reserved: owners can't see that, and the warning mustn't tell them.
  */
 export const MOVE_WARNING =
-  "If someone here reserved one of these, it's released, but they keep it on their Reserved page. On the other list, they start afresh.";
+  "Anyone who reserved one of these keeps it on their Reserved page, but it won't be reserved on the other list.";
 
 /** The Danger zone's line next to Delete, which says what the dialog will. */
 export const DELETE_LIST_WARNING =

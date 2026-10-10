@@ -125,7 +125,7 @@ describe('moving items (WIS-434)', () => {
 
   it('warns the same whatever the items are, and never says a reservation goes', () => {
     expect(MOVE_WARNING).not.toMatch(/\d/);
-    expect(MOVE_WARNING).toMatch(/keep it on their Reserved page/);
+    expect(MOVE_WARNING).toMatch(/keeps it on their Reserved page/);
     expect(MOVE_WARNING).not.toMatch(/lose|cancel|remove/i);
   });
 
