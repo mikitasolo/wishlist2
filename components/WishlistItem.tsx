@@ -168,6 +168,16 @@ interface WishlistItemProps {
    * them; resolves once it settles, and the page has said if it failed.
    */
   onGroupGift?: (id: string, action: GroupGiftAction) => Promise<unknown>;
+  /**
+   * An owner's Select mode (WIS-386): the card is one checkbox over all of it,
+   * and none of its own actions can be reached. With no `onToggleSelect` the
+   * item can't be picked (a proposal), and the card is only covered.
+   */
+  selectMode?: boolean;
+  selected?: boolean;
+  onToggleSelect?: (id: string) => void;
+  /** The card's batch is in flight (`useBusyIds`): it can't be picked again yet. */
+  selectBusy?: boolean;
 }
 
 /** How many "Goes with" chips the card shows before "+N more". */
@@ -214,6 +224,10 @@ function WishlistItem({
   related = NO_RELATED,
   onShowItem,
   onGroupGift,
+  selectMode = false,
+  selected = false,
+  onToggleSelect,
+  selectBusy = false,
 }: WishlistItemProps) {
   const { data: session } = useSession();
   // Discreet mode (WIS-46): a member's card is drawn as plain available, with
@@ -868,6 +882,38 @@ function WishlistItem({
           }
         />
       )}
+
+      {selectMode &&
+        (onToggleSelect ? (
+          <button
+            type="button"
+            role="checkbox"
+            aria-checked={selected}
+            aria-label={`Select ${item.name}`}
+            aria-disabled={selectBusy || undefined}
+            onClick={() => {
+              if (!selectBusy) onToggleSelect(item._id);
+            }}
+            className={`absolute inset-0 z-20 cursor-pointer rounded-3xl ${
+              selected ? 'ring-2 ring-primary-600 ring-offset-2 ring-offset-background' : ''
+            }`}
+          >
+            <span
+              aria-hidden
+              className={`absolute left-2.5 top-2.5 grid size-7 place-items-center rounded-full border-2 shadow-sm sm:left-3 sm:top-3 ${
+                selected
+                  ? 'border-primary-600 bg-primary-600 text-white'
+                  : 'border-border-strong bg-surface/90'
+              }`}
+            >
+              {selected && <Icon name="check" size={16} />}
+            </span>
+          </button>
+        ) : (
+          // Not pickable (a proposal: that's a review): covered, so nothing on
+          // it can be reached while picking.
+          <div aria-hidden className="absolute inset-0 z-20 rounded-3xl bg-background/50" />
+        ))}
 
       {/* The confirmations are portalled to <body>, as the sheet is, so one
           asked from the sheet opens over it whatever the card's own stacking

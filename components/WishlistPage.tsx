@@ -36,6 +36,7 @@ import { useWishlistListActions } from '@/lib/hooks/useWishlistListActions';
 import { useItemDialogs } from '@/lib/hooks/useItemDialogs';
 import { useWishlistItemActions } from '@/lib/hooks/useWishlistItemActions';
 import { useItemCards } from '@/lib/hooks/useItemCards';
+import { useBulkItemActions } from '@/lib/hooks/useBulkItemActions';
 import { useToast } from '@/components/ToastProvider';
 import { IWishlist } from '@/models/Wishlist';
 import type { ViewerRole } from '@/lib/utils/itemStatus';
@@ -276,6 +277,15 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
   );
 
   // The cards: staying put when changed, group gifts, `?item=` and "Goes with".
+  // An owner's Select mode and its action bar (WIS-386); never on a share
+  // link's page, where an owner only previews. Acts on the picked items the
+  // filters show.
+  const bulk = useBulkItemActions({
+    apiId,
+    enabled: isOwner && !linkToken,
+    shown: filters.sortedItems,
+    itemsControl,
+  });
   const cards = useItemCards({
     wishlistId,
     viewerRole,
@@ -468,6 +478,7 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
               cards={cards}
               dialogs={itemDialogs}
               itemActions={itemActions}
+              bulk={isOwner && !linkToken ? bulk : null}
               shareOwner={shareOwner}
               onUnarchive={() => listActions.setArchived(false)}
               isArchiving={listActions.isArchiving}

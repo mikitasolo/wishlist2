@@ -1,8 +1,9 @@
 'use client';
 
-import type { ComponentProps } from 'react';
+import { useEffect, type ComponentProps } from 'react';
 import AddItemTile from '@/components/AddItemTile';
 import BudgetFilter from '@/components/BudgetFilter';
+import BulkActionBar from '@/components/BulkActionBar';
 import Button from '@/components/Button';
 import EmptyState from '@/components/EmptyState';
 import FilterChips from '@/components/FilterChips';
@@ -14,11 +15,13 @@ import ShareButton from '@/components/ShareButton';
 import { ITEM_GRID_CLASSES, ListControlsSkeleton, SkeletonGrid } from '@/components/Skeleton';
 import WishlistItem from '@/components/WishlistItem';
 import { useStaggeredEntrance } from '@/lib/hooks/useCardMotion';
+import type { BulkItemActionsControl } from '@/lib/hooks/useBulkItemActions';
 import type { ItemCards } from '@/lib/hooks/useItemCards';
 import type { ListFilters } from '@/lib/hooks/useListFilters';
 import type { ItemDialogsControl } from '@/lib/hooks/useItemDialogs';
 import type { WishlistItemActions } from '@/lib/hooks/useWishlistItemActions';
 import type { WishlistItemsControl } from '@/lib/hooks/useWishlistItems';
+import { isSelectableItem } from '@/lib/utils/bulkItems';
 import { canCopyItem } from '@/lib/utils/itemCopy';
 import { SORT_OPTIONS, SORT_SHORT_LABELS } from '@/lib/utils/itemFilters';
 import type { ViewerRole } from '@/lib/utils/itemStatus';
@@ -45,6 +48,8 @@ export interface WishlistItemsTabProps {
   cards: ItemCards;
   dialogs: ItemDialogsControl;
   itemActions: Pick<WishlistItemActions, 'handleCardDelete'>;
+  /** An owner's Select mode and its bar (WIS-386); null for anyone else. */
+  bulk: BulkItemActionsControl | null;
   /** The empty list's Share, for an owner (as the header's). */
   shareOwner: NonNullable<ComponentProps<typeof ShareButton>['owner']>;
   onUnarchive: () => void;
@@ -71,6 +76,7 @@ export default function WishlistItemsTab({
   cards,
   dialogs,
   itemActions,
+  bulk,
   shareOwner,
   onUnarchive,
   isArchiving,
@@ -97,6 +103,27 @@ export default function WishlistItemsTab({
   } = filters;
   const { setShowAddItemModal, setShowProposeItemModal, setItemToReview, setItemToSave } = dialogs;
   // The cards come in one after another as the grid first shows (WIS-407).
+  // Select mode (WIS-386): Escape leaves it, as Done does.
+  const selecting = !!bulk?.selecting;
+  const stopSelecting = bulk?.stop;
+  useEffect(() => {
+    if (!selecting || !stopSelecting) return;
+    const onKey = (event: KeyboardEvent) => {
+      // Not when a dialog (a confirmation) is open over the page: its own.
+      if (
+        event.key === 'Escape' &&
+        !document.querySelector('[role="dialog"], [role="alertdialog"]')
+      ) {
+        stopSelecting();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [selecting, stopSelecting]);
+  const selectableShown = selecting ? sortedItems.filter(isSelectableItem) : [];
+  const allSelected =
+    selectableShown.length > 0 && selectableShown.every((item) => bulk?.selected.has(item._id));
+
   const staggered = useStaggeredEntrance(
     itemsLoaded && !loadingItems,
     itemsLoaded && !loadingItems && sortedItems.length > 0
@@ -196,6 +223,17 @@ export default function WishlistItemsTab({
                       invalid={budgetInvalid}
                     />
                   )}
+                  {bulk && !selecting && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      icon="check-circle"
+                      onClick={bulk.start}
+                      className="flex-shrink-0"
+                    >
+                      Select
+                    </Button>
+                  )}
                 </div>
               </div>
             </>
@@ -268,7 +306,7 @@ export default function WishlistItemsTab({
               className={`${ITEM_GRID_CLASSES} ${staggered ? 'motion-stagger' : ''}`}
               data-staggered={staggered || undefined}
             >
-              {addTile && (
+              {addTile && !selecting && (
                 <AddItemTile
                   label={addTile === 'add' ? 'Add item' : 'Propose an item'}
                   data-tour={addTile === 'add' ? 'add-item' : undefined}
@@ -313,9 +351,26 @@ export default function WishlistItemsTab({
                   onGroupGift={
                     isMember && !isOwner && !linkToken ? cards.handleGroupGift : undefined
                   }
+                  selectMode={selecting}
+                  selected={!!bulk?.selected.has(item._id)}
+                  onToggleSelect={bulk && isSelectableItem(item) ? bulk.toggle : undefined}
+                  selectBusy={!!bulk?.busy(item._id)}
                 />
               ))}
             </div>
+          )}
+
+          {bulk && selecting && (
+            <BulkActionBar
+              selectedCount={bulk.selectedCount}
+              counts={bulk.counts}
+              allSelected={allSelected}
+              canSelect={selectableShown.length > 0}
+              onAction={bulk.act}
+              onSelectAll={() => bulk.selectAll(sortedItems)}
+              onClear={bulk.clear}
+              onDone={bulk.stop}
+            />
           )}
         </>
       )}

@@ -118,6 +118,7 @@ export async function updateItem({
   wishlist,
   actor,
   data: validatedData,
+  purgeShareCard = true,
 }: {
   /** The item as read at the top of the request. */
   item: IItem;
@@ -129,6 +130,11 @@ export async function updateItem({
    */
   actor: ItemActor & { isMember: boolean };
   data: UpdateItemInput;
+  /**
+   * Purge the list's share card when a status change lands (the default). A
+   * bulk action (WIS-386) purges once for the whole batch instead.
+   */
+  purgeShareCard?: boolean;
 }): Promise<UpdateItemResult> {
   const { userId, isOwner, isMember } = actor;
   const id = currentItem._id.toString();
@@ -313,7 +319,7 @@ export async function updateItem({
 
   // An owner's status change or review can move the item in or out of the count
   // on the list's share card (a member's booking never does).
-  if (isOwner && updateData.status !== undefined) {
+  if (purgeShareCard && isOwner && updateData.status !== undefined) {
     await purgeShareCards({ wishlistIds: [wishlist._id.toString()] });
   }
 
@@ -384,6 +390,7 @@ export async function deleteItem({
   isOwner,
   userId,
   expectsProposal,
+  purgeShareCard = true,
 }: {
   /** The item as read at the top of the request. */
   item: Pick<IItem, '_id' | 'status'>;
@@ -393,6 +400,8 @@ export async function deleteItem({
   userId: string;
   /** The review dialog's Decline: it expects the item to still be a proposal (WIS-199). */
   expectsProposal: boolean;
+  /** As `updateItem`'s: a bulk delete purges once for the whole batch. */
+  purgeShareCard?: boolean;
 }): Promise<DeleteItemResult> {
   const id = item._id.toString();
 
@@ -444,7 +453,7 @@ export async function deleteItem({
   // it was deleted, since an edit since the read may have replaced it.
   await deleteOwnBlob(deleted.imageUrl);
   // A visible item going changes the count on the list's share card.
-  if (isCountedOnShareCard(deleted.status)) {
+  if (purgeShareCard && isCountedOnShareCard(deleted.status)) {
     await purgeShareCards({ wishlistIds: [wishlist._id.toString()] });
   }
 
