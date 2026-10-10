@@ -859,6 +859,7 @@ function WishlistItem({
         </button>
       }
       actions={actionsRow}
+      contentInert={selectMode}
     >
       {/* The item's details. With the live item, so a poll's update shows in
           it, and it goes with the card when the item is deleted. */}

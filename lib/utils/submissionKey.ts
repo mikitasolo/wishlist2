@@ -21,7 +21,8 @@ export interface SubmissionKeys {
   reset(): void;
 }
 
-function newKey(): string {
+/** A fresh key (a UUID where the browser has one). */
+export function newKey(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID();
   }

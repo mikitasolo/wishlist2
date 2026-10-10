@@ -321,13 +321,11 @@ describe('bulk delete offers Undo (WIS-386 with WIS-387)', () => {
   });
 
   it('puts back the ones the server kept, and all of them when the request fails', async () => {
-    bulkReply = ({ itemIds }) => ({
-      done: [itemIds[0]],
-      skipped: [],
-      gone: [],
-      failed: [itemIds[1]],
-      items: [],
-    });
+    bulkReply = ({ itemIds }) => {
+      // The first is deleted (as the read after shows), the second isn't.
+      listItems = listItems.filter((i) => i._id !== itemIds[0]);
+      return { done: [itemIds[0]], skipped: [], gone: [], failed: [itemIds[1]], items: [] };
+    };
     await open();
     let user = await pick('Lamp', 'Mug');
     await user.click(within(bar()).getByRole('button', { name: 'Delete' }));
@@ -341,7 +339,32 @@ describe('bulk delete offers Undo (WIS-386 with WIS-387)', () => {
     user = await pick('Kite');
     await user.click(within(bar()).getByRole('button', { name: 'Delete' }));
     expect(card('Kite')).toBeNull();
+    const reads = () =>
+      fetchMock.mock.calls.filter(([url]) => url === '/api/wishlists/birthday/items').length;
+    const readsBefore = reads();
     await act(async () => flushUndoableActions());
     await waitFor(() => expect(card('Kite')).not.toBeNull());
+    // It may have landed all the same: the list is read again.
+    await waitFor(() => expect(reads()).toBeGreaterThan(readsBefore));
+  });
+});
+
+describe('the pick limit (WIS-386)', () => {
+  it('never lets more items be picked than one request takes', async () => {
+    listItems = Array.from({ length: 101 }, (_, i) => item(`Thing ${i}`));
+    listItems[0] = item('Lamp');
+    await open();
+    const user = await pick();
+    await user.click(within(bar()).getByRole('button', { name: 'Select all' }));
+    expect(within(bar()).getByText('100 selected')).toBeInTheDocument();
+    expect(showToast).toHaveBeenCalledWith('You can pick up to 100 items at a time', 'info');
+    const unpicked = screen
+      .getAllByRole('checkbox')
+      .find((box) => box.getAttribute('aria-checked') === 'false')!;
+    showToast.mockClear();
+    await user.click(unpicked);
+    expect(unpicked).toHaveAttribute('aria-checked', 'false');
+    expect(within(bar()).getByText('100 selected')).toBeInTheDocument();
+    expect(showToast).toHaveBeenCalledWith('You can pick up to 100 items at a time', 'info');
   });
 });

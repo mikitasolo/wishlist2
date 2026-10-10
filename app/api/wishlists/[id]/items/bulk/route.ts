@@ -18,8 +18,9 @@ import {
 } from '@/lib/utils/bulkItemActions';
 import { errorKind } from '@/lib/utils/errorKind';
 
-// Up to 100 items, each its own single-item change.
-export const maxDuration = 30;
+// Up to 100 items, each its own single-item change (a few at a time); lined up
+// with `ITEM_BATCH_STALE_MS` and `BULK_REQUEST_TIMEOUT_MS`.
+export const maxDuration = 60;
 
 const NO_STORE = { 'Cache-Control': 'private, no-store' };
 
@@ -100,10 +101,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       );
     }
 
-    // One token for the batch, from the bucket an owner's single-item edit
-    // spends (an owner is never on the new-account tier there). A refused
-    // batch lets go of its key, so the retry after the wait goes ahead.
-    const limited = await enforce('booking', userKey(userId), { newAccount: false });
+    // The batch's own budget (`bulkItems`): an owner is on no new-account
+    // tier for their own items. A refused batch lets go of its key, so the
+    // retry after the wait goes ahead.
+    const limited = await enforce('bulkItems', userKey(userId));
     if (limited) {
       await releaseItemBatch(claim.batchId);
       return limited;

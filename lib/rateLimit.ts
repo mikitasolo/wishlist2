@@ -111,6 +111,9 @@ const SPECS = {
   // like any new list, since one request copies up to 100 items and their images.
   listCopy: { tokens: 10, window: '1 h', policy: 'fail-open', keyKind: 'user' },
   booking: { tokens: 60, window: '1 h', policy: 'fail-open', keyKind: 'user' },
+  // An owner's bulk item action (WIS-386): one batch of up to 100 item changes,
+  // so its own budget rather than one `booking` token per batch.
+  bulkItems: { tokens: 20, window: '1 h', policy: 'fail-open', keyKind: 'user' },
   // Joining a list through a Join share link (WIS-337): each join notifies
   // every owner, and a join is a step from reserving, so a forwarded link
   // can't be walked across many lists at once.

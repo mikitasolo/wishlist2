@@ -18,13 +18,22 @@ import {
 } from '@/lib/utils/bulkItems';
 import { restoreRemoved } from '@/lib/utils/deferredCommit';
 import { undoUpdate } from '@/lib/utils/itemListMerge';
-import { withRequestTimeout } from '@/lib/utils/requestTimeout';
-import { createSubmissionKeys, IDEMPOTENCY_HEADER } from '@/lib/utils/submissionKey';
+import { ITEM_REQUEST_TIMEOUT_MS, withRequestTimeout } from '@/lib/utils/requestTimeout';
+import { IDEMPOTENCY_HEADER, newKey } from '@/lib/utils/submissionKey';
 import type { ApiItem, ApiResponse } from '@/types/api';
 
 type BulkAnswer = BulkItemResult<ApiItem>;
 
 const FAILED = 'Failed to update items';
+
+/**
+ * How long a batch may take before the page gives up on it: up to 100 item
+ * changes, so longer than one item's (the route's `maxDuration` is 60 s).
+ */
+export const BULK_REQUEST_TIMEOUT_MS = Math.max(ITEM_REQUEST_TIMEOUT_MS, 45_000);
+
+/** The toast when a pick would go past `BULK_ITEMS_MAX`. */
+export const BULK_PICK_LIMIT_MESSAGE = `You can pick up to ${BULK_ITEMS_MAX} items at a time`;
 
 /**
  * Send one bulk action: resolves with the server's answer, or rejects with
@@ -49,7 +58,7 @@ export async function sendBulkItemAction(
     const result: ApiResponse<BulkAnswer> = await response.json();
     if (!result.success || !result.data) throw new Error(result.error || FAILED);
     return result.data;
-  });
+  }, BULK_REQUEST_TIMEOUT_MS);
 }
 
 export interface BulkItemActionsOptions {
@@ -92,8 +101,18 @@ export function useBulkItemActions({
   const offerUndo = useUndoableAction();
   const { busy, run, running } = useBusyIds();
   // One key per batch, the same on a retry of the same action on the same
-  // items (a timeout whose request may have landed), new after a success.
-  const [keys] = useState(createSubmissionKeys);
+  // items (a timeout whose request may have landed), new after a success:
+  // kept per batch, so one batch settling never touches another's.
+  const batchKeys = useRef(new Map<string, string>());
+  const keyFor = useCallback((action: BulkItemAction, ids: readonly string[]) => {
+    const payload = `${action}:${ids.join(',')}`;
+    let key = batchKeys.current.get(payload);
+    if (!key) {
+      key = newKey();
+      batchKeys.current.set(payload, key);
+    }
+    return { key, settled: () => batchKeys.current.delete(payload) };
+  }, []);
 
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set());
@@ -125,18 +144,35 @@ export function useBulkItemActions({
     setSelecting(false);
     setSelected(new Set());
   }, []);
-  const toggle = useCallback((id: string) => {
-    setSelected((prev) => {
+  // At most `BULK_ITEMS_MAX` picks, the most one request takes, so every
+  // count the bar shows is what an action will send.
+  const selectedRef = useRef(selected);
+  useEffect(() => {
+    selectedRef.current = selected;
+  }, [selected]);
+  const toggle = useCallback(
+    (id: string) => {
+      const prev = selectedRef.current;
+      if (!prev.has(id) && prev.size >= BULK_ITEMS_MAX) {
+        showToast(BULK_PICK_LIMIT_MESSAGE, 'info');
+        return;
+      }
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
-      return next;
-    });
-  }, []);
-  /** Pick every one of `shown` that can be picked (the items on screen). */
-  const selectAll = useCallback((shown: readonly ApiItem[]) => {
-    setSelected(new Set(shown.filter(isSelectableItem).map((item) => item._id)));
-  }, []);
+      selectedRef.current = next;
+      setSelected(next);
+    },
+    [showToast]
+  );
+  /** Pick every item on screen that can be picked (the first `BULK_ITEMS_MAX`). */
+  const selectAll = useCallback(() => {
+    const pickable = shown.filter(isSelectableItem);
+    if (pickable.length > BULK_ITEMS_MAX) showToast(BULK_PICK_LIMIT_MESSAGE, 'info');
+    const next = new Set(pickable.slice(0, BULK_ITEMS_MAX).map((item) => item._id));
+    selectedRef.current = next;
+    setSelected(next);
+  }, [shown, showToast]);
   const clear = useCallback(() => setSelected(new Set()), []);
 
   // The items as last rendered, so an action reads the latest without being
@@ -150,7 +186,7 @@ export function useBulkItemActions({
     (action: Exclude<BulkItemAction, 'delete'>, targets: ApiItem[]) => {
       const ids = targets.map((item) => item._id);
       const idSet = new Set(ids);
-      const key = keys.keyFor({ action, ids });
+      const { key, settled } = keyFor(action, ids);
       const before = new Map<string, ApiItem>();
       const optimistic = new Map<string, ApiItem>();
       setItems((prev) =>
@@ -180,7 +216,7 @@ export function useBulkItemActions({
 
       void request.then(
         (answer) => {
-          keys.reset();
+          settled();
           const fresh = new Map(answer.items.map((item) => [item._id, item]));
           const gone = new Set(answer.gone);
           const failed = new Set(answer.failed);
@@ -206,14 +242,14 @@ export function useBulkItemActions({
         }
       );
     },
-    [keys, setItems, mutations, settlePending, apiId, run, showToast, fetchItems]
+    [keyFor, setItems, mutations, settlePending, apiId, run, showToast, fetchItems]
   );
 
   const deferDelete = useCallback(
     (targets: ApiItem[]) => {
       const ids = targets.map((item) => item._id);
       const idSet = new Set(ids);
-      const key = keys.keyFor({ action: 'delete', ids });
+      const { key, settled } = keyFor('delete', ids);
       // Where each was, to put it back there on Undo or a failure.
       const index = new Map<string, number>();
       itemsRef.current.forEach((item, i) => {
@@ -232,8 +268,11 @@ export function useBulkItemActions({
         onUndo: () => putBack(targets),
         commit: async ({ keepalive }) => {
           try {
+            // Anything still waiting on these items goes first, so the two
+            // requests can't race.
+            await Promise.all(ids.map((id) => settlePending(id)));
             const answer = await sendBulkItemAction(apiId(), 'delete', ids, key, keepalive);
-            keys.reset();
+            settled();
             // Left as they were: back on the list, as the server has them.
             const fresh = new Map(answer.items.map((item) => [item._id, item]));
             const kept = new Set([...answer.failed, ...answer.skipped]);
@@ -243,22 +282,26 @@ export function useBulkItemActions({
             if (back.length) {
               putBack(back);
               showToast(bulkFailedMessage(back.length), 'error');
+              void fetchItems(true);
             }
           } catch (error) {
+            // It may have landed all the same (a timeout): the read after
+            // shows what the server has.
             putBack(targets);
             showToast(error instanceof Error ? error.message : FAILED, 'error');
+            void fetchItems(true);
           }
         },
       });
       void mutations.track(() => pending.settled);
     },
-    [keys, setItems, offerUndo, apiId, showToast, mutations]
+    [keyFor, setItems, offerUndo, apiId, showToast, mutations, settlePending, fetchItems]
   );
 
   /**
-   * Apply `action` to every picked item it changes (the first
-   * `BULK_ITEMS_MAX`), less any still busy with an earlier batch. Picks are
-   * cleared; Select mode stays on.
+   * Apply `action` to every picked item it changes (never more than
+   * `BULK_ITEMS_MAX`: no more can be picked), less any still busy with an
+   * earlier batch. Picks are cleared; Select mode stays on.
    */
   const act = useCallback(
     (action: BulkItemAction) => {

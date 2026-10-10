@@ -367,7 +367,7 @@ export default function WishlistItemsTab({
               allSelected={allSelected}
               canSelect={selectableShown.length > 0}
               onAction={bulk.act}
-              onSelectAll={() => bulk.selectAll(sortedItems)}
+              onSelectAll={bulk.selectAll}
               onClear={bulk.clear}
               onDone={bulk.stop}
             />

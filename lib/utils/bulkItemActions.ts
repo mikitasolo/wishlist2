@@ -34,8 +34,14 @@ import {
 
 export type BulkItemAnswer = BulkItemResult<SerializedItem>;
 
-/** How long an unfinished batch may run before a retry takes it as dead. */
-export const ITEM_BATCH_STALE_MS = 60_000;
+/**
+ * How long an unfinished batch may run before a retry takes it as dead: past
+ * the route's `maxDuration` (60 s).
+ */
+export const ITEM_BATCH_STALE_MS = 90_000;
+
+/** How many items a batch changes at once. */
+const BULK_CONCURRENCY = 4;
 
 /** How long a batch's key keeps answering retries. */
 const ITEM_BATCH_TTL_MS = 24 * 60 * 60 * 1000;
@@ -83,18 +89,14 @@ export async function applyBulkItemAction({
   const rates = await readRates();
   const applies = BULK_ACTION_STATUSES[action];
 
-  for (const id of itemIds) {
+  type Outcome = { kind: 'done' | 'skipped' | 'gone' | 'failed'; item?: SerializedItem };
+  const changeOne = async (id: string): Promise<Outcome> => {
     const item = byId.get(id);
-    if (!item) {
-      result.gone.push(id);
-      continue;
-    }
+    if (!item) return { kind: 'gone' };
     // A proposal (a review, never a bulk change), or a status the action isn't
     // for, is left as it is and answered as it is now.
     if (!applies.includes(item.status)) {
-      result.skipped.push(id);
-      result.items.push(await serializeForOwner(item, rates));
-      continue;
+      return { kind: 'skipped', item: await serializeForOwner(item, rates) };
     }
     try {
       if (action === 'delete') {
@@ -106,31 +108,41 @@ export async function applyBulkItemAction({
           expectsProposal: false,
           purgeShareCard: false,
         });
-        if (deleted.ok) result.done.push(id);
-        else if (deleted.status === 404) result.gone.push(id);
-        else result.failed.push(id);
-      } else {
-        const updated = await updateItem({
-          item,
-          wishlist,
-          actor: { userId, isOwner: true, isMember: false, isProposer: false },
-          data: bulkItemUpdate(action),
-          purgeShareCard: false,
-        });
-        if (updated.ok) {
-          result.done.push(id);
-          result.items.push(updated.data);
-        } else if (updated.status === 404) {
-          result.gone.push(id);
-        } else {
-          result.failed.push(id);
-        }
+        if (deleted.ok) return { kind: 'done' };
+        return { kind: deleted.status === 404 ? 'gone' : 'failed' };
       }
+      const updated = await updateItem({
+        item,
+        wishlist,
+        actor: { userId, isOwner: true, isMember: false, isProposer: false },
+        data: bulkItemUpdate(action),
+        purgeShareCard: false,
+        rates,
+      });
+      if (updated.ok) return { kind: 'done', item: updated.data };
+      return { kind: updated.status === 404 ? 'gone' : 'failed' };
     } catch (err) {
       console.error('A bulk item change failed:', errorKind(err));
-      result.failed.push(id);
+      return { kind: 'failed' };
     }
-  }
+  };
+
+  // A few at a time (each item is its own change, independent of the others),
+  // answered in the order the ids were sent.
+  const outcomes: Outcome[] = new Array(itemIds.length);
+  let next = 0;
+  const runNext = async () => {
+    while (next < itemIds.length) {
+      const at = next++;
+      outcomes[at] = await changeOne(itemIds[at]);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(BULK_CONCURRENCY, itemIds.length) }, runNext));
+  itemIds.forEach((id, at) => {
+    const { kind, item } = outcomes[at];
+    result[kind].push(id);
+    if (item) result.items.push(item);
+  });
 
   // The share card's count changes with a status change or a delete; purged
   // once for the batch rather than once per item.

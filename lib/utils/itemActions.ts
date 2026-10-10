@@ -119,6 +119,7 @@ export async function updateItem({
   actor,
   data: validatedData,
   purgeShareCard = true,
+  rates: knownRates,
 }: {
   /** The item as read at the top of the request. */
   item: IItem;
@@ -135,6 +136,8 @@ export async function updateItem({
    * bulk action (WIS-386) purges once for the whole batch instead.
    */
   purgeShareCard?: boolean;
+  /** Today's rates, when the caller has read them (a bulk action, once per batch). */
+  rates?: Map<string, number>;
 }): Promise<UpdateItemResult> {
   const { userId, isOwner, isMember } = actor;
   const id = currentItem._id.toString();
@@ -150,8 +153,8 @@ export async function updateItem({
   }
 
   // Ensure currency rates are up to date for validation
-  const currencyRate = await ensureCurrencyRatesUpToDate();
-  const rates = currencyRate?.rates || new Map<string, number>();
+  const rates =
+    knownRates ?? (await ensureCurrencyRatesUpToDate())?.rates ?? new Map<string, number>();
 
   // An owner's approve also expects the version of the proposal its dialog
   // shows (WIS-320). A proposer's edit landing since leaves it a proposal, so
