@@ -10,9 +10,12 @@ import {
   isGroupFollow,
   followBackTarget,
   withInviteAnswers,
+  groupByLocalDay,
   type NotificationView,
 } from '@/lib/utils/notifications';
 import { FOLLOWERS_PARAM, followersHref } from '@/lib/utils/profileLinks';
+
+// (groupByLocalDay's tests are at the end of the file.)
 
 function make(overrides: Partial<NotificationView>): NotificationView {
   return {
@@ -811,5 +814,32 @@ describe('asking a friend for a wishlist (WIS-324)', () => {
     expect(notificationText(make({ type: 'wishlist_ask', actorUsername: null }))).toBe(
       'Someone wants to know what you’d like'
     );
+  });
+});
+
+describe('groupByLocalDay', () => {
+  // Local-time constructors, so the test holds in any timezone.
+  const at = (id: string, y: number, m: number, d: number, h: number, min = 0) =>
+    make({ _id: id, createdAt: new Date(y, m - 1, d, h, min).toISOString() });
+
+  it('splits at the viewer local midnight, not UTC', () => {
+    const groups = groupByLocalDay(
+      [at('early', 2026, 10, 10, 0, 1), at('late', 2026, 10, 9, 23, 59)],
+      '2026-10-10'
+    );
+    expect(groups.map((g) => [g.key, g.rows.map((r) => r._id)])).toEqual([
+      ['today', ['early']],
+      ['earlier', ['late']],
+    ]);
+  });
+
+  it('counts a row after today as today, keeps order, drops empty groups', () => {
+    const groups = groupByLocalDay(
+      [at('a', 2026, 10, 11, 9), at('b', 2026, 10, 10, 8)],
+      '2026-10-10'
+    );
+    expect(groups).toHaveLength(1);
+    expect(groups[0].rows.map((r) => r._id)).toEqual(['a', 'b']);
+    expect(groupByLocalDay([], '2026-10-10')).toEqual([]);
   });
 });

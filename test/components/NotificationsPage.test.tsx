@@ -490,3 +490,88 @@ describe('Activity — a feed that couldn’t be loaded', () => {
     }
   );
 });
+
+// WIS-403: the feed has its own heading, Today / Earlier groups by the viewer's
+// local day, and unread rows that stand out (the nav badge stays the one count).
+describe('Activity feed structure', () => {
+  const daysAgo = (d: number) => new Date(Date.now() - d * 86_400_000 - 60_000).toISOString();
+
+  it('labels the feed and groups rows into Today and Earlier', async () => {
+    serve([
+      row({
+        _id: 'a',
+        type: 'role_changed',
+        wishlistName: 'Fresh',
+        createdAt: new Date().toISOString(),
+      }),
+      row({ _id: 'b', type: 'role_changed', wishlistName: 'Old one', createdAt: daysAgo(3) }),
+    ]);
+    render(<ActivityPage />);
+    await line('You’re now a member of Fresh');
+    expect(screen.getByRole('heading', { name: 'Notifications', level: 2 })).toBeVisible();
+    const groups = screen.getAllByRole('heading', { level: 3 });
+    expect(groups.map((h) => h.textContent)).toEqual(['Today', 'Earlier']);
+    const earlier = groups[1].parentElement as HTMLElement;
+    expect(earlier.textContent).toContain('Old one');
+    expect(earlier.textContent).not.toContain('Fresh');
+  });
+
+  it('leaves out a group with no rows', async () => {
+    serve([
+      row({ _id: 'b', type: 'role_changed', wishlistName: 'Old one', createdAt: daysAgo(3) }),
+    ]);
+    render(<ActivityPage />);
+    await line('You’re now a member of Old one');
+    expect(screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)).toEqual([
+      'Earlier',
+    ]);
+  });
+
+  it('marks unread rows beyond the dot, and leaves read ones plain', async () => {
+    serve([
+      row({ _id: 'u', type: 'role_changed', wishlistName: 'New', read: false }),
+      row({ _id: 'r', type: 'role_changed', wishlistName: 'Seen', read: true }),
+    ]);
+    render(<ActivityPage />);
+    const unread = (await line('You’re now a member of New')).closest('li') as HTMLElement;
+    const read = (await line('You’re now a member of Seen')).closest('li') as HTMLElement;
+    expect(within(unread).getByLabelText('Unread')).toBeInTheDocument();
+    expect(unread.firstElementChild?.className).toContain('border-l-primary-500');
+    expect(read.firstElementChild?.className).not.toContain('border-l-primary-500');
+    expect(within(read).queryByLabelText('Unread')).toBeNull();
+  });
+
+  // regression: the page marks everything read on open, so the focus re-read
+  // returned `read: true` and the unread emphasis vanished mid-visit.
+  it('keeps a row marked unread through a re-read that says it is read', async () => {
+    let feed = [row({ _id: 'u', type: 'role_changed', wishlistName: 'New', read: false })];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url === '/api/notifications?actors=1') {
+          return json({ success: true, data: feed, unreadCount: 0 });
+        }
+        if (url === '/api/users/me/invites') return json({ success: true, data: [] });
+        throw new Error(`unexpected fetch ${url} ${init?.method}`);
+      })
+    );
+    render(<ActivityPage />);
+    const li = (await line('You’re now a member of New')).closest('li') as HTMLElement;
+    expect(within(li).getByLabelText('Unread')).toBeInTheDocument();
+    feed = [{ ...feed[0], read: true }];
+    act(() => {
+      window.dispatchEvent(new Event('focus'));
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+    expect(within(li).getByLabelText('Unread')).toBeInTheDocument();
+  });
+
+  it('shows no Notifications heading with no rows', async () => {
+    serve([]);
+    render(<ActivityPage />);
+    await screen.findByText('You’re all caught up');
+    expect(screen.queryByRole('heading', { name: 'Notifications' })).toBeNull();
+  });
+});

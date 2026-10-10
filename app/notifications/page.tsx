@@ -13,6 +13,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useKnownSession } from '@/lib/hooks/useKnownSession';
 import { useDiscreetMode } from '@/lib/hooks/useDiscreetMode';
+import { useLocalToday } from '@/lib/hooks/useLocalToday';
 import AppHeader from '@/components/AppHeader';
 import AuthButton from '@/components/AuthButton';
 import Avatar from '@/components/Avatar';
@@ -34,6 +35,7 @@ import {
   type NotificationView,
   type RecordedInviteAnswer,
   followBackTarget,
+  groupByLocalDay,
   isGroupFollow,
   notificationIcon,
   notificationLink,
@@ -111,6 +113,8 @@ export default function ActivityPage() {
   const router = useRouter();
   const { showToast } = useToast();
   const invitesHeadingId = useId();
+  const feedHeadingId = useId();
+  const today = useLocalToday();
   const [items, setItems] = useState<NotificationView[]>([]);
   const [feedLoading, setFeedLoading] = useState(true);
   // The feed couldn't be read: said in place, with Try again, never as
@@ -129,6 +133,10 @@ export default function ActivityPage() {
   // the previous account.
   const feedSent = useRef(0);
   const feedLanded = useRef(0);
+  // Rows that were unread when read on this visit (state, as rows render from it). The page marks everything read
+  // as it opens, so a later read (focus) says `read`; the rows keep standing out
+  // until the visit ends.
+  const [unreadThisVisit, setUnreadThisVisit] = useState<ReadonlySet<string>>(() => new Set());
   // The invites answered on this page, each with the last feed read sent before
   // it landed. Such a read can still be on its way, and would bring the row back
   // as a pending invite, so the answer is put on it again when it lands.
@@ -173,6 +181,7 @@ export default function ActivityPage() {
     account.current = viewerId;
     feedLanded.current = feedSent.current;
     answers.current = [];
+    setUnreadThisVisit((prev) => (prev.size ? new Set() : prev));
     setItems((prev) => (prev.length ? [] : prev));
     setFeedLoading(true);
     setFeedFailed(false);
@@ -199,6 +208,8 @@ export default function ActivityPage() {
     }
     if (sent <= feedLanded.current || account.current !== forAccount) return;
     feedLanded.current = sent;
+    const fresh = feed.data.filter((n) => !n.read).map((n) => n._id);
+    if (fresh.length) setUnreadThisVisit((prev) => new Set([...prev, ...fresh]));
     setItems(
       withInviteAnswers(
         feed.data,
@@ -275,14 +286,17 @@ export default function ActivityPage() {
   }
 
   function renderRow(n: NotificationView) {
+    const isUnread = !n.read || unreadThisVisit.has(n._id);
     const rowClass = `relative flex items-center gap-3 rounded-2xl border p-4 ${
-      n.read ? 'border-border bg-surface' : 'border-primary-500/40 bg-primary-500/5'
+      !isUnread
+        ? 'border-border bg-surface'
+        : 'border-primary-500/40 border-l-4 border-l-primary-500 bg-primary-500/10'
     }`;
     const body = (
       <>
         <RowLeading n={n} />
         <span className="min-w-0 flex-1">
-          <span className="block text-body text-foreground">
+          <span className={`block text-body text-foreground ${isUnread ? 'font-medium' : ''}`}>
             <NotificationLine n={n} />
           </span>
           <span className="mt-0.5 block text-xs text-muted-foreground">
@@ -350,7 +364,7 @@ export default function ActivityPage() {
               Create a list
             </Button>
           )}
-          {!n.read && (
+          {isUnread && (
             <span
               className="h-2 w-2 flex-shrink-0 rounded-full bg-primary-500"
               aria-label="Unread"
@@ -420,7 +434,23 @@ export default function ActivityPage() {
             {feedFailed ? (
               <LoadError title="Couldn’t load notifications" onRetry={retryFeed} />
             ) : items.length > 0 ? (
-              <ul className="space-y-2">{items.map(renderRow)}</ul>
+              <section aria-labelledby={feedHeadingId}>
+                <h2 id={feedHeadingId} className="text-base font-semibold text-foreground">
+                  Notifications
+                </h2>
+                {today ? (
+                  <div className="mt-3 space-y-5">
+                    {groupByLocalDay(items, today).map((group) => (
+                      <div key={group.key}>
+                        <h3 className="text-sm font-medium text-muted-foreground">{group.label}</h3>
+                        <ul className="mt-2 space-y-2">{group.rows.map(renderRow)}</ul>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <ul className="mt-3 space-y-2">{items.map(renderRow)}</ul>
+                )}
+              </section>
             ) : (
               // Caught up only once both reads have said so.
               invites.length === 0 &&
