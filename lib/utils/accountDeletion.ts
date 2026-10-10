@@ -11,6 +11,7 @@ import Follow from '@/models/Follow';
 import ShareLink from '@/models/ShareLink';
 import WishlistLinkBlock from '@/models/WishlistLinkBlock';
 import WishlistCopy from '@/models/WishlistCopy';
+import ItemBatch from '@/models/ItemBatch';
 import WishlistAsk from '@/models/WishlistAsk';
 import { clearJoinRequestNotifications } from '@/lib/utils/joinRequests';
 import Notification from '@/models/Notification';
@@ -185,6 +186,8 @@ async function eraseHoldings(userId: string, agreed: ReadonlySet<string>): Promi
     if (!(await Wishlist.exists({ _id: wishlist }))) await Item.deleteMany({ wishlist });
   }
   await WishlistCopy.deleteMany({ user: uid });
+  // Its bulk item actions' keys (WIS-386), which only answered its retries.
+  await ItemBatch.deleteMany({ user: uid });
   // Asks for a wishlist (WIS-324), made or received. The notifications they
   // sent name the asker (or the list's maker) as their actor, so went above.
   await WishlistAsk.deleteMany({ $or: [{ asker: uid }, { person: uid }] });

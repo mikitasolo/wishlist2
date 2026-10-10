@@ -16,6 +16,7 @@ import { COPY_ITEMS_MAX } from '@/lib/utils/wishlistCopy';
 import { ITEM_LINKS_MAX } from '@/lib/utils/itemLinks';
 import { GROUP_GIFT_MAX_CENTS } from '@/lib/utils/groupGiftSummary';
 import { WALKTHROUGH_ACTIONS } from '@/lib/utils/walkthrough';
+import { BULK_ITEM_ACTIONS, BULK_ITEMS_MAX } from '@/lib/utils/bulkItems';
 
 /**
  * Validation schemas for API endpoints
@@ -158,6 +159,17 @@ export const copyWishlistSchema = z.object({
     .array(z.string().regex(/^[0-9a-f]{24}$/i, 'Invalid item id'))
     .max(COPY_ITEMS_MAX, `Pick at most ${COPY_ITEMS_MAX} items`)
     .default([])
+    .transform((ids) => [...new Set(ids.map((id) => id.toLowerCase()))]),
+});
+
+// An owner's bulk item action (WIS-386): one action, applied to each item as a
+// single item's change would be (`lib/utils/bulkItemActions.ts`).
+export const bulkItemActionSchema = z.object({
+  action: z.enum(BULK_ITEM_ACTIONS),
+  itemIds: z
+    .array(z.string().regex(/^[0-9a-f]{24}$/i, 'Invalid item id'))
+    .min(1, 'Pick at least one item')
+    .max(BULK_ITEMS_MAX, `Pick at most ${BULK_ITEMS_MAX} items`)
     .transform((ids) => [...new Set(ids.map((id) => id.toLowerCase()))]),
 });
 

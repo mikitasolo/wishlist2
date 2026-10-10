@@ -116,6 +116,7 @@ const KEY_KINDS: Record<LimiterName, KeyKind> = {
   content: 'user',
   listCopy: 'user',
   booking: 'user',
+  bulkItems: 'user',
   linkJoin: 'user',
   joinRequest: 'user',
   wishlistAsk: 'user',

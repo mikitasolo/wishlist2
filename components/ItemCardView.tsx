@@ -53,6 +53,12 @@ interface ItemCardViewProps {
    * reservation's). Null or absent: none.
    */
   motion?: CardMotion | null;
+  /**
+   * The card's own content can't be reached (`inert`: no pointer, focus or
+   * screen reader), as in an owner's Select mode (WIS-386), where something in
+   * `children` stands over it.
+   */
+  contentInert?: boolean;
   /** Anything else that belongs to the card (its sheet, its dialogs). */
   children?: ReactNode;
 }
@@ -78,6 +84,7 @@ export default function ItemCardView({
   actions,
   titleCoversCard,
   motion,
+  contentInert = false,
   children,
 }: ItemCardViewProps) {
   return (
@@ -101,7 +108,7 @@ export default function ItemCardView({
           top right corner, as they always have. On the narrow card below it
           they sit inside it, so they never run into the card's corner (the
           status first, then Most wanted as just its star). */}
-      <div className="relative mb-3 flex-shrink-0 sm:mb-4">
+      <div className="relative mb-3 flex-shrink-0 sm:mb-4" inert={contentInert || undefined}>
         <div className="motion-badge absolute right-1.5 top-1.5 z-10 flex flex-col items-end gap-1 sm:-right-2 sm:-top-2 sm:gap-2">
           {item.mostWanted && (
             <Badge className="shadow-sm max-sm:px-1.5">
@@ -143,7 +150,7 @@ export default function ItemCardView({
         </Cover>
       </div>
 
-      <div className="flex flex-col flex-grow">
+      <div className="flex flex-col flex-grow" inert={contentInert || undefined}>
         {/* The card's body (its name, price and notes): the name's `::after`
             stretches over the rest of it. */}
         <div className={`flex flex-grow flex-col ${titleCoversCard ? '' : 'relative'}`}>
