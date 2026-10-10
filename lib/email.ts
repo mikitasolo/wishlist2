@@ -654,7 +654,7 @@ function notificationEmailCopy(
     case 'gift_nudge':
       return {
         subject: 'Did you give what you reserved?',
-        heading: 'Did you give what you reserved?',
+        heading: 'Don’t forget to mark it as given',
         button: 'Open Reserved',
       };
   }
