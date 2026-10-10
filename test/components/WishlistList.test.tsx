@@ -146,7 +146,7 @@ describe('WishlistRow — content', () => {
     const [row] = rows();
 
     expect(row.querySelector('img')).toBeNull();
-    expect((row.firstElementChild as HTMLElement).style.background).toBe(
+    expect((row.firstElementChild as HTMLElement).style.background).toContain(
       placeholderOf(books._id.toString())
     );
     expect(row.querySelector('time')).toBeNull();

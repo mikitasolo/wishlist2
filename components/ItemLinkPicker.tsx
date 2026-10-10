@@ -114,6 +114,7 @@ export default function ItemLinkPicker({
               <Cover
                 src={option.imageUrl}
                 seed={option.id}
+                name={option.name}
                 sizes="32px"
                 placeholder={
                   <span className="text-sm font-semibold text-white/90">

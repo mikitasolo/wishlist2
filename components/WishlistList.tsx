@@ -3,7 +3,7 @@
 import { useId, useState } from 'react';
 import Link from 'next/link';
 import { badgeClassName } from '@/components/Badge';
-import Cover from '@/components/Cover';
+import Cover, { CoverMonogram } from '@/components/Cover';
 import Icon from '@/components/Icon';
 import OccasionLabel from '@/components/OccasionLabel';
 import ReservedByYouChip from '@/components/ReservedByYouChip';
@@ -124,6 +124,9 @@ export function WishlistRow({
       <Cover
         src={wishlist.bannerUrl}
         seed={wishlist._id.toString()}
+        name={wishlist.name}
+        occasionKind={wishlist.occasion?.kind}
+        placeholder={<CoverMonogram name={wishlist.name} className="text-lg" />}
         sizes="56px"
         className={`relative h-14 w-14 flex-shrink-0 overflow-hidden rounded-xl bg-surface-2 ${
           wishlist.archived ? 'grayscale' : ''

@@ -4,7 +4,7 @@ import { useId, type ReactNode } from 'react';
 import type { ApiItem } from '@/types/api';
 import BaseModal from '@/components/BaseModal';
 import Badge from '@/components/Badge';
-import Cover from '@/components/Cover';
+import Cover, { CoverMonogram } from '@/components/Cover';
 import Icon from '@/components/Icon';
 import type { StatusMeta } from '@/lib/utils/itemStatus';
 import { linkDomain } from '@/lib/utils/itemFields';
@@ -69,6 +69,8 @@ export default function ItemSheet({
           <Cover
             src={item.imageUrl}
             seed={item._id}
+            name={item.name}
+            placeholder={<CoverMonogram name={item.name} className="text-6xl" />}
             alt={item.name}
             sizes="(max-width: 640px) 100vw, 32rem"
             className="relative block h-full w-full overflow-hidden rounded-2xl bg-surface-2"

@@ -26,7 +26,7 @@ describe('SnapshotThumb', () => {
   it('shows the placeholder when there is no image', () => {
     const { container } = render(<SnapshotThumb src={null} alt="Blue Mug" seed="r1" />);
     expect(screen.queryByAltText('Blue Mug')).toBeNull();
-    expect((container.firstChild as HTMLElement).style.background).toBe(placeholderOf('r1'));
+    expect((container.firstChild as HTMLElement).style.background).toContain(placeholderOf('r1'));
   });
 
   // regression: a reservation made before snapshot blobs shares the item's
@@ -38,7 +38,7 @@ describe('SnapshotThumb', () => {
     fireEvent.error(screen.getByAltText('Blue Mug'));
 
     expect(screen.queryByAltText('Blue Mug')).toBeNull();
-    expect((container.firstChild as HTMLElement).style.background).toBe(placeholderOf('r1'));
+    expect((container.firstChild as HTMLElement).style.background).toContain(placeholderOf('r1'));
   });
 
   it('tries again when the row’s image changes', () => {

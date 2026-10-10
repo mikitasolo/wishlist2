@@ -2,7 +2,21 @@
 
 import { useState, type ReactNode } from 'react';
 import BannerImage from '@/components/BannerImage';
-import { coverGradient } from '@/lib/utils/cover';
+import { coverGradient, coverInitial } from '@/lib/utils/cover';
+import { coverBackground } from '@/lib/utils/coverPattern';
+
+/** The initial a pattern cover wears as its monogram tag; pass a text-size class. */
+export function CoverMonogram({ name, className = '' }: { name: string; className?: string }) {
+  const initial = coverInitial(name);
+  if (!initial) return null;
+  return (
+    <span
+      className={`font-semibold text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.3)] ${className}`}
+    >
+      {initial}
+    </span>
+  );
+}
 
 /**
  * The cover of a wishlist or item: a frame that shows its image, or the gradient
@@ -18,6 +32,8 @@ import { coverGradient } from '@/lib/utils/cover';
 export default function Cover({
   src,
   seed,
+  name,
+  occasionKind,
   alt = '',
   sizes,
   priority,
@@ -29,6 +45,14 @@ export default function Cover({
   src: string | null | undefined;
   /** Picks the placeholder gradient (e.g. the list's or item's id), so it never changes. */
   seed: string;
+  /**
+   * The list's or item's name: with it the placeholder gets a gift-wrap
+   * pattern (WIS-397) whose variant it picks. Only what a viewer who can open
+   * the list already sees.
+   */
+  name?: string;
+  /** The list's occasion kind, which picks the pattern family; items pass none. */
+  occasionKind?: string | null;
   alt?: string;
   /** How wide the frame is drawn, for the browser to pick the image's size (see `BannerImage`). */
   sizes: string;
@@ -52,7 +76,14 @@ export default function Cover({
   // Keyed on the URL, so an edit that replaces a broken image shows the new one.
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
   const showImage = !!src && failedSrc !== src;
-  const style = { background: showImage ? undefined : coverGradient(seed) };
+  const gradient = coverGradient(seed);
+  const style = {
+    background: showImage
+      ? undefined
+      : name !== undefined
+        ? coverBackground(gradient, occasionKind, name)
+        : gradient,
+  };
   const content = (
     <>
       {showImage && (

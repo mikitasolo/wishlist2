@@ -5,7 +5,7 @@ import { IWishlist } from '@/models/Wishlist';
 import Avatar from '@/components/Avatar';
 import Badge from '@/components/Badge';
 import IconButton from '@/components/IconButton';
-import Cover from '@/components/Cover';
+import Cover, { CoverMonogram } from '@/components/Cover';
 import ReservedByYouChip from '@/components/ReservedByYouChip';
 import OccasionLabel, { OCCASION_ON_COVER } from '@/components/OccasionLabel';
 import { coverBadge } from '@/lib/utils/visibility';
@@ -111,8 +111,13 @@ export default function WishlistCard({
       <Cover
         src={wishlist.bannerUrl}
         seed={wishlist._id.toString()}
+        name={wishlist.name}
+        occasionKind={wishlist.occasion?.kind}
+        placeholder={<CoverMonogram name={wishlist.name} className="text-4xl" />}
         sizes={WISHLIST_CARD_COVER_SIZES}
-        className={`relative aspect-[16/9] bg-surface-2 ${wishlist.archived ? 'grayscale' : ''}`}
+        className={`relative bg-surface-2 ${
+          wishlist.bannerUrl ? 'aspect-[16/9]' : 'aspect-[2.6/1] sm:aspect-[16/9]'
+        } ${wishlist.archived ? 'grayscale' : ''}`}
       >
         <Badge
           tone="glass"
