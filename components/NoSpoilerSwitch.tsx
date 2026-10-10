@@ -67,7 +67,7 @@ export default function NoSpoilerSwitch({ compact = false }: { compact?: boolean
         // Below `md` there's no track, so the lit ring and this dot carry "on".
         <span
           aria-hidden="true"
-          className="absolute top-1 right-1 h-2 w-2 rounded-full bg-primary-600 ring-2 ring-surface md:hidden"
+          className="absolute top-1 right-1 h-2 w-2 rounded-full bg-primary-600 md:hidden"
         />
       )}
     </button>
