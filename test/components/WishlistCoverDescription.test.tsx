@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // The top of a list's page: its banner as a short strip (none without one),
-// and its description as plain text, clamped to three lines with Show more.
+// and its description as plain text, clamped (two lines on a phone, three from sm) with Show more.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -27,9 +27,9 @@ describe('WishlistCover', () => {
     expect(strip).toHaveClass(
       'relative',
       'w-full',
-      'aspect-[12/5]',
+      'aspect-[4/1]',
       'sm:aspect-[3/1]',
-      'sm:max-h-60'
+      'sm:max-h-44'
     );
     // Fetched at the strip's width, not the viewport's past the page's max width.
     expect(img).toHaveAttribute('sizes', WISHLIST_COVER_SIZES);
@@ -66,7 +66,7 @@ function stubLayout() {
     .spyOn(HTMLElement.prototype, 'clientHeight', 'get')
     .mockImplementation(function (this: HTMLElement) {
       const full = linesOf(this.textContent ?? '') * LINE;
-      return this.classList.contains('line-clamp-3') ? Math.min(full, 3 * LINE) : full;
+      return this.classList.contains('sm:line-clamp-3') ? Math.min(full, 3 * LINE) : full;
     });
   return () => {
     scroll.mockRestore();
@@ -95,25 +95,25 @@ describe('WishlistDescription', () => {
   it('shows a short description as plain text, with no toggle', () => {
     render(<WishlistDescription text={SHORT} />);
     expect(text()).toHaveTextContent(SHORT);
-    expect(text()).toHaveClass('line-clamp-3', 'text-body');
+    expect(text()).toHaveClass('sm:line-clamp-3', 'text-body');
     expect(screen.queryByRole('button')).toBeNull();
   });
 
   it('clamps a long description to three lines, and Show more / Show less toggle it', async () => {
     const user = userEvent.setup();
     render(<WishlistDescription text={LONG} />);
-    expect(text()).toHaveClass('line-clamp-3');
+    expect(text()).toHaveClass('sm:line-clamp-3');
     const more = toggle('Show more');
     expect(more).toHaveAttribute('aria-expanded', 'false');
     expect(more).toHaveAttribute('aria-controls', text().id);
 
     await user.click(more);
-    expect(text()).not.toHaveClass('line-clamp-3');
+    expect(text()).not.toHaveClass('sm:line-clamp-3');
     const less = toggle('Show less');
     expect(less).toHaveAttribute('aria-expanded', 'true');
 
     await user.click(less);
-    expect(text()).toHaveClass('line-clamp-3');
+    expect(text()).toHaveClass('sm:line-clamp-3');
     expect(toggle('Show more')).toHaveAttribute('aria-expanded', 'false');
   });
 
@@ -137,7 +137,7 @@ describe('WishlistDescription', () => {
   // mismatch on a client whose width doesn't overflow it.
   it('renders no toggle on the server, where nothing is measured', () => {
     const html = renderToString(<WishlistDescription text={LONG} />);
-    expect(html).toContain('line-clamp-3');
+    expect(html).toContain('sm:line-clamp-3');
     expect(html).not.toContain('Show more');
   });
 

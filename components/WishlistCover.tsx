@@ -10,8 +10,8 @@ import Cover from '@/components/Cover';
 export const WISHLIST_COVER_SIZES = '(min-width: 1280px) 76rem, 100vw';
 
 /**
- * A list's banner, as a short full-width strip above its title: 2.4:1 on a
- * phone, and from `sm` up 3:1 capped at 240px (`max-h-60`), so on a wide
+ * A list's banner, as a short full-width strip above its title: 4:1 on a
+ * phone (about 90px), and from `sm` up 3:1 capped at 176px (`max-h-44`), so on a wide
  * screen it's a strip rather than a third of the page. Banners are stored at
  * the 16:9 they're cropped to (which list cards and share cards show as is),
  * so the strip trims their top and bottom (`object-cover`, centred).
@@ -35,7 +35,7 @@ export default function WishlistCover({
       seed={seed}
       priority
       sizes={WISHLIST_COVER_SIZES}
-      className="relative mb-6 aspect-[12/5] w-full overflow-hidden rounded-2xl border border-border bg-surface-2 sm:aspect-[3/1] sm:max-h-60 sm:rounded-3xl"
+      className="relative mb-4 aspect-[4/1] w-full overflow-hidden rounded-2xl border border-border bg-surface-2 sm:mb-6 sm:aspect-[3/1] sm:max-h-44 sm:rounded-3xl"
     />
   );
 }

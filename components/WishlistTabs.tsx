@@ -57,7 +57,7 @@ export default function WishlistTabs({
     <div
       role="tablist"
       aria-label="List sections"
-      className="mb-6 flex gap-6 border-b border-border sm:mb-8"
+      className="mb-4 flex gap-6 border-b border-border sm:mb-6"
     >
       {TABS.map((tab, i) => {
         const selected = tab.value === value;

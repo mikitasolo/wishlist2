@@ -207,9 +207,9 @@ export function SkeletonGrid({
  */
 export function ListControlsSkeleton({ chips }: { chips: number }) {
   return (
-    <>
+    <div className="mb-3 pb-3 sm:mb-5">
       {chips > 0 && (
-        <div className="-mx-4 mb-4 flex gap-2 overflow-hidden px-4 py-1 sm:mx-0 sm:px-0">
+        <div className="-mx-4 mb-2 flex gap-2 overflow-hidden px-4 py-1 sm:mx-0 sm:px-0">
           {Array.from({ length: chips }).map((_, i) => (
             <Skeleton
               key={i}
@@ -218,10 +218,10 @@ export function ListControlsSkeleton({ chips }: { chips: number }) {
           ))}
         </div>
       )}
-      <div className="mb-6 flex flex-wrap items-center gap-2 sm:mb-8 sm:flex-nowrap sm:gap-3">
-        <Skeleton className="h-9 w-full rounded-xl sm:w-auto sm:min-w-0 sm:flex-1" />
-        <Skeleton className="h-9 flex-1 rounded-xl sm:w-40 sm:flex-none" />
+      <div className="flex items-center gap-2 sm:gap-3">
+        <Skeleton className="h-9 min-w-[6rem] flex-1 rounded-xl" />
+        <Skeleton className="h-9 w-28 flex-shrink-0 rounded-xl sm:w-40" />
       </div>
-    </>
+    </div>
   );
 }

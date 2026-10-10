@@ -286,6 +286,6 @@ describe('the cover strip and the description', () => {
     const text = screen.getByText('Turning 30 at the lake.');
     expect(text.tagName).toBe('P');
     expect(follows(h1, text)).toBe(true);
-    expect(text.parentElement).toHaveClass('line-clamp-3');
+    expect(text.parentElement).toHaveClass('sm:line-clamp-3');
   });
 });

@@ -4,8 +4,8 @@ import { useCallback, useId, useLayoutEffect, useRef, useState } from 'react';
 import Button from '@/components/Button';
 
 /**
- * A list's description, as plain body text under its title: clamped to three
- * lines, with Show more / Show less when it runs longer.
+ * A list's description, as plain body text under its title: clamped to two
+ * lines on a phone and three from `sm` up, with Show more / Show less when it runs longer.
  *
  * Its paragraphs (split on blank lines) are blocks a little apart, rather than
  * blank lines: the clamp counts the lines of all of them, and a blank line as
@@ -47,12 +47,12 @@ export default function WishlistDescription({ text }: { text: string }) {
   const paragraphs = text.split(/\n\s*\n/).filter((p) => p.trim());
 
   return (
-    <div className="mb-6 max-w-3xl">
+    <div className="mb-4 max-w-3xl sm:mb-6">
       <div
         ref={ref}
         id={id}
         className={`space-y-2 whitespace-pre-line break-words text-body text-muted-foreground ${
-          expanded ? '' : 'line-clamp-3'
+          expanded ? '' : 'line-clamp-2 sm:line-clamp-3'
         }`}
       >
         {paragraphs.map((paragraph, i) => (
