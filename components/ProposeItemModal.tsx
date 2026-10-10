@@ -3,7 +3,7 @@
 import { useState, useEffect, useId } from 'react';
 import BaseModal from './BaseModal';
 import ItemForm from './ItemForm';
-import ItemFormFooter from './ItemFormFooter';
+import ItemFormFooter, { KeepAddingToggle } from './ItemFormFooter';
 import ConfirmDialog from './ConfirmDialog';
 import { defaultItemCurrency } from '@/lib/utils/currencies';
 
@@ -112,7 +112,6 @@ export default function ProposeItemModal({
             onCancel={handleClose}
             submitLabel="Propose"
             submittingLabel="Proposing…"
-            keepAdding={{ checked: keepAdding, onChange: setKeepAdding }}
           />
         }
       >
@@ -125,6 +124,7 @@ export default function ProposeItemModal({
           defaultCurrency={defaultItemCurrency(wishlistCurrency, userCurrency)}
           formId={formId}
         />
+        <KeepAddingToggle checked={keepAdding} onChange={setKeepAdding} disabled={isSubmitting} />
       </BaseModal>
 
       <ConfirmDialog

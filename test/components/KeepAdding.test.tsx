@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-// Keep adding (WIS-242): the new-item dialogs' checkbox beside the submit
-// button. On, a save clears the form for the next item, keeps the currency and
+// Keep adding (WIS-242): the new-item dialogs' checkbox under the form
+// (in the body, so a phone's footer is one row; WIS-400). On, a save clears the form for the next item, keeps the currency and
 // the dialog open, and puts focus back on Name; off (the default), a save
 // closes the dialog as before. A failed save keeps the input either way.
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';

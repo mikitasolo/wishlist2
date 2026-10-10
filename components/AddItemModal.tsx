@@ -3,7 +3,7 @@
 import { useState, useEffect, useId } from 'react';
 import BaseModal from './BaseModal';
 import ItemForm, { itemToFormData } from './ItemForm';
-import ItemFormFooter from './ItemFormFooter';
+import ItemFormFooter, { KeepAddingToggle } from './ItemFormFooter';
 import ConfirmDialog from './ConfirmDialog';
 import { defaultItemCurrency } from '@/lib/utils/currencies';
 import { useViewerLocale } from '@/lib/hooks/useViewerLocale';
@@ -190,7 +190,6 @@ export default function AddItemModal({
             submitLabel="Add to list"
             submittingLabel="Adding…"
             saveAsDraft
-            keepAdding={initialItem ? undefined : { checked: keepAdding, onChange: setKeepAdding }}
           />
         }
       >
@@ -206,6 +205,9 @@ export default function AddItemModal({
           uploads={uploads}
           image={image}
         />
+        {!initialItem && (
+          <KeepAddingToggle checked={keepAdding} onChange={setKeepAdding} disabled={isSubmitting} />
+        )}
       </BaseModal>
 
       <ConfirmDialog
