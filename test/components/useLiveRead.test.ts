@@ -302,6 +302,82 @@ describe('useLiveRead', () => {
     fire('focus');
     expect(read).toHaveBeenCalledTimes(2);
   });
+
+  // WIS-441: a read keyed on the signed-in account (Reserved, Activity, the
+  // badges) never shows the previous account's data, not even for a frame.
+  it('with resetOnNewRead, a new read clears what the last one showed in that render', async () => {
+    const readA = reads(['account a']);
+    const { result, rerender } = setup({ read: readA, pollMs: undefined, resetOnNewRead: true });
+    await settle();
+    expect(result.current.data).toEqual(['account a']);
+
+    const next = deferred<string[]>();
+    const readB = reads(next.promise);
+    rerender({ enabled: true, initialData: [], read: readB, resetOnNewRead: true });
+    expect(result.current).toMatchObject({ data: [], loaded: false, failed: false });
+
+    next.resolve(['account b']);
+    await settle();
+    expect(result.current).toMatchObject({ data: ['account b'], loaded: true });
+  });
+
+  it('lands an answer through merge, into the data as shown, and drops one merge refuses', async () => {
+    const merge = vi.fn(({ data }: StampedRead<string[]>) =>
+      data.includes('outdated') ? null : (shown: string[]) => [...shown, ...data]
+    );
+    const read = reads(['a'], ['outdated'], ['b']);
+    const { result } = setup({ read, merge, pollMs: undefined });
+    await settle();
+    expect(result.current.data).toEqual(['a']);
+
+    // The screen's own change stays: the next answer is merged into it.
+    act(() => result.current.setData((prev) => [...prev, 'mine']));
+    await act(() => result.current.refresh(true));
+    expect(result.current.data).toEqual(['a', 'mine']);
+    await act(() => result.current.refresh(true));
+    expect(result.current.data).toEqual(['a', 'mine', 'b']);
+    // Once per answer, outside rendering.
+    expect(merge).toHaveBeenCalledTimes(3);
+  });
+
+  // WIS-441: the invitations' own rule, now the shared one: a stale answer
+  // asks for no re-read while a read sent since the mutations settled is on
+  // its way, which decides.
+  it('after a stale answer, reads again only if no fresh read is already on its way', async () => {
+    const mutations = createMutationTracker();
+    const stale = deferred<string[]>();
+    const fresh = deferred<string[]>();
+    const read = reads(['a'], stale.promise, fresh.promise, ['c']);
+    const { result } = setup({ read, mutations, pollMs: undefined });
+    await settle();
+
+    // A read goes out, then a mutation settles, then another read goes out.
+    let first!: Promise<void>;
+    let second!: Promise<void>;
+    act(() => {
+      first = result.current.refresh(true);
+    });
+    await act(() => mutations.track(async () => {}));
+    act(() => {
+      second = result.current.refresh(true);
+    });
+    expect(read).toHaveBeenCalledTimes(3);
+
+    await act(async () => {
+      stale.resolve(['stale']);
+      await first;
+    });
+    await settle();
+    expect(result.current.data).toEqual(['a']);
+    expect(read).toHaveBeenCalledTimes(3);
+
+    await act(async () => {
+      fresh.resolve(['b']);
+      await second;
+    });
+    expect(result.current.data).toEqual(['b']);
+    expect(read).toHaveBeenCalledTimes(3);
+  });
 });
 
 describe('useRefreshOnReturn', () => {

@@ -571,7 +571,51 @@ describe('Activity feed structure', () => {
     expect(within(li).getByLabelText('Unread')).toBeInTheDocument();
   });
 
-  // WIS-376: returns go through the shared useRefreshOnReturn.
+  // WIS-441: the feed's read marks what's unread as read, so it reads only for
+  // someone looking: a tab shown in a window the viewer isn't in waits for
+  // their focus.
+  it('reads nothing, and marks nothing read, for a tab shown in an unfocused window', async () => {
+    let feed = [row({ _id: 'n1', type: 'role_changed', wishlistName: 'New', read: true })];
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/notifications?actors=1') {
+        return json({ success: true, data: feed, unreadCount: feed.filter((n) => !n.read).length });
+      }
+      if (url === '/api/notifications' && init?.method === 'PATCH') return json({ success: true });
+      if (url === '/api/users/me/invites') return json({ success: true, data: [] });
+      throw new Error(`unexpected fetch ${url} ${init?.method}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const focused = vi.spyOn(document, 'hasFocus').mockReturnValue(false);
+    onTestFinished(() => focused.mockRestore());
+    const calls = (url: string, method?: string) =>
+      fetchMock.mock.calls.filter(([u, init]) => u === url && init?.method === method).length;
+    render(<ActivityPage />);
+    await line('You’re now a member of New');
+    expect(calls('/api/notifications?actors=1')).toBe(1);
+
+    // Something new arrives, and the tab is uncovered in a window nobody is in.
+    feed = [row({ _id: 'n2', type: 'role_changed', wishlistName: 'Newer', read: false }), ...feed];
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'));
+      window.dispatchEvent(new Event('online'));
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+    expect(calls('/api/notifications?actors=1')).toBe(1);
+    expect(calls('/api/notifications', 'PATCH')).toBe(0);
+
+    // They focus it: read, and only then marked read.
+    focused.mockReturnValue(true);
+    act(() => {
+      window.dispatchEvent(new Event('focus'));
+    });
+    await line('You’re now a member of Newer');
+    expect(calls('/api/notifications?actors=1')).toBe(2);
+    await waitFor(() => expect(calls('/api/notifications', 'PATCH')).toBe(1));
+  });
+
+  // WIS-376: returns go through the shared live-read layer.
   it('reads the feed once for a return that fires both events, and when back online', async () => {
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
       if (url === '/api/notifications?actors=1') {

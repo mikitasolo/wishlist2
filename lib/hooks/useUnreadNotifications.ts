@@ -1,8 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect } from 'react';
 import { useKnownSession } from '@/lib/hooks/useKnownSession';
-import { useRefreshOnReturn } from '@/lib/hooks/useLiveRead';
+import { useLiveRead } from '@/lib/hooks/useLiveRead';
 
 /**
  * Window events that have the count read again, besides a return to the tab:
@@ -19,63 +19,53 @@ export const UNREAD_REFRESH_EVENTS = ['notifications-changed', 'invites-changed'
  * one reader per page, not one per badge.
  *
  * Kept fresh without polling: read when someone signs in and whenever another
- * account does, then again on every return (`useRefreshOnReturn`) and on `UNREAD_REFRESH_EVENTS`.
+ * account does, then again on every return (`useLiveRead`, no timer) and on
+ * `UNREAD_REFRESH_EVENTS`.
  * Visiting Activity marks everything read and fires `notifications-changed`,
  * so the badge clears there.
  *
  * Keyed on the user id, not just the session status (WIS-187): when another
  * account signs in from another tab, `status` stays `authenticated`, so the
- * read is redone for the new account, and the count is tagged with the account
- * it was read for, so the previous account's never shows for the new one, not
- * even from a read still on its way for it. Reads are numbered, and one that
- * lands after a newer one is dropped. A read that fails keeps the count: the
+ * read is redone for the new account, and the previous account's count goes
+ * in that render (`resetOnNewRead`), never shown for the new one, not even
+ * from a read still on its way for it. A read that lands after a newer one is
+ * dropped. A read that fails keeps the count: the
  * badge is best-effort. Through an `update()` (the session goes back through
  * `loading` but stays known) the count stays up until the next read.
  */
 export function useUnreadNotifications(): number {
   const { data: session, status } = useKnownSession();
   const userId = session?.user?.id ?? null;
-  const [unread, setUnread] = useState<{ account: string | null; count: number }>({
-    account: null,
-    count: 0,
-  });
-  // The number of the latest read sent, and of the latest that landed: a read
-  // numbered at or below `landed` is outdated when it lands.
-  const sent = useRef(0);
-  const landed = useRef(0);
-  // The account the reads are for.
-  const account = useRef(userId);
+  const enabled = status === 'authenticated';
 
-  // Another account signed in: every read sent so far was for the previous one.
-  useLayoutEffect(() => {
-    account.current = userId;
-    landed.current = sent.current;
-  }, [userId]);
-
-  const refresh = useCallback(async () => {
-    const read = ++sent.current;
-    const forAccount = account.current;
-    try {
+  // Keyed on the account. An answer that isn't a success is neither a count
+  // nor a failure: the count stays.
+  const read = useCallback(
+    async (stamp: () => number) => {
+      if (!userId) return null;
+      const sentAt = stamp();
       const res = await fetch('/api/notifications', { cache: 'no-store' });
       const json = await res.json();
-      if (!json.success || read <= landed.current || account.current !== forAccount) return;
-      landed.current = read;
-      setUnread({ account: forAccount, count: json.unreadCount ?? 0 });
-    } catch {
-      /* best-effort: the count it has stays up */
-    }
-  }, []);
+      return json.success ? { data: (json.unreadCount ?? 0) as number, sentAt } : null;
+    },
+    [userId]
+  );
+  // Best-effort: a failed read keeps the count it has (initially none).
+  const { data: count, refresh } = useLiveRead<number>({
+    enabled: enabled && userId !== null,
+    initialData: 0,
+    read,
+    resetOnNewRead: true,
+  });
 
-  const onRefresh = useCallback(() => void refresh(), [refresh]);
   useEffect(() => {
-    if (status !== 'authenticated') return;
-    onRefresh();
+    if (!enabled) return;
+    const onRefresh = () => void refresh(true);
     for (const event of UNREAD_REFRESH_EVENTS) window.addEventListener(event, onRefresh);
     return () => {
       for (const event of UNREAD_REFRESH_EVENTS) window.removeEventListener(event, onRefresh);
     };
-  }, [status, userId, onRefresh]);
-  useRefreshOnReturn(onRefresh, { enabled: status === 'authenticated' });
+  }, [enabled, refresh]);
 
-  return userId !== null && unread.account === userId ? unread.count : 0;
+  return userId !== null ? count : 0;
 }

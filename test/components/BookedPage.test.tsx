@@ -1360,6 +1360,24 @@ describe('BookedPage — reading both lists again while the page is open', () =>
     expect(historyNames()).toEqual(['Scarf', 'Mug']);
   });
 
+  // WIS-441: a return's read joins one already on its way, but the read an
+  // action asks for never does: that one was sent before the action's change.
+  it("the read a 404 asks for goes out afresh, even with a return's read on its way", async () => {
+    const { server, answer, reads, answerRead } = await renderLoaded();
+
+    comeBack('focus');
+    expect(reads()).toBe(2);
+    server.gift('res-scarf', scarfGift);
+    dismiss('Scarf');
+    await answer(dismissKey('res-scarf'), notFound('Reservation not found'));
+    expect(reads()).toBe(3);
+
+    await answerRead(2);
+    await answerRead(1);
+    expect(cardName('Scarf')).toBeNull();
+    expect(historyNames()).toEqual(['Scarf', 'Cookbook', 'Mug']);
+  });
+
   // regression: a read of the gift history the server answered before a delete
   // was saved, landing after that delete's success, put the deleted entry back
   // (and deleting it again answered "Gift entry not found").
