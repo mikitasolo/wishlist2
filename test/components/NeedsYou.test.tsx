@@ -257,12 +257,12 @@ describe('Needs you', () => {
     expect(rows()[0]).toHaveTextContent('It needs your confirmation.');
   });
 
-  it('shows the currency prompt as a row, whenever it would show', async () => {
+  it('shows the currency prompt as a banner of its own, never a row, even with nothing else to do', async () => {
     user.currencyChosen = false;
     render(<NeedsYou ownLists={[]} />);
-    await waitFor(() => expect(block()).not.toBeNull());
-    const prompt = screen.getByRole('region', { name: 'Show prices in PLN?' });
-    expect(rows()[0]).toContainElement(prompt);
+    const prompt = await screen.findByRole('region', { name: 'Show prices in PLN?' });
+    // No Needs you block around it: it isn't a task.
+    expect(block()).toBeNull();
     expect(within(prompt).getByRole('button', { name: 'Use PLN' })).toBeInTheDocument();
   });
 
@@ -273,7 +273,7 @@ describe('Needs you', () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it('shows at most three rows, one of each kind before any second', async () => {
+  it('shows at most three rows, one of each kind before any second, the currency prompt under them', async () => {
     user.currencyChosen = false;
     answers.invites = () => json({ success: true, data: [invite('1'), invite('2'), invite('3')] });
     answers.summary = () => json({ success: true, data: { changed: 2 } });
@@ -288,14 +288,21 @@ describe('Needs you', () => {
     await waitFor(() => expect(screen.queryByText('2 reservations changed')).not.toBeNull());
     await waitFor(() => expect(rows()).toHaveLength(3));
     // Three invitations don't hide the rest: the first invitation, the changed
-    // reservations and the currency prompt, which nothing else on the way in
-    // shows. The proposals and the other invitations are in Activity.
+    // reservations and the first proposals row. The other invitations and
+    // proposals are in Activity. The currency prompt is outside the cap.
     const [first, second, third] = rows();
     expect(first).toHaveTextContent('List 1');
     expect(second).toHaveTextContent('2 reservations changed');
-    expect(third).toContainElement(screen.getByRole('region', { name: 'Show prices in PLN?' }));
+    expect(third).toHaveTextContent('1 proposal to review');
+    const prompt = screen.getByRole('region', { name: 'Show prices in PLN?' });
+    expect(block()!.closest('section')).not.toContainElement(prompt);
+    // regression: WIS-402, it followed the task rows in the DOM, not led them.
+    expect(
+      block()!.closest('section')!.compareDocumentPosition(prompt) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
     expect(screen.queryByText('List 2')).toBeNull();
-    expect(screen.queryByText('On Birthday')).toBeNull();
+    expect(screen.queryByText('On Garden')).toBeNull();
     expect(screen.getByRole('link', { name: 'See all in Activity' })).toBeInTheDocument();
   });
 

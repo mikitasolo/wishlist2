@@ -37,7 +37,7 @@ vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }
 
 import CurrencyPromptRow, { useCurrencyOffer } from '@/components/CurrencyPrompt';
 
-/** The prompt as the dashboard's Needs you shows it: the row, whenever there's an offer. */
+/** The prompt as the dashboard shows it: the banner, whenever there's an offer. */
 function CurrencyPrompt() {
   const offer = useCurrencyOffer();
   return offer ? <CurrencyPromptRow offer={offer} /> : null;
@@ -99,7 +99,7 @@ describe('CurrencyPrompt', () => {
 
     expect(prompt()).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Show prices in PLN?' })).toBeInTheDocument();
-    expect(screen.getByText(/Polish Zloty would be the default/)).toBeInTheDocument();
+    expect(screen.getByText(/Polish Zloty would be your default/)).toBeInTheDocument();
     expect(useButton('PLN')).toBeEnabled();
     expect(otherCurrency()).toBeEnabled();
     expect(keepUsd()).toBeEnabled();

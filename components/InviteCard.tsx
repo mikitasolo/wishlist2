@@ -53,9 +53,6 @@ interface InviteCardProps {
  */
 export const ACTION_CARD_CLASSES =
   'flex flex-col gap-3 rounded-2xl border border-border bg-surface p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-5';
-/** An action card's surface alone, for one that lays out its content differently (the currency prompt). */
-export const ACTION_CARD_SURFACE =
-  'rounded-2xl border border-border bg-surface p-4 shadow-sm sm:p-5';
 
 /**
  * One pending invitation with Accept and Decline: which list (its cover, and

@@ -23,7 +23,7 @@ import { TONE_CLASSES } from '@/lib/utils/statusTones';
 export const NEEDS_YOU_LIMIT = 3;
 
 /** A row of Needs you, by what it's about. */
-type RowKind = 'invite' | 'reservations' | 'birthday' | 'proposals' | 'currency';
+type RowKind = 'invite' | 'reservations' | 'birthday' | 'proposals';
 interface Row {
   key: string;
   kind: RowKind;
@@ -34,15 +34,9 @@ interface Row {
  * Which kinds get a row first when there are more rows than fit: one of each,
  * in this order, then the rest in the order they're shown. Proposals come last
  * because Activity lists them too (as it does invitations): the changed
- * reservations and the currency prompt are nowhere else on the way in.
+ * reservations are nowhere else on the way in.
  */
-const FIRST_PICK: readonly RowKind[] = [
-  'invite',
-  'reservations',
-  'birthday',
-  'currency',
-  'proposals',
-];
+const FIRST_PICK: readonly RowKind[] = ['invite', 'reservations', 'birthday', 'proposals'];
 
 /**
  * The rows that fit, in the order they're shown: one of each kind first
@@ -86,7 +80,11 @@ const RESERVED_PATH = '/booked';
  * - "2 proposals to review on Anna's 30th", for each of your own lists with
  *   proposals waiting (`proposalCount`, which only an owner's lists carry), to
  *   the list's Proposals. A count, never who proposed;
- * - the currency prompt (`useCurrencyOffer`), whenever it would show.
+ *
+ * The currency prompt (`useCurrencyOffer`, WIS-402) is not a row: it's a slim
+ * banner under the block, outside the cap, so a one-time question never ranks
+ * with an invitation or pushes a task off a phone. It shows, on its own too,
+ * whenever it would.
  *
  * `ownLists` is your own active lists, as the page shows them; `null` while
  * they're read or when they couldn't be, which only leaves the proposals out.
@@ -167,30 +165,32 @@ export default function NeedsYou({
       ),
     });
   }
-  if (currency) {
-    rows.push({ key: 'currency', kind: 'currency', node: <CurrencyPrompt offer={currency} /> });
-  }
 
-  if (rows.length === 0) return null;
+  if (rows.length === 0 && !currency) return null;
   return (
-    <section aria-labelledby={headingId}>
-      <div className="mb-4 flex items-baseline justify-between gap-3 px-1">
-        <h2 id={headingId} className="text-xl font-semibold tracking-tight text-foreground">
-          Needs you
-        </h2>
-        <Link
-          href={ACTIVITY_PATH}
-          className="whitespace-nowrap text-sm font-medium text-accent hover:underline"
-        >
-          See all in Activity
-        </Link>
-      </div>
-      <ul className="space-y-3">
-        {pickRows(rows, NEEDS_YOU_LIMIT).map((row) => (
-          <li key={row.key}>{row.node}</li>
-        ))}
-      </ul>
-    </section>
+    <div className="space-y-4">
+      {rows.length > 0 && (
+        <section aria-labelledby={headingId}>
+          <div className="mb-4 flex items-baseline justify-between gap-3 px-1">
+            <h2 id={headingId} className="text-xl font-semibold tracking-tight text-foreground">
+              Needs you
+            </h2>
+            <Link
+              href={ACTIVITY_PATH}
+              className="whitespace-nowrap text-sm font-medium text-accent hover:underline"
+            >
+              See all in Activity
+            </Link>
+          </div>
+          <ul className="space-y-3">
+            {pickRows(rows, NEEDS_YOU_LIMIT).map((row) => (
+              <li key={row.key}>{row.node}</li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {currency && <CurrencyPrompt offer={currency} />}
+    </div>
   );
 }
 

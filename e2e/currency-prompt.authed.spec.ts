@@ -44,6 +44,11 @@ test('the dashboard offers a USD user their time zone’s currency once, and “
   const labels = await prompt(page).getByRole('button').allTextContents();
   expect(labels.filter((label) => /(…|\.\.\.)\s*$/.test(label))).toEqual([]);
 
+  // regression: WIS-402, a phone got a paragraph and three stacked controls
+  // (~200px); it's a slim banner now, the question over one row of controls.
+  await page.setViewportSize({ width: 390, height: 800 });
+  expect((await prompt(page).boundingBox())!.height).toBeLessThan(120);
+
   await page.setViewportSize({ width: 320, height: 800 });
   await expect(prompt(page)).toBeVisible();
   expect(await sidewaysScroll(page)).toBe(0);

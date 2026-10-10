@@ -4,7 +4,6 @@ import { useId, useRef, useState } from 'react';
 import { useKnownSession } from '@/lib/hooks/useKnownSession';
 import Button from './Button';
 import Icon from './Icon';
-import { ACTION_CARD_SURFACE } from './InviteCard';
 import Select from './Select';
 import { useToast } from './ToastProvider';
 import { useCurrencySuggestion } from '@/lib/hooks/useCurrencySuggestion';
@@ -110,8 +109,10 @@ export function useCurrencyOffer(): CurrencyOffer | null {
 }
 
 /**
- * The currency offer (`useCurrencyOffer`) as one of the dashboard's "Needs you"
- * rows: a region named by its question, with Use X, a menu of other currencies and Keep USD.
+ * The currency offer (`useCurrencyOffer`) as a slim banner under the
+ * dashboard's "Needs you": a region named by its question, with Use X, a menu
+ * of other currencies and Keep USD. A phone gets the question and one row of
+ * compact controls (no paragraph); from `sm` the explanation sits beside them.
  */
 export default function CurrencyPrompt({
   offer,
@@ -126,26 +127,24 @@ export default function CurrencyPrompt({
   return (
     <section
       aria-labelledby={headingId}
-      className={`flex flex-col gap-4 ${ACTION_CARD_SURFACE} md:flex-row md:items-center md:justify-between ${className}`}
+      className={`flex flex-col gap-2 rounded-2xl border border-border bg-surface px-4 py-3 shadow-sm md:flex-row md:items-center md:justify-between md:gap-4 ${className}`}
     >
-      <div className="flex min-w-0 items-start gap-3">
-        <span className="inline-flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-primary-500/12 text-accent">
-          <Icon name="globe" size={18} />
+      <div className="flex min-w-0 items-center gap-2.5">
+        <span className="hidden h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-primary-500/12 text-accent sm:inline-flex">
+          <Icon name="globe" size={16} />
         </span>
         <div className="min-w-0">
-          <h3 id={headingId} className="text-body font-semibold text-foreground">
+          <h2 id={headingId} className="text-sm font-semibold text-foreground">
             Show prices in {code}?
-          </h3>
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            {name} would be the default for your new wishlists, and other people&apos;s prices would
-            show in it. You can change it any time in Settings.
+          </h2>
+          <p className="hidden text-xs text-muted-foreground sm:block">
+            {name} would be your default; change it any time in Settings.
           </p>
         </div>
       </div>
-      {/* Stacked and full width on a phone, side by side under the text from
-          `sm`, and next to it from `md`. A label never wraps: the controls
-          have a fixed height, so a second line would spill out of them. */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end md:flex-shrink-0">
+      {/* One row, even on a phone. A label never wraps: the controls have a
+          fixed height, so a second line would spill out of them. */}
+      <div className="flex flex-wrap items-center gap-2 md:flex-shrink-0">
         <Button size="sm" onClick={offer.accept} disabled={busy} className="whitespace-nowrap">
           Use {code}
         </Button>
@@ -156,8 +155,8 @@ export default function CurrencyPrompt({
           options={otherCurrencies}
           disabled={busy}
           ariaLabel="Other currency"
-          placeholder="Other currency"
-          triggerClassName="w-full sm:w-44"
+          placeholder="Other"
+          triggerClassName="w-24 sm:w-40"
         />
         <Button
           variant="ghost"
