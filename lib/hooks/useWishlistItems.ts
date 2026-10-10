@@ -287,3 +287,5 @@ export function useWishlistItems({
     handleUpdateItem,
   };
 }
+
+export type WishlistItemsControl = ReturnType<typeof useWishlistItems>;
