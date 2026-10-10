@@ -94,7 +94,9 @@ describe('useListUrlParam', () => {
   });
 
   it('does not write a default value into a new slug URL', () => {
-    const { rerender } = setup({ list: A, urlId: 'a-list' });
+    const { result, rerender } = setup({ list: A, urlId: 'a-list' });
+    act(() => result.current[1]('x'));
+    act(() => result.current[1](''));
     setUrl('/wishlists/new-slug');
     rerender({ list: { id: 'aaa', slug: 'new-slug' }, urlId: 'new-slug' });
     expect(window.location.search).toBe('');
