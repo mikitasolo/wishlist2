@@ -130,17 +130,6 @@ export function bulkMovedMessage(count: number, listName: string): string {
 }
 
 /**
- * Move's warning (WIS-434), shown in its dialog every time, whatever the
- * picked items are: a move is a copy onto the other list and a delete here,
- * so a reservation can't follow an item. It never depends on whether any
- * item is reserved (owners can't see that, and the warning mustn't tell
- * them), and it doesn't say a reservation goes: the gifter keeps theirs, as
- * with a delete.
- */
-export const MOVE_WARNING =
-  "Members of this list lose any reservations on these items: they're released here, though whoever reserved one keeps it on their Reserved page. On the other list they start afresh.";
-
-/**
  * The one answer to a move whose target isn't a list of the caller's they may
  * add to: missing, not theirs, archived or the list itself all alike, so it
  * says nothing about a list that isn't theirs.

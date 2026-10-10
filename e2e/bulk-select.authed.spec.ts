@@ -143,7 +143,7 @@ test('move to another list: always the same warning, then Undo, then one request
   await page.getByRole('checkbox', { name: 'Select E2E Draft' }).click();
   await bar(page).getByRole('button', { name: 'Move to list' }).click();
   const dialog = page.getByRole('dialog', { name: 'Move 1 item to another list' });
-  await expect(dialog.getByText(/Members of this list lose any reservations/)).toBeVisible();
+  await expect(dialog.getByText(/keep it on their Reserved page/)).toBeVisible();
   await expect(dialog.getByRole('button', { name: 'Move', exact: true })).toBeDisabled();
   await dialog.getByRole('button', { name: /E2E Elsewhere/ }).click();
   await dialog.getByRole('button', { name: 'Move', exact: true }).click();

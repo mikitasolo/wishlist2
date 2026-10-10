@@ -3,11 +3,10 @@ import Item, { type IItem } from '@/models/Item';
 import ItemBatch, { type IItemBatch } from '@/models/ItemBatch';
 import type { IWishlist } from '@/models/Wishlist';
 import { copyBlobsToUploads, deleteOwnBlobs, isOwnBlob } from '@/lib/utils/blob';
-import { normalizeCurrency } from '@/lib/utils/currency';
 import { deleteItem } from '@/lib/utils/itemActions';
 import { remapLinks } from '@/lib/utils/itemLinks';
 import { getOwnerAccess } from '@/lib/utils/wishlistAccess';
-import { copiedStatus } from '@/lib/utils/wishlistCopy';
+import { copiedItemFields } from '@/lib/utils/wishlistCopy';
 import { BULK_ACTION_STATUSES } from '@/lib/utils/bulkItems';
 import { errorKind } from '@/lib/utils/errorKind';
 
@@ -30,6 +29,14 @@ import { errorKind } from '@/lib/utils/errorKind';
 
 /** How long a move spends copying images before it gives up on the rest. */
 export const MOVE_IMAGES_BUDGET_MS = 20_000;
+
+/**
+ * How long after it starts a move stops deleting moved items: any left then
+ * stay where they are (`failed`), their copies taken back. Keeps a move well
+ * inside the route's 60 s `maxDuration` and the page's 45 s
+ * `BULK_REQUEST_TIMEOUT_MS`, so it's never killed between a copy and a delete.
+ */
+export const MOVE_DEADLINE_MS = 35_000;
 
 /** How many moved items are deleted from their list at once. */
 const MOVE_CONCURRENCY = 4;
@@ -139,6 +146,7 @@ export async function applyBulkMove({
   batchId: IItemBatch['_id'];
 }): Promise<BulkMoveOutcome> {
   const sourceId = source._id.toString();
+  const deadline = Date.now() + MOVE_DEADLINE_MS;
   const kinds = new Map<string, Kind>();
   const skipped = new Map<string, IItem>();
 
@@ -211,18 +219,9 @@ export async function applyBulkMove({
         return {
           _id: copyIds.get(id),
           wishlist: targetId,
-          name: item.name,
+          // Unreserved: the target's members start afresh with it.
+          ...copiedItemFields(item),
           imageUrl: images.get(id) ?? (isOwnBlob(item.imageUrl) ? undefined : item.imageUrl),
-          price: item.price
-            ? { value: item.price.value, currency: normalizeCurrency(item.price.currency) }
-            : null,
-          link: item.link || undefined,
-          notes: item.notes || undefined,
-          mostWanted: !!item.mostWanted,
-          status: copiedStatus(item.status),
-          // Never reserved, never anyone's proposal: the target's members
-          // start afresh with it.
-          bookedBy: null,
           relatedItems: links.get(id) ?? [],
           createdAt: new Date(base + i),
           updatedAt: new Date(base + i),
@@ -266,6 +265,11 @@ export async function applyBulkMove({
   // back, unless the delete went through before failing: then it's moved.
   const deleteOne = async (item: IItem) => {
     const id = item._id.toString();
+    if (Date.now() >= deadline) {
+      kinds.set(id, 'failed');
+      await takeBackCopy(copyIds.get(id)!, userId);
+      return;
+    }
     let kind: Kind;
     try {
       const deleted = await deleteItem({
@@ -279,7 +283,14 @@ export async function applyBulkMove({
       kind = deleted.ok ? 'done' : deleted.status === 404 ? 'gone' : 'failed';
     } catch (err) {
       console.error('A bulk item move failed:', errorKind(err));
-      kind = (await Item.exists({ _id: item._id })) ? 'failed' : 'done';
+      // Moved if the delete went through before failing. Unknown (the read
+      // fails too): the copy stays, as an item on two lists beats one lost.
+      const stillHere = await Item.exists({ _id: item._id }).then(Boolean, () => null);
+      kind = stillHere === false ? 'done' : 'failed';
+      if (stillHere === null) {
+        kinds.set(id, kind);
+        return;
+      }
     }
     kinds.set(id, kind);
     if (kind !== 'done') await takeBackCopy(copyIds.get(id)!, userId);

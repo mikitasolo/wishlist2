@@ -375,7 +375,7 @@ describe('Move to list (WIS-434)', () => {
     const user = await pick('Lamp', 'Mug');
     const dialog = await chooseList(user);
     expect(dialog).toHaveAccessibleName('Move 2 items to another list');
-    expect(within(dialog).getByText(/Members of this list lose any reservations/)).toBeTruthy();
+    expect(within(dialog).getByText(/keep it on their Reserved page/)).toBeTruthy();
     expect(within(dialog).queryByRole('button', { name: /Birthday/ })).toBeNull();
     expect(within(dialog).queryByRole('button', { name: /Old list/ })).toBeNull();
     // Nothing is picked yet, so nothing can be moved.

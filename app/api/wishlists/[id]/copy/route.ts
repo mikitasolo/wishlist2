@@ -11,7 +11,6 @@ import { generateUniqueWishlistSlug, resolveWishlistId } from '@/lib/utils/wishl
 import { getOwnerAccess } from '@/lib/utils/wishlistAccess';
 import { ownedByFilter, serializeWishlist } from '@/lib/utils/wishlistOwners';
 import { copyBlobsToUploads, isOwnBlob } from '@/lib/utils/blob';
-import { normalizeCurrency } from '@/lib/utils/currency';
 import {
   IDEMPOTENCY_HEADER,
   readIdempotencyKey,
@@ -23,7 +22,7 @@ import {
   COPYABLE_STATUSES,
   COPY_LIST_IMAGES_FAILED_NOTICE,
   COPY_LIST_IMAGES_QUOTA_NOTICE,
-  copiedStatus,
+  copiedItemFields,
   serializeCopyCandidate,
   startingCopyOccasion,
 } from '@/lib/utils/wishlistCopy';
@@ -289,17 +288,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         items.map((item, i) => ({
           _id: copyIds.get(item._id.toString()),
           wishlist: newId,
-          name: item.name,
+          ...copiedItemFields(item),
           imageUrl: itemImages[i] ?? undefined,
-          price: item.price
-            ? { value: item.price.value, currency: normalizeCurrency(item.price.currency) }
-            : null,
-          link: item.link || undefined,
-          notes: item.notes || undefined,
-          mostWanted: !!item.mostWanted,
-          status: copiedStatus(item.status),
-          // Never reserved, never anyone's proposal: a new item on a new list.
-          bookedBy: null,
           relatedItems: links.get(item._id.toString()) ?? [],
           createdAt: new Date(base + i),
           updatedAt: new Date(base + i),

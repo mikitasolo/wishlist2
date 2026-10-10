@@ -8,8 +8,8 @@ import {
   bulkMovedMessage,
   bulkTargets,
   isSelectableItem,
-  MOVE_WARNING,
 } from '@/lib/utils/bulkItems';
+import { MOVE_WARNING } from '@/lib/utils/confirmationCopy';
 import { bulkItemActionSchema } from '@/lib/validations';
 
 // WIS-386: which picked items each bulk action changes, and what it says.
@@ -125,7 +125,8 @@ describe('moving items (WIS-434)', () => {
 
   it('warns the same whatever the items are, and never says a reservation goes', () => {
     expect(MOVE_WARNING).not.toMatch(/\d/);
-    expect(MOVE_WARNING).toMatch(/keeps it on their Reserved page/);
+    expect(MOVE_WARNING).toMatch(/keep it on their Reserved page/);
+    expect(MOVE_WARNING).not.toMatch(/lose|cancel|remove/i);
   });
 
   it('takes a target only for a move, and needs one there', () => {

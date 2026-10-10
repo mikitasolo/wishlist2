@@ -181,20 +181,32 @@ export async function applyBulkMoveAction({
   } catch (err) {
     console.error(`Settling dead item moves failed (${errorKind(err)})`);
   }
-  const outcome = await applyBulkMove({ source: wishlist, targetId, userId, itemIds, batchId });
-  if ('refused' in outcome) return outcome;
-  const result: BulkItemAnswer = { done: [], skipped: [], gone: [], failed: [], items: [] };
-  const rates = outcome.skipped.size ? await readRates() : new Map<string, number>();
-  for (const id of itemIds) {
-    const kind = outcome.kinds.get(id) ?? 'failed';
-    result[kind].push(id);
-    const item = outcome.skipped.get(id);
-    if (item) result.items.push(await serializeForOwner(item, rates));
+  try {
+    const outcome = await applyBulkMove({ source: wishlist, targetId, userId, itemIds, batchId });
+    if ('refused' in outcome) return outcome;
+    const result: BulkItemAnswer = { done: [], skipped: [], gone: [], failed: [], items: [] };
+    const rates = outcome.skipped.size ? await readRates() : new Map<string, number>();
+    for (const id of itemIds) {
+      const kind = outcome.kinds.get(id) ?? 'failed';
+      result[kind].push(id);
+      const item = outcome.skipped.get(id);
+      if (item) result.items.push(await serializeForOwner(item, rates));
+    }
+    if (result.done.length) {
+      await purgeShareCards({ wishlistIds: [wishlist._id.toString(), targetId] });
+    }
+    return result;
+  } catch (err) {
+    // The route lets go of the batch on a throw, and its record with it, so
+    // whatever the attempt wrote is settled first: no item left on both lists.
+    try {
+      const row = await ItemBatch.findById(batchId).select('moves copiedUrls').lean();
+      if (row) await settleDeadMove(row, userId);
+    } catch (settleErr) {
+      console.error(`Settling a failed item move failed (${errorKind(settleErr)})`);
+    }
+    throw err;
   }
-  if (result.done.length) {
-    await purgeShareCards({ wishlistIds: [wishlist._id.toString(), targetId] });
-  }
-  return result;
 }
 
 /**
@@ -202,7 +214,7 @@ export async function applyBulkMoveAction({
  * `ITEM_BATCH_STALE_MS`) and that nobody retried: their copies taken back
  * where the item is still on its list, their images freed (`settleDeadMove`).
  */
-async function settleDeadMoves(userId: string): Promise<void> {
+export async function settleDeadMoves(userId: string): Promise<void> {
   const dead = await ItemBatch.find({
     user: userId,
     done: false,

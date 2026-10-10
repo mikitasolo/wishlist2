@@ -43,6 +43,7 @@ import Wishlist from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
 import { ITEM_BATCH_STALE_MS, ITEM_BATCH_KEY_REUSED_ERROR } from '@/lib/utils/bulkItemActions';
 import { MOVE_TARGET_ERROR } from '@/lib/utils/bulkItems';
+import { MOVE_DEADLINE_MS } from '@/lib/utils/bulkItemMove';
 import { scopedIdempotencyKey } from '@/lib/utils/itemIdempotency';
 import {
   api,
@@ -428,6 +429,35 @@ describe('moving items: races and retries', () => {
     expect(data.gone).toEqual([w.itemId]);
     expect(data.done).toEqual([other]);
     expect((await onTarget()).map((i) => i.name)).toEqual(['Lamp']);
+  });
+
+  it('stops deleting at its deadline: the rest stay here, their copies taken back', async () => {
+    const lamp = await makeItem({ name: 'Lamp' });
+    const realNow = Date.now.bind(Date);
+    // The copies are written; by the time the deletes start, time is up.
+    holdFirstCall(
+      Item,
+      'insertMany',
+      async () => {
+        vi.spyOn(Date, 'now').mockImplementation(() => realNow() + MOVE_DEADLINE_MS + 1000);
+      },
+      { after: true }
+    );
+    const { data } = await (await move(w.owner, [w.itemId, lamp])).json();
+    expect(data.failed).toEqual([w.itemId, lamp]);
+    expect(await onTarget()).toHaveLength(0);
+    expect(await Item.countDocuments({ wishlist: w.wishlistId })).toBe(2);
+  });
+
+  it('settles what it wrote when it fails part-way, so nothing is on both lists', async () => {
+    const lamp = await makeItem({ name: 'Lamp' });
+    purge.mockRejectedValueOnce(new Error('purge down'));
+    const res = await move(w.owner, [w.itemId, lamp]);
+    expect(res.status).toBe(500);
+    // Both were deleted here before the failure, so their copies stand.
+    expect((await onTarget()).map((i) => i.name).sort()).toEqual(['Camera', 'Lamp']);
+    expect(await Item.countDocuments({ wishlist: w.wishlistId })).toBe(0);
+    expect(await ItemBatch.countDocuments()).toBe(0);
   });
 
   it('answers a retry with the same key as the first attempt, moving nothing twice', async () => {

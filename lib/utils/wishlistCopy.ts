@@ -9,6 +9,7 @@
  * available one is, and its copy starts unreserved like every other.
  */
 import type { Occasion } from '@/lib/utils/occasion';
+import { normalizeCurrency } from '@/lib/utils/currency';
 
 /** The most items one copy brings over. */
 export const COPY_ITEMS_MAX = 100;
@@ -24,6 +25,36 @@ export const COPYABLE_STATUSES = ['draft', 'available', 'booked'] as const;
 /** A copy's status: a draft stays a draft, everything else is available and unreserved. */
 export function copiedStatus(status: string): 'draft' | 'available' {
   return status === 'draft' ? 'draft' : 'available';
+}
+
+/** The fields of an item a copy of it carries over. */
+interface CopiedSource {
+  name: string;
+  price?: { value: number; currency: string } | null;
+  link?: string | null;
+  notes?: string | null;
+  mostWanted?: boolean;
+  status: string;
+}
+
+/**
+ * What a copy of `item` starts with, on a new list (`/copy`, WIS-325) or on
+ * the list it's moved to (WIS-434): its own fields, never a reservation or a
+ * proposer. The image, links, list and dates are the caller's.
+ */
+export function copiedItemFields(item: CopiedSource) {
+  return {
+    name: item.name,
+    price: item.price
+      ? { value: item.price.value, currency: normalizeCurrency(item.price.currency) }
+      : null,
+    link: item.link || undefined,
+    notes: item.notes || undefined,
+    mostWanted: !!item.mostWanted,
+    status: copiedStatus(item.status),
+    // Never reserved, never anyone's proposal: a new item to whoever sees it.
+    bookedBy: null,
+  };
 }
 
 /**

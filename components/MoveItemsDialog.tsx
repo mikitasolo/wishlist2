@@ -4,10 +4,11 @@ import { useEffect, useState } from 'react';
 import BaseModal from '@/components/BaseModal';
 import Button from '@/components/Button';
 import Callout from '@/components/Callout';
+import Icon from '@/components/Icon';
 import LoadError from '@/components/LoadError';
 import { Skeleton } from '@/components/Skeleton';
 import type { MoveTarget } from '@/lib/hooks/useBulkItemActions';
-import { MOVE_WARNING } from '@/lib/utils/bulkItems';
+import { MOVE_WARNING } from '@/lib/utils/confirmationCopy';
 import { formatItemCount } from '@/lib/utils/itemCounts';
 import { plural } from '@/lib/utils/plural';
 import type { ApiResponse } from '@/types/api';
@@ -131,11 +132,12 @@ export default function MoveItemsDialog({
                     }`}
                   >
                     <span className="truncate font-medium text-foreground">{list.name}</span>
-                    {typeof list.itemCount === 'number' && (
-                      <span className="flex-shrink-0 text-xs text-muted-foreground" aria-hidden>
-                        {formatItemCount(list.itemCount)}
-                      </span>
-                    )}
+                    <span className="flex flex-shrink-0 items-center gap-2 text-xs text-muted-foreground">
+                      {typeof list.itemCount === 'number' && (
+                        <span aria-hidden>{formatItemCount(list.itemCount)}</span>
+                      )}
+                      {isPicked && <Icon name="check" size={16} className="text-accent" />}
+                    </span>
                   </button>
                 </li>
               );
