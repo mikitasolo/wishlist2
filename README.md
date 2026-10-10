@@ -129,9 +129,9 @@ npm run lint         # eslint (flat config)
 npm test             # full Vitest suite (unit + component + API)
 npm run test:e2e     # Playwright end-to-end suite
 npm run test:watch   # tests in watch mode
-npm run test:cov     # tests + the coverage floor (what CI runs)
+npm run test:cov     # tests + the coverage floor (what `npm run verify` runs)
 npm run format       # prettier --write
-npm run format:check # prettier --check (what CI runs)
+npm run format:check # prettier --check (what `npm run verify` runs)
 npm run vercel:env   # pull Vercel env vars into .env
 npm run release:preview  # list commits staging is ahead of main and the tag a release would get (dry run)
 npm run release          # fast-forward remote main to remote staging and tag it release-YYYY-MM-DD (operator only)
@@ -152,7 +152,7 @@ Tests live in `test/` and run on Vitest:
 
 **Every change that touches logic should add or update tests, and every bug fix should add a regression test.** See [AGENTS.md](AGENTS.md) for the full policy and the API-test harness pattern, and [docs/agents/invariants.md](docs/agents/invariants.md) for the domain invariants that must not regress.
 
-Vercel deploys only `staging` (the staging host) and `main` (production); pull-request branches get no preview deployment (`git.deploymentEnabled` in `vercel.json`), so CI below is a PR's only check. CI runs on every push to `main` and `staging` and on every pull request: `.github/workflows/ci.yml` does lint, format check, typecheck, the full Vitest suite with coverage (`npm run test:cov`), and a production build; `.github/workflows/e2e.yml` runs the Playwright suite (kept separate since it downloads a browser and builds the app). `.github/workflows/audit.yml` runs `npm audit` daily on `staging`, on demand, and on a pull request that changes `package.json` or `package-lock.json`, and fails on a high or critical advisory in the runtime dependencies. The coverage run enforces a non-regression floor configured in `vitest.config.mts`, so a change that drops coverage below it fails CI — run `npm run test:cov` locally to check before pushing.
+Vercel deploys only `staging` (the staging host) and `main` (production); pull-request branches get no preview deployment (`git.deploymentEnabled` in `vercel.json`), so a PR's only checks are local. There is no GitHub Actions CI (WIS-419: the free minutes ran out every month): `npm run verify` runs lint, format check, typecheck, the full Vitest suite with coverage, a production build and `check:trace`; the pre-push hook runs its `--quick` subset; `npm run test:e2e` runs the Playwright suite. The PR body reports what ran on the final commit. The coverage run enforces a non-regression floor configured in `vitest.config.mts`. `.github/workflows/audit.yml` is the only workflow: `npm audit` weekly on `staging` and on demand, failing on a high or critical advisory in the runtime dependencies; when `package.json` or `package-lock.json` change, run `npm audit --omit=dev --audit-level=high` by hand.
 
 `npm run release` also announces the release once its push has landed: it posts the changelog to a Telegram channel, oldest commit first and grouped by conventional-commit prefix (a release too long for one message goes out as numbered parts, nothing dropped) (which is why PR titles, the squash-commit subjects, need to read as release notes; see [AGENTS.md](AGENTS.md)), and moves the released Linear issues from **On Staging** to **Done** (`scripts/releaseNotify.mjs`; GitHub Actions no longer does this). It reads three variables from the **operator's shell** or from `~/.config/wishlist2/release.env` (`KEY=value` lines, `chmod 600`; `RELEASE_ENV_FILE` points elsewhere; the shell wins), never from the app's `.env` or repo secrets, so no worktree carries them: `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` for the post, `LINEAR_API_KEY` (a personal API key) for the status update. Unset, it prints a preview; a failed post or update only warns, since the release has already happened. `npm run release:preview` never posts.
 
