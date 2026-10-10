@@ -1,5 +1,5 @@
 <!--
-Title = the changelog line, published verbatim to Telegram on release:
+Title = the changelog line, published verbatim to Telegram on release (`npm run release`):
 a conventional-commit subject (`feat: …`, `fix: …`), imperative, specific, no issue ID.
 This body becomes the squash commit's message.
 -->

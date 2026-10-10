@@ -154,14 +154,7 @@ Tests live in `test/` and run on Vitest:
 
 Vercel deploys only `staging` (the staging host) and `main` (production); pull-request branches get no preview deployment (`git.deploymentEnabled` in `vercel.json`), so CI below is a PR's only check. CI runs on every push to `main` and `staging` and on every pull request: `.github/workflows/ci.yml` does lint, format check, typecheck, the full Vitest suite with coverage (`npm run test:cov`), and a production build; `.github/workflows/e2e.yml` runs the Playwright suite (kept separate since it downloads a browser and builds the app). `.github/workflows/audit.yml` runs `npm audit` daily on `staging`, on demand, and on a pull request that changes `package.json` or `package-lock.json`, and fails on a high or critical advisory in the runtime dependencies. The coverage run enforces a non-regression floor configured in `vitest.config.mts`, so a change that drops coverage below it fails CI — run `npm run test:cov` locally to check before pushing.
 
-A push to `main` is a release, so `.github/workflows/release-notify.yml` also posts the changelog to a Telegram channel — grouped by conventional-commit prefix, which is why PR titles (the squash-commit subjects) need to read as release notes (see [AGENTS.md](AGENTS.md)) — and moves the released Linear issues from **On Staging** to **Done**. It needs three **repo secrets** (not app env vars): `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` for the announcement, `LINEAR_API_KEY` for the status update. With them unset each job prints a preview and changes nothing. Preview locally without secrets:
-
-```bash
-BEFORE=$(git rev-parse HEAD~3) AFTER=$(git rev-parse HEAD) REPO=owner/repo \
-  python3 .github/scripts/telegram-release-notes.py
-BEFORE=$(git rev-parse HEAD~3) AFTER=$(git rev-parse HEAD) \
-  python3 .github/scripts/linear-mark-released.py
-```
+`npm run release` also announces the release once its push has landed: it posts the changelog to a Telegram channel, oldest commit first and grouped by conventional-commit prefix (a release too long for one message goes out as numbered parts, nothing dropped) (which is why PR titles, the squash-commit subjects, need to read as release notes; see [AGENTS.md](AGENTS.md)), and moves the released Linear issues from **On Staging** to **Done** (`scripts/releaseNotify.mjs`; GitHub Actions no longer does this). It reads three variables from the **operator's shell** or from `~/.config/wishlist2/release.env` (`KEY=value` lines, `chmod 600`; `RELEASE_ENV_FILE` points elsewhere; the shell wins), never from the app's `.env` or repo secrets, so no worktree carries them: `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` for the post, `LINEAR_API_KEY` (a personal API key) for the status update. Unset, it prints a preview; a failed post or update only warns, since the release has already happened. `npm run release:preview` never posts.
 
 ## 🗄️ Data migrations
 
