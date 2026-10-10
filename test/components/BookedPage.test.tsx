@@ -1914,7 +1914,7 @@ describe('BookedPage — what to give next (WIS-263)', () => {
 
     await waitFor(() =>
       expect(screen.getByTestId('reserved-summary')).toHaveTextContent(
-        '2 to give · 1 to review · ≈ €140 to give'
+        '2 to give (≈ €140) · 1 to review'
       )
     );
     // Each price in the viewer's currency, approximately, with the original under it.
@@ -1931,9 +1931,7 @@ describe('BookedPage — what to give next (WIS-263)', () => {
     });
     render(<BookedPage />);
     await screen.findByText('Lego set');
-    expect(screen.getByTestId('reserved-summary')).toHaveTextContent(
-      /^1 to give · \$25\.00 to give$/
-    );
+    expect(screen.getByTestId('reserved-summary')).toHaveTextContent(/^1 to give \(\$25\.00\)$/);
   });
 
   it('an active card opens the shop link first, shows the notes, and its menu leads to the item on its list', async () => {

@@ -115,7 +115,7 @@ describe('BookedPage — a group gift you’re in', () => {
     expect(people.getByText('You')).toBeInTheDocument();
     expect(people.queryByText('Ben Helper')).toBeNull();
     // "To give" totals your shares, not the items' whole prices.
-    expect(screen.getByTestId('reserved-summary')).toHaveTextContent('$50.00 to give');
+    expect(screen.getByTestId('reserved-summary')).toHaveTextContent('2 to give ($50.00)');
   });
 
   it('a contributor who isn’t the organizer has no Mark as given, and Leave in place of Release', async () => {
