@@ -724,7 +724,7 @@ function WishlistItem({
         {primary && primaryButton(primary, true)}
         {sheetAddLink && (
           <IconButton
-            icon="plus"
+            icon="link-plus"
             label="Add product link"
             title="Add product link"
             variant="secondary"
@@ -766,7 +766,7 @@ function WishlistItem({
       )}
       {showLinkSquare && slot === 'add-link' && onAddLink && (
         <IconButton
-          icon="plus"
+          icon="link-plus"
           label="Add product link"
           title="Add product link"
           variant="secondary"

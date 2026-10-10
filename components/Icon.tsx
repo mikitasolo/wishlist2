@@ -47,6 +47,7 @@ export type IconName =
   | 'globe'
   | 'logout'
   | 'link'
+  | 'link-plus'
   | 'inbox'
   | 'message'
   | 'sun'
@@ -224,6 +225,22 @@ const paths: Record<IconName, React.ReactNode> = {
     <>
       <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
       <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+    </>
+  ),
+  // A chain drawn small, low and left, with a plus at the top right: adding a link.
+  'link-plus': (
+    <>
+      <g transform="translate(0 4) scale(.8)">
+        <path
+          d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"
+          vectorEffect="non-scaling-stroke"
+        />
+        <path
+          d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"
+          vectorEffect="non-scaling-stroke"
+        />
+      </g>
+      <path d="M19 1v6M16 4h6" />
     </>
   ),
   inbox: (
