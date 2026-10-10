@@ -111,6 +111,79 @@ describe('PATCH /api/items/[id] — booking & reservations', () => {
   });
 });
 
+// regression (WIS-431): the price's currency was checked before the role rules,
+// so a member was refused a 400 for a price their role can never write.
+describe('PATCH /api/items/[id] — currency checked only on a price the edit writes', () => {
+  const badPrice = { value: 1000, currency: 'XXX' };
+
+  it("a member's reserve with a price in an unknown currency goes through, the price ignored", async () => {
+    session.mockResolvedValue({ user: { id: memberId } } as never);
+    const id = await makeItem('available');
+    const res = await patch(id, { status: 'booked', price: badPrice });
+    expect(res.status).toBe(200);
+    const item = await Item.findById(id);
+    expect(item?.status).toBe('booked');
+    expect(item?.bookedBy?.toString()).toBe(memberId);
+    expect(item?.price ?? null).toBeNull();
+    expect(await Reservation.countDocuments({ gifter: memberId, item: id })).toBe(1);
+  });
+
+  it("a member sending only a price gets the role's 403, not the currency's 400", async () => {
+    session.mockResolvedValue({ user: { id: memberId } } as never);
+    const id = await makeItem('available');
+    const res = await patch(id, { price: badPrice });
+    expect(res.status).toBe(403);
+    expect(await res.json()).toMatchObject({
+      error: 'Insufficient permissions to update these fields',
+    });
+    expect((await Item.findById(id))?.price ?? null).toBeNull();
+  });
+
+  it("an owner's price in an unknown currency is still refused, nothing written", async () => {
+    session.mockResolvedValue({ user: { id: ownerId } } as never);
+    const id = await makeItem('available');
+    const res = await patch(id, { name: 'Renamed', price: badPrice });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({
+      error: "Currency 'XXX' is not supported. Please use a supported currency code.",
+    });
+    const item = await Item.findById(id);
+    expect(item?.name).toBe('Gift');
+    expect(item?.price ?? null).toBeNull();
+  });
+
+  it("an owner's edit refused for its currency writes none of its links either", async () => {
+    session.mockResolvedValue({ user: { id: ownerId } } as never);
+    const id = await makeItem('available');
+    const other = await makeItem('available');
+    const res = await patch(id, { linkItems: [other], price: badPrice });
+    expect(res.status).toBe(400);
+    expect((await Item.findById(id))?.relatedItems ?? []).toHaveLength(0);
+    expect((await Item.findById(other))?.relatedItems ?? []).toHaveLength(0);
+  });
+
+  it("a proposer's edit of their proposal is still refused a price in an unknown currency", async () => {
+    session.mockResolvedValue({ user: { id: memberId } } as never);
+    const proposal = await Item.create({
+      wishlist: wishlistId,
+      name: 'Idea',
+      status: 'proposed',
+      proposedBy: memberId,
+    });
+    const res = await patch(proposal._id.toString(), { price: badPrice });
+    expect(res.status).toBe(400);
+    expect((await Item.findById(proposal._id))?.price ?? null).toBeNull();
+  });
+
+  it("an owner's price in a known currency lands", async () => {
+    session.mockResolvedValue({ user: { id: ownerId } } as never);
+    const id = await makeItem('available');
+    const res = await patch(id, { price: { value: 1000, currency: 'usd' } });
+    expect(res.status).toBe(200);
+    expect((await Item.findById(id))?.price).toMatchObject({ value: 1000, currency: 'USD' });
+  });
+});
+
 describe('PATCH /api/items/[id] — owner edits do not clobber bookings', () => {
   // Regression: editing a booked item used to send status and wipe the booking.
   it('regression: owner renaming a booked item keeps it booked and reserved', async () => {

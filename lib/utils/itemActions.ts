@@ -194,20 +194,22 @@ export async function updateItem({
     linkChanges = checked.changes;
   }
 
-  // Validate currency exists in rates if price is being updated
-  if (validatedData.price && validatedData.price.currency) {
-    if (!hasRate(rates, validatedData.price.currency)) {
-      return {
-        ok: false,
-        status: 400,
-        error: `Currency '${validatedData.price.currency}' is not supported. Please use a supported currency code.`,
-      };
-    }
-  }
-
   // Who may change what, and under which condition each write is made.
   const plan = planItemUpdate(currentItem, validatedData, actor);
   if (!plan.ok) return plan;
+
+  // A price needs a currency with a rate, checked only on one this edit writes
+  // (WIS-431): a member's reserve with a price their role can't write goes
+  // through with the price ignored, and one sending only a price gets the
+  // role's 403, never this 400. Still before any write, links included.
+  const writtenPrice = plan.updateData.price;
+  if (writtenPrice && !hasRate(rates, writtenPrice.currency)) {
+    return {
+      ok: false,
+      status: 400,
+      error: `Currency '${writtenPrice.currency}' is not supported. Please use a supported currency code.`,
+    };
+  }
   const {
     updateData,
     reservationAction,
