@@ -20,6 +20,7 @@ import Panel from '@/components/Panel';
 import SaveNote, { type SaveState } from '@/components/SaveNote';
 import SegmentedControl from '@/components/SegmentedControl';
 import { Skeleton } from '@/components/Skeleton';
+import SettingsNav from '@/components/SettingsNav';
 import Select from '@/components/Select';
 import Toggle from '@/components/Toggle';
 import UsernameField from '@/components/UsernameField';
@@ -401,13 +402,15 @@ export default function SettingsPage() {
     return (
       <div className="min-h-screen">
         <AppHeader actions={<AuthButton />} />
-        <main className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
+        <main className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10 lg:max-w-5xl lg:px-8">
           {heading}
-          {loadFailed && !loading ? (
-            <LoadError title="Couldn’t load your settings" onRetry={retryLoad} />
-          ) : (
-            <SettingsSkeleton />
-          )}
+          <div className="max-w-2xl lg:ml-52">
+            {loadFailed && !loading ? (
+              <LoadError title="Couldn’t load your settings" onRetry={retryLoad} />
+            ) : (
+              <SettingsSkeleton />
+            )}
+          </div>
         </main>
       </div>
     );
@@ -418,266 +421,277 @@ export default function SettingsPage() {
   return (
     <div className="min-h-screen">
       <AppHeader actions={<AuthButton />} />
-      <main className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
+      <main className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10 lg:max-w-5xl lg:px-8">
         {heading}
 
-        <Panel
-          className="mb-6"
-          title="Public profile"
-          description="What everyone sees on your profile."
-        >
-          <div className="mb-5">
-            <div className="mb-1.5 flex items-center gap-3">
-              <span className="text-sm font-medium text-foreground">Profile photo</span>
-              <SaveNote state={notes.image} />
-            </div>
-            <ImageUpload
-              value={form.image}
-              onChange={(image) => changeInstant('image', image)}
-              uploads={photoUploads}
-              disabled={savingImage}
-              circle
-            />
-          </div>
-
-          <UsernameField
-            value={form.username}
-            onChange={(username) => edit({ username })}
-            availability={availability}
-            disabled={savingText}
-            savedUsername={saved.username}
-          />
-          {saved.username && <ProfileLink username={saved.username} />}
-
-          <div className="mt-5">
-            {/* The count is read with the field, as the item form's notes count is. */}
-            <Field
-              label="Bio"
-              id="bio"
-              helper={<span className="block text-right">{form.bio.length}/300</span>}
+        <div className="lg:grid lg:grid-cols-[12rem_minmax(0,1fr)] lg:gap-10">
+          <SettingsNav />
+          <div className="min-w-0 max-w-2xl [&>[id]]:scroll-mt-24">
+            <Panel
+              id="profile"
+              className="mb-6"
+              title="Public profile"
+              description="What everyone sees on your profile."
             >
-              <Textarea
-                value={form.bio}
-                onChange={(e) => edit({ bio: e.target.value.slice(0, 300) })}
-                rows={3}
-                maxLength={300}
-                placeholder="Tell people about your hobbies, interests and passions"
-                className="resize-none"
+              <div className="mb-5">
+                <div className="mb-1.5 flex items-center gap-3">
+                  <span className="text-sm font-medium text-foreground">Profile photo</span>
+                  <SaveNote state={notes.image} />
+                </div>
+                <ImageUpload
+                  value={form.image}
+                  onChange={(image) => changeInstant('image', image)}
+                  uploads={photoUploads}
+                  disabled={savingImage}
+                  circle
+                />
+              </div>
+
+              <UsernameField
+                value={form.username}
+                onChange={(username) => edit({ username })}
+                availability={availability}
                 disabled={savingText}
+                savedUsername={saved.username}
               />
-            </Field>
-          </div>
+              {saved.username && <ProfileLink username={saved.username} />}
 
-          <div className="mt-5">
-            <BirthdayField
-              value={form.birthday}
-              onChange={(birthday) => edit({ birthday })}
-              disabled={savingText}
-              error={birthdayComplete ? null : 'Pick both the month and the day'}
-            />
-          </div>
+              <div className="mt-5">
+                {/* The count is read with the field, as the item form's notes count is. */}
+                <Field
+                  label="Bio"
+                  id="bio"
+                  helper={<span className="block text-right">{form.bio.length}/300</span>}
+                >
+                  <Textarea
+                    value={form.bio}
+                    onChange={(e) => edit({ bio: e.target.value.slice(0, 300) })}
+                    rows={3}
+                    maxLength={300}
+                    placeholder="Tell people about your hobbies, interests and passions"
+                    className="resize-none"
+                    disabled={savingText}
+                  />
+                </Field>
+              </div>
 
-          <div className="mt-5">
-            <div className="flex items-center gap-3">
-              <p id="birthday-visibility-label" className="text-sm font-medium text-foreground">
-                Who can see your birthday
-              </p>
-              <SaveNote state={notes.birthdayVisibility} />
-            </div>
-            <p id="birthday-visibility-helper" className={`${FIELD_HELPER} mb-1.5`}>
-              {form.profileVisibility === 'friends' && form.birthdayVisibility === 'everyone'
-                ? BIRTHDAY_VISIBILITY_CAPPED
-                : BIRTHDAY_VISIBILITY_HELPER}
-            </p>
-            <SegmentedControl
-              size="sm"
-              className="max-w-sm"
-              ariaLabelledBy="birthday-visibility-label"
-              ariaDescribedBy="birthday-visibility-helper"
-              value={form.birthdayVisibility}
-              onChange={(v) => changeInstant('birthdayVisibility', v as BirthdayVisibility)}
-              options={[
-                { value: 'nobody', label: 'No one' },
-                { value: 'friends', label: 'Friends' },
-                { value: 'everyone', label: 'Everyone' },
-              ]}
-            />
-          </div>
+              <div className="mt-5">
+                <BirthdayField
+                  value={form.birthday}
+                  onChange={(birthday) => edit({ birthday })}
+                  disabled={savingText}
+                  error={birthdayComplete ? null : 'Pick both the month and the day'}
+                />
+              </div>
 
-          {smUp !== false && (
-            <div className="mt-5 flex items-center justify-end gap-3 max-sm:hidden">
-              <SaveNote state={notes.profile} className="mr-auto" />
-              <Button variant="secondary" onClick={discardText} disabled={!textDirty || savingText}>
-                Cancel
-              </Button>
-              <Button onClick={handleSaveText} disabled={!canSaveText}>
-                {savingText ? 'Saving…' : 'Save'}
-              </Button>
-            </div>
-          )}
-        </Panel>
+              <div className="mt-5">
+                <div className="flex items-center gap-3">
+                  <p id="birthday-visibility-label" className="text-sm font-medium text-foreground">
+                    Who can see your birthday
+                  </p>
+                  <SaveNote state={notes.birthdayVisibility} />
+                </div>
+                <p id="birthday-visibility-helper" className={`${FIELD_HELPER} mb-1.5`}>
+                  {form.profileVisibility === 'friends' && form.birthdayVisibility === 'everyone'
+                    ? BIRTHDAY_VISIBILITY_CAPPED
+                    : BIRTHDAY_VISIBILITY_HELPER}
+                </p>
+                <SegmentedControl
+                  size="sm"
+                  className="max-w-sm"
+                  ariaLabelledBy="birthday-visibility-label"
+                  ariaDescribedBy="birthday-visibility-helper"
+                  value={form.birthdayVisibility}
+                  onChange={(v) => changeInstant('birthdayVisibility', v as BirthdayVisibility)}
+                  options={[
+                    { value: 'nobody', label: 'No one' },
+                    { value: 'friends', label: 'Friends' },
+                    { value: 'everyone', label: 'Everyone' },
+                  ]}
+                />
+              </div>
 
-        <Panel
-          className="mb-6"
-          title="Privacy"
-          description="Friends are people you follow who follow you back."
-        >
-          <div>
-            <div className="flex items-center gap-3">
-              <p id="profile-visibility-label" className="text-sm font-medium text-foreground">
-                Who can see your profile
-              </p>
-              <SaveNote state={notes.profileVisibility} />
-            </div>
-            <p id="profile-visibility-helper" className={`${FIELD_HELPER} mb-1.5`}>
-              {PROFILE_VISIBILITY_HELPER}
-            </p>
-            <SegmentedControl
-              size="sm"
-              className="max-w-sm"
-              ariaLabelledBy="profile-visibility-label"
-              ariaDescribedBy="profile-visibility-helper"
-              value={form.profileVisibility}
-              onChange={(v) => changeInstant('profileVisibility', v as ProfileVisibility)}
-              options={[
-                { value: 'everyone', label: 'Everyone' },
-                { value: 'friends', label: 'Friends only' },
-              ]}
-            />
-          </div>
+              {smUp !== false && (
+                <div className="mt-5 flex items-center justify-end gap-3 max-sm:hidden">
+                  <SaveNote state={notes.profile} className="mr-auto" />
+                  <Button
+                    variant="secondary"
+                    onClick={discardText}
+                    disabled={!textDirty || savingText}
+                  >
+                    Cancel
+                  </Button>
+                  <Button onClick={handleSaveText} disabled={!canSaveText}>
+                    {savingText ? 'Saving…' : 'Save'}
+                  </Button>
+                </div>
+              )}
+            </Panel>
 
-          <div className="mt-6">
-            <Toggle
-              label="Searchable"
-              description={form.searchable ? SEARCHABLE_ON : SEARCHABLE_OFF}
-              checked={form.searchable}
-              onChange={(searchable) => changeInstant('searchable', searchable)}
-              note={<SaveNote state={notes.searchable} />}
-            />
-          </div>
+            <Panel
+              id="privacy"
+              className="mb-6"
+              title="Privacy"
+              description="Friends are people you follow who follow you back."
+            >
+              <div>
+                <div className="flex items-center gap-3">
+                  <p id="profile-visibility-label" className="text-sm font-medium text-foreground">
+                    Who can see your profile
+                  </p>
+                  <SaveNote state={notes.profileVisibility} />
+                </div>
+                <p id="profile-visibility-helper" className={`${FIELD_HELPER} mb-1.5`}>
+                  {PROFILE_VISIBILITY_HELPER}
+                </p>
+                <SegmentedControl
+                  size="sm"
+                  className="max-w-sm"
+                  ariaLabelledBy="profile-visibility-label"
+                  ariaDescribedBy="profile-visibility-helper"
+                  value={form.profileVisibility}
+                  onChange={(v) => changeInstant('profileVisibility', v as ProfileVisibility)}
+                  options={[
+                    { value: 'everyone', label: 'Everyone' },
+                    { value: 'friends', label: 'Friends only' },
+                  ]}
+                />
+              </div>
 
-          <div className="mt-6">
-            <div className="flex items-center gap-3">
-              <p id="who-can-invite-label" className="text-sm font-medium text-foreground">
-                Who can invite you to wishlists
-              </p>
-              <SaveNote state={notes.whoCanInvite} />
-            </div>
-            <p id="who-can-invite-helper" className={`${FIELD_HELPER} mb-1.5`}>
-              {WHO_CAN_INVITE_HELPER}
-            </p>
-            <SegmentedControl
-              size="sm"
-              className="max-w-sm"
-              ariaLabelledBy="who-can-invite-label"
-              ariaDescribedBy="who-can-invite-helper"
-              value={form.whoCanInvite}
-              onChange={(v) => changeInstant('whoCanInvite', v as InvitePolicy)}
-              options={[
-                { value: 'everyone', label: 'Everyone' },
-                { value: 'friends', label: 'Friends' },
-                { value: 'nobody', label: 'No one' },
-              ]}
-            />
-          </div>
-        </Panel>
+              <div className="mt-6">
+                <Toggle
+                  label="Searchable"
+                  description={form.searchable ? SEARCHABLE_ON : SEARCHABLE_OFF}
+                  checked={form.searchable}
+                  onChange={(searchable) => changeInstant('searchable', searchable)}
+                  note={<SaveNote state={notes.searchable} />}
+                />
+              </div>
 
-        <GroupsSettings />
+              <div className="mt-6">
+                <div className="flex items-center gap-3">
+                  <p id="who-can-invite-label" className="text-sm font-medium text-foreground">
+                    Who can invite you to wishlists
+                  </p>
+                  <SaveNote state={notes.whoCanInvite} />
+                </div>
+                <p id="who-can-invite-helper" className={`${FIELD_HELPER} mb-1.5`}>
+                  {WHO_CAN_INVITE_HELPER}
+                </p>
+                <SegmentedControl
+                  size="sm"
+                  className="max-w-sm"
+                  ariaLabelledBy="who-can-invite-label"
+                  ariaDescribedBy="who-can-invite-helper"
+                  value={form.whoCanInvite}
+                  onChange={(v) => changeInstant('whoCanInvite', v as InvitePolicy)}
+                  options={[
+                    { value: 'everyone', label: 'Everyone' },
+                    { value: 'friends', label: 'Friends' },
+                    { value: 'nobody', label: 'No one' },
+                  ]}
+                />
+              </div>
+            </Panel>
 
-        <Panel
-          id="notifications"
-          className="mb-6 scroll-mt-24"
-          title="Notifications"
-          description="What reaches you in Activity, and what’s also sent to your email."
-        >
-          <NotificationSettings
-            values={form}
-            onChange={(key, on) => changeInstant(key, on)}
-            note={(key) => <SaveNote state={notes[key]} />}
-          />
-        </Panel>
+            <GroupsSettings />
 
-        <BookmarkletCard />
+            <Panel
+              id="notifications"
+              className="mb-6"
+              title="Notifications"
+              description="What reaches you in Activity, and what’s also sent to your email."
+            >
+              <NotificationSettings
+                values={form}
+                onChange={(key, on) => changeInstant(key, on)}
+                note={(key) => <SaveNote state={notes[key]} />}
+              />
+            </Panel>
 
-        <Panel className="mb-6" title="Preferences">
-          <div id={SETTINGS_CURRENCY_FIELD_ID} ref={currencyField}>
-            <div className="mb-1.5 flex items-center gap-3">
-              <label className="text-sm font-medium text-foreground">Default currency</label>
-              <SaveNote state={notes.defaultCurrency} />
-            </div>
-            <Select
-              value={form.defaultCurrency}
-              onChange={(defaultCurrency) => changeInstant('defaultCurrency', defaultCurrency)}
-              options={currencySelectOptions}
-              ariaLabel="Default currency"
-              size="lg"
-              triggerClassName="w-full sm:w-80"
-            />
-            <p className={FIELD_HELPER}>
-              Used as the default for new wishlists and to show others&apos; prices in your
-              currency.
-            </p>
-          </div>
+            <BookmarkletCard />
 
-          <ThemeSetting />
-        </Panel>
+            <Panel id="preferences" className="mb-6" title="Preferences">
+              <div id={SETTINGS_CURRENCY_FIELD_ID} ref={currencyField}>
+                <div className="mb-1.5 flex items-center gap-3">
+                  <label className="text-sm font-medium text-foreground">Default currency</label>
+                  <SaveNote state={notes.defaultCurrency} />
+                </div>
+                <Select
+                  value={form.defaultCurrency}
+                  onChange={(defaultCurrency) => changeInstant('defaultCurrency', defaultCurrency)}
+                  options={currencySelectOptions}
+                  ariaLabel="Default currency"
+                  size="lg"
+                  triggerClassName="w-full sm:w-80"
+                />
+                <p className={FIELD_HELPER}>
+                  Used as the default for new wishlists and to show others&apos; prices in your
+                  currency.
+                </p>
+              </div>
 
-        <TourSetting />
+              <ThemeSetting />
+            </Panel>
 
-        <Panel title="Account">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="min-w-0">
-              <p className="text-sm font-medium text-foreground">Email</p>
-              <p className="mt-0.5 break-all text-sm text-foreground">{email}</p>
-              <p className={FIELD_HELPER}>
-                Used to sign you in and to email you invitations. Never shown to anyone else.
-              </p>
-            </div>
-            <Button variant="secondary" icon="logout" onClick={handleSignOut}>
-              Sign out
-            </Button>
-          </div>
-          <DeleteAccount
-            username={saved?.username ?? ''}
-            email={email}
-            onDeleted={() => {
-              // The account and its sessions are gone: nothing unsaved is
-              // left to guard, and this browser signs out to the home page.
-              discardText();
-              signOutNow();
-            }}
-            onSignInAgain={() => {
-              discardText();
-              rememberSessionHint(false);
-              signOut({ redirectTo: signInPath('/settings') });
-            }}
-          />
-        </Panel>
+            <TourSetting />
 
-        {/* On a phone the username and bio's Save sits in a bar stuck to the
+            <Panel id="account" title="Account">
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-foreground">Email</p>
+                  <p className="mt-0.5 break-all text-sm text-foreground">{email}</p>
+                  <p className={FIELD_HELPER}>
+                    Used to sign you in and to email you invitations. Never shown to anyone else.
+                  </p>
+                </div>
+                <Button variant="secondary" icon="logout" onClick={handleSignOut}>
+                  Sign out
+                </Button>
+              </div>
+              <DeleteAccount
+                username={saved?.username ?? ''}
+                email={email}
+                onDeleted={() => {
+                  // The account and its sessions are gone: nothing unsaved is
+                  // left to guard, and this browser signs out to the home page.
+                  discardText();
+                  signOutNow();
+                }}
+                onSignInAgain={() => {
+                  discardText();
+                  rememberSessionHint(false);
+                  signOut({ redirectTo: signInPath('/settings') });
+                }}
+              />
+            </Panel>
+
+            {/* On a phone the username and bio's Save sits in a bar stuck to the
             bottom of the screen (above the tab bar, `--tab-bar-space`) while
             they have edits, so it's in reach from anywhere on the page. */}
-        {textDirty && smUp !== true && (
-          <div
-            role="region"
-            aria-label="Unsaved changes"
-            className="sticky bottom-[calc(1rem+var(--tab-bar-space,0px))] z-20 mt-6 flex items-center gap-3 rounded-2xl border border-border bg-surface py-3 pl-4 pr-3 shadow-lg sm:hidden"
-          >
-            <p className="min-w-0 flex-1 text-sm font-medium text-foreground">
-              {notes.profile?.kind === 'error' ? (
-                <SaveNote state={notes.profile} />
-              ) : (
-                'Unsaved changes'
-              )}
-            </p>
-            <Button variant="secondary" onClick={discardText} disabled={savingText}>
-              Discard
-            </Button>
-            <Button onClick={handleSaveText} disabled={!canSaveText}>
-              {savingText ? 'Saving…' : 'Save'}
-            </Button>
+            {textDirty && smUp !== true && (
+              <div
+                role="region"
+                aria-label="Unsaved changes"
+                className="sticky bottom-[calc(1rem+var(--tab-bar-space,0px))] z-20 mt-6 flex items-center gap-3 rounded-2xl border border-border bg-surface py-3 pl-4 pr-3 shadow-lg sm:hidden"
+              >
+                <p className="min-w-0 flex-1 text-sm font-medium text-foreground">
+                  {notes.profile?.kind === 'error' ? (
+                    <SaveNote state={notes.profile} />
+                  ) : (
+                    'Unsaved changes'
+                  )}
+                </p>
+                <Button variant="secondary" onClick={discardText} disabled={savingText}>
+                  Discard
+                </Button>
+                <Button onClick={handleSaveText} disabled={!canSaveText}>
+                  {savingText ? 'Saving…' : 'Save'}
+                </Button>
+              </div>
+            )}
           </div>
-        )}
+        </div>
       </main>
 
       <ConfirmDialog

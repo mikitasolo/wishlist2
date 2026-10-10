@@ -161,180 +161,182 @@ export default function WishlistPeopleTab({
   );
 
   return (
-    <div className="max-w-3xl space-y-6">
-      {inviteForm}
+    <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+      <div className="min-w-0 space-y-6">
+        {inviteForm}
 
-      {failed ? (
-        <LoadError title="Couldn’t load the people on this list" onRetry={onRetry} />
-      ) : (
-        <Panel variant="list" aria-label="People on this list">
-          {requests.length > 0 && (
-            <>
-              <GroupHeading>Requests</GroupHeading>
-              {requests.map((request) => (
-                <PersonRow
-                  key={request._id}
-                  username={request.user.username}
-                  image={request.user.image}
-                  fallbackName="Someone"
-                  caption="Asked to join"
-                  action={
-                    <div className="flex shrink-0 items-center gap-3">
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => onInviteRequest?.(request)}
-                        disabled={busy(request._id)}
-                        aria-label={`Invite ${handle(request.user.username)}`}
-                      >
-                        Invite
-                      </Button>
+        {failed ? (
+          <LoadError title="Couldn’t load the people on this list" onRetry={onRetry} />
+        ) : (
+          <Panel variant="list" aria-label="People on this list">
+            {requests.length > 0 && (
+              <>
+                <GroupHeading>Requests</GroupHeading>
+                {requests.map((request) => (
+                  <PersonRow
+                    key={request._id}
+                    username={request.user.username}
+                    image={request.user.image}
+                    fallbackName="Someone"
+                    caption="Asked to join"
+                    action={
+                      <div className="flex shrink-0 items-center gap-3">
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => onInviteRequest?.(request)}
+                          disabled={busy(request._id)}
+                          aria-label={`Invite ${handle(request.user.username)}`}
+                        >
+                          Invite
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => onDeclineRequest?.(request)}
+                          disabled={busy(request._id)}
+                          aria-label={`Decline ${handle(request.user.username)}’s request`}
+                        >
+                          Decline
+                        </Button>
+                      </div>
+                    }
+                  />
+                ))}
+              </>
+            )}
+
+            <GroupHeading>Owners</GroupHeading>
+            {loading ? (
+              <MemberRowSkeleton />
+            ) : (
+              owners.map((owner) => {
+                const userId = String(owner.user._id);
+                const username = owner.user.username || null;
+                const isYou = userId === viewerId;
+                return (
+                  <PersonRow
+                    key={userId}
+                    username={owner.user.username}
+                    image={owner.user.image}
+                    caption={isYou ? 'You' : 'Owner'}
+                    action={
+                      // Never on yourself, and never on the last owner (a list
+                      // always keeps one), which only you can be here.
+                      !isYou &&
+                      ownerCount > 1 && (
+                        <RowMenu
+                          username={owner.user.username}
+                          items={[
+                            {
+                              label: 'Make member',
+                              icon: 'user',
+                              disabled: busy(userId),
+                              onSelect: () => onDemote({ userId, username }),
+                            },
+                            {
+                              label: 'Remove',
+                              icon: 'user-minus',
+                              separated: true,
+                              disabled: busy(userId),
+                              onSelect: () =>
+                                onRemove({ id: userId, userId, username, role: 'owner' }),
+                            },
+                          ]}
+                        />
+                      )
+                    }
+                  />
+                );
+              })
+            )}
+
+            <GroupHeading>Members</GroupHeading>
+            {loading ? (
+              <MemberRowSkeleton />
+            ) : members.length === 0 ? (
+              <PanelRow>
+                <p className="text-sm text-muted-foreground">
+                  {linkOpensForOthers ? NO_MEMBERS_TEXT : NO_MEMBERS_INVITE_ONLY_TEXT}
+                </p>
+              </PanelRow>
+            ) : (
+              members.map((member) => {
+                // Never you: only an owner sees People, and an owner has no member row.
+                const userId = String(member.user._id);
+                const ownerInvite = ownerInviteFor(invites, member.user.username);
+                const items: MenuItem[] = [
+                  ownerInvite
+                    ? {
+                        label: 'Cancel invite',
+                        icon: 'undo',
+                        disabled: busy(userId),
+                        onSelect: () => onCancelInvite(ownerInvite._id, userId),
+                      }
+                    : {
+                        label: 'Make owner',
+                        icon: 'user-plus',
+                        disabled: busy(userId),
+                        onSelect: () =>
+                          onPromote({ userId, username: member.user.username || 'this person' }),
+                      },
+                  {
+                    label: 'Remove',
+                    icon: 'user-minus',
+                    separated: true,
+                    disabled: busy(userId),
+                    onSelect: () =>
+                      onRemove({
+                        id: member._id,
+                        userId,
+                        username: member.user.username || null,
+                        role: 'member',
+                      }),
+                  },
+                ];
+                return (
+                  <PersonRow
+                    key={member._id}
+                    username={member.user.username}
+                    image={member.user.image}
+                    caption={ownerInvite ? 'Owner invite pending' : 'Member'}
+                    action={<RowMenu username={member.user.username} items={items} />}
+                  />
+                );
+              })
+            )}
+
+            {!loading && invited.length > 0 && (
+              <>
+                <GroupHeading>Invited</GroupHeading>
+                {invited.map((invite) => (
+                  <PersonRow
+                    key={invite._id}
+                    username={invite.username}
+                    image={invite.image}
+                    // An invite whose account has no username yet is still theirs to answer.
+                    fallbackName="Invited user"
+                    caption={invite.role === 'owner' ? 'Invited as co-owner' : 'Invited as member'}
+                    action={
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => onDeclineRequest?.(request)}
-                        disabled={busy(request._id)}
-                        aria-label={`Decline ${handle(request.user.username)}’s request`}
+                        onClick={() => onCancelInvite(invite._id, invite._id)}
+                        disabled={busy(invite._id)}
+                        aria-label={`Cancel the invite to ${handle(invite.username)}`}
                       >
-                        Decline
+                        Cancel
                       </Button>
-                    </div>
-                  }
-                />
-              ))}
-            </>
-          )}
-
-          <GroupHeading>Owners</GroupHeading>
-          {loading ? (
-            <MemberRowSkeleton />
-          ) : (
-            owners.map((owner) => {
-              const userId = String(owner.user._id);
-              const username = owner.user.username || null;
-              const isYou = userId === viewerId;
-              return (
-                <PersonRow
-                  key={userId}
-                  username={owner.user.username}
-                  image={owner.user.image}
-                  caption={isYou ? 'You' : 'Owner'}
-                  action={
-                    // Never on yourself, and never on the last owner (a list
-                    // always keeps one), which only you can be here.
-                    !isYou &&
-                    ownerCount > 1 && (
-                      <RowMenu
-                        username={owner.user.username}
-                        items={[
-                          {
-                            label: 'Make member',
-                            icon: 'user',
-                            disabled: busy(userId),
-                            onSelect: () => onDemote({ userId, username }),
-                          },
-                          {
-                            label: 'Remove',
-                            icon: 'user-minus',
-                            separated: true,
-                            disabled: busy(userId),
-                            onSelect: () =>
-                              onRemove({ id: userId, userId, username, role: 'owner' }),
-                          },
-                        ]}
-                      />
-                    )
-                  }
-                />
-              );
-            })
-          )}
-
-          <GroupHeading>Members</GroupHeading>
-          {loading ? (
-            <MemberRowSkeleton />
-          ) : members.length === 0 ? (
-            <PanelRow>
-              <p className="text-sm text-muted-foreground">
-                {linkOpensForOthers ? NO_MEMBERS_TEXT : NO_MEMBERS_INVITE_ONLY_TEXT}
-              </p>
-            </PanelRow>
-          ) : (
-            members.map((member) => {
-              // Never you: only an owner sees People, and an owner has no member row.
-              const userId = String(member.user._id);
-              const ownerInvite = ownerInviteFor(invites, member.user.username);
-              const items: MenuItem[] = [
-                ownerInvite
-                  ? {
-                      label: 'Cancel invite',
-                      icon: 'undo',
-                      disabled: busy(userId),
-                      onSelect: () => onCancelInvite(ownerInvite._id, userId),
                     }
-                  : {
-                      label: 'Make owner',
-                      icon: 'user-plus',
-                      disabled: busy(userId),
-                      onSelect: () =>
-                        onPromote({ userId, username: member.user.username || 'this person' }),
-                    },
-                {
-                  label: 'Remove',
-                  icon: 'user-minus',
-                  separated: true,
-                  disabled: busy(userId),
-                  onSelect: () =>
-                    onRemove({
-                      id: member._id,
-                      userId,
-                      username: member.user.username || null,
-                      role: 'member',
-                    }),
-                },
-              ];
-              return (
-                <PersonRow
-                  key={member._id}
-                  username={member.user.username}
-                  image={member.user.image}
-                  caption={ownerInvite ? 'Owner invite pending' : 'Member'}
-                  action={<RowMenu username={member.user.username} items={items} />}
-                />
-              );
-            })
-          )}
+                  />
+                ))}
+              </>
+            )}
+          </Panel>
+        )}
+      </div>
 
-          {!loading && invited.length > 0 && (
-            <>
-              <GroupHeading>Invited</GroupHeading>
-              {invited.map((invite) => (
-                <PersonRow
-                  key={invite._id}
-                  username={invite.username}
-                  image={invite.image}
-                  // An invite whose account has no username yet is still theirs to answer.
-                  fallbackName="Invited user"
-                  caption={invite.role === 'owner' ? 'Invited as co-owner' : 'Invited as member'}
-                  action={
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => onCancelInvite(invite._id, invite._id)}
-                      disabled={busy(invite._id)}
-                      aria-label={`Cancel the invite to ${handle(invite.username)}`}
-                    >
-                      Cancel
-                    </Button>
-                  }
-                />
-              ))}
-            </>
-          )}
-        </Panel>
-      )}
-
-      {shareLinks}
+      <div className="min-w-0">{shareLinks}</div>
     </div>
   );
 }
