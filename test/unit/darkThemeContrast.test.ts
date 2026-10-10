@@ -4,8 +4,14 @@ import { describe, it, expect } from 'vitest';
 // WIS-405: the dark tokens' contrast pairs, computed from app/globals.css so a
 // palette change can't quietly drop a status tone under AA (ui.md: >= 4.5:1).
 const css = readFileSync('app/globals.css', 'utf8');
-const dark = css.slice(css.indexOf(":root[data-theme='dark'] {"), css.indexOf('color-scheme: dark;'));
-const light = css.slice(css.indexOf(':root {\n  --background'), css.indexOf('color-scheme: light;'));
+const dark = css.slice(
+  css.indexOf(":root[data-theme='dark'] {"),
+  css.indexOf('color-scheme: dark;')
+);
+const light = css.slice(
+  css.indexOf(':root {\n  --background'),
+  css.indexOf('color-scheme: light;')
+);
 
 type RGB = [number, number, number];
 
