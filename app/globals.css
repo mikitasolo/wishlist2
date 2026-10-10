@@ -168,34 +168,37 @@
 
 /* Dark theme — opt-in only, via the appearance toggle ([data-theme="dark"]) */
 :root[data-theme='dark'] {
-  --background: #000000;
-  --surface: #1c1c1e;
-  --surface-2: #2c2c2e;
-  --surface-hover: #2c2c2e;
+  /* WIS-405: an indigo-tinted ground and one elevated step (surface), a
+     second for fields/hover (surface-2), instead of #000 + near-black cards. */
+  --background: #08080f;
+  --surface: #1d1d34;
+  --surface-2: #2a2a44;
+  --surface-hover: #2a2a44;
   --foreground: #f5f5f7;
-  --muted: #2c2c2e;
-  --muted-foreground: #a1a1a6;
+  --muted: #2a2a44;
+  --muted-foreground: #a3a3b2;
   --border: rgb(255 255 255 / 0.12);
   --border-strong: rgb(255 255 255 / 0.2);
   --ring: #7d7bff;
   /* On dark surfaces a lighter accent reads best */
-  --accent: #a3a1ff;
+  --accent: #b3b1ff;
   --accent2: #ff5277;
-  /* primary-400 at 28%: 1.55:1 against the surface (bg-muted is 1.22:1). */
-  --row-active: rgb(134 131 255 / 0.28);
+  /* primary-400 at 20%: 1.36:1 against the surface (bg-muted is 1.2:1). */
+  --row-active: rgb(134 131 255 / 0.2);
 
-  /* Status text lightens on dark surfaces (emerald-400, amber-400, red-400;
+  /* Status text lightens on dark surfaces (emerald-400, amber-400, a lighter red;
      info follows --accent). The fills carry white text, so they stay put. */
   --success: oklch(76.5% 0.177 163.223);
   --warning: oklch(82.8% 0.189 84.429);
-  --danger: oklch(70.4% 0.191 22.216);
+  /* A touch lighter than red-400 so it clears AA on row-active and the 15% tints. */
+  --danger: oklch(82% 0.13 22.216);
 
   --shadow-color-1: rgb(0 0 0 / 0.5);
   --shadow-color-2: rgb(0 0 0 / 0.6);
 
   --bg-tint:
-    radial-gradient(1100px 560px at 84% -8%, rgb(94 92 230 / 0.16), transparent 60%),
-    radial-gradient(820px 460px at 6% 2%, rgb(255 55 95 / 0.1), transparent 55%);
+    radial-gradient(1100px 560px at 84% -8%, rgb(94 92 230 / 0.1), transparent 60%),
+    radial-gradient(820px 460px at 6% 2%, rgb(139 92 246 / 0.06), transparent 55%);
 
   color-scheme: dark;
 }
