@@ -210,7 +210,7 @@ export function ListControlsSkeleton({
   stacked = false,
 }: {
   chips: number;
-  /** `/items`' own layout: chips, then a search row of its own on a phone (not the list page's sticky row). */
+  /** `/items`' own layout: chips, then a search row of its own on a phone (not the list page's one-row layout). */
   stacked?: boolean;
 }) {
   return (

@@ -52,6 +52,16 @@ test('a member filters a list to Available and back to All', async ({ page }) =>
   await expect(cards.first()).toHaveAccessibleName('Item: E2E Lamp');
   await expect(chips.getByRole('radio', { name: 'Reserved by you 1' })).toBeVisible();
 
+  // regression: WIS-396 made the chips + toolbar row sticky under the header, and the
+  // cards scrolled visibly through the stuck row (WIS-420). It scrolls with the page.
+  const stuck = await chips.evaluate((el) => {
+    for (let n: Element | null = el; n; n = n.parentElement) {
+      if (getComputedStyle(n).position === 'sticky' && n.tagName !== 'HEADER') return true;
+    }
+    return false;
+  });
+  expect(stuck).toBe(false);
+
   await available.click();
   await expect(available).toBeChecked();
   await expect(cards).toHaveCount(1);

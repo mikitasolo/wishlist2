@@ -143,10 +143,9 @@ export default function WishlistItemsTab({
           the empty state below offers the add (or the proposal) itself */}
           {!listIsEmpty && (
             <>
-              {/* The filter row sticks under the app header (h-14) while the
-                  items scroll: the chips, then search and the sorts. It runs
-                  edge to edge so nothing shows through behind it. */}
-              <div className="sticky top-14 z-30 -mx-4 mb-3 bg-background px-4 pb-3 sm:-mx-6 sm:mb-5 sm:px-6 lg:-mx-8 lg:px-8">
+              {/* The filter row scrolls with the page (WIS-420): the chips,
+                  then search and the sorts. */}
+              <div className="mb-6 sm:mb-8">
                 {/* The status chips (none for a visitor): one row, one choice */}
                 {chips.length > 0 && (
                   <FilterChips
