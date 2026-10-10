@@ -54,7 +54,7 @@ export default defineConfig({
       ],
       thresholds: {
         // A non-regression *ratchet*, set just under today's actuals — not an
-        // aspiration. Coverage can only go up from here without tripping CI.
+        // aspiration. Coverage can only go up from here without failing `npm run verify`.
         // Measured on 2026-10-01 with Vitest 5's v8 provider: statements 81.05,
         // branches 78.08, functions 77.17, lines 81.72. Vitest 4 changed how v8
         // coverage is counted (from the code's structure, every function and

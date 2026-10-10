@@ -1,30 +1,24 @@
 name: Audit
 
-# Kept out of ci.yml so that a new upstream advisory never turns an unrelated
-# PR red: agents are told both to get CI green and to stay in scope, which
-# would conflict. So it runs:
-# - daily, on the default branch (staging), to catch an advisory published
+# The only workflow left (WIS-419 removed the PR CI: the free Actions minutes
+# ran out every month). It runs:
+# - weekly, on the default branch (staging), to catch an advisory published
 #   against something we already ship (WIS-140: a critical Next.js RCE sat on
 #   staging unnoticed until someone ran `npm audit` by hand). GitHub emails a
 #   failed scheduled run to whoever last changed the cron line. Minute 17
 #   avoids the top-of-the-hour queue, where scheduled runs get delayed.
 # - on demand (workflow_dispatch), e.g. to confirm a fix.
-# - on a PR that changes dependencies, so it can't add a runtime high/critical
-#   advisory or keep one.
+# A PR that changes dependencies runs `npm audit --omit=dev --audit-level=high`
+# by hand instead (no PR trigger, to spend only a few minutes a month).
 on:
   schedule:
-    - cron: '17 6 * * *'
+    - cron: '17 6 * * 1'
   workflow_dispatch:
-  pull_request:
-    paths:
-      - package.json
-      - package-lock.json
-      - .github/workflows/audit.yml
 
 permissions:
   contents: read
 
-# Cancel superseded runs on the same ref (e.g. force-pushes to a PR branch).
+# A manual run cancels an in-flight one on the same ref.
 concurrency:
   group: audit-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
