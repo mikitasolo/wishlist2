@@ -6,6 +6,7 @@ import { normalizeCurrency } from '@/lib/utils/currency';
 import { canAttachImage, FOREIGN_IMAGE_ERROR, isSameImage } from '@/lib/utils/blob';
 import { GROUP_GIFT_UNBOOK_ERROR } from '@/lib/utils/groupGifts';
 import { PROPOSAL_REVIEWED_ERROR } from '@/lib/utils/proposalReview';
+import type { SerializedItem } from '@/lib/utils/itemSerializer';
 
 /**
  * Deciding what an item edit writes (WIS-373): which fields, under which
@@ -78,7 +79,16 @@ export type ItemUpdatePlan = {
   approvedProposer: mongoose.Types.ObjectId | null;
 };
 
-export type ItemActionRefusal = { ok: false; status: number; error: string };
+/**
+ * A refused or lost item action: the HTTP status and error, plus (only for an
+ * approve that lost to an edit) the proposal as it is now, to refill the form.
+ */
+export type ItemActionFailure = {
+  ok: false;
+  status: number;
+  error: string;
+  data?: SerializedItem;
+};
 
 /**
  * The content fields of an edit (name, image, price, link, notes, and the
@@ -113,7 +123,7 @@ export function planItemUpdate(
   currentItem: Pick<IItem, 'status' | 'bookedBy' | 'proposedBy' | 'groupGift' | 'imageUrl'>,
   data: UpdateItemInput,
   actor: ItemActor
-): ({ ok: true } & ItemUpdatePlan) | ItemActionRefusal {
+): ({ ok: true } & ItemUpdatePlan) | ItemActionFailure {
   const { userId, isOwner, isProposer } = actor;
   const plan: ItemUpdatePlan = {
     updateData: {},

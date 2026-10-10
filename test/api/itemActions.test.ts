@@ -291,3 +291,35 @@ describe('deleteItem', () => {
     expect(result).toEqual({ ok: false, status: 404, error: 'Item not found' });
   });
 });
+
+describe('updateItem: images and prices', () => {
+  it('frees the image the write replaced, the one on the item as it landed', async () => {
+    const read = `${HOST}/uploads/${owner}/first.jpg`;
+    const landed = `${HOST}/uploads/${owner}/second.jpg`;
+    const next = `${HOST}/uploads/${owner}/third.jpg`;
+    const stale = await makeItem({ imageUrl: read });
+    // A co-owner's replacement since the read (which freed `read` itself).
+    await Item.updateOne({ _id: stale._id }, { imageUrl: landed });
+    const result = await updateItem({
+      item: stale,
+      wishlist,
+      actor: ownerActor(),
+      data: { imageUrl: next },
+    });
+    expect(result).toMatchObject({ ok: true, data: { imageUrl: next } });
+    expect(del).toHaveBeenCalledWith(landed);
+    expect(del).not.toHaveBeenCalledWith(read);
+  });
+
+  it('refuses a price in a currency with no rate, writing nothing', async () => {
+    const item = await makeItem();
+    const result = await updateItem({
+      item,
+      wishlist,
+      actor: ownerActor(),
+      data: { name: 'New', price: { value: 100, currency: 'XYZ' } },
+    });
+    expect(result).toMatchObject({ ok: false, status: 400 });
+    expect((await Item.findById(item._id))?.name).toBe('Blue Mug');
+  });
+});

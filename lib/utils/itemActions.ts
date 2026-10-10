@@ -36,6 +36,7 @@ import {
 import {
   OWNER_STATUS_ERROR,
   planItemUpdate,
+  type ItemActionFailure,
   type ItemActor,
   type ItemWriteGuard,
   type UpdateItemInput,
@@ -51,28 +52,21 @@ import {
  * with `serializeItem`.
  */
 
-/** A refused or lost action: the HTTP status and error, plus an item to refill a form with. */
-export type ItemActionFailure = {
-  ok: false;
-  status: number;
-  error: string;
-  data?: SerializedItem;
-};
-
+export type { ItemActionFailure };
 export type UpdateItemResult = { ok: true; data: SerializedItem } | ItemActionFailure;
 export type DeleteItemResult = { ok: true } | ItemActionFailure;
 
 /** The list an item is on, as the route read it. */
 export type ItemActionWishlist = Pick<IWishlist, '_id' | 'name' | 'owners' | 'slug'>;
 
-const ITEM_NOT_FOUND: ItemActionFailure = { ok: false, status: 404, error: 'Item not found' };
+const itemNotFound = (): ItemActionFailure => ({ ok: false, status: 404, error: 'Item not found' });
 
 /**
  * The answer to a booking undone because the caller stopped being a plain member
  * while it was in flight (see `undoBookingUnlessMember`): the one they'd have got
  * had that change landed before the request.
  */
-export function lostBookingFailure(reason: LostBookingReason): ItemActionFailure {
+function lostBookingFailure(reason: LostBookingReason): ItemActionFailure {
   if (reason === 'not-member') {
     return { ok: false, status: 403, error: 'Unauthorized - No access to this wishlist' };
   }
@@ -80,7 +74,7 @@ export function lostBookingFailure(reason: LostBookingReason): ItemActionFailure
     return { ok: false, status: 400, error: OWNER_STATUS_ERROR };
   }
   // The list was archived, which hides it from everyone but its owners.
-  return ITEM_NOT_FOUND;
+  return itemNotFound();
 }
 
 /**
@@ -88,14 +82,14 @@ export function lostBookingFailure(reason: LostBookingReason): ItemActionFailure
  * item that's still there changed since it was read: 409, with the guard's
  * conflict. Otherwise the item has gone: 404.
  */
-export async function unmatchedItemFailure(
+async function unmatchedItemFailure(
   id: string,
   guard: ItemWriteGuard | null
 ): Promise<ItemActionFailure> {
   if (guard && (await Item.exists({ _id: id }))) {
     return { ok: false, status: 409, error: guard.conflict };
   }
-  return ITEM_NOT_FOUND;
+  return itemNotFound();
 }
 
 /**
@@ -104,7 +98,7 @@ export async function unmatchedItemFailure(
  * a gift left live is no longer its item's, shows nowhere, and is ended by the
  * next start on the item (`startGroupGift`).
  */
-export async function endItemGroupGifts(itemId: mongoose.Types.ObjectId): Promise<void> {
+async function endItemGroupGifts(itemId: mongoose.Types.ObjectId): Promise<void> {
   try {
     await endGroupGiftsOnItem(itemId);
   } catch (err) {
@@ -128,7 +122,11 @@ export async function updateItem({
   /** The item as read at the top of the request. */
   item: IItem;
   wishlist: ItemActionWishlist;
-  /** The caller, with `isMember` read from their `WishlistMember` row. */
+  /**
+   * The caller, as decided on the list as read: `isOwner` with
+   * `isWishlistOwner`, `isMember` from their `WishlistMember` row. Trusted, so
+   * anyone with none of the three must already have been refused.
+   */
   actor: ItemActor & { isMember: boolean };
   data: UpdateItemInput;
 }): Promise<UpdateItemResult> {
@@ -307,7 +305,7 @@ export async function updateItem({
     // since this write landed is answered like any other missing item (and a
     // proposer isn't told their proposal was approved into the list).
     const now = await Item.findById(id);
-    if (!now) return ITEM_NOT_FOUND;
+    if (!now) return itemNotFound();
     item = now;
   }
 
@@ -377,7 +375,8 @@ export async function updateItem({
 
 /**
  * Delete an item: an owner's delete or Decline, or a proposer withdrawing their
- * own pending proposal. The route has already refused anyone else.
+ * own pending proposal. Trusts `isOwner`: the caller must have decided it with
+ * `isWishlistOwner` on the list as read, and refused anyone who is neither.
  */
 export async function deleteItem({
   item,
