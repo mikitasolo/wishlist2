@@ -3,6 +3,7 @@
 import { track } from '@/lib/analytics';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useKnownSession } from '@/lib/hooks/useKnownSession';
+import { useRefreshOnReturn } from '@/lib/hooks/useLiveRead';
 import { useToast } from '@/components/ToastProvider';
 import { useBusyIds } from '@/lib/hooks/useBusyIds';
 import { useDiscreetMode } from '@/lib/hooks/useDiscreetMode';
@@ -194,27 +195,21 @@ export function useReservedData() {
     if (readInFlight.current === null) load();
   }
 
-  // Load, then read both lists again whenever the user comes back to the tab,
-  // for reservations made, gifted or released, and gifts logged or deleted, in
-  // another tab or on another device. Coming back to a tab fires both events,
-  // and one read is enough: a return while a read is still on its way sends
-  // none.
+  // Load, then read both lists again whenever the user comes back to the tab
+  // (or the browser back online), for reservations made, gifted or released,
+  // and gifts logged or deleted, in another tab or on another device. No
+  // timed poll (WIS-376): what changes here is mostly the viewer's own doing.
+  // A return fires both focus and visibilitychange and counts once
+  // (`useRefreshOnReturn`), and a return while a read is still on its way
+  // sends none.
   useEffect(() => {
     if (status !== 'authenticated') return;
-    const refresh = () => {
-      if (readInFlight.current === null) load();
-    };
-    const onVisibilityChange = () => {
-      if (document.visibilityState === 'visible') refresh();
-    };
     load();
-    window.addEventListener('focus', refresh);
-    document.addEventListener('visibilitychange', onVisibilityChange);
-    return () => {
-      window.removeEventListener('focus', refresh);
-      document.removeEventListener('visibilitychange', onVisibilityChange);
-    };
   }, [status, userId, load]);
+  const refresh = useCallback(() => {
+    if (readInFlight.current === null) load();
+  }, [load]);
+  useRefreshOnReturn(refresh, status === 'authenticated');
 
   // Adds the entry "Mark as given" got back, in the history's newest-first
   // order. A read on its way meanwhile may predate it, so it's recorded for

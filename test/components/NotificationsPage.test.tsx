@@ -571,6 +571,34 @@ describe('Activity feed structure', () => {
     expect(within(li).getByLabelText('Unread')).toBeInTheDocument();
   });
 
+  // WIS-376: returns go through the shared useRefreshOnReturn.
+  it('reads the feed once for a return that fires both events, and when back online', async () => {
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/notifications?actors=1') {
+        return json({ success: true, data: [], unreadCount: 0 });
+      }
+      if (url === '/api/users/me/invites') return json({ success: true, data: [] });
+      throw new Error(`unexpected fetch ${url} ${init?.method}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const feedReads = () =>
+      fetchMock.mock.calls.filter(([url]) => url === '/api/notifications?actors=1').length;
+    render(<ActivityPage />);
+    await screen.findByText('Nothing here yet');
+    expect(feedReads()).toBe(1);
+
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'));
+      window.dispatchEvent(new Event('focus'));
+    });
+    await waitFor(() => expect(feedReads()).toBe(2));
+
+    act(() => {
+      window.dispatchEvent(new Event('online'));
+    });
+    await waitFor(() => expect(feedReads()).toBe(3));
+  });
+
   it('shows no Notifications heading with no rows', async () => {
     serve([]);
     render(<ActivityPage />);

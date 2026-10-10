@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type MutableRefObject } from 'react';
 import type { ApiItem, ItemUpdate } from '@/types/api';
 import { useFetchItems, type ReviewRequestOptions } from '@/lib/hooks/useItems';
+import { POLL_INTERVAL_MS, useLiveRead, type LiveReadFailure } from '@/lib/hooks/useLiveRead';
 import { isPublishedItem } from '@/lib/utils/itemCounts';
 import { useUndoableAction } from '@/lib/hooks/useUndoableAction';
 import type { PendingCommit } from '@/lib/utils/deferredCommit';
@@ -13,6 +14,9 @@ import {
 } from '@/lib/utils/itemListMerge';
 import { createMutationTracker } from '@/lib/utils/mutationTracker';
 import { ReadRefusedError } from '@/lib/utils/resourceRead';
+
+/** Before the first read: no items known (see `itemsLoaded`). */
+const NO_ITEMS: ApiItem[] = [];
 
 /** An optimistic item update, less what the page's items always supply. */
 export type ItemOptimisticUpdate = Omit<
@@ -61,8 +65,9 @@ export interface WishlistItemsOptions {
 
 /**
  * A wishlist page's items (screens.md, "Data loading & mutations"): the first
- * read, the 5 s poll while Items is on screen (and on coming back to the tab),
- * and the optimistic updates that must survive it.
+ * read, the 5 s poll while Items is on screen and the browser tab visible (and
+ * a read on every return to it), through the shared `useLiveRead`, and the
+ * optimistic updates that must survive it.
  *
  * Every item mutation goes through `mutations.track`: a poll that lands while
  * one is in flight, or whose read was in flight across one, is stale and is
@@ -85,8 +90,6 @@ export function useWishlistItems({
   updateItem,
 }: WishlistItemsOptions) {
   const fetchItemsHook = useFetchItems();
-  const [items, setItems] = useState<ApiItem[]>([]);
-  const [loadingItems, setLoadingItems] = useState(true);
 
   // The page's item mutations. A background poll that lands while one is in
   // flight, or whose read was in flight across one, is stale and must be
@@ -97,85 +100,84 @@ export function useWishlistItems({
   // off the polls for longer than that.
   const [mutations] = useState(createMutationTracker);
 
-  // Whether a read of the items has landed yet (`itemsShown` too, for
-  // `fetchItems` to read). Until one has, an empty `items` doesn't mean the
-  // list has no items, so the page shows no counts or controls for them: the
-  // skeleton while the first read is on its way, and if it failed
-  // (`itemsFailed`) a panel saying so, with Try again. A poll that lands
-  // meanwhile fills the list in.
-  const [itemsLoaded, setItemsLoaded] = useState(false);
-  const itemsShown = useRef(false);
-  const [itemsFailed, setItemsFailed] = useState(false);
   // Failed items reads the page showed the skeleton for once the items had
-  // been shown (the one after coming back to Items), and how many of them have been
-  // answered (see the effect after `fetchItems`).
+  // been shown (the one after coming back to Items), and how many of them have
+  // been answered (see the effect after `useLiveRead`).
   const [itemsReadFailures, setItemsReadFailures] = useState(0);
   const itemsReadFailuresSeen = useRef(0);
 
-  const fetchItems = useCallback(
-    async (silent = false) => {
-      if (!wishlistId) return;
-
-      if (!silent) {
-        setLoadingItems(true);
-        // The skeleton again, not the panel, while this read is on its way.
-        setItemsFailed(false);
-      }
-
+  const read = useCallback(
+    async (stamp: () => number) => {
+      if (!wishlistId) return null;
       // The number the request went out as (see the page's `readsSent`). It
       // stays 0 for a call that joins a read already on its way, whose own
       // caller answers for that read's refusal.
       let sentNo = 0;
       try {
-        // Rejects when the read fails, so a failed poll or reconcile keeps the
-        // list on screen: only a successful read replaces it. A call that joins
-        // a read already in flight gets that read's `sentAt`, not a later one.
-        const read = await fetchItemsHook(
+        // A call that joins a read already in flight gets that read's
+        // `sentAt`, not a later one.
+        const answer = await fetchItemsHook(
           wishlistId,
           () => {
             sentNo = ++readsSent.current;
-            return mutations.stamp();
+            return stamp();
           },
           readInit
         );
-        // A read that raced with a mutation (landed while one was in flight, or
-        // was sent before one settled) may predate fresher local state, so the
-        // list is read again once no mutation is in flight. A background read's
-        // result is dropped; a non-silent one (the first load, or the one after
-        // coming back to Items) still lands, so the list isn't left empty.
-        if (mutations.isStale(read.sentAt)) {
-          mutations.rereadWhenIdle();
-          if (silent) return;
-        }
-        // An owner's Preview as visitor: only what a visitor is shown.
-        setItems(
-          previewAsVisitor ? read.items.filter((item) => isPublishedItem(item.status)) : read.items
-        );
-        setItemsLoaded(true);
-        setItemsFailed(false);
-        itemsShown.current = true;
+        return {
+          // An owner's Preview as visitor: only what a visitor is shown.
+          data: previewAsVisitor
+            ? answer.items.filter((item) => isPublishedItem(item.status))
+            : answer.items,
+          sentAt: answer.sentAt,
+        };
       } catch (error) {
         // The list was deleted, archived or made private, or the viewer taken
         // off it, since the page loaded (or it never was theirs to see): the
         // list read's own answer, so the same state, and no more polls.
         if (error instanceof ReadRefusedError) {
           if (sentNo) void onRefused(sentNo);
-          return;
+          return null;
         }
-        console.error('Error fetching items:', error);
-        if (!silent) {
-          // Until the items have been shown, the panel in their place says so.
-          if (itemsShown.current) setItemsReadFailures((n) => n + 1);
-          else setItemsFailed(true);
-        }
-      } finally {
-        if (!silent) {
-          setLoadingItems(false);
-        }
+        throw error;
       }
     },
-    [fetchItemsHook, wishlistId, mutations, onRefused, readInit, previewAsVisitor, readsSent]
+    [fetchItemsHook, wishlistId, onRefused, readInit, previewAsVisitor, readsSent]
   );
+
+  const onError = useCallback((error: unknown, { silent, shown }: LiveReadFailure) => {
+    console.error('Error fetching items:', error);
+    // Until the items have been shown, the panel in their place says so (the
+    // read's `failed`); after, a read the skeleton was shown for is toasted.
+    if (!silent && shown) setItemsReadFailures((n) => n + 1);
+  }, []);
+
+  // The items: read when the list is loading or on screen and Items is the
+  // tab, then every 5 s while the browser tab is visible and on every return
+  // to it (`useLiveRead`). Until a read has landed (`itemsLoaded`) an empty
+  // `items` doesn't mean the list has no items, so the page shows no counts or
+  // controls for them: the skeleton while the first read is on its way, and if
+  // it failed (`itemsFailed`) a panel saying so, with Try again. A read that
+  // raced with a mutation is dropped if it was a background one, then the list
+  // is read again once idle; a non-silent one (the first load, or the one
+  // after coming back to Items) still lands, so the list isn't left empty.
+  const {
+    data: items,
+    setData: setItems,
+    loaded: itemsLoaded,
+    failed: itemsFailed,
+    loading: loadingItems,
+    refresh: fetchItems,
+  } = useLiveRead<ApiItem[]>({
+    // Not while the list is unavailable (every read would be refused again)
+    // or couldn't be read: Try again starts it over.
+    enabled: polling && !!wishlistId && onItems,
+    initialData: NO_ITEMS,
+    read,
+    pollMs: POLL_INTERVAL_MS,
+    mutations,
+    onError,
+  });
 
   // Try again, after the first items read failed: the skeleton, then a fresh read.
   const retryItems = useCallback(() => {
@@ -192,45 +194,6 @@ export function useWishlistItems({
     if (pageLoad === 'ready') onReadFailed();
   }, [pageLoad, itemsReadFailures, onReadFailed]);
 
-  useEffect(() => {
-    // Not while the list is unavailable (every read would be refused again) or
-    // couldn't be read: Try again starts it over.
-    if (!polling) return;
-    if (wishlistId && onItems) {
-      // Reset loading state when switching to items tab
-      setLoadingItems(true);
-      // While this tab polls, a read that turns out stale is followed by a
-      // background one (see fetchItems).
-      mutations.setReread(() => fetchItems(true));
-      fetchItems();
-
-      // Poll for updates every 5 seconds when tab is active
-      const pollInterval = setInterval(() => {
-        if (document.visibilityState === 'visible') {
-          fetchItems(true);
-        }
-      }, 5000);
-
-      const handleVisibilityChange = () => {
-        if (document.visibilityState === 'visible') {
-          fetchItems(true);
-        }
-      };
-      document.addEventListener('visibilitychange', handleVisibilityChange);
-
-      return () => {
-        clearInterval(pollInterval);
-        document.removeEventListener('visibilitychange', handleVisibilityChange);
-        // Coming back to the items tab reads the list anyway, and a read still
-        // in flight from here mustn't send another.
-        mutations.setReread(null);
-      };
-    } else if (!onItems) {
-      // Reset loading state when switching away from items tab
-      setLoadingItems(false);
-    }
-  }, [wishlistId, onItems, fetchItems, mutations, polling]);
-
   // An optimistic update of one item (see updateItemOptimistically): shown at
   // once, merged from the server's answer, undone on a failure and then
   // reconciled with a background read.
@@ -242,7 +205,7 @@ export function useWishlistItems({
         mutations,
         reconcile: () => fetchItems(true),
       }),
-    [mutations, fetchItems]
+    [mutations, fetchItems, setItems]
   );
 
   // Every item update (edit, book, publish, approve, ...) goes through here.
@@ -368,7 +331,7 @@ export function useWishlistItems({
         });
       return optimistic;
     },
-    [offerUndo, mutations, pendingFor]
+    [offerUndo, mutations, pendingFor, setItems]
   );
 
   return {

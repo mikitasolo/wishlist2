@@ -1049,9 +1049,9 @@ describe('BookedPage — reading both lists again while the page is open', () =>
     stillReserved: true,
   };
   const skeleton = () => document.querySelector('.skeleton');
-  const comeBack = (event: 'focus' | 'visibilitychange') =>
+  const comeBack = (event: 'focus' | 'visibilitychange' | 'online') =>
     act(() => {
-      (event === 'focus' ? window : document).dispatchEvent(new Event(event));
+      (event === 'visibilitychange' ? document : window).dispatchEvent(new Event(event));
     });
 
   /** Renders the page with every read held, and lets the first load land. */
@@ -1064,7 +1064,7 @@ describe('BookedPage — reading both lists again while the page is open', () =>
     return { ...held, rerender: view.rerender };
   }
 
-  it.each(['focus', 'visibilitychange'] as const)(
+  it.each(['focus', 'visibilitychange', 'online'] as const)(
     'coming back to the tab (%s) picks up what changed elsewhere, without the skeleton',
     async (event) => {
       const { server, reads, answerRead } = await renderLoaded();
