@@ -8,6 +8,12 @@ import { test, expect } from './fixtures';
 
 const LINK = 'https://shop.example/e2e-linked-gift';
 
+// The grid's cards come in with a staggered translateY (WIS-407 `motion-stagger`),
+// so a box measured mid-entrance is off by up to 8px and by a different amount
+// per card (the Add item tile has no delay, the cards after it 40ms or more).
+// Layout is what's under test, so the motion is off, as the app does for
+// prefers-reduced-motion.
+
 async function addLinkedItem(page: Page) {
   await page.route('**/api/wishlists/*/items', async (route) => {
     if (route.request().method() !== 'GET') return route.continue();
@@ -28,6 +34,7 @@ async function addLinkedItem(page: Page) {
 }
 
 test('two cards sit side by side at 390px, the link in each card’s menu', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.setViewportSize({ width: 390, height: 844 });
   await addLinkedItem(page);
   await page.goto('/wishlists/e2e-birthday');
@@ -110,6 +117,7 @@ test('two cards sit side by side at 390px, the link in each card’s menu', asyn
 test('from sm up, the link is a square beside the primary again, not in the menu', async ({
   page,
 }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.setViewportSize({ width: 1280, height: 900 });
   await addLinkedItem(page);
   await page.goto('/wishlists/e2e-birthday');
