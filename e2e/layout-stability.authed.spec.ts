@@ -104,7 +104,7 @@ test('the clear and close buttons are at least 32px square', async ({ page }) =>
   await page.goto('/wishlists/e2e-birthday');
 
   // The list's item search, with something typed.
-  await page.getByRole('textbox', { name: 'Search items by name' }).fill('zz');
+  await page.getByRole('textbox', { name: 'Search items' }).fill('zz');
   await expectHitArea(page.getByRole('button', { name: 'Clear search' }));
 
   // The header's search, opened.

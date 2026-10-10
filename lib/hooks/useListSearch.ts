@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useLayoutEffect, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { LIST_SEARCH_PARAM } from '@/lib/utils/listChips';
 
 /** Whether the browser is on the page at `path` (`/wishlists/<id or slug>`). */
@@ -32,6 +32,9 @@ function writeQueryToUrl(query: string) {
  * empty. The URL is only read or written while it names the list on screen, so
  * the old list's query never lands in the next one's URL; when the list's URL
  * changes under it (a new slug) the query is put back in it.
+ *
+ * In link mode (`/l/<token>`) the URL never names the list, so the query stays
+ * page state there and a share token's URL is never touched.
  */
 export function useListSearch(
   list: { id: string; slug?: string | null } | null,
@@ -41,17 +44,24 @@ export function useListSearch(
   const path = urlId ? `/wishlists/${urlId}` : null;
   const urlIsList = !!list && !!urlId && (urlId === list.id || urlId === list.slug);
   const [state, setState] = useState<{ scope: string; query: string } | null>(null);
+  // Read by the layout effect below without being its dependency, so a
+  // keystroke (which `choose` already writes to the URL) isn't written twice.
+  const stateRef = useRef(state);
+  useLayoutEffect(() => {
+    stateRef.current = state;
+  }, [state]);
 
   // Before paint, so a list opened at ?q= never shows a frame of everything.
   useLayoutEffect(() => {
     if (!scope) return;
     const ours = urlIsList && !!path && onPage(path);
-    if (state?.scope !== scope) {
+    const current = stateRef.current;
+    if (current?.scope !== scope) {
       setState({ scope, query: ours ? readQuery() : '' });
-    } else if (ours && state.query.trim() !== '') {
-      writeQueryToUrl(state.query);
+    } else if (ours && current.query.trim() !== '') {
+      writeQueryToUrl(current.query);
     }
-  }, [scope, path, urlIsList, state]);
+  }, [scope, path, urlIsList]);
 
   // Back or forward to another history entry of this list: its URL wins.
   useEffect(() => {

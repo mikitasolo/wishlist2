@@ -34,7 +34,7 @@ test('regression: a new list tells its owner it is empty, Add your first item ad
     await expect(page.getByText(/Birthday/).first()).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Your list is empty' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'No items found' })).toHaveCount(0);
-    await expect(page.getByRole('textbox', { name: 'Search items by name' })).toHaveCount(0);
+    await expect(page.getByRole('textbox', { name: 'Search items' })).toHaveCount(0);
     await expect(page.getByRole('radiogroup', { name: 'Show items' })).toHaveCount(0);
 
     await page.getByRole('button', { name: 'Add your first item' }).click();

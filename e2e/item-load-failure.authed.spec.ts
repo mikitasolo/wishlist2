@@ -89,7 +89,7 @@ test('regression: a failed first load says so, not that the list is empty', asyn
   await expect(loadError).toBeVisible();
   // Exclusive with the error panel, so checking these while it shows is enough.
   await expect(emptyList(page)).toHaveCount(0);
-  await expect(page.getByRole('textbox', { name: 'Search items by name' })).toHaveCount(0);
+  await expect(page.getByRole('textbox', { name: 'Search items' })).toHaveCount(0);
   await expect(page.getByRole('radiogroup', { name: 'Show items' })).toHaveCount(0);
   await expect(page.getByRole('status').getByText('Failed to load items')).toHaveCount(0);
 

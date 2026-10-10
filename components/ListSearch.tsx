@@ -20,10 +20,18 @@ export default function ListSearch({ value, onChange }: ListSearchProps) {
   const inputWrap = useRef<HTMLDivElement>(null);
   const expanded = open || value !== '';
 
+  const focusWithin = () => inputWrap.current?.contains(document.activeElement) ?? false;
+
   // Focus the field the icon just opened.
   useEffect(() => {
     if (open) inputWrap.current?.querySelector('input')?.focus();
   }, [open]);
+
+  // A query cleared from outside (Show all, another list) folds the field back,
+  // unless the person is in it.
+  useEffect(() => {
+    if (value === '' && !focusWithin()) setOpen(false);
+  }, [value]);
 
   return (
     <>
@@ -40,6 +48,9 @@ export default function ListSearch({ value, onChange }: ListSearchProps) {
       <div
         ref={inputWrap}
         className={`min-w-[6rem] flex-1 ${expanded ? '' : 'hidden sm:block'}`}
+        // Once focused it stays open, so emptying or clearing it mid-edit
+        // (also when it was only shown for a ?q= link) never folds it away.
+        onFocus={() => setOpen(true)}
         onBlur={(e) => {
           // Folds only when focus leaves the field and the clear button, empty.
           if (!e.currentTarget.contains(e.relatedTarget as Node | null) && value === '') {

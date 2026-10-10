@@ -68,7 +68,10 @@ beforeEach(() => {
         const all = ITEMS();
         return reply({
           success: true,
-          data: userRole === 'owner' ? all : all.filter((i) => i.status !== 'draft'),
+          data:
+            userRole === 'owner'
+              ? [...all, item('Rug', { status: 'booked', bookedBy: 'dave', proposedBy: 'erin' }, 5)]
+              : all.filter((i) => i.status !== 'draft'),
         });
       }
       return reply({
@@ -111,6 +114,12 @@ async function open() {
   await waitFor(() => expect(screen.queryAllByRole('article').length).toBeGreaterThan(0));
 }
 
+/** Opens a list whose search hides every item, so there are no cards to wait for. */
+async function openWithNoMatch() {
+  render(<WishlistDetail />);
+  await screen.findByRole('heading', { name: 'No items found' });
+}
+
 describe('searching inside a list', () => {
   it('narrows the items by name or notes and writes the query to ?q= without a history entry', async () => {
     await open();
@@ -148,7 +157,7 @@ describe('searching inside a list', () => {
 
   it('shows the no-match empty state, and Show all clears the query and the URL', async () => {
     window.history.replaceState(null, '', '/wishlists/birthday?q=zzz');
-    await open().catch(() => undefined);
+    await openWithNoMatch();
     const user = userEvent.setup();
     await user.click(await screen.findByRole('button', { name: 'Show all' }));
     expect(searchBox()).toHaveValue('');
@@ -160,8 +169,14 @@ describe('searching inside a list', () => {
     userRole = 'owner';
     await open();
     const user = userEvent.setup();
-    await user.type(searchBox(), 'booked');
-    expect(screen.getByRole('heading', { name: 'No items found' })).toBeInTheDocument();
+    for (const q of ['booked', 'dave', 'erin']) {
+      await user.clear(searchBox());
+      await user.type(searchBox(), q);
+      expect(screen.getByRole('heading', { name: 'No items found' })).toBeInTheDocument();
+    }
+    await user.clear(searchBox());
+    await user.type(searchBox(), 'rug');
+    expect(shown()).toEqual(['Rug']);
     await user.clear(searchBox());
     await user.type(searchBox(), 'ikea');
     expect(shown()).toEqual(['Sketch', 'Lamp']);
@@ -174,5 +189,27 @@ describe('searching inside a list', () => {
     expect(searchBox()).toHaveFocus();
     await user.type(searchBox(), 'v');
     expect(screen.queryByRole('button', { name: 'Open search' })).toBeNull();
+  });
+
+  // regression: a field shown only for a ?q= link folded away (and dropped
+  // focus) the moment it was cleared.
+  it('stays open and focused when a ?q= field is cleared', async () => {
+    window.history.replaceState(null, '', '/wishlists/birthday?q=ikea');
+    await open();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Clear search' }));
+    expect(searchBox()).toHaveValue('');
+    expect(searchBox()).toHaveFocus();
+    expect(screen.queryByRole('button', { name: 'Open search' })).toBeNull();
+  });
+
+  // regression: clearing the query from outside left the field expanded.
+  it('folds back to the icon when the query is cleared from outside', async () => {
+    window.history.replaceState(null, '', '/wishlists/birthday?q=zzz');
+    await openWithNoMatch();
+    expect(screen.queryByRole('button', { name: 'Open search' })).toBeNull();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Show all' }));
+    expect(await screen.findByRole('button', { name: 'Open search' })).toBeInTheDocument();
   });
 });
