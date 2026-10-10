@@ -263,6 +263,15 @@ export default function AddFromLinkFlow({ product, userCurrency }: AddFromLinkFl
     );
   }
 
+  // One initial-focus target (the trap would pick the close button): where you came
+  // from, else the first list, else Create.
+  const focusTarget =
+    cameFrom === CREATE || (lists?.length ?? 0) === 0
+      ? CREATE
+      : lists!.some((l) => l._id === cameFrom)
+        ? cameFrom
+        : lists![0]._id;
+
   return (
     <BaseModal isOpen onClose={leave} title="Add to a wishlist" titleId="add-from-link-title">
       {loadFailed ? (
@@ -296,7 +305,7 @@ export default function AddFromLinkFlow({ product, userCurrency }: AddFromLinkFl
                   <button
                     type="button"
                     onClick={() => pick(list)}
-                    autoFocus={cameFrom === list._id}
+                    autoFocus={focusTarget === list._id}
                     className="flex w-full items-center justify-between gap-3 rounded-xl border border-border px-4 py-3 text-left transition-colors hover:bg-muted"
                   >
                     <span className="truncate font-medium text-foreground">{list.name}</span>
@@ -316,7 +325,7 @@ export default function AddFromLinkFlow({ product, userCurrency }: AddFromLinkFl
               setCreating(true);
               setCameFrom(CREATE);
             }}
-            autoFocus={cameFrom === CREATE}
+            autoFocus={focusTarget === CREATE}
             className={`inline-flex items-center gap-1.5 text-sm font-medium text-accent hover:underline ${lists.length > 0 ? 'mt-4' : ''}`}
           >
             <Icon name="plus" size={16} />

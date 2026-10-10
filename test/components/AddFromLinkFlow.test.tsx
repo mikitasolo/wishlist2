@@ -84,6 +84,24 @@ describe('AddFromLinkFlow', () => {
     expect(within(picker()).queryByText('Last year')).toBeNull();
   });
 
+  // regression: useFocusTrap fell back to the close button because no list had autoFocus
+  it('focuses the first list, not the close button, when the picker opens', async () => {
+    stubFetch();
+    render(<AddFromLinkFlow product={PRODUCT} userCurrency="USD" />);
+
+    const first = await within(picker()).findByRole('button', { name: /Birthday/ });
+    await waitFor(() => expect(first).toHaveFocus());
+  });
+
+  it('puts focus back on the list you came from after "Change list"', async () => {
+    stubFetch();
+    render(<AddFromLinkFlow product={PRODUCT} userCurrency="USD" />);
+    const form = await pick('Home');
+    fireEvent.click(within(form).getByRole('button', { name: 'Change list' }));
+    const home = await within(picker()).findByRole('button', { name: /Home/ });
+    await waitFor(() => expect(home).toHaveFocus());
+  });
+
   it('goes from the picker to the form prefilled with the product, saving nothing yet', async () => {
     const fetchMock = stubFetch();
     render(<AddFromLinkFlow product={PRODUCT} userCurrency="USD" />);
@@ -171,6 +189,18 @@ describe('AddFromLinkFlow', () => {
     expect(within(form).getByLabelText(/item name/i)).toHaveValue('');
     expect(within(form).getByLabelText(/product link/i)).toHaveValue('');
     expect(showToast).not.toHaveBeenCalled();
+  });
+
+  it('keeps focus on Create a wishlist when coming back from it', async () => {
+    stubFetch();
+    render(<AddFromLinkFlow product={PRODUCT} userCurrency="USD" />);
+    const first = await within(picker()).findByRole('button', { name: /Birthday/ });
+    const create = within(picker()).getByRole('button', { name: 'Create a wishlist' });
+    fireEvent.click(create);
+    fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }));
+    const back = await within(picker()).findByRole('button', { name: 'Create a wishlist' });
+    await waitFor(() => expect(back).toHaveFocus());
+    expect(first).not.toHaveFocus();
   });
 
   it('closing the picker or the form leaves for Home without saving', async () => {
