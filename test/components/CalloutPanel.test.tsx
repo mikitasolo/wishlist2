@@ -84,6 +84,25 @@ describe('Panel', () => {
     expect(screen.getByRole('heading', { name: 'Members' }).parentElement).toHaveClass('border-b');
   });
 
+  it('as a list, hands the panel’s corners to the rows wrapper', () => {
+    // regression: the wrapper is a plain div, so the rows' `rounded-t-[inherit]` inherited
+    // radius 0 from it and a group heading's background painted square over the corners.
+    const { rerender } = render(
+      <Panel variant="list">
+        <PanelRow>Alice</PanelRow>
+      </Panel>
+    );
+    expect(screen.getByText('Alice').parentElement).toHaveClass('rounded-[inherit]');
+    rerender(
+      <Panel variant="list" title="Members">
+        <PanelRow>Alice</PanelRow>
+      </Panel>
+    );
+    const rows = screen.getByText('Alice').parentElement!;
+    expect(rows).toHaveClass('rounded-b-[inherit]');
+    expect(rows).not.toHaveClass('rounded-[inherit]');
+  });
+
   it('keeps a sub-section’s title, description and content side by side', () => {
     render(
       <PanelSection title="Danger zone" description="This can't be undone.">

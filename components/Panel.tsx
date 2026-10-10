@@ -62,8 +62,12 @@ export default function Panel({
       <Tag className={`${SURFACE} ${className}`} {...props}>
         {heading && <div className={`border-b border-border py-4 ${INSET}`}>{heading}</div>}
         {/* No overflow-hidden on the panel: a row's menu opens in place and spills past its
-            bottom edge. So the first and last row keep the panel's corners themselves. */}
-        <div className="divide-y divide-border [&>:first-child]:rounded-t-[inherit] [&>:last-child]:rounded-b-[inherit]">
+            bottom edge. So the rows' wrapper takes the panel's radius (`inherit` copies the
+            parent's, and a plain div has none) and the first and last row keep the corners
+            themselves. Under a header the top stays square. */}
+        <div
+          className={`divide-y divide-border ${heading ? 'rounded-b-[inherit]' : 'rounded-[inherit]'} [&>:first-child]:rounded-t-[inherit] [&>:last-child]:rounded-b-[inherit]`}
+        >
           {children}
         </div>
       </Tag>
