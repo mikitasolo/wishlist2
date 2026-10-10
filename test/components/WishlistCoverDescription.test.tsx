@@ -95,7 +95,7 @@ describe('WishlistDescription', () => {
   it('shows a short description as plain text, with no toggle', () => {
     render(<WishlistDescription text={SHORT} />);
     expect(text()).toHaveTextContent(SHORT);
-    expect(text()).toHaveClass('sm:line-clamp-3', 'text-body');
+    expect(text()).toHaveClass('line-clamp-2', 'sm:line-clamp-3', 'text-body');
     expect(screen.queryByRole('button')).toBeNull();
   });
 

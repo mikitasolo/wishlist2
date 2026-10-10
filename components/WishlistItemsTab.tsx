@@ -159,7 +159,7 @@ export default function WishlistItemsTab({
                 )}
 
                 {/* Toolbar: search, Sort, and Prices when it changes anything. One
-                  row from sm up; on a phone, search gets a row of its own. */}
+                  row, search taking what Sort and Prices leave; Budget wraps. */}
                 <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap sm:gap-3">
                   <SearchField
                     size="sm"
