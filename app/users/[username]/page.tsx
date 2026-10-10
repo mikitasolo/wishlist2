@@ -344,13 +344,15 @@ export default function UserProfile() {
                 {profile?.followsYou && !profile.isFriend ? <span>· Follows you</span> : null}
               </div>
               {profile && birthdayText && (
-                <p className="mt-1 text-sm text-muted-foreground">
-                  <span aria-hidden>🎂 </span>
+                <p className="mt-1 flex items-center gap-1.5 text-sm text-muted-foreground">
+                  <Icon name="calendar" size={16} className="flex-shrink-0" aria-hidden />
                   <span className="sr-only">Birthday: </span>
-                  <span className="text-foreground">{birthdayText}</span>
-                  {profile.isSelf && profile.birthdayAudience && (
-                    <span> · {BIRTHDAY_AUDIENCE_TEXT[profile.birthdayAudience]}</span>
-                  )}
+                  <span>
+                    <span className="text-foreground">{birthdayText}</span>
+                    {profile.isSelf && profile.birthdayAudience && (
+                      <span> · {BIRTHDAY_AUDIENCE_TEXT[profile.birthdayAudience]}</span>
+                    )}
+                  </span>
                 </p>
               )}
             </div>
