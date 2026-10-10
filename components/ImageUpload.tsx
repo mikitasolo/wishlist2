@@ -1,12 +1,15 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Icon from './Icon';
 import BannerImage from './BannerImage';
-import ImageCropModal from './ImageCropModal';
 import Button from './Button';
 import Spinner from './Spinner';
 import type { FreshUploads } from '@/lib/utils/freshUploads';
+
+// The cropper (react-easy-crop) loads only when a file is picked.
+const ImageCropModal = dynamic(() => import('./ImageCropModal'));
 
 interface ImageUploadProps {
   value: string | null;

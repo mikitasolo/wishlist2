@@ -169,7 +169,7 @@ describe('ShareLinksSection', () => {
     const user = userEvent.setup();
     renderSection(control({ links: [row()] }));
     await user.click(screen.getByRole('button', { name: 'Share Family chat' }));
-    const dialog = screen.getByRole('dialog', { name: 'Family chat' });
+    const dialog = await screen.findByRole('dialog', { name: 'Family chat' });
     const url = `${window.location.origin}/l/${TOKEN}`;
     expect(within(dialog).getByLabelText('Link')).toHaveValue(url);
     const preview = within(dialog).getByRole('img', { name: 'Card preview for Family chat' });

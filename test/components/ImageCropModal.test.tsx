@@ -101,9 +101,11 @@ async function openCropOverItemModal({
   expect(dropZone()).toHaveFocus();
 
   pickImage(itemModal());
-  expect(cropDialog()).toBeInTheDocument();
+  expect(await screen.findByRole('dialog', { name: 'Crop image' })).toBeInTheDocument();
   // The stand-in cropper has reported its area, so Crop & upload is enabled.
-  expect(inCrop().getByRole('button', { name: 'Crop & upload' })).toBeEnabled();
+  await waitFor(() =>
+    expect(inCrop().getByRole('button', { name: 'Crop & upload' })).toBeEnabled()
+  );
   return user;
 }
 

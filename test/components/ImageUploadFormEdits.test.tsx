@@ -99,7 +99,7 @@ async function startUpload(user: User, root: HTMLElement) {
   fireEvent.change(input, {
     target: { files: [new File(['image'], 'gift.png', { type: 'image/png' })] },
   });
-  await user.click(screen.getByRole('button', { name: 'Crop & upload' }));
+  await user.click(await screen.findByRole('button', { name: 'Crop & upload' }));
   await act(async () => finishCrop(new Blob(['cropped'])));
 
   expect(screen.queryByRole('dialog', { name: 'Crop image' })).toBeNull();
