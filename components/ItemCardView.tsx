@@ -136,13 +136,15 @@ export default function ItemCardView({
         {/* The card's body (its name, price and notes): the name's `::after`
             stretches over the rest of it. */}
         <div className={`flex flex-grow flex-col ${titleCoversCard ? '' : 'relative'}`}>
-          <div className="flex-grow">
-            <h3 className="mb-1.5 text-body font-semibold text-foreground sm:mb-3 sm:text-title">
-              {title}
-            </h3>
-          </div>
+          {/* Top-down flow with fixed slots (WIS-398): a two-line title slot,
+              then the price, then the notes, so cards in one grid row line up
+              whatever their content; the spare height goes below the notes,
+              above the chips and the pinned action row. */}
+          <h3 className="mb-1.5 min-h-[2lh] text-body font-semibold text-foreground sm:mb-3 sm:text-title">
+            {title}
+          </h3>
 
-          <div className="mb-2 flex min-h-[28px] min-w-0 flex-col justify-center sm:mb-3 sm:min-h-[32px]">
+          <div className="mb-2 flex min-h-[28px] min-w-0 flex-col justify-start sm:mb-3 sm:min-h-[32px]">
             {priceText && (
               <p className="truncate text-lg font-semibold text-foreground sm:text-xl">
                 {priceText}
