@@ -1,6 +1,6 @@
 'use client';
 
-import { memo, useMemo, useCallback, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useCallback, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ApiItem } from '@/types/api';
 import { useSession } from 'next-auth/react';
@@ -35,6 +35,23 @@ import { SM_UP_QUERY, useMediaQuery } from '@/lib/hooks/useMediaQuery';
 import GroupGiftProgress from '@/components/GroupGiftProgress';
 import GroupGiftDialog, { type GroupGiftDialogResult } from '@/components/GroupGiftDialog';
 import type { GroupGiftAction } from '@/lib/utils/groupGiftClient';
+import { useCardMotion } from '@/lib/hooks/useCardMotion';
+import { onItemCardCue, type CardMotion } from '@/lib/utils/motion';
+
+/**
+ * The moment a group gift action plays once it succeeds (WIS-407): taking part
+ * is a reserve, stepping out a release, the organizer's give the given moment.
+ * A pledge change plays none.
+ */
+const GROUP_GIFT_MOTION: Record<GroupGiftAction['type'], CardMotion | null> = {
+  start: 'reserve',
+  join: 'reserve',
+  convert: 'reserve',
+  pledge: null,
+  leave: 'release',
+  cancel: 'release',
+  give: 'given',
+};
 
 // The card's actions are one row, the same height on every card: one labelled
 // primary action, then the product link as a square icon button (unless the
@@ -299,27 +316,40 @@ function WishlistItem({
     : null;
   const originalPriceText = item.price && converted ? formatPrice(item.price, locale) : null;
 
+  // The card's moment (WIS-407), played only once the viewer's own action has
+  // succeeded (an update resolves null when it failed), never from a change in
+  // the item: so a poll's, or a co-owner's, plays nothing. A reservation's is
+  // never an owner's or discreet mode's (`useCardMotion`).
+  const { motion, play } = useCardMotion({ isOwner, discreet });
+  // An owner's Accept on this proposal, from the review dialog (`cueItemCard`).
+  useEffect(
+    () => (isOwner ? onItemCardCue(shownItem._id, () => play('cue')) : undefined),
+    [isOwner, shownItem._id, play]
+  );
+
   const handleToggleBooked = useCallback(async () => {
     if (isOwner || isUpdating) return;
     setIsUpdating(true);
     try {
       const newStatus = item.status === 'booked' ? 'available' : 'booked';
-      await onUpdate(item._id, { status: newStatus });
+      const updated = await onUpdate(item._id, { status: newStatus });
+      if (updated) play(newStatus === 'booked' ? 'reserve' : 'release');
     } finally {
       setIsUpdating(false);
     }
-  }, [item.status, item._id, onUpdate, isOwner, isUpdating]);
+  }, [item.status, item._id, onUpdate, isOwner, isUpdating, play]);
 
   const applyStatus = useCallback(
-    async (newStatus: 'completed' | 'available' | 'draft') => {
+    async (newStatus: 'completed' | 'available' | 'draft', moment: CardMotion | null = null) => {
       setIsUpdating(true);
       try {
-        await onUpdate(item._id, { status: newStatus });
+        const updated = await onUpdate(item._id, { status: newStatus });
+        if (updated && moment) play(moment);
       } finally {
         setIsUpdating(false);
       }
     },
-    [item._id, onUpdate]
+    [item._id, onUpdate, play]
   );
 
   // A content edit of `mostWanted` alone: never the status.
@@ -351,7 +381,7 @@ function WishlistItem({
   // warning was open, there's nothing left to release.
   const handleRelease = useCallback(() => {
     if (isOwner || isUpdating || item.status !== 'booked' || !isBookedByCurrentUser) return;
-    applyStatus('available');
+    applyStatus('available', 'release');
   }, [isOwner, isUpdating, item.status, isBookedByCurrentUser, applyStatus]);
 
   // A group gift action, held like the card's other updates while it runs.
@@ -362,12 +392,14 @@ function WishlistItem({
       if (!onGroupGift) return;
       setIsUpdating(true);
       try {
-        await onGroupGift(item._id, action);
+        const updated = await onGroupGift(item._id, action);
+        const moment = GROUP_GIFT_MOTION[action.type];
+        if (updated && moment) play(moment);
       } finally {
         setIsUpdating(false);
       }
     },
-    [onGroupGift, item._id]
+    [onGroupGift, item._id, play]
   );
   const handleGiftDialog = (result: GroupGiftDialogResult) => {
     if (giftDialog === 'start') {
@@ -390,7 +422,7 @@ function WishlistItem({
   // Publishing a draft is safe (drafts aren't visible to anyone else yet).
   const handlePublish = useCallback(() => {
     if (!isOwner || isUpdating) return;
-    applyStatus('available');
+    applyStatus('available', 'cue');
   }, [isOwner, isUpdating, applyStatus]);
 
   // Moving a live item back to draft asks first: it may already be reserved
@@ -793,6 +825,7 @@ function WishlistItem({
       status={status}
       dimmed={dimmed}
       highlighted={highlighted}
+      motion={motion}
       priceText={priceText}
       originalPriceText={originalPriceText}
       onCoverClick={() => setSheetOpen(true)}
@@ -924,7 +957,7 @@ function WishlistItem({
                 type="info"
                 onConfirm={() => {
                   setShowCompleteConfirm(false);
-                  applyStatus('completed');
+                  applyStatus('completed', 'cue');
                 }}
                 onCancel={() => setShowCompleteConfirm(false)}
               />

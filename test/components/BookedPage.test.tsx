@@ -25,6 +25,14 @@ vi.mock('@/components/AuthButton', () => ({ default: () => null }));
 
 vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }));
 vi.mock('@/lib/analytics', () => ({ track: vi.fn() }));
+// Reduced motion unless a test says otherwise, so a card marked as given leaves
+// as its answer lands, as it did before the Mark as given moment (WIS-407),
+// which only "the Mark as given moment" below plays.
+const motionPrefs = vi.hoisted(() => ({ reduced: true }));
+vi.mock('@/lib/utils/motion', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/utils/motion')>()),
+  prefersReducedMotion: () => motionPrefs.reduced,
+}));
 
 import BookedPage from '@/app/booked/page';
 import { track } from '@/lib/analytics';
@@ -2128,5 +2136,68 @@ describe('BookedPage — analytics', () => {
     await answer(releaseKey('item-lego'), failed('Nope'));
     await waitFor(() => expect(showToast).toHaveBeenCalledWith('Nope', 'error'));
     expect(tracked).not.toHaveBeenCalled();
+  });
+});
+
+// WIS-407: a subtle Mark as given moment (a check mark drawn and a small burst,
+// about 600ms) on the card whose gift the viewer has just marked, before it
+// leaves; never for a failed one, in discreet mode or under reduced motion.
+describe('BookedPage — the Mark as given moment', () => {
+  beforeEach(() => {
+    motionPrefs.reduced = false;
+  });
+  afterEach(() => {
+    motionPrefs.reduced = true;
+    act(() => setDiscreetMode(false));
+  });
+
+  it('plays on the card once its gift is marked, then the card leaves for the history', async () => {
+    const { answer } = await renderHeld();
+    markGifted('Lego set');
+    // Nothing while the request is on its way.
+    expect(screen.queryByTestId('given-moment')).toBeNull();
+    await answer(markGiftedKey('res-lego'), gifted(legoGift));
+
+    const card = cardFor('Lego set');
+    expect(card).toHaveAttribute('data-motion', 'given');
+    expect(within(card!).getByTestId('given-moment')).toHaveAttribute('aria-hidden');
+    // Held while it plays, so it can't be acted on twice.
+    expectReservationDisabled('Lego set');
+
+    await waitFor(() => expect(cardName('Lego set')).toBeNull());
+    expect(screen.queryByTestId('given-moment')).toBeNull();
+    expect(historyNames()).toContain('Lego set');
+  });
+
+  it('plays nothing when marking it fails', async () => {
+    const { answer } = await renderHeld();
+    markGifted('Lego set');
+    await answer(markGiftedKey('res-lego'), failed('Nope'));
+    await waitFor(() => expect(showToast).toHaveBeenCalledWith('Nope', 'error'));
+    expect(cardFor('Lego set')).not.toHaveAttribute('data-motion');
+    expect(screen.queryByTestId('given-moment')).toBeNull();
+  });
+
+  it('plays nothing in discreet mode, even once the page is shown', async () => {
+    setDiscreetMode(true);
+    const { answer } = mockHeldFetch();
+    render(<BookedPage />);
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Show' }));
+    await screen.findByText('Lego set');
+
+    markGifted('Lego set');
+    await answer(markGiftedKey('res-lego'), gifted(legoGift));
+    expect(screen.queryByTestId('given-moment')).toBeNull();
+    // Off the page at once, as before the moment.
+    expect(cardName('Lego set')).toBeNull();
+  });
+
+  it('plays nothing under reduced motion', async () => {
+    motionPrefs.reduced = true;
+    const { answer } = await renderHeld();
+    markGifted('Lego set');
+    await answer(markGiftedKey('res-lego'), gifted(legoGift));
+    expect(screen.queryByTestId('given-moment')).toBeNull();
+    expect(cardName('Lego set')).toBeNull();
   });
 });
