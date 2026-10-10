@@ -14,7 +14,7 @@ test.describe.configure({ retries: 0 });
 test('a new account is offered a username, and keeping the generated one continues on', async ({
   page,
 }) => {
-  // The invite email's sign-in continues to /invites, which opens Activity.
+  // The invite email's sign-in carries /invites through Welcome.
   await page.goto(magicLinkPath(MAGIC_LINKS.newcomerKeeps, '/invites'));
 
   await expect(page).toHaveURL(/\/welcome\?callbackUrl=/);
@@ -30,9 +30,12 @@ test('a new account is offered a username, and keeping the generated one continu
   // The minimal header: no navigation, no search.
   await expect(page.getByRole('link', { name: 'Reserved' })).toHaveCount(0);
 
+  // A brand-new account hasn't done the guided walkthrough (WIS-371, WIS-436),
+  // so it lands where the tour starts (Home) instead of the invite's
+  // destination, and the tour's first step opens.
   await keep.click();
-  await expect(page).toHaveURL('/notifications');
-  await expect(page.getByRole('heading', { name: 'Activity', exact: true })).toBeVisible();
+  await expect(page).toHaveURL('/');
+  await expect(page.getByRole('dialog', { name: 'Lists for every occasion' })).toBeVisible();
 });
 
 test('a new account can pick its own username on the welcome page', async ({ page }) => {
