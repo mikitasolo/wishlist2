@@ -84,6 +84,23 @@ describe('AddFromLinkFlow', () => {
     expect(within(picker()).queryByText('Last year')).toBeNull();
   });
 
+  it('focuses the first list, not the close button, when the picker opens', async () => {
+    stubFetch();
+    render(<AddFromLinkFlow product={PRODUCT} userCurrency="USD" />);
+
+    const first = await within(picker()).findByRole('button', { name: /Birthday/ });
+    await waitFor(() => expect(first).toHaveFocus());
+  });
+
+  it('puts focus back on the list you came from after "Change list"', async () => {
+    stubFetch();
+    render(<AddFromLinkFlow product={PRODUCT} userCurrency="USD" />);
+    const form = await pick('Home');
+    fireEvent.click(within(form).getByRole('button', { name: 'Change list' }));
+    const home = await within(picker()).findByRole('button', { name: /Home/ });
+    await waitFor(() => expect(home).toHaveFocus());
+  });
+
   it('goes from the picker to the form prefilled with the product, saving nothing yet', async () => {
     const fetchMock = stubFetch();
     render(<AddFromLinkFlow product={PRODUCT} userCurrency="USD" />);

@@ -291,12 +291,12 @@ export default function AddFromLinkFlow({ product, userCurrency }: AddFromLinkFl
           </p>
           {lists.length > 0 && (
             <ul className="space-y-2">
-              {lists.map((list) => (
+              {lists.map((list, index) => (
                 <li key={list._id}>
                   <button
                     type="button"
                     onClick={() => pick(list)}
-                    autoFocus={cameFrom === list._id}
+                    autoFocus={cameFrom === null ? index === 0 : cameFrom === list._id}
                     className="flex w-full items-center justify-between gap-3 rounded-xl border border-border px-4 py-3 text-left transition-colors hover:bg-muted"
                   >
                     <span className="truncate font-medium text-foreground">{list.name}</span>
