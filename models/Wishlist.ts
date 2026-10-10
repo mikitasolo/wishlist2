@@ -120,6 +120,11 @@ WishlistSchema.index({ owners: 1 });
 // The daily occasion reminders look lists up by their occasion's stored date
 // (lib/utils/occasionReminders.ts).
 WishlistSchema.index({ 'occasion.date': 1 });
+// Who may open a list (`viewableWishlistsFilter`: search, the Booked page's
+// lists) starts from its visibility tier, signed out from `everyone` alone:
+// without this, every one of those reads scans the whole collection (WIS-377).
+// Built by autoIndex; `POST /api/migrations/sync-hot-query-indexes` builds it too.
+WishlistSchema.index({ visibility: 1, archived: 1 });
 
 // Base document type
 export interface IWishlist {
