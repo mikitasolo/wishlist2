@@ -65,14 +65,14 @@ describe('GET /api/users/me walkthrough', () => {
 
   it('has the tour due for a new account, and records the visit', async () => {
     const data = await status();
-    expect(data.walkthrough).toEqual({ due: 'tour', ownsList: false });
+    expect(data.walkthrough).toEqual({ due: 'tour', ownsList: false, listPath: null });
     expect((await stored()).lastActiveAt).toBeInstanceOf(Date);
   });
 
   it('answers what is due, never the stored state or the last visit', async () => {
     await finishedAndLastSeen(daysAgo(2));
     const data = await status();
-    expect(Object.keys(data.walkthrough).sort()).toEqual(['due', 'ownsList']);
+    expect(Object.keys(data.walkthrough).sort()).toEqual(['due', 'listPath', 'ownsList']);
     expect(data).not.toHaveProperty('lastActiveAt');
   });
 
@@ -84,7 +84,39 @@ describe('GET /api/users/me walkthrough', () => {
       slug: 'shared-owners',
       currency: 'USD',
     });
-    expect((await status()).walkthrough.ownsList).toBe(true);
+    expect((await status()).walkthrough).toMatchObject({
+      ownsList: true,
+      listPath: '/wishlists/shared-owners',
+    });
+  });
+
+  it('names an unarchived list of theirs for the tour, never someone else’s', async () => {
+    await Wishlist.create({
+      name: 'Old one',
+      owners: [alice],
+      visibility: 'everyone',
+      slug: 'old-one',
+      currency: 'USD',
+      archived: true,
+    });
+    await Wishlist.create({
+      name: 'Bob’s',
+      owners: [bob],
+      visibility: 'everyone',
+      slug: 'bobs',
+      currency: 'USD',
+    });
+    // Only an archived list of their own: they own one, but there's none to show.
+    expect((await status()).walkthrough).toMatchObject({ ownsList: true, listPath: null });
+
+    await Wishlist.create({
+      name: 'Live one',
+      owners: [alice],
+      visibility: 'private',
+      slug: 'live-one',
+      currency: 'USD',
+    });
+    expect((await status()).walkthrough.listPath).toBe('/wishlists/live-one');
   });
 
   it('bumps the last visit at most once a day', async () => {

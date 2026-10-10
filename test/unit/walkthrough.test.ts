@@ -7,7 +7,14 @@ import {
   walkthroughDue,
   walkthroughWrite,
 } from '@/lib/utils/walkthrough';
-import { countedSteps, tourAllowedOn, tourSteps } from '@/lib/utils/tourSteps';
+import {
+  countedSteps,
+  PRACTICE_OWNER_PATH,
+  PRACTICE_PATH,
+  tourAllowedOn,
+  tourStepPath,
+  tourSteps,
+} from '@/lib/utils/tourSteps';
 import { placeTourPopover } from '@/lib/utils/tourPlacement';
 import { ANALYTICS_EVENTS } from '@/lib/analytics';
 
@@ -85,7 +92,7 @@ describe('walkthroughWrite', () => {
 });
 
 describe('tourSteps', () => {
-  it('is one tour: seven steps on a desktop, six without the bookmarklet, then a closing card', () => {
+  it('is one tour: nine steps on a desktop, eight without the bookmarklet, then a closing card', () => {
     const desktop = tourSteps({ desktop: true, ownsList: true });
     const phone = tourSteps({ desktop: false, ownsList: true });
     expect(desktop.map((s) => s.key)).toEqual([
@@ -94,13 +101,22 @@ describe('tourSteps', () => {
       'sharing',
       'friends',
       'reserving',
+      'group_gift',
       'reserved',
+      'no_spoiler',
       'bookmarklet',
       'closing',
     ]);
-    expect(countedSteps(desktop)).toBe(7);
-    expect(countedSteps(phone)).toBe(6);
+    expect(countedSteps(desktop)).toBe(9);
+    expect(countedSteps(phone)).toBe(8);
     expect(phone.some((s) => s.key === 'bookmarklet')).toBe(false);
+  });
+
+  it('points every step but the closing card at a real control (WIS-436)', () => {
+    for (const step of tourSteps({ desktop: true, ownsList: true })) {
+      if (step.closing) expect(step.target).toBeUndefined();
+      else expect(step.target, step.key).toBeDefined();
+    }
   });
 
   it('offers Create a list at the end only to someone who owns no list', () => {
@@ -134,6 +150,43 @@ describe('tourSteps', () => {
       .map((s) => `${s.title} ${s.body}`)
       .join(' ');
     expect(copy).not.toMatch(/\bbook(ed|ing)?\b/i);
+  });
+});
+
+describe('tourStepPath', () => {
+  const steps = tourSteps({ desktop: true, ownsList: true });
+  const pathOf = (key: string, listPath: string | null) =>
+    tourStepPath(
+      steps.find((s) => s.key === key)!,
+      listPath
+    );
+
+  it('runs adding and sharing on their own list, or the practice one when they have none', () => {
+    expect(pathOf('items', '/wishlists/maya')).toBe('/wishlists/maya');
+    expect(pathOf('sharing', '/wishlists/maya')).toBe('/wishlists/maya');
+    expect(pathOf('items', null)).toBe(PRACTICE_OWNER_PATH);
+  });
+
+  it('always reserves on the practice list, whatever lists they have', () => {
+    expect(pathOf('reserving', '/wishlists/maya')).toBe(PRACTICE_PATH);
+    expect(pathOf('group_gift', null)).toBe(PRACTICE_PATH);
+  });
+
+  it('leaves the header steps wherever they are, and goes Home to close', () => {
+    expect(pathOf('friends', null)).toBeNull();
+    expect(pathOf('reserved', null)).toBeNull();
+    expect(pathOf('no_spoiler', null)).toBe('/booked');
+    expect(pathOf('bookmarklet', null)).toBe('/settings');
+    expect(pathOf('closing', null)).toBe('/');
+  });
+
+  it('only goes to pages it may run on', () => {
+    for (const step of steps) {
+      for (const listPath of [null, '/wishlists/maya']) {
+        const path = tourStepPath(step, listPath);
+        if (path) expect(tourAllowedOn(path.split('?')[0]), step.key).toBe(true);
+      }
+    }
   });
 });
 

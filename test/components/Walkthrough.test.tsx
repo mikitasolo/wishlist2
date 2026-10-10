@@ -3,12 +3,18 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-const { push, showToast, track, nav } = vi.hoisted(() => ({
-  push: vi.fn(),
-  showToast: vi.fn(),
-  track: vi.fn(),
-  nav: { pathname: '/' },
-}));
+const { push, showToast, track, nav } = vi.hoisted(() => {
+  const nav = { pathname: '/' };
+  return {
+    // Going to a page is landing on it.
+    push: vi.fn((path: string) => {
+      nav.pathname = path.split('?')[0];
+    }),
+    showToast: vi.fn(),
+    track: vi.fn(),
+    nav,
+  };
+});
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push, replace: vi.fn() }),
@@ -17,14 +23,19 @@ vi.mock('next/navigation', () => ({
 vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }));
 vi.mock('@/lib/analytics', () => ({ track }));
 
-import Walkthrough, { resetWalkthroughForTests, TOUR_AGAIN_TOAST } from '@/components/Walkthrough';
+import Walkthrough, {
+  resetWalkthroughForTests,
+  TOUR_AGAIN_TOAST,
+  tourListCreated,
+} from '@/components/Walkthrough';
 import TourSetting from '@/components/TourSetting';
 import type { WalkthroughStatus } from '@/lib/utils/walkthrough';
 
 const fetchMock = vi.fn();
 
 /** `GET /api/users/me` answers this walkthrough status; every PATCH succeeds. */
-function answer(status: WalkthroughStatus) {
+function answer(partial: Omit<WalkthroughStatus, 'listPath'> & { listPath?: string | null }) {
+  const status: WalkthroughStatus = { listPath: null, ...partial };
   fetchMock.mockImplementation(async (_url: string, init?: RequestInit) => {
     if (init?.method === 'PATCH') return new Response(JSON.stringify({ success: true }));
     return new Response(JSON.stringify({ success: true, data: { walkthrough: status } }));
@@ -47,8 +58,8 @@ function device(desktop: boolean) {
   })) as unknown as typeof window.matchMedia;
 }
 
-/** A centred card: the step's dialog, found once its target search gives up. */
-const step = (name: string) => screen.findByRole('dialog', { name }, { timeout: 2000 });
+/** A step's dialog: the popover beside its target, or the centred card once the search gives up. */
+const step = (name: string) => screen.findByRole('dialog', { name }, { timeout: 4500 });
 
 beforeEach(() => {
   resetWalkthroughForTests();
@@ -61,6 +72,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  document.querySelectorAll('[data-tour], [data-test-overlay]').forEach((el) => el.remove());
   vi.unstubAllGlobals();
   // @ts-expect-error jsdom has none of its own
   delete window.matchMedia;
@@ -73,7 +85,9 @@ const PHONE_STEPS = [
   'Sharing',
   'Find your friends',
   'The surprise stays a surprise',
-  'Reserved and No spoiler mode',
+  'Group gifts',
+  'Reserved',
+  'No spoiler mode',
 ];
 
 /** Clicks Next through these steps. */
@@ -93,51 +107,128 @@ function addTarget(name: string, tag: 'div' | 'button' = 'button') {
   return el;
 }
 
+/** Every step's target, as if each page had it (the test's pages are all one document). */
+function addAllTargets() {
+  const names = [
+    'new-list',
+    'add-item',
+    'share',
+    'search',
+    'reserve',
+    'group-gift',
+    'reserved',
+    'no-spoiler',
+    'bookmarklet',
+  ];
+  return Object.fromEntries(names.map((name) => [name, addTarget(name)]));
+}
+
+/** The pages the tour has taken them to, in order. */
+const visited = () => push.mock.calls.map(([path]) => path);
+
 describe('Walkthrough', () => {
-  it('shows a fresh account with no list the same tour, as a centred card where a target is missing', async () => {
+  it('falls back to a centred card with a made-up picture where a target never shows', async () => {
     answer({ due: 'tour', ownsList: false });
     render(<Walkthrough userId="u1" />);
     const card = await step('Lists for every occasion');
     expect(card).toHaveAttribute('aria-modal', 'true');
-    expect(card).toHaveTextContent('1 of 6');
-    // Its made-up picture, decorative only.
+    expect(card).toHaveTextContent('1 of 8');
+    // Its made-up picture, decorative only; nothing to try with no control on screen.
     expect(card).toHaveTextContent('Maya’s birthday');
+    expect(card).not.toHaveTextContent('Tap New list');
     expect(track).toHaveBeenCalledWith('tour_started', { source: 'auto' });
-  });
+  }, 8000);
 
-  it('points at the target when the page has it', async () => {
+  it('dims the page around the real control, saying what to try, with no picture', async () => {
     const target = addTarget('new-list');
-    try {
-      answer({ due: 'tour', ownsList: true });
-      render(<Walkthrough userId="u1" />);
-      const popover = await step('Lists for every occasion');
-      expect(popover).not.toHaveAttribute('aria-modal');
-      expect(target.scrollIntoView).toHaveBeenCalled();
-      // Focus on Next, so Enter goes on rather than skipping.
-      expect(within(popover).getByRole('button', { name: 'Next' })).toHaveFocus();
-    } finally {
-      target.remove();
-    }
+    answer({ due: 'tour', ownsList: true });
+    render(<Walkthrough userId="u1" />);
+    const popover = await step('Lists for every occasion');
+    expect(popover).not.toHaveAttribute('aria-modal');
+    expect(target.scrollIntoView).toHaveBeenCalled();
+    expect(popover).toHaveTextContent('Tap New list to start one, or press Next.');
+    expect(popover).not.toHaveTextContent('Maya’s birthday');
+    // Focus on Next, so Enter goes on rather than skipping.
+    expect(within(popover).getByRole('button', { name: 'Next' })).toHaveFocus();
   });
 
   // regression: the popover listened for Escape on the whole document, so
   // Escape closing a dialog opened from the highlighted control skipped the tour.
   it('leaves Escape pressed outside the popover to whatever has focus', async () => {
     const target = addTarget('new-list');
-    try {
-      answer({ due: 'tour', ownsList: true });
-      render(<Walkthrough userId="u1" />);
-      const popover = await step('Lists for every occasion');
-      act(() => target.focus());
-      await userEvent.keyboard('{Escape}');
-      expect(popover).toBeInTheDocument();
-      expect(sent()).toEqual([]);
-    } finally {
-      target.remove();
-    }
+    answer({ due: 'tour', ownsList: true });
+    render(<Walkthrough userId="u1" />);
+    const popover = await step('Lists for every occasion');
+    act(() => target.focus());
+    await userEvent.keyboard('{Escape}');
+    expect(popover).toBeInTheDocument();
+    expect(sent()).toEqual([]);
+  });
+
+  it('takes them to each step’s page: their own list, the practice list, Reserved, Settings, Home', async () => {
+    device(true);
+    addAllTargets();
+    answer({ due: 'tour', ownsList: true, listPath: '/wishlists/maya' });
+    render(<Walkthrough userId="u1" />);
+    expect(await step('Lists for every occasion')).toHaveTextContent('1 of 9');
+    await nextThrough([...PHONE_STEPS, 'Add from any store']);
+    expect(await step('That’s it')).toBeInTheDocument();
+    expect(visited()).toEqual(['/wishlists/maya', '/tour', '/booked', '/settings', '/']);
+  });
+
+  it('runs the steps about a list of their own on the practice one when they have none', async () => {
+    addAllTargets();
+    answer({ due: 'tour', ownsList: false });
+    render(<Walkthrough userId="u1" />);
+    await nextThrough(['Lists for every occasion']);
+    expect(await step('Adding items')).toBeInTheDocument();
+    expect(visited()).toEqual(['/tour/mine']);
+  });
+
+  // regression: the step moved on 450ms after New list's dialog closed, before
+  // the app's own push to the new list, and sent them to the practice list.
+  it('carries on in a list they make at the New list step, and stops offering one', async () => {
+    const newList = addTarget('new-list');
+    answer({ due: 'tour', ownsList: false });
+    render(<Walkthrough userId="u1" />);
+    await step('Lists for every occasion');
+    await userEvent.click(newList);
+    // New list's dialog makes the list, then closes, before the page changes.
+    act(() => tourListCreated('/wishlists/brand-new'));
+    addTarget('add-item');
+    addTarget('share');
+    expect(await step('Adding items')).toBeInTheDocument();
+    expect(visited()).toEqual(['/wishlists/brand-new']);
+
+    addAllTargets();
+    await nextThrough(PHONE_STEPS.slice(1));
+    const closing = await step('That’s it');
+    expect(within(closing).queryByRole('button', { name: 'Create a list' })).toBeNull();
+  });
+
+  it('moves on when the try-it control is used, once the dialog it opened closes', async () => {
+    const { 'add-item': addItem } = addAllTargets();
+    answer({ due: 'tour', ownsList: true, listPath: '/wishlists/maya' });
+    render(<Walkthrough userId="u1" />);
+    await nextThrough(['Lists for every occasion']);
+    await step('Adding items');
+
+    // The tile opens Add item: the tour steps aside and waits for it.
+    const dialog = document.createElement('div');
+    dialog.setAttribute('aria-modal', 'true');
+    dialog.dataset.testOverlay = '';
+    addItem.addEventListener('click', () => document.body.appendChild(dialog));
+    await userEvent.click(addItem);
+    expect(screen.queryByRole('dialog', { name: 'Adding items' })).toBeNull();
+    await act(() => new Promise((r) => setTimeout(r, 800)));
+    expect(screen.queryByRole('dialog', { name: 'Sharing' })).toBeNull();
+
+    dialog.remove();
+    expect(await step('Sharing')).toBeInTheDocument();
   });
 
   it('reads again on the next page after a failed read', async () => {
+    addTarget('new-list');
     fetchMock.mockResolvedValueOnce(new Response('{}', { status: 500 }));
     const { rerender } = render(<Walkthrough userId="u1" />);
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
@@ -148,7 +239,8 @@ describe('Walkthrough', () => {
   });
 
   it('skipping says where to find it again and records it', async () => {
-    answer({ due: 'tour', ownsList: true });
+    addAllTargets();
+    answer({ due: 'tour', ownsList: true, listPath: '/wishlists/maya' });
     render(<Walkthrough userId="u1" />);
     await nextThrough(['Lists for every occasion']);
     const card = await step('Adding items');
@@ -162,7 +254,20 @@ describe('Walkthrough', () => {
     await waitFor(() => expect(track).toHaveBeenCalledWith('tour_skipped', { step: 'items' }));
   });
 
+  it('skipping on the practice list goes Home', async () => {
+    addAllTargets();
+    answer({ due: 'tour', ownsList: true, listPath: '/wishlists/maya' });
+    render(<Walkthrough userId="u1" />);
+    await nextThrough(PHONE_STEPS.slice(0, 4));
+    const card = await step('The surprise stays a surprise');
+    window.history.replaceState(null, '', '/tour');
+    await userEvent.click(within(card).getByRole('button', { name: 'Skip tour' }));
+    expect(visited().at(-1)).toBe('/');
+    await waitFor(() => expect(track).toHaveBeenCalledWith('tour_skipped', { step: 'reserving' }));
+  });
+
   it('Escape skips', async () => {
+    addTarget('new-list');
     answer({ due: 'tour', ownsList: true });
     render(<Walkthrough userId="u1" />);
     await step('Lists for every occasion');
@@ -172,16 +277,19 @@ describe('Walkthrough', () => {
     expect(showToast).toHaveBeenCalledWith(TOUR_AGAIN_TOAST, 'info', expect.anything());
   });
 
-  it('Back goes a step back', async () => {
-    answer({ due: 'tour', ownsList: true });
+  it('Back goes a step back, and to its page', async () => {
+    addAllTargets();
+    answer({ due: 'tour', ownsList: true, listPath: '/wishlists/maya' });
     render(<Walkthrough userId="u1" />);
     await nextThrough(['Lists for every occasion']);
     await userEvent.click(within(await step('Adding items')).getByRole('button', { name: 'Back' }));
     expect(await step('Lists for every occasion')).toBeInTheDocument();
+    expect(visited()).toEqual(['/wishlists/maya', '/']);
   });
 
   it('ends on the closing card, whose Done or close finishes it', async () => {
-    answer({ due: 'tour', ownsList: true });
+    addAllTargets();
+    answer({ due: 'tour', ownsList: true, listPath: '/wishlists/maya' });
     render(<Walkthrough userId="u1" />);
     await nextThrough(PHONE_STEPS);
     const closing = await step('That’s it');
@@ -198,61 +306,27 @@ describe('Walkthrough', () => {
   });
 
   it('offers Create a list at the end to someone with no list, which opens New list', async () => {
-    nav.pathname = '/booked';
+    addAllTargets();
     answer({ due: 'tour', ownsList: false });
     render(<Walkthrough userId="u1" />);
     await nextThrough(PHONE_STEPS);
-    await userEvent.click(
-      within(await step('That’s it')).getByRole('button', { name: 'Create a list' })
-    );
-    expect(push).toHaveBeenCalledWith('/?newList=new');
+    const closing = await step('That’s it');
+    expect(nav.pathname).toBe('/');
+    const opened = vi.fn();
+    window.addEventListener('open-new-list', opened);
+    await userEvent.click(within(closing).getByRole('button', { name: 'Create a list' }));
+    window.removeEventListener('open-new-list', opened);
+    expect(opened).toHaveBeenCalled();
     await waitFor(() => expect(sent()).toEqual(['completed']));
   });
 
   it('leaves out the bookmarklet step on a phone', async () => {
-    answer({ due: 'tour', ownsList: true });
+    addAllTargets();
+    answer({ due: 'tour', ownsList: true, listPath: '/wishlists/maya' });
     render(<Walkthrough userId="u1" />);
     await nextThrough(PHONE_STEPS);
     expect(await step('That’s it')).toBeInTheDocument();
-  });
-
-  it('includes it on a desktop, linking to its Settings card', async () => {
-    device(true);
-    answer({ due: 'tour', ownsList: true });
-    render(<Walkthrough userId="u1" />);
-    expect(await step('Lists for every occasion')).toHaveTextContent('1 of 7');
-    await nextThrough(PHONE_STEPS);
-    const bookmarklet = await step('Add from any store');
-    expect(within(bookmarklet).getByRole('link', { name: 'Open Settings' })).toHaveAttribute(
-      'href',
-      '/settings#bookmarklet'
-    );
-  });
-
-  it('shows the owner and friend views side by side, the owner’s with no reservation', async () => {
-    answer({ due: 'tour', ownsList: true });
-    render(<Walkthrough userId="u1" />);
-    await nextThrough(PHONE_STEPS.slice(0, 4));
-    const card = await step('The surprise stays a surprise');
-    expect(card).toHaveTextContent('Maya sees');
-    expect(card).toHaveTextContent('Friends see');
-    expect(card).toHaveTextContent('Group gift · 40% funded');
-  });
-
-  it('explains friends with a made-up search result, pointing at the header search', async () => {
-    const search = addTarget('search');
-    try {
-      answer({ due: 'tour', ownsList: true });
-      render(<Walkthrough userId="u1" />);
-      await nextThrough(PHONE_STEPS.slice(0, 3));
-      const popover = await step('Find your friends');
-      expect(popover).not.toHaveAttribute('aria-modal');
-      expect(search.scrollIntoView).toHaveBeenCalled();
-      expect(popover).toHaveTextContent('Follow each other and you’re friends');
-      expect(popover).toHaveTextContent('Follow back');
-    } finally {
-      search.remove();
-    }
+    expect(visited()).not.toContain('/settings');
   });
 
   it('offers the tour after time away; dismissing it says where to find it', async () => {
@@ -267,6 +341,7 @@ describe('Walkthrough', () => {
   });
 
   it('accepting the offer starts the tour', async () => {
+    addTarget('new-list');
     answer({ due: 'offer', ownsList: true });
     render(<Walkthrough userId="u1" />);
     const offer = await step('Want a quick look around?');
@@ -288,6 +363,7 @@ describe('Walkthrough', () => {
   });
 
   it('starts at once from Settings’ link, taking the marker off the URL', async () => {
+    addTarget('new-list');
     window.history.replaceState(null, '', '/?tour=start');
     answer({ due: null, ownsList: true });
     render(<Walkthrough userId="u1" />);

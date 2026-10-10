@@ -178,6 +178,11 @@ interface WishlistItemProps {
   onToggleSelect?: (id: string) => void;
   /** The card's batch is in flight (`useBusyIds`): it can't be picked again yet. */
   selectBusy?: boolean;
+  /**
+   * `data-tour` names for the card's primary action and its More actions menu,
+   * for the guided walkthrough to point at (the practice list's, WIS-436).
+   */
+  tourTargets?: { primary?: string; menu?: string };
 }
 
 /** How many "Goes with" chips the card shows before "+N more". */
@@ -228,6 +233,7 @@ function WishlistItem({
   selected = false,
   onToggleSelect,
   selectBusy = false,
+  tourTargets,
 }: WishlistItemProps) {
   const { data: session } = useSession();
   // Discreet mode (WIS-46): a member's card is drawn as plain available, with
@@ -710,6 +716,7 @@ function WishlistItem({
       aria-disabled={action.changesStatus && isUpdating ? true : undefined}
       aria-label={action.ariaLabel}
       className={primaryClassName(action.tone)}
+      data-tour={inSheet ? undefined : tourTargets?.primary}
     >
       <Icon name={action.icon} size={16} className={PRIMARY_ICON} />
       {action.shortLabel && !inSheet ? (
@@ -767,6 +774,15 @@ function WishlistItem({
       </>
     ) : null;
 
+  const rowMenu = (
+    <Menu
+      label="More actions"
+      items={rowMenuItems}
+      triggerClassName={ICON_BUTTON}
+      className={menuBelowSmOnly ? 'relative flex sm:hidden' : undefined}
+    />
+  );
+
   const actionsRow = (
     <div className="mt-auto flex min-h-10 items-center gap-2">
       {primary ? (
@@ -797,14 +813,14 @@ function WishlistItem({
         />
       )}
 
-      {showMenu && (
-        <Menu
-          label="More actions"
-          items={rowMenuItems}
-          triggerClassName={ICON_BUTTON}
-          className={menuBelowSmOnly ? 'relative flex sm:hidden' : undefined}
-        />
-      )}
+      {showMenu &&
+        (tourTargets?.menu ? (
+          <span className="contents" data-tour={tourTargets.menu}>
+            {rowMenu}
+          </span>
+        ) : (
+          rowMenu
+        ))}
     </div>
   );
 

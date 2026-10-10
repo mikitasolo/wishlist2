@@ -39,6 +39,8 @@ export default function BookmarkletCard() {
         ref={link}
         href="#"
         draggable
+        // Where the guided walkthrough's bookmarklet step points (WIS-436).
+        data-tour="bookmarklet"
         className={buttonClassName({ variant: 'secondary' })}
         onClick={(e) => {
           // On this page it does nothing useful: it's meant to be dragged.

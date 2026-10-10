@@ -42,6 +42,11 @@ export interface WalkthroughStatus {
   due: WalkthroughDue;
   /** Whether they own or co-own a list (archived included): without one, the tour ends on Create a list. */
   ownsList: boolean;
+  /**
+   * One of their own unarchived lists (`/wishlists/<slug>`), for the steps
+   * about adding and sharing (WIS-436), or null: those run on the practice list.
+   */
+  listPath: string | null;
 }
 
 /** Whether the current tour has been finished or skipped. */

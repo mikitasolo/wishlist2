@@ -10,10 +10,10 @@ import {
   useSyncExternalStore,
 } from 'react';
 import { createPortal } from 'react-dom';
-import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import BaseModal from '@/components/BaseModal';
 import Button from '@/components/Button';
+import Icon from '@/components/Icon';
 import { useToast } from '@/components/ToastProvider';
 import { POPOVER_SURFACE } from '@/components/popoverStyles';
 import TourIllustration from '@/components/TourIllustration';
@@ -26,9 +26,12 @@ import { placeTourPopover, type Placement } from '@/lib/utils/tourPlacement';
 import {
   countedSteps,
   OPEN_NEW_LIST_EVENT,
+  PRACTICE_OWNER_PATH,
+  PRACTICE_PATH,
   TOUR_PARAM,
   TOUR_SETTINGS_ID,
   tourAllowedOn,
+  tourStepPath,
   tourSteps,
   type TourStep,
   type TourTarget,
@@ -40,11 +43,16 @@ import type { WalkthroughAction, WalkthroughStatus } from '@/lib/utils/walkthrou
  * in, so it can carry on across pages. Once per tab it reads what's due from
  * `GET /api/users/me` (which also records the visit) and then shows:
  *
- * - **the tour** (`tourSteps`), one for everyone, one step at a time: a
- *   popover beside the real UI it's about (a `data-tour` target), or a
- *   centred card where the page doesn't have it on screen, each with its
- *   made-up picture (`TourIllustration`). Skip (or Escape) at any step counts
- *   as done. Someone who owns no list is offered Create a list at the end.
+ * - **the tour** (`tourSteps`), one for everyone, one step at a time. Each
+ *   step first takes them to its page (`tourStepPath`: Home, a list of their
+ *   own or the practice list, Reserved, Settings), then dims the page around
+ *   the real control it's about (a `data-tour` target) with a popover beside
+ *   it (WIS-436). A "try it" step moves on when they use that control, once
+ *   the dialog or menu it opened has closed; Next always works too. While any
+ *   other dialog or menu is open the step steps aside. A target that never
+ *   shows leaves a centred card with a made-up picture (`TourIllustration`).
+ *   Skip (or Escape) at any step counts as done; skipping on the practice list
+ *   goes Home. Someone who owns no list is offered Create a list at the end.
  * - **the offer** after three months away: a card asking "Want a quick look
  *   around?".
  *
@@ -57,19 +65,37 @@ import type { WalkthroughAction, WalkthroughStatus } from '@/lib/utils/walkthrou
 /** Toast after the tour or its offer closes. */
 export const TOUR_AGAIN_TOAST = 'You can take the tour again any time in Settings';
 
-/** How long a step waits for its target to appear (a page still loading) before it's a centred card. */
+/** How long a step waits for its target to appear before it's a centred card. */
 const TARGET_WAIT_MS = 600;
+/** As long, on a page the step took them to, which may still be loading it. */
+const PAGE_WAIT_MS = 3000;
 const TARGET_POLL_MS = 100;
+/** A used "try it" control moves the tour on once no dialog or menu has been open for this long. */
+const SETTLE_MS = 450;
 
 interface TourRun {
   steps: TourStep[];
+  /** What the steps were built for, to build them again when that changes. */
+  desktop: boolean;
   index: number;
+  /** A list of their own for the steps about it (`WalkthroughStatus.listPath`). */
+  listPath: string | null;
+  /** This step has been to its page already: it doesn't take them back if they wander. */
+  arrived: boolean;
+  /** This step's "try it" control was used: the tour moves on once things settle. */
+  used: boolean;
+}
+
+/** What the tour is built from (`GET /api/users/me`'s walkthrough status). */
+interface TourBasis {
+  ownsList: boolean;
+  listPath: string | null;
 }
 
 interface TourStore {
   run: TourRun | null;
-  /** The offer, while it's showing: whether they own a list, for the tour it starts. */
-  offer: { ownsList: boolean } | null;
+  /** The offer, while it's showing, with what the tour it starts is built from. */
+  offer: TourBasis | null;
 }
 
 // One tour per tab, across the page changes that remount the header.
@@ -86,6 +112,21 @@ function setStore(next: Partial<TourStore>) {
 function subscribe(listener: () => void) {
   listeners.add(listener);
   return () => listeners.delete(listener);
+}
+
+/**
+ * A list was just made (`CreateWishlistModal`): a running tour's steps about
+ * their own list go to it, and the closing card no longer offers to make one.
+ */
+export function tourListCreated(path: string) {
+  if (!store.run) return;
+  setStore({
+    run: {
+      ...store.run,
+      listPath: path,
+      steps: tourSteps({ desktop: store.run.desktop, ownsList: true }),
+    },
+  });
 }
 
 /** Forgets the tab's tour state (tests). */
@@ -118,6 +159,14 @@ export function findTourTarget(target: TourTarget): HTMLElement | null {
   return null;
 }
 
+/**
+ * A dialog or menu open on the page (the tour's own popover is neither): a
+ * step steps aside while one is, and a used "try it" waits for it to close.
+ */
+function overlayOpen(): boolean {
+  return !!document.querySelector('[aria-modal="true"], [role="menu"]');
+}
+
 /** Its box, or its first child's (a `display: contents` wrapper has none); null when not drawn. */
 function tourTargetBox(el: HTMLElement): DOMRect | null {
   if (!el.isConnected) return null;
@@ -138,6 +187,9 @@ const matches = (query: string) =>
  */
 const isDesktop = () => matches(FINE_POINTER_QUERY) && matches(SM_UP_QUERY);
 
+/** The spotlight's shade over the rest of the page: the dialogs' backdrop colour (`bg-slate-900/40`). */
+const SPOTLIGHT_SHADE = '0 0 0 100vmax rgb(15 23 42 / 0.4)';
+
 const prefersReducedMotion = () =>
   typeof window !== 'undefined' &&
   !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -153,9 +205,13 @@ export default function Walkthrough({ userId }: { userId: string }) {
   const { showToast } = useToast();
   const allowed = tourAllowedOn(pathname);
 
-  const start = useCallback((ownsList: boolean, source: 'auto' | 'offer' | 'settings') => {
-    const steps = tourSteps({ desktop: isDesktop(), ownsList });
-    setStore({ run: { steps, index: 0 }, offer: null });
+  const start = useCallback((status: TourBasis, source: 'auto' | 'offer' | 'settings') => {
+    const desktop = isDesktop();
+    const steps = tourSteps({ desktop, ownsList: status.ownsList });
+    setStore({
+      run: { steps, desktop, index: 0, listPath: status.listPath, arrived: false, used: false },
+      offer: null,
+    });
     if (source !== 'offer') track('tour_started', { source });
   }, []);
 
@@ -187,9 +243,10 @@ export default function Walkthrough({ userId }: { userId: string }) {
       if (!status && checkedFor === userId) checkedFor = null;
       // Another account may have signed in since, or a tour be running already.
       if (!status || checkedFor !== userId || store.run) return;
-      if (fromSettings) start(status.ownsList, 'settings');
-      else if (status.due === 'tour') start(status.ownsList, 'auto');
-      else if (status.due === 'offer') setStore({ offer: { ownsList: status.ownsList } });
+      const basis = { ownsList: status.ownsList, listPath: status.listPath ?? null };
+      if (fromSettings) start(basis, 'settings');
+      else if (status.due === 'tour') start(basis, 'auto');
+      else if (status.due === 'offer') setStore({ offer: basis });
     })();
   }, [allowed, pathname, userId, start]);
 
@@ -216,6 +273,8 @@ export default function Walkthrough({ userId }: { userId: string }) {
     const current = steps[index];
     if (!current || current.closing) return finish();
     setStore({ run: null });
+    // The practice list is only for the tour.
+    if (pathname === PRACTICE_PATH || pathname === PRACTICE_OWNER_PATH) router.push('/');
     remind();
     void sendAnswer('skipped').then(
       (ok) =>
@@ -224,7 +283,7 @@ export default function Walkthrough({ userId }: { userId: string }) {
           step: current.key as Exclude<typeof current.key, 'closing'>,
         })
     );
-  }, [finish, remind]);
+  }, [finish, remind, router, pathname]);
 
   const go = useCallback(
     (delta: number) => {
@@ -232,10 +291,35 @@ export default function Walkthrough({ userId }: { userId: string }) {
       const index = store.run.index + delta;
       if (index >= store.run.steps.length) return finish();
       if (index < 0) return;
-      setStore({ run: { ...store.run, index } });
+      setStore({ run: { ...store.run, index, arrived: false, used: false } });
     },
     [finish]
   );
+
+  const arrive = useCallback(() => {
+    if (store.run && !store.run.arrived) setStore({ run: { ...store.run, arrived: true } });
+  }, []);
+
+  const used = useCallback(() => {
+    if (store.run && !store.run.used) setStore({ run: { ...store.run, used: true } });
+  }, []);
+
+  // A used "try it" control: on to the next step once whatever it opened (a
+  // dialog, a menu) has closed and things have been quiet a moment. A page it
+  // goes to (Reserved) is where the next step starts.
+  const waitingOn = run?.used ? run.index : null;
+  useEffect(() => {
+    if (waitingOn === null) return;
+    let quiet = 0;
+    const timer = window.setInterval(() => {
+      quiet = overlayOpen() ? 0 : quiet + TARGET_POLL_MS;
+      if (quiet >= SETTLE_MS && store.run?.index === waitingOn) {
+        window.clearInterval(timer);
+        go(1);
+      }
+    }, TARGET_POLL_MS);
+    return () => window.clearInterval(timer);
+  }, [waitingOn, go]);
 
   const createList = useCallback(() => {
     finish(() => {
@@ -246,7 +330,7 @@ export default function Walkthrough({ userId }: { userId: string }) {
 
   const acceptOffer = useCallback(() => {
     if (!store.offer) return;
-    start(store.offer.ownsList, 'offer');
+    start(store.offer, 'offer');
     void sendAnswer('offer_accepted').then((ok) => {
       if (!ok) return;
       track('tour_offer_accepted');
@@ -267,14 +351,19 @@ export default function Walkthrough({ userId }: { userId: string }) {
     return <TourOffer onAccept={acceptOffer} onDismiss={dismissOffer} />;
   }
 
-  if (!run) return null;
+  if (!run || run.used) return null;
   const step = run.steps[run.index];
   if (!step) return null;
   return (
     <TourStepView
-      // A fresh view per step: its own target search, and focus moved to it.
+      // A fresh view per step and page: its own target search, and focus moved to it.
       key={`${pathname}:${step.key}`}
       step={step}
+      pathname={pathname}
+      destination={tourStepPath(step, run.listPath)}
+      onArrive={arrive}
+      onGo={(path) => router.push(path)}
+      onUsed={used}
       position={step.closing ? null : run.index + 1}
       total={countedSteps(run.steps)}
       last={run.index === run.steps.length - 1}
@@ -317,6 +406,13 @@ function TourOffer({ onAccept, onDismiss }: { onAccept: () => void; onDismiss: (
 
 interface StepViewProps {
   step: TourStep;
+  pathname: string;
+  /** The step's page (`tourStepPath`), or null for wherever they are. */
+  destination: string | null;
+  onArrive: () => void;
+  onGo: (path: string) => void;
+  /** Its "try it" control was used. */
+  onUsed: () => void;
   /** 1-based, or null for the closing card. */
   position: number | null;
   total: number;
@@ -330,16 +426,28 @@ interface StepViewProps {
 type Mode = { kind: 'pending' } | { kind: 'anchored'; el: HTMLElement } | { kind: 'centred' };
 
 function TourStepView(props: StepViewProps) {
-  const { step } = props;
-  const [mode, setMode] = useState<Mode>(() =>
-    step.target ? { kind: 'pending' } : { kind: 'centred' }
-  );
+  const { step, pathname, destination, onArrive, onGo } = props;
+  const [mode, setMode] = useState<Mode>({ kind: 'pending' });
 
-  // Look for the step's target for a moment (the page may still be loading
-  // it), then settle: beside it, or a centred card.
+  // First to the step's page, unless it's been there already this step (they
+  // may have wandered off: they aren't taken back). Then look for its target
+  // for a moment (the page may still be loading it), and settle: beside it,
+  // or a centred card. Whether it has arrived is read from the store, not
+  // the props, so an effect run twice (StrictMode) goes there once.
   useEffect(() => {
     const target = step.target;
-    if (!target) return;
+    const here = !destination || destination.split('?')[0] === pathname;
+    if (!store.run?.arrived && !here) {
+      onArrive();
+      onGo(destination!);
+      return;
+    }
+    if (here) onArrive();
+    if (!target) {
+      setMode({ kind: 'centred' });
+      return;
+    }
+    const wait = step.page ? PAGE_WAIT_MS : TARGET_WAIT_MS;
     let tries = 0;
     const look = () => {
       const el = findTourTarget(target);
@@ -357,13 +465,15 @@ function TourStepView(props: StepViewProps) {
     const timer = window.setInterval(() => {
       tries += 1;
       if (look()) window.clearInterval(timer);
-      else if (tries * TARGET_POLL_MS >= TARGET_WAIT_MS) {
+      else if (tries * TARGET_POLL_MS >= wait) {
         window.clearInterval(timer);
         setMode({ kind: 'centred' });
       }
     }, TARGET_POLL_MS);
     return () => window.clearInterval(timer);
-  }, [step.target]);
+    // Once per view: the view is keyed by step and page.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const toCentred = useCallback(() => setMode({ kind: 'centred' }), []);
 
@@ -383,18 +493,20 @@ function StepCounter({ position, total }: { position: number | null; total: numb
   );
 }
 
-function StepBody({ step }: { step: TourStep }) {
+/**
+ * The step's text. Beside the real control, what to try with it; on the
+ * centred card (no control on screen), the made-up picture instead.
+ */
+function StepBody({ step, anchored }: { step: TourStep; anchored: boolean }) {
   return (
     <>
-      {step.illustration && <TourIllustration kind={step.illustration} />}
+      {!anchored && step.illustration && <TourIllustration kind={step.illustration} />}
       <p className="text-sm text-foreground">{step.body}</p>
-      {step.link && (
-        <Link
-          href={step.link.href}
-          className="mt-2 inline-block text-sm font-medium text-accent hover:underline"
-        >
-          {step.link.label}
-        </Link>
+      {anchored && step.tryIt && (
+        <p className="mt-2 flex items-start gap-1.5 text-sm font-medium text-accent">
+          <Icon name="arrow-right" size={16} className="mt-0.5 flex-shrink-0" />
+          {step.tryIt}
+        </p>
       )}
     </>
   );
@@ -442,24 +554,38 @@ function CentredStep(props: StepViewProps) {
     >
       <StepCounter position={position} total={total} />
       <div className={position === null ? '' : 'mt-1'}>
-        <StepBody step={step} />
+        <StepBody step={step} anchored={false} />
       </div>
     </BaseModal>
   );
 }
 
 function AnchoredStep(props: StepViewProps & { target: HTMLElement; onTargetLost: () => void }) {
-  const { step, position, total, onSkip, target, onTargetLost } = props;
+  const { step, position, total, onSkip, onUsed, target, onTargetLost } = props;
   const titleId = useId();
   const bodyId = useId();
   const panel = useRef<HTMLDivElement>(null);
   const [box, setBox] = useState<DOMRect | null>(() => tourTargetBox(target));
   const [placement, setPlacement] = useState<Placement | null>(null);
-  useFocusTrap(true, panel);
+  // A dialog or menu is open (one the page opened, or the target did): out of its way.
+  const [aside, setAside] = useState(false);
+  // A "try it" step leaves Tab free to reach the control it's about.
+  useFocusTrap(!aside && !step.tryIt, panel);
+
+  // A "try it" step: using the control is the answer.
+  useEffect(() => {
+    if (!step.tryIt) return;
+    const onClick = (e: MouseEvent) => {
+      if (e.target instanceof Node && target.contains(e.target)) onUsed();
+    };
+    document.addEventListener('click', onClick, true);
+    return () => document.removeEventListener('click', onClick, true);
+  }, [step.tryIt, target, onUsed]);
 
   // Follow the target as the page scrolls, resizes or re-renders under it.
   useEffect(() => {
     const measure = () => {
+      setAside(overlayOpen());
       const next = tourTargetBox(target);
       if (!next) return onTargetLost();
       setBox((prev) =>
@@ -509,14 +635,21 @@ function AnchoredStep(props: StepViewProps & { target: HTMLElement; onTargetLost
     return () => document.removeEventListener('keydown', onKey);
   }, [onSkip]);
 
-  if (!box) return null;
+  if (!box || aside) return null;
   return createPortal(
     <>
-      {/* The highlight: a ring around the real control, which the pointer can still use. */}
+      {/* The spotlight: the page dimmed around a ring on the real control. It
+          takes no pointer events, so the control (and the page) stay usable. */}
       <div
         aria-hidden="true"
         className="pointer-events-none fixed z-50 rounded-2xl ring-2 ring-ring ring-offset-2 ring-offset-background motion-safe:transition-all motion-safe:duration-200"
-        style={{ top: box.top, left: box.left, width: box.width, height: box.height }}
+        style={{
+          top: box.top,
+          left: box.left,
+          width: box.width,
+          height: box.height,
+          boxShadow: SPOTLIGHT_SHADE,
+        }}
       />
       <div
         ref={panel}
@@ -537,7 +670,7 @@ function AnchoredStep(props: StepViewProps & { target: HTMLElement; onTargetLost
           {step.title}
         </h2>
         <div id={bodyId} className="mt-1">
-          <StepBody step={step} />
+          <StepBody step={step} anchored />
         </div>
         <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
           <StepButtons {...props} />

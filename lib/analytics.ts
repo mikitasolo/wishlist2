@@ -71,7 +71,17 @@ export const ANALYTICS_EVENTS = {
   tour_finished: {},
   /** Skipped, at which step (`TourStep.key`, lib/utils/tourSteps.ts). */
   tour_skipped: {
-    step: ['lists', 'items', 'sharing', 'friends', 'reserving', 'reserved', 'bookmarklet'],
+    step: [
+      'lists',
+      'items',
+      'sharing',
+      'friends',
+      'reserving',
+      'group_gift',
+      'reserved',
+      'no_spoiler',
+      'bookmarklet',
+    ],
   },
   /** The offer made after three months away, answered. */
   tour_offer_accepted: {},
@@ -119,6 +129,8 @@ const STATIC_PATHS = new Set([
   '/items/new',
   '/notifications',
   '/settings',
+  '/tour',
+  '/tour/mine',
   '/unsubscribe',
   '/welcome',
   '/wishlists/mine',
