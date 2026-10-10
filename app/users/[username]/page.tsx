@@ -1,6 +1,6 @@
 'use client';
 
-import dynamic from 'next/dynamic';
+import { CreateWishlistModal } from '@/components/lazyModals';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, usePathname, useSearchParams } from 'next/navigation';
 import { signIn } from 'next-auth/react';
@@ -36,8 +36,6 @@ import {
   formatBirthday,
   type BirthdayVisibility,
 } from '@/lib/utils/birthday';
-
-const CreateWishlistModal = dynamic(() => import('@/components/CreateWishlistModal'));
 
 interface Profile {
   _id: string;

@@ -1,14 +1,11 @@
 'use client';
 
-import dynamic from 'next/dynamic';
+import { StartFromListModal } from '@/components/lazyModals';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import { ARCHIVE_EXPLANATION } from '@/components/WishlistSettingsTab';
 import type { WishlistListActions } from '@/lib/hooks/useWishlistListActions';
 import { deleteListCopy, memberLeaveCopy, ownerLeaveCopy } from '@/lib/utils/confirmationCopy';
 import type { IWishlist } from '@/models/Wishlist';
-
-// Opens from a menu item, so its code loads then (WIS-438).
-const StartFromListModal = dynamic(() => import('@/components/StartFromListModal'));
 
 export interface WishlistListDialogsProps {
   wishlist: IWishlist;

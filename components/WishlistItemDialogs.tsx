@@ -1,17 +1,17 @@
 'use client';
 
-import dynamic from 'next/dynamic';
+import { lazyDialog } from '@/components/lazyDialog';
 import type { ItemDialogsControl } from '@/lib/hooks/useItemDialogs';
 import type { WishlistItemActions } from '@/lib/hooks/useWishlistItemActions';
 import type { WishlistItemsControl } from '@/lib/hooks/useWishlistItems';
 import { proposalReviewState } from '@/lib/utils/proposalReview';
 
 // Each opens on a click and shares ItemForm, so they load together then (WIS-438).
-const AddItemModal = dynamic(() => import('@/components/AddItemModal'));
-const EditItemModal = dynamic(() => import('@/components/EditItemModal'));
-const ProposeItemModal = dynamic(() => import('@/components/ProposeItemModal'));
-const ReviewItemModal = dynamic(() => import('@/components/ReviewItemModal'));
-const SaveToListModal = dynamic(() => import('@/components/SaveToListModal'));
+const AddItemModal = lazyDialog(() => import('@/components/AddItemModal'));
+const EditItemModal = lazyDialog(() => import('@/components/EditItemModal'));
+const ProposeItemModal = lazyDialog(() => import('@/components/ProposeItemModal'));
+const ReviewItemModal = lazyDialog(() => import('@/components/ReviewItemModal'));
+const SaveToListModal = lazyDialog(() => import('@/components/SaveToListModal'));
 
 export interface WishlistItemDialogsProps {
   dialogs: ItemDialogsControl;

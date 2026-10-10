@@ -1,6 +1,6 @@
 'use client';
 
-import dynamic from 'next/dynamic';
+import { CreateWishlistModal, StartFromListModal } from '@/components/lazyModals';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useKnownSession } from '@/lib/hooks/useKnownSession';
@@ -26,10 +26,6 @@ import { sortByUpcomingOccasion, type OccasionKind } from '@/lib/utils/occasion'
 import { NEW_LIST_PARAM, olderBirthdayLists } from '@/lib/utils/birthdayNudge';
 import { pinnedFirst } from '@/lib/utils/pinnedLists';
 import { IWishlist } from '@/models/Wishlist';
-
-// Dialogs that only open on a click load their code then (WIS-438).
-const CreateWishlistModal = dynamic(() => import('@/components/CreateWishlistModal'));
-const StartFromListModal = dynamic(() => import('@/components/StartFromListModal'));
 
 type Wishlist = IWishlist & {
   ownerUsername?: string | null;

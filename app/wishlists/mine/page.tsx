@@ -1,6 +1,6 @@
 'use client';
 
-import dynamic from 'next/dynamic';
+import { CreateWishlistModal } from '@/components/lazyModals';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useKnownSession } from '@/lib/hooks/useKnownSession';
@@ -17,8 +17,6 @@ import { signInPath } from '@/lib/utils/callbackUrl';
 import { sortByUpcomingOccasion } from '@/lib/utils/occasion';
 import { pinnedFirst } from '@/lib/utils/pinnedLists';
 import { IWishlist } from '@/models/Wishlist';
-
-const CreateWishlistModal = dynamic(() => import('@/components/CreateWishlistModal'));
 
 type Wishlist = IWishlist & {
   ownerUsername?: string | null;

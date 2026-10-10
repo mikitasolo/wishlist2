@@ -1,6 +1,6 @@
 'use client';
 
-import dynamic from 'next/dynamic';
+import { CreateWishlistModal } from '@/components/lazyModals';
 import {
   useCallback,
   useEffect,
@@ -45,8 +45,6 @@ import {
   showsActor,
   withInviteAnswers,
 } from '@/lib/utils/notifications';
-
-const CreateWishlistModal = dynamic(() => import('@/components/CreateWishlistModal'));
 
 /**
  * A notification's line, with any list's name in semibold. No spoiler mode

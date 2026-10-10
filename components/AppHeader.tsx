@@ -1,6 +1,6 @@
 'use client';
 
-import dynamic from 'next/dynamic';
+import { lazyDialog } from '@/components/lazyDialog';
 import { ReactNode, useState } from 'react';
 import { useKnownSession } from '@/lib/hooks/useKnownSession';
 import BrandLink from '@/components/BrandLink';
@@ -12,7 +12,7 @@ import { useUnreadNotifications } from '@/lib/hooks/useUnreadNotifications';
 
 // Most visits never run the guided walkthrough, and it renders nothing until
 // its status says it's due, so its code loads after the page does (WIS-438).
-const Walkthrough = dynamic(() => import('@/components/Walkthrough'));
+const Walkthrough = lazyDialog(() => import('@/components/Walkthrough'), { quiet: true });
 
 interface AppHeaderProps {
   /** Right-aligned actions (e.g. AuthButton, wishlist-scoped buttons). */
