@@ -161,7 +161,7 @@ export default function WishlistPeopleTab({
   );
 
   return (
-    <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+    <div className="grid max-w-3xl items-start gap-6 lg:max-w-none lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
       <div className="min-w-0 space-y-6">
         {inviteForm}
 
@@ -336,7 +336,7 @@ export default function WishlistPeopleTab({
         )}
       </div>
 
-      <div className="min-w-0">{shareLinks}</div>
+      {shareLinks && <div className="min-w-0">{shareLinks}</div>}
     </div>
   );
 }

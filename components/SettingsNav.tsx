@@ -1,12 +1,9 @@
-import { BOOKMARKLET_SETTINGS_ID } from '@/lib/utils/tourSteps';
-
 /** The Settings page's sections, in page order: each `id` is on that section's element. */
 export const SETTINGS_SECTIONS = [
   { id: 'profile', label: 'Public profile' },
   { id: 'privacy', label: 'Privacy' },
   { id: 'groups', label: 'Groups' },
   { id: 'notifications', label: 'Notifications' },
-  { id: BOOKMARKLET_SETTINGS_ID, label: 'Bookmarklet' },
   { id: 'preferences', label: 'Preferences' },
   { id: 'account', label: 'Account' },
 ] as const;

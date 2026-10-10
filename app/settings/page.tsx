@@ -404,7 +404,7 @@ export default function SettingsPage() {
         <AppHeader actions={<AuthButton />} />
         <main className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10 lg:max-w-5xl lg:px-8">
           {heading}
-          <div className="max-w-2xl lg:ml-52">
+          <div className="max-w-2xl lg:ml-[14.5rem]">
             {loadFailed && !loading ? (
               <LoadError title="Couldn’t load your settings" onRetry={retryLoad} />
             ) : (
