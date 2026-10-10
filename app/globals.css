@@ -373,20 +373,6 @@
 /*  Animations                                                         */
 /* ------------------------------------------------------------------ */
 
-@keyframes toast-in {
-  from {
-    transform: translateY(-12px) scale(0.98);
-    opacity: 0;
-  }
-  to {
-    transform: translateY(0) scale(1);
-    opacity: 1;
-  }
-}
-.animate-toast-in {
-  animation: toast-in 0.28s cubic-bezier(0.2, 0.7, 0.2, 1);
-}
-
 @keyframes fade-in {
   from {
     opacity: 0;
@@ -479,11 +465,88 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .animate-toast-in,
   .animate-fade-in,
   .animate-dialog-in,
   .animate-sheet-in,
   .skeleton::after {
     animation: none;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/*  Toasts (components/ToastProvider.tsx)                              */
+/*  A capped stack: the newest in front, older ones peeking behind     */
+/*  and fanning out while the region is hovered or focused             */
+/*  (data-expanded). Phone: bottom-centre above the tab bar            */
+/*  (h-16 + safe area); desktop: bottom-right.                         */
+/* ------------------------------------------------------------------ */
+
+.toast-region {
+  position: fixed;
+  z-index: 60;
+  left: 0.75rem;
+  right: 0.75rem;
+  bottom: calc(env(safe-area-inset-bottom) + 0.75rem);
+  display: grid;
+  pointer-events: none;
+}
+@media (width < 40rem) {
+  /* Clear the phone tab bar, only where one is drawn. */
+  body:has([data-tab-bar='shown']) .toast-region {
+    bottom: calc(4rem + env(safe-area-inset-bottom) + 0.75rem);
+  }
+}
+@media (min-width: 640px) {
+  .toast-region {
+    left: auto;
+    right: 1rem;
+    bottom: 1rem;
+    width: 24rem;
+  }
+}
+.toast-region[data-expanded='true'] {
+  grid-auto-flow: row;
+  gap: 0.5rem;
+}
+.toast-slot {
+  grid-area: 1 / 1;
+  align-self: end;
+  z-index: calc(10 - var(--toast-depth));
+  transform-origin: bottom center;
+  transform: translateY(calc(var(--toast-depth) * -0.6rem))
+    scale(calc(1 - var(--toast-depth) * 0.05));
+  transition: transform 0.25s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.toast-region[data-expanded='false'] .toast-slot[data-back='true'] {
+  /* Older toasts only peek out from behind the front one. */
+  max-height: 3rem;
+  overflow: hidden;
+  pointer-events: none;
+}
+.toast-region[data-expanded='true'] .toast-slot {
+  grid-area: auto;
+  transform: none;
+}
+.toast-card {
+  pointer-events: auto;
+  touch-action: pan-y;
+  animation: toast-card-in 0.28s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+@keyframes toast-card-in {
+  from {
+    transform: translateY(16px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .toast-card {
+    animation: none;
+  }
+  .toast-slot {
+    transition: none;
   }
 }
