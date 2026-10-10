@@ -1,5 +1,15 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeAll,
+  afterAll,
+  beforeEach,
+  afterEach,
+  onTestFinished,
+} from 'vitest';
 import { render, screen, fireEvent, cleanup, waitFor, act, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
@@ -1067,6 +1077,9 @@ describe('BookedPage — reading both lists again while the page is open', () =>
   it.each(['focus', 'visibilitychange', 'online'] as const)(
     'coming back to the tab (%s) picks up what changed elsewhere, without the skeleton',
     async (event) => {
+      // Back online counts only in a focused window (jsdom has none).
+      const focused = vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+      onTestFinished(() => focused.mockRestore());
       const { server, reads, answerRead } = await renderLoaded();
 
       // Elsewhere: Lego is gifted, Headphones reserved, and Mug deleted from the history.

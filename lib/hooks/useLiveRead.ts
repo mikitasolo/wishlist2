@@ -16,11 +16,13 @@
  *   that is stale against the screen's mutations (`createMutationTracker`), or
  *   older than one already shown, is dropped.
  *
- * Deliberately no cache of answers across mounts or keys: what a read answers
- * depends on who asks and in what role (a member's view of a list carries
+ * Deliberately no cache of answers across mounts: what a read answers depends
+ * on who asks and in what role (a member's view of a list carries
  * reservations, an owner's never does), so an answer kept for one view and
  * shown in another, even briefly before a re-read, could leak. Only requests in
- * flight are shared.
+ * flight are shared. Within a mount, a new `read` (another list, Preview as
+ * visitor) keeps the data shown until its own first read lands, and an answer
+ * to the read it replaced is dropped.
  */
 
 import {
@@ -76,8 +78,10 @@ export function useRefreshOnReturn(refresh: () => void, enabled = true): void {
       if (isVisible()) onReturn('visible');
       else awaiting = null;
     };
+    // Back online counts only for a window the viewer is in: one merely
+    // visible (on another screen) is read on the focus that brings them back.
     const onOnline = () => {
-      if (isVisible()) latest.current();
+      if (isVisible() && document.hasFocus()) latest.current();
     };
     window.addEventListener('focus', onFocus);
     window.addEventListener('online', onOnline);
@@ -223,9 +227,19 @@ export function useLiveRead<T>({
   const shown = useRef(false);
   // The stamp of the newest read shown: an older one landing later is dropped.
   const landed = useRef(0);
+  // The read in use: an answer to an earlier one (another list, another view)
+  // is dropped, the newer read's own first read deciding.
+  const currentRead = useRef(read);
+  useEffect(() => {
+    currentRead.current = read;
+  }, [read]);
+  // The latest non-silent read: only it ends `loading`.
+  const loadsSent = useRef(0);
 
   const refresh = useCallback(
     async (silent = false) => {
+      const loadNo = silent ? 0 : ++loadsSent.current;
+      const superseded = () => currentRead.current !== read;
       if (!silent) {
         setLoading(true);
         // The skeleton again, not the failure, while this read is on its way.
@@ -233,7 +247,7 @@ export function useLiveRead<T>({
       }
       try {
         const answer = await read(mutations.stamp);
-        if (!answer) return;
+        if (!answer || superseded()) return;
         if (mutations.isStale(answer.sentAt)) {
           mutations.rereadWhenIdle();
           if (silent) return;
@@ -245,12 +259,13 @@ export function useLiveRead<T>({
         setFailed(false);
         shown.current = true;
       } catch (error) {
+        if (superseded()) return;
         // Until data has been shown, the screen says the read failed; after,
         // what's shown stays.
         if (!silent && !shown.current) setFailed(true);
         onError?.(error, { silent, shown: shown.current });
       } finally {
-        if (!silent) setLoading(false);
+        if (loadNo && loadNo === loadsSent.current) setLoading(false);
       }
     },
     [read, mutations, onError]

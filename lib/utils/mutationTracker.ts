@@ -3,7 +3,7 @@
  * background read that replaces the whole list with the server's. A read that
  * overlaps a mutation can land on either side of it, so the tracker counts
  * mutations in flight and stamps reads, letting the page drop a stale read.
- * Used by the wishlist page's item poll (see `useFetchItems`) and the
+ * Used by the wishlist page's item poll (`useLiveRead`, through `useWishlistItems`) and the
  * invitations hook (`usePendingInvites`).
  */
 
@@ -24,7 +24,7 @@ export interface MutationTracker {
   /**
    * A stamp for a read of the list, to hand to `isStale` once the read lands.
    * Take it when the request is actually sent, not when a caller asks for the
-   * list: concurrent reads share one request (see `useFetchItems`), and a
+   * list: concurrent reads share one request (`sharedRead`), and a
    * caller that joins one already in flight gets that request's list, so it
    * has to be judged by that request's stamp.
    */
@@ -56,7 +56,7 @@ export interface MutationTracker {
    * Does nothing while no re-read is set.
    *
    * The re-read goes out after the settle is stamped, so it's fresh, unless it
-   * joins a read still in flight from before the settle (see `useFetchItems`):
+   * joins a read still in flight from before the settle (`sharedRead`):
    * that one is stale when it lands, and is followed by one more re-read.
    */
   rereadWhenIdle(): void;

@@ -73,6 +73,7 @@ function setup(options: Partial<LiveReadOptions<string[]>> & { read: Read }) {
 beforeEach(() => {
   vi.useFakeTimers();
   clearPendingRequests();
+  vi.spyOn(document, 'hasFocus').mockReturnValue(true);
   visibility = 'visible';
   Object.defineProperty(document, 'visibilityState', {
     configurable: true,
@@ -83,6 +84,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 describe('useLiveRead', () => {
@@ -218,6 +220,27 @@ describe('useLiveRead', () => {
     expect(result.current.data).toEqual(['newest']);
   });
 
+  it('drops an answer to the read it replaced, which neither shows data nor ends loading', async () => {
+    const old = deferred<string[]>();
+    const next = deferred<string[]>();
+    const readOld = reads(old.promise);
+    const readNext = reads(next.promise);
+    const { result, rerender } = setup({ read: readOld });
+    expect(result.current.loading).toBe(true);
+
+    // Another list, or Preview as visitor: a new read, sent at once.
+    rerender({ enabled: true, initialData: [], pollMs: POLL_INTERVAL_MS, read: readNext });
+    expect(readNext).toHaveBeenCalledTimes(1);
+
+    old.resolve(['old view']);
+    await settle();
+    expect(result.current).toMatchObject({ data: [], loaded: false, loading: true });
+
+    next.resolve(['new view']);
+    await settle();
+    expect(result.current).toMatchObject({ data: ['new view'], loaded: true, loading: false });
+  });
+
   it('reads nothing once disabled, nor after unmounting', async () => {
     const read = reads(['a']);
     const { rerender, unmount } = setup({ read });
@@ -263,6 +286,19 @@ describe('useRefreshOnReturn', () => {
     vi.advanceTimersByTime(RETURN_PAIR_MS);
     fire('focus');
     expect(refresh).toHaveBeenCalledTimes(2);
+  });
+
+  it('ignores back online in a window the viewer is not in, until they focus it', () => {
+    const refresh = vi.fn();
+    renderHook(() => useRefreshOnReturn(refresh));
+    vi.mocked(document.hasFocus).mockReturnValue(false);
+
+    fire('online');
+    expect(refresh).not.toHaveBeenCalled();
+
+    vi.mocked(document.hasFocus).mockReturnValue(true);
+    fire('focus');
+    expect(refresh).toHaveBeenCalledTimes(1);
   });
 
   it('does nothing while the tab is hidden, or while disabled', () => {

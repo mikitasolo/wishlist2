@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, onTestFinished } from 'vitest';
 import { render, screen, cleanup, within, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { NotificationView } from '@/lib/utils/notifications';
@@ -581,6 +581,9 @@ describe('Activity feed structure', () => {
       throw new Error(`unexpected fetch ${url} ${init?.method}`);
     });
     vi.stubGlobal('fetch', fetchMock);
+    // Back online counts only in a focused window (jsdom has none).
+    const focused = vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+    onTestFinished(() => focused.mockRestore());
     const feedReads = () =>
       fetchMock.mock.calls.filter(([url]) => url === '/api/notifications?actors=1').length;
     render(<ActivityPage />);
