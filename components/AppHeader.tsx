@@ -87,8 +87,8 @@ export default function AppHeader({ actions, search = true, minimal = false }: A
             ) : pending ? (
               // Its place while the session loads, where it's known to be signed in.
               <Skeleton
-                className={`hidden h-10 w-[90px] flex-shrink-0 rounded-full session-hint:block ${
-                  searchOpen ? 'lg:w-52' : 'md:w-52'
+                className={`hidden h-10 w-10 flex-shrink-0 rounded-full session-hint:block ${
+                  searchOpen ? 'md:w-[90px] lg:w-52' : 'md:w-52'
                 }`}
               />
             ) : null}

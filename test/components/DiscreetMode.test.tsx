@@ -192,6 +192,21 @@ describe('the header switch', () => {
     expect(name()).not.toHaveClass('max-lg:hidden');
   });
 
+  // regression: on a phone the switch was a ~90px eye + track the audit found
+  // unreadable as a control (WIS-399). Below md it is an icon-only button whose
+  // "on" shows without a track; the switch role and name stay.
+  it('is an icon-only button below md, with a dot for "on" in place of the track', async () => {
+    const user = userEvent.setup();
+    render(<AppHeader actions={<AuthButton />} />, { wrapper: ToastProvider });
+    const toggle = screen.getByRole('switch', { name: 'No spoiler mode' });
+    expect(toggle).toHaveClass('max-md:w-10');
+    expect(toggle.querySelector('[aria-hidden].max-md\\:hidden')).not.toBeNull(); // the track
+    expect(toggle.querySelector('.md\\:hidden')).toBeNull();
+
+    await user.click(toggle);
+    expect(toggle.querySelector('.md\\:hidden')).not.toBeNull();
+  });
+
   it('is not in the account menu', async () => {
     const user = userEvent.setup();
     render(<AuthButton />);
