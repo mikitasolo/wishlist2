@@ -133,6 +133,10 @@ export default function ActivityPage() {
   // the previous account.
   const feedSent = useRef(0);
   const feedLanded = useRef(0);
+  // Rows that were unread when read on this visit (state, as rows render from it). The page marks everything read
+  // as it opens, so a later read (focus) says `read`; the rows keep standing out
+  // until the visit ends.
+  const [unreadThisVisit, setUnreadThisVisit] = useState<ReadonlySet<string>>(() => new Set());
   // The invites answered on this page, each with the last feed read sent before
   // it landed. Such a read can still be on its way, and would bring the row back
   // as a pending invite, so the answer is put on it again when it lands.
@@ -177,6 +181,7 @@ export default function ActivityPage() {
     account.current = viewerId;
     feedLanded.current = feedSent.current;
     answers.current = [];
+    setUnreadThisVisit((prev) => (prev.size ? new Set() : prev));
     setItems((prev) => (prev.length ? [] : prev));
     setFeedLoading(true);
     setFeedFailed(false);
@@ -203,6 +208,8 @@ export default function ActivityPage() {
     }
     if (sent <= feedLanded.current || account.current !== forAccount) return;
     feedLanded.current = sent;
+    const fresh = feed.data.filter((n) => !n.read).map((n) => n._id);
+    if (fresh.length) setUnreadThisVisit((prev) => new Set([...prev, ...fresh]));
     setItems(
       withInviteAnswers(
         feed.data,
@@ -279,8 +286,9 @@ export default function ActivityPage() {
   }
 
   function renderRow(n: NotificationView) {
+    const isUnread = !n.read || unreadThisVisit.has(n._id);
     const rowClass = `relative flex items-center gap-3 rounded-2xl border p-4 ${
-      n.read
+      !isUnread
         ? 'border-border bg-surface'
         : 'border-primary-500/40 border-l-4 border-l-primary-500 bg-primary-500/10'
     }`;
@@ -288,7 +296,7 @@ export default function ActivityPage() {
       <>
         <RowLeading n={n} />
         <span className="min-w-0 flex-1">
-          <span className={`block text-body text-foreground ${n.read ? '' : 'font-medium'}`}>
+          <span className={`block text-body text-foreground ${isUnread ? 'font-medium' : ''}`}>
             <NotificationLine n={n} />
           </span>
           <span className="mt-0.5 block text-xs text-muted-foreground">
@@ -356,7 +364,7 @@ export default function ActivityPage() {
               Create a list
             </Button>
           )}
-          {!n.read && (
+          {isUnread && (
             <span
               className="h-2 w-2 flex-shrink-0 rounded-full bg-primary-500"
               aria-label="Unread"

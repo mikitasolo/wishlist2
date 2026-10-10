@@ -541,6 +541,33 @@ describe('Activity feed structure', () => {
     expect(within(read).queryByLabelText('Unread')).toBeNull();
   });
 
+  // regression: the page marks everything read on open, so the focus re-read
+  // returned `read: true` and the unread emphasis vanished mid-visit.
+  it('keeps a row marked unread through a re-read that says it is read', async () => {
+    let feed = [row({ _id: 'u', type: 'role_changed', wishlistName: 'New', read: false })];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url === '/api/notifications?actors=1') {
+          return json({ success: true, data: feed, unreadCount: 0 });
+        }
+        if (url === '/api/users/me/invites') return json({ success: true, data: [] });
+        throw new Error(`unexpected fetch ${url} ${init?.method}`);
+      })
+    );
+    render(<ActivityPage />);
+    const li = (await line('You’re now a member of New')).closest('li') as HTMLElement;
+    expect(within(li).getByLabelText('Unread')).toBeInTheDocument();
+    feed = [{ ...feed[0], read: true }];
+    act(() => {
+      window.dispatchEvent(new Event('focus'));
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+    expect(within(li).getByLabelText('Unread')).toBeInTheDocument();
+  });
+
   it('shows no Notifications heading with no rows', async () => {
     serve([]);
     render(<ActivityPage />);
