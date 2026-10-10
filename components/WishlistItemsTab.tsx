@@ -214,6 +214,20 @@ export default function WishlistItemsTab({
                       triggerClassName="flex-shrink-0"
                     />
                   )}
+                  {/* Select mode (WIS-386): its icon alone on a phone, so the
+                      row still fits on one line there. Before Budget, which
+                      takes a row of its own on a phone. */}
+                  {bulk && !selecting && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      icon="check-circle"
+                      onClick={bulk.start}
+                      className="flex-shrink-0 max-sm:px-2.5"
+                    >
+                      <span className="max-sm:sr-only">Select</span>
+                    </Button>
+                  )}
                   {budgetOffered && (
                     <BudgetFilter
                       className="w-full sm:w-auto"
@@ -222,17 +236,6 @@ export default function WishlistItemsTab({
                       currency={viewerCurrency}
                       invalid={budgetInvalid}
                     />
-                  )}
-                  {bulk && !selecting && (
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      icon="check-circle"
-                      onClick={bulk.start}
-                      className="flex-shrink-0"
-                    >
-                      Select
-                    </Button>
                   )}
                 </div>
               </div>
