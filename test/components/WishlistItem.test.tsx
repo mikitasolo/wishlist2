@@ -616,7 +616,10 @@ describe('WishlistItem — the action row, by role and state', () => {
       expect(rowLinks[0]).not.toHaveTextContent('View item');
     } else if (offer.linkButton === 'add-link') {
       expect(rowLinks).toHaveLength(0);
-      expect(within(card).getByRole('button', { name: 'Add product link' })).toBeEnabled();
+      const addLink = within(card).getByRole('button', { name: 'Add product link' });
+      expect(addLink).toBeEnabled();
+      // WIS-409: a chain with a plus badge, not the bare "+" that read as "add an item".
+      expect(addLink.querySelector('g path[d^="M10 13"]')).not.toBeNull();
     } else if (!('link' in offer.primary)) {
       expect(rowLinks).toHaveLength(0);
     }
