@@ -164,14 +164,33 @@ export const copyWishlistSchema = z.object({
 
 // An owner's bulk item action (WIS-386): one action, applied to each item as a
 // single item's change would be (`lib/utils/bulkItemActions.ts`).
-export const bulkItemActionSchema = z.object({
-  action: z.enum(BULK_ITEM_ACTIONS),
-  itemIds: z
-    .array(z.string().regex(/^[0-9a-f]{24}$/i, 'Invalid item id'))
-    .min(1, 'Pick at least one item')
-    .max(BULK_ITEMS_MAX, `Pick at most ${BULK_ITEMS_MAX} items`)
-    .transform((ids) => [...new Set(ids.map((id) => id.toLowerCase()))]),
-});
+export const bulkItemActionSchema = z
+  .object({
+    action: z.enum(BULK_ITEM_ACTIONS),
+    itemIds: z
+      .array(z.string().regex(/^[0-9a-f]{24}$/i, 'Invalid item id'))
+      .min(1, 'Pick at least one item')
+      .max(BULK_ITEMS_MAX, `Pick at most ${BULK_ITEMS_MAX} items`)
+      .transform((ids) => [...new Set(ids.map((id) => id.toLowerCase()))]),
+    // Move's (WIS-434), and only move's: the list the items go to, by id.
+    targetWishlistId: z
+      .string()
+      .regex(/^[0-9a-f]{24}$/i, 'Invalid wishlist id')
+      .transform((id) => id.toLowerCase())
+      .optional(),
+  })
+  .superRefine((body, ctx) => {
+    if (body.action === 'move' && !body.targetWishlistId) {
+      ctx.addIssue({ code: 'custom', path: ['targetWishlistId'], message: 'Pick a list' });
+    }
+    if (body.action !== 'move' && body.targetWishlistId !== undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['targetWishlistId'],
+        message: 'Only a move takes a list',
+      });
+    }
+  });
 
 // User / profile schemas
 export const USERNAME_REGEX = /^[a-z][a-z0-9_]{2,19}$/;

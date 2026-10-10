@@ -18,6 +18,7 @@ export const BULK_ITEM_ACTIONS = [
   'received',
   'mostWanted',
   'notMostWanted',
+  'move',
   'delete',
 ] as const;
 
@@ -39,8 +40,17 @@ export const BULK_ACTION_STATUSES: Record<BulkItemAction, readonly string[]> = {
   received: ['available', 'booked'],
   mostWanted: ['draft', 'available', 'booked', 'completed'],
   notMostWanted: ['draft', 'available', 'booked', 'completed'],
+  // As "Start a new list from this one" copies them (`COPYABLE_STATUSES`):
+  // an item marked as received stays where it was received.
+  move: ['draft', 'available', 'booked'],
   delete: ['draft', 'available', 'booked', 'completed'],
 };
+
+/** The bulk actions that take the items off the list (Undo, then a deferred commit). */
+export type BulkRemoval = 'move' | 'delete';
+
+/** The bulk actions that change items in place (`bulkItemUpdate`). */
+export type BulkItemUpdateAction = Exclude<BulkItemAction, BulkRemoval>;
 
 /** Whether an owner may pick an item in Select mode: anything but a proposal. */
 export function isSelectableItem(item: { status: string }): boolean {
@@ -75,7 +85,7 @@ const STATUS_SET: Partial<Record<BulkItemAction, 'available' | 'draft' | 'comple
 
 /** The single-item change each action stands for (a `PATCH /api/items/[id]` body). */
 export function bulkItemUpdate(
-  action: Exclude<BulkItemAction, 'delete'>
+  action: BulkItemUpdateAction
 ): { status: 'available' | 'draft' | 'completed' } | { mostWanted: boolean } {
   const status = STATUS_SET[action];
   if (status) return { status };
@@ -87,7 +97,7 @@ export function bulkItemUpdate(
  * has answered. Owners never see a booking, so there is none to clear.
  */
 export function applyBulkAction<T extends { status: string; mostWanted?: boolean }>(
-  action: Exclude<BulkItemAction, 'delete'>,
+  action: BulkItemUpdateAction,
   item: T
 ): T {
   return { ...item, ...bulkItemUpdate(action) };
@@ -107,10 +117,35 @@ export function bulkDoneMessage(action: BulkItemAction, count: number): string {
       return `${items} marked as most wanted`;
     case 'notMostWanted':
       return `${items} no longer most wanted`;
+    case 'move':
+      return `${items} moved`;
     case 'delete':
       return `${items} deleted`;
   }
 }
+
+/** The Undo toast once `count` items have been moved to the list named `listName`. */
+export function bulkMovedMessage(count: number, listName: string): string {
+  return `${plural(count, 'item')} moved to ${listName}`;
+}
+
+/**
+ * Move's warning (WIS-434), shown in its dialog every time, whatever the
+ * picked items are: a move is a copy onto the other list and a delete here,
+ * so a reservation can't follow an item. It never depends on whether any
+ * item is reserved (owners can't see that, and the warning mustn't tell
+ * them), and it doesn't say a reservation goes: the gifter keeps theirs, as
+ * with a delete.
+ */
+export const MOVE_WARNING =
+  "Members of this list lose any reservations on these items: they're released here, though whoever reserved one keeps it on their Reserved page. On the other list they start afresh.";
+
+/**
+ * The one answer to a move whose target isn't a list of the caller's they may
+ * add to: missing, not theirs, archived or the list itself all alike, so it
+ * says nothing about a list that isn't theirs.
+ */
+export const MOVE_TARGET_ERROR = 'Pick another of your lists that isn’t archived';
 
 /**
  * The toast when some of a batch didn't land: a count and nothing more, the

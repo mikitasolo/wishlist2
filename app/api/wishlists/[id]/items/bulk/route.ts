@@ -12,11 +12,14 @@ import {
 } from '@/lib/utils/itemIdempotency';
 import {
   applyBulkItemAction,
+  applyBulkMoveAction,
   claimItemBatch,
   finishItemBatch,
   releaseItemBatch,
 } from '@/lib/utils/bulkItemActions';
 import { errorKind } from '@/lib/utils/errorKind';
+import { isMoveTarget } from '@/lib/utils/bulkItemMove';
+import { MOVE_TARGET_ERROR } from '@/lib/utils/bulkItems';
 
 // Up to 100 items, each its own single-item change (a few at a time); lined up
 // with `ITEM_BATCH_STALE_MS` and `BULK_REQUEST_TIMEOUT_MS`.
@@ -36,6 +39,11 @@ const NO_STORE = { 'Cache-Control': 'private, no-store' };
  * list's 404 on an archived list (and on one that doesn't exist), else 403;
  * signed out, 401 before any lookup. A retry with the same key is answered as
  * the first attempt was, before any limit is spent.
+ *
+ * A `move` (WIS-434) also takes `targetWishlistId`: another list the caller
+ * owns that isn't archived, checked once the key is claimed and again once
+ * the copies are written (`lib/utils/bulkItemMove.ts`). Any other target is
+ * the one 422 (`MOVE_TARGET_ERROR`), whatever's wrong with it.
  */
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -79,7 +87,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         { status: validation.status }
       );
     }
-    const { action, itemIds } = validation.data;
+    const { action, itemIds, targetWishlistId } = validation.data;
 
     const claim = await claimItemBatch({
       userId,
@@ -87,6 +95,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       wishlistId: id,
       action,
       itemIds,
+      targetId: targetWishlistId,
     });
     if (claim.kind === 'replay') {
       return NextResponse.json(
@@ -104,6 +113,23 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // The batch's own budget (`bulkItems`): an owner is on no new-account
     // tier for their own items. A refused batch lets go of its key, so the
     // retry after the wait goes ahead.
+    const moveRefused = () =>
+      NextResponse.json(
+        { success: false, error: MOVE_TARGET_ERROR },
+        { status: 422, headers: NO_STORE }
+      );
+    // A move's target: the caller's own, not archived, not this list. One
+    // answer for all else, so a list that isn't theirs is never confirmed.
+    if (action === 'move') {
+      const target = targetWishlistId
+        ? await getOwnerAccess(targetWishlistId, userId)
+        : { isOwner: false };
+      if (!isMoveTarget(target, id)) {
+        await releaseItemBatch(claim.batchId);
+        return moveRefused();
+      }
+    }
+
     const limited = await enforce('bulkItems', userKey(userId));
     if (limited) {
       await releaseItemBatch(claim.batchId);
@@ -112,7 +138,30 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     let answer;
     try {
-      answer = await applyBulkItemAction({ wishlist, userId, action, itemIds });
+      if (action === 'move') {
+        const moved = await applyBulkMoveAction({
+          wishlist,
+          userId,
+          itemIds,
+          targetId: targetWishlistId!,
+          batchId: claim.batchId,
+        });
+        if ('refused' in moved) {
+          // The re-check after the copies were written: they're taken back,
+          // nothing was moved, and the answer is the one given up front.
+          await releaseItemBatch(claim.batchId);
+          if (moved.refused === 'target') return moveRefused();
+          return moved.refused === 'source gone'
+            ? NextResponse.json({ success: false, error: 'Wishlist not found' }, { status: 404 })
+            : NextResponse.json(
+                { success: false, error: 'Unauthorized - Owner access required' },
+                { status: 403 }
+              );
+        }
+        answer = moved;
+      } else {
+        answer = await applyBulkItemAction({ wishlist, userId, action, itemIds });
+      }
     } catch (err) {
       await releaseItemBatch(claim.batchId);
       throw err;

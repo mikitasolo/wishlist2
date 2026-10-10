@@ -91,6 +91,19 @@ beforeEach(() => {
   fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
     const method = init?.method ?? 'GET';
     if (url === '/api/wishlists/birthday/items') return reply({ success: true, data: listItems });
+    if (url === '/api/wishlists' && method === 'GET') {
+      return reply({
+        success: true,
+        data: {
+          owned: [
+            { _id: 'birthday', name: 'Birthday', itemCount: 3 },
+            { _id: 'xmas', name: 'Christmas', itemCount: 2 },
+            { _id: 'old', name: 'Old list', archived: true, itemCount: 1 },
+          ],
+          member: [],
+        },
+      });
+    }
     if (url === '/api/wishlists/birthday/items/bulk' && method === 'POST') {
       if (bulkStatus !== 200) return reply({ success: false, error: 'Server error' }, bulkStatus);
       const body = JSON.parse(String(init?.body));
@@ -346,6 +359,65 @@ describe('bulk delete offers Undo (WIS-386 with WIS-387)', () => {
     await waitFor(() => expect(card('Kite')).not.toBeNull());
     // It may have landed all the same: the list is read again.
     await waitFor(() => expect(reads()).toBeGreaterThan(readsBefore));
+  });
+});
+
+describe('Move to list (WIS-434)', () => {
+  async function chooseList(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(within(bar()).getByRole('button', { name: 'Move to list' }));
+    const dialog = await screen.findByRole('dialog', { name: /^Move \d+ items? to another list$/ });
+    await within(dialog).findByRole('button', { name: /Christmas/ });
+    return dialog;
+  }
+
+  it('offers only the owner’s other unarchived lists, always with the same warning', async () => {
+    await open();
+    const user = await pick('Lamp', 'Mug');
+    const dialog = await chooseList(user);
+    expect(dialog).toHaveAccessibleName('Move 2 items to another list');
+    expect(within(dialog).getByText(/Members of this list lose any reservations/)).toBeTruthy();
+    expect(within(dialog).queryByRole('button', { name: /Birthday/ })).toBeNull();
+    expect(within(dialog).queryByRole('button', { name: /Old list/ })).toBeNull();
+    // Nothing is picked yet, so nothing can be moved.
+    expect(within(dialog).getByRole('button', { name: 'Move' })).toBeDisabled();
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(card('Lamp')).not.toBeNull();
+    expect(bulkCalls()).toHaveLength(0);
+  });
+
+  it('takes the items off at once with Undo, then sends one move to the picked list', async () => {
+    await open();
+    const user = await pick('Lamp', 'Mug');
+    const dialog = await chooseList(user);
+    await user.click(within(dialog).getByRole('button', { name: /Christmas/ }));
+    await user.click(within(dialog).getByRole('button', { name: 'Move' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(card('Lamp')).toBeNull();
+    expect(card('Mug')).toBeNull();
+    undoToast('2 items moved to Christmas');
+    expect(bulkCalls()).toHaveLength(0);
+
+    await act(async () => flushUndoableActions());
+    await waitFor(() => expect(bulkCalls()).toHaveLength(1));
+    expect(bulkBody(0)).toEqual({
+      action: 'move',
+      itemIds: ['item-Lamp', 'item-Mug'],
+      targetWishlistId: 'xmas',
+    });
+    expect(bulkKey(0)).toBeTruthy();
+  });
+
+  it('puts them back on Undo and never sends the move', async () => {
+    await open();
+    const user = await pick('Kite');
+    const dialog = await chooseList(user);
+    await user.click(within(dialog).getByRole('button', { name: /Christmas/ }));
+    await user.click(within(dialog).getByRole('button', { name: 'Move' }));
+    await act(async () => undoToast('1 item moved to Christmas').onClick());
+    expect(card('Kite')).not.toBeNull();
+    await act(async () => flushUndoableActions());
+    expect(bulkCalls()).toHaveLength(0);
   });
 });
 

@@ -10,12 +10,7 @@ import { copyWishlistSchema, validateRequestBody } from '@/lib/validations';
 import { generateUniqueWishlistSlug, resolveWishlistId } from '@/lib/utils/wishlistSlug';
 import { getOwnerAccess } from '@/lib/utils/wishlistAccess';
 import { ownedByFilter, serializeWishlist } from '@/lib/utils/wishlistOwners';
-import {
-  copyBlobToUploads,
-  getUserUploadBytes,
-  isOwnBlob,
-  type UploadCopy,
-} from '@/lib/utils/blob';
+import { copyBlobsToUploads, isOwnBlob } from '@/lib/utils/blob';
 import { normalizeCurrency } from '@/lib/utils/currency';
 import {
   IDEMPOTENCY_HEADER,
@@ -120,44 +115,6 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     console.error(`Error reading a list to copy (${errorKind(error)})`);
     return NextResponse.json({ success: false, error: 'Failed to load wishlist' }, { status: 500 });
   }
-}
-
-/** How many images are copied at once. */
-const IMAGE_COPY_CONCURRENCY = 4;
-
-/**
- * Copy each of `urls` (all our own blobs) into the user's uploads, a few at a
- * time, as "Save to my list" does for one: never shared with the source, so
- * deleting either list's item can't break the other's image. They share one
- * quota budget, read once, so together they never go over it. `onCopied`
- * records each copy as it lands, before the next is started, so a copy that
- * never finishes can still free them. Images not started within
- * `COPY_IMAGES_BUDGET_MS` aren't copied.
- */
-async function copyImages(
-  urls: string[],
-  userId: string,
-  onCopied: (url: string) => Promise<void>
-): Promise<UploadCopy[]> {
-  if (urls.length === 0) return [];
-  const results: UploadCopy[] = new Array(urls.length);
-  const budget = { used: await getUserUploadBytes(userId) };
-  const deadline = Date.now() + COPY_IMAGES_BUDGET_MS;
-  let next = 0;
-  const worker = async () => {
-    while (next < urls.length) {
-      const i = next++;
-      if (Date.now() >= deadline) {
-        results[i] = { ok: false, reason: 'failed' };
-        continue;
-      }
-      const copied = await copyBlobToUploads(urls[i], userId, budget);
-      if (copied.ok) await onCopied(copied.url);
-      results[i] = copied;
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(IMAGE_COPY_CONCURRENCY, urls.length) }, worker));
-  return results;
 }
 
 /**
@@ -301,9 +258,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         url && !isOwnBlob(url) ? url : null
       );
       const toCopy = sources.flatMap((url, i) => (isOwnBlob(url) ? [{ url, i }] : []));
-      const copies = await copyImages(
+      const copies = await copyBlobsToUploads(
         toCopy.map((c) => c.url),
         userId,
+        COPY_IMAGES_BUDGET_MS,
         async (url) => {
           await WishlistCopy.updateOne({ _id: copyRow._id }, { $push: { copiedUrls: url } });
         }

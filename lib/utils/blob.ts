@@ -395,3 +395,43 @@ export async function copyBlobToUploads(
   }
   return { ok: false, reason: 'failed' };
 }
+
+/** How many images `copyBlobsToUploads` copies at once. */
+const IMAGE_COPY_CONCURRENCY = 4;
+
+/**
+ * Copy each of `urls` (all our own blobs) into the user's uploads, a few at a
+ * time, each as `copyBlobToUploads` copies one: never shared with the source,
+ * so deleting either item can't break the other's image. Used by "Start a new
+ * list from this one" (WIS-325) and by moving items to another list (WIS-434).
+ * They share one quota budget, read once, so together they never go over it.
+ * `onCopied` records each copy as it lands, before the next is started, so an
+ * attempt that never finishes can still free them. Images not started within
+ * `budgetMs` aren't copied (`failed`). Answered in the order of `urls`.
+ */
+export async function copyBlobsToUploads(
+  urls: readonly string[],
+  userId: string,
+  budgetMs: number,
+  onCopied: (url: string) => Promise<void>
+): Promise<UploadCopy[]> {
+  if (urls.length === 0) return [];
+  const results: UploadCopy[] = new Array(urls.length);
+  const budget = { used: await getUserUploadBytes(userId) };
+  const deadline = Date.now() + budgetMs;
+  let next = 0;
+  const worker = async () => {
+    while (next < urls.length) {
+      const i = next++;
+      if (Date.now() >= deadline) {
+        results[i] = { ok: false, reason: 'failed' };
+        continue;
+      }
+      const copied = await copyBlobToUploads(urls[i], userId, budget);
+      if (copied.ok) await onCopied(copied.url);
+      results[i] = copied;
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(IMAGE_COPY_CONCURRENCY, urls.length) }, worker));
+  return results;
+}

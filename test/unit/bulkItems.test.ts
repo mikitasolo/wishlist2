@@ -5,8 +5,10 @@ import {
   bulkDoneMessage,
   bulkFailedMessage,
   bulkItemUpdate,
+  bulkMovedMessage,
   bulkTargets,
   isSelectableItem,
+  MOVE_WARNING,
 } from '@/lib/utils/bulkItems';
 import { bulkItemActionSchema } from '@/lib/validations';
 
@@ -98,5 +100,46 @@ describe('bulkItemActionSchema', () => {
     expect(bulkItemActionSchema.safeParse({ action: 'reserve', itemIds: [id] }).success).toBe(
       false
     );
+  });
+});
+
+describe('moving items (WIS-434)', () => {
+  const id = 'a'.repeat(24);
+  const target = 'B'.repeat(24);
+
+  it('moves drafts and live items, booked or not alike, but not received items', () => {
+    const picked = [
+      item('d', 'draft'),
+      item('a', 'available'),
+      item('b', 'booked'),
+      item('c', 'completed'),
+      item('p', 'proposed'),
+    ];
+    expect(bulkTargets('move', picked).map((i) => i._id)).toEqual(['d', 'a', 'b']);
+  });
+
+  it('names the list in its Undo line, with a count that agrees', () => {
+    expect(bulkMovedMessage(1, 'Christmas')).toBe('1 item moved to Christmas');
+    expect(bulkMovedMessage(3, 'Christmas')).toBe('3 items moved to Christmas');
+  });
+
+  it('warns the same whatever the items are, and never says a reservation goes', () => {
+    expect(MOVE_WARNING).not.toMatch(/\d/);
+    expect(MOVE_WARNING).toMatch(/keeps it on their Reserved page/);
+  });
+
+  it('takes a target only for a move, and needs one there', () => {
+    expect(
+      bulkItemActionSchema.parse({ action: 'move', itemIds: [id], targetWishlistId: target })
+    ).toEqual({ action: 'move', itemIds: [id], targetWishlistId: target.toLowerCase() });
+    expect(bulkItemActionSchema.safeParse({ action: 'move', itemIds: [id] }).success).toBe(false);
+    expect(
+      bulkItemActionSchema.safeParse({ action: 'move', itemIds: [id], targetWishlistId: 'nope' })
+        .success
+    ).toBe(false);
+    expect(
+      bulkItemActionSchema.safeParse({ action: 'delete', itemIds: [id], targetWishlistId: target })
+        .success
+    ).toBe(false);
   });
 });
