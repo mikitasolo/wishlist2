@@ -8,7 +8,8 @@ import {
   memberLeaveCopy,
   ownerLeaveCopy,
   releasedGiftsNote,
-  removeFromListCopy,
+  removedToast,
+  demotedToast,
 } from '@/lib/utils/confirmationCopy';
 
 describe('memberLeaveCopy in discreet mode (WIS-46)', () => {
@@ -60,37 +61,22 @@ describe('memberLeaveCopy', () => {
 describe('the copy an owner reads', () => {
   // Owners never see booking status: none of these take a count, and none say
   // whether this person reserved anything.
-  it('removing a member says what they lose and that they are told, not by whom', () => {
-    expect(removeFromListCopy('ben_carter', 'member')).toEqual({
-      title: 'Remove @ben_carter?',
-      message:
-        "They lose access, anything they reserved here goes back on the list, and they're told they were removed (not by whom).",
-    });
+  it('the Undo toast after a removal names only the person removed (WIS-387)', () => {
+    expect(removedToast('ben_carter', 'member')).toBe('Removed @ben_carter from the list');
+    expect(removedToast('bob', 'owner')).toBe('Removed @bob as an owner');
+    expect(demotedToast('bob')).toBe('@bob is now a member');
   });
 
-  it('removing a co-owner says the same, without reservations, which owners never hold', () => {
-    expect(removeFromListCopy('bob', 'owner')).toEqual({
-      title: 'Remove @bob as an owner?',
-      message:
-        "They lose access, and it comes off their profile and dashboard. They're told they were removed (not by whom).",
-    });
-  });
-
-  it('a kick says the person can’t use the list’s share links only when it has live ones (WIS-338)', () => {
-    expect(removeFromListCopy('ben', 'member', { liveLinks: true }).message).toBe(
-      "They lose access, anything they reserved here goes back on the list, and they're told they were removed (not by whom). They won't be able to use this list's share links."
+  it('says a kicked member is kept out of live share links too (WIS-338)', () => {
+    expect(removedToast('ben', 'member', { liveLinks: true })).toBe(
+      "Removed @ben from the list. They can't use its share links."
     );
-    expect(removeFromListCopy('ben', 'member', { liveLinks: false }).message).not.toContain(
-      'share links'
-    );
-    // Removing an owner leaves the links working for them: the prompt after it asks instead.
-    expect(removeFromListCopy('bob', 'owner', { liveLinks: true }).message).not.toContain(
-      'share links'
-    );
+    expect(removedToast('bob', 'owner', { liveLinks: true })).toBe('Removed @bob as an owner');
   });
 
   it('names someone without a username as @user, as the rows do', () => {
-    expect(removeFromListCopy(null, 'member').title).toBe('Remove @user?');
+    expect(removedToast(null, 'member')).toBe('Removed @user from the list');
+    expect(demotedToast(undefined)).toBe('@user is now a member');
   });
 
   it('a co-owner leaving is told what they lose, with nothing about reservations', () => {
@@ -100,12 +86,15 @@ describe('the copy an owner reads', () => {
   });
 
   it('none of them carries a digit', () => {
-    for (const { title, message } of [
-      removeFromListCopy('ben', 'member'),
-      removeFromListCopy('ben', 'owner'),
-      ownerLeaveCopy('List'),
-    ]) {
+    for (const { title, message } of [ownerLeaveCopy('List')]) {
       expect(title + message).not.toMatch(/\d/);
+    }
+    for (const line of [
+      removedToast('ben', 'member'),
+      removedToast('ben', 'owner'),
+      demotedToast('ben'),
+    ]) {
+      expect(line).not.toMatch(/\d|reserv|book/i);
     }
   });
 });

@@ -32,7 +32,7 @@ export interface OptimisticItemUpdate<T extends { _id: string }> {
  * server's copy from a read) is kept. Fields are compared by value, so this
  * holds even if the updater that made `optimistic` ran more than once.
  */
-function undoUpdate<T extends object>(current: T, before: T, optimistic: T): T {
+export function undoUpdate<T extends object>(current: T, before: T, optimistic: T): T {
   const keys = new Set([...Object.keys(before), ...Object.keys(optimistic)]) as Set<keyof T>;
   let undone = current;
   for (const key of keys) {

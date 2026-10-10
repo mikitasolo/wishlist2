@@ -35,26 +35,12 @@ async function pickMemberAction(page: Page, name: string) {
 const toast = (page: Page, text: string) => page.getByRole('status').filter({ hasText: text });
 const SECOND_ANSWER = 'Already done';
 
-// regression: ConfirmDialog had no pending state, and Remove member / owner,
-// Leave and Delete wishlist only close it once their request settles, so a
-// double click sent the request twice. The second one failed, and its error
+// regression: ConfirmDialog had no pending state, and Leave and Delete
+// wishlist only close it once their request settles, so a double click sent
+// the request twice. (Remove has an Undo toast instead now, WIS-387: below.) The second one failed, and its error
 // toast followed the success. ("Make owner" closed before sending, so it showed
 // nothing while the invite went out; it now waits in its dialog like the rest.)
 for (const flow of [
-  {
-    name: 'Remove member',
-    title: 'Remove @e2emember?',
-    path: '/wishlists/e2e-birthday',
-    open: async (page: Page) => {
-      await addMember(page);
-      await pickMemberAction(page, 'Remove');
-    },
-    confirm: 'Remove',
-    pending: 'Removing…',
-    method: 'DELETE',
-    url: `**/api/wishlists/*/members/${member._id}`,
-    success: 'Member removed successfully',
-  },
   {
     name: 'Make owner',
     title: 'Make owner?',
@@ -137,3 +123,36 @@ for (const flow of [
     await expect(dialog).toBeHidden();
   });
 }
+
+// WIS-387: Remove takes the member off at once with an Undo toast, and the
+// removal goes only once the Undo window ends (or the toast is dismissed).
+// Undone, nothing is sent, so they're never told.
+test('Remove member offers Undo, sends nothing when undone, and one removal after', async ({
+  page,
+}) => {
+  let requests = 0;
+  await page.route(`**/api/wishlists/*/members/${member._id}`, async (route) => {
+    if (route.request().method() !== 'DELETE') return route.fallback();
+    requests += 1;
+    await route.fulfill({ json: { success: true } });
+  });
+  await page.goto('/wishlists/e2e-birthday');
+  await addMember(page);
+  await pickMemberAction(page, 'Remove');
+
+  const removed = toast(page, `Removed @${member.user.username} from the list`);
+  await expect(removed).toBeVisible();
+  await expect(page.getByRole('alertdialog')).toHaveCount(0);
+  const row = page.getByRole('button', { name: `Actions for @${member.user.username}` });
+  await expect(row).toBeHidden();
+  await removed.getByRole('button', { name: 'Undo' }).click();
+  await expect(row).toBeVisible();
+  // Past the Undo window: still nothing sent.
+  await page.waitForTimeout(5_500);
+  expect(requests).toBe(0);
+
+  await pickMemberAction(page, 'Remove');
+  // Dismissing the toast sends it at once.
+  await removed.getByRole('button', { name: 'Dismiss notification' }).click();
+  await expect.poll(() => requests).toBe(1);
+});

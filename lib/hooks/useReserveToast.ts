@@ -15,13 +15,17 @@ import { RESERVE_VIEW_LABEL, RESERVED_PATH, takeReserveToastCopy } from '@/lib/u
  * name, which reads "the owners".
  */
 export function useReserveToast<T>(
-  update: (id: string, updates: { status?: string }) => Promise<T | null>,
+  update: (
+    id: string,
+    updates: { status?: string },
+    options?: { keepalive?: boolean }
+  ) => Promise<T | null>,
   { isOwner, ownerUsernames }: { isOwner: boolean; ownerUsernames: readonly string[] }
 ) {
   const { showToast } = useToast();
   return useCallback(
-    async (id: string, updates: { status?: string }) => {
-      const result = await update(id, updates);
+    async (id: string, updates: { status?: string }, options?: { keepalive?: boolean }) => {
+      const result = await update(id, updates, options);
       // A failed or rolled-back update resolves null: no toast, nothing
       // counted. Owners never reserve, and nothing an owner does is counted
       // as a reservation (WIS-329).

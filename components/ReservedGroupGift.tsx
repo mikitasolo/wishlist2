@@ -64,16 +64,3 @@ export default function ReservedGroupGift({
     </div>
   );
 }
-
-/**
- * The confirmation for leaving a group gift, in the viewer's place in it: an
- * organizer leaving hands it to the earliest remaining contributor (named as
- * the gift names them), and the last one leaving ends it.
- */
-export function leaveGroupGiftMessage(gift: ContributingGroupGift): string {
-  if (!gift.organizer) return 'Your share comes off the total.';
-  const next = gift.contributors.find((c) => !c.you);
-  return next
-    ? `${next.name} becomes the organizer.`
-    : 'You’re the only one in it, so it ends and others on the list can reserve the item.';
-}

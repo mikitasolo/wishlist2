@@ -35,3 +35,10 @@ export const COPY_IMAGE_QUOTA_NOTICE =
 /** Sent back with the saved copy when copying its image failed for any other reason. */
 export const COPY_IMAGE_FAILED_NOTICE =
   "Saved without the image: it couldn't be copied. You can add one by editing the item.";
+
+/**
+ * A member's Release on the list, said with Undo before it's sent (WIS-387).
+ * Undone, the toast goes with it, so it never claims a reservation went that
+ * stayed.
+ */
+export const RELEASED_TOAST = 'Released';

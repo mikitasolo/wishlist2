@@ -36,7 +36,13 @@ test('a link’s print card prints on the page after scrolling down to it', asyn
     .getByRole('button', { name: /^Actions for / })
     .first()
     .click();
+  // Gone at once, with Undo; the revoke goes once the Undo window ends (WIS-387),
+  // and is waited for, so the list really is as it was.
+  const revoked = page.waitForResponse(
+    (r) => r.request().method() === 'DELETE' && /\/links\//.test(r.url()),
+    { timeout: 15_000 }
+  );
   await page.getByRole('menuitem', { name: 'Revoke' }).click();
-  await page.getByRole('alertdialog').getByRole('button', { name: 'Revoke link' }).click();
   await expect(page.getByText('No share links yet', { exact: false })).toBeVisible();
+  expect((await revoked).ok()).toBe(true);
 });

@@ -1,8 +1,9 @@
 'use client';
 
 import { track } from '@/lib/analytics';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useToast } from '@/components/ToastProvider';
+import { useUndoableAction } from '@/lib/hooks/useUndoableAction';
 import type { ShareLinkLevel } from '@/lib/utils/shareLinkFields';
 import { isLinkExpired } from '@/lib/utils/shareLinkExpiry';
 
@@ -66,7 +67,14 @@ export interface ShareLinksControl {
   reload: () => void;
   create: (input: NewShareLink) => Promise<ShareLinkRow | null>;
   update: (id: string, patch: ShareLinkPatch) => Promise<boolean>;
+  /** Revokes a link now (the revoke offer after a removal, which asked first). */
   revoke: (id: string) => Promise<boolean>;
+  /**
+   * A row's Revoke (WIS-387): the link goes from the list at once, with an
+   * Undo toast, and the request only once the Undo window has passed. Undone,
+   * nothing was sent: the link never stopped working.
+   */
+  revokeWithUndo: (id: string) => void;
 }
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' };
@@ -80,6 +88,10 @@ const JSON_HEADERS = { 'Content-Type': 'application/json' };
  */
 export function useShareLinks(listId: string | null, enabled: boolean): ShareLinksControl {
   const { showToast } = useToast();
+  const offerUndo = useUndoableAction();
+  // Links whose deferred revoke waits or is on its way: left out of what's
+  // shown, so a read meanwhile can't bring them back.
+  const [revoking, setRevoking] = useState<ReadonlySet<string>>(() => new Set());
   const [read, setRead] = useState<ShareLinksControl['read']>('loading');
   const [links, setLinks] = useState<ShareLinkRow[]>([]);
   const [attempt, setAttempt] = useState(0);
@@ -174,11 +186,15 @@ export function useShareLinks(listId: string | null, enabled: boolean): ShareLin
     [listId, showToast]
   );
 
-  const revoke = useCallback(
-    async (id: string): Promise<boolean> => {
+  // The DELETE, which says a failure but not a success (each caller does).
+  const sendRevoke = useCallback(
+    async (id: string, keepalive = false): Promise<boolean> => {
       if (!listId) return false;
       try {
-        const res = await fetch(`/api/wishlists/${listId}/links/${id}`, { method: 'DELETE' });
+        const res = await fetch(`/api/wishlists/${listId}/links/${id}`, {
+          method: 'DELETE',
+          keepalive,
+        });
         const result = await res.json().catch(() => ({}));
         // Already gone (a co-owner revoked it): it's what was asked for.
         if (!res.ok && !(res.status === 404 && result.error === 'Link not found')) {
@@ -186,7 +202,6 @@ export function useShareLinks(listId: string | null, enabled: boolean): ShareLin
           return false;
         }
         setLinks((prev) => prev.filter((l) => l._id !== id));
-        showToast('Link revoked', 'success');
         return true;
       } catch {
         showToast('Couldn’t revoke the link', 'error');
@@ -196,7 +211,47 @@ export function useShareLinks(listId: string | null, enabled: boolean): ShareLin
     [listId, showToast]
   );
 
+  const revoke = useCallback(
+    async (id: string): Promise<boolean> => {
+      const revoked = await sendRevoke(id);
+      if (revoked) showToast('Link revoked', 'success');
+      return revoked;
+    },
+    [sendRevoke, showToast]
+  );
+
+  const revokeWithUndo = useCallback(
+    (id: string) => {
+      if (!listId) return;
+      setRevoking((prev) => new Set(prev).add(id));
+      const pending = offerUndo({
+        message: 'Link revoked',
+        commit: ({ keepalive }) => sendRevoke(id, keepalive),
+      });
+      // Undone, failed (the row comes back) or done (it's gone from `links`).
+      void pending.settled.then(() =>
+        setRevoking((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        })
+      );
+    },
+    [listId, offerUndo, sendRevoke]
+  );
+
+  const shown = useMemo(() => links.filter((l) => !revoking.has(l._id)), [links, revoking]);
   const now = new Date();
-  const liveCount = links.filter((l) => isLinkLive(l, now)).length;
-  return { read, links, liveCount, retry, reload, create, update, revoke };
+  const liveCount = shown.filter((l) => isLinkLive(l, now)).length;
+  return {
+    read,
+    links: shown,
+    liveCount,
+    retry,
+    reload,
+    create,
+    update,
+    revoke,
+    revokeWithUndo,
+  };
 }

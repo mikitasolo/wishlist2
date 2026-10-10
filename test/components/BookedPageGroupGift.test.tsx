@@ -15,6 +15,21 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ push }) }));
 vi.mock('@/components/AppHeader', () => ({ default: () => null }));
 vi.mock('@/components/AuthButton', () => ({ default: () => null }));
 vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }));
+// Leave group gift waits out an Undo window (WIS-387); here it has passed at
+// once: the line is said (`undoToast`) and the request sent.
+const undoToast = vi.hoisted(() => vi.fn());
+vi.mock('@/lib/hooks/useUndoableAction', () => ({
+  useUndoableAction:
+    () =>
+    ({ message, commit }: { message: string; commit: (c: { keepalive: boolean }) => unknown }) => {
+      undoToast(message);
+      const settled = Promise.resolve(commit({ keepalive: false })).then(
+        () => 'committed' as const,
+        () => 'committed' as const
+      );
+      return { settled, undo: () => false, flush: () => {}, isPending: () => false };
+    },
+}));
 
 import BookedPage from '@/app/booked/page';
 import { setDiscreetMode } from '@/lib/hooks/useDiscreetMode';
@@ -127,15 +142,19 @@ describe('BookedPage — a group gift you’re in', () => {
     expect(within(card('Bike')).queryByText('The organizer marks it as given')).toBeNull();
     fireEvent.click(within(card('Camera')).getByRole('button', { name: 'More actions' }));
     expect(screen.queryByRole('menuitem', { name: 'Release' })).toBeNull();
+    // No confirmation: it offers Undo (WIS-387).
     fireEvent.click(screen.getByRole('menuitem', { name: 'Leave group gift' }));
-    expect(screen.getByText('Your share comes off the total.')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Leave' }));
-    await waitFor(() => expect(screen.queryByText('Camera')).toBeNull());
-    expect(fetchMock).toHaveBeenCalledWith(
-      '/api/items/item-camera/group-gift/me',
-      expect.objectContaining({ method: 'DELETE' })
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(screen.queryByText('Camera')).toBeNull();
+    expect(undoToast).toHaveBeenCalledWith('You left the group gift');
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/items/item-camera/group-gift/me',
+        expect.objectContaining({ method: 'DELETE' })
+      )
     );
-    expect(showToast).toHaveBeenCalledWith('You left the group gift', 'success');
+    await act(async () => {});
+    expect(screen.queryByText('Camera')).toBeNull();
   });
 
   it('the organizer’s Mark as given gives the whole gift, with an idempotency key', async () => {
@@ -170,7 +189,9 @@ describe('BookedPage — a group gift you’re in', () => {
     await screen.findByText('Bike');
     fireEvent.click(within(card('Bike')).getByRole('button', { name: 'More actions' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Leave group gift' }));
-    expect(screen.getByText('Ben Helper becomes the organizer.')).toBeInTheDocument();
+    expect(undoToast).toHaveBeenCalledWith(
+      'You left the group gift. Ben Helper becomes the organizer.'
+    );
   });
 
   it('a refused action keeps the card and reads the page again', async () => {

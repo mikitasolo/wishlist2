@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, within, cleanup } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import type { ApiItem } from '@/types/api';
 
 // ImageUpload pulls in react-easy-crop; stub it out.
@@ -24,7 +23,7 @@ function item(overrides: Partial<ApiItem>): ApiItem {
   } as ApiItem;
 }
 
-// Both item modals offer a delete behind a confirmation (the review's Decline);
+// Both item modals offer a delete (the review's Decline);
 // run every case on each.
 const modals = [
   {
@@ -32,8 +31,6 @@ const modals = [
     submitLabel: 'Save',
     submittingLabel: 'Saving…',
     deleteLabel: 'Delete item',
-    confirmLabel: 'Delete',
-    pendingLabel: 'Deleting…',
     renderModal: (onDelete: () => Promise<void>, onClose: () => void) =>
       render(
         <EditItemModal
@@ -53,8 +50,6 @@ const modals = [
     submittingLabel: 'Adding…',
     // A review declines the proposal, which deletes it.
     deleteLabel: 'Decline',
-    confirmLabel: 'Decline',
-    pendingLabel: 'Declining…',
     renderModal: (onDelete: () => Promise<void>, onClose: () => void) =>
       render(
         <ReviewItemModal
@@ -92,11 +87,8 @@ afterAll(() => vi.restoreAllMocks());
 beforeEach(() => cleanup());
 
 describe.each(modals)('$name — delete outcome', (modal) => {
-  const { renderModal, submitLabel, submittingLabel, pendingLabel } = modal;
+  const { renderModal, submitLabel, submittingLabel } = modal;
   const deleteItemButton = () => screen.getByRole('button', { name: modal.deleteLabel });
-  const confirmButton = () =>
-    within(confirmation()!).getByRole('button', { name: modal.confirmLabel });
-  const confirmDelete = () => fireEvent.click(confirmButton());
 
   // The modal logs the rejection it catches; keep the test output clean.
   beforeEach(() => {
@@ -104,76 +96,44 @@ describe.each(modals)('$name — delete outcome', (modal) => {
     return () => consoleError.mockRestore();
   });
 
-  // The page rejects onDelete when the DELETE fails (after toasting the error),
-  // so the item is still there: the modal must stay open with it, answer the
-  // confirmation, and leave nothing disabled.
+  // WIS-387: the page offers Undo before anything is sent, so the modal asks
+  // nothing and closes as soon as the page has taken the item off.
+  it('deletes without a confirmation and closes', async () => {
+    const onDelete = vi.fn().mockResolvedValue(undefined);
+    const onClose = vi.fn();
+    renderModal(onDelete, onClose);
+
+    fireEvent.click(deleteItemButton());
+    expect(confirmation()).toBeNull();
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(onDelete).toHaveBeenCalledTimes(1);
+  });
+
+  // A rejected onDelete means the item is still there: the modal stays open
+  // with it and leaves nothing disabled.
   it('stays open with the item when the delete fails', async () => {
     const onDelete = vi.fn().mockRejectedValue(new Error('Something went wrong'));
     const onClose = vi.fn();
     renderModal(onDelete, onClose);
 
     fireEvent.click(deleteItemButton());
-    confirmDelete();
 
-    // The confirmation is answered either way; a failure drops back to the modal.
-    await waitFor(() => expect(confirmation()).toBeNull());
+    await waitFor(() => expect(deleteItemButton()).toBeEnabled());
     expect(onDelete).toHaveBeenCalledTimes(1);
     expect(onClose).not.toHaveBeenCalled();
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     expect(screen.getByLabelText(/item name/i)).toHaveValue('Bike');
-    expect(deleteItemButton()).toBeEnabled();
   });
 
-  // regression: the confirmation's buttons are disabled while the delete runs,
-  // which dropped focus to <body>; after a failed delete it stayed there, and
-  // the next Tab started from the top of the page instead of the modal.
-  it('regression: hands focus back to Delete item in the modal when the delete fails', async () => {
-    const user = userEvent.setup();
-    const onDelete = vi.fn().mockRejectedValue(new Error('Something went wrong'));
-    renderModal(onDelete, vi.fn());
-
-    await user.click(deleteItemButton());
-    expect(within(confirmation()!).getByRole('button', { name: 'Cancel' })).toHaveFocus();
-    await user.click(confirmButton());
-
-    await waitFor(() => expect(confirmation()).toBeNull());
-    expect(deleteItemButton()).toHaveFocus();
-    await user.tab();
-    expect(screen.getByRole('dialog')).toContainElement(document.activeElement as HTMLElement);
-  });
-
-  it('lets the user retry after a failure, and closes once it succeeds', async () => {
-    const onDelete = vi
-      .fn()
-      .mockRejectedValueOnce(new Error('Something went wrong'))
-      .mockResolvedValueOnce(undefined);
-    const onClose = vi.fn();
-    renderModal(onDelete, onClose);
-
-    fireEvent.click(deleteItemButton());
-    confirmDelete();
-    await waitFor(() => expect(confirmation()).toBeNull());
-    expect(onClose).not.toHaveBeenCalled();
-
-    fireEvent.click(deleteItemButton());
-    confirmDelete();
-    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
-    expect(onDelete).toHaveBeenCalledTimes(2);
-  });
-
-  // regression: nothing stopped a second confirm click while the first delete
-  // was in flight, so the page ran its delete handler twice and doubled its toast.
-  // The confirmation now shows the delete as running and ignores the second click.
-  it('regression: sends one delete when the confirmation is clicked twice', async () => {
+  // regression: nothing stopped a second click while the first delete was in
+  // flight, so the page ran its delete handler twice and doubled its toast.
+  it('regression: sends one delete when Delete is clicked twice', async () => {
     const { onDelete, finish } = pendingDelete();
     const onClose = vi.fn();
     renderModal(onDelete, onClose);
 
     fireEvent.click(deleteItemButton());
-    confirmDelete();
-    const pending = within(confirmation()!).getByRole('button', { name: pendingLabel });
-    expect(pending).toBeDisabled();
-    fireEvent.click(pending);
+    fireEvent.click(deleteItemButton());
     expect(onDelete).toHaveBeenCalledTimes(1);
 
     finish();
@@ -185,16 +145,15 @@ describe.each(modals)('$name — delete outcome', (modal) => {
   // "Adding…", as if the user's changes were being saved.
   it('regression: keeps the form disabled but not labelled as saving while the delete runs', async () => {
     const { onDelete, finish } = pendingDelete();
-    renderModal(onDelete, vi.fn());
+    const onClose = vi.fn();
+    renderModal(onDelete, onClose);
 
     fireEvent.click(deleteItemButton());
-    confirmDelete();
-    expect(within(confirmation()!).getByRole('button', { name: pendingLabel })).toBeDisabled();
     expect(screen.getByRole('button', { name: submitLabel })).toBeDisabled();
     expect(screen.queryByRole('button', { name: submittingLabel })).toBeNull();
     expect(deleteItemButton()).toBeDisabled();
 
     finish();
-    await waitFor(() => expect(confirmation()).toBeNull());
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
 });

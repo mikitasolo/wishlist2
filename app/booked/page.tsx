@@ -124,9 +124,9 @@ export default function BookedPage() {
                   viewerCurrency={viewerCurrency}
                   rates={rates}
                   onGift={confirms.setGift}
-                  onRelease={confirms.setRelease}
+                  onRelease={actions.release}
                   onGiveGroupGift={confirms.setGroupGive}
-                  onLeaveGroupGift={confirms.setLeave}
+                  onLeaveGroupGift={actions.leaveGroupGift}
                 />
                 {needsConfirm.length > 0 && (
                   <ChangedSection
@@ -136,7 +136,7 @@ export default function BookedPage() {
                     viewerCurrency={viewerCurrency}
                     rates={rates}
                     onGift={confirms.setGift}
-                    onDismiss={confirms.setDismiss}
+                    onDismiss={actions.dismiss}
                   />
                 )}
               </>
@@ -147,7 +147,7 @@ export default function BookedPage() {
               <GiftHistory
                 gifts={gifts}
                 busy={busy}
-                onDelete={confirms.setDeleteGift}
+                onDelete={actions.deleteGift}
                 currency={viewerCurrency}
                 rates={rates}
               />
@@ -156,7 +156,7 @@ export default function BookedPage() {
         )}
       </main>
 
-      <ReservedDialogs reservations={reservations} confirms={confirms} actions={actions} />
+      <ReservedDialogs confirms={confirms} actions={actions} />
     </div>
   );
 }

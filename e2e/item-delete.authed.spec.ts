@@ -40,16 +40,20 @@ async function addProposal(page: Page, listed: () => boolean = () => true) {
 
 const toast = (page: Page, text: string) => page.getByRole('status').filter({ hasText: text });
 
-// Toasts dismiss themselves after 4s, so a retrying `toHaveCount(0)` would pass
-// once a wrong one had come and gone. Count the moment the expected one shows.
+// Toasts dismiss themselves after a few seconds, so a retrying `toHaveCount(0)`
+// would pass once a wrong one had come and gone. Count the moment the expected
+// one shows.
 async function expectNoToast(page: Page, text: string) {
   expect(await toast(page, text).count(), `"${text}" toast`).toBe(0);
 }
 
-// regression: the delete handlers ignored useDeleteItem's `false`, so a failed
-// delete still dropped the item from the list and closed its modal, and the
-// review modal's path toasted its success ("Proposal declined" now) right after
-// the error.
+// A delete waits out its Undo window (WIS-387); dismissing the toast sends it at once.
+async function sendNow(page: Page, text: string) {
+  await toast(page, text).getByRole('button', { name: 'Dismiss notification' }).click();
+}
+
+// WIS-387: Delete and Decline ask nothing. The item goes at once, with Undo,
+// and nothing is sent until the Undo window has passed.
 for (const flow of [
   {
     from: 'edit',
@@ -57,8 +61,7 @@ for (const flow of [
     open: 'Edit item',
     title: 'Edit item',
     remove: 'Delete item',
-    confirm: 'Delete',
-    success: 'Item deleted successfully',
+    success: 'Item deleted',
   },
   {
     from: 'review',
@@ -66,15 +69,42 @@ for (const flow of [
     open: 'Review proposed item',
     title: 'Someone proposed an item',
     remove: 'Decline',
-    confirm: 'Decline',
     success: 'Proposal declined',
   },
 ]) {
-  test(`regression: a failed delete from the ${flow.from} modal keeps the item and the modal`, async ({
+  test(`Undo after a delete from the ${flow.from} modal keeps the item and sends nothing`, async ({
+    page,
+  }) => {
+    let deletes = 0;
+    await addProposal(page);
+    await answerItemDelete(page, () => {
+      deletes += 1;
+    });
+    await page.goto('/wishlists/e2e-birthday');
+
+    const card = page.getByRole('article', { name: `Item: ${flow.item}` });
+    await card.getByRole('button', { name: flow.open }).click();
+    const dialog = page.getByRole('dialog', { name: flow.title });
+    await dialog.getByRole('button', { name: flow.remove, exact: true }).click();
+
+    await expect(page.getByRole('alertdialog')).toHaveCount(0);
+    await expect(dialog).toBeHidden();
+    await expect(card).toBeHidden();
+    await toast(page, flow.success).getByRole('button', { name: 'Undo' }).click();
+    await expect(card).toBeVisible();
+    // Past the Undo window: still nothing sent.
+    await page.waitForTimeout(5500);
+    expect(deletes).toBe(0);
+    await expect(card).toBeVisible();
+  });
+
+  // regression: the delete handlers ignored useDeleteItem's `false`, so a failed
+  // delete still dropped the item from the list. Deferred, it comes back.
+  test(`regression: a failed delete from the ${flow.from} modal puts the item back`, async ({
     page,
     consoleErrors,
   }) => {
-    // The failed DELETE, and the app's log lines for it.
+    // The failed DELETE, and the app's log line for it.
     consoleErrors.allow(failedRequest(/\/api\/items\/\w+/), /^Error deleting item: /);
     await addProposal(page);
     await answerItemDelete(page);
@@ -84,16 +114,10 @@ for (const flow of [
     await card.getByRole('button', { name: flow.open }).click();
     const dialog = page.getByRole('dialog', { name: flow.title });
     await dialog.getByRole('button', { name: flow.remove, exact: true }).click();
-    await page
-      .getByRole('alertdialog')
-      .getByRole('button', { name: flow.confirm, exact: true })
-      .click();
+    await expect(card).toBeHidden();
+    await sendNow(page, flow.success);
 
     await expect(toast(page, 'Something went wrong')).toBeVisible();
-    await expectNoToast(page, flow.success);
-    await expect(page.getByRole('alertdialog')).toBeHidden();
-    await expect(dialog).toBeVisible();
-    await expect(dialog.getByRole('button', { name: flow.remove, exact: true })).toBeEnabled();
     await expect(card).toBeVisible();
   });
 }
@@ -112,10 +136,12 @@ test('regression: declining a proposal removes it and says so once', async ({ pa
   await card.getByRole('button', { name: 'Review proposed item' }).click();
   const dialog = page.getByRole('dialog', { name: 'Someone proposed an item' });
   await dialog.getByRole('button', { name: 'Decline', exact: true }).click();
-  await page.getByRole('alertdialog').getByRole('button', { name: 'Decline', exact: true }).click();
 
   await expect(toast(page, 'Proposal declined')).toBeVisible();
-  await expectNoToast(page, 'Item deleted successfully');
+  await expectNoToast(page, 'Item deleted');
   await expect(dialog).toBeHidden();
+  await expect(card).toBeHidden();
+  await sendNow(page, 'Proposal declined');
+  await expect.poll(() => deleted).toBe(true);
   await expect(card).toBeHidden();
 });

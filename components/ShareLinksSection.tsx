@@ -3,7 +3,6 @@
 import { useId, useImperativeHandle, useRef, useState, type Ref } from 'react';
 import Badge from '@/components/Badge';
 import Button from '@/components/Button';
-import ConfirmDialog from '@/components/ConfirmDialog';
 import LoadError from '@/components/LoadError';
 import Menu, { type MenuItem } from '@/components/Menu';
 import Panel, { PanelRow } from '@/components/Panel';
@@ -34,16 +33,8 @@ export interface ShareLinksSectionHandle {
 /** The id the section is rendered with, for a link or a scroll to it. */
 export const SHARE_LINKS_SECTION_ID = 'share-links';
 
-export const REVOKE_LINK_MESSAGE =
-  'The link will stop working. People who already joined stay on the list. Chats that already show its preview keep it.';
-
 export const EMPTY_SHARE_LINKS_TEXT =
   'No share links yet. A share link opens this list for anyone who has it, whatever its visibility.';
-
-/** "Revoke "Family chat"?", or, for a link without a label, "Revoke this link?". */
-export function revokeLinkTitle(label: string | null): string {
-  return label ? `Revoke “${label}”?` : 'Revoke this link?';
-}
 
 const linkName = (link: ShareLinkRow) => link.label || 'Untitled link';
 
@@ -91,7 +82,6 @@ export default function ShareLinksSection({
     | { mode: 'details'; link: ShareLinkRow & { token: string } }
     | null
   >(null);
-  const [revoking, setRevoking] = useState<ShareLinkRow | null>(null);
   const now = fixedNow ?? new Date();
 
   useImperativeHandle(
@@ -145,7 +135,8 @@ export default function ShareLinksSection({
         icon: 'trash',
         danger: true,
         separated: true,
-        onSelect: () => setRevoking(link),
+        // An Undo toast instead of a confirmation (WIS-387).
+        onSelect: () => control.revokeWithUndo(link._id),
       },
     ];
   };
@@ -269,23 +260,6 @@ export default function ShareLinksSection({
           occasion={occasion}
           onClose={() => setDialog(null)}
           onUpdate={control.update}
-        />
-      )}
-      {revoking && (
-        <ConfirmDialog
-          isOpen
-          title={revokeLinkTitle(revoking.label)}
-          message={REVOKE_LINK_MESSAGE}
-          onConfirm={async () => {
-            await control.revoke(revoking._id);
-            setRevoking(null);
-          }}
-          onCancel={() => setRevoking(null)}
-          confirmText="Revoke link"
-          pendingText="Revoking…"
-          cancelText="Cancel"
-          type="danger"
-          icon="link-off"
         />
       )}
     </section>

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup, waitFor, within } from '@testing-library/react';
+import { render, screen, cleanup, waitFor, within, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 const { router, showToast } = vi.hoisted(() => ({
@@ -26,7 +26,7 @@ vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }
 
 import WishlistDetail from '@/app/wishlists/[id]/page';
 import { REVOKE_LINKS_TITLE } from '@/components/RevokeShareLinksDialog';
-import { KICK_LINKS_SENTENCE } from '@/lib/utils/confirmationCopy';
+import { flushUndoableActions } from '@/lib/hooks/useUndoableAction';
 import { openListTab, pickRowAction } from './listMenu';
 
 /**
@@ -144,9 +144,16 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  // Nothing a test left waiting reaches the next one.
+  flushUndoableActions();
   cleanup();
   vi.unstubAllGlobals();
 });
+
+/** Lets the Undo window end now: what's waiting is sent (WIS-387). */
+const commitUndo = () => act(async () => flushUndoableActions());
+
+const withUndo = expect.objectContaining({ action: expect.objectContaining({ label: 'Undo' }) });
 
 /** Open People, once its rows and the share links have been read. */
 async function openPeople() {
@@ -170,33 +177,28 @@ const LIVE = [
 ];
 
 describe('kicking a member', () => {
-  it('says they can’t use the share links when the list has live ones', async () => {
+  // With live links it says they're kept out of those too (WIS-338).
+  it('offers Undo naming only them, and is followed by no revoke prompt', async () => {
     server.links = LIVE;
     const user = await openPeople();
     await pickRowAction(user, 'carol', 'Remove');
-    const dialog = await screen.findByRole('alertdialog', { name: 'Remove @carol?' });
-    expect(dialog).toHaveTextContent(KICK_LINKS_SENTENCE);
+    expect(showToast).toHaveBeenCalledWith(
+      "Removed @carol from the list. They can't use its share links.",
+      'success',
+      withUndo
+    );
     // Never who did it.
-    expect(dialog).not.toHaveTextContent('@alice');
-  });
-
-  it('says nothing about links when the list has none that work', async () => {
-    server.links = [
-      link({ _id: 'old', label: 'Old QR', state: 'expired', expiresAt: '2026-01-01T00:00:00Z' }),
-    ];
-    const user = await openPeople();
-    await pickRowAction(user, 'carol', 'Remove');
-    const dialog = await screen.findByRole('alertdialog', { name: 'Remove @carol?' });
-    expect(dialog).not.toHaveTextContent(KICK_LINKS_SENTENCE);
-  });
-
-  it('is followed by no revoke prompt', async () => {
-    server.links = LIVE;
-    const user = await openPeople();
-    await pickRowAction(user, 'carol', 'Remove');
-    const dialog = await screen.findByRole('alertdialog', { name: 'Remove @carol?' });
-    await user.click(within(dialog).getByRole('button', { name: 'Remove' }));
-    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+    expect(JSON.stringify(showToast.mock.calls)).not.toContain('@alice');
+    await commitUndo();
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(
+          ([url, init]) =>
+            /\/members\//.test(url) && (init as RequestInit | undefined)?.method === 'DELETE'
+        )
+      ).toBe(true)
+    );
+    await act(async () => {});
     expect(screen.queryByRole('dialog', { name: REVOKE_LINKS_TITLE })).not.toBeInTheDocument();
   });
 });
@@ -209,12 +211,12 @@ describe('taking a co-owner off the list', () => {
     ];
     const user = await openPeople();
     await pickRowAction(user, 'bob', 'Remove');
-    const confirm = await screen.findByRole('alertdialog', { name: 'Remove @bob as an owner?' });
-    await user.click(within(confirm).getByRole('button', { name: 'Remove' }));
+    // Only once the removal has gone through: nothing while Undo is offered.
+    await act(async () => {});
+    expect(screen.queryByRole('dialog', { name: REVOKE_LINKS_TITLE })).not.toBeInTheDocument();
+    await commitUndo();
 
     const prompt = await screen.findByRole('dialog', { name: REVOKE_LINKS_TITLE });
-    // Only once the confirmation has closed, never stacked on it.
-    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
     expect(prompt).toHaveTextContent("@bob could copy this list's share links.");
     const rows = within(within(prompt).getByRole('list', { name: 'Share links' })).getAllByRole(
       'listitem'
@@ -235,7 +237,9 @@ describe('taking a co-owner off the list', () => {
       fetchMock.mock.calls.filter(
         ([url, init]) => /\/links\//.test(url) && (init as RequestInit)?.method === 'DELETE'
       )
-    ).toEqual([['/api/wishlists/birthday/links/family', { method: 'DELETE' }]]);
+    ).toEqual([
+      ['/api/wishlists/birthday/links/family', expect.objectContaining({ method: 'DELETE' })],
+    ]);
     expect(server.links.map((l) => l._id)).toEqual(['qr', 'old']);
 
     await user.click(within(prompt).getByRole('button', { name: 'Done' }));
@@ -250,8 +254,7 @@ describe('taking a co-owner off the list', () => {
     server.links = LIVE;
     const user = await openPeople();
     await pickRowAction(user, 'bob', 'Make member');
-    const confirm = await screen.findByRole('alertdialog', { name: 'Make @bob a member?' });
-    await user.click(within(confirm).getByRole('button', { name: 'Make member' }));
+    await commitUndo();
     expect(await screen.findByRole('dialog', { name: REVOKE_LINKS_TITLE })).toBeInTheDocument();
   });
 
@@ -261,10 +264,11 @@ describe('taking a co-owner off the list', () => {
     ];
     const user = await openPeople();
     await pickRowAction(user, 'bob', 'Remove');
-    const confirm = await screen.findByRole('alertdialog', { name: 'Remove @bob as an owner?' });
-    await user.click(within(confirm).getByRole('button', { name: 'Remove' }));
-    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
-    await waitFor(() => expect(showToast).toHaveBeenCalledWith('Owner removed', 'success'));
+    await commitUndo();
+    await waitFor(() =>
+      expect(screen.queryByRole('link', { name: '@bob' })).not.toBeInTheDocument()
+    );
+    await act(async () => {});
     expect(screen.queryByRole('dialog', { name: REVOKE_LINKS_TITLE })).not.toBeInTheDocument();
   });
 
@@ -273,10 +277,11 @@ describe('taking a co-owner off the list', () => {
     const user = await openPeople();
     server.refuseOwners = true;
     await pickRowAction(user, 'bob', 'Remove');
-    const confirm = await screen.findByRole('alertdialog', { name: 'Remove @bob as an owner?' });
-    await user.click(within(confirm).getByRole('button', { name: 'Remove' }));
-    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
-    expect(showToast).toHaveBeenCalledWith('This person is not an owner', 'error');
+    await commitUndo();
+    await waitFor(() =>
+      expect(showToast).toHaveBeenCalledWith('This person is not an owner', 'error')
+    );
+    await act(async () => {});
     expect(screen.queryByRole('dialog', { name: REVOKE_LINKS_TITLE })).not.toBeInTheDocument();
   });
 });

@@ -30,6 +30,7 @@ vi.mock('next/link', () => ({
 vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }));
 
 import NeedsYou from '@/components/NeedsYou';
+import { flushUndoableActions } from '@/lib/hooks/useUndoableAction';
 import type { WishlistSummary } from '@/components/WishlistCard';
 import type { PendingInvite } from '@/components/InviteCard';
 
@@ -183,12 +184,16 @@ describe('Needs you', () => {
     await waitFor(() => expect(rows()).toHaveLength(2));
 
     await userEvent.setup().click(within(rows()[0]).getByRole('button', { name: 'Decline' }));
+    // The row goes at once, and the decline waits out its Undo window (WIS-387).
+    expect(rows()).toHaveLength(1);
+    expect(rows()[0]).toHaveTextContent('List 2');
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/invites/1', expect.anything());
+    await act(async () => flushUndoableActions());
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/invites/1',
       expect.objectContaining({ body: JSON.stringify({ action: 'decline' }) })
     );
     await waitFor(() => expect(rows()).toHaveLength(1));
-    expect(rows()[0]).toHaveTextContent('List 2');
     expect(push).not.toHaveBeenCalled();
   });
 
@@ -436,6 +441,23 @@ describe('the birthday nudge (WIS-344)', () => {
     again.unmount();
 
     today(2027, 10, 6);
+    render(<NeedsYou ownLists={[]} onNewBirthdayList={vi.fn()} />);
+    await waitFor(() => expect(nudge()).not.toBeNull());
+  });
+
+  it('brings the nudge back on Undo, and it stays back (WIS-387)', async () => {
+    const first = render(<NeedsYou ownLists={[]} onNewBirthdayList={vi.fn()} />);
+    await waitFor(() => expect(nudge()).not.toBeNull());
+    await userEvent
+      .setup()
+      .click(screen.getByRole('button', { name: 'Dismiss until next birthday' }));
+    expect(block()).toBeNull();
+    const call = showToast.mock.calls.find(([m]) => m === 'Hidden until your next birthday')!;
+    expect(call[2].action.label).toBe('Undo');
+    act(() => call[2].action.onClick());
+    expect(nudge()).not.toBeNull();
+    first.unmount();
+
     render(<NeedsYou ownLists={[]} onNewBirthdayList={vi.fn()} />);
     await waitFor(() => expect(nudge()).not.toBeNull());
   });

@@ -1,4 +1,4 @@
-import type { Locator, Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
 import { test, expect, failedRequest } from './fixtures';
 
 // The seeded list has one owner, and "Make member" only shows on a co-owner's
@@ -54,9 +54,6 @@ async function rowItem(page: Page, name: string) {
   await rowMenu(page).click();
   return page.getByRole('menuitem', { name });
 }
-/** The dialog Make member asks in before anything is sent. */
-const demoteDialog = (page: Page) =>
-  page.getByRole('alertdialog', { name: `Make @${coOwner.username} a member?` });
 const DEMOTED = `@${coOwner.username} is now a member`;
 
 /** Leave list, from the ⋯ menu in the list's header. */
@@ -65,90 +62,84 @@ async function pickLeave(page: Page) {
   await page.getByRole('menuitem', { name: 'Leave list' }).click();
 }
 
-/** Open the co-owner's Make member dialog and confirm it. */
+/**
+ * Make the co-owner a member, and send it at once by dismissing its Undo toast
+ * (it otherwise goes when the Undo window ends, WIS-387).
+ */
 async function demote(page: Page) {
   await (await rowItem(page, 'Make member')).click();
-  await demoteDialog(page).getByRole('button', { name: 'Make member' }).click();
+  await toast(page, DEMOTED).getByRole('button', { name: 'Dismiss notification' }).click();
 }
 
-/** Their row's menu offers `name`, and can act on it; closed again after. */
+/**
+ * Their row's menu offers `name`, and can act on it; closed again after. A
+ * deferred change (WIS-387) shows the row as it will be before its request and
+ * reads have settled, and holds the row's actions until then, so the menu is
+ * opened again until they're free.
+ */
 async function expectRowOffers(page: Page, name: string) {
-  const item = await rowItem(page, name);
-  await expect(item).toBeVisible();
-  await expect(item).not.toHaveAttribute('aria-disabled', 'true');
-  await page.keyboard.press('Escape');
+  await expect(async () => {
+    const item = await rowItem(page, name);
+    try {
+      await expect(item).toBeVisible({ timeout: 1000 });
+      await expect(item).not.toHaveAttribute('aria-disabled', 'true', { timeout: 1000 });
+    } finally {
+      await page.keyboard.press('Escape');
+    }
+  }).toPass();
 }
 
 // regression: "Make member" had no confirmation and no in-flight guard, so a
-// double click sent two demotions before the refresh moved the row. The first
-// demoted the co-owner; the second found they were no longer an owner, and its
-// error toast followed the success. It now asks first, so the clicks land on
-// its dialog's confirm. The second variant clicks twice in one task, before
-// React has rendered the button disabled, so only the handlers' own guards can
-// turn it away.
-for (const variant of [
-  { name: 'a double click', click: (button: Locator) => button.dblclick() },
-  {
-    name: 'two clicks before the page re-renders',
-    click: (button: Locator) =>
-      button.evaluate((el: HTMLElement) => {
-        el.click();
-        el.click();
-      }),
-  },
-]) {
-  test(`regression: ${variant.name} on Make member sends one demotion`, async ({ page }) => {
-    // Every PATCH is held until `answer()`, so both clicks land while the first
-    // is in flight. Then they're answered the way the server would: the first
-    // succeeds, any later one finds nobody left to demote.
-    let requests = 0;
-    let demoted = false;
-    let answer!: () => void;
-    const answered = new Promise<void>((resolve) => (answer = resolve));
-    await addCoOwner(page, () => demoted);
-    await page.route(`**/api/wishlists/*/owners/${coOwnerId}`, async (route) => {
-      if (route.request().method() !== 'PATCH') return route.fallback();
-      requests += 1;
-      const first = requests === 1;
-      await answered;
-      if (!first) {
-        return route.fulfill({ status: 404, json: { success: false, error: SECOND_ANSWER } });
-      }
-      demoted = true;
-      await route.fulfill({ json: { success: true } });
-    });
-
-    await openOwners(page);
-    // While there are two owners, Leave list asks to confirm stepping down.
-    await pickLeave(page);
-    const leaveDialog = page.getByRole('alertdialog', { name: 'Leave “E2E Birthday List”?' });
-    await leaveDialog.getByRole('button', { name: 'Cancel' }).click();
-    await expect(leaveDialog).toBeHidden();
-    await (await rowItem(page, 'Make member')).click();
-    const dialog = demoteDialog(page);
-    await expect(dialog).toContainText('Making them an owner again needs their acceptance.');
-    await variant.click(dialog.getByRole('button', { name: 'Make member' }));
-
-    // While the demotion runs, the dialog says so, and takes no more clicks.
-    // Soft, so the request count below is checked either way.
-    await expect.poll(() => requests).toBeGreaterThan(0);
-    await expect.soft(dialog.getByRole('button', { name: 'Making member…' })).toBeDisabled();
-    await expect.soft(dialog.getByRole('button', { name: 'Cancel' })).toBeDisabled();
-
-    answer();
-    await expect(toast(page, DEMOTED)).toBeVisible();
-    expect(requests).toBe(1);
-    // Counted the moment the success shows: toasts dismiss themselves after 4s.
-    expect(await toast(page, SECOND_ANSWER).count()).toBe(0);
-    await expect(dialog).toBeHidden();
-    // The refresh moved them to Members, where the row offers "Make owner".
-    await expectRowOffers(page, 'Make owner');
-    // The signed-in user is the only owner left, so they can't leave: their
-    // Leave list explains why instead.
-    await pickLeave(page);
-    await expect(page.getByRole('alertdialog', { name: "You're the only owner" })).toBeVisible();
+// double click sent two demotions. It now waits out an Undo window (WIS-387):
+// undone, nothing is sent, so the co-owner is never told; and the row is held
+// until it has gone, so nothing else can be sent for them meanwhile.
+test('regression: Make member offers Undo, sends nothing when undone, and one demotion after', async ({
+  page,
+}) => {
+  let requests = 0;
+  let demoted = false;
+  await addCoOwner(page, () => demoted);
+  await page.route(`**/api/wishlists/*/owners/${coOwnerId}`, async (route) => {
+    if (route.request().method() !== 'PATCH') return route.fallback();
+    requests += 1;
+    if (requests > 1) {
+      return route.fulfill({ status: 404, json: { success: false, error: SECOND_ANSWER } });
+    }
+    demoted = true;
+    await route.fulfill({ json: { success: true } });
   });
-}
+
+  await openOwners(page);
+  // While there are two owners, Leave list asks to confirm stepping down.
+  await pickLeave(page);
+  const leaveDialog = page.getByRole('alertdialog', { name: 'Leave “E2E Birthday List”?' });
+  await leaveDialog.getByRole('button', { name: 'Cancel' }).click();
+  await expect(leaveDialog).toBeHidden();
+
+  await (await rowItem(page, 'Make member')).click();
+  await expect(page.getByRole('alertdialog')).toHaveCount(0);
+  await toast(page, DEMOTED).getByRole('button', { name: 'Undo' }).click();
+  await expectRowOffers(page, 'Make member');
+  // Past the Undo window: still nothing sent.
+  await page.waitForTimeout(5_500);
+  expect(requests).toBe(0);
+
+  await (await rowItem(page, 'Make member')).click();
+  // Held while it waits: shown as a member, whose actions do nothing.
+  const remove = await rowItem(page, 'Remove');
+  await expect(remove).toHaveAttribute('aria-disabled', 'true');
+  await page.keyboard.press('Escape');
+  await toast(page, DEMOTED).getByRole('button', { name: 'Dismiss notification' }).click();
+
+  await expect.poll(() => requests).toBe(1);
+  expect(await toast(page, SECOND_ANSWER).count()).toBe(0);
+  // The refresh moved them to Members, where the row offers "Make owner".
+  await expectRowOffers(page, 'Make owner');
+  // The signed-in user is the only owner left, so they can't leave: their
+  // Leave list explains why instead.
+  await pickLeave(page);
+  await expect(page.getByRole('alertdialog', { name: "You're the only owner" })).toBeVisible();
+});
 
 test('a failed demotion gives the buttons back, so it can be retried', async ({
   page,
@@ -173,13 +164,11 @@ test('a failed demotion gives the buttons back, so it can be retried', async ({
   await demote(page);
 
   await expect(toast(page, 'Try again later')).toBeVisible();
-  await expect(demoteDialog(page)).toBeHidden();
   await expectRowOffers(page, 'Make member');
   await expectRowOffers(page, 'Remove');
 
   await demote(page);
-  await expect(toast(page, DEMOTED)).toBeVisible();
-  expect(requests).toBe(2);
+  await expect.poll(() => requests).toBe(2);
   // Wait for the members refresh to move them to Members, so the test doesn't
   // end with the refresh still in the route above.
   await expectRowOffers(page, 'Make owner');

@@ -39,8 +39,19 @@ test('invite a whole group from the People tab', async ({ page }) => {
       '@e2ehost: This person already has a pending invite'
     );
 
+    // The cancel waits out an Undo window (WIS-387): dismissing its toast sends
+    // it now, and it's waited for, so no invite is left for the next spec.
     await cancel.click();
     await expect(cancel).toHaveCount(0);
+    const cancelled = page.waitForResponse(
+      (r) => r.request().method() === 'DELETE' && /\/invites\//.test(r.url())
+    );
+    await page
+      .getByRole('status')
+      .filter({ hasText: 'Invitation cancelled' })
+      .getByRole('button', { name: 'Dismiss notification' })
+      .click();
+    expect((await cancelled).ok()).toBe(true);
   } finally {
     await page.request.delete(`/api/users/me/groups/${group.id}`);
     await page.request.delete(`/api/users/${host._id}/follow`);

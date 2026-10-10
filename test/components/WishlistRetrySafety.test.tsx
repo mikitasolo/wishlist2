@@ -4,7 +4,7 @@
 // is sent again with the same Idempotency-Key, which the server answers with
 // the item the first attempt saved; a delete answered 404 is already done.
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup, waitFor, within } from '@testing-library/react';
+import { act, render, screen, cleanup, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ApiItem } from '@/types/api';
 
@@ -41,6 +41,7 @@ vi.mock('@/lib/utils/requestTimeout', async (importOriginal) => {
 
 import WishlistDetail from '@/app/wishlists/[id]/page';
 import { REQUEST_TIMEOUT_MESSAGE } from '@/lib/utils/requestTimeout';
+import { flushUndoableActions } from '@/lib/hooks/useUndoableAction';
 
 let userRole: 'owner' | 'member';
 let listItems: ApiItem[];
@@ -270,10 +271,15 @@ describe('a retried delete (WIS-158)', () => {
     await user.click(within(card).getByRole('button', { name: 'Edit item' }));
     const dialog = await screen.findByRole('dialog', { name: 'Edit item' });
     await user.click(within(dialog).getByRole('button', { name: 'Delete item' }));
-    const confirm = await screen.findByRole('alertdialog', { name: 'Delete item' });
-    await user.click(within(confirm).getByRole('button', { name: 'Delete' }));
 
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Edit item' })).toBeNull());
+    expect(articles('Lamp')).toHaveLength(0);
+    // Its Undo window over (WIS-387), the delete goes, and its 404 is a delete.
+    await act(async () => flushUndoableActions());
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.filter(([, init]) => init?.method === 'DELETE')).toHaveLength(1)
+    );
+    await act(async () => {});
     expect(articles('Lamp')).toHaveLength(0);
     expect(showToast.mock.calls.filter(([, type]) => type === 'error')).toEqual([]);
   });
@@ -291,11 +297,11 @@ describe('a retried delete (WIS-158)', () => {
     await user.click(within(card).getByRole('button', { name: 'Edit proposed item' }));
     const dialog = await screen.findByRole('dialog', { name: 'Edit proposed item' });
     await user.click(within(dialog).getByRole('button', { name: 'Delete item' }));
-    const confirm = await screen.findByRole('alertdialog', { name: 'Delete item' });
-    await user.click(within(confirm).getByRole('button', { name: 'Delete' }));
+    expect(articles('Kite')).toHaveLength(0);
 
+    // The deferred delete (WIS-387) is refused: the proposal comes back.
+    await act(async () => flushUndoableActions());
     await waitFor(() => expect(showToast).toHaveBeenCalledWith('Item not found', 'error'));
-    expect(screen.getByRole('dialog', { name: 'Edit proposed item' })).toBe(dialog);
-    expect(articles('Kite')).toHaveLength(1);
+    await waitFor(() => expect(articles('Kite')).toHaveLength(1));
   });
 });

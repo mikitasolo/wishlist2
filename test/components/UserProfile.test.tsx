@@ -49,6 +49,13 @@ vi.mock('@/components/CreateWishlistModal', () => ({
 vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }));
 
 import UserProfile from '@/app/users/[username]/page';
+import { flushUndoableActions } from '@/lib/hooks/useUndoableAction';
+
+/** The Undo of the latest toast that offered one. */
+function undoButton() {
+  const call = [...showToast.mock.calls].reverse().find((c) => c[2]?.action?.label === 'Undo');
+  return call?.[2].action as { onClick: () => void };
+}
 
 const signedIn = (username: string): Session => ({
   data: { user: { id: `${username}-id`, username } },
@@ -378,30 +385,66 @@ describe('UserProfile — following', () => {
     expect(await screen.findByRole('button', { name: 'Unfollow @friend' })).toBeTruthy();
   });
 
-  it('asks before unfollowing a friend, and Cancel keeps following', async () => {
+  it('unfollows a friend with an Undo, sending the DELETE only once its window has passed (WIS-387)', async () => {
     session.current = signedIn('me');
     const fetchMock = stubWithFollow(
       profile({ isFollowing: true, followsYou: true, isFriend: true })
     );
     render(<UserProfile />);
     fireEvent.click(await screen.findByRole('button', { name: 'Unfollow @friend' }));
-    expect(await screen.findByText('Unfollow @friend?')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    // No confirmation: it shows as unfollowed at once, and nothing is sent yet.
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(await screen.findByRole('button', { name: 'Follow back @friend' })).toBeTruthy();
+    expect(showToast).toHaveBeenCalledWith(
+      'Unfollowed @friend',
+      'success',
+      expect.objectContaining({ action: expect.objectContaining({ label: 'Undo' }) })
+    );
     expect(follows(fetchMock)).toHaveLength(0);
-    expect(screen.getByRole('button', { name: 'Unfollow @friend' })).toBeTruthy();
-  });
-
-  it('unfollows a friend once confirmed', async () => {
-    session.current = signedIn('me');
-    const fetchMock = stubWithFollow(
-      profile({ isFollowing: true, followsYou: true, isFriend: true })
-    );
-    render(<UserProfile />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Unfollow @friend' }));
-    const dialog = await screen.findByRole('alertdialog');
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Unfollow' }));
+    act(() => flushUndoableActions());
     await waitFor(() => expect(follows(fetchMock)).toHaveLength(1));
     expect(follows(fetchMock)[0][1]).toMatchObject({ method: 'DELETE' });
+  });
+
+  it('sends nothing when the unfollow is undone, and follows again', async () => {
+    session.current = signedIn('me');
+    const fetchMock = stubWithFollow(
+      profile({ isFollowing: true, followsYou: true, isFriend: true })
+    );
+    render(<UserProfile />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Unfollow @friend' }));
+    act(() => undoButton().onClick());
+    expect(await screen.findByRole('button', { name: 'Unfollow @friend' })).toBeTruthy();
+    act(() => flushUndoableActions());
+    expect(follows(fetchMock)).toHaveLength(0);
+  });
+
+  it('takes a pending unfollow back when Follow is tapped again, sending nothing', async () => {
+    session.current = signedIn('me');
+    const fetchMock = stubWithFollow(profile({ isFollowing: true }));
+    render(<UserProfile />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Unfollow @friend' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Follow @friend' }));
+    expect(await screen.findByRole('button', { name: 'Unfollow @friend' })).toBeTruthy();
+    act(() => flushUndoableActions());
+    expect(follows(fetchMock)).toHaveLength(0);
+  });
+
+  it('puts the follow back when the deferred unfollow fails', async () => {
+    session.current = signedIn('me');
+    const fetchMock = stubWithFollow(profile({ isFollowing: true }));
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url === '/api/users/by-username/friend') {
+        return json({ success: true, data: profile({ isFollowing: true }) });
+      }
+      if (url === '/api/users/friend-id/wishlists') return json({ success: true, data: [] });
+      return { ok: false, status: 500, json: async () => ({ success: false }) };
+    });
+    render(<UserProfile />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Unfollow @friend' }));
+    act(() => flushUndoableActions());
+    expect(await screen.findByRole('button', { name: 'Unfollow @friend' })).toBeTruthy();
+    expect(showToast).toHaveBeenCalledWith('Something went wrong', 'error');
   });
 
   it('stops showing a birthday once you unfollow a friend (WIS-323)', async () => {
@@ -412,19 +455,8 @@ describe('UserProfile — following', () => {
     render(<UserProfile />);
     await screen.findByText(/March 14|14 March/);
     fireEvent.click(screen.getByRole('button', { name: 'Unfollow @friend' }));
-    const dialog = await screen.findByRole('alertdialog');
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Unfollow' }));
-
     await waitFor(() => expect(screen.queryByText(/March 14|14 March/)).toBeNull());
-  });
-
-  it('unfollows someone who is not a friend with no confirmation', async () => {
-    session.current = signedIn('me');
-    const fetchMock = stubWithFollow(profile({ isFollowing: true }));
-    render(<UserProfile />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Unfollow @friend' }));
-    await waitFor(() => expect(follows(fetchMock)).toHaveLength(1));
-    expect(screen.queryByRole('alertdialog')).toBeNull();
+    act(() => flushUndoableActions());
   });
 
   it('says what a friends-only profile needs, before and after following', async () => {

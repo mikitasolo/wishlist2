@@ -1,10 +1,12 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { useToast } from '@/components/ToastProvider';
 import { useKnownSession } from '@/lib/hooks/useKnownSession';
 import { useLocalToday } from '@/lib/hooks/useLocalToday';
 import { withRequestTimeout } from '@/lib/utils/requestTimeout';
 import { birthdayNudge, type BirthdayRuleList } from '@/lib/utils/birthdayNudge';
+import { UNDO_LABEL } from '@/lib/utils/deferredCommit';
 
 const PROFILE_TIMEOUT_MS = 10_000;
 
@@ -43,6 +45,7 @@ export function useBirthdayNudge(
   const { data: session, status } = useKnownSession();
   const userId = enabled && status === 'authenticated' ? (session?.user?.id ?? null) : null;
   const today = useLocalToday();
+  const { showToast } = useToast();
   const [read, setRead] = useState<{ userId: string; birthday: string | null } | null>(null);
   // The birthday it was last dismissed for, from storage; `null` until read.
   const [dismissed, setDismissed] = useState<{ userId: string; value: string | null } | null>(null);
@@ -81,15 +84,30 @@ export function useBirthdayNudge(
   const due = ownLists ? birthdayNudge(birthday, ownLists, today) : null;
   const occurrence = due?.occurrence ?? null;
 
+  // Dismissed with an Undo (WIS-387): only this browser remembers it, so Undo
+  // simply puts back what it remembered before.
   const dismiss = useCallback(() => {
     if (!userId || !occurrence) return;
-    setDismissed({ userId, value: occurrence });
+    const remember = (value: string | null) => {
+      setDismissed({ userId, value });
+      try {
+        if (value === null) localStorage.removeItem(dismissedKey(userId));
+        else localStorage.setItem(dismissedKey(userId), value);
+      } catch {
+        // Not remembered: it comes back next visit.
+      }
+    };
+    let before: string | null = null;
     try {
-      localStorage.setItem(dismissedKey(userId), occurrence);
+      before = localStorage.getItem(dismissedKey(userId));
     } catch {
-      // Not remembered: it comes back next visit.
+      // Storage unavailable: nothing to put back.
     }
-  }, [userId, occurrence]);
+    remember(occurrence);
+    showToast('Hidden until your next birthday', 'success', {
+      action: { label: UNDO_LABEL, onClick: () => remember(before) },
+    });
+  }, [userId, occurrence, showToast]);
 
   if (!due || !dismissed || dismissed.userId !== userId) return null;
   if (dismissed.value === due.occurrence) return null;

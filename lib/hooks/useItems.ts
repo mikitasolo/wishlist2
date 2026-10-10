@@ -36,6 +36,8 @@ export interface ReviewRequestOptions {
    * an edit landing since is answered 409 with the proposal as it is now.
    */
   expectedVersion?: string;
+  /** Sent as the page goes away (a deferred commit's flush, WIS-387). */
+  keepalive?: boolean;
 }
 
 /** What `onError` is told besides the message. */
@@ -79,7 +81,7 @@ export function useUpdateItem(
     async (
       id: string,
       updates: ItemUpdate,
-      { expectProposal = false, expectedVersion }: ReviewRequestOptions = {}
+      { expectProposal = false, expectedVersion, keepalive = false }: ReviewRequestOptions = {}
     ): Promise<ApiItem | null> => {
       const body = expectProposal
         ? {
@@ -100,6 +102,7 @@ export function useUpdateItem(
               },
               body: JSON.stringify(body),
               signal,
+              keepalive,
             });
 
             const result: ApiResponse<ApiItem> = await response.json();
@@ -203,6 +206,7 @@ export function useDeleteItem(
       {
         notFoundIsDone = false,
         expectProposal = false,
+        keepalive = false,
       }: ReviewRequestOptions & {
         /**
          * Count a 404 as already deleted (WIS-158): a retry whose first attempt
@@ -224,6 +228,7 @@ export function useDeleteItem(
             const response = await fetch(url, {
               method: 'DELETE',
               signal,
+              keepalive,
             });
 
             if (notFoundIsDone && response.status === 404) return;

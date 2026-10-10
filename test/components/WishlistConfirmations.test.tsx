@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup, waitFor, within } from '@testing-library/react';
+import { render, screen, cleanup, waitFor, within, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { setDiscreetMode } from '@/lib/hooks/useDiscreetMode';
 
@@ -30,6 +30,7 @@ vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }
 
 import WishlistDetail from '@/app/wishlists/[id]/page';
 import { pickLeave, openListTab, pickRowAction } from './listMenu';
+import { flushUndoableActions } from '@/lib/hooks/useUndoableAction';
 
 // User ids double as usernames here. Alice is signed in.
 let owners: string[];
@@ -273,7 +274,10 @@ describe("an owner's confirmations", () => {
 
   // regression: it read "remove carol" (no @) and said nothing of what removing
   // does, under a trash can.
-  it("regression: removing a member says what they lose and what they're told, with no count of their reservations", async () => {
+  // WIS-387: Remove has an Undo toast instead of a confirmation. It names only
+  // the person removed, never a count of what they reserved, and nothing is
+  // sent until the Undo window has ended.
+  it('regression: removing a member offers Undo with no count of their reservations, sending nothing meanwhile', async () => {
     const user = userEvent.setup();
     render(<WishlistDetail />);
     await itemsShown();
@@ -282,21 +286,21 @@ describe("an owner's confirmations", () => {
 
     await pickRowAction(user, 'carol', 'Remove');
 
-    const dialog = await screen.findByRole('alertdialog', { name: 'Remove @carol?' });
-    expect(dialog).toHaveAccessibleDescription(
-      "They lose access, anything they reserved here goes back on the list, and they're told they were removed (not by whom)."
-    );
-    expect(iconOf(dialog)).toBe('user-minus');
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    const [message, , options] = showToast.mock.calls.at(-1)!;
+    expect(message).toBe('Removed @carol from the list');
+    expect(options?.action?.label).toBe('Undo');
     // Owners never see booking status: no count, however much Carol holds.
-    expect(dialog).not.toHaveTextContent(/\d/);
+    expect(message).not.toMatch(/\d|reserv|book/i);
+    expect(requests('/api/wishlists/birthday/members/m-carol', 'DELETE')).toHaveLength(0);
 
-    await user.click(within(dialog).getByRole('button', { name: 'Remove' }));
+    await act(async () => flushUndoableActions());
     await waitFor(() =>
       expect(requests('/api/wishlists/birthday/members/m-carol', 'DELETE')).toHaveLength(1)
     );
   });
 
-  it('removing a co-owner says what they lose and that they are told, with no count either', async () => {
+  it('removing a co-owner offers Undo, with no count either', async () => {
     const user = userEvent.setup();
     render(<WishlistDetail />);
     await itemsShown();
@@ -305,12 +309,15 @@ describe("an owner's confirmations", () => {
 
     await pickRowAction(user, 'bob', 'Remove');
 
-    const dialog = await screen.findByRole('alertdialog', { name: 'Remove @bob as an owner?' });
-    expect(dialog).toHaveAccessibleDescription(
-      "They lose access, and it comes off their profile and dashboard. They're told they were removed (not by whom)."
-    );
-    expect(iconOf(dialog)).toBe('user-minus');
-    expect(dialog).not.toHaveTextContent(/\d|reserv|book/i);
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    const [message, , options] = showToast.mock.calls.at(-1)!;
+    expect(message).toBe('Removed @bob as an owner');
+    expect(options?.action?.label).toBe('Undo');
+    expect(message).not.toMatch(/\d|reserv|book/i);
+    // Undone, it's never sent.
+    await act(async () => options.action.onClick());
+    await act(async () => flushUndoableActions());
+    expect(requests('/api/wishlists/birthday/owners/bob', 'DELETE')).toHaveLength(0);
   });
 
   it('a co-owner stepping down is told what they lose, with a leave icon and no count', async () => {

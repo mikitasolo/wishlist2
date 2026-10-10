@@ -27,6 +27,14 @@ export type ToastAction = { label: string; onClick: () => void } | { label: stri
 
 interface ToastOptions {
   action?: ToastAction;
+  /** How long it stays up (ms), instead of the default for its kind. */
+  duration?: number;
+  /**
+   * Called once when the toast goes for any reason but its action being used:
+   * its timer, its close button, a swipe, a tap, `dismissToast`, or being
+   * dropped from a full stack. An Undo toast commits on it (`useUndoableAction`).
+   */
+  onDismiss?: () => void;
 }
 
 interface Toast {
@@ -34,6 +42,7 @@ interface Toast {
   message: string;
   type: ToastType;
   action?: ToastAction;
+  duration?: number;
   /** How many identical toasts this one stands for (shown as "×2"). */
   count: number;
   /** Bumped when an identical toast merges in, which restarts the timer. */
@@ -41,7 +50,10 @@ interface Toast {
 }
 
 interface ToastContextType {
-  showToast: (message: string, type?: ToastType, options?: ToastOptions) => void;
+  /** Shows a toast and returns its id (for `dismissToast`). */
+  showToast: (message: string, type?: ToastType, options?: ToastOptions) => string;
+  /** Takes a toast down, if it's still up. */
+  dismissToast: (id: string) => void;
 }
 
 export const TOAST_MS = 4000;
@@ -78,6 +90,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const [focused, setFocused] = useState(false);
   const paused = hovered || focused;
 
+  // Each toast's `onDismiss`, by id, until the toast goes (see the effect below),
+  // and the toasts that went by their action, which don't call it.
+  const dismissHandlers = useRef(new Map<string, () => void>());
+  const actioned = useRef(new Set<string>());
+
   const removeToast = useCallback((id: string) => {
     // The element that held hover or focus may be the one going away, with no
     // mouseleave / blur to follow, so a removal always un-pauses the stack.
@@ -88,11 +105,22 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
   const showToast = useCallback(
     (message: string, type: ToastType = 'info', options: ToastOptions = {}) => {
-      const { action } = options;
+      const { action, duration, onDismiss } = options;
+      // A toast with its own dismiss handler is its own: it never merges. The
+      // id returned is a merged toast's only while it's unmerged, so only one
+      // with `onDismiss` can be relied on to be taken down by it.
+      const id = `toast-${counter++}`;
       setToasts((prev) => {
-        const twin = prev.find(
-          (t) => t.message === message && t.type === type && sameAction(t.action, action)
-        );
+        const twin = onDismiss
+          ? undefined
+          : prev.find(
+              (t) =>
+                !dismissHandlers.current.has(t.id) &&
+                t.message === message &&
+                t.type === type &&
+                t.duration === duration &&
+                sameAction(t.action, action)
+            );
         if (twin) {
           // An identical toast merges: it moves to the front, counted, timer restarted.
           return [
@@ -100,15 +128,36 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             { ...twin, action, count: twin.count + 1, stamp: twin.stamp + 1 },
           ];
         }
-        const next = [
-          ...prev,
-          { id: `toast-${counter++}`, message, type, action, count: 1, stamp: 0 },
-        ];
+        // Registered with the toast itself, so the effect below can't see the
+        // handler before the toast it belongs to.
+        if (onDismiss) dismissHandlers.current.set(id, onDismiss);
+        const next = [...prev, { id, message, type, action, duration, count: 1, stamp: 0 }];
         return next.slice(-MAX_TOASTS);
       });
+      return id;
     },
     []
   );
+
+  const dismissToast = useCallback((id: string) => removeToast(id), [removeToast]);
+
+  // Marks a toast as gone by its action, so its `onDismiss` isn't called.
+  const actionUsed = useCallback((id: string) => {
+    actioned.current.add(id);
+  }, []);
+
+  // A toast that has gone, however it went (removed, or dropped from a full
+  // stack), answers its `onDismiss` once, unless its action was used.
+  useEffect(() => {
+    const shown = new Set(toasts.map((t) => t.id));
+    for (const [id, onDismiss] of [...dismissHandlers.current]) {
+      if (shown.has(id)) continue;
+      dismissHandlers.current.delete(id);
+      if (actioned.current.delete(id)) continue;
+      onDismiss();
+    }
+    for (const id of [...actioned.current]) if (!shown.has(id)) actioned.current.delete(id);
+  }, [toasts]);
 
   // An empty stack can't be hovered or focused any more.
   useEffect(() => {
@@ -119,7 +168,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   }, [toasts.length]);
 
   return (
-    <ToastContext.Provider value={{ showToast }}>
+    <ToastContext.Provider value={{ showToast, dismissToast }}>
       {children}
 
       <div
@@ -139,6 +188,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             depth={toasts.length - 1 - i}
             paused={paused}
             onRemove={removeToast}
+            onAction={actionUsed}
           />
         ))}
       </div>
@@ -151,15 +201,17 @@ function ToastItem({
   depth,
   paused,
   onRemove,
+  onAction,
 }: {
   toast: Toast;
   depth: number;
   paused: boolean;
   onRemove: (id: string) => void;
+  onAction: (id: string) => void;
 }) {
   const { icon, tone } = config[toast.type];
   const { id, action, stamp } = toast;
-  const duration = action ? TOAST_WITH_ACTION_MS : TOAST_MS;
+  const duration = toast.duration ?? (action ? TOAST_WITH_ACTION_MS : TOAST_MS);
 
   // The time left on this toast: a pause keeps it, a merge resets it.
   const remaining = useRef(duration);
@@ -242,6 +294,7 @@ function ToastItem({
               className={buttonClassName({ variant: 'soft', size: 'sm' })}
               onClick={(e) => {
                 e.stopPropagation();
+                onAction(id);
                 onRemove(id);
               }}
             >
@@ -253,6 +306,7 @@ function ToastItem({
               size="sm"
               onClick={(e) => {
                 e.stopPropagation();
+                onAction(id);
                 onRemove(id);
                 action.onClick();
               }}

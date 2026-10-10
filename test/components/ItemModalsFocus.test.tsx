@@ -189,7 +189,6 @@ describe.each([
   {
     name: 'EditItemModal',
     deleteLabel: 'Delete item',
-    confirmLabel: 'Delete',
     renderModal: (onDelete: Submit) =>
       render(
         <EditItemModal
@@ -205,7 +204,6 @@ describe.each([
   {
     name: 'ReviewItemModal',
     deleteLabel: 'Decline',
-    confirmLabel: 'Decline',
     renderModal: (onDelete: Submit) =>
       render(
         <ReviewItemModal
@@ -218,26 +216,23 @@ describe.each([
         />
       ),
   },
-])('$name — keyboard focus while a delete runs', ({ renderModal, deleteLabel, confirmLabel }) => {
+])('$name — keyboard focus while a delete runs', ({ renderModal, deleteLabel }) => {
   beforeEach(() => expectOnlyLogged('Error deleting item:'));
 
-  it('leaves focus on the confirmation, not the modal behind it', async () => {
+  // WIS-387: Delete asks nothing (the page offers Undo), so focus never leaves
+  // the modal: a failed delete hands it back to Delete item.
+  it('hands focus back to Delete item when a delete fails', async () => {
     const user = userEvent.setup();
     const { onSubmit: onDelete, fail } = pendingSubmit();
     renderModal(onDelete);
     const deleteItem = screen.getByRole('button', { name: deleteLabel });
 
     await user.click(deleteItem);
-    const confirmation = screen.getByRole('alertdialog');
-    await user.click(within(confirmation).getByRole('button', { name: confirmLabel }));
-    expect(deleteItem).toBeDisabled();
-    expect(confirmation).toHaveFocus();
-    await user.tab();
-    expect(confirmation).toHaveFocus();
-
-    // A failed delete still hands focus back to Delete item.
-    await fail();
     expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(deleteItem).toBeDisabled();
+
+    await fail();
+    expect(deleteItem).toBeEnabled();
     expect(deleteItem).toHaveFocus();
   });
 });
