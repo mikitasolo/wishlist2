@@ -1,6 +1,7 @@
 'use client';
 
 import { track } from '@/lib/analytics';
+import { tourListCreated } from '@/components/Walkthrough';
 import { useState, useEffect, useCallback, useId } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
@@ -179,8 +180,10 @@ export default function CreateWishlistModal({
         track('list_created', { visibility: formData.visibility, source: 'new' });
         showToast('Wishlist created successfully', 'success');
         setHasUnsavedChanges(false);
-        onClose();
         const created = result.data as CreatedWishlist;
+        // A running tour carries on in the new list (WIS-436), before anything closes.
+        tourListCreated(`/wishlists/${created.slug ?? created._id}`);
+        onClose();
         if (onCreated) onCreated(created);
         else router.push(`/wishlists/${created.slug ?? created._id}`);
       } else {

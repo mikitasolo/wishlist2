@@ -51,17 +51,24 @@ export async function GET() {
       return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
     }
 
-    const [followerCount, followingCount, ownsAList] = await Promise.all([
+    const [followerCount, followingCount, ownList] = await Promise.all([
       Follow.countDocuments({ following: user._id }),
       Follow.countDocuments({ follower: user._id }),
-      Wishlist.exists(ownedByFilter(session.user.id)),
+      // One list they own or co-own, an unarchived one first (a missing flag
+      // sorts before `false`), the latest edited: the tour's list (WIS-436).
+      Wishlist.findOne(ownedByFilter(session.user.id))
+        .sort({ archived: 1, updatedAt: -1 })
+        .select('slug archived')
+        .lean<{ _id: unknown; slug?: string | null; archived?: boolean }>(),
     ]);
 
     // What's due, never the stored state itself.
     const { walkthrough: tourState, ...profile } = user.toObject();
     const walkthrough: WalkthroughStatus = {
       due: walkthroughDue(tourState),
-      ownsList: !!ownsAList,
+      ownsList: !!ownList,
+      listPath:
+        ownList && !ownList.archived ? `/wishlists/${ownList.slug || String(ownList._id)}` : null,
     };
 
     return NextResponse.json(

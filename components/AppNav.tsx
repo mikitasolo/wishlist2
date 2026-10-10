@@ -85,6 +85,7 @@ export function HeaderNav({
               href={d.href}
               aria-current={current ? 'page' : undefined}
               aria-label={navAccessibleName(d, unread)}
+              data-tour={d.id === 'reserved' ? 'reserved' : undefined}
               className={`inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-sm font-medium transition-colors ${
                 current
                   ? 'bg-muted text-foreground'
@@ -176,6 +177,8 @@ export function TabBar({
             href={d.href}
             aria-current={current ? 'page' : undefined}
             aria-label={navAccessibleName(d, unread)}
+            // Where the guided walkthrough's Reserved step points (WIS-436).
+            data-tour={d.id === 'reserved' ? 'reserved' : undefined}
             className={`${TAB_CLASSES} ${tabColor(current)}`}
           >
             <TabContent destination={d} count={navBadgeCount(d.id, unread)} />
