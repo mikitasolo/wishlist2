@@ -20,16 +20,22 @@ import WishlistMember from '@/models/WishlistMember';
  *
  * Deploy order: run **after** the deploy that ships it. A drop before it would
  * be undone: the old code still declares `{ wishlist: 1 }`, so its autoIndex
- * rebuilds it on the next cold start.
+ * rebuilds it on the next cold start. For the same reason, a rollback to a
+ * release before this one brings the index back: run this again once the fix
+ * forward is deployed.
+ *
+ * The two steps are independent: the drop goes first, so a build that fails
+ * still leaves it done, and the build touches only the one new index.
  *
  *   curl -X POST -H "X-Migration-Secret: $MIGRATION_SECRET" <host>/api/migrations/sync-hot-query-indexes
  */
 export const POST = createMigration(async () => {
-  await Wishlist.createIndexes();
   const droppedWishlistMemberIndex = await dropIndexByKey(WishlistMember.collection, {
     wishlist: 1,
   });
-  return { wishlistIndexesBuilt: true, droppedWishlistMemberIndex };
+  // A no-op when it's already there (autoIndex usually got there first).
+  const wishlistIndex = await Wishlist.collection.createIndex({ visibility: 1, archived: 1 });
+  return { droppedWishlistMemberIndex, wishlistIndex };
 });
 
 /**

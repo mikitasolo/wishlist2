@@ -11,6 +11,11 @@ import { connectTestDB, disconnectTestDB } from '../db';
 // scenario, naming the collection and the filter. The profiler records the
 // same plan `explain()` picks, for every find, aggregate, count, distinct,
 // update and delete the code sent.
+//
+// What it doesn't see: the inner reads of an aggregation's `$lookup` (only the
+// outer plan is recorded; every `$lookup` today joins on `_id`), and an index
+// read end to end (an unanchored regex, such as search's username match, walks
+// the whole username index: no documents, but every key).
 
 vi.mock('@/lib/mongodb', () => ({ default: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('@/lib/auth', () => ({ auth: vi.fn() }));
@@ -40,6 +45,9 @@ import { GET as MY_WISHLISTS } from '@/app/api/wishlists/route';
 import { GET as BIRTHDAYS } from '@/app/api/users/me/birthdays/route';
 import { GET as MY_INVITES } from '@/app/api/users/me/invites/route';
 import { GET as ME } from '@/app/api/users/me/route';
+import { GET as MY_ITEMS } from '@/app/api/users/me/items/route';
+import { GET as MY_GIFTS } from '@/app/api/users/me/gifts/route';
+import { GET as PROFILE_LISTS } from '@/app/api/users/[id]/wishlists/route';
 import { GET as FEED } from '@/app/api/notifications/route';
 import { GET as RESERVATIONS } from '@/app/api/users/me/reservations/route';
 import { GET as RESERVATION_SUMMARY } from '@/app/api/users/me/reservations/summary/route';
@@ -380,6 +388,20 @@ describe('index audit (WIS-377): the hot queries never scan a collection', () =>
     });
   });
 
+  it("a profile's lists, and your own items and gifts", async () => {
+    await expectIndexed(async () => {
+      for (const viewer of [w.owner, w.alice, w.stranger, null]) {
+        as(viewer);
+        await ok(PROFILE_LISTS(req(`/api/users/${w.owner}/wishlists`), params(w.owner)));
+      }
+      for (const viewer of [w.owner, w.alice]) {
+        as(viewer);
+        await ok(MY_ITEMS(req('/api/users/me/items')));
+        await ok(MY_GIFTS());
+      }
+    });
+  });
+
   it('the Activity feed', async () => {
     await expectIndexed(async () => {
       for (const viewer of [w.owner, w.alice, w.bob]) {
@@ -397,10 +419,11 @@ describe('index audit (WIS-377): the hot queries never scan a collection', () =>
       const birthdays = await runBirthdayTasks(NOW);
       // They found work to do, so their per-recipient queries ran too.
       expect(occasion.sent).toBeGreaterThan(0);
-      expect(gifts.reminders).toMatchObject({ sent: expect.any(Number) });
+      expect(gifts.reminders.sent).toBeGreaterThan(0);
       expect(birthdays.ok).toBe(true);
     });
     expect(await Notification.countDocuments({ type: 'occasion_reminder' })).toBeGreaterThan(0);
+    expect(await Notification.countDocuments({ type: 'gift_reminder' })).toBeGreaterThan(0);
     expect(await Notification.countDocuments({ type: 'birthday_reminder' })).toBeGreaterThan(0);
   });
 
@@ -423,7 +446,9 @@ describe('index audit (WIS-377): no index another one already covers', () => {
   /**
    * A plain index (not unique, partial, sparse or TTL: those do more than speed
    * a query up) whose keys are the leading keys of another full index serves
-   * nothing the longer one can't, and only costs every write.
+   * nothing the longer one can't, and only costs every write. Only plain
+   * ascending/descending keys with no collation are compared: a text, hashed
+   * or collated index serves queries the other can't.
    */
   it('declares no plain index that is a prefix of another', () => {
     const redundant: string[] = [];
@@ -432,9 +457,14 @@ describe('index audit (WIS-377): no index another one already covers', () => {
         .model(name)
         .schema.indexes()
         .map(([fields, options]) => ({
-          keys: Object.entries(fields).map(([k, v]) => `${k}:${v}`),
+          // A single key reads both ways, so its direction doesn't matter.
+          keys: Object.entries(fields).map(([k, v], _, all) =>
+            all.length === 1 && Math.abs(Number(v)) === 1 ? `${k}:1` : `${k}:${v}`
+          ),
+          plainKeys: Object.values(fields).every((v) => v === 1 || v === -1),
           options: (options ?? {}) as Record<string, unknown>,
-        }));
+        }))
+        .filter((index) => index.plainKeys && !index.options.collation);
       const full = (o: Record<string, unknown>) => !o.partialFilterExpression && !o.sparse;
       for (const a of indexes) {
         const o = a.options;

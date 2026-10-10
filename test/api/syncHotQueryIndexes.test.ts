@@ -24,7 +24,11 @@ const post = (secret: string | null = 'test-migration-secret') =>
 const keysOf = async (collection: mongoose.Collection) =>
   (await collection.indexes()).map((i) => JSON.stringify(i.key));
 
-beforeAll(connectTestDB);
+beforeAll(async () => {
+  await connectTestDB();
+  // Let autoIndex finish first, so it can't rebuild anything after a test drops it.
+  await Promise.all([Wishlist.init(), WishlistMember.init()]);
+});
 afterAll(disconnectTestDB);
 
 /** A deployed database before the change: the old index there, the new one not yet. */
