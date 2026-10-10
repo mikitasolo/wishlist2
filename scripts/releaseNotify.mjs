@@ -5,7 +5,7 @@
 // shell and are never printed: the Telegram URL carries the bot token and the
 // Linear key rides in a header, so errors here report a status or message only.
 
-const MAX_LEN = 3800; // Telegram caps a message at 4096; leave room for the footer.
+const MAX_LEN = 4000; // Telegram caps a message at 4096 characters.
 
 // Conventional-commit prefix -> section heading, in display order.
 export const SECTIONS = [
@@ -24,6 +24,7 @@ export const OTHER = '📌 Other';
 const ON_STAGING = 'On Staging';
 const LINEAR_URL = 'https://api.linear.app/graphql';
 
+const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 const escapeHtml = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 /** Split `type(scope)!: text` into a section heading and the bare text. */
@@ -37,37 +38,50 @@ export function classify(subject) {
   return [OTHER, subject];
 }
 
-/**
- * The Telegram HTML message for the shipped commit subjects. `compare` is an optional link.
- * @param {string[]} subjects
- * @param {{ title?: string, compare?: { url: string, from: string, to: string } }} [options]
- */
-export function buildMessage(subjects, { title = 'App', compare } = {}) {
+function renderMessage(subjects, header, compare) {
   const grouped = new Map();
   for (const subject of subjects) {
     const [heading, text] = classify(subject);
     if (!grouped.has(heading)) grouped.set(heading, []);
-    grouped.get(heading).push(text);
+    grouped.get(heading).push(`• ${escapeHtml(text)}`);
   }
-  const lines = [`🚀 <b>${escapeHtml(title)}</b> released to production`, ''];
-  const length = (extra) => lines.concat(extra).reduce((n, l) => n + l.length + 1, 0);
-  let dropped = 0;
+  const lines = [header, ''];
   for (const heading of [...SECTIONS.map(([, h]) => h), OTHER]) {
     const items = grouped.get(heading);
-    if (!items) continue;
-    const block = [`<b>${heading}</b>`];
-    for (const text of items) {
-      const entry = `• ${escapeHtml(text)}`;
-      if (length(block) + entry.length > MAX_LEN) dropped++;
-      else block.push(entry);
-    }
-    if (block.length > 1) lines.push(...block, '');
+    if (items) lines.push(`<b>${heading}</b>`, ...items, '');
   }
-  if (dropped) lines.push(`<i>…and ${dropped} more commit(s)</i>`, '');
   if (compare) {
     lines.push(`<a href="${compare.url}">Compare ${compare.from}…${compare.to}</a>`);
   }
   return lines.join('\n').trim();
+}
+
+/**
+ * The Telegram HTML messages for the shipped commit subjects, given oldest
+ * first: one message, or as many as it takes to fit Telegram's cap, each
+ * grouped by section, in order (`(1/3)`…), so the channel reads top to bottom
+ * in the order things shipped. `compare` is an optional link on the last one.
+ * @param {string[]} subjects
+ * @param {{ title?: string, compare?: { url: string, from: string, to: string } }} [options]
+ * @returns {string[]}
+ */
+export function buildMessages(subjects, { title = 'App', compare } = {}) {
+  const header = (part) => `🚀 <b>${escapeHtml(title)}</b> released to production${part}`;
+  // Sized with the widest part label and the link, so every part fits once numbered.
+  const fits = (chunk) => renderMessage(chunk, header(' (99/99)'), compare).length <= MAX_LEN;
+  const chunks = [[]];
+  for (const subject of subjects) {
+    const chunk = chunks.at(-1);
+    if (chunk.length && !fits([...chunk, subject])) chunks.push([subject]);
+    else chunk.push(subject);
+  }
+  return chunks.map((chunk, i) =>
+    renderMessage(
+      chunk,
+      header(chunks.length > 1 ? ` (${i + 1}/${chunks.length})` : ''),
+      i === chunks.length - 1 ? compare : undefined
+    )
+  );
 }
 
 // Linear's closing magic words; contributing ones ("part of", "ref") are absent.
@@ -155,19 +169,26 @@ export async function announceRelease(
 ) {
   const token = env.TELEGRAM_BOT_TOKEN?.trim();
   const chatId = env.TELEGRAM_CHAT_ID?.trim();
-  const message = buildMessage(
+  const messages = buildMessages(
     commits.map((c) => c.subject),
     { title, compare }
   );
   if (!token || !chatId) {
     log.log('\nTELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID not set, preview only:\n');
-    log.log(message);
+    log.log(messages.join('\n\n────────\n\n'));
   } else {
+    // In order, stopping at the first failure so the channel never skips a part.
+    let posted = 0;
     try {
-      await sendTelegram(token, chatId, message);
-      log.log('Posted release notes to Telegram.');
+      for (const message of messages) {
+        await sendTelegram(token, chatId, message);
+        posted++;
+      }
+      log.log(`Posted release notes to Telegram (${plural(posted, 'message')}).`);
     } catch (error) {
-      log.warn(`Warning: release notes were not posted: ${error.message}`);
+      log.warn(
+        `Warning: release notes stopped after ${posted} of ${messages.length} message(s): ${error.message}`
+      );
     }
   }
 

@@ -107,7 +107,14 @@ async function release(dryRun) {
 
   // The release has happened: announcing it can only warn, never fail it.
   try {
-    const commits = git('log', '--no-merges', '--format=%s%x1f%b%x1e', `${main}..${target}`)
+    // Oldest first: the changelog reads top to bottom in the order things shipped.
+    const commits = git(
+      'log',
+      '--reverse',
+      '--no-merges',
+      '--format=%s%x1f%b%x1e',
+      `${main}..${target}`
+    )
       .split('\x1e')
       .filter((c) => c.trim())
       .map((c) => {
