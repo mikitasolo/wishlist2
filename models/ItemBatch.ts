@@ -31,6 +31,26 @@ const ItemBatchSchema = new Schema(
       gone: { type: [String], default: undefined },
       failed: { type: [String], default: undefined },
     },
+    /**
+     * A move's copies (WIS-434), recorded before they're written: each moved
+     * item's id, its copy's, and the image copied for it. An attempt that dies
+     * between writing a copy and deleting its item would leave the item on
+     * both lists; settling the row (`settleDeadMove`) takes back each copy
+     * whose item is still there.
+     */
+    moves: {
+      type: [
+        {
+          _id: false,
+          from: { type: Schema.Types.ObjectId, required: true },
+          to: { type: Schema.Types.ObjectId, required: true },
+          imageUrl: { type: String },
+        },
+      ],
+      default: undefined,
+    },
+    /** Every image a move copied, recorded as each lands, so a dead one frees them. */
+    copiedUrls: { type: [String], default: undefined },
     expiresAt: { type: Date, required: true },
   },
   { timestamps: { createdAt: true, updatedAt: false } }
@@ -51,6 +71,12 @@ export interface IItemBatch {
   payload: string;
   done: boolean;
   result?: { done?: string[]; skipped?: string[]; gone?: string[]; failed?: string[] };
+  moves?: Array<{
+    from: mongoose.Types.ObjectId;
+    to: mongoose.Types.ObjectId;
+    imageUrl?: string;
+  }>;
+  copiedUrls?: string[];
   expiresAt: Date;
   createdAt: Date;
 }

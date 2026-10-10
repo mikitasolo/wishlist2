@@ -60,6 +60,7 @@ import { sendOccasionReminders } from '@/lib/utils/occasionReminders';
 import { sendGiftReminders } from '@/lib/utils/giftReminders';
 import { runBirthdayTasks } from '@/lib/utils/birthdayCron';
 import { liveGiftOf, holdsItem, readGroupGiftSummaries } from '@/lib/utils/groupGifts';
+import { settleDeadMoves } from '@/lib/utils/bulkItemActions';
 import User from '@/models/User';
 import Follow from '@/models/Follow';
 import Wishlist from '@/models/Wishlist';
@@ -439,6 +440,11 @@ describe('index audit (WIS-377): the hot queries never scan a collection', () =>
         await ok(RESERVATION_SUMMARY());
       }
     });
+  });
+
+  // WIS-434: every move first looks for the caller's dead moves to settle.
+  it('a move’s sweep of the caller’s dead moves', async () => {
+    await expectIndexed(() => settleDeadMoves(w.owner));
   });
 });
 

@@ -9,12 +9,15 @@ import {
   applyBulkAction,
   bulkDoneMessage,
   bulkFailedMessage,
+  bulkMovedMessage,
   bulkTargets,
   BULK_ITEM_ACTIONS,
   BULK_ITEMS_MAX,
   isSelectableItem,
   type BulkItemAction,
   type BulkItemResult,
+  type BulkItemUpdateAction,
+  type BulkRemoval,
 } from '@/lib/utils/bulkItems';
 import { restoreRemoved } from '@/lib/utils/deferredCommit';
 import { undoUpdate } from '@/lib/utils/itemListMerge';
@@ -35,23 +38,31 @@ export const BULK_REQUEST_TIMEOUT_MS = Math.max(ITEM_REQUEST_TIMEOUT_MS, 45_000)
 /** The toast when a pick would go past `BULK_ITEMS_MAX`. */
 export const BULK_PICK_LIMIT_MESSAGE = `You can pick up to ${BULK_ITEMS_MAX} items at a time`;
 
+/** The list a move sends the picked items to: one of the owner's own. */
+export interface MoveTarget {
+  _id: string;
+  name: string;
+}
+
 /**
  * Send one bulk action: resolves with the server's answer, or rejects with
  * the error to show. Bounded by `withRequestTimeout`; `keepalive` when the
- * page is going away (a deferred delete sent from `pagehide`).
+ * page is going away (a deferred delete or move sent from `pagehide`).
+ * `targetWishlistId` is a move's, and only a move's.
  */
 export async function sendBulkItemAction(
   wishlistId: string,
   action: BulkItemAction,
   itemIds: string[],
   key: string,
-  keepalive = false
+  keepalive = false,
+  targetWishlistId?: string
 ): Promise<BulkAnswer> {
   return withRequestTimeout(async (signal) => {
     const response = await fetch(`/api/wishlists/${wishlistId}/items/bulk`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', [IDEMPOTENCY_HEADER]: key },
-      body: JSON.stringify({ action, itemIds }),
+      body: JSON.stringify({ action, itemIds, ...(targetWishlistId ? { targetWishlistId } : {}) }),
       signal,
       keepalive,
     });
@@ -83,10 +94,10 @@ export interface BulkItemActionsOptions {
  * shows the change at once, each is busy (`useBusyIds`) until the request
  * settles, the server's items are merged in, and only the items it couldn't
  * change are put back (each on its own, keeping anything that changed it
- * since). A delete takes the items off at once and offers Undo, sending the
- * request only once the Undo window has passed (`useUndoableAction`, as a
- * single delete does), so an undone one released no reservation and freed no
- * image. Either way the request is held as a tracked mutation, so a poll
+ * since). A delete, or a move to another of the owner's lists (WIS-434),
+ * takes the items off at once and offers Undo, sending the request only once
+ * the Undo window has passed (`useUndoableAction`, as a single delete does),
+ * so an undone one released no reservation and freed no image. Either way the request is held as a tracked mutation, so a poll
  * can't undo it meanwhile, and a failure says how many, never why: an owner
  * never learns an item was reserved.
  */
@@ -104,8 +115,8 @@ export function useBulkItemActions({
   // items (a timeout whose request may have landed), new after a success:
   // kept per batch, so one batch settling never touches another's.
   const batchKeys = useRef(new Map<string, string>());
-  const keyFor = useCallback((action: BulkItemAction, ids: readonly string[]) => {
-    const payload = `${action}:${ids.join(',')}`;
+  const keyFor = useCallback((action: BulkItemAction, ids: readonly string[], target = '') => {
+    const payload = `${action}:${ids.join(',')}:${target}`;
     let key = batchKeys.current.get(payload);
     if (!key) {
       key = newKey();
@@ -183,7 +194,7 @@ export function useBulkItemActions({
   }, [items]);
 
   const applyUpdate = useCallback(
-    (action: Exclude<BulkItemAction, 'delete'>, targets: ApiItem[]) => {
+    (action: BulkItemUpdateAction, targets: ApiItem[]) => {
       const ids = targets.map((item) => item._id);
       const idSet = new Set(ids);
       const { key, settled } = keyFor(action, ids);
@@ -245,11 +256,11 @@ export function useBulkItemActions({
     [keyFor, setItems, mutations, settlePending, apiId, run, showToast, fetchItems]
   );
 
-  const deferDelete = useCallback(
-    (targets: ApiItem[]) => {
+  const deferRemoval = useCallback(
+    (action: BulkRemoval, targets: ApiItem[], moveTo?: MoveTarget) => {
       const ids = targets.map((item) => item._id);
       const idSet = new Set(ids);
-      const { key, settled } = keyFor('delete', ids);
+      const { key, settled } = keyFor(action, ids, moveTo?._id);
       // Where each was, to put it back there on Undo or a failure.
       const index = new Map<string, number>();
       itemsRef.current.forEach((item, i) => {
@@ -264,14 +275,23 @@ export function useBulkItemActions({
         );
 
       const pending = offerUndo({
-        message: bulkDoneMessage('delete', ids.length),
+        message: moveTo
+          ? bulkMovedMessage(ids.length, moveTo.name)
+          : bulkDoneMessage(action, ids.length),
         onUndo: () => putBack(targets),
         commit: async ({ keepalive }) => {
           try {
             // Anything still waiting on these items goes first, so the two
             // requests can't race.
             await Promise.all(ids.map((id) => settlePending(id)));
-            const answer = await sendBulkItemAction(apiId(), 'delete', ids, key, keepalive);
+            const answer = await sendBulkItemAction(
+              apiId(),
+              action,
+              ids,
+              key,
+              keepalive,
+              moveTo?._id
+            );
             settled();
             // Left as they were: back on the list, as the server has them.
             const fresh = new Map(answer.items.map((item) => [item._id, item]));
@@ -301,19 +321,21 @@ export function useBulkItemActions({
   /**
    * Apply `action` to every picked item it changes (never more than
    * `BULK_ITEMS_MAX`: no more can be picked), less any still busy with an
-   * earlier batch. Picks are cleared; Select mode stays on.
+   * earlier batch. Picks are cleared; Select mode stays on. A move takes the
+   * list to move them to (`moveTo`); without one it does nothing.
    */
   const act = useCallback(
-    (action: BulkItemAction) => {
+    (action: BulkItemAction, moveTo?: MoveTarget) => {
+      if (action === 'move' && !moveTo) return;
       const targets = bulkTargets(action, selectedItems)
         .filter((item) => !running(item._id))
         .slice(0, BULK_ITEMS_MAX);
       if (!targets.length) return;
       setSelected(new Set());
-      if (action === 'delete') deferDelete(targets);
+      if (action === 'delete' || action === 'move') deferRemoval(action, targets, moveTo);
       else applyUpdate(action, targets);
     },
-    [selectedItems, running, deferDelete, applyUpdate]
+    [selectedItems, running, deferRemoval, applyUpdate]
   );
 
   return {

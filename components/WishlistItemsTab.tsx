@@ -365,6 +365,7 @@ export default function WishlistItemsTab({
 
           {bulk && selecting && (
             <BulkActionBar
+              wishlistId={wishlist._id.toString()}
               selectedCount={bulk.selectedCount}
               counts={bulk.counts}
               allSelected={allSelected}

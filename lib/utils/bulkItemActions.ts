@@ -12,7 +12,9 @@ import {
   bulkItemUpdate,
   type BulkItemAction,
   type BulkItemResult,
+  type BulkItemUpdateAction,
 } from '@/lib/utils/bulkItems';
+import { applyBulkMove, settleDeadMove } from '@/lib/utils/bulkItemMove';
 
 /**
  * An owner's bulk item action (WIS-386), behind
@@ -78,7 +80,7 @@ export async function applyBulkItemAction({
   wishlist: ItemActionWishlist;
   /** The caller, already known to own `wishlist`. */
   userId: string;
-  action: BulkItemAction;
+  action: BulkItemUpdateAction | 'delete';
   itemIds: readonly string[];
 }): Promise<BulkItemAnswer> {
   const result: BulkItemAnswer = { done: [], skipped: [], gone: [], failed: [], items: [] };
@@ -152,14 +154,94 @@ export async function applyBulkItemAction({
   return result;
 }
 
-/** What a batch's key is bound to: its list, its action and its ids. */
+/**
+ * Move `itemIds` from `wishlist` to the list `targetId` (WIS-434, see
+ * `lib/utils/bulkItemMove.ts`), answered as a delete is: the ids it moved as
+ * done, and only the items it left as they were. A refusal from the re-check
+ * after the copies were written is handed back for the route to answer.
+ */
+export async function applyBulkMoveAction({
+  wishlist,
+  userId,
+  itemIds,
+  targetId,
+  batchId,
+}: {
+  wishlist: ItemActionWishlist;
+  /** The caller, already known to own `wishlist` and `targetId`. */
+  userId: string;
+  itemIds: readonly string[];
+  targetId: string;
+  batchId: IItemBatch['_id'];
+}): Promise<BulkItemAnswer | { refused: 'source gone' | 'not owner' | 'target' }> {
+  // Any earlier move of theirs that died is settled first, so it doesn't
+  // leave items on two lists.
+  try {
+    await settleDeadMoves(userId);
+  } catch (err) {
+    console.error(`Settling dead item moves failed (${errorKind(err)})`);
+  }
+  try {
+    const outcome = await applyBulkMove({ source: wishlist, targetId, userId, itemIds, batchId });
+    if ('refused' in outcome) return outcome;
+    const result: BulkItemAnswer = { done: [], skipped: [], gone: [], failed: [], items: [] };
+    const rates = outcome.skipped.size ? await readRates() : new Map<string, number>();
+    for (const id of itemIds) {
+      const kind = outcome.kinds.get(id) ?? 'failed';
+      result[kind].push(id);
+      const item = outcome.skipped.get(id);
+      if (item) result.items.push(await serializeForOwner(item, rates));
+    }
+    if (result.done.length) {
+      await purgeShareCards({ wishlistIds: [wishlist._id.toString(), targetId] });
+    }
+    return result;
+  } catch (err) {
+    // The route lets go of the batch on a throw, and its record with it, so
+    // whatever the attempt wrote is settled first: no item left on both lists.
+    try {
+      const row = await ItemBatch.findById(batchId).select('moves copiedUrls').lean();
+      if (row) await settleDeadMove(row, userId);
+    } catch (settleErr) {
+      console.error(`Settling a failed item move failed (${errorKind(settleErr)})`);
+    }
+    throw err;
+  }
+}
+
+/**
+ * Settle the caller's moves whose attempts died unfinished (past
+ * `ITEM_BATCH_STALE_MS`) and that nobody retried: their copies taken back
+ * where the item is still on its list, their images freed (`settleDeadMove`).
+ */
+export async function settleDeadMoves(userId: string): Promise<void> {
+  const dead = await ItemBatch.find({
+    user: userId,
+    done: false,
+    createdAt: { $lt: new Date(Date.now() - ITEM_BATCH_STALE_MS) },
+  })
+    .select('moves copiedUrls')
+    .lean();
+  for (const row of dead) {
+    if (!row.moves?.length && !row.copiedUrls?.length) continue;
+    await settleDeadMove(row, userId);
+    await ItemBatch.deleteOne({ _id: row._id, done: false });
+  }
+}
+
+/**
+ * What a batch's key is bound to: its list, its action and its ids (and a
+ * move's target).
+ */
 export function itemBatchPayload(
   wishlistId: string,
   action: BulkItemAction,
-  itemIds: readonly string[]
+  itemIds: readonly string[],
+  targetId?: string
 ): string {
   const ids = [...itemIds].sort().join(',');
-  return createHash('sha256').update(`${wishlistId}:${action}:${ids}`).digest('hex');
+  const target = targetId ? `:${targetId}` : '';
+  return createHash('sha256').update(`${wishlistId}:${action}:${ids}${target}`).digest('hex');
 }
 
 function isBatchKeyClash(err: unknown): boolean {
@@ -188,7 +270,8 @@ async function replayBatch(
   const skipped = stored.skipped ?? [];
   const gone = [...(stored.gone ?? [])];
   const failed = stored.failed ?? [];
-  const shown = action === 'delete' ? skipped : [...done, ...skipped];
+  const removes = action === 'delete' || action === 'move';
+  const shown = removes ? skipped : [...done, ...skipped];
   const found = shown.length
     ? await Item.find({ _id: { $in: shown }, wishlist: row.wishlist })
     : [];
@@ -198,7 +281,7 @@ async function replayBatch(
   const stillDone: string[] = [];
   const stillSkipped: string[] = [];
   for (const id of done) {
-    if (action === 'delete' || byId.has(id)) stillDone.push(id);
+    if (removes || byId.has(id)) stillDone.push(id);
     else gone.push(id);
   }
   for (const id of skipped) {
@@ -218,7 +301,8 @@ async function replayBatch(
  * answer an earlier attempt with the same key gave, or `refused` while that
  * attempt is still running (409) or when the key was used for another change
  * (422). An attempt unfinished past `ITEM_BATCH_STALE_MS` must have died, and
- * is dropped: every bulk action is safe to apply twice.
+ * is dropped: every bulk action is safe to apply twice, a move once what the
+ * dead attempt left is settled.
  */
 export async function claimItemBatch({
   userId,
@@ -226,14 +310,17 @@ export async function claimItemBatch({
   wishlistId,
   action,
   itemIds,
+  targetId,
 }: {
   userId: string;
   scopedKey: string;
   wishlistId: string;
   action: BulkItemAction;
   itemIds: readonly string[];
+  /** A move's target list. */
+  targetId?: string;
 }): Promise<ItemBatchClaim> {
-  const payload = itemBatchPayload(wishlistId, action, itemIds);
+  const payload = itemBatchPayload(wishlistId, action, itemIds, targetId);
   for (let attempt = 0; attempt < 2; attempt++) {
     const row = await ItemBatch.findOne({ key: scopedKey, user: userId }).lean();
     if (row) {
@@ -244,8 +331,10 @@ export async function claimItemBatch({
       if (Date.now() - row.createdAt.getTime() < ITEM_BATCH_STALE_MS) {
         return { kind: 'refused', status: 409, error: ITEM_BATCH_IN_PROGRESS_ERROR };
       }
-      // Dead: dropped only if still the same unfinished row, so two retries
-      // can't both take it over.
+      // Dead: a move's copies settled (each taken back where its item is still
+      // on its list), then dropped only if still the same unfinished row, so
+      // two retries can't both take it over.
+      if (row.moves?.length || row.copiedUrls?.length) await settleDeadMove(row, userId);
       await ItemBatch.deleteOne({ _id: row._id, done: false });
     }
     try {

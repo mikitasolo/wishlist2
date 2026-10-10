@@ -107,6 +107,16 @@ export function deleteListCopy(listName: string, itemCount: number | null): Conf
   return { title: `Delete ${quoted(listName)}?`, message: `${what} This can't be undone.` };
 }
 
+/**
+ * Moving items to another list (WIS-434), shown in its dialog every time,
+ * whatever the picked items are. A move is a copy onto the other list and a
+ * delete here, so a reservation can't follow an item: it's released here and
+ * the gifter keeps it, as with a delete. It never depends on whether any item
+ * is reserved: owners can't see that, and the warning mustn't tell them.
+ */
+export const MOVE_WARNING =
+  "Anyone who reserved one of these keeps it on their Reserved page, but it won't be reserved on the other list.";
+
 /** The Danger zone's line next to Delete, which says what the dialog will. */
 export const DELETE_LIST_WARNING =
   "Deleting this wishlist takes its items and everyone's access with it. This can't be undone.";

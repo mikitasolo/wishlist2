@@ -4,10 +4,14 @@ import { useState } from 'react';
 import Button from '@/components/Button';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import type { IconName } from '@/components/Icon';
+import MoveItemsDialog from '@/components/MoveItemsDialog';
+import type { MoveTarget } from '@/lib/hooks/useBulkItemActions';
 import type { BulkItemAction } from '@/lib/utils/bulkItems';
 import { plural } from '@/lib/utils/plural';
 
 interface BulkActionBarProps {
+  /** The list's id: Move never offers it as a target. */
+  wishlistId: string;
   /** How many items are picked. */
   selectedCount: number;
   /** How many picked items each action would change (0 disables it). */
@@ -16,7 +20,8 @@ interface BulkActionBarProps {
   allSelected: boolean;
   /** Whether there's anything on screen to pick. */
   canSelect: boolean;
-  onAction: (action: BulkItemAction) => void;
+  /** `moveTo` is a move's (and only a move's) target list. */
+  onAction: (action: BulkItemAction, moveTo?: MoveTarget) => void;
   onSelectAll: () => void;
   onClear: () => void;
   onDone: () => void;
@@ -48,9 +53,11 @@ const CONFIRM_LABEL = { draft: 'Move to draft', received: 'Mark as received' } a
  * Select all / Clear, Done, and the actions. Sticks to the bottom of the
  * screen (above a phone's tab bar) while the grid runs past it. Each action
  * is enabled only when it would change one of the picked items. Delete asks
- * nothing: it offers Undo (WIS-387).
+ * nothing: it offers Undo (WIS-387). Move to list (WIS-434) asks which list,
+ * with its warning, then offers Undo too.
  */
 export default function BulkActionBar({
+  wishlistId,
   selectedCount,
   counts,
   allSelected,
@@ -61,6 +68,7 @@ export default function BulkActionBar({
   onDone,
 }: BulkActionBarProps) {
   const [confirm, setConfirm] = useState<'draft' | 'received' | null>(null);
+  const [moving, setMoving] = useState(false);
   const mostWanted: BulkItemAction =
     counts.mostWanted === 0 && counts.notMostWanted > 0 ? 'notMostWanted' : 'mostWanted';
 
@@ -78,11 +86,13 @@ export default function BulkActionBar({
       label: mostWanted === 'notMostWanted' ? 'Not most wanted' : 'Mark as most wanted',
       icon: 'star',
     },
+    { action: 'move', label: 'Move to list', icon: 'arrow-right' },
     { action: 'delete', label: 'Delete', icon: 'trash', variant: 'danger' },
   ];
 
   const choose = (action: BulkItemAction) => {
     if (action === 'draft' || action === 'received') setConfirm(action);
+    else if (action === 'move') setMoving(true);
     else onAction(action);
   };
 
@@ -129,6 +139,18 @@ export default function BulkActionBar({
           </Button>
         ))}
       </div>
+
+      {moving && (
+        <MoveItemsDialog
+          wishlistId={wishlistId}
+          count={counts.move}
+          onMove={(target) => {
+            setMoving(false);
+            onAction('move', target);
+          }}
+          onClose={() => setMoving(false)}
+        />
+      )}
 
       {confirm && (
         <ConfirmDialog
