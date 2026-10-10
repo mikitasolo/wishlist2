@@ -112,7 +112,17 @@ export default function ItemFormFooter({
           disabled={busy || holdSave}
           className={BUTTON_CLASS}
         >
-          {saving && savingDraft && draftSubmittingLabel ? draftSubmittingLabel : draftLabel}
+          {saving && savingDraft && draftSubmittingLabel ? (
+            draftSubmittingLabel
+          ) : (
+            <>
+              {/* Under 400px the three buttons can't share the row with the full label. */}
+              <span className="max-[400px]:hidden">{draftLabel}</span>
+              <span aria-hidden className="hidden max-[400px]:inline">
+                Draft
+              </span>
+            </>
+          )}
         </Button>
       )}
       <Button type="submit" form={formId} disabled={busy || holdSave} className={BUTTON_CLASS}>
