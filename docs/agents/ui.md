@@ -16,7 +16,7 @@ AGENTS.md links here for the shared design rules: sizes, type, copy, components,
 
 ## Shared components
 
-- **Use the shared kit, never a bespoke copy**: `Select`, `Menu`, `ConfirmDialog`, `BaseModal`, `Skeleton`, and `Cover` for every list/item image (gradient placeholder if missing/broken). List page banner: full-width strip above the title (`WishlistCover`: 2.4:1 phone, 3:1 capped 240px from `sm`); no banner, no strip. Banners stay cropped 16:9 (card and share-card shape); the strip trims with `object-cover`.
+- **Use the shared kit, never a bespoke copy**: `Select`, `Menu`, `ConfirmDialog`, `BaseModal`, `Skeleton`, and `Cover` for every list/item image (gradient placeholder if missing/broken). List page banner: full-width strip above the title (`WishlistCover`: 4:1 phone, 3:1 capped 176px from `sm`); no banner, no strip. Banners stay cropped 16:9 (card and share-card shape); the strip trims with `object-cover`.
   - **`EmptyState`** (icon, title, body, `actions`; tone `default` / `muted` / `error`): every empty page, list, grid, search, in a dashed frame; `framed={false}` for not found / unavailable. `LoadError` = `error` tone + Try again for failed reads.
   - **`Badge`** (`sm`/`md`; `neutral`, `info`, `success`, `warning`, `danger`, `glass` over covers): labels, counts, cover pills. Item status only via `<Badge status={statusMeta(…)} />`. `badgeClassName` for self-laid-out labels (`OccasionLabel`).
   - **`Panel`** (`rounded-2xl border bg-surface shadow-sm p-5 sm:p-6`, `text-lg` title, muted description; `as="form"`; `variant="list"`: bordered header over divided `PanelRow`s) and **`PanelSection`** (sub-section under a line): Settings, Welcome, a list's People/Settings tabs, currency prompt.

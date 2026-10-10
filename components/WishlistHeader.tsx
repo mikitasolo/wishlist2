@@ -92,7 +92,7 @@ export default function WishlistHeader({
   }
 
   return (
-    <header className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between lg:gap-8">
+    <header className="mb-4 flex flex-col sm:mb-6 gap-4 lg:flex-row lg:items-start lg:justify-between lg:gap-8">
       <div className="min-w-0 lg:flex-1">
         <h1
           title={name}
@@ -219,7 +219,7 @@ export function OccasionMeta({ occasion }: { occasion: Occasion }) {
 /** `WishlistHeader` while the list loads, box for box: the name, the meta line, the actions. */
 export function WishlistHeaderSkeleton() {
   return (
-    <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between lg:gap-8">
+    <div className="mb-4 flex flex-col gap-4 sm:mb-6 lg:flex-row lg:items-start lg:justify-between lg:gap-8">
       <div className="min-w-0 lg:flex-1">
         {/* The name's line (text-3xl, sm:text-4xl) */}
         <div className="flex h-9 items-center sm:h-10">

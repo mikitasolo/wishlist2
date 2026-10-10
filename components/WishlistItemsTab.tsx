@@ -143,58 +143,63 @@ export default function WishlistItemsTab({
           the empty state below offers the add (or the proposal) itself */}
           {!listIsEmpty && (
             <>
-              {/* The status chips (none for a visitor): one row, one choice */}
-              {chips.length > 0 && (
-                <FilterChips
-                  chips={chips}
-                  value={activeChip}
-                  onChange={chooseChip}
-                  ariaLabel="Show items"
-                  className="mb-4"
-                />
-              )}
+              {/* The filter row sticks under the app header (h-14) while the
+                  items scroll: the chips, then search and the sorts. It runs
+                  edge to edge so nothing shows through behind it. */}
+              <div className="sticky top-14 z-30 -mx-4 mb-3 bg-background px-4 pb-3 sm:-mx-6 sm:mb-5 sm:px-6 lg:-mx-8 lg:px-8">
+                {/* The status chips (none for a visitor): one row, one choice */}
+                {chips.length > 0 && (
+                  <FilterChips
+                    chips={chips}
+                    value={activeChip}
+                    onChange={chooseChip}
+                    ariaLabel="Show items"
+                    className="mb-2"
+                  />
+                )}
 
-              {/* Toolbar: search, Sort, and Prices when it changes anything. One
-                  row from sm up; on a phone, search gets a row of its own. */}
-              <div className="mb-6 flex flex-wrap items-center gap-2 sm:mb-8 sm:flex-nowrap sm:gap-3">
-                <SearchField
-                  size="sm"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  onClear={() => setSearchQuery('')}
-                  placeholder="Search items"
-                  aria-label="Search items by name"
-                  className="w-full sm:w-auto sm:min-w-0 sm:flex-1"
-                />
-                <Select
-                  value={sortBy}
-                  onChange={handleSortChange}
-                  ariaLabel="Sort items by"
-                  options={SORT_OPTIONS}
-                  valueLabel={SORT_SHORT_LABELS[sortBy]}
-                  menuAlign="right"
-                  triggerClassName="min-w-0 flex-1 sm:flex-none sm:flex-shrink-0"
-                />
-                {prices.shown && (
+                {/* Toolbar: search, Sort, and Prices when it changes anything. One
+                  row, search taking what Sort and Prices leave; Budget wraps. */}
+                <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap sm:gap-3">
+                  <SearchField
+                    size="sm"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onClear={() => setSearchQuery('')}
+                    placeholder="Search items"
+                    aria-label="Search items by name"
+                    className="min-w-[6rem] flex-1"
+                  />
                   <Select
-                    value={prices.value}
-                    onChange={prices.choose}
-                    options={prices.options}
-                    valueLabel={prices.valueLabel}
-                    ariaLabel="Show prices in"
+                    value={sortBy}
+                    onChange={handleSortChange}
+                    ariaLabel="Sort items by"
+                    options={SORT_OPTIONS}
+                    valueLabel={SORT_SHORT_LABELS[sortBy]}
                     menuAlign="right"
                     triggerClassName="flex-shrink-0"
                   />
-                )}
-                {budgetOffered && (
-                  <BudgetFilter
-                    className="w-full sm:w-auto"
-                    value={budgetText}
-                    onChange={setBudgetText}
-                    currency={viewerCurrency}
-                    invalid={budgetInvalid}
-                  />
-                )}
+                  {prices.shown && (
+                    <Select
+                      value={prices.value}
+                      onChange={prices.choose}
+                      options={prices.options}
+                      valueLabel={prices.valueLabel}
+                      ariaLabel="Show prices in"
+                      menuAlign="right"
+                      triggerClassName="flex-shrink-0"
+                    />
+                  )}
+                  {budgetOffered && (
+                    <BudgetFilter
+                      className="w-full sm:w-auto"
+                      value={budgetText}
+                      onChange={setBudgetText}
+                      currency={viewerCurrency}
+                      invalid={budgetInvalid}
+                    />
+                  )}
+                </div>
               </div>
             </>
           )}

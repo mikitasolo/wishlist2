@@ -262,7 +262,7 @@ export default function MyItemsPage() {
 
         {showSkeleton ? (
           <div className="mt-8">
-            <ListControlsSkeleton chips={OWNER_CHIPS.length} />
+            <ListControlsSkeleton chips={OWNER_CHIPS.length} stacked />
             <SkeletonGrid count={8} variant="item" />
           </div>
         ) : loadFailed ? (
