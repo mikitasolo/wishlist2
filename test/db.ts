@@ -8,8 +8,24 @@ import mongoose from 'mongoose';
  */
 let mongod: MongoMemoryServer | null = null;
 
+/**
+ * Runs `start` again when it fails on a port that's already in use. Every test
+ * file starts its own server on a random free port, and with files running in
+ * parallel another one can take that port before mongod binds it (WIS-413).
+ */
+export async function retryOnPortInUse<T>(start: () => Promise<T>, attempts = 5): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await start();
+    } catch (error) {
+      const portInUse = error instanceof Error && /already in use/i.test(error.message);
+      if (!portInUse || attempt >= attempts) throw error;
+    }
+  }
+}
+
 export async function connectTestDB(): Promise<void> {
-  mongod = await MongoMemoryServer.create();
+  mongod = await retryOnPortInUse(() => MongoMemoryServer.create());
   await mongoose.connect(mongod.getUri());
 }
 
