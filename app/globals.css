@@ -511,7 +511,7 @@
   outline: 2px solid transparent;
   animation: card-reserve 0.45s cubic-bezier(0.2, 0.7, 0.2, 1);
 }
-.motion-reserve .motion-badge {
+.motion-reserve .motion-badge > :last-child {
   animation: badge-pop 0.45s cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 
@@ -583,7 +583,7 @@
     transform: rotate(var(--burst-angle)) translateY(-40px) scale(0.4);
   }
 }
-.motion-given {
+.given-moment {
   position: absolute;
   inset: 0;
   z-index: 20;
@@ -596,36 +596,36 @@
   opacity: 0;
   animation: given-wash 0.6s ease-out;
 }
-.motion-given-check {
+.given-moment-check {
   width: 3rem;
   height: 3rem;
   overflow: visible;
   color: var(--success);
 }
-.motion-given-check circle,
-.motion-given-check path {
+.given-moment-check circle,
+.given-moment-check path {
   stroke: currentColor;
   stroke-dasharray: 1;
   stroke-dashoffset: 1;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-.motion-given-check circle {
+.given-moment-check circle {
   fill: var(--surface);
   stroke-width: 3;
   animation: given-draw 0.3s ease-out forwards;
 }
-.motion-given-check path {
+.given-moment-check path {
   fill: none;
   stroke-width: 4;
   animation: given-draw 0.25s 0.18s ease-out forwards;
 }
-.motion-given-burst {
+.given-moment-burst {
   position: absolute;
   left: 50%;
   top: 50%;
 }
-.motion-given-burst > span {
+.given-moment-burst > span {
   position: absolute;
   left: -3px;
   top: -3px;
@@ -636,19 +636,19 @@
   opacity: 0;
   animation: given-burst 0.42s 0.18s ease-out;
 }
-.motion-given-burst > span:nth-child(even) {
+.given-moment-burst > span:nth-child(even) {
   background: var(--ring);
 }
 
 @media (prefers-reduced-motion: reduce) {
   .motion-stagger > *,
   .motion-reserve,
-  .motion-reserve .motion-badge,
+  .motion-reserve .motion-badge > :last-child,
   .motion-release,
   .motion-cue {
     animation: none;
   }
-  .motion-given {
+  .given-moment {
     display: none;
   }
 }

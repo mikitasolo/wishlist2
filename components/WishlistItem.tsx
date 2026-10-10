@@ -41,12 +41,12 @@ import { onItemCardCue, type CardMotion } from '@/lib/utils/motion';
 /**
  * The moment a group gift action plays once it succeeds (WIS-407): taking part
  * is a reserve, stepping out a release, the organizer's give the given moment.
- * A pledge change plays none.
+ * A pledge change plays none, nor a convert: the item stays theirs, as it was.
  */
 const GROUP_GIFT_MOTION: Record<GroupGiftAction['type'], CardMotion | null> = {
   start: 'reserve',
   join: 'reserve',
-  convert: 'reserve',
+  convert: null,
   pledge: null,
   leave: 'release',
   cancel: 'release',

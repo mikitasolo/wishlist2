@@ -223,7 +223,12 @@ describe('WishlistItem motion — a group gift given', () => {
     expect(screen.queryByTestId('given-moment')).toBeNull();
     await settle(item({ status: 'booked', bookedBy: ME, givenByMe: true }));
     expect(card()).toHaveAttribute('data-motion', 'given');
-    expect(screen.getByTestId('given-moment')).toHaveAttribute('aria-hidden');
+    const moment = screen.getByTestId('given-moment');
+    expect(moment).toHaveAttribute('aria-hidden');
+    // regression: the card's own class was `motion-given`, the overlay's, so the
+    // whole card went absolute, faded out and left the grid while it played.
+    expect(card()).toContainElement(moment);
+    for (const overlayClass of moment.classList) expect(card()).not.toHaveClass(overlayClass);
   });
 
   it('plays nothing when it fails', async () => {
