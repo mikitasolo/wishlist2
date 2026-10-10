@@ -93,6 +93,31 @@ async function unmatchedItemFailure(
 }
 
 /**
+ * Take the item off every partner on its list after an edit that wrote links
+ * (WIS-29) then found the item gone (WIS-430): its item write matched nothing,
+ * or the re-read after an image replace found nothing. The links are written
+ * before the item, so that a partner filled up since the check refuses the
+ * request before anything else of it lands, and are left standing on a
+ * deleted item unless taken off here. The delete's own unlink
+ * (`unlinkDeletedItem`) is best-effort, and a dead id would hold a place under
+ * each partner's cap. Only ever pulls the item's id, so both sides stay
+ * symmetric and no item can pass the cap; best-effort like the delete's.
+ *
+ * Only a gone item needs it: owners link only on items that aren't proposals,
+ * whose item write carries no guard, so an edit with links loses its item
+ * write only to a delete.
+ */
+async function unlinkGoneItem(
+  itemId: mongoose.Types.ObjectId,
+  wishlistId: mongoose.Types.ObjectId,
+  changes: LinkChanges
+): Promise<void> {
+  if (changes.linkItems?.length || changes.unlinkItems?.length) {
+    await unlinkDeletedItem(itemId, wishlistId);
+  }
+}
+
+/**
  * End the group gifts of an item an owner's write has just taken off them
  * (draft, received or deleted). Best-effort, as the owner's change has landed:
  * a gift left live is no longer its item's, shows nowhere, and is ended by the
@@ -250,7 +275,8 @@ export async function updateItem({
   // The links, both sides (WIS-29), before the rest of the edit: each side's
   // write is conditional, so a partner filled up or gone since the check
   // above refuses it, and the request is answered with that before anything
-  // else of it is written.
+  // else of it is written. An item found gone after them is taken off its
+  // partners again (`unlinkGoneItem`).
   if (linkChanges.linkItems || linkChanges.unlinkItems) {
     const linked = await writeItemLinks(id, wishlist._id.toString(), linkChanges);
     if (!linked.ok) {
@@ -300,7 +326,10 @@ export async function updateItem({
       const now = await Item.findById(id);
       if (now?.status === 'proposed') return editedFailure(now);
     }
-    return unmatchedItemFailure(id, writeGuard);
+    const failure = await unmatchedItemFailure(id, writeGuard);
+    // Gone: the links written above don't stay on its partners.
+    if (failure.status === 404) await unlinkGoneItem(currentItem._id, wishlist._id, linkChanges);
+    return failure;
   }
 
   let item = written;
@@ -314,7 +343,10 @@ export async function updateItem({
     // since this write landed is answered like any other missing item (and a
     // proposer isn't told their proposal was approved into the list).
     const now = await Item.findById(id);
-    if (!now) return itemNotFound();
+    if (!now) {
+      await unlinkGoneItem(currentItem._id, wishlist._id, linkChanges);
+      return itemNotFound();
+    }
     item = now;
   }
 

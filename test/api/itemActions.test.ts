@@ -60,6 +60,7 @@ beforeEach(async () => {
 
 afterEach(() => {
   vi.unstubAllEnvs();
+  vi.restoreAllMocks();
 });
 
 const ownerActor = () => ({ userId: owner, isOwner: true, isMember: false, isProposer: false });
@@ -180,6 +181,68 @@ describe('updateItem: owners', () => {
       data: { linkItems: [other._id.toString()] },
     });
     expect(result).toEqual({ ok: false, status: 403, error: 'Only owners can link items' });
+  });
+});
+
+describe('updateItem: links of an edit that finds its item gone (WIS-430)', () => {
+  const links = async (id: Types.ObjectId) =>
+    ((await Item.findById(id))?.relatedItems ?? []).map(String);
+
+  // regression: the links were written before the item's own write, and stayed
+  // when that write then matched nothing, so a partner kept naming a deleted
+  // item, a dead id holding a place under its 10-link cap.
+  it('takes a deleted item off the partner it just linked when its write finds it gone', async () => {
+    const item = await makeItem();
+    const partner = await makeItem({ name: 'Saucer' });
+    // A delete landing between the link writes and the item write, whose own
+    // best-effort unlink failed (a raw delete, so it never runs).
+    const write = Item.findOneAndUpdate.bind(Item);
+    vi.spyOn(Item, 'findOneAndUpdate').mockImplementationOnce(((
+      ...args: Parameters<typeof write>
+    ) => Item.deleteOne({ _id: item._id }).then(() => write(...args))) as never);
+    const result = await updateItem({
+      item,
+      wishlist,
+      actor: ownerActor(),
+      data: { name: 'Big Mug', linkItems: [partner._id.toString()] },
+    });
+    expect(result).toEqual({ ok: false, status: 404, error: 'Item not found' });
+    expect(await links(partner._id)).toEqual([]);
+  });
+
+  // regression: the same, when the item is gone by the re-read after an image
+  // replace.
+  it('takes a deleted item off its partners when the re-read after an image replace finds it gone', async () => {
+    const image = `${HOST}/uploads/${owner}/first.jpg`;
+    const item = await makeItem({ imageUrl: image });
+    const partner = await makeItem({ name: 'Saucer' });
+    del.mockImplementationOnce(() => Item.deleteOne({ _id: item._id }));
+    const result = await updateItem({
+      item,
+      wishlist,
+      actor: ownerActor(),
+      data: {
+        imageUrl: `${HOST}/uploads/${owner}/second.jpg`,
+        linkItems: [partner._id.toString()],
+      },
+    });
+    expect(result).toEqual({ ok: false, status: 404, error: 'Item not found' });
+    expect(del).toHaveBeenCalledWith(image);
+    expect(await links(partner._id)).toEqual([]);
+  });
+
+  it('leaves the links of an edit whose item write landed', async () => {
+    const item = await makeItem();
+    const partner = await makeItem({ name: 'Saucer' });
+    const result = await updateItem({
+      item,
+      wishlist,
+      actor: ownerActor(),
+      data: { name: 'Big Mug', linkItems: [partner._id.toString()] },
+    });
+    expect(result).toMatchObject({ ok: true, data: { name: 'Big Mug' } });
+    expect(await links(item._id)).toEqual([partner._id.toString()]);
+    expect(await links(partner._id)).toEqual([item._id.toString()]);
   });
 });
 
