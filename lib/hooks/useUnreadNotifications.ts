@@ -66,17 +66,16 @@ export function useUnreadNotifications(): number {
     }
   }, []);
 
+  const onRefresh = useCallback(() => void refresh(), [refresh]);
   useEffect(() => {
     if (status !== 'authenticated') return;
-    const onRefresh = () => void refresh();
     onRefresh();
     for (const event of UNREAD_REFRESH_EVENTS) window.addEventListener(event, onRefresh);
     return () => {
       for (const event of UNREAD_REFRESH_EVENTS) window.removeEventListener(event, onRefresh);
     };
-  }, [status, userId, refresh]);
-  const refreshOnReturn = useCallback(() => void refresh(), [refresh]);
-  useRefreshOnReturn(refreshOnReturn, status === 'authenticated');
+  }, [status, userId, onRefresh]);
+  useRefreshOnReturn(onRefresh, { enabled: status === 'authenticated' });
 
   return userId !== null && unread.account === userId ? unread.count : 0;
 }

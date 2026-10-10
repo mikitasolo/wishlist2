@@ -4,7 +4,7 @@
 // chips and the toolbar, and a list whose items the search or a chip hides
 // says that, with a way back to all of them.
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup, waitFor, within } from '@testing-library/react';
+import { act, render, screen, cleanup, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ApiItem } from '@/types/api';
 
@@ -35,6 +35,7 @@ vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }
 
 import WishlistDetail from '@/app/wishlists/[id]/page';
 import { listTab } from './listMenu';
+import { returnToTab } from '@/test/returnToTab';
 
 // What Carol is on the list (null: a visitor), and its items as the items API
 // gives them to her. `itemsFail` makes every read of the items fail.
@@ -294,9 +295,7 @@ describe('a list with no items at all', () => {
 
     // A co-owner deletes it, and the next poll finds the list empty.
     listItems = [];
-    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
-    document.dispatchEvent(new Event('visibilitychange'));
-    visibility.mockRestore();
+    act(() => returnToTab());
     await screen.findByRole('heading', { name: 'Your list is empty' });
 
     await addFirstItem(user, 'Lamp');

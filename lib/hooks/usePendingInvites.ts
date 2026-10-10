@@ -126,10 +126,10 @@ export function usePendingInvites({ onAnswered }: PendingInvitesOptions = {}) {
     load(false);
   }, [load]);
 
+  const refresh = useCallback(() => load(true), [load]);
   useEffect(() => {
     if (status !== 'authenticated') return;
     const tracker = answerTracker.current;
-    const refresh = () => load(true);
     load(false);
     tracker.setReread(refresh);
     window.addEventListener('invites-changed', refresh);
@@ -137,9 +137,8 @@ export function usePendingInvites({ onAnswered }: PendingInvitesOptions = {}) {
       tracker.setReread(null);
       window.removeEventListener('invites-changed', refresh);
     };
-  }, [status, userId, load]);
-  const refreshOnReturn = useCallback(() => load(true), [load]);
-  useRefreshOnReturn(refreshOnReturn, status === 'authenticated');
+  }, [status, userId, load, refresh]);
+  useRefreshOnReturn(refresh, { enabled: status === 'authenticated' });
 
   // Leaving the page forgets the accepts still in flight, so one landing (or
   // failing) after the user went elsewhere never pulls them onto a list.

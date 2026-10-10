@@ -241,6 +241,50 @@ describe('useLiveRead', () => {
     expect(result.current).toMatchObject({ data: ['new view'], loaded: true, loading: false });
   });
 
+  // regression (review of WIS-376): a client navigation to another list kept
+  // the last list's items, so the new list's failed first read showed them
+  // with a toast instead of LoadError.
+  it("shows a new read's failed first answer as failed, never the last read's data", async () => {
+    const onError = vi.fn();
+    const readA = reads(['a']);
+    const { result, rerender } = setup({ read: readA, onError });
+    await settle();
+    expect(result.current).toMatchObject({ data: ['a'], loaded: true });
+
+    // Another list: the last one stays on screen until the new read answers.
+    const readB = reads(new Error('boom'));
+    rerender({ enabled: true, initialData: [], pollMs: POLL_INTERVAL_MS, read: readB, onError });
+    expect(result.current).toMatchObject({ data: ['a'], loading: true });
+    await settle();
+    expect(result.current).toMatchObject({ data: [], loaded: false, failed: true });
+    expect(onError).toHaveBeenLastCalledWith(expect.any(Error), { silent: false, shown: false });
+  });
+
+  it('keeps optimistic state over a non-silent read that is stale, once data is shown', async () => {
+    const mutations = createMutationTracker();
+    const read = reads(['a'], ['a'], ['a', 'b']);
+    const { result } = setup({ read, mutations, pollMs: undefined });
+    await settle();
+
+    const request = deferred<void>();
+    let tracked!: Promise<void>;
+    act(() => {
+      result.current.setData((prev) => [...prev, 'b']);
+      tracked = mutations.track(() => request.promise);
+    });
+    // Try again, or coming back to the tab: not silent, but stale.
+    await act(() => result.current.refresh());
+    expect(result.current).toMatchObject({ data: ['a', 'b'], loading: false });
+
+    await act(async () => {
+      request.resolve();
+      await tracked;
+    });
+    await settle();
+    expect(read).toHaveBeenCalledTimes(3);
+    expect(result.current.data).toEqual(['a', 'b']);
+  });
+
   it('reads nothing once disabled, nor after unmounting', async () => {
     const read = reads(['a']);
     const { rerender, unmount } = setup({ read });
@@ -288,11 +332,15 @@ describe('useRefreshOnReturn', () => {
     expect(refresh).toHaveBeenCalledTimes(2);
   });
 
-  it('ignores back online in a window the viewer is not in, until they focus it', () => {
+  // regression (review of WIS-376): a tab made visible in a window the viewer
+  // isn't in read the Activity feed, which marks every row read.
+  it('ignores a tab shown or back online in a window the viewer is not in, until they focus it', () => {
     const refresh = vi.fn();
     renderHook(() => useRefreshOnReturn(refresh));
     vi.mocked(document.hasFocus).mockReturnValue(false);
 
+    setVisibility('hidden');
+    setVisibility('visible');
     fire('online');
     expect(refresh).not.toHaveBeenCalled();
 
@@ -301,9 +349,33 @@ describe('useRefreshOnReturn', () => {
     expect(refresh).toHaveBeenCalledTimes(1);
   });
 
+  it('with onlyAfterAway, counts a return only after the tab was hidden or offline', () => {
+    const refresh = vi.fn();
+    renderHook(() => useRefreshOnReturn(refresh, { onlyAfterAway: true }));
+
+    // On screen all along (a file picker closed, an alt-tab): nothing.
+    fire('focus');
+    fire('online');
+    expect(refresh).not.toHaveBeenCalled();
+
+    setVisibility('hidden');
+    setVisibility('visible');
+    fire('focus');
+    expect(refresh).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      window.dispatchEvent(new Event('offline'));
+    });
+    fire('online');
+    expect(refresh).toHaveBeenCalledTimes(2);
+    vi.advanceTimersByTime(RETURN_PAIR_MS);
+    fire('focus');
+    expect(refresh).toHaveBeenCalledTimes(2);
+  });
+
   it('does nothing while the tab is hidden, or while disabled', () => {
     const refresh = vi.fn();
-    const { rerender } = renderHook(({ on }) => useRefreshOnReturn(refresh, on), {
+    const { rerender } = renderHook(({ on }) => useRefreshOnReturn(refresh, { enabled: on }), {
       initialProps: { on: true },
     });
 

@@ -63,7 +63,7 @@ export function useChangedReservations(): number | null {
     };
   }, [userId]);
   const refresh = useCallback(() => reread.current?.(), []);
-  useRefreshOnReturn(refresh, userId !== null);
+  useRefreshOnReturn(refresh, { enabled: userId !== null });
 
   return read && read.userId === userId ? read.changed : null;
 }

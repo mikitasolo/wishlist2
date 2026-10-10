@@ -209,7 +209,7 @@ export function useReservedData() {
   const refresh = useCallback(() => {
     if (readInFlight.current === null) load();
   }, [load]);
-  useRefreshOnReturn(refresh, status === 'authenticated');
+  useRefreshOnReturn(refresh, { enabled: status === 'authenticated' });
 
   // Adds the entry "Mark as given" got back, in the history's newest-first
   // order. A read on its way meanwhile may predate it, so it's recorded for

@@ -15,9 +15,14 @@ test.beforeEach(({ consoleErrors }) => {
 });
 
 // Fire a background poll now rather than waiting out the 5 s tick: the page
-// also re-reads its items whenever it becomes visible, which it already is.
+// also re-reads its items on a return from away, here a reconnect (a hidden
+// tab would do too, but would restart the poll timer).
 async function pollOnce(page: Page) {
-  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await page.evaluate(() => {
+    document.hasFocus = () => true;
+    window.dispatchEvent(new Event('offline'));
+    window.dispatchEvent(new Event('online'));
+  });
 }
 
 // Any of the page's answers for a list with no items to show: that the list is
