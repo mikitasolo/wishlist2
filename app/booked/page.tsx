@@ -597,17 +597,19 @@ export default function BookedPage() {
       <main className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
         <h1 className="text-3xl font-semibold tracking-tight text-foreground">Reserved by you</h1>
         {!loading && !loadFailed && reservations.length > 0 ? (
-          // "4 to give · 3 to review · ≈ €520 to give": what's left to do, at a glance.
+          // "4 to give (≈ €520) · 3 to review": what's left to do, at a glance.
           <p className="mt-1 text-muted-foreground" data-testid="reserved-summary">
             {[
-              `${active.length} to give`,
+              `${active.length} to give${
+                toGiveTotal
+                  ? ` (${
+                      toGiveTotal.approx
+                        ? formatApproxPrice(toGiveTotal.price, locale)
+                        : formatPrice(toGiveTotal.price, locale)
+                    })`
+                  : ''
+              }`,
               needsConfirm.length > 0 && `${needsConfirm.length} to review`,
-              toGiveTotal &&
-                `${
-                  toGiveTotal.approx
-                    ? formatApproxPrice(toGiveTotal.price, locale)
-                    : formatPrice(toGiveTotal.price, locale)
-                } to give`,
             ]
               .filter(Boolean)
               .join(' · ')}

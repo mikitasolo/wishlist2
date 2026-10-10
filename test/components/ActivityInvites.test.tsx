@@ -802,7 +802,7 @@ describe('Activity, pinned invites — keeping the list fresh while it is open',
     refetchOn('focus');
     await list(1, loadFailed);
     expect(skeleton()).not.toBeNull();
-    expect(screen.queryByText('You’re all caught up')).toBeNull();
+    expect(screen.queryByText('Nothing here yet')).toBeNull();
 
     await list(0, listed(invites));
     expect(screen.getByText('Birthday')).toBeInTheDocument();
@@ -879,7 +879,7 @@ describe('Activity, pinned invites — keeping the list fresh while it is open',
 
     await list(0, loadFailed);
     expect(screen.getByRole('heading', { name: 'Couldn’t load your invitations' })).toBeVisible();
-    expect(screen.queryByText('You’re all caught up')).toBeNull();
+    expect(screen.queryByText('Nothing here yet')).toBeNull();
     expect(showToast).not.toHaveBeenCalled();
 
     // A refetch failing too keeps the panel, and says nothing more.
@@ -946,7 +946,7 @@ describe('Activity, pinned invites — keeping the list fresh while it is open',
     await list(1, loadFailed);
 
     expect(screen.getByRole('heading', { name: 'Couldn’t load your invitations' })).toBeVisible();
-    expect(screen.queryByText('You’re all caught up')).toBeNull();
+    expect(screen.queryByText('Nothing here yet')).toBeNull();
     expect(screen.queryByText('Birthday')).toBeNull();
   });
 
@@ -1030,7 +1030,7 @@ describe('Activity, pinned invites — on the page', () => {
     const row = feedRow(/@alice invited you to/);
     expect(within(row).queryByRole('button')).toBeNull();
     expect(within(row).queryByRole('link')).toBeNull();
-    expect(screen.queryByText('You’re all caught up')).toBeNull();
+    expect(screen.queryByText('Nothing here yet')).toBeNull();
   });
 
   it.each([
@@ -1072,13 +1072,13 @@ describe('Activity, pinned invites — on the page', () => {
     expect(screen.getAllByText(warning)).toHaveLength(1);
   });
 
-  it('says it is all caught up only when there is neither an invite nor a notification', async () => {
+  it('shows the empty state only when there is neither an invite nor a notification', async () => {
     stubFetch(
       async () => declined,
       async () => listed([])
     );
     render(<ActivityPage />);
-    expect(await screen.findByText('You’re all caught up')).toBeInTheDocument();
+    expect(await screen.findByText('Nothing here yet')).toBeInTheDocument();
     expect(screen.queryByRole('region', { name: 'Invitations' })).toBeNull();
   });
 
@@ -1169,7 +1169,7 @@ describe('Activity, pinned invites — on the page', () => {
     // The feed stays, with an invitation's shape where the cards will go.
     expect(screen.getByText(/@zoe invited you to/)).toBeInTheDocument();
     expect(document.querySelector('.skeleton')).not.toBeNull();
-    expect(screen.queryByText('You’re all caught up')).toBeNull();
+    expect(screen.queryByText('Nothing here yet')).toBeNull();
 
     await act(async () => lists[1](listed(invites)));
     expect(within(pinned()).getByText('Birthday')).toBeInTheDocument();
@@ -1180,7 +1180,7 @@ describe('Activity, pinned invites — on the page', () => {
     mockFetch(declined);
     render(<ActivityPage />);
     await screen.findByText('Birthday');
-    expect(screen.queryByText('You’re all caught up')).toBeNull();
+    expect(screen.queryByText('Nothing here yet')).toBeNull();
   });
 });
 

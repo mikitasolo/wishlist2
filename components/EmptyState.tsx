@@ -3,7 +3,7 @@ import Icon, { type IconName } from '@/components/Icon';
 import { TONE_CLASSES } from '@/lib/utils/statusTones';
 
 /**
- * - `default`: an invitation to start (no lists yet, all caught up): the accent chip.
+ * - `default`: an invitation to start (no lists yet, no activity yet): the accent chip.
  * - `muted`: a quieter "nothing here" (a filter that hides everything, a
  *   private profile, nothing shared yet).
  * - `error`: something went wrong (a failed read: see `LoadError`).

@@ -118,7 +118,7 @@ export default function ActivityPage() {
   const [items, setItems] = useState<NotificationView[]>([]);
   const [feedLoading, setFeedLoading] = useState(true);
   // The feed couldn't be read: said in place, with Try again, never as
-  // "You're all caught up".
+  // the empty state.
   const [feedFailed, setFeedFailed] = useState(false);
   const [followersOpen, setFollowersOpen] = useState(false);
   // A friend's ask for a wishlist (WIS-324) is answered by making one.
@@ -452,13 +452,13 @@ export default function ActivityPage() {
                 )}
               </section>
             ) : (
-              // Caught up only once both reads have said so.
+              // Empty only once both reads have said so.
               invites.length === 0 &&
               !invitesLoading &&
               !invitesFailed && (
                 <EmptyState
                   icon="bell"
-                  title="You’re all caught up"
+                  title="Nothing here yet"
                   body="When someone follows you, invites you to a wishlist, or acts on a proposal, it’ll show up here."
                 ></EmptyState>
               )

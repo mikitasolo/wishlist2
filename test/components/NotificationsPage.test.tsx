@@ -94,14 +94,17 @@ describe('Activity', () => {
     render(<ActivityPage />);
     expect(screen.getByRole('heading', { name: 'Activity', level: 1 })).toBeVisible();
     expect(screen.getByText('Updates about your lists and people you follow.')).toBeVisible();
-    expect(await screen.findByText('You’re all caught up')).toBeInTheDocument();
+    // regression: an account with no activity was told "You’re all caught up", which
+    // congratulates nothing; the empty state now invites instead.
+    expect(await screen.findByText('Nothing here yet')).toBeInTheDocument();
+    expect(screen.queryByText(/all caught up/i)).toBeNull();
   });
 
   // WIS-312: the handle call belongs on Shared with you, not in what happened.
   it('has no username handle in its empty state', async () => {
     serve([]);
     render(<ActivityPage />);
-    expect(await screen.findByText('You’re all caught up')).toBeInTheDocument();
+    expect(await screen.findByText('Nothing here yet')).toBeInTheDocument();
     expect(screen.queryByText('@me')).toBeNull();
     expect(screen.queryByText(/invite you by/)).toBeNull();
     expect(screen.queryByRole('button', { name: 'Copy your profile link' })).toBeNull();
@@ -478,7 +481,7 @@ describe('Activity — a feed that couldn’t be loaded', () => {
       render(<ActivityPage />);
 
       await screen.findByRole('heading', { name: 'Couldn’t load notifications' });
-      expect(screen.queryByText('You’re all caught up')).toBeNull();
+      expect(screen.queryByText('Nothing here yet')).toBeNull();
       expect(showToast).not.toHaveBeenCalled();
 
       serve([row({ _id: 'n-follow', type: 'follow', actorUsername: 'alice' })]);
@@ -571,7 +574,7 @@ describe('Activity feed structure', () => {
   it('shows no Notifications heading with no rows', async () => {
     serve([]);
     render(<ActivityPage />);
-    await screen.findByText('You’re all caught up');
+    await screen.findByText('Nothing here yet');
     expect(screen.queryByRole('heading', { name: 'Notifications' })).toBeNull();
   });
 });
