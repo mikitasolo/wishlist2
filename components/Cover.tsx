@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import BannerImage from '@/components/BannerImage';
 import { coverGradient, coverInitial } from '@/lib/utils/cover';
 import { coverBackground } from '@/lib/utils/coverPattern';
@@ -76,14 +76,12 @@ export default function Cover({
   // Keyed on the URL, so an edit that replaces a broken image shows the new one.
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
   const showImage = !!src && failedSrc !== src;
-  const gradient = coverGradient(seed);
-  const style = {
-    background: showImage
-      ? undefined
-      : name !== undefined
-        ? coverBackground(gradient, occasionKind, name)
-        : gradient,
-  };
+  // Memoised: the pattern is a hash and a base64 SVG, and grids re-render on every poll.
+  const placeholderBackground = useMemo(() => {
+    const gradient = coverGradient(seed);
+    return name !== undefined ? coverBackground(gradient, occasionKind, name) : gradient;
+  }, [seed, name, occasionKind]);
+  const style = { background: showImage ? undefined : placeholderBackground };
   const content = (
     <>
       {showImage && (
