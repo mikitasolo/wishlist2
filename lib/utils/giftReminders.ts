@@ -529,12 +529,10 @@ export async function sendGiftReminders(
  * alike, and left in place. A reader with no gift reminder row costs one read.
  */
 export async function hiddenGiftReminderRows(userId: string): Promise<mongoose.Types.ObjectId[]> {
-  const rows = await Notification.find({
-    user: userId,
-    type: { $in: GIFT_REMINDER_NOTIFICATION_TYPES },
-  })
-    .select('type wishlist occasionDate')
-    .lean();
+  const mine = { user: userId, type: { $in: GIFT_REMINDER_NOTIFICATION_TYPES } };
+  // Most readers have none: one existence check on `{ user, type }`, then the rows.
+  if (!(await Notification.exists(mine))) return [];
+  const rows = await Notification.find(mine).select('type wishlist occasionDate').lean();
   if (rows.length === 0) return [];
   const gifter = new mongoose.Types.ObjectId(userId);
   const held = new Map<GiftReminderPhase, Map<string, Date>>();
