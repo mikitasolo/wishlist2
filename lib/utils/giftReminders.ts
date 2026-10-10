@@ -38,7 +38,9 @@ import {
  *   `Reservation` of theirs whose item is still booked by them (a solo
  *   booking), or whose item's live group gift they're still in (a pledge),
  *   and a membership of the list, not an owner, the list not archived
- *   (`giftHolders`). Marking a gift as given ends its Reservation, so a gift
+ *   (`giftHolders`; the nudge after: a live group gift's organizer only, who
+ *   alone can give it, and a gifter whose item was marked received too).
+ *   Marking a gift as given ends its Reservation, so a gift
  *   given is no longer held. Never owners (who are booking-blind), never other
  *   members, never anyone who turned the event off in Settings.
  * - **When**: `gift_reminder` `OCCASION_REMINDER_LEAD_DAYS` (7) before the
@@ -50,8 +52,8 @@ import {
  * - **Re-checked**: after the write (the list and each recipient read again;
  *   a row that no longer holds is taken back), before each email (claimed
  *   first, then read again), and whenever the feed is read
- *   (`hiddenGiftReminderWishlists`: a list they no longer hold anything on as
- *   a plain member hides its rows).
+ *   (`hiddenGiftReminderRows`, row by row: a row hides once they no longer hold
+ *   what it is about, as a plain member).
  * - **Says**: the list, its occasion's kind and day. No item, no count, nothing
  *   about anyone else's reservations, no actor.
  * - **Capped**: at most `GIFT_REMINDER_MAX_PER_RUN` new rows a run per phase,
@@ -129,35 +131,52 @@ export async function listsDueForGiftReminder(
 }
 
 /**
- * The reservations a phase is about: any for the reminder before; for the
- * nudge after, only those made before the occasion's day was over (one made
- * since is for a later occurrence).
+ * The moment a nudge's reservations must predate: the end of the occasion's
+ * day (one made since is for a later occurrence). None for the reminder before.
  */
-function reservationsFor(
-  phase: GiftReminderPhase,
-  occasionDate: string
-): FilterQuery<IReservation> {
-  if (phase === 'gift_reminder') return {};
+function reservedBefore(phase: GiftReminderPhase, occasionDate: string): Date | null {
+  if (phase === 'gift_reminder') return null;
   const dayAfter = addDays(occasionDate, 1);
-  return dayAfter ? { createdAt: { $lt: new Date(`${dayAfter}T00:00:00Z`) } } : {};
+  return dayAfter ? new Date(`${dayAfter}T00:00:00Z`) : null;
+}
+
+/** Whether a holding that began at `since` counts for `phase`'s occurrence on `occasionDate`. */
+export function countsFor(phase: GiftReminderPhase, occasionDate: string, since: Date): boolean {
+  const cutoff = reservedBefore(phase, occasionDate);
+  return !cutoff || since < cutoff;
 }
 
 const holderKey = (wishlist: Id, user: Id) => `${String(wishlist)}:${String(user)}`;
 
 /**
- * Who holds something now, as `<listId>:<userId>` keys, among the
- * reservations `filter` matches: a plain member of the list (a membership, not
- * an owner, the list there and not archived) whose Reservation's item is still
- * booked by them alone, or still carries a live group gift they're in.
+ * Who holds something on which list now for `phase`, among the reservations
+ * `filter` matches: a map from `<listId>:<userId>` to the earliest such
+ * Reservation's `createdAt` (what a nudge's cutoff is checked against,
+ * `countsFor`). Only a plain member of the list (a membership, not an owner,
+ * the list there and not archived), and only a Reservation that is theirs to
+ * settle:
+ *
+ * - **before** (`gift_reminder`): its item is still booked by them alone, or
+ *   still carries a live group gift they're in;
+ * - **after** (`gift_nudge`), what they can mark as given now: a solo booking
+ *   as above, one whose item the owner has since marked received, or a live
+ *   group gift they **organize** (only its organizer gives it, for everyone;
+ *   the other contributors can't, so aren't nudged).
  *
  * The list and memberships are read before the items, as `plainMembersOf`
  * does: becoming an owner grants ownership before it releases, and leaving
  * deletes the membership before it frees, so a read landing in between still
  * sees one of the two. Every send re-checks after its write too.
  */
-export async function giftHolders(filter: FilterQuery<IReservation>): Promise<Set<string>> {
-  const reservations = await Reservation.find(filter).select('gifter wishlist item').lean();
-  if (reservations.length === 0) return new Set();
+export async function giftHolders(
+  filter: FilterQuery<IReservation>,
+  phase: GiftReminderPhase
+): Promise<Map<string, Date>> {
+  const held = new Map<string, Date>();
+  const reservations = await Reservation.find(filter)
+    .select('gifter wishlist item createdAt')
+    .lean();
+  if (reservations.length === 0) return held;
   const listIds = Array.from(new Set(reservations.map((r) => String(r.wishlist))));
   const userIds = Array.from(new Set(reservations.map((r) => String(r.gifter))));
 
@@ -175,102 +194,109 @@ export async function giftHolders(filter: FilterQuery<IReservation>): Promise<Se
 
   const items = await Item.find({
     _id: { $in: reservations.map((r) => r.item) },
-    status: 'booked',
+    status: { $in: phase === 'gift_nudge' ? ['booked', 'completed'] : ['booked'] },
   })
-    .select('wishlist bookedBy groupGift')
+    .select('wishlist status bookedBy groupGift')
     .lean();
-  const giftIds = items.map((i) => i.groupGift).filter((id): id is mongoose.Types.ObjectId => !!id);
+  const giftIds = items
+    .filter((i) => i.status === 'booked' && i.groupGift)
+    .map((i) => i.groupGift as mongoose.Types.ObjectId);
   const gifts =
     giftIds.length > 0
       ? await GroupGift.find({ _id: { $in: giftIds }, active: true })
-          .select('contributors.user')
+          .select('organizer contributors.user')
           .lean()
       : [];
   const itemById = new Map(items.map((i) => [String(i._id), i]));
-  const giftById = new Map(
-    gifts.map((g) => [String(g._id), new Set(g.contributors.map((c) => String(c.user)))])
-  );
+  const giftById = new Map(gifts.map((g) => [String(g._id), g]));
 
-  const held = new Set<string>();
+  const settles = (gifter: string, item: (typeof items)[number]): boolean => {
+    // Received by the owner: theirs to mark as given (after only).
+    if (item.status === 'completed') return phase === 'gift_nudge';
+    if (!item.groupGift) return String(item.bookedBy) === gifter;
+    const gift = giftById.get(String(item.groupGift));
+    if (!gift) return false;
+    return phase === 'gift_nudge'
+      ? String(gift.organizer) === gifter
+      : gift.contributors.some((c) => String(c.user) === gifter);
+  };
+
   for (const r of reservations) {
     const gifter = String(r.gifter);
     const list = listById.get(String(r.wishlist));
     if (!list || list.archived || isWishlistOwner(list, gifter)) continue;
-    if (!member.has(holderKey(r.wishlist, gifter))) continue;
+    const key = holderKey(r.wishlist, gifter);
+    if (!member.has(key)) continue;
     const item = itemById.get(String(r.item));
     if (!item || String(item.wishlist) !== String(r.wishlist)) continue;
-    const holds = item.groupGift
-      ? (giftById.get(String(item.groupGift))?.has(gifter) ?? false)
-      : String(item.bookedBy) === gifter;
-    if (holds) held.add(holderKey(r.wishlist, gifter));
+    if (!settles(gifter, item)) continue;
+    const since = held.get(key);
+    if (!since || r.createdAt < since) held.set(key, r.createdAt);
   }
   return held;
 }
 
-/** Of `users`, those who hold something on `list` for `phase` now (`giftHolders`). */
+/** Of `users` (everyone if left out), those who hold something on `list` for `phase` now (`giftHolders`). */
 async function holdersAmong(
   phase: GiftReminderPhase,
   list: Pick<GiftDueList, '_id' | 'occasionDate'>,
   users?: Id[]
 ): Promise<mongoose.Types.ObjectId[]> {
-  const held = await giftHolders({
-    wishlist: list._id,
-    ...(users ? { gifter: { $in: users } } : {}),
-    ...reservationsFor(phase, list.occasionDate),
-  });
-  return Array.from(held, (key) => new mongoose.Types.ObjectId(key.split(':')[1]));
+  const held = await giftHolders(
+    { wishlist: list._id, ...(users ? { gifter: { $in: users } } : {}) },
+    phase
+  );
+  return Array.from(held)
+    .filter(([, since]) => countsFor(phase, list.occasionDate, since))
+    .map(([key]) => new mongoose.Types.ObjectId(key.split(':')[1]));
 }
 
-/** Who on a due list still needs `phase`'s row: holders who get it in app and haven't had it. */
+/**
+ * Who on a due list still needs `phase` on `channel`: its members who get it
+ * there (read first, so a list where nobody wants the email, as by default,
+ * costs no holding lookup), who hold something for it, and who haven't had it
+ * (a row in app, a claim by email).
+ */
 async function pendingRecipients(
   phase: GiftReminderPhase,
-  list: GiftDueList
+  list: GiftDueList,
+  channel: 'inApp' | 'email'
 ): Promise<mongoose.Types.ObjectId[]> {
-  const holders = await holdersAmong(phase, list);
+  const members = await WishlistMember.find({ wishlist: list._id }).select('user').lean();
+  if (members.length === 0) return [];
+  const wanting = await User.find({
+    _id: { $in: members.map((m) => m.user) },
+    ...notificationOptInFilter(phase, channel),
+  })
+    .select('_id')
+    .lean();
+  if (wanting.length === 0) return [];
+  const holders = await holdersAmong(
+    phase,
+    list,
+    wanting.map((u) => u._id)
+  );
   if (holders.length === 0) return [];
-  const [wanting, reminded] = await Promise.all([
-    User.find({ _id: { $in: holders }, ...notificationOptInFilter(phase, 'inApp') })
-      .select('_id')
-      .lean(),
-    Notification.find({
-      type: phase,
-      wishlist: list._id,
-      occasionDate: list.occasionDate,
-      user: { $in: holders },
-    })
-      .select('user')
-      .lean(),
-  ]);
-  const done = new Set(reminded.map((n) => String(n.user)));
-  return wanting
-    .map((u) => u._id)
-    .filter((id) => !done.has(String(id)))
-    .sort((a, b) => String(a).localeCompare(String(b)));
-}
-
-/** Who on a due list still needs `phase`'s email: holders whose email is on and who haven't had it. */
-async function pendingEmailRecipients(
-  phase: GiftReminderPhase,
-  list: GiftDueList
-): Promise<mongoose.Types.ObjectId[]> {
-  const holders = await holdersAmong(phase, list);
-  if (holders.length === 0) return [];
-  const [wanting, emailed] = await Promise.all([
-    User.find({ _id: { $in: holders }, ...notificationOptInFilter(phase, 'email') })
-      .select('_id')
-      .lean(),
-    NotificationEmailClaim.find({
-      kind: phase,
-      wishlist: list._id,
-      key: list.occasionDate,
-      user: { $in: holders },
-    })
-      .select('user')
-      .lean(),
-  ]);
-  const done = new Set(emailed.map((c) => String(c.user)));
-  return wanting
-    .map((u) => u._id)
+  const had =
+    channel === 'inApp'
+      ? await Notification.find({
+          type: phase,
+          wishlist: list._id,
+          occasionDate: list.occasionDate,
+          user: { $in: holders },
+        })
+          .select('user')
+          .lean()
+      : await NotificationEmailClaim.find({
+          kind: phase,
+          wishlist: list._id,
+          key: list.occasionDate,
+          user: { $in: holders },
+        })
+          .select('user')
+          .lean();
+  const done = new Set(had.map((n) => String(n.user)));
+  return holders
     .filter((id) => !done.has(String(id)))
     .sort((a, b) => String(a).localeCompare(String(b)));
 }
@@ -448,13 +474,13 @@ async function writePhase(
 ): Promise<GiftReminderPhaseRun> {
   const run: GiftReminderPhaseRun = { lists: 0, sent: 0, capped: false };
   for (const list of due) {
-    const pending = await pendingRecipients(phase, list);
-    if (pending.length === 0) continue;
     const room = maxPerRun - run.sent;
     if (room <= 0) {
       run.capped = true;
       break;
     }
+    const pending = await pendingRecipients(phase, list, 'inApp');
+    if (pending.length === 0) continue;
     if (pending.length > room) run.capped = true;
     run.lists += 1;
     run.sent += await createGiftReminders(phase, list, pending.slice(0, room));
@@ -485,7 +511,7 @@ export async function sendGiftReminders(
     for (const list of due) {
       const room = maxEmailsPerRun - run.emailed;
       if (room <= 0) return run;
-      const pending = await pendingEmailRecipients(phase, list);
+      const pending = await pendingRecipients(phase, list, 'email');
       if (pending.length === 0) continue;
       run.emailed += await sendGiftReminderEmails(phase, list, pending.slice(0, room));
     }
@@ -494,24 +520,36 @@ export async function sendGiftReminders(
 }
 
 /**
- * The lists whose gift reminder rows the reader has and mustn't see now:
- * those they no longer hold anything on as a plain member (made an owner,
- * left or taken off, the list archived or gone, everything given or released).
- * Hidden from the feed and its unread count alike, and left in place.
+ * The reader's gift reminder rows they mustn't see now, by id: each checked
+ * by its own phase and occurrence (`giftHolders`, `countsFor`), so a row shows
+ * only while they hold, as a plain member, what it reminds them of (made an
+ * owner, left or taken off, the list archived or gone, everything given or
+ * released all hide it; a nudge about an occurrence isn't revived by a
+ * reservation made after it). Hidden from the feed and its unread count
+ * alike, and left in place. A reader with no gift reminder row costs one read.
  */
-export async function hiddenGiftReminderWishlists(
-  userId: string
-): Promise<mongoose.Types.ObjectId[]> {
-  const lists: mongoose.Types.ObjectId[] = (
-    await Notification.distinct('wishlist', {
-      user: userId,
-      type: { $in: GIFT_REMINDER_NOTIFICATION_TYPES },
+export async function hiddenGiftReminderRows(userId: string): Promise<mongoose.Types.ObjectId[]> {
+  const rows = await Notification.find({
+    user: userId,
+    type: { $in: GIFT_REMINDER_NOTIFICATION_TYPES },
+  })
+    .select('type wishlist occasionDate')
+    .lean();
+  if (rows.length === 0) return [];
+  const gifter = new mongoose.Types.ObjectId(userId);
+  const held = new Map<GiftReminderPhase, Map<string, Date>>();
+  for (const phase of GIFT_REMINDER_NOTIFICATION_TYPES) {
+    const lists = rows.filter((r) => r.type === phase && r.wishlist).map((r) => r.wishlist);
+    held.set(
+      phase,
+      lists.length > 0 ? await giftHolders({ gifter, wishlist: { $in: lists } }, phase) : new Map()
+    );
+  }
+  return rows
+    .filter((r) => {
+      const phase = r.type as GiftReminderPhase;
+      const since = r.wishlist ? held.get(phase)?.get(holderKey(r.wishlist, userId)) : undefined;
+      return !since || !r.occasionDate || !countsFor(phase, r.occasionDate, since);
     })
-  ).filter((id: mongoose.Types.ObjectId | null) => !!id);
-  if (lists.length === 0) return [];
-  const held = await giftHolders({
-    gifter: new mongoose.Types.ObjectId(userId),
-    wishlist: { $in: lists },
-  });
-  return lists.filter((id) => !held.has(holderKey(id, userId)));
+    .map((r) => r._id);
 }

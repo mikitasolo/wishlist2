@@ -388,6 +388,44 @@ describe('sendGiftReminders: after the occasion', () => {
     expect(await rows('gift_nudge')).toHaveLength(0);
   });
 
+  // regression: only a group gift's organizer can mark it as given (the others
+  // get a 409), so only they are nudged; every contributor is reminded before.
+  it('nudges a live group gift’s organizer only, not its other contributors', async () => {
+    const l = await list(birthdayIn(THREE_DAYS_AGO));
+    const org = await user('org');
+    const pal = await user('pal');
+    await join(l._id, org);
+    await join(l._id, pal);
+    await groupGift(l._id, [org, pal]);
+    // The model's timestamps keep createdAt out of an update: write it directly.
+    await Reservation.collection.updateMany(
+      {},
+      { $set: { createdAt: new Date('2026-09-01T00:00:00Z') } }
+    );
+
+    await sendGiftReminders(NOW);
+    expect(await recipients('gift_nudge')).toEqual([String(org)]);
+  });
+
+  // regression: an owner marking it received doesn't mark it as given for the
+  // gifter, whose Reservation is still there to settle.
+  it('nudges a holder whose item the owner already marked received, but never reminds before', async () => {
+    const past = await list(birthdayIn(THREE_DAYS_AGO));
+    const coming = await list(birthdayIn(IN_A_WEEK));
+    const mia = await user('mia');
+    for (const l of [past, coming]) {
+      await join(l._id, mia);
+      const { item } = await reserve(l._id, mia, {
+        createdAt: new Date('2026-09-01T00:00:00Z'),
+      });
+      await Item.updateOne({ _id: item._id }, { $set: { status: 'completed', bookedBy: null } });
+    }
+
+    await sendGiftReminders(NOW);
+    expect(await recipients('gift_nudge')).toEqual([String(mia)]);
+    expect(await rows('gift_reminder')).toHaveLength(0);
+  });
+
   it('nudges about a yearly occasion that just passed', async () => {
     const l = await list({ kind: 'holiday', date: '2000-10-02', recurrence: 'yearly' });
     const mia = await user('mia');
@@ -555,6 +593,38 @@ describe('the feed re-checks it on every read', () => {
     const { l, mia } = await remindedHolder();
     await WishlistMember.deleteOne({ wishlist: l._id, user: mia });
     expect((await feedAs(mia)).data).toHaveLength(0);
+  });
+
+  // regression: the feed checks each row by its own phase and occurrence, so a
+  // nudge about a gift since given isn't brought back by a later reservation.
+  it('keeps a nudge hidden once given, even after a new reservation for a later occurrence', async () => {
+    const l = await list(birthdayIn(THREE_DAYS_AGO));
+    const mia = await user('mia');
+    await join(l._id, mia);
+    const { reservation } = await reserve(l._id, mia, {
+      createdAt: new Date('2026-09-01T00:00:00Z'),
+    });
+    await sendGiftReminders(NOW);
+    expect((await feedAs(mia)).unreadCount).toBe(1);
+
+    await Reservation.deleteOne({ _id: reservation._id });
+    await reserve(l._id, mia);
+    const body = await feedAs(mia);
+    expect(body.data).toHaveLength(0);
+    expect(body.unreadCount).toBe(0);
+  });
+
+  it('hides a non-organizer’s reminder rows only when they leave the gift', async () => {
+    const l = await list(birthdayIn(IN_A_WEEK));
+    const org = await user('org');
+    const pal = await user('pal');
+    await join(l._id, org);
+    await join(l._id, pal);
+    const { gift } = await groupGift(l._id, [org, pal]);
+    await sendGiftReminders(NOW);
+    expect((await feedAs(pal)).unreadCount).toBe(1);
+    await GroupGift.updateOne({ _id: gift._id }, { $pull: { contributors: { user: pal } } });
+    expect((await feedAs(pal)).unreadCount).toBe(0);
   });
 
   it('hides it once nothing is held (marked as given), and while the list is archived', async () => {

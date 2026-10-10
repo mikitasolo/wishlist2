@@ -13,7 +13,7 @@ import {
 } from '@/lib/utils/notifications';
 import { hiddenGroupGiftWishlists } from '@/lib/groupGiftNotifications';
 import { dropHiddenBirthdayReminders } from '@/lib/utils/birthdayReminders';
-import { hiddenGiftReminderWishlists } from '@/lib/utils/giftReminders';
+import { hiddenGiftReminderRows } from '@/lib/utils/giftReminders';
 
 const FEED_LIMIT = 30;
 
@@ -33,7 +33,7 @@ async function visibleNotifications(userId: string): Promise<FilterQuery<INotifi
   const [paused, hiddenGifts, hiddenReminders] = await Promise.all([
     pausedInviteWishlistIds(userId),
     hiddenGroupGiftRowWishlists(userId),
-    hiddenGiftReminderWishlists(userId),
+    hiddenGiftReminderRows(userId),
   ]);
   const nor: FilterQuery<INotification>[] = [];
   if (paused.length > 0) {
@@ -43,12 +43,9 @@ async function visibleNotifications(userId: string): Promise<FilterQuery<INotifi
     nor.push({ type: { $in: GROUP_GIFT_NOTIFICATION_TYPES }, wishlist: { $in: hiddenGifts } });
   }
   // WIS-384: a reminder about what you reserved shows only while you still
-  // hold something on its list as a plain member.
+  // hold, as a plain member, what it reminds you of (each row checked).
   if (hiddenReminders.length > 0) {
-    nor.push({
-      type: { $in: GIFT_REMINDER_NOTIFICATION_TYPES },
-      wishlist: { $in: hiddenReminders },
-    });
+    nor.push({ _id: { $in: hiddenReminders } });
   }
   return nor.length > 0 ? { user: userId, $nor: nor } : { user: userId };
 }
