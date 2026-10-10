@@ -35,9 +35,10 @@ const WishlistMemberSchema = new Schema(
 
 // Compound index to ensure a user is only a member of a wishlist once
 WishlistMemberSchema.index({ wishlist: 1, user: 1 }, { unique: true });
-// Index for faster lookups
+// A member's lists. A list's members need no index of their own: the unique
+// `{ wishlist, user }` above serves them. A separate `{ wishlist: 1 }` did
+// until WIS-377, which dropped it (`POST /api/migrations/sync-hot-query-indexes`).
 WishlistMemberSchema.index({ user: 1 });
-WishlistMemberSchema.index({ wishlist: 1 });
 
 // Base document type
 export interface IWishlistMember {

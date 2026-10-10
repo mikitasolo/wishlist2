@@ -150,7 +150,7 @@ Read it before touching roles, invites, bookings, visibility, notifications or a
 - **Link previews** show only what a signed-out visitor could see (a live share link's: its list, whatever the visibility); a write that changes a card calls `purgeShareCards`.
 - **Email** HTML escapes every user value, and subjects carry no free text; every notification email has a signed one-click unsubscribe for its event (`unsubscribeUrls`), and each event's email follows its setting in `NOTIFICATION_EVENTS`, says no more than its in-app row (`sendNotificationEmail`), and is limited per recipient (proposals and link joins: one per list per owner a day). **Logs** carry no personal data. **Analytics** (Umami, production only) goes only through `lib/analytics.ts`: route patterns for URLs (never a share token or id), coarse enum props, fired after a write succeeds, never a reservation event from an owner's view.
 - **Rate limiting** only through `enforce()` in `lib/rateLimit.ts`, with branded keys and the new-account tier.
-- **Migrations** are idempotent `createMigration` HTTP endpoints with a stated deploy order.
+- **Migrations** are idempotent `createMigration` HTTP endpoints with a stated deploy order. Hot queries never `COLLSCAN` (`test/api/indexAudit.test.ts`); a new one gets a scenario there.
 - **`overrides`** and the known `npm audit` exceptions live in backend.md; update that list with any audit change.
 
 ### [UI kit & design system](docs/agents/ui.md)

@@ -166,7 +166,11 @@ curl -X POST -H "X-Migration-Secret: $MIGRATION_SECRET" \
   https://<your-host>/api/migrations/<name>
 ```
 
-None is in the tree right now. These have been applied to every environment and removed; recover any of them from git history if you ever need
+In the tree now, to run once per environment **after** the deploy that ships it:
+
+- `sync-hot-query-indexes` (WIS-377), which builds the Wishlist `{ visibility, archived }` index the list access filter needs and drops WishlistMember's redundant `{ wishlist: 1 }` index.
+
+These earlier ones have been applied to every environment and removed; recover any of them from git history if you ever need
 to replay one against a restored backup:
 
 - the co-ownership set: `wishlist-owners`, `remove-admin-role`, `drop-legacy-owner-fields`;
