@@ -10,6 +10,7 @@ import {
   afterEach,
   onTestFinished,
 } from 'vitest';
+import { StrictMode } from 'react';
 import { render, screen, fireEvent, cleanup, waitFor, act, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
@@ -1319,6 +1320,21 @@ describe('BookedPage — reading both lists again while the page is open', () =>
     expect(screen.queryByText('Cookbook')).toBeNull();
     expect(screen.queryByText('Nothing reserved yet')).toBeNull();
     expect(showToast).not.toHaveBeenCalled();
+  });
+
+  // regression (review of WIS-441): StrictMode's remount re-ran the account
+  // reset after the first read was stamped, and the remount's read joined it,
+  // so both answers were dropped as outdated and the skeleton stayed.
+  it('loads under StrictMode, whose remount joins the first read', async () => {
+    const { answerRead } = mockHeldFetch({ holdReads: true });
+    render(
+      <StrictMode>
+        <BookedPage />
+      </StrictMode>
+    );
+    await answerRead(0);
+    expect(screen.getByText('Lego set')).toBeInTheDocument();
+    expect(skeleton()).toBeNull();
   });
 
   it('a return while the first load is on its way sends no second read', async () => {

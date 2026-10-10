@@ -307,13 +307,19 @@ describe('useLiveRead', () => {
   // badges) never shows the previous account's data, not even for a frame.
   it('with resetOnNewRead, a new read clears what the last one showed in that render', async () => {
     const readA = reads(['account a']);
-    const { result, rerender } = setup({ read: readA, pollMs: undefined, resetOnNewRead: true });
+    const { result, rerender } = setup({ read: readA, resetOnNewRead: true });
     await settle();
     expect(result.current.data).toEqual(['account a']);
 
     const next = deferred<string[]>();
     const readB = reads(next.promise);
-    rerender({ enabled: true, initialData: [], read: readB, resetOnNewRead: true });
+    rerender({
+      enabled: true,
+      initialData: [],
+      pollMs: POLL_INTERVAL_MS,
+      read: readB,
+      resetOnNewRead: true,
+    });
     expect(result.current).toMatchObject({ data: [], loaded: false, failed: false });
 
     next.resolve(['account b']);

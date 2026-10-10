@@ -128,7 +128,9 @@ export function useReservedData() {
   const groupGiveKeys = useRef(new Map<string, SubmissionKeys>());
   // The page's own changes to both lists (their ids never clash), so a read of
   // them is merged with the changes made while it was on its way instead of
-  // undoing them (`merge`). Reads are stamped on the same clock.
+  // undoing them (`merge`). The reads' stamps are taken on the log's own clock
+  // (`readOrder`, which tracks no mutations: the log does that here), since
+  // `land` compares them with the log's change stamps.
   const [changes] = useState(createListChangeLog);
   const [readOrder] = useState(() => createMutationTracker(changes.stamp));
   // Whether the account's lists have been shown: until then every read, a
@@ -153,6 +155,10 @@ export function useReservedData() {
   // busy ids stay: an action still in flight frees its own card's id when it
   // settles, and the new account has no card with that id.
   useLayoutEffect(() => {
+    // Only for another account, never a remount's re-run (StrictMode): that
+    // would make the first read, still on its way and joined by the remount's,
+    // outdated, and leave the skeleton up.
+    if (account.current === userId) return;
     account.current = userId;
     changes.reset();
     listsShown.current = false;
