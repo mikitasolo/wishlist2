@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { GroupPerson, GroupView } from '@/lib/utils/groupRules';
+import { restoreRemoved } from '@/lib/utils/deferredCommit';
 import { withRequestTimeout } from '@/lib/utils/requestTimeout';
 
 export type { GroupPerson, GroupView };
@@ -15,12 +16,18 @@ type Answer = { ok: true; data: unknown } | { ok: false; status: number; error: 
  * something the person can act on (a taken name, a full group), never a
  * validation dump or a server error.
  */
-async function send(url: string, method: string, body?: unknown): Promise<Answer> {
+async function send(
+  url: string,
+  method: string,
+  body?: unknown,
+  keepalive = false
+): Promise<Answer> {
   try {
     const res = await withRequestTimeout((signal) =>
       fetch(url, {
         method,
         signal,
+        keepalive,
         ...(body === undefined
           ? {}
           : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
@@ -112,6 +119,65 @@ export function usePeopleGroups(enabled = true) {
     return null;
   }
 
+  /**
+   * A delete held for its Undo window (WIS-387): the group goes at once, and
+   * `commit` sends the DELETE (resolving to null, or the message to show once
+   * it has been put back); `restore` puts it back where it was.
+   */
+  function removeDeferred(id: string) {
+    const list = groupsRef.current ?? [];
+    const index = list.findIndex((g) => g.id === id);
+    if (index === -1) return null;
+    const group = list[index];
+    const restore = () => setGroups((gs) => gs && restoreRemoved(gs, group, index, (g) => g.id));
+    setGroups((gs) => gs?.filter((g) => g.id !== id) ?? gs);
+    return {
+      group,
+      restore,
+      commit: async (keepalive = false): Promise<string | null> => {
+        const answer = await send(`/api/users/me/groups/${id}`, 'DELETE', undefined, keepalive);
+        // Gone already (deleted on another device) is as good as deleted here.
+        if (answer.ok || answer.status === 404) return null;
+        restore();
+        return answer.error;
+      },
+    };
+  }
+
+  /**
+   * Taking `person` out of a group, held for its Undo window (WIS-387): they
+   * leave it at once; `commit` sends the DELETE (null, or the message to show
+   * once they're back), `restore` puts them back.
+   */
+  function untagDeferred(id: string, person: GroupPerson) {
+    const before = groupsRef.current?.find((g) => g.id === id);
+    if (!before?.members.some((m) => m.id === person.id)) return null;
+    const apply = (tagged: boolean) =>
+      update(id, (g) => ({
+        ...g,
+        members: tagged
+          ? sortPeople([...g.members.filter((m) => m.id !== person.id), person])
+          : g.members.filter((m) => m.id !== person.id),
+      }));
+    apply(false);
+    return {
+      restore: () => apply(true),
+      commit: async (keepalive = false): Promise<string | null> => {
+        const answer = await send(
+          `/api/users/me/groups/${id}/members/${person.id}`,
+          'DELETE',
+          undefined,
+          keepalive
+        );
+        // Out of it already (on another device, or by an unfollow) is as good
+        // as taken out here.
+        if (answer.ok || answer.status === 404) return null;
+        apply(true);
+        return answer.error;
+      },
+    };
+  }
+
   /** Tag `person` into a group or take them out, shown at once; undone if it fails. */
   async function setTagged(id: string, person: GroupPerson, on: boolean): Promise<string | null> {
     const before = groupsRef.current?.find((g) => g.id === id);
@@ -134,5 +200,15 @@ export function usePeopleGroups(enabled = true) {
     return answer.error;
   }
 
-  return { groups, failed, retry, create, rename, remove, setTagged };
+  return {
+    groups,
+    failed,
+    retry,
+    create,
+    rename,
+    remove,
+    removeDeferred,
+    setTagged,
+    untagDeferred,
+  };
 }

@@ -3,17 +3,19 @@
 // revoking, an archived list's read-only section, and each link's dialog
 // with its URL and QR code (WIS-328, WIS-341).
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup, within } from '@testing-library/react';
+import { render, screen, cleanup, within, act, renderHook, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 const { showToast } = vi.hoisted(() => ({ showToast: vi.fn() }));
 vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }));
 
-import ShareLinksSection, {
-  EMPTY_SHARE_LINKS_TEXT,
-  REVOKE_LINK_MESSAGE,
-} from '@/components/ShareLinksSection';
-import type { ShareLinkRow, ShareLinksControl } from '@/lib/hooks/useShareLinks';
+import ShareLinksSection, { EMPTY_SHARE_LINKS_TEXT } from '@/components/ShareLinksSection';
+import {
+  useShareLinks,
+  type ShareLinkRow,
+  type ShareLinksControl,
+} from '@/lib/hooks/useShareLinks';
+import { UNDO_WINDOW_MS } from '@/lib/utils/deferredCommit';
 import { qrShape } from '@/lib/utils/qrCode';
 
 beforeEach(() => showToast.mockReset());
@@ -44,6 +46,7 @@ const control = (over: Partial<ShareLinksControl> = {}): ShareLinksControl => ({
   create: vi.fn().mockResolvedValue(null),
   update: vi.fn().mockResolvedValue(true),
   revoke: vi.fn().mockResolvedValue(true),
+  revokeWithUndo: vi.fn(),
   ...over,
 });
 
@@ -130,18 +133,15 @@ describe('ShareLinksSection', () => {
     );
   });
 
-  it('confirms a revoke, saying what stays, before revoking', async () => {
+  it('revokes with Undo instead of a confirmation (WIS-387)', async () => {
     const user = userEvent.setup();
     const c = control({ links: [row()] });
     renderSection(c);
     await user.click(screen.getByRole('button', { name: 'Actions for Family chat' }));
     await user.click(screen.getByRole('menuitem', { name: 'Revoke' }));
-    const dialog = screen.getByRole('alertdialog');
-    expect(dialog).toHaveTextContent('Revoke “Family chat”?');
-    expect(dialog).toHaveTextContent(REVOKE_LINK_MESSAGE);
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(c.revokeWithUndo).toHaveBeenCalledWith('l1');
     expect(c.revoke).not.toHaveBeenCalled();
-    await user.click(within(dialog).getByRole('button', { name: 'Revoke link' }));
-    expect(c.revoke).toHaveBeenCalledWith('l1');
   });
 
   it('keeps an archived list’s section to Edit and Revoke, with no New link or Share', async () => {
@@ -212,5 +212,87 @@ describe('ShareLinksSection', () => {
     expect(c.create).toHaveBeenCalled();
     expect(screen.getByRole('dialog', { name: 'New link' })).toBeInTheDocument();
     expect(screen.getAllByRole('dialog')).toHaveLength(1);
+  });
+});
+
+// WIS-387: a row's Revoke goes from the list at once, and the DELETE only once
+// the Undo window has passed; undone, the link never stopped working.
+describe('useShareLinks revokeWithUndo', () => {
+  const fetchMock = vi.fn();
+  beforeEach(() => {
+    fetchMock.mockReset();
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) =>
+      Response.json(
+        init?.method === 'DELETE' ? { success: true } : { success: true, data: [row()] }
+      )
+    );
+    vi.stubGlobal('fetch', fetchMock);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  const deletes = () =>
+    fetchMock.mock.calls.filter(
+      ([, init]) => (init as RequestInit | undefined)?.method === 'DELETE'
+    );
+
+  async function loaded() {
+    const hook = renderHook(() => useShareLinks('w1', true));
+    await waitFor(() => expect(hook.result.current.links).toHaveLength(1));
+    vi.useFakeTimers();
+    return hook;
+  }
+
+  it('hides the link at once and revokes it after the Undo window', async () => {
+    const { result } = await loaded();
+    act(() => result.current.revokeWithUndo('l1'));
+    expect(result.current.links).toEqual([]);
+    expect(result.current.liveCount).toBe(0);
+    expect(showToast).toHaveBeenCalledWith(
+      'Link revoked',
+      'success',
+      expect.objectContaining({ action: expect.objectContaining({ label: 'Undo' }) })
+    );
+    await act(async () => {
+      vi.advanceTimersByTime(UNDO_WINDOW_MS - 1);
+    });
+    expect(deletes()).toHaveLength(0);
+    await act(async () => {
+      vi.advanceTimersByTime(1);
+    });
+    await act(async () => {});
+    expect(deletes()).toEqual([
+      ['/api/wishlists/w1/links/l1', expect.objectContaining({ method: 'DELETE' })],
+    ]);
+    expect(result.current.links).toEqual([]);
+  });
+
+  it('sends nothing and brings the link back when undone', async () => {
+    const { result } = await loaded();
+    act(() => result.current.revokeWithUndo('l1'));
+    const options = showToast.mock.calls.at(-1)![2];
+    await act(async () => options.action.onClick());
+    await act(async () => {
+      vi.advanceTimersByTime(UNDO_WINDOW_MS * 3);
+    });
+    expect(deletes()).toHaveLength(0);
+    expect(result.current.links.map((l) => l._id)).toEqual(['l1']);
+  });
+
+  it('brings the link back when the revoke fails', async () => {
+    const { result } = await loaded();
+    fetchMock.mockImplementation(async () =>
+      Response.json({ success: false, error: 'Nope' }, { status: 500 })
+    );
+    act(() => result.current.revokeWithUndo('l1'));
+    await act(async () => {
+      vi.advanceTimersByTime(UNDO_WINDOW_MS);
+    });
+    await act(async () => {});
+    await act(async () => {});
+    expect(showToast).toHaveBeenCalledWith('Nope', 'error');
+    expect(result.current.links.map((l) => l._id)).toEqual(['l1']);
   });
 });

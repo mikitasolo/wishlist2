@@ -24,6 +24,7 @@ vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }
 vi.mock('@/lib/analytics', () => ({ track: vi.fn() }));
 
 import ActivityPage from '@/app/notifications/page';
+import { flushUndoableActions } from '@/lib/hooks/useUndoableAction';
 import { track } from '@/lib/analytics';
 import type { NotificationView } from '@/lib/utils/notifications';
 import { ITEM_REQUEST_TIMEOUT_MS, REQUEST_TIMEOUT_MESSAGE } from '@/lib/utils/requestTimeout';
@@ -178,6 +179,14 @@ function cardButtons(wishlistName: string) {
   };
 }
 
+/** Declines on `wishlistName`'s card and sends it at once, skipping its Undo window (WIS-387). */
+async function declineNow(wishlistName: string) {
+  fireEvent.click(cardButtons(wishlistName).decline);
+  // The card goes at once, before anything is sent.
+  expect(screen.queryByText(wishlistName)).toBeNull();
+  await act(async () => flushUndoableActions());
+}
+
 const expectDisabled = (wishlistName: string) => {
   const { accept, decline } = cardButtons(wishlistName);
   expect(accept).toBeDisabled();
@@ -206,6 +215,8 @@ async function clickOnFirstCard(name: 'Accept' | 'Decline') {
   await act(async () => {
     fireEvent.click(screen.getAllByRole('button', { name })[0]);
   });
+  // A decline waits out its Undo window (WIS-387): send it now.
+  if (name === 'Decline') await act(async () => flushUndoableActions());
 }
 
 beforeEach(() => {
@@ -220,6 +231,13 @@ beforeEach(() => {
   window.addEventListener('invites-changed', invitesChanged);
 });
 afterEach(() => {
+  // A decline a test left waiting out its Undo window is undone, so it can't
+  // be sent into the next test.
+  act(() => {
+    for (const [, , options] of showToast.mock.calls) {
+      if (options?.action?.label === 'Undo') options.action.onClick();
+    }
+  });
   window.removeEventListener('invites-changed', invitesChanged);
   vi.unstubAllGlobals();
 });
@@ -365,9 +383,40 @@ describe('Activity, pinned invites — answering an invite', () => {
 
     await waitFor(() => expect(screen.queryByText('Birthday')).toBeNull());
     expect(invitesChanged).toHaveBeenCalledTimes(1);
-    expect(showToast).toHaveBeenCalledWith('Invitation declined', 'info');
+    expect(showToast).toHaveBeenCalledWith(
+      'Invitation declined',
+      'success',
+      expect.objectContaining({ action: expect.objectContaining({ label: 'Undo' }) })
+    );
     // WIS-329: only an accept is counted.
     expect(track).not.toHaveBeenCalled();
+  });
+
+  it('takes the card off at once and sends nothing until its Undo window has passed (WIS-387)', async () => {
+    const fetchMock = mockFetch(declined);
+    render(<ActivityPage />);
+    await screen.findByText('Birthday');
+    fireEvent.click(cardButtons('Birthday').decline);
+    expect(screen.queryByText('Birthday')).toBeNull();
+    const patches = () =>
+      fetchMock.mock.calls.filter(([, init]) => init?.method === 'PATCH').length;
+    expect(patches()).toBe(0);
+    expect(invitesChanged).not.toHaveBeenCalled();
+    await act(async () => flushUndoableActions());
+    expect(patches()).toBe(1);
+  });
+
+  it('brings the card back on Undo, and never sends the decline', async () => {
+    const fetchMock = mockFetch(declined);
+    render(<ActivityPage />);
+    await screen.findByText('Birthday');
+    fireEvent.click(cardButtons('Birthday').decline);
+    const undo = showToast.mock.calls.find(([message]) => message === 'Invitation declined')![2];
+    act(() => undo.action.onClick());
+    expect(screen.getByText('Birthday')).toBeInTheDocument();
+    await act(async () => flushUndoableActions());
+    expect(fetchMock.mock.calls.filter(([, init]) => init?.method === 'PATCH')).toHaveLength(0);
+    expect(invitesChanged).not.toHaveBeenCalled();
   });
 
   // regression: answering marks the invite's notification read on the server,
@@ -514,9 +563,8 @@ describe('Activity, pinned invites — answering several invites at once', () =>
     fireEvent.click(cardButtons('Birthday').accept);
     expectDisabled('Birthday');
 
-    fireEvent.click(cardButtons('Housewarming').decline);
+    await declineNow('Housewarming');
     expectDisabled('Birthday');
-    expectDisabled('Housewarming');
 
     // Nothing more goes out for A while its first answer is pending.
     fireEvent.click(cardButtons('Birthday').accept);
@@ -525,7 +573,7 @@ describe('Activity, pinned invites — answering several invites at once', () =>
 
     // B settling first doesn't unlock A either...
     await answer('inv-housewarming', declined);
-    await waitFor(() => expect(screen.queryByText('Housewarming')).toBeNull());
+    expect(screen.queryByText('Housewarming')).toBeNull();
     expectDisabled('Birthday');
 
     // ...only A's own answer does.
@@ -578,11 +626,10 @@ describe('Activity, pinned invites — answering several invites at once', () =>
     const { answer } = await renderHeld();
 
     fireEvent.click(cardButtons('Birthday').accept);
-    fireEvent.click(cardButtons('Housewarming').decline);
+    await declineNow('Housewarming');
 
     await answer('inv-birthday', gone);
     await waitFor(() => expect(screen.queryByText('Birthday')).toBeNull());
-    expectDisabled('Housewarming');
 
     await answer('inv-housewarming', failed);
     await waitFor(() => expect(showToast).toHaveBeenCalledWith('Failed to update invite', 'error'));
@@ -596,12 +643,11 @@ describe('Activity, pinned invites — answering several invites at once', () =>
     async function acceptAWhileBInFlight() {
       const held = await renderHeld();
       fireEvent.click(cardButtons('Birthday').accept);
-      fireEvent.click(cardButtons('Housewarming').decline);
+      await declineNow('Housewarming');
 
       await held.answer('inv-birthday', joined('birthday', 'w1'));
       await waitFor(() => expect(push).toHaveBeenCalledWith('/wishlists/birthday?welcome=1'));
       expect(screen.queryByText('Birthday')).toBeNull();
-      expectDisabled('Housewarming');
       return held;
     }
 
@@ -610,7 +656,7 @@ describe('Activity, pinned invites — answering several invites at once', () =>
 
       await answer('inv-housewarming', declined);
       await waitFor(() => expect(screen.queryByText('Housewarming')).toBeNull());
-      expect(showToast).toHaveBeenCalledWith('Invitation declined', 'info');
+      expect(showToast).toHaveBeenCalledWith('Invitation declined', 'success', expect.anything());
       expect(screen.queryByText('Birthday')).toBeNull();
       expect(push).toHaveBeenCalledTimes(1);
     });
@@ -816,7 +862,7 @@ describe('Activity, pinned invites — keeping the list fresh while it is open',
     const { list, listRequests, answer } = await renderLoaded();
 
     refetchOn('focus');
-    fireEvent.click(cardButtons('Birthday').decline);
+    await declineNow('Birthday');
     await answer('inv-birthday', declined);
     await waitFor(() => expect(screen.queryByText('Birthday')).toBeNull());
     // Dropping the card fired invites-changed, which re-reads the list.
@@ -1048,6 +1094,7 @@ describe('Activity, pinned invites — on the page', () => {
       await act(async () => {
         fireEvent.click(card.getByRole('button', { name }));
       });
+      await act(async () => flushUndoableActions());
 
       await waitFor(() => expect(feedRow(/^You (joined|declined)/)).toBeInTheDocument());
       expect(feedRow(/^You (joined|declined)/).textContent).toContain(answered);
@@ -1124,6 +1171,7 @@ describe('Activity, pinned invites — on the page', () => {
     await act(async () => {
       fireEvent.click(card.getByRole('button', { name: 'Decline' }));
     });
+    await act(async () => flushUndoableActions());
     await waitFor(() => expect(feedRow(/^You declined/)).toBeInTheDocument());
     // The focus read, then the one the answer's invites-changed sent.
     expect(feed.held).toHaveLength(2);
@@ -1225,7 +1273,7 @@ describe('Activity, pinned invites — an answer that stalls', () => {
     render(<ActivityPage />);
     await list(0, listed(invites));
 
-    fireEvent.click(cardButtons('Birthday').decline);
+    await declineNow('Birthday');
     await act(async () => {
       await vi.advanceTimersByTimeAsync(ITEM_REQUEST_TIMEOUT_MS);
     });

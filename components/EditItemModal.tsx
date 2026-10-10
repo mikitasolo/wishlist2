@@ -46,7 +46,6 @@ export default function EditItemModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const formId = useId();
   const [isDeleting, setIsDeleting] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showConfirmClose, setShowConfirmClose] = useState(false);
   // The price field is filled in the format the item's card shows it in.
@@ -57,7 +56,6 @@ export default function EditItemModal({
     if (!isOpen) {
       setIsSubmitting(false);
       setIsDeleting(false);
-      setShowDeleteConfirm(false);
       setHasUnsavedChanges(false);
       setShowConfirmClose(false);
     }
@@ -99,12 +97,11 @@ export default function EditItemModal({
     }
   };
 
-  // onDelete rejects when the delete fails (after showing the error), so only a
-  // real delete closes the modal. Either way the confirmation is answered: on a
-  // failure it drops back to this modal, item intact, for a retry or cancel.
-  // Until then the confirmation shows the delete running and takes no second click.
+  // Delete asks nothing: the page takes the item off at once and offers Undo
+  // before anything is sent (WIS-387), so this closes straight away. onDelete
+  // may still reject (the item stays listed), which keeps this open.
   const handleDelete = async () => {
-    if (!onDelete) return;
+    if (!onDelete || isDeleting) return;
     setIsDeleting(true);
     try {
       await onDelete();
@@ -113,7 +110,6 @@ export default function EditItemModal({
     } catch (error) {
       console.error('Error deleting item:', error);
     } finally {
-      setShowDeleteConfirm(false);
       setIsDeleting(false);
     }
   };
@@ -151,7 +147,7 @@ export default function EditItemModal({
             onCancel={handleClose}
             submitLabel="Save"
             submittingLabel="Saving…"
-            onDelete={onDelete ? () => setShowDeleteConfirm(true) : undefined}
+            onDelete={onDelete ? handleDelete : undefined}
           />
         }
       >
@@ -173,21 +169,6 @@ export default function EditItemModal({
           linkOptions={linkOptions}
         />
       </BaseModal>
-
-      {/* Delete Confirmation Dialog */}
-      {onDelete && (
-        <ConfirmDialog
-          isOpen={showDeleteConfirm}
-          title="Delete item"
-          message="Are you sure you want to delete this item? This action cannot be undone."
-          onConfirm={handleDelete}
-          onCancel={() => setShowDeleteConfirm(false)}
-          confirmText="Delete"
-          pendingText="Deleting…"
-          cancelText="Cancel"
-          type="danger"
-        />
-      )}
 
       {/* Close Confirmation Dialog */}
       <ConfirmDialog

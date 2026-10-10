@@ -1,15 +1,6 @@
 'use client';
 
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type Dispatch,
-  type RefObject,
-  type SetStateAction,
-} from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { track } from '@/lib/analytics';
 import type { InviteMemberFormHandle } from '@/components/InviteMemberForm';
 import type { ShareLinksSectionHandle } from '@/components/ShareLinksSection';
@@ -22,8 +13,10 @@ import type {
 import { useBusyIds } from '@/lib/hooks/useBusyIds';
 import type { ListTab } from '@/lib/hooks/useListTab';
 import { usePeopleGroups } from '@/lib/hooks/usePeopleGroups';
+import { useUndoableAction } from '@/lib/hooks/useUndoableAction';
 import type { ShareLinksControl } from '@/lib/hooks/useShareLinks';
 import type { GroupInviteResult } from '@/lib/utils/groupInviteResult';
+import { demotedToast, removedToast } from '@/lib/utils/confirmationCopy';
 import { listStatusByUsername } from '@/lib/utils/inviteSuggestions';
 import { RequestTimeoutError, withRequestTimeout } from '@/lib/utils/requestTimeout';
 import type { RemovedOwner, ShownOwners } from '@/lib/utils/shownOwners';
@@ -48,33 +41,38 @@ export interface WishlistPeopleOptions {
   inviteFormRef: RefObject<InviteMemberFormHandle | null>;
   /** People's Share links section, which Share's "Share links" goes to. */
   shareLinksRef: RefObject<ShareLinksSectionHandle | null>;
-  /** The page's one removal confirmation, shared with Leave list and Delete. */
-  deleteConfirm: DeleteConfirm | null;
-  setDeleteConfirm: Dispatch<SetStateAction<DeleteConfirm | null>>;
-}
-
-/** Who a Remove on People is for, until its confirmation closes. */
-export interface RemoveConfirm {
-  type: 'member' | 'owner';
-  /** What the removal's route takes: an owner's user id, a member's membership id. */
-  memberId: string;
-  /** Their user id, which their row's actions are held by. */
-  memberUserId: string;
-  memberUsername: string | null;
 }
 
 /**
- * The page's one removal confirmation: a person's Remove, Leave list or Delete
- * wishlist. One state, as before the split, so opening one replaces another
- * and closing any closes whichever is open.
+ * The page's one removal confirmation: Leave list or Delete wishlist. One
+ * state, so opening one replaces the other and closing either closes whichever
+ * is open. (A person's Remove has an Undo toast instead, WIS-387.)
  */
-export type DeleteConfirm = RemoveConfirm | { type: 'leave' | 'wishlist' };
+export type DeleteConfirm = { type: 'leave' | 'wishlist' };
+
+/** A person's row on People, as Remove takes it. */
+export interface PersonToRemove {
+  /** What the removal's route takes: an owner's user id, a member's membership id. */
+  id: string;
+  /** Their user id, which their row's actions are held by. */
+  userId: string;
+  username: string | null;
+  role: 'owner' | 'member';
+}
 
 /**
  * The owners' People tab on the wishlist page (WIS-372): the people, pending
  * invites and requests to join, read by the page (People's count needs them
- * before the tab opens), and every row action with its confirmation. Each row's
- * actions are held while one is in flight (`useBusyIds`).
+ * before the tab opens), and every row action. Each row's actions are held
+ * while one is in flight (`useBusyIds`).
+ *
+ * Remove, Make member, cancelling an invite and declining a request to join
+ * are deferred with Undo (WIS-387, `useUndoableAction`): the row changes at
+ * once, and the request goes only once the Undo window has passed. Undone,
+ * nothing was sent, so the person is never notified of a removal or demotion
+ * that didn't happen, and nothing they reserved was released. Until the
+ * request has settled, the change is laid over every read of the people
+ * (`hidden`, `demoting`), so a read can't bring the row back meanwhile.
  */
 export function useWishlistPeople({
   wishlistId,
@@ -88,10 +86,14 @@ export function useWishlistPeople({
   shareLinks,
   inviteFormRef,
   shareLinksRef,
-  deleteConfirm,
-  setDeleteConfirm,
 }: WishlistPeopleOptions) {
   const { showToast } = useToast();
+  const offerUndo = useUndoableAction();
+  // Rows taken off People while their deferred request waits or is on its way:
+  // `person:<userId>`, `invite:<id>`, `request:<id>`. And owners shown as
+  // members while their Make member waits (by user id).
+  const [hidden, setHidden] = useState<ReadonlySet<string>>(() => new Set());
+  const [demoting, setDemoting] = useState<ReadonlySet<string>>(() => new Set());
   // Everyone on the list, owners and members (owners only ever read it).
   const [members, setMembers] = useState<WishlistPerson[]>([]);
   const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
@@ -104,10 +106,6 @@ export function useWishlistPeople({
   // Your own groups, for the People tab's invite form (WIS-37): read when it opens.
   const peopleGroups = usePeopleGroups(tab === 'people');
   const [isInviting, setIsInviting] = useState(false);
-  const removeConfirm =
-    deleteConfirm && (deleteConfirm.type === 'member' || deleteConfirm.type === 'owner')
-      ? (deleteConfirm as RemoveConfirm)
-      : null;
   // Promoting someone to co-owner is destructive for them (it cancels the
   // reservations they hold here) and irreversible without their consent, so it
   // always goes through an explicit warning first.
@@ -115,17 +113,10 @@ export function useWishlistPeople({
     userId: string;
     username: string;
   } | null>(null);
-  // Making a co-owner a member asks first too: it notifies them, it sits right
-  // next to Remove, and only they can undo it (making them an owner again is an
-  // invite they have to accept).
-  const [demoteConfirm, setDemoteConfirm] = useState<{
-    userId: string;
-    username: string | null;
-  } | null>(null);
 
   // An owner the viewer has just removed or made a member, who could have
-  // copied the list's live share links: offered for revoking once the
-  // confirmation has closed (WIS-338). Links stay unless revoked.
+  // copied the list's live share links: offered for revoking once the removal
+  // has gone through (WIS-338). Links stay unless revoked.
   const [revokeLinksFor, setRevokeLinksFor] = useState<{ username: string | null } | null>(null);
   const hasLiveLinks = shareLinks.read === 'loaded' && shareLinks.liveCount > 0;
   const offerLinkRevoke = useCallback(
@@ -325,57 +316,117 @@ export function useWishlistPeople({
   // sent it (a double click on a dialog's confirm included).
   const { busy: rowBusy, run: runRowAction } = useBusyIds();
 
-  /** Cancel a pending invite: an invite's row, or a member's owner invite (`busyId`: its row). */
-  const cancelInvite = useCallback(
-    (inviteId: string, busyId: string) =>
+  /**
+   * One deferred row action (WIS-387), held on its row (`busyId`) from the tap
+   * until its request and the reads after it have settled. `show` lays the
+   * change over the rows at once and `unshow` lifts it once it's over: undone
+   * (the row is as it was, nothing sent), failed (the row comes back) or done
+   * (the reads `commit` awaited no longer list it as it was).
+   */
+  const deferRowAction = useCallback(
+    (
+      busyId: string,
+      {
+        message,
+        show,
+        unshow,
+        commit,
+      }: {
+        message: string;
+        show: () => void;
+        unshow: () => void;
+        commit: (keepalive: boolean) => Promise<void>;
+      }
+    ) =>
       runRowAction(busyId, async () => {
-        if (!wishlistId) return;
-        // Optimistic removal.
-        setPendingInvites((prev) => prev.filter((i) => i._id !== inviteId));
+        show();
+        const pending = offerUndo({
+          message,
+          commit: ({ keepalive }) => commit(keepalive),
+        });
         try {
-          const res = await fetch(`/api/wishlists/${apiId()}/invites/${inviteId}`, {
-            method: 'DELETE',
-          });
-          const result = await res.json();
-          if (result.success) {
-            showToast('Invitation cancelled', 'success');
-          } else {
-            showToast(result.error || 'Failed to cancel invitation', 'error');
-            await refreshInvites();
-          }
-        } catch {
-          showToast('Failed to cancel invitation', 'error');
-          await refreshInvites();
+          await pending.settled;
+        } finally {
+          unshow();
         }
       }),
-    [apiId, wishlistId, showToast, refreshInvites, runRowAction]
+    [runRowAction, offerUndo]
+  );
+  const hideRow = useCallback(
+    (key: string) => () => setHidden((prev) => new Set(prev).add(key)),
+    []
+  );
+  const showRow = useCallback(
+    (key: string) => () =>
+      setHidden((prev) => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      }),
+    []
   );
 
   /**
-   * Answer a request to join (by its id, which is also its row's busy id):
-   * Invite sends them a member invite, which joins the Invited group; Decline
-   * ends it and tells nobody. Either way the row goes at once.
+   * Cancel a pending invite: an invite's row, or a member's owner invite
+   * (`busyId`: its row). Deferred with Undo (see `deferRowAction`).
+   */
+  const cancelInvite = useCallback(
+    (inviteId: string, busyId: string) => {
+      if (!wishlistId) return;
+      const key = `invite:${inviteId}`;
+      return deferRowAction(busyId, {
+        message: 'Invitation cancelled',
+        show: hideRow(key),
+        unshow: showRow(key),
+        commit: async (keepalive) => {
+          try {
+            const res = await fetch(`/api/wishlists/${apiId()}/invites/${inviteId}`, {
+              method: 'DELETE',
+              keepalive,
+            });
+            const result = await res.json();
+            if (result.success) {
+              setPendingInvites((prev) => prev.filter((i) => i._id !== inviteId));
+            } else {
+              showToast(result.error || 'Failed to cancel invitation', 'error');
+              await refreshInvites();
+            }
+          } catch {
+            showToast('Failed to cancel invitation', 'error');
+            await refreshInvites();
+          }
+        },
+      });
+    },
+    [apiId, wishlistId, showToast, refreshInvites, deferRowAction, hideRow, showRow]
+  );
+
+  /**
+   * Answer a request to join (by its id, which is also its row's busy id).
+   * Invite sends them a member invite at once, which joins the Invited group.
+   * Decline ends it and tells nobody, deferred with Undo (see
+   * `deferRowAction`). Either way the row goes at once.
    */
   const answerJoinRequest = useCallback(
-    (joinRequest: JoinRequestView, action: 'invite' | 'decline') =>
-      runRowAction(joinRequest._id, async () => {
-        if (!wishlistId) return;
+    (joinRequest: JoinRequestView, action: 'invite' | 'decline') => {
+      if (!wishlistId) return;
+      const send = async (keepalive: boolean) => {
         const name = joinRequest.user.username ? `@${joinRequest.user.username}` : 'them';
-        setJoinRequests((prev) => prev.filter((r) => r._id !== joinRequest._id));
         const failed = action === 'invite' ? 'Couldn’t send the invite' : 'Couldn’t decline it';
         try {
           const res = await fetch(`/api/wishlists/${apiId()}/requests/${joinRequest._id}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ action }),
+            keepalive,
           });
           const result = await res.json();
           if (result.success) {
-            showToast(
-              action === 'invite' ? `Invite sent to ${name}` : 'Request declined',
-              'success'
-            );
-            if (action === 'invite') await refreshInvites();
+            setJoinRequests((prev) => prev.filter((r) => r._id !== joinRequest._id));
+            if (action === 'invite') {
+              showToast(`Invite sent to ${name}`, 'success');
+              await refreshInvites();
+            }
           } else {
             showToast(result.error || failed, 'error');
             await Promise.all([refreshRequests(), refreshMembers(), refreshInvites()]);
@@ -384,81 +435,101 @@ export function useWishlistPeople({
           showToast(failed, 'error');
           await refreshRequests();
         }
-      }),
-    [apiId, wishlistId, showToast, refreshInvites, refreshRequests, refreshMembers, runRowAction]
-  );
-
-  const handleKickMember = useCallback(
-    (person: { id: string; userId: string; username: string | null; role: 'owner' | 'member' }) => {
-      setDeleteConfirm({
-        // Owners aren't memberships — they're removed through the owners endpoint.
-        type: person.role,
-        memberId: person.id,
-        memberUserId: person.userId,
-        memberUsername: person.username,
-      });
-    },
-    [setDeleteConfirm]
-  );
-
-  const confirmKickMember = useCallback(async () => {
-    if (!wishlistId || !removeConfirm) return;
-
-    const { type, memberId, memberUsername } = removeConfirm;
-    const path =
-      type === 'owner'
-        ? `/api/wishlists/${apiId()}/owners/${memberId}`
-        : `/api/wishlists/${apiId()}/members/${memberId}`;
-
-    try {
-      await runRowAction(removeConfirm.memberUserId, async () => {
+      };
+      const key = `request:${joinRequest._id}`;
+      if (action === 'decline') {
+        return deferRowAction(joinRequest._id, {
+          message: 'Request declined',
+          show: hideRow(key),
+          unshow: showRow(key),
+          commit: send,
+        });
+      }
+      return runRowAction(joinRequest._id, async () => {
+        hideRow(key)();
         try {
-          const response = await fetch(path, { method: 'DELETE' });
-          const result = await response.json();
-
-          if (result.success) {
-            showToast(
-              type === 'owner' ? 'Owner removed' : 'Member removed successfully',
-              'success'
-            );
-            // Removing someone also cancels any invite they still had pending here.
-            if (type === 'owner') {
-              dropOwner({ id: memberId, username: memberUsername });
-              offerLinkRevoke(memberUsername);
-              await Promise.all([refreshMembers(), refreshInvites(), refreshOwners()]);
-            } else {
-              await Promise.all([refreshMembers(), refreshInvites()]);
-            }
-          } else {
-            showToast(result.error || 'Failed to remove member', 'error');
-            // A refusal may be because the server already did it (a co-owner
-            // got there first): read the people again so the page agrees.
-            if (type === 'owner') {
-              await Promise.all([refreshMembers(), refreshOwners()]);
-            }
-          }
-        } catch (error) {
-          console.error('Error removing member:', error);
-          showToast('Failed to remove member', 'error');
-          if (type === 'owner') await Promise.all([refreshMembers(), refreshOwners()]);
+          await send(false);
+        } finally {
+          showRow(key)();
         }
       });
-    } finally {
-      setDeleteConfirm(null);
-    }
-  }, [
-    apiId,
-    wishlistId,
-    removeConfirm,
-    setDeleteConfirm,
-    showToast,
-    refreshMembers,
-    refreshInvites,
-    dropOwner,
-    refreshOwners,
-    runRowAction,
-    offerLinkRevoke,
-  ]);
+    },
+    [
+      apiId,
+      wishlistId,
+      showToast,
+      refreshInvites,
+      refreshRequests,
+      refreshMembers,
+      runRowAction,
+      deferRowAction,
+      hideRow,
+      showRow,
+    ]
+  );
+
+  /**
+   * Remove someone from the list: a member's membership, or an owner (through
+   * the owners endpoint, by user id). Deferred with Undo (see
+   * `deferRowAction`): undone, nothing is sent, so they're never told and
+   * nothing they reserved is released. The share-link offer and the owners'
+   * update follow only a removal that went through.
+   */
+  const handleKickMember = useCallback(
+    (person: PersonToRemove) => {
+      if (!wishlistId) return;
+      const { id, userId, username, role } = person;
+      const key = `person:${userId}`;
+      return deferRowAction(userId, {
+        message: removedToast(username, role, { liveLinks: hasLiveLinks }),
+        show: hideRow(key),
+        unshow: showRow(key),
+        commit: async (keepalive) => {
+          const path =
+            role === 'owner'
+              ? `/api/wishlists/${apiId()}/owners/${id}`
+              : `/api/wishlists/${apiId()}/members/${id}`;
+          try {
+            const response = await fetch(path, { method: 'DELETE', keepalive });
+            const result = await response.json();
+            if (result.success) {
+              // Removing someone also cancels any invite they still had pending here.
+              if (role === 'owner') {
+                dropOwner({ id, username });
+                offerLinkRevoke(username);
+                await Promise.all([refreshMembers(), refreshInvites(), refreshOwners()]);
+              } else {
+                await Promise.all([refreshMembers(), refreshInvites()]);
+              }
+            } else {
+              showToast(result.error || 'Failed to remove member', 'error');
+              // A refusal may be because the server already did it (a co-owner
+              // got there first): read the people again so the page agrees.
+              await Promise.all([refreshMembers(), ...(role === 'owner' ? [refreshOwners()] : [])]);
+            }
+          } catch (error) {
+            console.error('Error removing member:', error);
+            showToast('Failed to remove member', 'error');
+            if (role === 'owner') await Promise.all([refreshMembers(), refreshOwners()]);
+          }
+        },
+      });
+    },
+    [
+      hasLiveLinks,
+      apiId,
+      wishlistId,
+      showToast,
+      refreshMembers,
+      refreshInvites,
+      dropOwner,
+      refreshOwners,
+      offerLinkRevoke,
+      deferRowAction,
+      hideRow,
+      showRow,
+    ]
+  );
 
   /**
    * Send a member an invitation to become a co-owner. It's an invite, not a role
@@ -494,37 +565,49 @@ export function useWishlistPeople({
   );
 
   /**
-   * Step an owner down to a plain member, once their row's dialog is confirmed.
-   * Held on their row while it runs, so a second demotion of the same owner is
-   * turned away, whatever sent it, and a failed one gives the row back.
+   * Step an owner down to a plain member. Deferred with Undo (see
+   * `deferRowAction`): their row shows them as a member at once, held until
+   * it's over, and undone, nothing is sent, so they're never told. Making them
+   * an owner again would need their consent, which is why it waits.
    */
   const demoteOwner = useCallback(
-    (userId: string, username: string | null) =>
-      runRowAction(userId, async () => {
-        if (!wishlistId) return;
-        try {
-          const res = await fetch(`/api/wishlists/${apiId()}/owners/${userId}`, {
-            method: 'PATCH',
-          });
-          const result = await res.json();
-          if (result.success) {
-            showToast(`@${username || 'user'} is now a member`, 'success');
-            dropOwner({ id: userId, username });
-            offerLinkRevoke(username);
-            // Demoting also cancels any invite they still had pending here.
-            await Promise.all([refreshMembers(), refreshInvites(), refreshOwners()]);
-          } else {
-            showToast(result.error || 'Failed to update owner', 'error');
-            // Refused (404/400) because they're no longer an owner, say: read
-            // the people and owners again so the page agrees with the server.
+    (userId: string, username: string | null) => {
+      if (!wishlistId) return;
+      return deferRowAction(userId, {
+        message: demotedToast(username),
+        show: () => setDemoting((prev) => new Set(prev).add(userId)),
+        unshow: () =>
+          setDemoting((prev) => {
+            const next = new Set(prev);
+            next.delete(userId);
+            return next;
+          }),
+        commit: async (keepalive) => {
+          try {
+            const res = await fetch(`/api/wishlists/${apiId()}/owners/${userId}`, {
+              method: 'PATCH',
+              keepalive,
+            });
+            const result = await res.json();
+            if (result.success) {
+              dropOwner({ id: userId, username });
+              offerLinkRevoke(username);
+              // Demoting also cancels any invite they still had pending here.
+              await Promise.all([refreshMembers(), refreshInvites(), refreshOwners()]);
+            } else {
+              showToast(result.error || 'Failed to update owner', 'error');
+              // Refused (404/400) because they're no longer an owner, say: read
+              // the people and owners again so the page agrees with the server.
+              await Promise.all([refreshMembers(), refreshOwners()]);
+            }
+          } catch (error) {
+            console.error('Error demoting owner:', error);
+            showToast('Failed to update owner', 'error');
             await Promise.all([refreshMembers(), refreshOwners()]);
           }
-        } catch (error) {
-          console.error('Error demoting owner:', error);
-          showToast('Failed to update owner', 'error');
-          await Promise.all([refreshMembers(), refreshOwners()]);
-        }
-      }),
+        },
+      });
+    },
     [
       apiId,
       wishlistId,
@@ -533,9 +616,17 @@ export function useWishlistPeople({
       refreshInvites,
       dropOwner,
       refreshOwners,
-      runRowAction,
       offerLinkRevoke,
+      deferRowAction,
     ]
+  );
+
+  /** Make member, from an owner's row. */
+  const handleDemoteOwner = useCallback(
+    (owner: { userId: string; username: string | null }) => {
+      void demoteOwner(owner.userId, owner.username);
+    },
+    [demoteOwner]
   );
 
   const confirmPromoteToOwner = useCallback(async () => {
@@ -549,23 +640,33 @@ export function useWishlistPeople({
     }
   }, [promoteConfirm, inviteAsOwner]);
 
-  const confirmDemoteOwner = useCallback(async () => {
-    if (!demoteConfirm) return;
-    const { userId, username } = demoteConfirm;
-    // Closed once the demotion and the reads after it settle, as Remove's is, so
-    // the dialog shows it running meanwhile and the row has moved when it closes.
-    try {
-      await demoteOwner(userId, username);
-    } finally {
-      setDemoteConfirm(null);
-    }
-  }, [demoteConfirm, demoteOwner]);
+  // The rows as People shows them: each deferred change laid over the last
+  // read (see `hidden`, `demoting`).
+  const shownMembers = useMemo(
+    () =>
+      members
+        .filter((m) => !hidden.has(`person:${String(m.user._id)}`))
+        .map((m) =>
+          m.role === 'owner' && demoting.has(String(m.user._id))
+            ? { ...m, role: 'member' as const }
+            : m
+        ),
+    [members, hidden, demoting]
+  );
+  const shownInvites = useMemo(
+    () => pendingInvites.filter((i) => !hidden.has(`invite:${i._id}`)),
+    [pendingInvites, hidden]
+  );
+  const shownRequests = useMemo(
+    () => joinRequests.filter((r) => !hidden.has(`request:${r._id}`)),
+    [joinRequests, hidden]
+  );
 
   // The members endpoint returns one list; the UI shows the two relationships
   // separately, because they aren't rungs on a ladder.
-  const memberRows = useMemo(() => members.filter((m) => m.role !== 'owner'), [members]);
+  const memberRows = useMemo(() => shownMembers.filter((m) => m.role !== 'owner'), [shownMembers]);
   // People's count: everyone on the list, owners and members, once read.
-  const peopleCount = membersRead === 'loaded' ? members.length : null;
+  const peopleCount = membersRead === 'loaded' ? shownMembers.length : null;
 
   // Who each username suggestion in the invite form already is on the list.
   const inviteStatuses = useMemo(
@@ -576,17 +677,17 @@ export function useWishlistPeople({
           userId: String(m.user._id),
           username: m.user.username,
         })),
-        invited: pendingInvites.map((i) => i.username),
+        invited: shownInvites.map((i) => i.username),
       }),
-    [ownerUsernames, memberRows, pendingInvites]
+    [ownerUsernames, memberRows, shownInvites]
   );
 
   return {
-    members,
+    members: shownMembers,
     memberRows,
     peopleCount,
-    pendingInvites,
-    joinRequests,
+    pendingInvites: shownInvites,
+    joinRequests: shownRequests,
     membersRead,
     refreshMembers,
     retryMembers,
@@ -598,15 +699,11 @@ export function useWishlistPeople({
     rowBusy,
     cancelInvite,
     answerJoinRequest,
-    removeConfirm,
     handleKickMember,
-    confirmKickMember,
     promoteConfirm,
     setPromoteConfirm,
     confirmPromoteToOwner,
-    demoteConfirm,
-    setDemoteConfirm,
-    confirmDemoteOwner,
+    handleDemoteOwner,
     openShareLinks,
     hasLiveLinks,
     revokeLinksFor,

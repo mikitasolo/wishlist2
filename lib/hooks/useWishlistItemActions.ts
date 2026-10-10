@@ -7,6 +7,9 @@ import { useToast } from '@/components/ToastProvider';
 import { useCreateItem, useDeleteItem } from '@/lib/hooks/useItems';
 import { useReceivedToast } from '@/lib/hooks/useReceivedToast';
 import { useReserveToast } from '@/lib/hooks/useReserveToast';
+import { useUndoableAction } from '@/lib/hooks/useUndoableAction';
+import { restoreRemoved } from '@/lib/utils/deferredCommit';
+import { RELEASED_TOAST } from '@/lib/utils/itemCopy';
 import type { WishlistItemsControl } from '@/lib/hooks/useWishlistItems';
 import { prependCreatedItem } from '@/lib/utils/itemListMerge';
 import { applyLinkChanges, isLinkableStatus, syncPartnerChips } from '@/lib/utils/itemLinks';
@@ -29,7 +32,16 @@ export interface WishlistItemActionsOptions {
   isOwner: boolean;
   owners: ShownOwners;
   dialogs: ItemDialogsControl;
-  itemsControl: Pick<WishlistItemsControl, 'items' | 'setItems' | 'mutations' | 'handleUpdateItem'>;
+  itemsControl: Pick<
+    WishlistItemsControl,
+    | 'items'
+    | 'setItems'
+    | 'mutations'
+    | 'handleUpdateItem'
+    | 'deferItemChange'
+    | 'pendingFor'
+    | 'settlePending'
+  >;
 }
 
 /**
@@ -46,7 +58,15 @@ export function useWishlistItemActions({
   itemsControl,
 }: WishlistItemActionsOptions) {
   const { showToast } = useToast();
-  const { items, setItems, mutations, handleUpdateItem } = itemsControl;
+  const {
+    items,
+    setItems,
+    mutations,
+    handleUpdateItem,
+    deferItemChange,
+    pendingFor,
+    settlePending,
+  } = itemsControl;
   const { itemToEdit, itemToReview, setItemToReview, onItemRequestError } = dialogs;
 
   const createItemHook = useCreateItem(
@@ -63,9 +83,39 @@ export function useWishlistItemActions({
     }
   );
 
-  // No success toast here — each delete handler says what it removed, and only
-  // once the delete has succeeded.
+  // No success toast here: the Undo toast has said it (see deferDelete).
   const deleteItemHook = useDeleteItem(undefined, onItemRequestError);
+  const offerUndo = useUndoableAction();
+
+  // Every item delete and decline (WIS-387): the item leaves the list at once,
+  // with an Undo toast, and the DELETE goes out once the Undo window has passed
+  // (see useUndoableAction). Undone, nothing was sent: the reservations the
+  // delete would release and the images it would free were never touched. The
+  // window is held as one tracked mutation, so a poll can't bring the item back
+  // while its delete waits (or is on its way). A failed delete puts it back;
+  // the hook has said why.
+  const deferDelete = useCallback(
+    (item: ApiItem, message: string, options: Parameters<typeof deleteItemHook>[1]) => {
+      let index = -1;
+      setItems((prev) => {
+        const at = prev.findIndex((i) => i._id === item._id);
+        if (at !== -1) index = at;
+        return at === -1 ? prev : prev.filter((i) => i._id !== item._id);
+      });
+      const putBack = () =>
+        setItems((prev) => restoreRemoved(prev, item, index === -1 ? 0 : index));
+      const pending = offerUndo({
+        message,
+        commit: async ({ keepalive }) => {
+          const deleted = await deleteItemHook(item._id, { ...options, keepalive });
+          if (!deleted) putBack();
+        },
+        onUndo: putBack,
+      });
+      void mutations.track(() => pending.settled);
+    },
+    [setItems, offerUndo, deleteItemHook, mutations]
+  );
 
   // Each dialog's Idempotency-Key: a retry of a submission whose answer was
   // lost (a timeout) sends the same one, so the server answers with the item
@@ -105,10 +155,9 @@ export function useWishlistItemActions({
     [owners]
   );
   const handleReservableUpdate = useReserveToast<ApiItem>(
-    (id, updates) => handleUpdateItem(id, updates as Partial<ApiItem>),
+    (id, updates, options) => handleUpdateItem(id, updates as Partial<ApiItem>, options),
     { isOwner, ownerUsernames: reserveOwnerNames }
   );
-  const handleCardUpdate = useReceivedToast<ApiItem>(handleReservableUpdate);
 
   const handleProposeItem = useCallback(
     async (itemData: {
@@ -190,21 +239,15 @@ export function useWishlistItemActions({
 
   const handleDeleteProposedItem = useCallback(async () => {
     if (!itemToReview) return;
-    const itemId = itemToReview._id;
-    // The hook toasts a failure and resolves false. Reject so ReviewItemModal
-    // stays open and the item stays listed; it closes itself on success. The
-    // request is tracked, so a poll whose read started before the delete
-    // settled is dropped instead of bringing the deleted item back.
-    // Owner-only, so a 404 means it's already gone (see useDeleteItem).
-    // Decline expects a proposal too, so it never deletes a live item a
-    // co-owner approved meanwhile, possibly reserved (WIS-199).
-    const deleted = await mutations.track(() =>
-      deleteItemHook(itemId, { notFoundIsDone: true, expectProposal: true })
-    );
-    if (!deleted) throw new Error('Failed to delete item');
-    setItems((prevItems) => prevItems.filter((item) => item._id !== itemId));
-    showToast('Proposal declined', 'success');
-  }, [itemToReview, deleteItemHook, showToast, mutations, setItems]);
+    // Deferred with Undo (see deferDelete); ReviewItemModal closes once this
+    // resolves. Owner-only, so a 404 means it's already gone (see
+    // useDeleteItem). Decline expects a proposal too, so it never deletes a
+    // live item a co-owner approved meanwhile, possibly reserved (WIS-199).
+    deferDelete(itemToReview, 'Proposal declined', {
+      notFoundIsDone: true,
+      expectProposal: true,
+    });
+  }, [itemToReview, deferDelete]);
 
   // A read brings a later version of the proposal under review (the proposer
   // edited it): the dialog refills from it, keeping the owner's own edits, and
@@ -235,22 +278,18 @@ export function useWishlistItemActions({
     [showToast, setItemToReview]
   );
 
-  // A card's Delete / Decline, once confirmed. Rejects on failure so the
-  // card keeps its item; same poll guard as the dialogs' deletes.
+  // A card's Delete / Decline, deferred with Undo (see deferDelete). A
+  // proposal's Decline expects it to still be one, as the review dialog's does.
+  // Owner-only, so a 404 means it's already gone (see useDeleteItem).
   const handleCardDelete = useCallback(
     async (item: ApiItem) => {
-      // Owner-only, so a 404 means it's already gone (see useDeleteItem).
-      const deleted = await mutations.track(() =>
-        deleteItemHook(item._id, { notFoundIsDone: true })
-      );
-      if (!deleted) throw new Error('Failed to delete item');
-      setItems((prevItems) => prevItems.filter((i) => i._id !== item._id));
-      showToast(
-        item.status === 'proposed' ? 'Proposal declined' : 'Item deleted successfully',
-        'success'
-      );
+      const proposal = item.status === 'proposed';
+      deferDelete(item, proposal ? 'Proposal declined' : 'Item deleted', {
+        notFoundIsDone: true,
+        expectProposal: proposal,
+      });
     },
-    [deleteItemHook, showToast, mutations, setItems]
+    [deferDelete]
   );
 
   // The items as last rendered, for handleSaveEdit's optimistic links without
@@ -259,6 +298,35 @@ export function useWishlistItemActions({
   useEffect(() => {
     itemsRef.current = items;
   }, [items]);
+
+  // A member's Release (WIS-387) shows at once with Undo and is sent once the
+  // Undo window has passed, so an undone one never frees the item for anyone
+  // else; it's counted only once sent and saved (useReserveToast, in the
+  // commit). Reserve on the same item meanwhile is that Release's Undo. Any
+  // other change to an item with a change waiting (a group gift's leave or
+  // cancel, say) sends that one first and waits for it, so they can't race.
+  const releaseOrUpdate = useCallback(
+    async (id: string, updates: { status?: string }): Promise<ApiItem | null> => {
+      const waiting = pendingFor(id);
+      if (waiting?.kind === 'release' && updates.status === 'booked' && waiting.pending.undo()) {
+        return itemsRef.current.find((item) => item._id === id) ?? null;
+      }
+      await settlePending(id);
+      const current = itemsRef.current.find((item) => item._id === id);
+      if (!isOwner && updates.status === 'available' && current?.status === 'booked') {
+        return deferItemChange({
+          id,
+          kind: 'release',
+          message: RELEASED_TOAST,
+          apply: (item) => ({ ...item, status: 'available', bookedBy: null }),
+          commit: (keepalive) => handleReservableUpdate(id, updates, { keepalive }),
+        });
+      }
+      return handleReservableUpdate(id, updates);
+    },
+    [pendingFor, settlePending, isOwner, deferItemChange, handleReservableUpdate]
+  );
+  const handleCardUpdate = useReceivedToast<ApiItem>(releaseOrUpdate);
 
   const handleSaveEdit = useCallback(
     async (updates: ItemUpdate) => {
@@ -294,20 +362,12 @@ export function useWishlistItemActions({
 
   const handleDeleteItem = useCallback(async () => {
     if (!itemToEdit) return;
-    const itemId = itemToEdit._id;
-    // The hook toasts a failure and resolves false. Reject so EditItemModal
-    // stays open and the item stays listed; it closes itself on success.
-    // Same poll guard as handleDeleteProposedItem.
-    // An owner's 404 means it's already gone, e.g. a retry whose first attempt
-    // went through (WIS-158). A proposer's may be the archived list refusing
-    // them, with the proposal still there, so it stays an error.
-    const deleted = await mutations.track(() =>
-      deleteItemHook(itemId, { notFoundIsDone: isOwner })
-    );
-    if (!deleted) throw new Error('Failed to delete item');
-    setItems((prevItems) => prevItems.filter((item) => item._id !== itemId));
-    showToast('Item deleted successfully', 'success');
-  }, [itemToEdit, deleteItemHook, showToast, mutations, isOwner, setItems]);
+    // Deferred with Undo (see deferDelete); EditItemModal closes once this
+    // resolves. An owner's 404 means it's already gone, e.g. a retry whose
+    // first attempt went through (WIS-158). A proposer's may be the archived
+    // list refusing them, with the proposal still there, so it stays an error.
+    deferDelete(itemToEdit, 'Item deleted', { notFoundIsDone: isOwner });
+  }, [itemToEdit, deferDelete, isOwner]);
 
   // What an owner's add and edit dialogs offer in "Goes with": the list's
   // items but proposals (and, editing, the item itself).

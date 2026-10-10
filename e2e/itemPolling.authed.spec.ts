@@ -313,8 +313,7 @@ for (const flow of [
     open: 'Edit item',
     title: 'Edit item',
     remove: 'Delete item',
-    confirm: 'Delete',
-    done: 'Item deleted successfully',
+    done: 'Item deleted',
   },
   {
     from: 'review',
@@ -322,7 +321,6 @@ for (const flow of [
     open: 'Review proposed item',
     title: 'Someone proposed an item',
     remove: 'Decline',
-    confirm: 'Decline',
     done: 'Proposal declined',
   },
 ]) {
@@ -351,10 +349,6 @@ for (const flow of [
     await page.goto('/wishlists/e2e-birthday');
     await (await reads.next()).land();
     await card.getByRole('button', { name: flow.open }).click();
-    await page
-      .getByRole('dialog', { name: flow.title })
-      .getByRole('button', { name: flow.remove, exact: true })
-      .click();
 
     // The poll reads the list while the item still exists, but only hands it
     // to the page once the delete has settled.
@@ -362,11 +356,15 @@ for (const flow of [
     const poll = await reads.next();
 
     await page
-      .getByRole('alertdialog')
-      .getByRole('button', { name: flow.confirm, exact: true })
+      .getByRole('dialog', { name: flow.title })
+      .getByRole('button', { name: flow.remove, exact: true })
       .click();
-    await expect(page.getByRole('status').getByText(flow.done)).toBeVisible();
+    const done = page.getByRole('status').filter({ hasText: flow.done });
+    await expect(done).toBeVisible();
     await expect(card).toHaveCount(0);
+    // Its Undo window (WIS-387) cut short: the DELETE goes now.
+    await done.getByRole('button', { name: 'Dismiss notification' }).click();
+    await expect.poll(() => deleted).toBe(true);
 
     await poll.land();
     // The page has had the stale list for a while now, and the read it sends

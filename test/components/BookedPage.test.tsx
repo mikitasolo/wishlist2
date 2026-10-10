@@ -3,9 +3,11 @@ import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } 
 import { render, screen, fireEvent, cleanup, waitFor, act, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-const { push, showToast, signedIn } = vi.hoisted(() => ({
+const { push, showToast, undoToast, signedIn } = vi.hoisted(() => ({
   push: vi.fn(),
   showToast: vi.fn(),
+  // The Undo toasts' lines (WIS-387), kept apart from the page's other toasts.
+  undoToast: vi.fn(),
   // Mutable, so a test can sign another account in while the page is open.
   signedIn: { userId: 'me', defaultCurrency: 'USD' },
 }));
@@ -25,6 +27,22 @@ vi.mock('@/components/AuthButton', () => ({ default: () => null }));
 
 vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }));
 vi.mock('@/lib/analytics', () => ({ track: vi.fn() }));
+// Dismiss, Release and Delete from history wait out an Undo window before
+// sending (WIS-387). This file is about what their requests do, so here the
+// window has passed as soon as it opens: the toast is said (`undoToast`) and
+// the request sent at once. BookedPageUndo.test.tsx covers the window itself.
+vi.mock('@/lib/hooks/useUndoableAction', () => ({
+  useUndoableAction:
+    () =>
+    ({ message, commit }: { message: string; commit: (c: { keepalive: boolean }) => unknown }) => {
+      undoToast(message);
+      const settled = Promise.resolve(commit({ keepalive: false })).then(
+        () => 'committed' as const,
+        () => 'committed' as const
+      );
+      return { settled, undo: () => false, flush: () => {}, isPending: () => false };
+    },
+}));
 // Reduced motion unless a test says otherwise, so a card marked as given leaves
 // as its answer lands, as it did before the Mark as given moment (WIS-407),
 // which only "the Mark as given moment" below plays.
@@ -404,23 +422,25 @@ function clickAndConfirm(button: HTMLElement, confirmText: string) {
 
 const markGifted = (itemName: string) =>
   clickAndConfirm(reservationButtons(itemName).gift, 'Mark as given');
+/** Dismiss, Release and Delete from history ask nothing: they offer Undo (WIS-387). */
 function dismiss(itemName: string) {
   const { dismiss } = reservationButtons(itemName);
   if (!dismiss) throw new Error(`no Dismiss on the card for ${itemName}`);
-  clickAndConfirm(dismiss, 'Remove');
+  fireEvent.click(dismiss);
 }
-/** Opens the card's "More actions" menu and picks Release, which asks first. */
-function openRelease(itemName: string) {
+/** Opens the card's "More actions" menu and picks Release. */
+function release(itemName: string) {
   const { release } = reservationButtons(itemName);
   if (!release) throw new Error(`no Release on the card for ${itemName}`);
   fireEvent.click(release);
   fireEvent.click(screen.getByRole('menuitem', { name: 'Release' }));
 }
-function release(itemName: string) {
-  openRelease(itemName);
-  fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Release' }));
+const deleteGift = (itemName: string) => fireEvent.click(deleteGiftButton(itemName));
+
+/** A card whose Dismiss or Release is waiting or on its way is off the page (WIS-387). */
+function expectReservationHidden(itemName: string) {
+  expect(cardFor(itemName)).toBeNull();
 }
-const deleteGift = (itemName: string) => clickAndConfirm(deleteGiftButton(itemName), 'Delete');
 
 function expectReservationDisabled(itemName: string) {
   const buttons = reservationButtons(itemName);
@@ -451,6 +471,7 @@ beforeEach(() => {
   cleanup();
   push.mockReset();
   showToast.mockReset();
+  undoToast.mockReset();
   signedIn.userId = 'me';
   signedIn.defaultCurrency = 'USD';
 });
@@ -472,11 +493,11 @@ describe('BookedPage — acting on several cards at once', () => {
 
     dismiss('Scarf');
     expectReservationDisabled('Lego set');
-    expectReservationDisabled('Scarf');
+    expectReservationHidden('Scarf');
 
-    // A's disabled buttons open no second dialog, so nothing more goes out for A.
+    // A's disabled buttons open no dialog and send nothing more for A.
     fireEvent.click(reservationButtons('Lego set').gift);
-    openRelease('Lego set');
+    release('Lego set');
     expect(screen.queryByRole('alertdialog')).toBeNull();
 
     // B settling first doesn't unlock A either...
@@ -517,7 +538,7 @@ describe('BookedPage — acting on several cards at once', () => {
 
     await answer(markGiftedKey('res-lego'), gifted(legoGift));
     await waitFor(() => expect(cardName('Lego set')).toBeNull());
-    expectReservationDisabled('Scarf');
+    expectReservationHidden('Scarf');
 
     await answer(dismissKey('res-scarf'), failed('Failed to remove reservation'));
     await waitFor(() =>
@@ -534,17 +555,21 @@ describe('BookedPage — acting on several cards at once', () => {
     deleteGift('Mug');
     // A reservation's request is tracked alongside the gift-history ones.
     markGifted('Lego set');
-    expect(deleteGiftButton('Cookbook')).toBeDisabled();
-    expect(deleteGiftButton('Mug')).toBeDisabled();
+    // Off the page while their deletes are on their way (WIS-387).
+    expect(screen.queryByText('Cookbook')).toBeNull();
+    expect(screen.queryByText('Mug')).toBeNull();
 
     await answer(deleteGiftKey('gift-mug'), ok);
-    await waitFor(() => expect(screen.queryByText('Mug')).toBeNull());
-    expect(deleteGiftButton('Cookbook')).toBeDisabled();
+    await act(async () => {});
+    expect(screen.queryByText('Mug')).toBeNull();
+    expect(screen.queryByText('Cookbook')).toBeNull();
     expectReservationDisabled('Lego set');
 
     await answer(deleteGiftKey('gift-book'), failed('Failed to delete gift'));
     await waitFor(() => expect(showToast).toHaveBeenCalledWith('Failed to delete gift', 'error'));
-    expect(deleteGiftButton('Cookbook')).toBeEnabled();
+    // Back, as it was: the delete didn't happen.
+    await waitFor(() => expect(deleteGiftButton('Cookbook')).toBeEnabled());
+    expect(screen.queryByText('Mug')).toBeNull();
     expectReservationDisabled('Lego set');
     expect(sent(deleteGiftKey('gift-book'))).toBe(1);
 
@@ -559,31 +584,26 @@ describe('BookedPage — acting on several cards at once', () => {
   // whichever settled first re-enabled the card while the other was in flight.
   it('regression: ignores a second action confirmed for a card whose first is in flight', async () => {
     const { answer, sent } = await renderHeld();
-    const lego = reservationButtons('Lego set');
 
-    // Both confirmations for one card, opened before either is confirmed.
-    fireEvent.click(lego.gift);
-    openRelease('Lego set');
-    const confirm = (title: string, confirmText: string) =>
-      fireEvent.click(
-        within(screen.getByRole('alertdialog', { name: title })).getByRole('button', {
-          name: confirmText,
-        })
-      );
-
-    confirm('Mark as given?', 'Mark as given');
-    expectReservationDisabled('Lego set');
-    confirm('Release this gift?', 'Release');
+    // "Mark as given?" opened, then Release picked from the menu meanwhile
+    // (it asks nothing: it offers Undo, WIS-387).
+    fireEvent.click(reservationButtons('Lego set').gift);
+    release('Lego set');
+    expectReservationHidden('Lego set');
+    fireEvent.click(
+      within(screen.getByRole('alertdialog', { name: 'Mark as given?' })).getByRole('button', {
+        name: 'Mark as given',
+      })
+    );
     expect(screen.queryByRole('alertdialog')).toBeNull();
 
-    expect(sent(markGiftedKey('res-lego'))).toBe(1);
-    expect(sent(releaseKey('item-lego'))).toBe(0);
-    expectReservationDisabled('Lego set');
+    expect(sent(releaseKey('item-lego'))).toBe(1);
+    expect(sent(markGiftedKey('res-lego'))).toBe(0);
 
-    await answer(markGiftedKey('res-lego'), failed('Failed to log gift'));
+    await answer(releaseKey('item-lego'), failed('Failed to release'));
     await waitFor(() => expectReservationEnabled('Lego set'));
     expect(showToast).toHaveBeenCalledTimes(1);
-    expect(sent(releaseKey('item-lego'))).toBe(0);
+    expect(sent(markGiftedKey('res-lego'))).toBe(0);
   });
 });
 
@@ -595,22 +615,23 @@ describe('BookedPage — a card action that stalls', () => {
       await vi.advanceTimersByTimeAsync(ms);
     });
 
+  // Release and Dismiss take the card off while they're on their way (WIS-387).
   it.each([
-    ['Mark as given', 'Lego set', markGifted],
-    ['Release', 'Lego set', release],
-    ['Dismiss', 'Scarf', dismiss],
+    ['Mark as given', 'Lego set', markGifted, expectReservationDisabled],
+    ['Release', 'Lego set', release, expectReservationHidden],
+    ['Dismiss', 'Scarf', dismiss, expectReservationHidden],
   ])(
     '%s is given up on after the timeout, says so, and frees its card',
-    async (_name, card, start) => {
+    async (_name, card, start, expectHeld) => {
       await renderHeld();
       vi.useFakeTimers();
       try {
         start(card);
-        expectReservationDisabled(card);
+        expectHeld(card);
 
         await advance(ITEM_REQUEST_TIMEOUT_MS - 1);
         expect(showToast).not.toHaveBeenCalled();
-        expectReservationDisabled(card);
+        expectHeld(card);
 
         await advance(1);
         expect(showToast).toHaveBeenCalledWith(REQUEST_TIMEOUT_MESSAGE, 'error');
@@ -631,7 +652,7 @@ describe('BookedPage — a card action that stalls', () => {
       await advance(1000);
       expect(showToast).toHaveBeenCalledWith(REQUEST_TIMEOUT_MESSAGE, 'error');
       expectReservationEnabled('Lego set');
-      expectReservationDisabled('Scarf');
+      expectReservationHidden('Scarf');
     } finally {
       vi.useRealTimers();
     }
@@ -642,7 +663,7 @@ describe('BookedPage — a card action that stalls', () => {
     vi.useFakeTimers();
     try {
       deleteGift('Cookbook');
-      expect(deleteGiftButton('Cookbook')).toBeDisabled();
+      expect(screen.queryByText('Cookbook')).toBeNull();
       await advance(ITEM_REQUEST_TIMEOUT_MS);
       expect(showToast).toHaveBeenCalledWith(REQUEST_TIMEOUT_MESSAGE, 'error');
       expect(deleteGiftButton('Cookbook')).toBeEnabled();
@@ -675,13 +696,12 @@ describe('BookedPage — Release on an active card, Dismiss on a changed one', (
     expect(scarf.release).toBeNull();
   });
 
-  it("asks first, then sends the list's own unbook to the item, and takes the card off once it lands", async () => {
+  it("sends the list's own unbook to the item with no confirmation, and keeps the card off once it lands", async () => {
     const { answer, sent } = await renderHeld();
 
-    openRelease('Lego set');
-    const dialog = screen.getByRole('alertdialog', { name: 'Release this gift?' });
-    expect(dialog).toHaveTextContent('Others on the list will be able to reserve it.');
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Release' }));
+    release('Lego set');
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(undoToast).toHaveBeenCalledWith('Released. Others on the list can reserve it now.');
 
     // The item route's unbook, as Unbook on the list sends it: nothing else
     // frees the item, and the reservation isn't dismissed on its own.
@@ -691,31 +711,15 @@ describe('BookedPage — Release on an active card, Dismiss on a changed one', (
       expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ status: 'available' }) })
     );
     expect(sent(dismissKey('res-lego'))).toBe(0);
-    expectReservationDisabled('Lego set');
+    expectReservationHidden('Lego set');
 
     await answer(releaseKey('item-lego'), ok);
-    await waitFor(() => expect(cardName('Lego set')).toBeNull());
-    expect(showToast).toHaveBeenCalledTimes(1);
-    expect(showToast).toHaveBeenCalledWith(
-      'Released. Others on the list can reserve it now.',
-      'success'
-    );
+    await act(async () => {});
+    expect(cardName('Lego set')).toBeNull();
+    expect(showToast).not.toHaveBeenCalled();
     expect(screen.getByText('Scarf')).toBeInTheDocument();
     // Released, not given: the gift history is as it was.
     expect(historyNames()).toEqual(['Cookbook', 'Mug']);
-  });
-
-  it('sends nothing when the confirmation is cancelled', async () => {
-    const { sent } = await renderHeld();
-
-    openRelease('Lego set');
-    fireEvent.click(
-      within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Cancel' })
-    );
-
-    expect(screen.queryByRole('alertdialog')).toBeNull();
-    expect(sent(releaseKey('item-lego'))).toBe(0);
-    expectReservationEnabled('Lego set');
   });
 
   // The item route refuses an unbook the gifter can no longer make, and the
@@ -817,25 +821,6 @@ describe('BookedPage — Release on an active card, Dismiss on a changed one', (
       screen.getByRole('heading', { level: 2, name: /Changed since you reserved/ })
     ).toHaveTextContent('Changed since you reserved2');
     expect(screen.getByText('Nothing to give right now.')).toBeInTheDocument();
-  });
-
-  it('releases nothing, and says why, for a card a read has found changed while its confirmation was open', async () => {
-    const { server, sent } = await renderHeld();
-
-    openRelease('Lego set');
-    // Elsewhere, meanwhile: the owner marks it received, and the page reads it.
-    server.detach('res-lego', 'completed');
-    act(() => {
-      window.dispatchEvent(new Event('focus'));
-    });
-    await waitFor(() => expect(reservationButtons('Lego set').dismiss).not.toBeNull());
-
-    fireEvent.click(
-      within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Release' })
-    );
-    expect(sent(releaseKey('item-lego'))).toBe(0);
-    expect(showToast).toHaveBeenCalledTimes(1);
-    expect(showToast).toHaveBeenCalledWith(REFUSED_TOAST, 'info');
   });
 });
 
@@ -994,7 +979,7 @@ describe('BookedPage — a reservation or gift that no longer exists', () => {
 
     await answer(markGiftedKey('res-lego'), notFound('Reservation not found'));
     await waitFor(() => expect(screen.queryByText('Lego set')).toBeNull());
-    expectReservationDisabled('Scarf');
+    expectReservationHidden('Scarf');
 
     await answer(dismissKey('res-scarf'), failed('Failed to dismiss reservation'));
     await waitFor(() => expectReservationEnabled('Scarf'));
@@ -1419,8 +1404,8 @@ describe('BookedPage — reading both lists again while the page is open', () =>
   });
 
   // A read can't tell whether the server has taken an action that's still on
-  // its way, so it leaves that card alone: the card stays as it is, disabled,
-  // until its own answer decides it.
+  // its way, so it leaves that card alone: the card stays as it is, disabled
+  // (or, for a delete offering Undo, off the page), until its own answer decides it.
   it('a read landing while an action is in flight leaves that card alone', async () => {
     const { answer, answerRead } = await renderLoaded();
 
@@ -1434,9 +1419,9 @@ describe('BookedPage — reading both lists again while the page is open', () =>
     });
     expect(cardName('Lego set')).not.toBeNull();
     expectReservationDisabled('Lego set');
-    expect(deleteGiftButton('Cookbook')).toBeDisabled();
+    expect(screen.queryByText('Cookbook')).toBeNull();
     // Everything else follows the read.
-    expect(historyNames()).toEqual(['Lego set', 'Cookbook', 'Mug']);
+    expect(historyNames()).toEqual(['Lego set', 'Mug']);
 
     // Their answers then take them off, once each.
     await answer(markGiftedKey('res-lego'), gifted(legoGift));
@@ -1451,7 +1436,7 @@ describe('BookedPage — reading both lists again while the page is open', () =>
     dismiss('Scarf');
     comeBack('focus');
     await answerRead(1);
-    expectReservationDisabled('Scarf');
+    expectReservationHidden('Scarf');
 
     await answer(dismissKey('res-scarf'), failed('Failed to remove reservation'));
     await waitFor(() => expectReservationEnabled('Scarf'));
@@ -1512,15 +1497,6 @@ describe('BookedPage — reading both lists again while the page is open', () =>
     {
       dialog: 'Mark as given?',
       open: () => fireEvent.click(reservationButtons('Lego set').gift),
-    },
-    {
-      dialog: 'Remove from reservations?',
-      open: () => fireEvent.click(reservationButtons('Scarf').dismiss!),
-    },
-    { dialog: 'Release this gift?', open: () => openRelease('Lego set') },
-    {
-      dialog: 'Delete from gift history?',
-      open: () => fireEvent.click(deleteGiftButton('Cookbook')),
     },
   ])(
     'another account signing in closes a "$dialog" confirmation left open for the previous one',
@@ -1815,21 +1791,20 @@ describe('BookedPage — "To give" grouped by the list’s upcoming occasion', (
     markGifted('Kite');
     release('Vase');
     expectReservationDisabled('Kite');
-    expectReservationDisabled('Vase');
+    // Off at once, offering Undo (WIS-387): its group, left empty, goes too.
+    expectReservationHidden('Vase');
+    expect(headings()).toEqual([BIRTHDAY_GROUP, 'No date']);
     expectReservationEnabled('Toy train');
 
     await answer(markGiftedKey('res-kite'), gifted({ ...legoGift, _id: 'gift-kite' }));
     await waitFor(() => expect(cardName('Kite')).toBeNull());
     expect(cardsUnder(BIRTHDAY_GROUP)).toEqual(['Toy train']);
-    expectReservationDisabled('Vase');
 
     await answer(releaseKey('item-res-vase'), ok);
-    await waitFor(() => expect(cardName('Vase')).toBeNull());
+    await act(async () => {});
+    expect(cardName('Vase')).toBeNull();
     expect(headings()).toEqual([BIRTHDAY_GROUP, 'No date']);
-    expect(showToast).toHaveBeenCalledWith(
-      'Released. Others on the list can reserve it now.',
-      'success'
-    );
+    expect(undoToast).toHaveBeenCalledWith('Released. Others on the list can reserve it now.');
   });
 
   it('regroups the cards on the next read once an owner changes a date, and leaves a card in flight alone', async () => {
@@ -1846,17 +1821,17 @@ describe('BookedPage — "To give" grouped by the list’s upcoming occasion', (
     });
 
     const HOLIDAY_GROUP = 'Holiday · tomorrow — Odds and ends';
-    await waitFor(() => expect(headings()).toEqual([HOLIDAY_GROUP, WEDDING_GROUP, 'No date']));
+    await waitFor(() => expect(headings()).toEqual([HOLIDAY_GROUP, 'No date']));
     expect(cardsUnder(HOLIDAY_GROUP)).toEqual(['Plain mug']);
     expect(cardsUnder('No date')).toEqual(['Toy train', 'Kite', 'Party hat']);
-    // The card in flight keeps the page's copy (the read leaves it alone), so it
-    // stays where it was, under the date it had, disabled, until its own answer.
-    expect(cardsUnder(WEDDING_GROUP)).toEqual(['Vase']);
-    expectReservationDisabled('Vase');
+    // The card in flight keeps the page's copy (the read leaves it alone), off
+    // the page while its Release is on its way (WIS-387).
+    expectReservationHidden('Vase');
 
-    await answer(releaseKey('item-res-vase'), ok);
-    await waitFor(() => expect(cardName('Vase')).toBeNull());
-    expect(headings()).toEqual([HOLIDAY_GROUP, 'No date']);
+    await answer(releaseKey('item-res-vase'), failed('Failed to release'));
+    // Its Release failed: it's back where it was, under the date it had.
+    await waitFor(() => expect(cardsUnder(WEDDING_GROUP)).toEqual(['Vase']));
+    expect(headings()).toEqual([HOLIDAY_GROUP, WEDDING_GROUP, 'No date']);
   });
 });
 

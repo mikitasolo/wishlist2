@@ -47,15 +47,21 @@ test('a member starts a group gift and the owner still sees the item as availabl
     expect(seen.status).toBe('available');
     expect(JSON.stringify(seen)).not.toMatch(/groupGift|bookedBy|pledge/i);
 
-    // Cancelling gives it back.
+    // Cancelling gives it back, at once and with Undo (WIS-387); the cancel
+    // itself goes once the toast is dismissed, and is waited for before the
+    // item goes.
     await card.getByRole('button', { name: 'More actions' }).click();
     await page.getByRole('menuitem', { name: 'Cancel group gift' }).click();
-    await page.getByRole('button', { name: 'Cancel group gift' }).last().click();
     await expect(card.getByRole('button', { name: 'Reserve this item' })).toBeVisible();
-    // Wait for the server's answer (the cancel is shown at once) before the item goes.
-    await expect(
-      page.getByText('Group gift cancelled. The item is available again.')
-    ).toBeVisible();
+    const cancelled = page.waitForResponse(
+      (r) => r.request().method() === 'POST' && /\/group-gift\/cancel$/.test(r.url())
+    );
+    await page
+      .getByRole('status')
+      .filter({ hasText: 'Group gift cancelled. The item is available again.' })
+      .getByRole('button', { name: 'Dismiss notification' })
+      .click();
+    expect((await cancelled).ok()).toBe(true);
   } finally {
     if (itemId) await owner.delete(`/api/items/${itemId}`);
     await owner.dispose();

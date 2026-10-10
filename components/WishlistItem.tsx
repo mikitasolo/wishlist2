@@ -174,9 +174,10 @@ interface WishlistItemProps {
 export const CARD_RELATED_LIMIT = 2;
 
 /**
- * What each way of ending or leaving a group gift asks (WIS-362), worded to
- * match what the server does to the others' reservations (`organizerAction`):
- * cancel and convert release them, give moves them into gift history.
+ * What each way of ending a group gift asks (WIS-362), worded to match what
+ * the server does to the others' reservations (`organizerAction`): convert
+ * releases them, give moves them into gift history. Leave and cancel ask
+ * nothing: they're offered back with Undo before anything is sent (WIS-387).
  */
 const GIFT_CONFIRM = {
   give: {
@@ -191,24 +192,7 @@ const GIFT_CONFIRM = {
       'The group gift ends and the reservation is yours alone. Everyone else’s reservation of it is released, and their pledges are dropped.',
     confirm: 'Reserve for me',
   },
-  cancel: {
-    title: 'Cancel this group gift?',
-    message:
-      'The item is available again. Everyone’s reservation of it is released, yours too, and the pledges are dropped.',
-    confirm: 'Cancel group gift',
-  },
-  leave: { title: 'Leave this group gift?', message: '', confirm: 'Leave' },
 } as const;
-
-/** Leaving: your pledge and reservation go; an organizer's role is handed on. */
-function leaveMessage(organizer: boolean, people: number): string {
-  if (people <= 1) {
-    return 'You’re the only one in it, so leaving ends the group gift and the item is available again.';
-  }
-  return organizer
-    ? 'Your pledge and reservation are removed. The person who joined first takes over as organizer.'
-    : 'Your pledge and reservation are removed. The item stays reserved by the others.';
-}
 
 const NO_RELATED: readonly ItemRef[] = [];
 
@@ -256,13 +240,9 @@ function WishlistItem({
   const [showCompleteConfirm, setShowCompleteConfirm] = useState(false);
   const [showToDraftConfirm, setShowToDraftConfirm] = useState(false);
   const [showReleaseConfirm, setShowReleaseConfirm] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
-  // A group gift's pledge dialog, and the confirmation of what ends or leaves it.
+  // A group gift's pledge dialog, and the confirmation of what ends it.
   const [giftDialog, setGiftDialog] = useState<'start' | 'join' | 'pledge' | null>(null);
-  const [giftConfirm, setGiftConfirm] = useState<'give' | 'convert' | 'cancel' | 'leave' | null>(
-    null
-  );
+  const [giftConfirm, setGiftConfirm] = useState<'give' | 'convert' | null>(null);
 
   const isBookedByCurrentUser = useMemo(
     () => item.bookedBy && session?.user?.id && item.bookedBy === session.user.id,
@@ -363,18 +343,13 @@ function WishlistItem({
     }
   }, [isOwner, isUpdating, item._id, item.mostWanted, onUpdate]);
 
-  const handleConfirmDelete = useCallback(async () => {
-    if (!onDelete || isDeleting) return;
-    setIsDeleting(true);
-    try {
-      await onDelete(item);
-    } catch {
+  // Delete / Decline: no confirmation, the page takes the item off at once and
+  // offers Undo before anything is sent (WIS-387).
+  const handleDelete = useCallback(() => {
+    onDelete?.(item).catch(() => {
       // The page has said why; the item stays listed.
-    } finally {
-      setShowDeleteConfirm(false);
-      setIsDeleting(false);
-    }
-  }, [onDelete, item, isDeleting]);
+    });
+  }, [onDelete, item]);
 
   // Releasing a gift already marked as given, once confirmed. Only ever an
   // unbook: if a poll has shown the item isn't theirs any more while the
@@ -636,14 +611,14 @@ function WishlistItem({
         return {
           label: 'Leave group gift',
           icon: 'logout',
-          onSelect: () => setGiftConfirm('leave'),
+          onSelect: () => runGroupGift({ type: 'leave' }),
           disabled: isUpdating,
         };
       case 'cancelGroupGift':
         return {
           label: 'Cancel group gift',
           icon: 'close',
-          onSelect: () => setGiftConfirm('cancel'),
+          onSelect: () => runGroupGift({ type: 'cancel' }),
           disabled: isUpdating,
           separated: true,
           danger: true,
@@ -659,7 +634,7 @@ function WishlistItem({
         return {
           label: 'Decline',
           icon: 'trash',
-          onSelect: () => setShowDeleteConfirm(true),
+          onSelect: handleDelete,
           separated: true,
           danger: true,
         };
@@ -667,7 +642,7 @@ function WishlistItem({
         return {
           label: 'Delete',
           icon: 'trash',
-          onSelect: () => setShowDeleteConfirm(true),
+          onSelect: handleDelete,
           separated: true,
           danger: true,
         };
@@ -915,29 +890,17 @@ function WishlistItem({
         />
       )}
 
-      {(showCompleteConfirm ||
-        showToDraftConfirm ||
-        showDeleteConfirm ||
-        showReleaseConfirm ||
-        giftConfirm) &&
+      {(showCompleteConfirm || showToDraftConfirm || showReleaseConfirm || giftConfirm) &&
         createPortal(
           <>
             {giftConfirm && (
               <ConfirmDialog
                 isOpen
                 title={GIFT_CONFIRM[giftConfirm].title}
-                message={
-                  giftConfirm === 'leave'
-                    ? leaveMessage(
-                        giftRole === 'organizer',
-                        gift?.contributing ? gift.contributors.length : 0
-                      )
-                    : GIFT_CONFIRM[giftConfirm].message
-                }
+                message={GIFT_CONFIRM[giftConfirm].message}
                 confirmText={GIFT_CONFIRM[giftConfirm].confirm}
                 cancelText="Cancel"
-                type={giftConfirm === 'cancel' ? 'danger' : 'warning'}
-                icon={giftConfirm === 'cancel' ? 'close' : undefined}
+                type="warning"
                 onConfirm={() => {
                   const type = giftConfirm;
                   setGiftConfirm(null);
@@ -978,26 +941,6 @@ function WishlistItem({
                   applyStatus('draft');
                 }}
                 onCancel={() => setShowToDraftConfirm(false)}
-              />
-            )}
-
-            {showDeleteConfirm && onDelete && (
-              <ConfirmDialog
-                isOpen
-                // Declining a proposal is the review dialog's Decline: the same
-                // words, and the proposer is told nothing (D12).
-                title={isProposed ? 'Decline this proposal?' : 'Delete item'}
-                message={
-                  isProposed
-                    ? "It's removed from the list."
-                    : 'Are you sure you want to delete this item? This action cannot be undone.'
-                }
-                confirmText={isProposed ? 'Decline' : 'Delete'}
-                pendingText={isProposed ? 'Declining…' : 'Deleting…'}
-                cancelText="Cancel"
-                type="danger"
-                onConfirm={handleConfirmDelete}
-                onCancel={() => setShowDeleteConfirm(false)}
               />
             )}
 

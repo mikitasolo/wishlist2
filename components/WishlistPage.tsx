@@ -177,8 +177,8 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
   // Its invite form and Share links section, which the header's Share and
   // Leave list's notice open too.
   const inviteFormRef = useRef<InviteMemberFormHandle>(null);
-  // Remove, Leave list and Delete wishlist share one confirmation, so only one
-  // is ever open.
+  // Leave list and Delete wishlist share one confirmation, so only one is ever
+  // open.
   const [deleteConfirm, setDeleteConfirm] = useState<DeleteConfirm | null>(null);
   const closeDeleteConfirm = useCallback(() => setDeleteConfirm(null), []);
   const shareLinksRef = useRef<ShareLinksSectionHandle>(null);
@@ -194,8 +194,6 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
     shareLinks,
     inviteFormRef,
     shareLinksRef,
-    deleteConfirm,
-    setDeleteConfirm,
   });
 
   const itemDialogs = useItemDialogs();
@@ -286,6 +284,8 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
     itemsLoaded,
     filters,
     updateOptimistically: itemsControl.updateOptimistically,
+    deferItemChange: itemsControl.deferItemChange,
+    settlePending: itemsControl.settlePending,
     handleCardUpdate: itemActions.handleCardUpdate,
   });
 
@@ -515,7 +515,7 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
               failed={people.membersRead === 'failed'}
               onRetry={people.retryMembers}
               busy={people.rowBusy}
-              onDemote={people.setDemoteConfirm}
+              onDemote={people.handleDemoteOwner}
               onPromote={people.setPromoteConfirm}
               onRemove={people.handleKickMember}
               onCancelInvite={people.cancelInvite}
@@ -562,7 +562,6 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
         people={people}
         shareLinks={shareLinks}
         deleteConfirmOpen={deleteConfirm !== null}
-        closeDeleteConfirm={closeDeleteConfirm}
       />
       <WishlistListDialogs
         wishlist={wishlist}

@@ -68,32 +68,29 @@ export function ownerLeaveCopy(listName: string): ConfirmationCopy {
   };
 }
 
-/** What a kick adds when the list has live share links (WIS-338). */
-export const KICK_LINKS_SENTENCE = "They won't be able to use this list's share links.";
-
 /**
- * An owner removing someone from the list. Read by an owner, so it takes no
- * count and says nothing about whether this person reserved anything.
+ * The Undo toast after an owner removes someone from the list (WIS-387), said
+ * as done although nothing is sent until the Undo window has passed. Read by
+ * an owner, so it says nothing about whether this person reserved anything,
+ * and only ever the person's own name.
  */
-export function removeFromListCopy(
+export function removedToast(
   username: string | null | undefined,
   role: 'member' | 'owner',
   /** The list has share links that work (WIS-338): a kick keeps them out of those too. */
   { liveLinks = false }: { liveLinks?: boolean } = {}
-): ConfirmationCopy {
-  if (role === 'owner') {
-    return {
-      title: `Remove ${handle(username)} as an owner?`,
-      message:
-        "They lose access, and it comes off their profile and dashboard. They're told they were removed (not by whom).",
-    };
-  }
-  return {
-    title: `Remove ${handle(username)}?`,
-    message:
-      "They lose access, anything they reserved here goes back on the list, and they're told they were removed (not by whom)." +
-      (liveLinks ? ` ${KICK_LINKS_SENTENCE}` : ''),
-  };
+): string {
+  if (role === 'owner') return `Removed ${handle(username)} as an owner`;
+  const line = `Removed ${handle(username)} from the list`;
+  return liveLinks ? `${line}. ${KICK_LINKS_SENTENCE}` : line;
+}
+
+/** What a kick adds when the list has live share links (WIS-338). */
+export const KICK_LINKS_SENTENCE = "They can't use its share links.";
+
+/** The Undo toast after an owner makes a co-owner a member (WIS-387). */
+export function demotedToast(username: string | null | undefined): string {
+  return `${handle(username)} is now a member`;
 }
 
 /**

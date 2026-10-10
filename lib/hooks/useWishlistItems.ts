@@ -4,7 +4,13 @@ import { useCallback, useEffect, useRef, useState, type MutableRefObject } from 
 import type { ApiItem, ItemUpdate } from '@/types/api';
 import { useFetchItems, type ReviewRequestOptions } from '@/lib/hooks/useItems';
 import { isPublishedItem } from '@/lib/utils/itemCounts';
-import { updateItemOptimistically, type OptimisticItemUpdate } from '@/lib/utils/itemListMerge';
+import { useUndoableAction } from '@/lib/hooks/useUndoableAction';
+import type { PendingCommit } from '@/lib/utils/deferredCommit';
+import {
+  undoUpdate,
+  updateItemOptimistically,
+  type OptimisticItemUpdate,
+} from '@/lib/utils/itemListMerge';
 import { createMutationTracker } from '@/lib/utils/mutationTracker';
 import { ReadRefusedError } from '@/lib/utils/resourceRead';
 
@@ -245,38 +251,132 @@ export function useWishlistItems({
   // new price straight away. On failure the request has toasted the error, the
   // change is undone at once, the list is reconciled with the server, and this
   // resolves null (see updateItemOptimistically).
+  // An update as it shows before the server has answered.
+  const showUpdate = useCallback(
+    (item: ApiItem, updates: ItemUpdate): ApiItem => {
+      // Links are sent as what changed, and shown as the `relatedItems`
+      // the caller worked out (WIS-29); never sent as shown.
+      const { linkItems: _link, unlinkItems: _unlink, ...shown } = updates;
+      const optimistic = { ...item, ...shown };
+      if (updates.status === 'booked' && viewerId) {
+        optimistic.bookedBy = viewerId;
+      } else if (
+        (updates.status === 'available' ||
+          updates.status === 'draft' ||
+          updates.status === 'completed') &&
+        item.status === 'booked'
+      ) {
+        optimistic.bookedBy = null;
+      }
+      return optimistic;
+    },
+    [viewerId]
+  );
+
   const handleUpdateItem = useCallback(
     (id: string, updates: ItemUpdate, options?: ReviewRequestOptions) =>
       updateOptimistically({
         id,
-        apply: (item) => {
-          // Links are sent as what changed, and shown as the `relatedItems`
-          // the caller worked out (WIS-29); never sent as shown.
-          const { linkItems: _link, unlinkItems: _unlink, ...shown } = updates;
-          const optimistic = { ...item, ...shown };
-          if (updates.status === 'booked' && viewerId) {
-            optimistic.bookedBy = viewerId;
-          } else if (
-            (updates.status === 'available' ||
-              updates.status === 'draft' ||
-              updates.status === 'completed') &&
-            item.status === 'booked'
-          ) {
-            optimistic.bookedBy = null;
-          }
-          return optimistic;
-        },
+        apply: (item) => showUpdate(item, updates),
         request: () => {
           const { relatedItems: _shown, ...body } = updates;
           return updateItem(id, body, options);
         },
       }),
-    [updateOptimistically, updateItem, viewerId]
+    [updateOptimistically, updateItem, showUpdate]
+  );
+
+  // Deferred item changes (WIS-387): shown at once with an Undo toast, sent
+  // once the Undo window has passed. One per item at a time (`pendingFor`).
+  const offerUndo = useUndoableAction();
+  const itemsRef = useRef(items);
+  useEffect(() => {
+    itemsRef.current = items;
+  }, [items]);
+  const pendingChanges = useRef(new Map<string, { pending: PendingCommit; kind: string }>());
+  /** The item's deferred change still waiting, and what kind it is, if any. */
+  const pendingFor = useCallback((id: string) => {
+    const entry = pendingChanges.current.get(id);
+    return entry?.pending.isPending() ? entry : undefined;
+  }, []);
+  /**
+   * Before another change to an item is sent: its deferred change still
+   * waiting goes first, and this resolves once that has settled, so the two
+   * requests can't race.
+   */
+  const settlePending = useCallback(
+    async (id: string) => {
+      const entry = pendingFor(id);
+      if (!entry) return;
+      entry.pending.flush();
+      await entry.pending.settled;
+    },
+    [pendingFor]
+  );
+
+  /**
+   * Shows `apply`'s change to one item at once, with an Undo toast saying
+   * `message`, and calls `commit` once the Undo window has passed (or the page
+   * goes away, with `keepalive`). Undo, or a failed commit (resolving null, its
+   * request having said why), puts back the fields the change made, unless
+   * something has changed them since. The window and the commit are held as
+   * one tracked mutation, so a poll can't undo the change while it waits.
+   * Resolves with the item as shown, or null if it isn't on the list.
+   */
+  const deferItemChange = useCallback(
+    ({
+      id,
+      kind,
+      apply,
+      message,
+      commit,
+    }: {
+      id: string;
+      /** What the change is (e.g. 'release'), for whoever acts on the item next. */
+      kind: string;
+      apply: (item: ApiItem) => ApiItem;
+      /** The toast's line, or how to say it from the item as it was. */
+      message: string | ((item: ApiItem) => string);
+      commit: (keepalive: boolean) => Promise<ApiItem | null>;
+    }): ApiItem | null => {
+      const before = itemsRef.current.find((item) => item._id === id);
+      if (!before) return null;
+      // One deferred change per item: one still waiting is sent now, ahead of
+      // this one's window.
+      pendingFor(id)?.pending.flush();
+      const optimistic = apply(before);
+      setItems((prev) => prev.map((item) => (item._id === id ? apply(item) : item)));
+      const revert = () =>
+        setItems((prev) =>
+          prev.map((item) => (item._id === id ? undoUpdate(item, before, optimistic) : item))
+        );
+      const pending = offerUndo({
+        message: typeof message === 'function' ? message(before) : message,
+        onUndo: revert,
+        commit: async ({ keepalive }) => {
+          const updated = await commit(keepalive);
+          if (!updated) revert();
+        },
+      });
+      pendingChanges.current.set(id, { pending, kind });
+      void mutations
+        .track(() => pending.settled)
+        .then(() => {
+          if (pendingChanges.current.get(id)?.pending === pending) {
+            pendingChanges.current.delete(id);
+          }
+        });
+      return optimistic;
+    },
+    [offerUndo, mutations, pendingFor]
   );
 
   return {
     items,
     setItems,
+    deferItemChange,
+    pendingFor,
+    settlePending,
     itemsLoaded,
     itemsFailed,
     loadingItems,

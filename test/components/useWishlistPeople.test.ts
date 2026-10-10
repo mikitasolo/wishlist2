@@ -1,16 +1,21 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
-import { useState } from 'react';
-import {
-  useWishlistPeople,
-  type DeleteConfirm,
-  type WishlistPeopleOptions,
-} from '@/lib/hooks/useWishlistPeople';
+import { useWishlistPeople, type WishlistPeopleOptions } from '@/lib/hooks/useWishlistPeople';
 import type { ShareLinksControl } from '@/lib/hooks/useShareLinks';
+import { UNDO_WINDOW_MS } from '@/lib/utils/deferredCommit';
 
-const showToast = vi.fn();
-vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }));
+type ToastOptions = { action?: { label: string; onClick: () => void }; onDismiss?: () => void };
+const showToast = vi.fn((_message: string, _type?: string, _options?: ToastOptions) => 'toast-1');
+const dismissToast = vi.fn();
+vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast, dismissToast }) }));
+
+/** Presses Undo on the latest toast that offers it. */
+async function pressUndo() {
+  const call = [...showToast.mock.calls].reverse().find(([, , o]) => o?.action?.label === 'Undo');
+  if (!call) throw new Error('No Undo toast');
+  await act(async () => call[2]!.action!.onClick());
+}
 
 function reply(body: unknown) {
   return new Response(JSON.stringify(body), {
@@ -33,6 +38,8 @@ const fetchMock = vi.fn();
 const dropOwner = vi.fn();
 const refreshOwners = vi.fn();
 const chooseTab = vi.fn();
+// Stable, as the page's is: People's reads follow it.
+const apiId = () => 'w1';
 
 const shareLinks = {
   read: 'loading',
@@ -42,14 +49,12 @@ const shareLinks = {
 
 type Props = Pick<WishlistPeopleOptions, 'isOwner' | 'tab'>;
 
-// The hook with the page's shared confirmation state around it.
 function setup(props: Props = { isOwner: true, tab: 'items' }) {
   return renderHook(
     ({ isOwner, tab }: Props) => {
-      const [deleteConfirm, setDeleteConfirm] = useState<DeleteConfirm | null>(null);
       const people = useWishlistPeople({
         wishlistId: 'w1',
-        apiId: () => 'w1',
+        apiId,
         isOwner,
         tab,
         chooseTab,
@@ -59,10 +64,8 @@ function setup(props: Props = { isOwner: true, tab: 'items' }) {
         shareLinks,
         inviteFormRef: { current: null },
         shareLinksRef: { current: null },
-        deleteConfirm,
-        setDeleteConfirm,
       });
-      return { people, deleteConfirm, setDeleteConfirm };
+      return { people };
     },
     { initialProps: props }
   );
@@ -71,13 +74,16 @@ function setup(props: Props = { isOwner: true, tab: 'items' }) {
 const urls = () => fetchMock.mock.calls.map(([url]) => String(url));
 
 beforeEach(() => {
+  showToast.mockClear();
   fetchMock.mockReset();
+  dropOwner.mockReset();
   refreshOwners.mockReset();
   refreshOwners.mockResolvedValue(null);
   vi.stubGlobal('fetch', fetchMock);
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   cleanup();
   vi.unstubAllGlobals();
 });
@@ -132,63 +138,173 @@ describe('useWishlistPeople', () => {
     expect(result.current.people.members).toHaveLength(2);
     expect(result.current.people.peopleCount).toBe(2);
   });
+});
 
-  it("shares the page's one confirmation: Remove shows only for a person, never for Leave", async () => {
-    fetchMock.mockImplementation(async () => reply({ success: true, data: [] }));
-    const { result } = setup();
+// WIS-387: Remove, Make member, cancelling an invite and declining a request
+// are deferred with Undo. Nothing is sent before the Undo window ends, and an
+// undone one is never sent, so nobody is notified of a change that didn't
+// happen.
+describe('useWishlistPeople deferred row actions', () => {
+  const MEMBERS = [person('me', 'owner'), person('bob', 'owner'), person('ann', 'member')];
+  const INVITES = [{ _id: 'inv-1', username: 'cat', role: 'member' }];
+  const REQUESTS = [{ _id: 'req-1', user: { _id: 'dan', username: 'dan' } }];
+
+  // People open, everything read, then the clock is ours.
+  async function openPeople(
+    write: (url: string, init: RequestInit) => Response = () => reply({ success: true })
+  ) {
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (init?.method) return write(String(url), init);
+      if (String(url).endsWith('/members')) return reply({ success: true, data: MEMBERS });
+      if (String(url).endsWith('/invites')) return reply({ success: true, data: INVITES });
+      if (String(url).endsWith('/requests')) return reply({ success: true, data: REQUESTS });
+      return reply({ success: true, data: [] });
+    });
+    const hook = setup({ isOwner: true, tab: 'people' });
+    await waitFor(() => {
+      expect(hook.result.current.people.members).toHaveLength(3);
+      expect(hook.result.current.people.pendingInvites).toHaveLength(1);
+      expect(hook.result.current.people.joinRequests).toHaveLength(1);
+    });
+    vi.useFakeTimers();
+    return hook;
+  }
+
+  const writes = () =>
+    fetchMock.mock.calls
+      .filter(([, init]) => (init as RequestInit | undefined)?.method)
+      .map(([url, init]) => `${(init as RequestInit).method} ${url}`);
+
+  async function advance(ms: number) {
+    await act(async () => {
+      vi.advanceTimersByTime(ms);
+    });
+    // The commit's answer and the reads after it.
     await act(async () => {});
+    await act(async () => {});
+  }
 
-    act(() => result.current.setDeleteConfirm({ type: 'leave' }));
-    expect(result.current.people.removeConfirm).toBeNull();
-
-    // Opening Remove replaces whatever confirmation was open.
-    act(() =>
-      result.current.people.handleKickMember({
+  it('takes a removed member off at once and sends the removal only after the Undo window', async () => {
+    const { result } = await openPeople();
+    act(() => {
+      void result.current.people.handleKickMember({
         id: 'm-ann',
         userId: 'ann',
         username: 'ann',
         role: 'member',
-      })
-    );
-    expect(result.current.deleteConfirm).toEqual({
-      type: 'member',
-      memberId: 'm-ann',
-      memberUserId: 'ann',
-      memberUsername: 'ann',
+      });
     });
-    expect(result.current.people.removeConfirm?.memberUserId).toBe('ann');
+    expect(result.current.people.memberRows).toHaveLength(0);
+    expect(result.current.people.peopleCount).toBe(2);
+    expect(result.current.people.rowBusy('ann')).toBe(true);
+    expect(showToast).toHaveBeenCalledWith(
+      'Removed @ann from the list',
+      'success',
+      expect.objectContaining({ action: expect.objectContaining({ label: 'Undo' }) })
+    );
+
+    await advance(UNDO_WINDOW_MS - 1);
+    expect(writes()).toEqual([]);
+    await advance(1);
+    expect(writes()).toEqual(['DELETE /api/wishlists/w1/members/m-ann']);
   });
 
-  it("holds the person's row while their removal runs, then closes the confirmation", async () => {
-    const removal = deferred<Response>();
-    fetchMock.mockImplementation(async (url: string, init?: RequestInit) =>
-      init?.method === 'DELETE' ? removal.promise : reply({ success: true, data: [] })
-    );
-    const { result } = setup();
-    await act(async () => {});
+  // regression: an undone kick must never reach the route, which notifies the person.
+  it('sends nothing for an undone removal of a co-owner, so they are never told', async () => {
+    const { result } = await openPeople();
+    act(() => {
+      void result.current.people.handleKickMember({
+        id: 'bob',
+        userId: 'bob',
+        username: 'bob',
+        role: 'owner',
+      });
+    });
+    expect(result.current.people.members.map((m) => m.user.username)).not.toContain('bob');
+    await pressUndo();
+    await advance(UNDO_WINDOW_MS * 3);
+    expect(writes()).toEqual([]);
+    expect(result.current.people.members.map((m) => m.user.username)).toContain('bob');
+    expect(result.current.people.rowBusy('bob')).toBe(false);
+    expect(dropOwner).not.toHaveBeenCalled();
+  });
 
-    act(() =>
-      result.current.people.handleKickMember({
-        id: 'ann',
+  it('drops a removed co-owner from the owners only once the removal went through', async () => {
+    const { result } = await openPeople();
+    act(() => {
+      void result.current.people.handleKickMember({
+        id: 'bob',
+        userId: 'bob',
+        username: 'bob',
+        role: 'owner',
+      });
+    });
+    expect(dropOwner).not.toHaveBeenCalled();
+    await advance(UNDO_WINDOW_MS);
+    expect(writes()).toEqual(['DELETE /api/wishlists/w1/owners/bob']);
+    expect(dropOwner).toHaveBeenCalledWith({ id: 'bob', username: 'bob' });
+    expect(refreshOwners).toHaveBeenCalled();
+  });
+
+  it('puts a person back when their removal fails', async () => {
+    const { result } = await openPeople(() => reply({ success: false, error: 'Nope' }));
+    act(() => {
+      void result.current.people.handleKickMember({
+        id: 'm-ann',
         userId: 'ann',
         username: 'ann',
-        role: 'owner',
-      })
-    );
-    let done!: Promise<void>;
-    act(() => {
-      done = result.current.people.confirmKickMember();
+        role: 'member',
+      });
     });
-    await waitFor(() => expect(result.current.people.rowBusy('ann')).toBe(true));
-    expect(urls()).toContain('/api/wishlists/w1/owners/ann');
-
-    await act(async () => {
-      removal.resolve(reply({ success: true }));
-      await done;
-    });
+    await advance(UNDO_WINDOW_MS);
+    expect(showToast).toHaveBeenCalledWith('Nope', 'error');
+    expect(result.current.people.memberRows.map((m) => m.user.username)).toEqual(['ann']);
     expect(result.current.people.rowBusy('ann')).toBe(false);
-    expect(result.current.deleteConfirm).toBeNull();
-    expect(dropOwner).toHaveBeenCalledWith({ id: 'ann', username: 'ann' });
-    expect(refreshOwners).toHaveBeenCalled();
+  });
+
+  // regression: an undone demotion must never reach the route, which notifies them.
+  it('shows a demoted owner as a member at once, and sends nothing if undone', async () => {
+    const { result } = await openPeople();
+    act(() => result.current.people.handleDemoteOwner({ userId: 'bob', username: 'bob' }));
+    expect(result.current.people.memberRows.map((m) => m.user.username)).toEqual(['bob', 'ann']);
+    expect(showToast).toHaveBeenCalledWith('@bob is now a member', 'success', expect.anything());
+    await pressUndo();
+    await advance(UNDO_WINDOW_MS * 3);
+    expect(writes()).toEqual([]);
+    expect(result.current.people.memberRows.map((m) => m.user.username)).toEqual(['ann']);
+  });
+
+  it('sends a demotion once its Undo window has passed', async () => {
+    const { result } = await openPeople();
+    act(() => result.current.people.handleDemoteOwner({ userId: 'bob', username: 'bob' }));
+    await advance(UNDO_WINDOW_MS - 1);
+    expect(writes()).toEqual([]);
+    await advance(1);
+    expect(writes()).toEqual(['PATCH /api/wishlists/w1/owners/bob']);
+    expect(dropOwner).toHaveBeenCalledWith({ id: 'bob', username: 'bob' });
+  });
+
+  it('cancels an invite and declines a request only after the Undo window, and not if undone', async () => {
+    const { result } = await openPeople();
+    act(() => {
+      void result.current.people.cancelInvite('inv-1', 'inv-1');
+    });
+    expect(result.current.people.pendingInvites).toEqual([]);
+    await pressUndo();
+    expect(result.current.people.pendingInvites).toHaveLength(1);
+
+    act(() => {
+      void result.current.people.answerJoinRequest(
+        REQUESTS[0] as Parameters<typeof result.current.people.answerJoinRequest>[0],
+        'decline'
+      );
+    });
+    expect(result.current.people.joinRequests).toEqual([]);
+    expect(showToast).toHaveBeenCalledWith('Request declined', 'success', expect.anything());
+    await advance(UNDO_WINDOW_MS - 1);
+    expect(writes()).toEqual([]);
+    await advance(1);
+    expect(writes()).toEqual(['PATCH /api/wishlists/w1/requests/req-1']);
+    expect(result.current.people.joinRequests).toEqual([]);
   });
 });

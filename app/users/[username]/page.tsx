@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, usePathname, useSearchParams } from 'next/navigation';
 import { signIn } from 'next-auth/react';
 import { useKnownSession } from '@/lib/hooks/useKnownSession';
@@ -15,7 +15,6 @@ import FollowListModal, { type FollowTab } from '@/components/FollowListModal';
 import TagIntoGroups from '@/components/TagIntoGroups';
 import CreateWishlistModal from '@/components/CreateWishlistModal';
 import Button from '@/components/Button';
-import ConfirmDialog from '@/components/ConfirmDialog';
 import GlobalSearch from '@/components/GlobalSearch';
 import Badge from '@/components/Badge';
 import LoadError from '@/components/LoadError';
@@ -24,6 +23,8 @@ import AskForWishlist from '@/components/AskForWishlist';
 import { buttonClassName, CONTROL_ICON_SIZE } from '@/components/buttonStyles';
 import { Skeleton, SkeletonGrid, WISHLIST_GRID_CLASSES } from '@/components/Skeleton';
 import { useToast } from '@/components/ToastProvider';
+import { useUndoableAction } from '@/lib/hooks/useUndoableAction';
+import type { PendingCommit } from '@/lib/utils/deferredCommit';
 import { pluralNoun } from '@/lib/utils/plural';
 import { readResource } from '@/lib/utils/resourceRead';
 import { FOLLOWERS_PARAM } from '@/lib/utils/profileLinks';
@@ -57,6 +58,7 @@ export default function UserProfile() {
   const { data: session, status } = useKnownSession();
   const params = useParams();
   const { showToast } = useToast();
+  const offerUndo = useUndoableAction();
   const username = typeof params?.username === 'string' ? params.username : null;
 
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -86,7 +88,8 @@ export default function UserProfile() {
   const [listsFailed, setListsFailed] = useState(false);
   const [followBusy, setFollowBusy] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
-  const [confirmUnfollow, setConfirmUnfollow] = useState(false);
+  // An unfollow waiting out its Undo window (WIS-387), if any.
+  const pendingUnfollow = useRef<PendingCommit | null>(null);
   const viewerId = session?.user?.id ?? null;
 
   // `?followers=1` (`followersHref`, which a follow notification links to)
@@ -189,9 +192,23 @@ export default function UserProfile() {
       signIn(undefined, { redirectTo: window.location.href });
       return;
     }
-    setFollowBusy(true);
     const next = !profile.isFollowing;
+    // Follow again while the unfollow still waits: that's its Undo, so nothing
+    // is sent (a fresh follow would notify them again).
+    if (next && pendingUnfollow.current?.undo()) return;
     const shownBirthday = profile.birthday;
+    const revert = () =>
+      setProfile((p) =>
+        p
+          ? {
+              ...p,
+              isFollowing: !next,
+              isFriend: !next && p.followsYou,
+              birthday: shownBirthday,
+              followerCount: p.followerCount + (next ? -1 : 1),
+            }
+          : p
+      );
     // Optimistic update
     setProfile((p) =>
       p
@@ -207,36 +224,40 @@ export default function UserProfile() {
           }
         : p
     );
-    try {
-      const res = await fetch(`/api/users/${profile._id}/follow`, {
-        method: next ? 'POST' : 'DELETE',
+    const userId = profile._id;
+    const send = async (keepalive = false) => {
+      try {
+        const res = await fetch(`/api/users/${userId}/follow`, {
+          method: next ? 'POST' : 'DELETE',
+          keepalive,
+        });
+        const result = await res.json();
+        if (!result.success) throw new Error();
+      } catch {
+        revert();
+        showToast('Something went wrong', 'error');
+      }
+    };
+    if (!next) {
+      // An unfollow waits out an Undo window before it's sent (WIS-387): a
+      // follow back would notify them again and their groups are already gone.
+      const pending = offerUndo({
+        message: `Unfollowed @${profile.username}`,
+        commit: ({ keepalive }) => send(keepalive),
+        onUndo: revert,
       });
-      const result = await res.json();
-      if (!result.success) throw new Error();
-    } catch {
-      // Revert on failure
-      setProfile((p) =>
-        p
-          ? {
-              ...p,
-              isFollowing: !next,
-              isFriend: !next && p.followsYou,
-              birthday: shownBirthday,
-              followerCount: p.followerCount + (next ? -1 : 1),
-            }
-          : p
-      );
-      showToast('Something went wrong', 'error');
+      pendingUnfollow.current = pending;
+      void pending.settled.then(() => {
+        if (pendingUnfollow.current === pending) pendingUnfollow.current = null;
+      });
+      return;
+    }
+    setFollowBusy(true);
+    try {
+      await send();
     } finally {
       setFollowBusy(false);
     }
-  }
-
-  // Unfollowing a friend (a mutual follow) ends friends-only access both ways,
-  // so it asks first; unfollowing anyone else is one tap.
-  function onFollowClick() {
-    if (profile?.isFollowing && profile.isFriend) setConfirmUnfollow(true);
-    else toggleFollow();
   }
 
   if (status === 'loading' || loading) {
@@ -373,7 +394,7 @@ export default function UserProfile() {
                 size="sm"
                 shape="pill"
                 icon={profile.isFollowing ? undefined : 'plus'}
-                onClick={onFollowClick}
+                onClick={toggleFollow}
                 disabled={followBusy}
                 className="group"
                 aria-label={
@@ -504,18 +525,6 @@ export default function UserProfile() {
       {profile?.isSelf && (
         <CreateWishlistModal isOpen={showCreate} onClose={() => setShowCreate(false)} />
       )}
-      <ConfirmDialog
-        isOpen={confirmUnfollow}
-        title={`Unfollow @${profile?.username}?`}
-        message="You’ll stop being friends, so lists either of you share with friends only won’t be shared between you."
-        confirmText="Unfollow"
-        icon="user-minus"
-        onCancel={() => setConfirmUnfollow(false)}
-        onConfirm={() => {
-          setConfirmUnfollow(false);
-          return toggleFollow();
-        }}
-      />
 
       {followModal && profile && (
         <FollowListModal

@@ -3,7 +3,7 @@
 // on the list (signed out, or signed in but neither an owner nor a member), and
 // never to its owners or members.
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup, waitFor } from '@testing-library/react';
+import { act, render, screen, cleanup, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 const { router, showToast, signIn, auth } = vi.hoisted(() => ({
@@ -29,6 +29,7 @@ vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }
 vi.mock('@/lib/analytics', () => ({ track: vi.fn() }));
 
 import WishlistDetail from '@/app/wishlists/[id]/page';
+import { flushUndoableActions } from '@/lib/hooks/useUndoableAction';
 import { track } from '@/lib/analytics';
 
 let list: { owners: string[]; userRole: 'owner' | 'member' | null };
@@ -157,9 +158,22 @@ describe('the wishlist page’s note on getting invited', () => {
       ['join_requested'],
     ]);
 
+    // Cancelled at once, with an Undo; the DELETE waits out its window (WIS-387).
     await user.click(screen.getByRole('button', { name: 'Cancel request' }));
-    expect(fetchMock).toHaveBeenCalledWith('/api/wishlists/w1/requests/me', { method: 'DELETE' });
     expect(await screen.findByRole('button', { name: 'Ask to join' })).toBeEnabled();
+    expect(showToast).toHaveBeenCalledWith(
+      'Request cancelled',
+      'success',
+      expect.objectContaining({ action: expect.objectContaining({ label: 'Undo' }) })
+    );
+    const deletes = () =>
+      fetchMock.mock.calls.filter(
+        ([url, init]) => url === '/api/wishlists/w1/requests/me' && init?.method === 'DELETE'
+      );
+    expect(deletes()).toHaveLength(0);
+    await act(async () => flushUndoableActions());
+    expect(deletes()).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'Ask to join' })).toBeEnabled();
     // A cancel isn't another ask.
     expect(vi.mocked(track).mock.calls.filter(([e]) => e === 'join_requested')).toHaveLength(1);
   });

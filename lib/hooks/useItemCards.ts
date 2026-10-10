@@ -12,7 +12,7 @@ import {
   withServerGroupGift,
   type GroupGiftAction,
 } from '@/lib/utils/groupGiftClient';
-import { GROUP_GIFT_TOASTS } from '@/lib/utils/groupGiftCopy';
+import { GROUP_GIFT_TOASTS, leaveGroupGiftToast } from '@/lib/utils/groupGiftCopy';
 import type { ItemRef } from '@/lib/utils/itemLinks';
 import type { ViewerRole } from '@/lib/utils/itemStatus';
 import { orderListItems } from '@/lib/utils/listChips';
@@ -28,6 +28,8 @@ export interface ItemCardsOptions {
   itemsLoaded: boolean;
   filters: Pick<ListFilters, 'viewItems' | 'sortedItems' | 'sortBy' | 'pinItem' | 'showAllItems'>;
   updateOptimistically: WishlistItemsControl['updateOptimistically'];
+  deferItemChange: WishlistItemsControl['deferItemChange'];
+  settlePending: WishlistItemsControl['settlePending'];
   /** A card's status change, with its toasts (`useReserveToast`, `useReceivedToast`). */
   handleCardUpdate: WishlistItemActions['handleCardUpdate'];
 }
@@ -46,6 +48,8 @@ export function useItemCards({
   itemsLoaded,
   filters,
   updateOptimistically,
+  deferItemChange,
+  settlePending,
   handleCardUpdate,
 }: ItemCardsOptions) {
   const { showToast } = useToast();
@@ -65,9 +69,39 @@ export function useItemCards({
     async (id: string, action: GroupGiftAction) => {
       if (!viewerId) return null;
       pinItem(id);
+      // A deferred change to this item still waiting (a Release, a leave) is
+      // sent first, and settled, so this request can't race it.
+      await settlePending(id);
       const keys = groupGiftKeys.get(id) ?? createSubmissionKeys();
       groupGiftKeys.set(id, keys);
       const key = keys.keyFor(action);
+      // Leaving or cancelling a group gift (WIS-387) shows at once with Undo,
+      // and is sent once the Undo window has passed: undone, nobody was told
+      // (a cancel tells every contributor, a leave may hand the gift on) and
+      // no reservation was ended. The commit adds no second optimistic change.
+      if (action.type === 'leave' || action.type === 'cancel') {
+        return deferItemChange({
+          id,
+          kind: `group-gift-${action.type}`,
+          message:
+            action.type === 'leave'
+              ? (item) => leaveGroupGiftToast(item.groupGift)
+              : GROUP_GIFT_TOASTS.cancel,
+          apply: (item) => applyGroupGiftAction(item, action, viewerId),
+          commit: async (keepalive) => {
+            const updated = await updateOptimistically({
+              id,
+              apply: (item) => item,
+              request: async () => {
+                const answer = await requestGroupGift(id, action, key, keepalive);
+                return answer && withServerGroupGift(answer);
+              },
+            });
+            if (updated) groupGiftKeys.delete(id);
+            return updated;
+          },
+        });
+      }
       const updated = await updateOptimistically({
         id,
         apply: (item) => applyGroupGiftAction(item, action, viewerId),
@@ -82,7 +116,16 @@ export function useItemCards({
       }
       return updated;
     },
-    [viewerId, pinItem, groupGiftKeys, requestGroupGift, updateOptimistically, showToast]
+    [
+      viewerId,
+      pinItem,
+      groupGiftKeys,
+      requestGroupGift,
+      updateOptimistically,
+      deferItemChange,
+      settlePending,
+      showToast,
+    ]
   );
 
   const handleStickyCardUpdate = useCallback(

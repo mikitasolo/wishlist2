@@ -55,7 +55,6 @@ export default function ReviewItemModal({
   const [savingDraft, setSavingDraft] = useState(false);
   const formId = useId();
   const [isDeleting, setIsDeleting] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showConfirmClose, setShowConfirmClose] = useState(false);
   const locale = useViewerLocale();
@@ -75,7 +74,6 @@ export default function ReviewItemModal({
       answeredRef.current = false;
       setIsSubmitting(false);
       setIsDeleting(false);
-      setShowDeleteConfirm(false);
       setHasUnsavedChanges(false);
       setShowConfirmClose(false);
     }
@@ -130,12 +128,11 @@ export default function ReviewItemModal({
     }
   };
 
-  // onDelete rejects when the delete fails (after showing the error), so only a
-  // real delete closes the modal. Either way the confirmation is answered: on a
-  // failure it drops back to this modal, item intact, for a retry or cancel.
-  // Until then the confirmation shows the delete running and takes no second click.
+  // Delete asks nothing: the page takes the item off at once and offers Undo
+  // before anything is sent (WIS-387), so this closes straight away. onDelete
+  // may still reject (the item stays listed), which keeps this open.
   const handleDelete = async () => {
-    if (!onDelete) return;
+    if (!onDelete || isDeleting) return;
     setIsDeleting(true);
     try {
       await onDelete();
@@ -145,7 +142,6 @@ export default function ReviewItemModal({
     } catch (error) {
       console.error('Error deleting item:', error);
     } finally {
-      setShowDeleteConfirm(false);
       setIsDeleting(false);
     }
   };
@@ -195,7 +191,7 @@ export default function ReviewItemModal({
             saveAsDraft
             draftLabel="Add as draft"
             draftSubmittingLabel="Adding…"
-            onDelete={onDelete ? () => setShowDeleteConfirm(true) : undefined}
+            onDelete={onDelete ? handleDelete : undefined}
             deleteLabel="Decline"
           />
         }
@@ -219,22 +215,6 @@ export default function ReviewItemModal({
           formId={formId}
         />
       </BaseModal>
-
-      {/* Decline confirmation. Declining deletes the proposal, as an owner's
-          delete of any item does, and tells the proposer nothing (D12). */}
-      {onDelete && (
-        <ConfirmDialog
-          isOpen={showDeleteConfirm}
-          title="Decline this proposal?"
-          message="It's removed from the list."
-          onConfirm={handleDelete}
-          onCancel={() => setShowDeleteConfirm(false)}
-          confirmText="Decline"
-          pendingText="Declining…"
-          cancelText="Cancel"
-          type="danger"
-        />
-      )}
 
       {/* Close Confirmation Dialog */}
       <ConfirmDialog

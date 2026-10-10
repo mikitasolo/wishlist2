@@ -205,15 +205,15 @@ describe('group gift: a contributor', () => {
     );
   });
 
-  it('leaves after confirming, and has no organizer actions', async () => {
+  // WIS-387: leaving asks nothing; the page offers Undo before it's sent.
+  it('leaves at once, and has no organizer actions', async () => {
     const onGroupGift = renderCard(booked(contributor(false)));
     fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
     expect(screen.queryByRole('menuitem', { name: 'Cancel group gift' })).toBeNull();
     expect(screen.queryByRole('menuitem', { name: 'Mark as given' })).toBeNull();
     expect(screen.queryByRole('menuitem', { name: 'Reserve it just for me' })).toBeNull();
     fireEvent.click(screen.getByRole('menuitem', { name: 'Leave group gift' }));
-    expect(onGroupGift).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'Leave' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
     await waitFor(() => expect(onGroupGift).toHaveBeenCalledWith('item-1', { type: 'leave' }));
   });
 });
@@ -222,12 +222,6 @@ describe('group gift: the organizer', () => {
   it.each([
     ['Mark as given', 'Mark as given', 'give', /in their history/],
     ['Reserve it just for me', 'Reserve for me', 'convert', /Everyone else’s reservation/],
-    [
-      'Cancel group gift',
-      'Cancel group gift',
-      'cancel',
-      /Everyone’s reservation of it is released/,
-    ],
   ])('%s asks first, saying what happens to the others', async (item_, confirm, kind, copy) => {
     const onGroupGift = renderCard(booked(contributor(true), { bookedBy: ME }));
     pick(item_);
@@ -237,10 +231,16 @@ describe('group gift: the organizer', () => {
     await waitFor(() => expect(onGroupGift).toHaveBeenCalledWith('item-1', { type: kind }));
   });
 
-  it('hands the role on when leaving, and says so', () => {
-    renderCard(booked(contributor(true), { bookedBy: ME }));
-    pick('Leave group gift');
-    expect(screen.getByRole('dialog')).toHaveTextContent(/takes over as organizer/);
+  // WIS-387: cancelling and leaving ask nothing; the page offers Undo before
+  // either is sent (its toast says what happens, see leaveGroupGiftToast).
+  it.each([
+    ['Cancel group gift', 'cancel'],
+    ['Leave group gift', 'leave'],
+  ])('%s goes at once, without a confirmation', async (item_, kind) => {
+    const onGroupGift = renderCard(booked(contributor(true), { bookedBy: ME }));
+    pick(item_);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    await waitFor(() => expect(onGroupGift).toHaveBeenCalledWith('item-1', { type: kind }));
   });
 });
 

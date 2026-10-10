@@ -126,8 +126,8 @@ describe('ReviewItemModal — answering a proposal', () => {
 
   // regression: invariant: proposals are anonymous to the owners. Even an item
   // that carried who proposed it (the items API hides `proposedBy` from owners)
-  // must not put them anywhere in the dialog, or in its decline confirmation.
-  it('regression: shows the proposer nowhere in the dialog or its confirmation', () => {
+  // must not put them anywhere in the dialog.
+  it('regression: shows the proposer nowhere in the dialog', () => {
     const leaky = {
       ...proposal,
       proposedBy: 'proposer-id-7f3a',
@@ -142,10 +142,6 @@ describe('ReviewItemModal — answering a proposal', () => {
         .join(' ');
     expect(shown()).not.toMatch(/proposer-id-7f3a|anna_proposer/);
     expect(dialog).toHaveTextContent('Someone proposed an item');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Decline' }));
-    expect(screen.getByRole('alertdialog')).toBeInTheDocument();
-    expect(shown()).not.toMatch(/proposer-id-7f3a|anna_proposer/);
   });
 
   it('adds it to the list as available, sending only what changed', async () => {
@@ -185,36 +181,17 @@ describe('ReviewItemModal — answering a proposal', () => {
     finish();
   });
 
-  it('declines it once confirmed', async () => {
+  // WIS-387: Decline asks nothing; the page offers Undo before it's sent.
+  it('declines it at once and closes', async () => {
     const onDelete = vi.fn().mockResolvedValue(undefined);
     const onApprove = vi.fn();
     const { onClose } = open(onApprove, { onDelete });
 
     fireEvent.click(screen.getByRole('button', { name: 'Decline' }));
-    const confirmation = screen.getByRole('alertdialog');
-    expect(confirmation).toHaveTextContent('Decline this proposal?');
-    expect(confirmation).toHaveTextContent("It's removed from the list.");
-    expect(onDelete).not.toHaveBeenCalled();
-
-    fireEvent.click(within(confirmation).getByRole('button', { name: 'Decline' }));
+    expect(screen.queryByRole('alertdialog')).toBeNull();
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     expect(onDelete).toHaveBeenCalledTimes(1);
     expect(onApprove).not.toHaveBeenCalled();
-  });
-
-  it('does nothing when the decline is cancelled', () => {
-    const onDelete = vi.fn().mockResolvedValue(undefined);
-    const { onClose } = open(vi.fn(), { onDelete });
-
-    fireEvent.click(screen.getByRole('button', { name: 'Decline' }));
-    fireEvent.click(
-      within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Cancel' })
-    );
-
-    expect(screen.queryByRole('alertdialog')).toBeNull();
-    expect(onDelete).not.toHaveBeenCalled();
-    expect(onClose).not.toHaveBeenCalled();
-    expect(screen.getByRole('dialog', { name: 'Someone proposed an item' })).toBeInTheDocument();
   });
 });
 
@@ -266,18 +243,6 @@ describe('ReviewItemModal — a proposal reviewed or removed meanwhile', () => {
     const { onProposalGone, setState } = openWithState();
     setState('gone');
     expect(onProposalGone).toHaveBeenCalledExactlyOnceWith('gone');
-  });
-
-  it('asks to be closed with the Decline confirmation open, before anything is deleted', () => {
-    const onDelete = vi.fn().mockResolvedValue(undefined);
-    const { onProposalGone, setState } = openWithState(undefined, onDelete);
-    fireEvent.click(screen.getByRole('button', { name: /^decline$/i }));
-    expect(screen.getByText(/decline this proposal\?/i)).toBeInTheDocument();
-
-    setState('reviewed');
-
-    expect(onProposalGone).toHaveBeenCalledExactlyOnceWith('reviewed');
-    expect(onDelete).not.toHaveBeenCalled();
   });
 
   // Its own approve updates the list optimistically, so the item reads as

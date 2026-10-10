@@ -21,9 +21,18 @@ test('an owner opens People by its URL, invites someone and cancels the invite',
   // Invited, on a row of its own, with its Cancel.
   await expect(panel.getByRole('heading', { name: 'Invited' })).toBeVisible();
   await expect(panel).toContainText('Invited as member');
+  // Gone at once, with Undo; the cancel itself goes once the Undo window ends
+  // (WIS-387), and is waited for, so the reload below reads the list after it.
+  const cancelled = page.waitForResponse(
+    (r) => r.request().method() === 'DELETE' && /\/invites\//.test(r.url()),
+    { timeout: 15_000 }
+  );
   await page.getByRole('button', { name: 'Cancel the invite to @e2efriend' }).click();
-  await expect(page.getByRole('status').filter({ hasText: 'Invitation cancelled' })).toBeVisible();
+  const toast = page.getByRole('status').filter({ hasText: 'Invitation cancelled' });
+  await expect(toast).toBeVisible();
+  await expect(toast.getByRole('button', { name: 'Undo' })).toBeVisible();
   await expect(panel.getByRole('heading', { name: 'Invited' })).toBeHidden();
+  expect((await cancelled).ok()).toBe(true);
 
   // Still on People after a reload; back from Items returns to it.
   await page.reload();

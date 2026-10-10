@@ -1,11 +1,10 @@
 'use client';
 
-import { useEffect, useId, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import Avatar from './Avatar';
 import BaseModal from './BaseModal';
 import Button from './Button';
-import ConfirmDialog from './ConfirmDialog';
 import EmptyState from './EmptyState';
 import Field from './Field';
 import IconButton from './IconButton';
@@ -20,6 +19,8 @@ import { useToast } from './ToastProvider';
 import { iconButtonClassName } from './buttonStyles';
 import { POPOVER_OPTION_ROW } from './popoverStyles';
 import { useKnownSession } from '@/lib/hooks/useKnownSession';
+import { useUndoableAction } from '@/lib/hooks/useUndoableAction';
+import type { PendingCommit } from '@/lib/utils/deferredCommit';
 import { usePeopleGroups, type GroupPerson, type GroupView } from '@/lib/hooks/usePeopleGroups';
 import { GROUP_MEMBER_LIMIT, groupLimitNote } from '@/lib/utils/groupRules';
 import { GROUP_NAME_MAX } from '@/lib/validations';
@@ -42,14 +43,16 @@ interface FollowedPerson {
 export default function GroupsSettings() {
   const { data: session } = useKnownSession();
   const userId = session?.user?.id;
-  const { groups, failed, retry, create, rename, remove, setTagged } = usePeopleGroups();
+  const { groups, failed, retry, create, rename, removeDeferred, setTagged, untagDeferred } =
+    usePeopleGroups();
   const { showToast } = useToast();
+  const offerUndo = useUndoableAction();
   const [renaming, setRenaming] = useState<GroupView | null>(null);
-  const [deleting, setDeleting] = useState<GroupView | null>(null);
   const [adding, setAdding] = useState<string | null>(null);
   const addingGroup = groups?.find((g) => g.id === adding) ?? null;
-  // Who's being taken out of which group, so a second click waits for the first.
-  const [untagging, setUntagging] = useState<ReadonlySet<string>>(new Set());
+  // Untags still waiting out their Undo window, by `group:person`, so tagging
+  // that person back in meanwhile is their Undo rather than a second request.
+  const pendingUntags = useRef(new Map<string, PendingCommit>());
 
   // Arriving from a profile's Manage groups (`/settings#groups`): the page drew
   // its skeleton first, so the browser found nothing to scroll to.
@@ -57,17 +60,37 @@ export default function GroupsSettings() {
     if (window.location.hash === '#groups') document.getElementById('groups')?.scrollIntoView();
   }, []);
 
-  async function untag(group: GroupView, person: GroupPerson) {
+  // Taking someone out of a group, and deleting one, wait out an Undo window
+  // before they're sent (WIS-387); undone, nothing is.
+  function untag(group: GroupView, person: GroupPerson) {
     const key = `${group.id}:${person.id}`;
-    if (untagging.has(key)) return;
-    setUntagging((s) => new Set(s).add(key));
-    const error = await setTagged(group.id, person, false);
-    setUntagging((s) => {
-      const next = new Set(s);
-      next.delete(key);
-      return next;
+    const deferred = untagDeferred(group.id, person);
+    if (!deferred) return;
+    const pending = offerUndo({
+      message: `Removed from ${group.name}`,
+      commit: async ({ keepalive }) => {
+        const error = await deferred.commit(keepalive);
+        if (error) showToast(error, 'error');
+      },
+      onUndo: deferred.restore,
     });
-    if (error) showToast(error, 'error');
+    pendingUntags.current.set(key, pending);
+    void pending.settled.then(() => {
+      if (pendingUntags.current.get(key) === pending) pendingUntags.current.delete(key);
+    });
+  }
+
+  function deleteGroup(group: GroupView) {
+    const deferred = removeDeferred(group.id);
+    if (!deferred) return;
+    offerUndo({
+      message: `Deleted ${group.name}`,
+      commit: async ({ keepalive }) => {
+        const error = await deferred.commit(keepalive);
+        if (error) showToast(error, 'error');
+      },
+      onUndo: deferred.restore,
+    });
   }
 
   return (
@@ -128,7 +151,7 @@ export default function GroupsSettings() {
                         label: 'Delete group',
                         icon: 'trash',
                         danger: true,
-                        onSelect: () => setDeleting(group),
+                        onSelect: () => deleteGroup(group),
                       },
                     ]}
                   />
@@ -148,7 +171,6 @@ export default function GroupsSettings() {
                           icon="close"
                           label={`Remove @${person.username} from ${group.name}`}
                           onClick={() => untag(group, person)}
-                          disabled={untagging.has(`${group.id}:${person.id}`)}
                         />
                       </li>
                     ))}
@@ -174,26 +196,14 @@ export default function GroupsSettings() {
           onRename={(name) => rename(renaming.id, name)}
         />
       )}
-      <ConfirmDialog
-        isOpen={!!deleting}
-        title={`Delete ${deleting?.name ?? 'group'}?`}
-        message="Only the group goes. Nobody is told, and no list or invite changes."
-        confirmText="Delete group"
-        pendingText="Deleting…"
-        onCancel={() => setDeleting(null)}
-        onConfirm={async () => {
-          if (!deleting) return;
-          const error = await remove(deleting.id);
-          if (error) showToast(error, 'error');
-          setDeleting(null);
-        }}
-      />
       {addingGroup && userId && (
         <AddPeopleDialog
           userId={userId}
           group={addingGroup}
           onClose={() => setAdding(null)}
           onToggle={async (person, on) => {
+            // Ticked back while their removal still waits: that's its Undo.
+            if (on && pendingUntags.current.get(`${addingGroup.id}:${person.id}`)?.undo()) return;
             const error = await setTagged(addingGroup.id, person, on);
             if (error) showToast(error, 'error');
           }}

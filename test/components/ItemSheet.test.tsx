@@ -261,17 +261,16 @@ describe("the sheet's actions, by role", () => {
     expect(popover).not.toBeNull();
   });
 
-  it("asks the owner's Delete over the sheet", async () => {
+  // WIS-387: Delete asks nothing; the page takes the item off with Undo.
+  it("sends the owner's Delete from the sheet without asking", async () => {
     const user = userEvent.setup();
-    renderCard(item(), { isOwner: true, onEdit: vi.fn(), onDelete: vi.fn() });
+    const onDelete = vi.fn().mockResolvedValue(undefined);
+    renderCard(item(), { isOwner: true, onEdit: vi.fn(), onDelete });
     const sheet = openSheet();
     await user.click(within(sheet).getByRole('button', { name: 'More actions' }));
     await user.click(within(sheet).getByRole('menuitem', { name: 'Delete' }));
-    const confirm = screen.getByRole('alertdialog');
-    expect(within(confirm).getByRole('button', { name: 'Delete' })).toBeInTheDocument();
-    // Portalled to <body>, beside the sheet rather than under the card.
-    expect(confirm.closest('[role="article"]')).toBeNull();
-    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(onDelete).toHaveBeenCalledTimes(1);
   });
 
   // regression: owners are booking-blind (AGENTS.md). The sheet shows the

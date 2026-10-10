@@ -6,6 +6,7 @@ import { useKnownSession } from '@/lib/hooks/useKnownSession';
 import { useToast } from '@/components/ToastProvider';
 import { useBusyIds } from '@/lib/hooks/useBusyIds';
 import { useDiscreetMode } from '@/lib/hooks/useDiscreetMode';
+import { useUndoableAction } from '@/lib/hooks/useUndoableAction';
 import { createListChangeLog, mergeRefreshedList } from '@/lib/utils/listRefresh';
 import {
   REQUEST_TIMEOUT_MESSAGE,
@@ -20,6 +21,7 @@ import {
 } from '@/lib/utils/submissionKey';
 import { cardMotionFor, prefersReducedMotion, waitForMotion } from '@/lib/utils/motion';
 import type { Gift, Reservation } from './types';
+import type { ContributingGroupGift } from '@/lib/utils/groupGiftSummary';
 
 /**
  * The item route's answers refusing a Release's unbook, which retrying won't
@@ -38,6 +40,19 @@ const RELEASE_REFUSED_MESSAGE = 'This gift can’t be released from its list any
 
 /** A group gift action refused without the route's own reason (WIS-363). */
 const GROUP_GIFT_OUT_OF_DATE = 'This group gift has changed. Here’s how it is now.';
+
+/**
+ * The Undo toast after Leave group gift (WIS-387), saying what leaving did
+ * where it did more than take their share off: an organizer hands the gift on,
+ * or, as its last one, ends it (what the confirmation used to warn of).
+ */
+export function leftGroupGiftMessage(gift: ContributingGroupGift): string {
+  if (!gift.organizer) return 'You left the group gift';
+  const next = gift.contributors.find((c) => !c.you);
+  return next
+    ? `You left the group gift. ${next.name} becomes the organizer.`
+    : 'You left the group gift. It ends, and others on the list can reserve the item.';
+}
 
 /** The gift history's order, as `GET /api/users/me/gifts` gives it: newest first. */
 const newestFirst = (a: Gift, b: Gift) => Date.parse(b.giftedAt) - Date.parse(a.giftedAt);
@@ -61,9 +76,12 @@ async function readList<T>(url: string): Promise<T[] | null> {
 
 /**
  * The Reserved page's data and everything it does to it: both lists, their
- * refresh and merge, the confirmation each card action opens, and the actions
+ * refresh and merge, the confirmation each Mark as given opens, and the actions
  * themselves (Mark as given, Dismiss, Release, group gift Mark as given and
- * Leave, delete from history). The sections only render what it hands them.
+ * Leave, delete from history). Dismiss, Release, Leave and delete from history
+ * take the card off at once with an Undo toast and send their request once
+ * the Undo window has passed (WIS-387, see `deferCardAction`). The sections
+ * only render what it hands them.
  */
 export function useReservedData() {
   const { data: session, status } = useKnownSession();
@@ -80,6 +98,10 @@ export function useReservedData() {
   const shown = useRef(false);
   // Reservations and gift-log entries whose action is still in flight, per id.
   const { busy, run, running } = useBusyIds();
+  const offerUndo = useUndoableAction();
+  // Cards taken off the page while their Undo is offered (WIS-387): still in
+  // the lists, held (`run`) so a read leaves them alone, just not shown.
+  const [hiddenIds, setHiddenIds] = useState<ReadonlySet<string>>(() => new Set());
   // Cards playing the Mark as given moment (WIS-407), each until it leaves. Read
   // when the answer lands, so discreet mode turned on meanwhile plays none.
   const [givenIds, setGivenIds] = useState<ReadonlySet<string>>(() => new Set());
@@ -88,16 +110,11 @@ export function useReservedData() {
     discreetNow.current = discreet;
   }, [discreet]);
   const [giftConfirm, setGiftConfirm] = useState<string | null>(null);
-  const [dismissConfirm, setDismissConfirm] = useState<string | null>(null);
-  const [releaseConfirm, setReleaseConfirm] = useState<string | null>(null);
-  // A group gift card's own actions (WIS-363): its organizer's Mark as given,
-  // and anyone's Leave.
+  // A group gift card's organizer's Mark as given (WIS-363).
   const [groupGiveConfirm, setGroupGiveConfirm] = useState<string | null>(null);
-  const [leaveConfirm, setLeaveConfirm] = useState<string | null>(null);
   // The Idempotency-Key of each card's group Mark as given, kept until it
   // succeeds, so a retry after a timeout is answered as the first attempt was.
   const groupGiveKeys = useRef(new Map<string, SubmissionKeys>());
-  const [deleteGiftConfirm, setDeleteGiftConfirm] = useState<string | null>(null);
   // The page's own changes to both lists (their ids never clash), so a read of
   // them is merged with the changes made while it was on its way instead of
   // undoing them. See `load`.
@@ -121,11 +138,7 @@ export function useReservedData() {
     setReservations((prev) => (prev.length ? [] : prev));
     setGifts((prev) => (prev.length ? [] : prev));
     setGiftConfirm(null);
-    setDismissConfirm(null);
-    setReleaseConfirm(null);
     setGroupGiveConfirm(null);
-    setLeaveConfirm(null);
-    setDeleteGiftConfirm(null);
     setLoading(true);
     setLoadFailed(false);
     shown.current = false;
@@ -250,9 +263,9 @@ export function useReservedData() {
   // browser to give up. The body is read inside the bound. A timeout lands in
   // the action's catch like any failure: it toasts and frees the card. The
   // server may still have done the write, which the next read shows.
-  function send(url: string, init: RequestInit) {
+  function send(url: string, init: RequestInit, keepalive = false) {
     return withRequestTimeout(async (signal) => {
-      const res = await fetch(url, { ...init, signal });
+      const res = await fetch(url, { ...init, signal, keepalive });
       return { res, result: await res.json() };
     });
   }
@@ -278,6 +291,32 @@ export function useReservedData() {
       const next = new Set(prev);
       next.delete(id);
       return next;
+    });
+  }
+
+  // A card's Dismiss, Release, Leave or delete from history (WIS-387): the card
+  // goes at once, with an Undo toast saying it's done, and `commit` sends the
+  // request once the Undo window has passed (or the toast is dismissed, or the
+  // page goes away). Undone, nothing is sent and the card comes back. The card
+  // stays held (`run`) for the whole window and its request, so a read neither
+  // brings it back nor drops it meanwhile; `commit` takes it off the lists
+  // when the server has, and any other answer shows it again. A commit sent
+  // after another account signed in still goes (the action was its account's),
+  // but its answer is dropped, as every action's is.
+  function deferCardAction(
+    id: string,
+    message: string,
+    commit: (keepalive: boolean) => Promise<void>
+  ) {
+    return run(id, async () => {
+      setHiddenIds((prev) => new Set(prev).add(id));
+      const pending = offerUndo({ message, commit: ({ keepalive }) => commit(keepalive) });
+      await pending.settled;
+      setHiddenIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
     });
   }
 
@@ -313,11 +352,15 @@ export function useReservedData() {
   }
 
   function dismiss(id: string) {
-    return run(id, async () => {
-      const actedFor = account.current;
+    const actedFor = account.current;
+    return deferCardAction(id, 'Removed from your reservations', async (keepalive) => {
       try {
         // Parsed with it, and dropped after another account signs in, as in markGifted.
-        const { res, result } = await send(`/api/reservations/${id}`, { method: 'DELETE' });
+        const { res, result } = await send(
+          `/api/reservations/${id}`,
+          { method: 'DELETE' },
+          keepalive
+        );
         if (account.current !== actedFor) return;
         if (res.status === 404) {
           reservationGone(id);
@@ -325,7 +368,6 @@ export function useReservedData() {
         }
         if (result.success) {
           dropReservation(id);
-          showToast('Removed from your reservations', 'success');
         } else {
           showToast(result.error || 'Something went wrong', 'error');
         }
@@ -353,30 +395,37 @@ export function useReservedData() {
       showToast(RELEASE_REFUSED_MESSAGE, 'info');
       return;
     }
-    return run(id, async () => {
-      const actedFor = account.current;
-      try {
-        // Parsed with it, and dropped after another account signs in, as in markGifted.
-        const { res, result } = await send(`/api/items/${r.itemId}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status: 'available' }),
-        });
-        if (account.current !== actedFor) return;
-        if (result.success) {
-          dropReservation(id);
-          track('release', { from: 'reserved_page' });
-          showToast('Released. Others on the list can reserve it now.', 'success');
-        } else if (RELEASE_REFUSED.has(res.status)) {
-          showToast(RELEASE_REFUSED_MESSAGE, 'info');
-          load();
-        } else {
-          showToast(result.error || 'Something went wrong', 'error');
+    const actedFor = account.current;
+    return deferCardAction(
+      id,
+      'Released. Others on the list can reserve it now.',
+      async (keepalive) => {
+        try {
+          // Parsed with it, and dropped after another account signs in, as in markGifted.
+          const { res, result } = await send(
+            `/api/items/${r.itemId}`,
+            {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ status: 'available' }),
+            },
+            keepalive
+          );
+          if (account.current !== actedFor) return;
+          if (result.success) {
+            dropReservation(id);
+            track('release', { from: 'reserved_page' });
+          } else if (RELEASE_REFUSED.has(res.status)) {
+            showToast(RELEASE_REFUSED_MESSAGE, 'info');
+            load();
+          } else {
+            showToast(result.error || 'Something went wrong', 'error');
+          }
+        } catch (error) {
+          if (account.current === actedFor) showToast(failureMessage(error), 'error');
         }
-      } catch (error) {
-        if (account.current === actedFor) showToast(failureMessage(error), 'error');
       }
-    });
+    );
   }
 
   // A group gift card's organizer marks the whole gift as given
@@ -426,16 +475,17 @@ export function useReservedData() {
   function leaveGroupGift(id: string) {
     const r = reservations.find((x) => x._id === id);
     if (!r?.groupGift) return;
-    return run(id, async () => {
-      const actedFor = account.current;
+    const actedFor = account.current;
+    return deferCardAction(id, leftGroupGiftMessage(r.groupGift), async (keepalive) => {
       try {
-        const { res, result } = await send(`/api/items/${r.itemId}/group-gift/me`, {
-          method: 'DELETE',
-        });
+        const { res, result } = await send(
+          `/api/items/${r.itemId}/group-gift/me`,
+          { method: 'DELETE' },
+          keepalive
+        );
         if (account.current !== actedFor) return;
         if (result.success) {
           dropReservation(id);
-          showToast('You left the group gift', 'success');
         } else if (RELEASE_REFUSED.has(res.status)) {
           showToast((res.status === 409 && result.error) || GROUP_GIFT_OUT_OF_DATE, 'info');
           load();
@@ -449,11 +499,11 @@ export function useReservedData() {
   }
 
   function deleteGift(id: string) {
-    return run(id, async () => {
-      const actedFor = account.current;
+    const actedFor = account.current;
+    return deferCardAction(id, 'Removed from your gift history', async (keepalive) => {
       try {
         // Parsed with it, and dropped after another account signs in, as in markGifted.
-        const { res, result } = await send(`/api/gifts/${id}`, { method: 'DELETE' });
+        const { res, result } = await send(`/api/gifts/${id}`, { method: 'DELETE' }, keepalive);
         if (account.current !== actedFor) return;
         if (res.status === 404) {
           giftGone(id);
@@ -461,7 +511,6 @@ export function useReservedData() {
         }
         if (result.success) {
           dropGift(id);
-          showToast('Removed from your gift history', 'success');
         } else {
           showToast(result.error || 'Something went wrong', 'error');
         }
@@ -472,8 +521,10 @@ export function useReservedData() {
   }
 
   return {
-    reservations,
-    gifts,
+    // Without the cards whose Undo is on offer: they're gone as far as the
+    // page shows, counts and sections included.
+    reservations: hiddenIds.size ? reservations.filter((r) => !hiddenIds.has(r._id)) : reservations,
+    gifts: hiddenIds.size ? gifts.filter((g) => !hiddenIds.has(g._id)) : gifts,
     loading,
     loadFailed,
     retryLoad,
@@ -482,16 +533,8 @@ export function useReservedData() {
     confirms: {
       gift: giftConfirm,
       setGift: setGiftConfirm,
-      dismiss: dismissConfirm,
-      setDismiss: setDismissConfirm,
-      release: releaseConfirm,
-      setRelease: setReleaseConfirm,
       groupGive: groupGiveConfirm,
       setGroupGive: setGroupGiveConfirm,
-      leave: leaveConfirm,
-      setLeave: setLeaveConfirm,
-      deleteGift: deleteGiftConfirm,
-      setDeleteGift: setDeleteGiftConfirm,
     },
     actions: { markGifted, dismiss, release, giveGroupGift, leaveGroupGift, deleteGift },
   };

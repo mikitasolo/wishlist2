@@ -1289,7 +1289,8 @@ describe("WishlistItem — the owner's menu: Most wanted, Delete and Decline", (
     expect(screen.queryByRole('menuitem', { name: /delete|decline/i })).toBeNull();
   });
 
-  it('asks before deleting, and Cancel sends nothing', async () => {
+  // WIS-387: the page offers Undo before anything is sent, so Delete asks nothing.
+  it('deletes at once, without a confirmation', async () => {
     const onDelete = vi.fn().mockResolvedValue(undefined);
     render(
       <WishlistItem
@@ -1304,15 +1305,7 @@ describe("WishlistItem — the owner's menu: Most wanted, Delete and Decline", (
     const del = screen.getByRole('menuitem', { name: 'Delete' });
     expect(del).toHaveClass('text-danger');
     fireEvent.click(del);
-    expect(onDelete).not.toHaveBeenCalled();
-    expect(screen.getByRole('dialog')).toHaveTextContent('Delete item');
-    fireEvent.click(screen.getByRole('button', { name: 'cancel' }));
-    expect(onDelete).not.toHaveBeenCalled();
-    expect(screen.queryByRole('dialog')).toBeNull();
-
-    openMenu();
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    expect(screen.queryByRole('alertdialog')).toBeNull();
     expect(onDelete).toHaveBeenCalledWith(expect.objectContaining({ _id: 'item-1' }));
     await act(async () => {});
   });
@@ -1330,13 +1323,12 @@ describe("WishlistItem — the owner's menu: Most wanted, Delete and Decline", (
     );
     openMenu();
     fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
     await act(async () => {});
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(screen.getByRole('article')).toBeInTheDocument();
   });
 
-  it("declines a proposal with the review dialog's words, after asking", async () => {
+  it('declines a proposal at once, without a confirmation', async () => {
     const onDelete = vi.fn().mockResolvedValue(undefined);
     render(
       <WishlistItem
@@ -1350,11 +1342,7 @@ describe("WishlistItem — the owner's menu: Most wanted, Delete and Decline", (
     );
     openMenu();
     fireEvent.click(screen.getByRole('menuitem', { name: 'Decline' }));
-    expect(onDelete).not.toHaveBeenCalled();
-    const dialog = screen.getByRole('dialog');
-    expect(dialog).toHaveTextContent('Decline this proposal?');
-    expect(dialog).toHaveTextContent("It's removed from the list.");
-    fireEvent.click(screen.getByRole('button', { name: 'Decline' }));
+    expect(screen.queryByRole('alertdialog')).toBeNull();
     expect(onDelete).toHaveBeenCalledTimes(1);
     await act(async () => {});
   });

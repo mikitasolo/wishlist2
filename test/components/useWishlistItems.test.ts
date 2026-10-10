@@ -1,7 +1,10 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
+import { createElement, type ReactNode } from 'react';
+import { ToastProvider } from '@/components/ToastProvider';
 import { useWishlistItems, type WishlistItemsOptions } from '@/lib/hooks/useWishlistItems';
+import { flushUndoableActions } from '@/lib/hooks/useUndoableAction';
 import { clearPendingRequests } from '@/lib/utils/requestDeduplication';
 import { SHARE_TOKEN_HEADER } from '@/lib/utils/shareLinkFields';
 import type { ApiItem } from '@/types/api';
@@ -55,6 +58,8 @@ function setup(overrides: Partial<WishlistItemsOptions> = {}) {
   };
   const hook = renderHook((props: WishlistItemsOptions) => useWishlistItems(props), {
     initialProps: options,
+    wrapper: ({ children }: { children: ReactNode }) =>
+      createElement(ToastProvider, null, children),
   });
   return { ...hook, options };
 }
@@ -204,5 +209,76 @@ describe('useWishlistItems', () => {
     });
     expect(result.current.items[0]).toMatchObject({ status: 'booked', bookedBy: 'me' });
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+  });
+
+  // WIS-387: a deferred change shows at once and is sent only when flushed;
+  // another change to the item waits for it to settle (settlePending).
+  describe('deferItemChange', () => {
+    it('shows the change, sends nothing until flushed, and settles before the next change', async () => {
+      fetchMock.mockResolvedValueOnce(ok([item('a', 'booked', { bookedBy: 'me' })]));
+      const { result } = setup();
+      await waitFor(() => expect(result.current.itemsLoaded).toBe(true));
+
+      const answer = deferred<ApiItem | null>();
+      const commit = vi.fn(() => answer.promise);
+      act(() => {
+        result.current.deferItemChange({
+          id: 'a',
+          kind: 'release',
+          message: 'Released',
+          apply: (i) => ({ ...i, status: 'available', bookedBy: null }),
+          commit,
+        });
+      });
+      expect(result.current.items[0]).toMatchObject({ status: 'available', bookedBy: null });
+      expect(result.current.pendingFor('a')?.kind).toBe('release');
+      expect(commit).not.toHaveBeenCalled();
+
+      let settled = false;
+      act(() => {
+        void result.current.settlePending('a').then(() => (settled = true));
+      });
+      expect(commit).toHaveBeenCalledTimes(1);
+      await act(async () => {});
+      expect(settled).toBe(false);
+      await act(async () => {
+        answer.resolve(item('a', 'available'));
+      });
+      await waitFor(() => expect(settled).toBe(true));
+      expect(result.current.pendingFor('a')).toBeUndefined();
+    });
+
+    it('puts the item back when the commit fails, or on Undo', async () => {
+      fetchMock.mockResolvedValue(ok([item('a', 'booked', { bookedBy: 'me' })]));
+      const { result } = setup();
+      await waitFor(() => expect(result.current.itemsLoaded).toBe(true));
+      const change = (commit: () => Promise<ApiItem | null>) =>
+        act(() => {
+          result.current.deferItemChange({
+            id: 'a',
+            kind: 'release',
+            message: 'Released',
+            apply: (i) => ({ ...i, status: 'available', bookedBy: null }),
+            commit,
+          });
+        });
+
+      const failing = vi.fn().mockResolvedValue(null);
+      change(failing);
+      await act(async () => {
+        await result.current.settlePending('a');
+      });
+      expect(failing).toHaveBeenCalledTimes(1);
+      expect(result.current.items[0]).toMatchObject({ status: 'booked', bookedBy: 'me' });
+
+      const undone = vi.fn();
+      change(undone);
+      act(() => {
+        result.current.pendingFor('a')!.pending.undo();
+      });
+      expect(result.current.items[0]).toMatchObject({ status: 'booked', bookedBy: 'me' });
+      flushUndoableActions();
+      expect(undone).not.toHaveBeenCalled();
+    });
   });
 });

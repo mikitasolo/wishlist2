@@ -28,6 +28,7 @@ vi.mock('@/components/AuthButton', () => ({ default: () => null }));
 vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }));
 
 import WishlistDetail from '@/app/wishlists/[id]/page';
+import { flushUndoableActions } from '@/lib/hooks/useUndoableAction';
 import { listTab, openListTab, pickLeave, pickRowAction } from './listMenu';
 
 // User ids double as usernames here.
@@ -166,6 +167,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  // Nothing a test left waiting reaches the next one.
+  flushUndoableActions();
   cleanup();
   vi.unstubAllGlobals();
 });
@@ -212,9 +215,18 @@ const expectSoleOwner = (user: ReturnType<typeof userEvent.setup>) =>
 const expectCanLeave = (user: ReturnType<typeof userEvent.setup>) =>
   expectLeaveDialog(user, 'Leave “Birthday”?');
 
-/** Make member's dialog, which asks before `username` is made a member. */
-const demoteDialog = (username: string) =>
-  screen.findByRole('alertdialog', { name: `Make @${username} a member?` });
+/** What an Undo toast is shown with (WIS-387). */
+const withUndo = expect.objectContaining({ action: expect.objectContaining({ label: 'Undo' }) });
+
+/** Lets the Undo window end now: what's waiting is sent, as when it runs out. */
+const commitUndo = () => act(async () => flushUndoableActions());
+
+/** Presses Undo on the latest toast that offers it. */
+async function pressUndo() {
+  const call = [...showToast.mock.calls].reverse().find(([, , o]) => o?.action?.label === 'Undo');
+  if (!call) throw new Error('No Undo toast');
+  await act(async () => call[2].action.onClick());
+}
 
 /** The demotions the page has sent. */
 const demotions = () =>
@@ -225,19 +237,21 @@ const demotions = () =>
   );
 
 /**
- * Make the first co-owner listed (`username`) a member, confirming it in the
- * dialog, and wait for the members to move them.
+ * Make the first co-owner listed (`username`) a member, let its Undo window
+ * end, and wait for the reads after the demotion to land.
  */
 async function demoteFirst(user: ReturnType<typeof userEvent.setup>, username: string) {
-  const calls = showToast.mock.calls.length;
+  const calls = demotions().length;
   await pickRowAction(user, username, 'Make member');
-  const dialog = await demoteDialog(username);
-  await user.click(within(dialog).getByRole('button', { name: 'Make member' }));
-  await waitFor(() => expect(showToast).toHaveBeenCalledTimes(calls + 1));
-  expect(showToast).toHaveBeenLastCalledWith(`@${username} is now a member`, 'success');
+  expect(showToast).toHaveBeenLastCalledWith(`@${username} is now a member`, 'success', withUndo);
+  // Shown as a member at once, before anything is sent.
   await waitFor(() => expect(captionOf(username)).toBe('Member'));
-  // It closes once the reads after the demotion have landed.
-  await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+  expect(demotions()).toHaveLength(calls);
+  await commitUndo();
+  expect(demotions()).toHaveLength(calls + 1);
+  await waitFor(() => expect(credited(username)).not.toBeInTheDocument());
+  await settle();
+  await settle();
 }
 
 /** Let a read whose answer the page has just taken finish landing. */
@@ -266,11 +280,10 @@ describe('the wishlist page after an owner is demoted or removed', () => {
     const user = await openPeople();
 
     await pickRowAction(user, 'bob', 'Remove');
-    const dialog = await screen.findByRole('alertdialog');
-    expect(dialog).toHaveTextContent('Remove @bob as an owner?');
-    await user.click(within(dialog).getByRole('button', { name: 'Remove' }));
-    await waitFor(() => expect(showToast).toHaveBeenCalledWith('Owner removed', 'success'));
-    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+    expect(showToast).toHaveBeenCalledWith('Removed @bob as an owner', 'success', withUndo);
+    await commitUndo();
+    await waitFor(() => expect(credited('bob')).not.toBeInTheDocument());
+    await settle();
 
     expect(credited('bob')).not.toBeInTheDocument();
     await expectSoleOwner(user);
@@ -306,20 +319,16 @@ describe('the wishlist page after an owner is demoted or removed', () => {
   // regression: a refused Make member / Remove (the server had already taken
   // them off the owners) only toasted, so the page kept counting them as an
   // owner and still offered a sole owner Leave.
-  it.each([
-    ['Make member', 'Make @bob a member?', 'Make member'],
-    ['Remove', 'Remove @bob as an owner?', 'Remove'],
-  ])(
+  it.each([['Make member'], ['Remove']])(
     'regression: a %s refused because they are no longer an owner moves them off the owners',
-    async (action, title, confirm) => {
+    async (action) => {
       const user = await openPeople();
       // A co-owner already made Bob a member, in another tab.
       server.owners = ['alice'];
       server.members = ['bob'];
 
       await pickRowAction(user, 'bob', action);
-      const dialog = await screen.findByRole('alertdialog', { name: title });
-      await user.click(within(dialog).getByRole('button', { name: confirm }));
+      await commitUndo();
       await waitFor(() =>
         expect(showToast).toHaveBeenCalledWith('This person is not an owner', 'error')
       );
@@ -339,10 +348,10 @@ describe('the wishlist page after an owner is demoted or removed', () => {
     );
 
     await pickRowAction(user, 'bob', 'Make member');
-    const dialog = await demoteDialog('bob');
-    await user.click(within(dialog).getByRole('button', { name: 'Make member' }));
+    await commitUndo();
     await waitFor(() => expect(showToast).toHaveBeenCalledWith('Failed to update owner', 'error'));
-    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+    await settle();
+    await settle();
     // The row is given back, so it can be tried again.
     await user.click(screen.getByRole('button', { name: 'Actions for @bob' }));
     expect(await screen.findByRole('menuitem', { name: 'Make member' })).not.toHaveAttribute(
@@ -380,8 +389,7 @@ describe('the wishlist page after an owner is demoted or removed', () => {
 
   // Opening People reads the owners again. That read was answered before the
   // demotions landed, so it still lists Bob and Carol, and it gets back only
-  // after the reads that follow them have. (A demotion's own read can't be the
-  // late one: its dialog stays open until that read has landed.)
+  // after the reads that follow them have.
   it("doesn't bring back an owner demoted while an earlier read of the owners was in flight", async () => {
     server.owners = ['alice', 'bob', 'carol'];
     const user = userEvent.setup();
@@ -435,45 +443,37 @@ describe('the people on People', () => {
 
 describe('Make member', () => {
   // regression: Make member made a co-owner a member the moment it was clicked,
-  // with no confirmation, though it notifies them, it sits right next to
-  // Remove, and only they can undo it (making them an owner again is an invite
-  // they have to accept). One mis-tap cost a co-owner their ownership.
-  it('regression: asks first, sends nothing on Cancel, and sends one demotion once confirmed', async () => {
+  // though it notifies them and only they can undo it (making them an owner
+  // again is an invite they have to accept). It now waits out an Undo window
+  // (WIS-387): undone, nothing is sent, so Bob is never told.
+  it('regression: offers Undo, sends nothing when undone, and one demotion once the window ends', async () => {
     const user = await openPeople();
 
     await pickRowAction(user, 'bob', 'Make member');
-    let dialog = await demoteDialog('bob');
-    expect(dialog).toHaveTextContent(
-      "They keep access and can reserve gifts, but can no longer edit or manage the list. They'll be notified. Making them an owner again needs their acceptance."
-    );
-    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
-    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    expect(showToast).toHaveBeenCalledWith('@bob is now a member', 'success', withUndo);
+    await waitFor(() => expect(captionOf('bob')).toBe('Member'));
+    await pressUndo();
+    await waitFor(() => expect(captionOf('bob')).toBe('Owner'));
+    await commitUndo();
     await settle();
     expect(demotions()).toHaveLength(0);
-    expect(showToast).not.toHaveBeenCalled();
     expect(credited('bob')).toBeInTheDocument();
     await expectCanLeave(user);
 
-    // The demotion is held, so it's still in flight when the second click lands.
-    const demotion = gate();
-    held.demote = demotion.promise;
+    // While it waits, Bob shows as a member whose row is held: nothing else
+    // can be sent for him meanwhile.
     await pickRowAction(user, 'bob', 'Make member');
-    dialog = await demoteDialog('bob');
-    const confirm = within(dialog).getByRole('button', { name: 'Make member' });
-    // Twice before the page re-renders, so only the handlers' own guards can
-    // turn the second one away.
-    act(() => {
-      confirm.click();
-      confirm.click();
-    });
-    expect(within(dialog).getByRole('button', { name: 'Making member…' })).toBeDisabled();
-    expect(within(dialog).getByRole('button', { name: 'Cancel' })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: 'Actions for @bob' }));
+    expect(await screen.findByRole('menuitem', { name: 'Remove' })).toHaveAttribute(
+      'aria-disabled',
+      'true'
+    );
+    await user.keyboard('{Escape}');
 
-    demotion.release();
-    await waitFor(() => expect(showToast).toHaveBeenCalledWith('@bob is now a member', 'success'));
-    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+    await commitUndo();
+    await waitFor(() => expect(credited('bob')).not.toBeInTheDocument());
+    await settle();
     expect(demotions()).toHaveLength(1);
-    expect(showToast).toHaveBeenCalledTimes(1);
     expect(server.members).toEqual(['bob']);
     await expectSoleOwner(user);
   });

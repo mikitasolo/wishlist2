@@ -27,6 +27,7 @@ vi.mock('@/components/AuthButton', () => ({ default: () => null }));
 
 vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }));
 
+import { flushUndoableActions } from '@/lib/hooks/useUndoableAction';
 import WishlistDetail from '@/app/wishlists/[id]/page';
 import { NO_MEMBERS_TEXT } from '@/components/WishlistPeopleTab';
 import { listTab, openListTab, rowMenuItem, rowMenuItems, pickRowAction } from './listMenu';
@@ -165,9 +166,23 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  // Nothing a test left waiting reaches the next one.
+  flushUndoableActions();
   cleanup();
   vi.unstubAllGlobals();
 });
+
+/** Lets the Undo window end now: what's waiting is sent (WIS-387). */
+const commitUndo = () => act(async () => flushUndoableActions());
+
+/** Presses Undo on the latest toast that offers it. */
+async function pressUndo() {
+  const call = [...showToast.mock.calls].reverse().find(([, , o]) => o?.action?.label === 'Undo');
+  if (!call) throw new Error('No Undo toast');
+  await act(async () => call[2].action.onClick());
+}
+
+const withUndo = expect.objectContaining({ action: expect.objectContaining({ label: 'Undo' }) });
 
 /** The page opened at `search` (the list's URL's query). */
 function openAt(search = '') {
@@ -390,22 +405,40 @@ describe('People', () => {
     expect(within(peoplePanel()).queryByRole('heading', { name: 'Invited' })).toBeNull();
   });
 
-  it('asks before Make owner, Make member and Remove', async () => {
+  it('asks before Make owner', async () => {
     openAt('?tab=people');
     const user = userEvent.setup();
     await screen.findByRole('button', { name: 'Actions for @bob' });
 
-    for (const [username, action, dialog] of [
-      ['carol', 'Make owner', 'Make owner?'],
-      ['bob', 'Make member', 'Make @bob a member?'],
-      ['bob', 'Remove', 'Remove @bob as an owner?'],
-      ['carol', 'Remove', 'Remove @carol?'],
+    await pickRowAction(user, 'carol', 'Make owner');
+    const confirm = await screen.findByRole('alertdialog', { name: 'Make owner?' });
+    await user.click(within(confirm).getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+    // Nothing was sent: only the reads.
+    expect(fetchMock.mock.calls.filter(([, init]) => init?.method)).toEqual([]);
+  });
+
+  // regression (WIS-387): Make member and Remove notify the person, so an
+  // undone one must never reach the server.
+  it('offers Undo after Make member and Remove, and sends nothing for an undone one', async () => {
+    openAt('?tab=people');
+    const user = userEvent.setup();
+    await screen.findByRole('button', { name: 'Actions for @bob' });
+
+    for (const [username, action, message] of [
+      ['bob', 'Make member', '@bob is now a member'],
+      ['bob', 'Remove', 'Removed @bob as an owner'],
+      ['carol', 'Remove', 'Removed @carol from the list'],
     ]) {
       await pickRowAction(user, username, action);
-      const confirm = await screen.findByRole('alertdialog', { name: dialog });
-      await user.click(within(confirm).getByRole('button', { name: 'Cancel' }));
-      await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+      expect(screen.queryByRole('alertdialog')).toBeNull();
+      expect(showToast).toHaveBeenLastCalledWith(message, 'success', withUndo);
+      await pressUndo();
+      await waitFor(() =>
+        expect(captionOf(username)).toBe(username === 'bob' ? 'Owner' : 'Member')
+      );
     }
+    await commitUndo();
     // Nothing was sent: only the reads.
     expect(fetchMock.mock.calls.filter(([, init]) => init?.method)).toEqual([]);
   });
@@ -418,6 +451,10 @@ describe('People', () => {
     heldCancel = new Promise<void>((resolve) => (release = resolve));
 
     await pickRowAction(user, 'dave', 'Cancel invite');
+    expect(showToast).toHaveBeenLastCalledWith('Invitation cancelled', 'success', withUndo);
+    // Nothing goes until the Undo window ends.
+    expect(requests('/api/wishlists/birthday/invites/inv-dave', 'DELETE')).toHaveLength(0);
+    await commitUndo();
     await waitFor(() =>
       expect(requests('/api/wishlists/birthday/invites/inv-dave', 'DELETE')).toHaveLength(1)
     );
@@ -427,7 +464,10 @@ describe('People', () => {
     await user.keyboard('{Escape}');
 
     act(() => release());
-    await waitFor(() => expect(showToast).toHaveBeenCalledWith('Invitation cancelled', 'success'));
+    await waitFor(async () =>
+      expect(await rowMenuItem(user, 'dave', 'Remove')).not.toHaveAttribute('aria-disabled', 'true')
+    );
+    await user.keyboard('{Escape}');
     expect(captionOf('dave')).toBe('Member');
     expect(await rowMenuItems(user, 'dave')).toEqual(['Make owner', 'Remove']);
     expect(requests('/api/wishlists/birthday/invites/inv-dave', 'DELETE')).toHaveLength(1);
@@ -479,7 +519,13 @@ describe('People', () => {
     openAt('?tab=people');
     const user = userEvent.setup();
     await user.click(await screen.findByRole('button', { name: 'Decline @ivan’s request' }));
-    await waitFor(() => expect(showToast).toHaveBeenCalledWith('Request declined', 'success'));
+    expect(showToast).toHaveBeenCalledWith('Request declined', 'success', withUndo);
+    expect(within(peoplePanel()).queryByRole('link', { name: '@ivan' })).toBeNull();
+    expect(requests('/api/wishlists/birthday/requests/req-ivan', 'PATCH')).toHaveLength(0);
+    await commitUndo();
+    await waitFor(() =>
+      expect(requests('/api/wishlists/birthday/requests/req-ivan', 'PATCH')).toHaveLength(1)
+    );
     expect(
       JSON.parse(String(requests('/api/wishlists/birthday/requests/req-ivan', 'PATCH')[0][1].body))
     ).toEqual({
@@ -493,9 +539,22 @@ describe('People', () => {
     openAt('?tab=people');
     const user = userEvent.setup();
     await user.click(await screen.findByRole('button', { name: 'Cancel the invite to @erin' }));
-    await waitFor(() => expect(showToast).toHaveBeenCalledWith('Invitation cancelled', 'success'));
-    expect(requests('/api/wishlists/birthday/invites/inv-erin', 'DELETE')).toHaveLength(1);
+    expect(showToast).toHaveBeenCalledWith('Invitation cancelled', 'success', withUndo);
     expect(within(peoplePanel()).queryByRole('link', { name: '@erin' })).toBeNull();
+    // Undo puts it back, and sends nothing.
+    await pressUndo();
+    expect(await within(peoplePanel()).findByRole('link', { name: '@erin' })).toBeInTheDocument();
+    await commitUndo();
+    expect(requests('/api/wishlists/birthday/invites/inv-erin', 'DELETE')).toHaveLength(0);
+
+    await user.click(await screen.findByRole('button', { name: 'Cancel the invite to @erin' }));
+    await commitUndo();
+    await waitFor(() =>
+      expect(requests('/api/wishlists/birthday/invites/inv-erin', 'DELETE')).toHaveLength(1)
+    );
+    await waitFor(() =>
+      expect(within(peoplePanel()).queryByRole('link', { name: '@erin' })).toBeNull()
+    );
   });
 
   it("says when the people couldn't be read, with no count and no empty claim, and reads them again", async () => {

@@ -17,7 +17,9 @@ export function useGroupGiftRequest(onError: (message: string) => void) {
     async (
       itemId: string,
       action: GroupGiftAction,
-      idempotencyKey?: string
+      idempotencyKey?: string,
+      /** Sent as the page goes away (a deferred leave or cancel, WIS-387). */
+      keepalive = false
     ): Promise<ApiItem | null> => {
       const { method, url, body, idempotent } = groupGiftRequest(itemId, action);
       try {
@@ -30,6 +32,7 @@ export function useGroupGiftRequest(onError: (message: string) => void) {
             },
             body: body === undefined ? undefined : JSON.stringify(body),
             signal,
+            keepalive,
           });
           const result: ApiResponse<ApiItem> = await response.json();
           if (!result.success || !result.data) {

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 // WIS-27: Settings → Groups and a profile's Tag into groups.
@@ -13,6 +13,13 @@ vi.mock('@/lib/hooks/useKnownSession', () => ({
 
 import GroupsSettings from '@/components/GroupsSettings';
 import TagIntoGroups from '@/components/TagIntoGroups';
+import { flushUndoableActions } from '@/lib/hooks/useUndoableAction';
+
+/** Clicks the Undo of the latest toast that offered one. */
+function clickUndo() {
+  const call = [...showToast.mock.calls].reverse().find((c) => c[2]?.action?.label === 'Undo');
+  act(() => call?.[2].action.onClick());
+}
 
 const fetchMock = vi.fn();
 
@@ -105,28 +112,74 @@ describe('Settings → Groups', () => {
     expect(screen.getByText('You have 20 groups, the most you can have.')).toBeVisible();
   });
 
-  it('takes someone out at once, and puts them back if that fails', async () => {
-    let fail = true;
+  it('takes someone out at once with an Undo, and sends the DELETE only after it (WIS-387)', async () => {
     serve(groupsRead([{ id: 'g1', name: 'Family', members: [bo, cy] }]), (url, init) =>
       url === '/api/users/me/groups/g1/members/bo1' && init?.method === 'DELETE'
-        ? answer(fail ? 500 : 200, { success: !fail })
+        ? answer(200, { success: true })
         : undefined
     );
     const user = userEvent.setup();
     render(<GroupsSettings />);
     await user.click(await screen.findByRole('button', { name: 'Remove @bo from Family' }));
+    expect(screen.queryByRole('link', { name: '@bo' })).toBeNull();
+    expect(showToast).toHaveBeenCalledWith(
+      'Removed from Family',
+      'success',
+      expect.objectContaining({ action: expect.objectContaining({ label: 'Undo' }) })
+    );
+    expect(calls('DELETE', '/api/users/me/groups/g1/members/bo1')).toHaveLength(0);
+    act(() => flushUndoableActions());
+    await waitFor(() =>
+      expect(calls('DELETE', '/api/users/me/groups/g1/members/bo1')).toHaveLength(1)
+    );
+    expect(screen.getByText('1 person')).toBeInTheDocument();
+  });
+
+  it('puts them back and sends nothing on Undo', async () => {
+    serve(groupsRead([{ id: 'g1', name: 'Family', members: [bo, cy] }]));
+    const user = userEvent.setup();
+    render(<GroupsSettings />);
+    await user.click(await screen.findByRole('button', { name: 'Remove @bo from Family' }));
+    clickUndo();
+    expect(screen.getByRole('link', { name: '@bo' })).toBeInTheDocument();
+    act(() => flushUndoableActions());
+    expect(calls('DELETE', '/api/users/me/groups/g1/members/bo1')).toHaveLength(0);
+  });
+
+  it('puts them back if the deferred removal fails', async () => {
+    serve(groupsRead([{ id: 'g1', name: 'Family', members: [bo, cy] }]), (url, init) =>
+      url === '/api/users/me/groups/g1/members/bo1' && init?.method === 'DELETE'
+        ? answer(500, { success: false })
+        : undefined
+    );
+    const user = userEvent.setup();
+    render(<GroupsSettings />);
+    await user.click(await screen.findByRole('button', { name: 'Remove @bo from Family' }));
+    act(() => flushUndoableActions());
     await waitFor(() =>
       expect(showToast).toHaveBeenCalledWith('Couldn’t save. Try again.', 'error')
     );
     expect(screen.getByRole('link', { name: '@bo' })).toBeInTheDocument();
-
-    fail = false;
-    await user.click(screen.getByRole('button', { name: 'Remove @bo from Family' }));
-    await waitFor(() => expect(screen.queryByRole('link', { name: '@bo' })).toBeNull());
-    expect(screen.getByText('1 person')).toBeInTheDocument();
   });
 
-  it('deletes a group after asking, saying nothing else changes', async () => {
+  // regression: a 404 (already out of it, on another device or by an unfollow)
+  // put them back with an error, though the server had them out.
+  it('regression: takes a 404 on the deferred removal as done', async () => {
+    serve(groupsRead([{ id: 'g1', name: 'Family', members: [bo, cy] }]), (url, init) =>
+      url === '/api/users/me/groups/g1/members/bo1' && init?.method === 'DELETE'
+        ? answer(404, { success: false, error: 'Not found' })
+        : undefined
+    );
+    const user = userEvent.setup();
+    render(<GroupsSettings />);
+    await user.click(await screen.findByRole('button', { name: 'Remove @bo from Family' }));
+    await act(async () => flushUndoableActions());
+    await act(async () => {});
+    expect(showToast.mock.calls.filter(([, type]) => type === 'error')).toEqual([]);
+    expect(screen.queryByRole('link', { name: '@bo' })).toBeNull();
+  });
+
+  it('deletes a group at once with an Undo, sending the DELETE only after it (WIS-387)', async () => {
     serve(groupsRead([{ id: 'g1', name: 'Family', members: [bo] }]), (url, init) =>
       url === '/api/users/me/groups/g1' && init?.method === 'DELETE'
         ? answer(200, { success: true })
@@ -136,15 +189,40 @@ describe('Settings → Groups', () => {
     render(<GroupsSettings />);
     await user.click(await screen.findByRole('button', { name: 'Actions for Family' }));
     await user.click(screen.getByRole('menuitem', { name: 'Delete group' }));
-    const dialog = await screen.findByRole('alertdialog');
-    expect(
-      within(dialog).getByText(
-        'Only the group goes. Nobody is told, and no list or invite changes.'
-      )
-    ).toBeVisible();
-    await user.click(within(dialog).getByRole('button', { name: 'Delete group' }));
-    await waitFor(() => expect(screen.queryByRole('heading', { name: 'Family' })).toBeNull());
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Family' })).toBeNull();
+    expect(showToast).toHaveBeenCalledWith('Deleted Family', 'success', expect.anything());
+    expect(calls('DELETE', '/api/users/me/groups/g1')).toHaveLength(0);
+    act(() => flushUndoableActions());
+    await waitFor(() => expect(calls('DELETE', '/api/users/me/groups/g1')).toHaveLength(1));
     expect(await screen.findByText('No groups yet')).toBeInTheDocument();
+  });
+
+  it('brings a deleted group back on Undo, sending nothing', async () => {
+    serve(groupsRead([{ id: 'g1', name: 'Family', members: [bo] }]));
+    const user = userEvent.setup();
+    render(<GroupsSettings />);
+    await user.click(await screen.findByRole('button', { name: 'Actions for Family' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Delete group' }));
+    clickUndo();
+    expect(screen.getByRole('heading', { name: 'Family' })).toBeInTheDocument();
+    act(() => flushUndoableActions());
+    expect(calls('DELETE', '/api/users/me/groups/g1')).toHaveLength(0);
+  });
+
+  it('brings a group back if its deferred delete fails', async () => {
+    serve(groupsRead([{ id: 'g1', name: 'Family', members: [bo] }]), (url, init) =>
+      url === '/api/users/me/groups/g1' && init?.method === 'DELETE'
+        ? answer(500, { success: false })
+        : undefined
+    );
+    const user = userEvent.setup();
+    render(<GroupsSettings />);
+    await user.click(await screen.findByRole('button', { name: 'Actions for Family' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Delete group' }));
+    act(() => flushUndoableActions());
+    expect(await screen.findByRole('heading', { name: 'Family' })).toBeInTheDocument();
+    expect(showToast).toHaveBeenCalledWith('Couldn’t save. Try again.', 'error');
   });
 
   it('adds people you follow from Add people', async () => {
