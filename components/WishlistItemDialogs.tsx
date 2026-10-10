@@ -1,14 +1,17 @@
 'use client';
 
-import AddItemModal from '@/components/AddItemModal';
-import EditItemModal from '@/components/EditItemModal';
-import ProposeItemModal from '@/components/ProposeItemModal';
-import ReviewItemModal from '@/components/ReviewItemModal';
-import SaveToListModal from '@/components/SaveToListModal';
+import dynamic from 'next/dynamic';
 import type { ItemDialogsControl } from '@/lib/hooks/useItemDialogs';
 import type { WishlistItemActions } from '@/lib/hooks/useWishlistItemActions';
 import type { WishlistItemsControl } from '@/lib/hooks/useWishlistItems';
 import { proposalReviewState } from '@/lib/utils/proposalReview';
+
+// Each opens on a click and shares ItemForm, so they load together then (WIS-438).
+const AddItemModal = dynamic(() => import('@/components/AddItemModal'));
+const EditItemModal = dynamic(() => import('@/components/EditItemModal'));
+const ProposeItemModal = dynamic(() => import('@/components/ProposeItemModal'));
+const ReviewItemModal = dynamic(() => import('@/components/ReviewItemModal'));
+const SaveToListModal = dynamic(() => import('@/components/SaveToListModal'));
 
 export interface WishlistItemDialogsProps {
   dialogs: ItemDialogsControl;

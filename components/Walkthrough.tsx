@@ -36,6 +36,15 @@ import {
   type TourStep,
   type TourTarget,
 } from '@/lib/utils/tourSteps';
+import {
+  getCheckedFor,
+  getStore,
+  setCheckedFor,
+  setStore,
+  subscribe,
+  type TourBasis,
+  type TourRun,
+} from '@/components/walkthroughStore';
 import type { WalkthroughAction, WalkthroughStatus } from '@/lib/utils/walkthrough';
 
 /**
@@ -72,69 +81,6 @@ const PAGE_WAIT_MS = 3000;
 const TARGET_POLL_MS = 100;
 /** A used "try it" control moves the tour on once no dialog or menu has been open for this long. */
 const SETTLE_MS = 450;
-
-interface TourRun {
-  steps: TourStep[];
-  /** What the steps were built for, to build them again when that changes. */
-  desktop: boolean;
-  index: number;
-  /** A list of their own for the steps about it (`WalkthroughStatus.listPath`). */
-  listPath: string | null;
-  /** This step has been to its page already: it doesn't take them back if they wander. */
-  arrived: boolean;
-  /** This step's "try it" control was used: the tour moves on once things settle. */
-  used: boolean;
-}
-
-/** What the tour is built from (`GET /api/users/me`'s walkthrough status). */
-interface TourBasis {
-  ownsList: boolean;
-  listPath: string | null;
-}
-
-interface TourStore {
-  run: TourRun | null;
-  /** The offer, while it's showing, with what the tour it starts is built from. */
-  offer: TourBasis | null;
-}
-
-// One tour per tab, across the page changes that remount the header.
-let store: TourStore = { run: null, offer: null };
-const listeners = new Set<() => void>();
-// The account this tab has already read the tour's status for.
-let checkedFor: string | null = null;
-
-function setStore(next: Partial<TourStore>) {
-  store = { ...store, ...next };
-  listeners.forEach((listener) => listener());
-}
-
-function subscribe(listener: () => void) {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
-}
-
-/**
- * A list was just made (`CreateWishlistModal`): a running tour's steps about
- * their own list go to it, and the closing card no longer offers to make one.
- */
-export function tourListCreated(path: string) {
-  if (!store.run) return;
-  setStore({
-    run: {
-      ...store.run,
-      listPath: path,
-      steps: tourSteps({ desktop: store.run.desktop, ownsList: true }),
-    },
-  });
-}
-
-/** Forgets the tab's tour state (tests). */
-export function resetWalkthroughForTests() {
-  store = { run: null, offer: null };
-  checkedFor = null;
-  listeners.forEach((listener) => listener());
-}
 
 /** Sends an answer; resolves whether it landed. */
 async function sendAnswer(action: WalkthroughAction): Promise<boolean> {
@@ -195,11 +141,7 @@ const prefersReducedMotion = () =>
   !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
 export default function Walkthrough({ userId }: { userId: string }) {
-  const { run, offer } = useSyncExternalStore(
-    subscribe,
-    () => store,
-    () => store
-  );
+  const { run, offer } = useSyncExternalStore(subscribe, getStore, getStore);
   const pathname = usePathname();
   const router = useRouter();
   const { showToast } = useToast();
@@ -227,10 +169,10 @@ export default function Walkthrough({ userId }: { userId: string }) {
         '',
         `${url.pathname}${url.search}${url.hash}`
       );
-    } else if (checkedFor === userId || url.searchParams.has(WELCOME_PARAM)) {
+    } else if (getCheckedFor() === userId || url.searchParams.has(WELCOME_PARAM)) {
       return;
     }
-    checkedFor = userId;
+    setCheckedFor(userId);
     (async () => {
       let status: WalkthroughStatus | undefined;
       try {
@@ -240,9 +182,9 @@ export default function Walkthrough({ userId }: { userId: string }) {
         // Treated as no answer, below.
       }
       // A failed read is tried again on the next page.
-      if (!status && checkedFor === userId) checkedFor = null;
+      if (!status && getCheckedFor() === userId) setCheckedFor(null);
       // Another account may have signed in since, or a tour be running already.
-      if (!status || checkedFor !== userId || store.run) return;
+      if (!status || getCheckedFor() !== userId || getStore().run) return;
       const basis = { ownsList: status.ownsList, listPath: status.listPath ?? null };
       if (fromSettings) start(basis, 'settings');
       else if (status.due === 'tour') start(basis, 'auto');
@@ -258,7 +200,7 @@ export default function Walkthrough({ userId }: { userId: string }) {
 
   const finish = useCallback(
     (then?: () => void) => {
-      if (!store.run) return;
+      if (!getStore().run) return;
       setStore({ run: null });
       then?.();
       remind();
@@ -268,8 +210,9 @@ export default function Walkthrough({ userId }: { userId: string }) {
   );
 
   const skip = useCallback(() => {
-    if (!store.run) return;
-    const { steps, index } = store.run;
+    const run = getStore().run;
+    if (!run) return;
+    const { steps, index } = run;
     const current = steps[index];
     if (!current || current.closing) return finish();
     setStore({ run: null });
@@ -287,21 +230,24 @@ export default function Walkthrough({ userId }: { userId: string }) {
 
   const go = useCallback(
     (delta: number) => {
-      if (!store.run) return;
-      const index = store.run.index + delta;
-      if (index >= store.run.steps.length) return finish();
+      const run = getStore().run;
+      if (!run) return;
+      const index = run.index + delta;
+      if (index >= run.steps.length) return finish();
       if (index < 0) return;
-      setStore({ run: { ...store.run, index, arrived: false, used: false } });
+      setStore({ run: { ...run, index, arrived: false, used: false } });
     },
     [finish]
   );
 
   const arrive = useCallback(() => {
-    if (store.run && !store.run.arrived) setStore({ run: { ...store.run, arrived: true } });
+    const run = getStore().run;
+    if (run && !run.arrived) setStore({ run: { ...run, arrived: true } });
   }, []);
 
   const used = useCallback(() => {
-    if (store.run && !store.run.used) setStore({ run: { ...store.run, used: true } });
+    const run = getStore().run;
+    if (run && !run.used) setStore({ run: { ...run, used: true } });
   }, []);
 
   // A used "try it" control: on to the next step once whatever it opened (a
@@ -313,7 +259,7 @@ export default function Walkthrough({ userId }: { userId: string }) {
     let quiet = 0;
     const timer = window.setInterval(() => {
       quiet = overlayOpen() ? 0 : quiet + TARGET_POLL_MS;
-      if (quiet >= SETTLE_MS && store.run?.index === waitingOn) {
+      if (quiet >= SETTLE_MS && getStore().run?.index === waitingOn) {
         window.clearInterval(timer);
         go(1);
       }
@@ -329,8 +275,9 @@ export default function Walkthrough({ userId }: { userId: string }) {
   }, [finish, pathname, router]);
 
   const acceptOffer = useCallback(() => {
-    if (!store.offer) return;
-    start(store.offer, 'offer');
+    const { offer } = getStore();
+    if (!offer) return;
+    start(offer, 'offer');
     void sendAnswer('offer_accepted').then((ok) => {
       if (!ok) return;
       track('tour_offer_accepted');
@@ -339,7 +286,7 @@ export default function Walkthrough({ userId }: { userId: string }) {
   }, [start]);
 
   const dismissOffer = useCallback(() => {
-    if (!store.offer) return;
+    if (!getStore().offer) return;
     setStore({ offer: null });
     remind();
     void sendAnswer('offer_dismissed').then((ok) => ok && track('tour_offer_dismissed'));
@@ -437,7 +384,7 @@ function TourStepView(props: StepViewProps) {
   useEffect(() => {
     const target = step.target;
     const here = !destination || destination.split('?')[0] === pathname;
-    if (!store.run?.arrived && !here) {
+    if (!getStore().run?.arrived && !here) {
       onArrive();
       onGo(destination!);
       return;

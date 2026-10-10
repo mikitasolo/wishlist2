@@ -1,12 +1,12 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useKnownSession } from '@/lib/hooks/useKnownSession';
 import AppHeader from '@/components/AppHeader';
 import AuthButton from '@/components/AuthButton';
 import Button from '@/components/Button';
-import CreateWishlistModal from '@/components/CreateWishlistModal';
 import WishlistList, { ArchivedLists } from '@/components/WishlistList';
 import EmptyState from '@/components/EmptyState';
 import LoadError from '@/components/LoadError';
@@ -17,6 +17,8 @@ import { signInPath } from '@/lib/utils/callbackUrl';
 import { sortByUpcomingOccasion } from '@/lib/utils/occasion';
 import { pinnedFirst } from '@/lib/utils/pinnedLists';
 import { IWishlist } from '@/models/Wishlist';
+
+const CreateWishlistModal = dynamic(() => import('@/components/CreateWishlistModal'));
 
 type Wishlist = IWishlist & {
   ownerUsername?: string | null;
@@ -139,7 +141,7 @@ export default function MyWishlistsPage() {
           </div>
         )}
       </main>
-      <CreateWishlistModal isOpen={showCreate} onClose={() => setShowCreate(false)} />
+      {showCreate && <CreateWishlistModal isOpen onClose={() => setShowCreate(false)} />}
     </div>
   );
 }

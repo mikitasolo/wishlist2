@@ -1,11 +1,11 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useKnownSession } from '@/lib/hooks/useKnownSession';
 import AuthButton from '@/components/AuthButton';
 import AppHeader from '@/components/AppHeader';
-import CreateWishlistModal from '@/components/CreateWishlistModal';
 import { OPEN_NEW_LIST_EVENT } from '@/lib/utils/tourSteps';
 import ComingUp from '@/components/ComingUp';
 import NeedsYou from '@/components/NeedsYou';
@@ -23,10 +23,13 @@ import { useLocalToday } from '@/lib/hooks/useLocalToday';
 import { usePinToTop } from '@/lib/hooks/usePinToTop';
 import type { FriendBirthday } from '@/lib/utils/comingUp';
 import { sortByUpcomingOccasion, type OccasionKind } from '@/lib/utils/occasion';
-import StartFromListModal, { archiveList } from '@/components/StartFromListModal';
 import { NEW_LIST_PARAM, olderBirthdayLists } from '@/lib/utils/birthdayNudge';
 import { pinnedFirst } from '@/lib/utils/pinnedLists';
 import { IWishlist } from '@/models/Wishlist';
+
+// Dialogs that only open on a click load their code then (WIS-438).
+const CreateWishlistModal = dynamic(() => import('@/components/CreateWishlistModal'));
+const StartFromListModal = dynamic(() => import('@/components/StartFromListModal'));
 
 type Wishlist = IWishlist & {
   ownerUsername?: string | null;
@@ -271,18 +274,21 @@ export default function Dashboard() {
           </Button>
         </header>
 
-        <CreateWishlistModal
-          isOpen={showCreateModal}
-          onClose={() => setShowCreateModal(false)}
-          occasionKind={createKind}
-          startFrom={startFromOffer}
-        />
+        {showCreateModal && (
+          <CreateWishlistModal
+            isOpen
+            onClose={() => setShowCreateModal(false)}
+            occasionKind={createKind}
+            startFrom={startFromOffer}
+          />
+        )}
         {startFromId && (
           <StartFromListModal
             sourceId={startFromId}
             isOpen
             onClose={() => setStartFromId(null)}
             onArchiveSource={async () => {
+              const { archiveList } = await import('@/components/StartFromListModal');
               const archived = await archiveList(startFromId, showToast);
               if (archived)
                 setOwned((all) =>

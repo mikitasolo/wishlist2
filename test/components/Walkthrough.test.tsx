@@ -23,11 +23,8 @@ vi.mock('next/navigation', () => ({
 vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }));
 vi.mock('@/lib/analytics', () => ({ track }));
 
-import Walkthrough, {
-  resetWalkthroughForTests,
-  TOUR_AGAIN_TOAST,
-  tourListCreated,
-} from '@/components/Walkthrough';
+import Walkthrough, { TOUR_AGAIN_TOAST } from '@/components/Walkthrough';
+import { resetWalkthroughForTests, tourListCreated } from '@/components/walkthroughStore';
 import TourSetting from '@/components/TourSetting';
 import type { WalkthroughStatus } from '@/lib/utils/walkthrough';
 

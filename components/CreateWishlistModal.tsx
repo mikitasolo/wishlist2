@@ -1,7 +1,7 @@
 'use client';
 
 import { track } from '@/lib/analytics';
-import { tourListCreated } from '@/components/Walkthrough';
+import { tourListCreated } from '@/components/walkthroughStore';
 import { useState, useEffect, useCallback, useId } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';

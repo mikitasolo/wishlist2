@@ -1,5 +1,6 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, usePathname, useSearchParams } from 'next/navigation';
 import { signIn } from 'next-auth/react';
@@ -13,7 +14,6 @@ import Icon from '@/components/Icon';
 import ShareButton from '@/components/ShareButton';
 import FollowListModal, { type FollowTab } from '@/components/FollowListModal';
 import TagIntoGroups from '@/components/TagIntoGroups';
-import CreateWishlistModal from '@/components/CreateWishlistModal';
 import Button from '@/components/Button';
 import GlobalSearch from '@/components/GlobalSearch';
 import Badge from '@/components/Badge';
@@ -36,6 +36,8 @@ import {
   formatBirthday,
   type BirthdayVisibility,
 } from '@/lib/utils/birthday';
+
+const CreateWishlistModal = dynamic(() => import('@/components/CreateWishlistModal'));
 
 interface Profile {
   _id: string;
@@ -522,8 +524,8 @@ export default function UserProfile() {
         )}
       </main>
 
-      {profile?.isSelf && (
-        <CreateWishlistModal isOpen={showCreate} onClose={() => setShowCreate(false)} />
+      {profile?.isSelf && showCreate && (
+        <CreateWishlistModal isOpen onClose={() => setShowCreate(false)} />
       )}
 
       {followModal && profile && (

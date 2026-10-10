@@ -1,5 +1,6 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import {
   useCallback,
   useEffect,
@@ -19,7 +20,6 @@ import AppHeader from '@/components/AppHeader';
 import AuthButton from '@/components/AuthButton';
 import Avatar from '@/components/Avatar';
 import Button from '@/components/Button';
-import CreateWishlistModal from '@/components/CreateWishlistModal';
 import EmptyState from '@/components/EmptyState';
 import FollowListModal from '@/components/FollowListModal';
 import Icon from '@/components/Icon';
@@ -45,6 +45,8 @@ import {
   showsActor,
   withInviteAnswers,
 } from '@/lib/utils/notifications';
+
+const CreateWishlistModal = dynamic(() => import('@/components/CreateWishlistModal'));
 
 /**
  * A notification's line, with any list's name in semibold. No spoiler mode
@@ -475,7 +477,7 @@ export default function ActivityPage() {
           onClose={() => setFollowersOpen(false)}
         />
       )}
-      <CreateWishlistModal isOpen={createOpen} onClose={() => setCreateOpen(false)} />
+      {createOpen && <CreateWishlistModal isOpen onClose={() => setCreateOpen(false)} />}
     </div>
   );
 }
