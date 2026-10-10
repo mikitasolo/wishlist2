@@ -48,7 +48,7 @@ export interface INotification extends Document {
   // "invited you to co-own …". Absent on rows written before it (WIS-273), which
   // read as a plain invite.
   inviteRole?: InviteRole | null;
-  // `occasion_reminder` only: the occasion's kind and the occurrence it's about
+  // `occasion_reminder` (and WIS-384's `gift_reminder` / `gift_nudge`): the occasion's kind and the occurrence it's about
   // (a real `YYYY-MM-DD`: a yearly occasion's next one, never its stored
   // year). With `user` and `wishlist` it's what makes a reminder once-only
   // (the unique index below).
@@ -141,6 +141,20 @@ NotificationSchema.index(
 NotificationSchema.index(
   { user: 1, wishlist: 1, occasionDate: 1 },
   { unique: true, partialFilterExpression: { type: 'occasion_reminder' } }
+);
+
+// One reminder about what you've reserved per person per list per occurrence
+// (WIS-384), before the occasion and after it, each its own key: the daily run
+// writes them as upserts (`createGiftReminders`, lib/utils/giftReminders.ts).
+// Named: they share the occasion reminder's key pattern, told apart by their
+// filters, and the generated name would collide.
+NotificationSchema.index(
+  { user: 1, wishlist: 1, occasionDate: 1 },
+  { unique: true, partialFilterExpression: { type: 'gift_reminder' }, name: 'gift_reminder_once' }
+);
+NotificationSchema.index(
+  { user: 1, wishlist: 1, occasionDate: 1 },
+  { unique: true, partialFilterExpression: { type: 'gift_nudge' }, name: 'gift_nudge_once' }
 );
 
 // One birthday reminder per friend per person per occurrence (WIS-345): the

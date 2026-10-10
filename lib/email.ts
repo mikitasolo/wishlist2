@@ -11,6 +11,7 @@ import {
 import {
   notificationLink,
   notificationParts,
+  type GiftReminderNotificationType,
   type GroupGiftNotificationType,
   type NotificationView,
 } from './utils/notifications';
@@ -475,7 +476,8 @@ export type EmailedNotificationType =
   | 'birthday_reminder'
   | 'wishlist_ask'
   | 'asked_list_made'
-  | GroupGiftNotificationType;
+  | GroupGiftNotificationType
+  | GiftReminderNotificationType;
 
 export interface NotificationEmailDetails {
   /** The recipient's account id, for the unsubscribe link (never shown). */
@@ -494,9 +496,9 @@ export interface NotificationEmailDetails {
   wishlistSlug?: string | null;
   /** `proposal_approved` and the group gift types: the item, as the in-app row names it. Free text. */
   itemName?: string | null;
-  /** `occasion_reminder` only. */
+  /** `occasion_reminder`, `gift_reminder` and `gift_nudge`. */
   occasionKind?: OccasionKind | null;
-  /** `occasion_reminder` and `birthday_reminder`: the day it's about. */
+  /** Those three and `birthday_reminder`: the day it's about. */
   occasionDate?: string | null;
   /** `link_join` only: the share link's label, as its in-app row names it. Free text. */
   linkLabel?: string | null;
@@ -640,6 +642,20 @@ function notificationEmailCopy(
         subject: 'A group gift you were in was marked as given',
         heading: 'Your group gift was marked as given',
         button: 'Open the wishlist',
+      };
+    // WIS-384: to whoever holds a reservation on the list only. The list is
+    // free text: in the body only. Neither names an item or a count.
+    case 'gift_reminder':
+      return {
+        subject: 'A reminder about what you’ve reserved',
+        heading: 'Don’t forget what you reserved',
+        button: 'Open Reserved',
+      };
+    case 'gift_nudge':
+      return {
+        subject: 'Did you give what you reserved?',
+        heading: 'Don’t forget to mark it as given',
+        button: 'Open Reserved',
       };
   }
 }

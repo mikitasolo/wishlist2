@@ -50,6 +50,7 @@ describe('vercel.json', () => {
     // Daily: a reminder is due a week before, with a two-day catch-up (WIS-193).
     expect(crons).toContainEqual({ path: '/api/cron/occasion-reminders', schedule: '0 6 * * *' });
     expect(crons).toContainEqual({ path: '/api/cron/birthdays', schedule: '15 6 * * *' });
+    expect(crons).toContainEqual({ path: '/api/cron/gift-reminders', schedule: '30 6 * * *' });
     for (const cron of crons) {
       const [minute, hour] = cron.schedule.split(' ');
       expect(/^\d+$/.test(minute) && /^\d+$/.test(hour)).toBe(true);

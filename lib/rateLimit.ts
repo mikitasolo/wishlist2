@@ -165,6 +165,9 @@ const SPECS = {
   // WIS-364: every group gift email, one budget (a join's is also coalesced to
   // one per group gift a day, `claimGroupGiftJoinEmail`).
   emailGroupGift: { tokens: 10, window: '1 h', policy: 'fail-closed', keyKind: 'user' },
+  // WIS-384: the reminders about what you've reserved, before and after an
+  // occasion, one budget; once per list and occurrence by their claims.
+  emailGiftReminder: { tokens: 10, window: '1 d', policy: 'fail-closed', keyKind: 'user' },
   // WIS-344: once a year by its claim; this only backs that up.
   emailBirthdayNudge: { tokens: 2, window: '1 d', policy: 'fail-closed', keyKind: 'user' },
 } satisfies Record<string, LimiterSpec>;

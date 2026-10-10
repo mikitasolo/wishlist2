@@ -190,6 +190,47 @@ describe('Activity', () => {
     }
   });
 
+  // WIS-384: a reminder about what you reserved is a reservation surface too.
+  it('hides what a gift reminder says in No spoiler mode, and shows it again after', async () => {
+    serve([
+      row({
+        _id: 'n-before',
+        type: 'gift_reminder',
+        wishlistName: 'Kitchen',
+        wishlistSlug: 'kitchen',
+        wishlistId: 'w1',
+        occasionKind: 'birthday',
+        occasionDate: '2026-10-17',
+      }),
+      row({
+        _id: 'n-after',
+        type: 'gift_nudge',
+        wishlistName: 'Garden',
+        wishlistSlug: 'garden',
+        wishlistId: 'w2',
+        occasionKind: 'wedding',
+        occasionDate: '2026-10-02',
+      }),
+    ]);
+    act(() => setDiscreetMode(true));
+    try {
+      render(<ActivityPage />);
+      expect(await screen.findAllByText('A gift reminder, hidden by No spoiler mode')).toHaveLength(
+        2
+      );
+      expect(document.body.textContent).not.toContain('Kitchen');
+      expect(document.body.textContent).not.toContain('Garden');
+      expect(document.body.textContent).not.toMatch(/reserved on/);
+      expect(document.querySelector('a[href="/booked"]')).toBeNull();
+      act(() => setDiscreetMode(false));
+      await line('Did you give what you reserved on Garden? Mark it as given on Reserved');
+      expect(document.body.textContent).toMatch(/don’t forget what you reserved on Kitchen/);
+      expect(document.querySelectorAll('a[href="/booked"]')).toHaveLength(2);
+    } finally {
+      act(() => setDiscreetMode(false));
+    }
+  });
+
   it('shows an answered invite as the answer, linking only an accepted one', async () => {
     serve([
       row({
