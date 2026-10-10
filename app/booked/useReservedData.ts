@@ -27,7 +27,7 @@ import type { Gift, Reservation } from './types';
  * owner's status change, deleted), they're no longer a member, or the list has
  * been archived. A 429, a 5xx or a network failure is worth retrying instead.
  */
-export const RELEASE_REFUSED = new Set([400, 403, 404, 409]);
+const RELEASE_REFUSED = new Set([400, 403, 404, 409]);
 
 /**
  * What the page says when a Release finds the card out of date: true of every

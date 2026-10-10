@@ -94,7 +94,7 @@ export default function BookedPage() {
       <main className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
         <h1 className="text-3xl font-semibold tracking-tight text-foreground">Reserved by you</h1>
         <ReservedSummary
-          hasReservations={!loading && !loadFailed && reservations.length > 0}
+          showSummary={!loading && !loadFailed && reservations.length > 0}
           toGiveCount={active.length}
           toReviewCount={needsConfirm.length}
           toGiveTotal={toGiveTotal}

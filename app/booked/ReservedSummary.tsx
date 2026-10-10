@@ -7,19 +7,19 @@ import type { totalInCurrency } from '@/lib/utils/reservations';
  * do at a glance, or the page's introduction while there's nothing to sum up.
  */
 export default function ReservedSummary({
-  hasReservations,
+  showSummary,
   toGiveCount,
   toReviewCount,
   toGiveTotal,
 }: {
   /** Both lists have loaded and at least one reservation is on the page. */
-  hasReservations: boolean;
+  showSummary: boolean;
   toGiveCount: number;
   toReviewCount: number;
   toGiveTotal: ReturnType<typeof totalInCurrency>;
 }) {
   const locale = useViewerLocale();
-  if (!hasReservations) {
+  if (!showSummary) {
     return (
       <p className="mt-1 text-muted-foreground">
         Gifts you’ve reserved across everyone’s wishlists. When you’ve given one, mark it as given
