@@ -344,7 +344,7 @@ describe('a list that couldn’t be loaded', () => {
       ).toBeInTheDocument();
       // No counts or controls that would say the list is empty, and no toast.
       expect(screen.queryByRole('combobox', { name: 'Sort items by' })).toBeNull();
-      expect(screen.queryByRole('textbox', { name: 'Search items by name' })).toBeNull();
+      expect(screen.queryByRole('textbox', { name: 'Search items' })).toBeNull();
       expect(screen.queryByText('No items found')).toBeNull();
       await settle();
       expectStayedHere();
@@ -358,7 +358,7 @@ describe('a list that couldn’t be loaded', () => {
       expect(screen.queryByRole('heading', { name: 'Couldn’t load this list’s items' })).toBeNull();
       // The counts and controls are back with the items.
       expect(screen.getByRole('combobox', { name: 'Sort items by' })).toBeInTheDocument();
-      expect(screen.getByRole('textbox', { name: 'Search items by name' })).toBeInTheDocument();
+      expect(screen.getByRole('textbox', { name: 'Search items' })).toBeInTheDocument();
       expectStayedHere();
     }
   );

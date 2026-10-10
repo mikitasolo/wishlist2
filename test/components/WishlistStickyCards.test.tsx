@@ -181,8 +181,8 @@ describe('a member', () => {
     expect(shown()).toEqual(['Mug', 'Lamp', 'Kettle']);
 
     // A new search lets it go to its group.
-    await user.type(screen.getByLabelText('Search items by name'), 'm');
-    await user.clear(screen.getByLabelText('Search items by name'));
+    await user.type(screen.getByLabelText('Search items'), 'm');
+    await user.clear(screen.getByLabelText('Search items'));
     expect(shown()).toEqual(['Lamp', 'Mug', 'Kettle']);
   });
 

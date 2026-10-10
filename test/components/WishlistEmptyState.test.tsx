@@ -160,7 +160,7 @@ const chip = (label: string) =>
 function expectNoCardsOrToolbar() {
   expect(screen.queryByRole('radiogroup', { name: 'Show items' })).toBeNull();
   expect(screen.queryByRole('radio')).toBeNull();
-  expect(screen.queryByRole('textbox', { name: 'Search items by name' })).toBeNull();
+  expect(screen.queryByRole('textbox', { name: 'Search items' })).toBeNull();
   expect(screen.queryByRole('combobox', { name: 'Sort items by' })).toBeNull();
   expect(screen.queryByRole('combobox', { name: 'Show prices in' })).toBeNull();
 }
@@ -274,7 +274,7 @@ describe('a list with no items at all', () => {
 
     await waitFor(() => expect(shown()).toEqual(['Lamp']));
     expect(screen.queryByRole('heading', { name: 'Your list is empty' })).toBeNull();
-    expect(screen.getByRole('textbox', { name: 'Search items by name' })).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Search items' })).toBeInTheDocument();
     expect(chip('All')).toHaveAccessibleName('All 1');
     expect(chip('All')).toBeChecked();
     // Add item in the header, and the grid's tile in front of the new card.
@@ -289,7 +289,7 @@ describe('a list with no items at all', () => {
     const user = userEvent.setup();
     await open();
     await user.click(chip('Received'));
-    await user.type(screen.getByRole('textbox', { name: 'Search items by name' }), 'vase');
+    await user.type(screen.getByRole('textbox', { name: 'Search items' }), 'vase');
     expect(shown()).toEqual(['Vase']);
 
     // A co-owner deletes it, and the next poll finds the list empty.
@@ -302,7 +302,7 @@ describe('a list with no items at all', () => {
     await addFirstItem(user, 'Lamp');
 
     await waitFor(() => expect(shown()).toEqual(['Lamp']));
-    expect(screen.getByRole('textbox', { name: 'Search items by name' })).toHaveValue('');
+    expect(screen.getByRole('textbox', { name: 'Search items' })).toHaveValue('');
     expect(chip('All')).toBeChecked();
     expect(chip('Received')).not.toBeChecked();
   });
@@ -376,12 +376,12 @@ describe('a list whose items are all filtered out', () => {
     const user = userEvent.setup();
     await open();
 
-    await user.type(screen.getByRole('textbox', { name: 'Search items by name' }), 'bike');
+    await user.type(screen.getByRole('textbox', { name: 'Search items' }), 'bike');
     expect(shown()).toEqual([]);
     expect(screen.getByText('No items match “bike”.')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Show all' }));
-    expect(screen.getByRole('textbox', { name: 'Search items by name' })).toHaveValue('');
+    expect(screen.getByRole('textbox', { name: 'Search items' })).toHaveValue('');
     // Under All, live items come before received ones.
     expect(shown()).toEqual(['Lamp', 'Vase']);
   });

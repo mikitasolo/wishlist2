@@ -8,7 +8,7 @@ import EmptyState from '@/components/EmptyState';
 import FilterChips from '@/components/FilterChips';
 import Icon from '@/components/Icon';
 import LoadError from '@/components/LoadError';
-import SearchField from '@/components/SearchField';
+import ListSearch from '@/components/ListSearch';
 import Select from '@/components/Select';
 import ShareButton from '@/components/ShareButton';
 import { ITEM_GRID_CLASSES, ListControlsSkeleton, SkeletonGrid } from '@/components/Skeleton';
@@ -160,15 +160,7 @@ export default function WishlistItemsTab({
                 {/* Toolbar: search, Sort, and Prices when it changes anything. One
                   row, search taking what Sort and Prices leave; Budget wraps. */}
                 <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap sm:gap-3">
-                  <SearchField
-                    size="sm"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    onClear={() => setSearchQuery('')}
-                    placeholder="Search items"
-                    aria-label="Search items by name"
-                    className="min-w-[6rem] flex-1"
-                  />
+                  <ListSearch value={searchQuery} onChange={setSearchQuery} />
                   <Select
                     value={sortBy}
                     onChange={handleSortChange}
