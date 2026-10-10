@@ -8,6 +8,7 @@ import { flushUndoableActions } from '@/lib/hooks/useUndoableAction';
 import { clearPendingRequests } from '@/lib/utils/requestDeduplication';
 import { SHARE_TOKEN_HEADER } from '@/lib/utils/shareLinkFields';
 import type { ApiItem } from '@/types/api';
+import { returnToTab } from '@/test/returnToTab';
 
 function item(id: string, status: ApiItem['status'], extra: Partial<ApiItem> = {}): ApiItem {
   return {
@@ -64,11 +65,9 @@ function setup(overrides: Partial<WishlistItemsOptions> = {}) {
   return { ...hook, options };
 }
 
-/** A tab return, which reads the list in the background like the 5s poll. */
+/** A tab return (hidden, then shown), which reads the list in the background like the 5s poll. */
 function poll() {
-  act(() => {
-    document.dispatchEvent(new Event('visibilitychange'));
-  });
+  act(() => returnToTab());
 }
 
 beforeEach(() => {
@@ -78,7 +77,8 @@ beforeEach(() => {
   onReadFailed.mockReset();
   updateItem.mockReset();
   vi.stubGlobal('fetch', fetchMock);
-  Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
+  vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+  Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' });
 });
 
 afterEach(() => {
@@ -209,6 +209,60 @@ describe('useWishlistItems', () => {
     });
     expect(result.current.items[0]).toMatchObject({ status: 'booked', bookedBy: 'me' });
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+  });
+
+  // WIS-376: the poll runs through the shared useLiveRead. It used to tick on
+  // while the tab was hidden (skipping the read), and never read on focus.
+  it('polls every 5 s only while the tab is visible, and reads on a return from away', async () => {
+    vi.useFakeTimers();
+    let visibility: DocumentVisibilityState = 'visible';
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => visibility,
+    });
+    const flush = (ms = 0) =>
+      act(async () => {
+        await vi.advanceTimersByTimeAsync(ms);
+      });
+    try {
+      fetchMock.mockImplementation(async () => ok([item('a', 'available')]));
+      const { result } = setup();
+      await flush();
+      expect(result.current.itemsLoaded).toBe(true);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+
+      await flush(5000);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+
+      visibility = 'hidden';
+      act(() => {
+        document.dispatchEvent(new Event('visibilitychange'));
+      });
+      await flush(30_000);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+
+      visibility = 'visible';
+      act(() => {
+        document.dispatchEvent(new Event('visibilitychange'));
+        // The same return's focus: no second read.
+        window.dispatchEvent(new Event('focus'));
+      });
+      await flush();
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+
+      // A focus while it was on screen all along: the poll has it covered.
+      await flush(2000);
+      act(() => {
+        window.dispatchEvent(new Event('focus'));
+      });
+      await flush();
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      await flush(3000);
+      expect(fetchMock).toHaveBeenCalledTimes(4);
+      expect(result.current.items.map((i) => i._id)).toEqual(['a']);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   // WIS-387: a deferred change shows at once and is sent only when flushed;

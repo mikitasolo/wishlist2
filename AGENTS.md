@@ -165,7 +165,7 @@ Read it before touching roles, invites, bookings, visibility, notifications or a
 ### [Screens & client behaviour](docs/agents/screens.md)
 
 - **A failed read is never shown as empty** (`LoadError`); later failed reads keep what's shown.
-- **Mutations are optimistic** and survive the 5s poll (`updateItemOptimistically`, `mutations.track`, `withRequestTimeout`, idempotency keys); per-card actions use `useBusyIds`.
+- **Live reads** go through `useLiveRead` (polling only while visible, a read on return, no answer cache); **mutations are optimistic** and survive the 5s poll (`updateItemOptimistically`, `mutations.track`, `withRequestTimeout`, idempotency keys); per-card actions use `useBusyIds`.
 - **Destructive actions offer Undo** (WIS-387): shown at once, sent after the 5s Undo window through `useUndoableAction` (deferred commit, flushed with `keepalive` when the page goes away), so an undone kick, release or delete never sent anything; a confirmation stays only where Undo can't be honest (account and list deletion, leaving or archiving a list, Mark as given).
 - **Group gifts on the item card** (WIS-362): members only, optimistic through `handleGroupGift` / `groupGiftClient.ts`, hidden by discreet mode; details in screens.md.
 - **Navigation** lives in `AppHeader` (Home · Reserved · Activity · Me); the header holds its shape while the session loads; read the session with `useKnownSession`.

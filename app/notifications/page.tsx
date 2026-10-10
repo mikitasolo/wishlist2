@@ -12,6 +12,7 @@ import {
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useKnownSession } from '@/lib/hooks/useKnownSession';
+import { useRefreshOnReturn } from '@/lib/hooks/useLiveRead';
 import { useDiscreetMode } from '@/lib/hooks/useDiscreetMode';
 import { useLocalToday } from '@/lib/hooks/useLocalToday';
 import AppHeader from '@/components/AppHeader';
@@ -230,20 +231,21 @@ export default function ActivityPage() {
     }
   }, []);
 
-  // Load, then read again whenever the tab regains focus or invites change (an
-  // answer here or in another tab, a card gone), as the invitations above do,
-  // so a row and its card agree.
+  // Load, then read again whenever the viewer comes back to the tab (or the
+  // browser back online) or invites change (an answer here or in another tab,
+  // a card gone), as the invitations above do, so a row and its card agree.
+  // No timed poll (WIS-376): every feed read with something unread marks it
+  // all read, so a poll would clear the badge for rows nobody looked at.
+  const refreshFeed = useCallback(() => void loadFeed(true), [loadFeed]);
   useEffect(() => {
     if (status !== 'authenticated') return;
-    const refresh = () => loadFeed(true);
     loadFeed(false);
-    window.addEventListener('focus', refresh);
-    window.addEventListener('invites-changed', refresh);
+    window.addEventListener('invites-changed', refreshFeed);
     return () => {
-      window.removeEventListener('focus', refresh);
-      window.removeEventListener('invites-changed', refresh);
+      window.removeEventListener('invites-changed', refreshFeed);
     };
-  }, [status, viewerId, loadFeed]);
+  }, [status, viewerId, loadFeed, refreshFeed]);
+  useRefreshOnReturn(refreshFeed, { enabled: status === 'authenticated' });
 
   const retryFeed = useCallback(() => {
     setFeedFailed(false);

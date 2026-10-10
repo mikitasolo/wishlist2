@@ -8,9 +8,10 @@ import { ITEM_REQUEST_TIMEOUT_MS, REQUEST_TIMEOUT_MESSAGE } from '../lib/utils/r
 // again straight away when a read turns out stale. These specs pin the order in
 // which a read and an add, proposal, delete or update land, and that the page
 // itself sends the read that follows a stale one, so the page is told it's
-// hidden from the start (it skips every timer tick) and each poll is fired by
-// hand with a visibilitychange. A tick would read the list on its own, and hide
-// whether the page did.
+// hidden from the start (its poll timer never starts) and each poll is fired by
+// hand as a reconnect (offline, then online, which reads on return without a
+// visibilitychange starting the timer). A tick would read the list on its own,
+// and hide whether the page did.
 async function takeOverPolling(page: Page) {
   await page.addInitScript(() => {
     let state: DocumentVisibilityState = 'hidden';
@@ -18,9 +19,12 @@ async function takeOverPolling(page: Page) {
       configurable: true,
       get: () => state,
     });
+    // A return is read only in a focused window.
+    document.hasFocus = () => true;
     (window as unknown as { __pollOnce: () => void }).__pollOnce = () => {
       state = 'visible';
-      document.dispatchEvent(new Event('visibilitychange'));
+      window.dispatchEvent(new Event('offline'));
+      window.dispatchEvent(new Event('online'));
       state = 'hidden';
     };
   });

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, onTestFinished } from 'vitest';
 import { render, screen, cleanup, within, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { NotificationView } from '@/lib/utils/notifications';
@@ -569,6 +569,37 @@ describe('Activity feed structure', () => {
       await new Promise((r) => setTimeout(r, 50));
     });
     expect(within(li).getByLabelText('Unread')).toBeInTheDocument();
+  });
+
+  // WIS-376: returns go through the shared useRefreshOnReturn.
+  it('reads the feed once for a return that fires both events, and when back online', async () => {
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/notifications?actors=1') {
+        return json({ success: true, data: [], unreadCount: 0 });
+      }
+      if (url === '/api/users/me/invites') return json({ success: true, data: [] });
+      throw new Error(`unexpected fetch ${url} ${init?.method}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    // Back online counts only in a focused window (jsdom has none).
+    const focused = vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+    onTestFinished(() => focused.mockRestore());
+    const feedReads = () =>
+      fetchMock.mock.calls.filter(([url]) => url === '/api/notifications?actors=1').length;
+    render(<ActivityPage />);
+    await screen.findByText('Nothing here yet');
+    expect(feedReads()).toBe(1);
+
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'));
+      window.dispatchEvent(new Event('focus'));
+    });
+    await waitFor(() => expect(feedReads()).toBe(2));
+
+    act(() => {
+      window.dispatchEvent(new Event('online'));
+    });
+    await waitFor(() => expect(feedReads()).toBe(3));
   });
 
   it('shows no Notifications heading with no rows', async () => {

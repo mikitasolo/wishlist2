@@ -34,6 +34,7 @@ vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }
 
 import WishlistDetail from '@/app/wishlists/[id]/page';
 import { pickLeave } from './listMenu';
+import { returnToTab } from '@/test/returnToTab';
 
 /** How the fake server answers a read: a status and JSON body, or a network failure. */
 type Answer = { status: number; body: unknown } | Error;
@@ -161,11 +162,8 @@ afterEach(() => {
 /** Let reads whose answers the page has taken finish landing. */
 const settle = () => act(() => new Promise((resolve) => setTimeout(resolve, 0)));
 
-/** Fire a background poll now, as the page does when it becomes visible. */
-const poll = () =>
-  act(() => {
-    document.dispatchEvent(new Event('visibilitychange'));
-  });
+/** Fire a background poll now, as the page does on coming back to the tab. */
+const poll = () => act(() => returnToTab());
 
 const SIGNED_IN_TITLE = 'This wishlist isn’t available to you';
 const SIGNED_OUT_TITLE = 'This wishlist isn’t available';

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useKnownSession } from '@/lib/hooks/useKnownSession';
+import { useRefreshOnReturn } from '@/lib/hooks/useLiveRead';
 
 /**
  * Window events that have the count read again, besides a return to the tab:
@@ -18,7 +19,7 @@ export const UNREAD_REFRESH_EVENTS = ['notifications-changed', 'invites-changed'
  * one reader per page, not one per badge.
  *
  * Kept fresh without polling: read when someone signs in and whenever another
- * account does, then again on every focus and on `UNREAD_REFRESH_EVENTS`.
+ * account does, then again on every return (`useRefreshOnReturn`) and on `UNREAD_REFRESH_EVENTS`.
  * Visiting Activity marks everything read and fires `notifications-changed`,
  * so the badge clears there.
  *
@@ -65,17 +66,16 @@ export function useUnreadNotifications(): number {
     }
   }, []);
 
+  const onRefresh = useCallback(() => void refresh(), [refresh]);
   useEffect(() => {
     if (status !== 'authenticated') return;
-    const onRefresh = () => void refresh();
     onRefresh();
-    window.addEventListener('focus', onRefresh);
     for (const event of UNREAD_REFRESH_EVENTS) window.addEventListener(event, onRefresh);
     return () => {
-      window.removeEventListener('focus', onRefresh);
       for (const event of UNREAD_REFRESH_EVENTS) window.removeEventListener(event, onRefresh);
     };
-  }, [status, userId, refresh]);
+  }, [status, userId, onRefresh]);
+  useRefreshOnReturn(onRefresh, { enabled: status === 'authenticated' });
 
   return userId !== null && unread.account === userId ? unread.count : 0;
 }

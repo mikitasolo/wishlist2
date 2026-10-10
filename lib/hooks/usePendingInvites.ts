@@ -5,6 +5,7 @@ import { withWelcomeMarker } from '@/lib/utils/memberWelcome';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useKnownSession } from '@/lib/hooks/useKnownSession';
+import { useRefreshOnReturn } from '@/lib/hooks/useLiveRead';
 import { useToast } from '@/components/ToastProvider';
 import { useUndoableAction } from '@/lib/hooks/useUndoableAction';
 import { restoreRemoved } from '@/lib/utils/deferredCommit';
@@ -34,7 +35,7 @@ interface PendingInvitesOptions {
  * offers them (the dashboard's "Needs you", WIS-252) uses this hook the same way.
  *
  * Kept fresh without polling: read on sign-in and whenever another account
- * signs in, then again on every focus and `invites-changed` event. A read sent
+ * signs in, then again on every return (`useRefreshOnReturn`) and `invites-changed` event. A read sent
  * while an answer was in flight, or before one landed, may predate it, so it
  * would bring back the card that answer just took off, or take off the card
  * still waiting on it. Such a read is dropped, and the list is read again once
@@ -125,20 +126,19 @@ export function usePendingInvites({ onAnswered }: PendingInvitesOptions = {}) {
     load(false);
   }, [load]);
 
+  const refresh = useCallback(() => load(true), [load]);
   useEffect(() => {
     if (status !== 'authenticated') return;
     const tracker = answerTracker.current;
-    const refresh = () => load(true);
     load(false);
     tracker.setReread(refresh);
-    window.addEventListener('focus', refresh);
     window.addEventListener('invites-changed', refresh);
     return () => {
       tracker.setReread(null);
-      window.removeEventListener('focus', refresh);
       window.removeEventListener('invites-changed', refresh);
     };
-  }, [status, userId, load]);
+  }, [status, userId, load, refresh]);
+  useRefreshOnReturn(refresh, { enabled: status === 'authenticated' });
 
   // Leaving the page forgets the accepts still in flight, so one landing (or
   // failing) after the user went elsewhere never pulls them onto a list.

@@ -15,6 +15,7 @@ import { useCallback } from 'react';
 import { ApiItem, ApiResponse, type ItemUpdate } from '@/types/api';
 import { deduplicateRequest, createRequestKey } from '@/lib/utils/requestDeduplication';
 import { withRequestTimeout } from '@/lib/utils/requestTimeout';
+import { sharedRead } from '@/lib/hooks/useLiveRead';
 import { IDEMPOTENCY_HEADER } from '@/lib/utils/submissionKey';
 import { isRefusal, ReadRefusedError } from '@/lib/utils/resourceRead';
 import {
@@ -287,9 +288,8 @@ export function useFetchItems() {
     async (wishlistId: string, stamp: () => number, init?: RequestInit): Promise<ItemsRead> => {
       const requestKey = createRequestKey(`/api/wishlists/${wishlistId}/items`, 'GET');
 
-      return deduplicateRequest(requestKey, () =>
+      const { data, sentAt } = await sharedRead(requestKey, stamp, () =>
         withRequestTimeout(async (signal) => {
-          const sentAt = stamp();
           const response = await fetch(`/api/wishlists/${wishlistId}/items`, {
             ...init,
             cache: 'no-store',
@@ -306,9 +306,10 @@ export function useFetchItems() {
             throw new Error(result.error || 'Failed to fetch items');
           }
 
-          return { items: result.data, sentAt };
+          return result.data;
         })
       );
+      return { items: data, sentAt };
     },
     []
   );

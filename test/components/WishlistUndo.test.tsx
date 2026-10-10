@@ -31,6 +31,7 @@ vi.mock('@/components/ImageUpload', () => ({
 
 import WishlistDetail from '@/app/wishlists/[id]/page';
 import { flushUndoableActions } from '@/lib/hooks/useUndoableAction';
+import { reconnect } from '@/test/returnToTab';
 
 let userRole: 'owner' | 'member';
 let listItems: ApiItem[];
@@ -142,11 +143,9 @@ function undoToast(message: string) {
   return options.action;
 }
 
-/** A tab return, which reads the list in the background like the 5s poll. */
+/** Back online (not a hidden tab, which would send the delete), which reads the list in the background like the 5s poll. */
 async function poll() {
-  await act(async () => {
-    document.dispatchEvent(new Event('visibilitychange'));
-  });
+  await act(async () => reconnect());
   await act(async () => {});
 }
 
