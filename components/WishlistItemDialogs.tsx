@@ -1,14 +1,17 @@
 'use client';
 
-import AddItemModal from '@/components/AddItemModal';
-import EditItemModal from '@/components/EditItemModal';
-import ProposeItemModal from '@/components/ProposeItemModal';
-import ReviewItemModal from '@/components/ReviewItemModal';
-import SaveToListModal from '@/components/SaveToListModal';
+import { lazyDialog } from '@/components/lazyDialog';
 import type { ItemDialogsControl } from '@/lib/hooks/useItemDialogs';
 import type { WishlistItemActions } from '@/lib/hooks/useWishlistItemActions';
 import type { WishlistItemsControl } from '@/lib/hooks/useWishlistItems';
 import { proposalReviewState } from '@/lib/utils/proposalReview';
+
+// Each opens on a click and shares ItemForm, so they load together then (WIS-438).
+const AddItemModal = lazyDialog(() => import('@/components/AddItemModal'));
+const EditItemModal = lazyDialog(() => import('@/components/EditItemModal'));
+const ProposeItemModal = lazyDialog(() => import('@/components/ProposeItemModal'));
+const ReviewItemModal = lazyDialog(() => import('@/components/ReviewItemModal'));
+const SaveToListModal = lazyDialog(() => import('@/components/SaveToListModal'));
 
 export interface WishlistItemDialogsProps {
   dialogs: ItemDialogsControl;

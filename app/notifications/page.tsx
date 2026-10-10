@@ -1,5 +1,6 @@
 'use client';
 
+import { CreateWishlistModal } from '@/components/lazyModals';
 import {
   useCallback,
   useEffect,
@@ -20,7 +21,6 @@ import AppHeader from '@/components/AppHeader';
 import AuthButton from '@/components/AuthButton';
 import Avatar from '@/components/Avatar';
 import Button from '@/components/Button';
-import CreateWishlistModal from '@/components/CreateWishlistModal';
 import EmptyState from '@/components/EmptyState';
 import FollowListModal from '@/components/FollowListModal';
 import Icon from '@/components/Icon';
@@ -487,7 +487,7 @@ export default function ActivityPage() {
           onClose={() => setFollowersOpen(false)}
         />
       )}
-      <CreateWishlistModal isOpen={createOpen} onClose={() => setCreateOpen(false)} />
+      {createOpen && <CreateWishlistModal isOpen onClose={() => setCreateOpen(false)} />}
     </div>
   );
 }

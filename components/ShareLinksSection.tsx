@@ -1,6 +1,6 @@
 'use client';
 
-import dynamic from 'next/dynamic';
+import { lazyDialog } from '@/components/lazyDialog';
 import { useId, useImperativeHandle, useRef, useState, type Ref } from 'react';
 import Badge from '@/components/Badge';
 import Button from '@/components/Button';
@@ -23,7 +23,7 @@ import { plural } from '@/lib/utils/plural';
 import type { Visibility } from '@/lib/utils/visibility';
 
 // The details dialog draws the QR code (uqr); it loads when a link is opened.
-const ShareLinkDetailsDialog = dynamic(() => import('@/components/ShareLinkDetailsDialog'));
+const ShareLinkDetailsDialog = lazyDialog(() => import('@/components/ShareLinkDetailsDialog'));
 
 /** What the page can ask of the section: the Share menu's Share links goes here. */
 export interface ShareLinksSectionHandle {

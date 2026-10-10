@@ -1,7 +1,7 @@
 'use client';
 
+import { StartFromListModal } from '@/components/lazyModals';
 import ConfirmDialog from '@/components/ConfirmDialog';
-import StartFromListModal from '@/components/StartFromListModal';
 import { ARCHIVE_EXPLANATION } from '@/components/WishlistSettingsTab';
 import type { WishlistListActions } from '@/lib/hooks/useWishlistListActions';
 import { deleteListCopy, memberLeaveCopy, ownerLeaveCopy } from '@/lib/utils/confirmationCopy';

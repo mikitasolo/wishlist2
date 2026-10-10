@@ -258,7 +258,8 @@ describe('UserProfile — with no wishlists to show', () => {
 
     expect(screen.queryByRole('dialog', { name: 'Create new wishlist' })).toBeNull();
     fireEvent.click(within(empty).getByRole('button', { name: 'New list' }));
-    expect(screen.getByRole('dialog', { name: 'Create new wishlist' })).toBeInTheDocument();
+    // The dialog's code loads on the first click (WIS-438).
+    expect(await screen.findByRole('dialog', { name: 'Create new wishlist' })).toBeInTheDocument();
   });
 
   // regression: the profile leaves archived lists out, so an owner whose lists

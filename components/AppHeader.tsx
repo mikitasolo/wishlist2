@@ -1,5 +1,6 @@
 'use client';
 
+import { lazyDialog } from '@/components/lazyDialog';
 import { ReactNode, useState } from 'react';
 import { useKnownSession } from '@/lib/hooks/useKnownSession';
 import BrandLink from '@/components/BrandLink';
@@ -8,7 +9,10 @@ import { HeaderNav, TabBar } from '@/components/AppNav';
 import { Skeleton } from '@/components/Skeleton';
 import NoSpoilerSwitch from '@/components/NoSpoilerSwitch';
 import { useUnreadNotifications } from '@/lib/hooks/useUnreadNotifications';
-import Walkthrough from '@/components/Walkthrough';
+
+// Most visits never run the guided walkthrough, and it renders nothing until
+// its status says it's due, so its code loads after the page does (WIS-438).
+const Walkthrough = lazyDialog(() => import('@/components/Walkthrough'), { quiet: true });
 
 interface AppHeaderProps {
   /** Right-aligned actions (e.g. AuthButton, wishlist-scoped buttons). */
