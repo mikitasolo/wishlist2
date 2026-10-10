@@ -1,26 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useLayoutEffect, useState } from 'react';
 import type { ViewerRole } from '@/lib/utils/itemStatus';
+import { useListUrlParam } from '@/lib/hooks/useListUrlParam';
 import { LIST_CHIP_PARAM, listChipFor, type ListChip } from '@/lib/utils/listChips';
-
-/** Whether the browser is on the page at `path` (`/wishlists/<id or slug>`). */
-function onPage(path: string): boolean {
-  try {
-    return decodeURIComponent(window.location.pathname) === path;
-  } catch {
-    return false;
-  }
-}
-
-/** Puts `chip` in the URL's `?show=` (All: takes it out), replacing the history entry. */
-function writeChipToUrl(chip: ListChip) {
-  const url = new URL(window.location.href);
-  if (chip === 'all') url.searchParams.delete(LIST_CHIP_PARAM);
-  else url.searchParams.set(LIST_CHIP_PARAM, chip);
-  // Next's router picks up a replaceState, and keeps its own state with it.
-  if (url.href !== window.location.href) window.history.replaceState(null, '', url);
-}
 
 /**
  * The status chip a list is shown on (`lib/utils/listChips.ts`). It's kept with
@@ -28,66 +10,26 @@ function writeChipToUrl(chip: ListChip) {
  * once the role has changed, starts on All: nothing carries over. It's never
  * saved. It goes into the URL instead (`?show=`, replacing the history entry),
  * so back and refresh come back to it, and a list opened at such a URL starts
- * on that chip if the role has it.
+ * on that chip if the role has it. The URL rules (only while it names the list
+ * on screen, put back under a new slug, re-read on back and forward) are
+ * `useListUrlParam`'s, which `useListSearch` shares.
  *
  * `list` is the list on screen (null until it has loaded), and `urlId` the id
- * or slug the page's URL names a list by. The URL is only read or written
- * while it names the list on screen: while the page moves on to another list,
- * the old list's chip must not land in the new one's URL. When the list's URL
- * changes under it (an owner gave it a new slug), the chip is put back in it.
+ * or slug the page's URL names a list by. Back or forward to another of this
+ * list's history entries (an owner's tabs push one each, `useListTab`) takes
+ * the chip that entry's URL says, as it would on a refresh.
  */
 export function useListChip(
   list: { id: string; slug?: string | null } | null,
   urlId: string | null,
   role: ViewerRole
 ): [ListChip, (chip: ListChip) => void] {
-  const scope = list ? `${list.id}:${role}` : null;
-  const path = urlId ? `/wishlists/${urlId}` : null;
-  // The URL is this list's page.
-  const urlIsList = !!list && !!urlId && (urlId === list.id || urlId === list.slug);
-  const [choice, setChoice] = useState<{ scope: string; chip: ListChip } | null>(null);
-
-  // Before paint, so a list opened at ?show= never shows a frame of All.
-  useLayoutEffect(() => {
-    if (!scope) return;
-    const ours = urlIsList && !!path && onPage(path);
-    if (choice?.scope !== scope) {
-      // A list (or role) the page hasn't shown yet starts on the URL's chip,
-      // if it's one of the role's, else on All.
-      const fromUrl = ours
-        ? new URLSearchParams(window.location.search).get(LIST_CHIP_PARAM)
-        : null;
-      setChoice({ scope, chip: listChipFor(fromUrl, role) });
-    } else if (ours && choice.chip !== 'all') {
-      // The same list at a new URL, which doesn't carry the chip.
-      writeChipToUrl(choice.chip);
-    }
-  }, [scope, path, role, urlIsList, choice]);
-
-  // Back or forward to another of this list's history entries (an owner's
-  // tabs push one each, `useListTab`): the chip is whatever that entry's URL
-  // says, as it would be on a refresh, so the two never disagree.
-  useEffect(() => {
-    if (!scope) return;
-    const onPopState = () => {
-      if (!urlIsList || !path || !onPage(path)) return;
-      const fromUrl = new URLSearchParams(window.location.search).get(LIST_CHIP_PARAM);
-      setChoice({ scope, chip: listChipFor(fromUrl, role) });
-    };
-    window.addEventListener('popstate', onPopState);
-    return () => window.removeEventListener('popstate', onPopState);
-  }, [scope, path, role, urlIsList]);
-
-  const chip = choice?.scope === scope ? choice.chip : 'all';
-
-  const choose = useCallback(
-    (next: ListChip) => {
-      if (!scope) return;
-      setChoice({ scope, chip: next });
-      if (urlIsList && path && onPage(path)) writeChipToUrl(next);
-    },
-    [scope, path, urlIsList]
-  );
-
-  return [chip, choose];
+  return useListUrlParam<ListChip>({
+    list,
+    urlId,
+    param: LIST_CHIP_PARAM,
+    scope: list ? `${list.id}:${role}` : null,
+    parse: (raw) => listChipFor(raw, role),
+    serialize: (chip) => (chip === 'all' ? null : chip),
+  });
 }
