@@ -42,13 +42,13 @@ describe('ImageUpload — compact photo row (the item form)', () => {
     expect(screen.queryByTestId('crop')).toBeNull();
   });
 
-  it('opens the crop step for a chosen file', () => {
+  it('opens the crop step for a chosen file', async () => {
     const { container } = render(<ImageUpload compact value={null} onChange={vi.fn()} />);
     const input = container.querySelector<HTMLInputElement>('input[type="file"]')!;
     fireEvent.change(input, {
       target: { files: [new File(['x'], 'gift.png', { type: 'image/png' })] },
     });
-    expect(screen.getByTestId('crop')).toHaveTextContent('gift.png');
+    expect(await screen.findByTestId('crop')).toHaveTextContent('gift.png');
   });
 
   it('takes an image dropped anywhere on the page, and ignores a drop that is not a file', () => {

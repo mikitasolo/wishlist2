@@ -91,7 +91,7 @@ async function upload(user: User, root: HTMLElement = document.body) {
   fireEvent.change(input, {
     target: { files: [new File(['image'], 'gift.png', { type: 'image/png' })] },
   });
-  await user.click(screen.getByRole('button', { name: 'Crop & upload' }));
+  await user.click(await screen.findByRole('button', { name: 'Crop & upload' }));
   await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Crop image' })).toBeNull());
 }
 

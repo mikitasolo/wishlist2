@@ -1,5 +1,6 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import { useId, useImperativeHandle, useRef, useState, type Ref } from 'react';
 import Badge from '@/components/Badge';
 import Button from '@/components/Button';
@@ -8,7 +9,6 @@ import Menu, { type MenuItem } from '@/components/Menu';
 import Panel, { PanelRow } from '@/components/Panel';
 import { Skeleton } from '@/components/Skeleton';
 import ShareLinkDialog, { SHARE_LINK_LEVEL_LABELS } from '@/components/ShareLinkDialog';
-import ShareLinkDetailsDialog from '@/components/ShareLinkDetailsDialog';
 import { iconButtonClassName } from '@/components/buttonStyles';
 import { useToast } from '@/components/ToastProvider';
 import {
@@ -21,6 +21,9 @@ import { formatLinkExpiry } from '@/lib/utils/shareLinkExpiry';
 import type { Occasion } from '@/lib/utils/occasion';
 import { plural } from '@/lib/utils/plural';
 import type { Visibility } from '@/lib/utils/visibility';
+
+// The details dialog draws the QR code (uqr); it loads when a link is opened.
+const ShareLinkDetailsDialog = dynamic(() => import('@/components/ShareLinkDetailsDialog'));
 
 /** What the page can ask of the section: the Share menu's Share links goes here. */
 export interface ShareLinksSectionHandle {
