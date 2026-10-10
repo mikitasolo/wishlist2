@@ -5,6 +5,7 @@ import { formatBirthday } from '@/lib/utils/birthday';
 import {
   formatOccasionDay,
   isCalendarDate,
+  localDateString,
   OCCASION_KINDS,
   type OccasionKind,
 } from '@/lib/utils/occasion';
@@ -519,4 +520,29 @@ export function notificationIcon(n: NotificationView): IconName {
     default:
       return 'bell';
   }
+}
+
+export interface NotificationDayGroup {
+  key: 'today' | 'earlier';
+  label: string;
+  rows: NotificationView[];
+}
+
+/**
+ * The feed's rows (newest first, as read) split into Today and Earlier by the
+ * viewer's local calendar day: `today` is `useLocalToday`'s `YYYY-MM-DD`, and a
+ * row's day is read from its local date fields (`localDateString`), never the
+ * UTC date. A row stamped after today (a skewed clock) counts as today. Order
+ * is kept; an empty group is left out.
+ */
+export function groupByLocalDay(rows: NotificationView[], today: string): NotificationDayGroup[] {
+  const todayRows: NotificationView[] = [];
+  const earlierRows: NotificationView[] = [];
+  for (const n of rows) {
+    (localDateString(new Date(n.createdAt)) >= today ? todayRows : earlierRows).push(n);
+  }
+  const groups: NotificationDayGroup[] = [];
+  if (todayRows.length) groups.push({ key: 'today', label: 'Today', rows: todayRows });
+  if (earlierRows.length) groups.push({ key: 'earlier', label: 'Earlier', rows: earlierRows });
+  return groups;
 }

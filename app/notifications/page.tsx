@@ -13,6 +13,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useKnownSession } from '@/lib/hooks/useKnownSession';
 import { useDiscreetMode } from '@/lib/hooks/useDiscreetMode';
+import { useLocalToday } from '@/lib/hooks/useLocalToday';
 import AppHeader from '@/components/AppHeader';
 import AuthButton from '@/components/AuthButton';
 import Avatar from '@/components/Avatar';
@@ -34,6 +35,7 @@ import {
   type NotificationView,
   type RecordedInviteAnswer,
   followBackTarget,
+  groupByLocalDay,
   isGroupFollow,
   notificationIcon,
   notificationLink,
@@ -111,6 +113,8 @@ export default function ActivityPage() {
   const router = useRouter();
   const { showToast } = useToast();
   const invitesHeadingId = useId();
+  const feedHeadingId = useId();
+  const today = useLocalToday();
   const [items, setItems] = useState<NotificationView[]>([]);
   const [feedLoading, setFeedLoading] = useState(true);
   // The feed couldn't be read: said in place, with Try again, never as
@@ -276,13 +280,15 @@ export default function ActivityPage() {
 
   function renderRow(n: NotificationView) {
     const rowClass = `relative flex items-center gap-3 rounded-2xl border p-4 ${
-      n.read ? 'border-border bg-surface' : 'border-primary-500/40 bg-primary-500/5'
+      n.read
+        ? 'border-border bg-surface'
+        : 'border-primary-500/40 border-l-4 border-l-primary-500 bg-primary-500/10'
     }`;
     const body = (
       <>
         <RowLeading n={n} />
         <span className="min-w-0 flex-1">
-          <span className="block text-body text-foreground">
+          <span className={`block text-body text-foreground ${n.read ? '' : 'font-medium'}`}>
             <NotificationLine n={n} />
           </span>
           <span className="mt-0.5 block text-xs text-muted-foreground">
@@ -420,7 +426,23 @@ export default function ActivityPage() {
             {feedFailed ? (
               <LoadError title="Couldn’t load notifications" onRetry={retryFeed} />
             ) : items.length > 0 ? (
-              <ul className="space-y-2">{items.map(renderRow)}</ul>
+              <section aria-labelledby={feedHeadingId}>
+                <h2 id={feedHeadingId} className="text-base font-semibold text-foreground">
+                  Notifications
+                </h2>
+                {today ? (
+                  <div className="mt-3 space-y-5">
+                    {groupByLocalDay(items, today).map((group) => (
+                      <div key={group.key}>
+                        <h3 className="text-sm font-medium text-muted-foreground">{group.label}</h3>
+                        <ul className="mt-2 space-y-2">{group.rows.map(renderRow)}</ul>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <ul className="mt-3 space-y-2">{items.map(renderRow)}</ul>
+                )}
+              </section>
             ) : (
               // Caught up only once both reads have said so.
               invites.length === 0 &&
