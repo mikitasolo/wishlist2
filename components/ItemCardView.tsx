@@ -1,10 +1,12 @@
 import type { ReactNode } from 'react';
 import Badge from '@/components/Badge';
 import Cover from '@/components/Cover';
+import GivenMoment from '@/components/GivenMoment';
 import Icon from '@/components/Icon';
 import { coverInitial } from '@/lib/utils/cover';
 import { itemAnchorId } from '@/lib/utils/itemDeepLink';
 import type { statusMeta } from '@/lib/utils/itemStatus';
+import type { CardMotion } from '@/lib/utils/motion';
 
 interface ItemCardViewProps {
   item: {
@@ -45,6 +47,12 @@ interface ItemCardViewProps {
    * else is clickable in `actions` then needs `relative`.
    */
   titleCoversCard?: boolean;
+  /**
+   * The moment the card plays after the viewer's own action (WIS-407, from
+   * `useCardMotion`, which never gives an owner or discreet mode a
+   * reservation's). Null or absent: none.
+   */
+  motion?: CardMotion | null;
   /** Anything else that belongs to the card (its sheet, its dialogs). */
   children?: ReactNode;
 }
@@ -69,6 +77,7 @@ export default function ItemCardView({
   related,
   actions,
   titleCoversCard,
+  motion,
   children,
 }: ItemCardViewProps) {
   return (
@@ -80,19 +89,20 @@ export default function ItemCardView({
           : dimmed
             ? 'opacity-60 focus-within:opacity-100 hover:opacity-100'
             : ''
-      }`}
+      } ${motion ? `motion-${motion}` : ''}`}
       role="article"
       aria-label={`Item: ${item.name}`}
       data-status={status.status}
       data-dimmed={(dimmed && !highlighted) || undefined}
       data-highlighted={highlighted || undefined}
+      data-motion={motion || undefined}
     >
       {/* The cover and what sits on it. From `sm` up, the badges overhang its
           top right corner, as they always have. On the narrow card below it
           they sit inside it, so they never run into the card's corner (the
           status first, then Most wanted as just its star). */}
       <div className="relative mb-3 flex-shrink-0 sm:mb-4">
-        <div className="absolute right-1.5 top-1.5 z-10 flex flex-col items-end gap-1 sm:-right-2 sm:-top-2 sm:gap-2">
+        <div className="motion-badge absolute right-1.5 top-1.5 z-10 flex flex-col items-end gap-1 sm:-right-2 sm:-top-2 sm:gap-2">
           {item.mostWanted && (
             <Badge className="shadow-sm max-sm:px-1.5">
               <Icon name="star" size={12} className="fill-star text-star-edge" />
@@ -171,6 +181,7 @@ export default function ItemCardView({
         {actions}
       </div>
 
+      {motion === 'given' && <GivenMoment />}
       {children}
     </div>
   );

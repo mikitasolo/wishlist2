@@ -54,6 +54,8 @@ import {
   IDEMPOTENCY_HEADER,
   type SubmissionKeys,
 } from '@/lib/utils/submissionKey';
+import GivenMoment from '@/components/GivenMoment';
+import { cardMotionFor, prefersReducedMotion, waitForMotion } from '@/lib/utils/motion';
 
 interface Price {
   value: number;
@@ -184,6 +186,13 @@ export default function BookedPage() {
   const shown = useRef(false);
   // Reservations and gift-log entries whose action is still in flight, per id.
   const { busy, run, running } = useBusyIds();
+  // Cards playing the Mark as given moment (WIS-407), each until it leaves. Read
+  // when the answer lands, so discreet mode turned on meanwhile plays none.
+  const [givenIds, setGivenIds] = useState<ReadonlySet<string>>(() => new Set());
+  const discreetNow = useRef(discreet);
+  useEffect(() => {
+    discreetNow.current = discreet;
+  }, [discreet]);
   const [giftConfirm, setGiftConfirm] = useState<string | null>(null);
   const [dismissConfirm, setDismissConfirm] = useState<string | null>(null);
   const [releaseConfirm, setReleaseConfirm] = useState<string | null>(null);
@@ -362,6 +371,26 @@ export default function BookedPage() {
     return error instanceof RequestTimeoutError ? REQUEST_TIMEOUT_MESSAGE : 'Something went wrong';
   }
 
+  // The Mark as given moment on a card whose gift the viewer has just marked
+  // (WIS-407): its check mark and burst play, then the caller takes it off the
+  // page. None in discreet mode or under reduced motion, which take it off at
+  // once. The card stays held (`run`) while it plays.
+  async function playGiven(id: string) {
+    const moment = cardMotionFor('given', {
+      isOwner: false,
+      discreet: discreetNow.current,
+      reducedMotion: prefersReducedMotion(),
+    });
+    if (!moment) return;
+    setGivenIds((prev) => new Set(prev).add(id));
+    await waitForMotion(moment);
+    setGivenIds((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  }
+
   function markGifted(id: string) {
     return run(id, async () => {
       const actedFor = account.current;
@@ -377,10 +406,13 @@ export default function BookedPage() {
           return;
         }
         if (result.success) {
-          dropReservation(id);
-          addGift(result.data);
           track('mark_given');
           showToast('Added to your gift history', 'success');
+          await playGiven(id);
+          // Signed in as someone else while it played: theirs is a fresh read.
+          if (account.current !== actedFor) return;
+          dropReservation(id);
+          addGift(result.data);
         } else {
           showToast(result.error || 'Something went wrong', 'error');
         }
@@ -481,8 +513,10 @@ export default function BookedPage() {
         if (account.current !== actedFor) return;
         if (result.success) {
           groupGiveKeys.current.delete(id);
-          dropReservation(id);
           showToast('Marked as given', 'success');
+          await playGiven(id);
+          if (account.current !== actedFor) return;
+          dropReservation(id);
           load();
         } else if (RELEASE_REFUSED.has(res.status)) {
           showToast((res.status === 409 && result.error) || GROUP_GIFT_OUT_OF_DATE, 'info');
@@ -685,6 +719,7 @@ export default function BookedPage() {
                                   key={r._id}
                                   r={r}
                                   busy={busy(r._id)}
+                                  given={givenIds.has(r._id)}
                                   // A dated group's heading names the list already.
                                   showList={!group.occasion}
                                   viewerCurrency={viewerCurrency}
@@ -725,6 +760,7 @@ export default function BookedPage() {
                               key={r._id}
                               r={r}
                               busy={busy(r._id)}
+                              given={givenIds.has(r._id)}
                               viewerCurrency={viewerCurrency}
                               rates={rates}
                               onGift={() => setGiftConfirm(r._id)}
@@ -943,6 +979,7 @@ function ListName({ r }: { r: Reservation }) {
 function ReservationCard({
   r,
   busy,
+  given,
   showList,
   viewerCurrency,
   rates,
@@ -953,6 +990,8 @@ function ReservationCard({
 }: {
   r: Reservation;
   busy: boolean;
+  /** Playing the Mark as given moment, just before it leaves (WIS-407). */
+  given: boolean;
   showList: boolean;
   viewerCurrency: string;
   rates: Record<string, number> | null;
@@ -971,8 +1010,10 @@ function ReservationCard({
   return (
     <article
       aria-labelledby={nameId}
-      className="flex flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-sm"
+      className="relative flex flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-sm"
+      data-motion={given ? 'given' : undefined}
     >
+      {given && <GivenMoment />}
       <div className="flex flex-1 gap-3 p-3">
         <SnapshotThumb src={r.itemImage} alt={r.itemName} seed={r._id} />
         <div className="flex min-w-0 flex-1 flex-col items-start gap-0.5">
@@ -1069,6 +1110,7 @@ function ReservationCard({
 function ChangedRow({
   r,
   busy,
+  given,
   viewerCurrency,
   rates,
   onGift,
@@ -1076,6 +1118,8 @@ function ChangedRow({
 }: {
   r: Reservation;
   busy: boolean;
+  /** Playing the Mark as given moment, just before it leaves (WIS-407). */
+  given: boolean;
   viewerCurrency: string;
   rates: Record<string, number> | null;
   onGift: () => void;
@@ -1109,7 +1153,12 @@ function ChangedRow({
     </Button>
   );
   return (
-    <article aria-labelledby={nameId} className="flex gap-3 p-3 sm:px-4">
+    <article
+      aria-labelledby={nameId}
+      className="relative flex gap-3 p-3 sm:px-4"
+      data-motion={given ? 'given' : undefined}
+    >
+      {given && <GivenMoment />}
       <SnapshotThumb src={r.itemImage} alt={r.itemName} seed={r._id} small />
       <div className="min-w-0 flex-1">
         <p id={nameId} className="truncate text-sm font-semibold text-foreground">

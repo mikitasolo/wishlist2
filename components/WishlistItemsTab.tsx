@@ -13,6 +13,7 @@ import Select from '@/components/Select';
 import ShareButton from '@/components/ShareButton';
 import { ITEM_GRID_CLASSES, ListControlsSkeleton, SkeletonGrid } from '@/components/Skeleton';
 import WishlistItem from '@/components/WishlistItem';
+import { useStaggeredEntrance } from '@/lib/hooks/useCardMotion';
 import type { ItemCards } from '@/lib/hooks/useItemCards';
 import type { ListFilters } from '@/lib/hooks/useListFilters';
 import type { ItemDialogsControl } from '@/lib/hooks/useItemDialogs';
@@ -95,6 +96,11 @@ export default function WishlistItemsTab({
     addTile,
   } = filters;
   const { setShowAddItemModal, setShowProposeItemModal, setItemToReview, setItemToSave } = dialogs;
+  // The cards come in one after another as the grid first shows (WIS-407).
+  const staggered = useStaggeredEntrance(
+    itemsLoaded && !loadingItems,
+    itemsLoaded && !loadingItems && sortedItems.length > 0
+  );
 
   return (
     <>
@@ -258,7 +264,10 @@ export default function WishlistItemsTab({
               }
             />
           ) : (
-            <div className={ITEM_GRID_CLASSES}>
+            <div
+              className={`${ITEM_GRID_CLASSES} ${staggered ? 'motion-stagger' : ''}`}
+              data-staggered={staggered || undefined}
+            >
               {addTile && (
                 <AddItemTile
                   label={addTile === 'add' ? 'Add item' : 'Propose an item'}

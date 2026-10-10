@@ -18,6 +18,7 @@ import {
 import { RequestTimeoutError, withRequestTimeout } from '@/lib/utils/requestTimeout';
 import type { ItemDialogsControl } from '@/lib/hooks/useItemDialogs';
 import type { ShownOwners } from '@/lib/utils/shownOwners';
+import { cueItemCard } from '@/lib/utils/motion';
 import { createSubmissionKeys, IDEMPOTENCY_HEADER } from '@/lib/utils/submissionKey';
 import type { ApiItem, ApiResponse, ItemUpdate } from '@/types/api';
 
@@ -180,6 +181,8 @@ export function useWishlistItemActions({
         expectedVersion: itemToReview.updatedAt,
       });
       if (!approved) throw new Error('Failed to approve item');
+      // The owner's own Accept: its card plays the cue (WIS-407).
+      cueItemCard(itemToReview._id);
       showToast(updates.status === 'draft' ? 'Added as a draft' : 'Added to the list', 'success');
     },
     [itemToReview, handleUpdateItem, showToast]

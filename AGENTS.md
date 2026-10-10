@@ -160,6 +160,7 @@ Read it before touching roles, invites, bookings, visibility, notifications or a
 - **Shared kit only**: `EmptyState`, `Badge`, `Panel`, `SegmentedControl`, `Callout`, `Spinner`, `Skeleton`, `Cover`, `Menu`, `BaseModal` + `useFocusTrap`, toasts with one action.
 - **Spacing rhythm** for pages, grids and forms; skeletons mirror their page.
 - **Colour**: status tones only via `statusMeta` / `TONE_CLASSES` (no raw palette classes), `danger` tokens for red, `text-accent`, one popover look, base CSS inside `@layer base`, visible keyboard focus.
+- **Motion** (WIS-407): played only by the viewer's own successful action (`lib/utils/motion.ts`, `useCardMotion`), never by a data change; no reservation motion for owners or in discreet mode; nothing under reduced motion.
 
 ### [Screens & client behaviour](docs/agents/screens.md)
 
