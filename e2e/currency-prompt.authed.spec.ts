@@ -56,6 +56,11 @@ test('the dashboard offers a USD user their time zone’s currency once, and “
 
   await prompt(page).getByRole('button', { name: 'Keep USD' }).click();
   await expect(prompt(page)).toHaveCount(0);
+  // regression: WIS-418, the offer goes the moment it's clicked, before the
+  // answer is saved, so reloading at once raced the PATCH (and the session read
+  // that followed it) and the offer came back, alone or in a short run. The
+  // success toast is the sign it's saved.
+  await expect(page.getByText('Prices will stay in USD')).toBeVisible();
   await expect(page).toHaveURL(/\/$/);
 
   // Answered, so a fresh session no longer offers it.
