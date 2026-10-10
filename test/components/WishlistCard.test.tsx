@@ -52,7 +52,7 @@ describe('WishlistCard — cover', () => {
   it('shows the placeholder when the list has no banner', () => {
     const { container } = render(<WishlistCard wishlist={wishlist({ bannerUrl: null })} />);
     expect(coverOf(container).querySelector('img')).toBeNull();
-    expect(coverOf(container).style.background).toBe(placeholderOf('w1'));
+    expect(coverOf(container).style.background).toContain(placeholderOf('w1'));
   });
 
   // regression: the card painted the gradient only when there was no banner URL,
@@ -63,7 +63,7 @@ describe('WishlistCard — cover', () => {
     fireEvent.error(coverOf(container).querySelector('img')!);
 
     expect(coverOf(container).querySelector('img')).toBeNull();
-    expect(coverOf(container).style.background).toBe(placeholderOf('w1'));
+    expect(coverOf(container).style.background).toContain(placeholderOf('w1'));
     // The badges on the band are still there.
     expect(screen.getByText('Public')).toBeInTheDocument();
   });

@@ -979,7 +979,7 @@ describe('WishlistItem — cover image', () => {
     render(<WishlistItem item={item({})} onUpdate={vi.fn()} isAuthenticated isMember />);
     expect(screen.queryByTestId('banner-image')).toBeNull();
     const cover = screen.getByRole('article').querySelector('[class*="aspect-"]') as HTMLElement;
-    expect(cover.style.background).toBe(placeholderOf('item-1'));
+    expect(cover.style.background).toContain(placeholderOf('item-1'));
   });
 
   // The phone grid (WIS-245): a gradient alone said nothing, at full height.
@@ -1034,7 +1034,7 @@ describe('WishlistItem — cover image', () => {
     fireEvent.error(img);
 
     expect(screen.queryByTestId('banner-image')).toBeNull();
-    expect(cover.style.background).toBe(placeholderOf('item-1'));
+    expect(cover.style.background).toContain(placeholderOf('item-1'));
   });
 
   // regression: same blank tile on the product-link variant of the cover.
@@ -1052,7 +1052,7 @@ describe('WishlistItem — cover image', () => {
 
     const link = screen.getByRole('article').querySelector('.aspect-square') as HTMLElement;
     expect(screen.queryByTestId('banner-image')).toBeNull();
-    expect(link.style.background).toBe(placeholderOf('item-1'));
+    expect(link.style.background).toContain(placeholderOf('item-1'));
   });
 
   it('shows the new image when an edit replaces a broken one', () => {

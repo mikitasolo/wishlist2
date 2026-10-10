@@ -26,6 +26,7 @@ export default function SnapshotThumb({
     <Cover
       src={src}
       seed={seed}
+      name={alt}
       alt={alt}
       sizes="64px"
       className={`relative ${size} flex-shrink-0 overflow-hidden rounded-xl bg-surface-2`}

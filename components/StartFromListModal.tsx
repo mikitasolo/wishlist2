@@ -387,6 +387,7 @@ export default function StartFromListModal({
                       <Cover
                         src={item.imageUrl}
                         seed={item._id}
+                        name={item.name}
                         sizes="40px"
                         className="size-10 flex-shrink-0 rounded-lg"
                       />

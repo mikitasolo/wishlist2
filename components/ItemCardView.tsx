@@ -109,6 +109,7 @@ export default function ItemCardView({
         <Cover
           src={item.imageUrl}
           seed={item._id}
+          name={item.name}
           alt={item.name}
           sizes="(max-width: 1200px) 50vw, 33vw"
           placeholder={

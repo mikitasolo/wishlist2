@@ -79,6 +79,8 @@ export default function InviteCard({
         <Cover
           src={preview?.bannerUrl}
           seed={invite.wishlistId}
+          name={invite.wishlistName}
+          occasionKind={preview?.occasion?.kind}
           sizes="56px"
           className="relative h-14 w-14 flex-shrink-0 overflow-hidden rounded-xl bg-surface-2"
         />
