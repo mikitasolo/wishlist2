@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import { cronRefusal } from '@/lib/utils/cronAuth';
+import { pingCronHeartbeat } from '@/lib/utils/cronHeartbeat';
 import { sweepOrphanSnapshots } from '@/lib/utils/orphanSnapshots';
 
 /** Room for a full listing, the 45s re-check delay and the deletes. */
@@ -21,6 +22,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
     await connectDB();
     const result = await sweepOrphanSnapshots();
+    await pingCronHeartbeat('sweep-snapshots', result);
     return NextResponse.json({ success: true, ...result });
   } catch (err) {
     console.error(

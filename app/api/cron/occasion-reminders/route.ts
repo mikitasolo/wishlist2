@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import { cronRefusal } from '@/lib/utils/cronAuth';
+import { pingCronHeartbeat } from '@/lib/utils/cronHeartbeat';
 import { sendOccasionReminders } from '@/lib/utils/occasionReminders';
 
 export const maxDuration = 60;
@@ -19,6 +20,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
     await connectDB();
     const result = await sendOccasionReminders();
+    await pingCronHeartbeat('occasion-reminders', result);
     return NextResponse.json({ success: true, ...result });
   } catch (err) {
     console.error(

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import { cronRefusal } from '@/lib/utils/cronAuth';
+import { pingCronHeartbeat } from '@/lib/utils/cronHeartbeat';
 import { runBirthdayTasks } from '@/lib/utils/birthdayCron';
 
 export const maxDuration = 60;
@@ -22,6 +23,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
     await connectDB();
     const { ok, results } = await runBirthdayTasks();
+    if (ok) await pingCronHeartbeat('birthdays', results);
     return NextResponse.json({ success: ok, ...results }, { status: ok ? 200 : 500 });
   } catch (err) {
     console.error(`Birthday cron failed (${err instanceof Error ? err.name : 'unknown error'})`);
