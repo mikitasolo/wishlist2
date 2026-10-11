@@ -18,6 +18,7 @@ import { useToast } from '@/components/ToastProvider';
 import { POPOVER_SURFACE } from '@/components/popoverStyles';
 import TourIllustration from '@/components/TourIllustration';
 import { track } from '@/lib/analytics';
+import { useBodyScrollLock } from '@/lib/hooks/useBodyScrollLock';
 import { useFocusTrap } from '@/lib/hooks/useFocusTrap';
 import { FINE_POINTER_QUERY, SM_UP_QUERY } from '@/lib/hooks/useMediaQuery';
 import { WELCOME_PARAM } from '@/lib/utils/memberWelcome';
@@ -106,22 +107,65 @@ export function findTourTarget(target: TourTarget): HTMLElement | null {
 }
 
 /**
- * A dialog or menu open on the page (the tour's own popover is neither): a
- * step steps aside while one is, and a used "try it" waits for it to close.
+ * A dialog, menu or open combobox (the search's results) on the page (the
+ * tour's own popover is none of them): a step steps aside while one is, and a
+ * used "try it" waits for it to close.
  */
 function overlayOpen(): boolean {
-  return !!document.querySelector('[aria-modal="true"], [role="menu"]');
+  return !!document.querySelector(
+    '[aria-modal="true"], [role="menu"], [role="combobox"][aria-expanded="true"]'
+  );
 }
 
-/** Its box, or its first child's (a `display: contents` wrapper has none); null when not drawn. */
-function tourTargetBox(el: HTMLElement): DOMRect | null {
+/** Someone typing in a field inside the target (the header search): the popover would cover what it shows. */
+function typingIn(target: HTMLElement): boolean {
+  const active = document.activeElement;
+  return !!active && target.contains(active) && active.matches('input, textarea');
+}
+
+/**
+ * What draws the target: itself, or its first child (a `display: contents`
+ * wrapper has no box of its own, and can't be scrolled to); null when not drawn.
+ */
+function tourTargetNode(el: HTMLElement): HTMLElement | null {
   if (!el.isConnected) return null;
   for (const node of [el, el.firstElementChild]) {
-    if (!node) continue;
+    if (!(node instanceof HTMLElement)) continue;
     const box = node.getBoundingClientRect();
-    if (box.width > 0 && box.height > 0) return box;
+    if (box.width > 0 && box.height > 0) return node;
   }
   return null;
+}
+
+function tourTargetBox(el: HTMLElement): DOMRect | null {
+  return tourTargetNode(el)?.getBoundingClientRect() ?? null;
+}
+
+/** How far the spotlight's hole reaches past the target, in px. */
+const SPOTLIGHT_PAD = 4;
+
+/**
+ * The spotlight's corners: the target's own, grown by the pad, so the hole
+ * follows its shape (a pill stays a pill) with no undimmed corners showing.
+ */
+function spotlightRadius(el: HTMLElement): string {
+  const node = tourTargetNode(el);
+  if (!node || typeof window.getComputedStyle !== 'function') return `${SPOTLIGHT_PAD}px`;
+  const style = window.getComputedStyle(node);
+  const { width, height } = node.getBoundingClientRect();
+  const half = Math.min(width, height) / 2;
+  return [
+    style.borderTopLeftRadius,
+    style.borderTopRightRadius,
+    style.borderBottomRightRadius,
+    style.borderBottomLeftRadius,
+  ]
+    .map((value = '') => {
+      const n = parseFloat(value) || 0;
+      const px = value.trim().endsWith('%') ? (n / 100) * Math.min(width, height) : n;
+      return `${Math.min(px, half) + SPOTLIGHT_PAD}px`;
+    })
+    .join(' ');
 }
 
 const matches = (query: string) =>
@@ -133,8 +177,14 @@ const matches = (query: string) =>
  */
 const isDesktop = () => matches(FINE_POINTER_QUERY) && matches(SM_UP_QUERY);
 
-/** The spotlight's shade over the rest of the page: the dialogs' backdrop colour (`bg-slate-900/40`). */
-const SPOTLIGHT_SHADE = '0 0 0 100vmax rgb(15 23 42 / 0.4)';
+/** The tour's shade over the rest of the page: the dialogs' backdrop colour (`bg-slate-900/40`), unblurred. */
+const SHADE_COLOUR = 'rgb(15 23 42 / 0.4)';
+/**
+ * The spotlight: a ring in the focus colour on the hole, the page shaded
+ * around it. The shade's corners round with the hole's, so it reaches 200vmax:
+ * round a pill, 100vmax left a far corner of the screen unshaded.
+ */
+const SPOTLIGHT_SHADOW = `0 0 0 2px var(--ring), 0 0 0 200vmax ${SHADE_COLOUR}`;
 
 const prefersReducedMotion = () =>
   typeof window !== 'undefined' &&
@@ -399,7 +449,8 @@ function TourStepView(props: StepViewProps) {
     const look = () => {
       const el = findTourTarget(target);
       if (el) {
-        el.scrollIntoView?.({
+        // The node that draws it: a `display: contents` wrapper doesn't scroll.
+        (tourTargetNode(el) ?? el).scrollIntoView?.({
           block: 'center',
           behavior: prefersReducedMotion() ? 'auto' : 'smooth',
         });
@@ -484,35 +535,83 @@ function StepButtons({ step, last, onBack, onNext, onSkip, onCreateList }: StepV
   );
 }
 
-function CentredStep(props: StepViewProps) {
-  const { step, position, total, onSkip } = props;
-  const titleId = useId();
+/** The step's popover contents, the same beside a target and on the centred card. */
+function StepPanel(props: StepViewProps & { titleId: string; bodyId: string; anchored: boolean }) {
+  const { step, position, total, titleId, bodyId, anchored } = props;
   return (
-    <BaseModal
-      isOpen
-      // Escape and the close button skip the tour (on the closing card, finish it).
-      onClose={onSkip}
-      title={step.title}
-      titleId={titleId}
-      size="sm"
-      closeLabel={step.closing ? 'Close' : 'Close tour'}
-      closeOnBackdrop={false}
-      footer={<StepButtons {...props} />}
-    >
+    <>
       <StepCounter position={position} total={total} />
-      <div className={position === null ? '' : 'mt-1'}>
-        <StepBody step={step} anchored={false} />
+      <h2
+        id={titleId}
+        className={`${position === null ? '' : 'mt-1'} text-base font-semibold text-foreground`}
+      >
+        {step.title}
+      </h2>
+      <div id={bodyId} className="mt-1">
+        <StepBody step={step} anchored={anchored} />
       </div>
-    </BaseModal>
+      <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
+        <StepButtons {...props} />
+      </div>
+    </>
+  );
+}
+
+/** The popover's box, beside a target or centred. */
+const PANEL_CLASS = `${POPOVER_SURFACE} w-[min(20rem,calc(100vw-2rem))] p-4`;
+
+/**
+ * The closing card, or a step whose target never showed: the same popover as
+ * every other step, centred over the same unblurred shade.
+ */
+function CentredStep(props: StepViewProps) {
+  const { onSkip } = props;
+  const titleId = useId();
+  const bodyId = useId();
+  const panel = useRef<HTMLDivElement>(null);
+  useFocusTrap(true, panel);
+  useBodyScrollLock(true);
+
+  // Escape skips the tour (on the closing card, finishes it).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onSkip();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onSkip]);
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ backgroundColor: SHADE_COLOUR }}
+    >
+      <div
+        ref={panel}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={bodyId}
+        tabIndex={-1}
+        className={`${PANEL_CLASS} max-h-full overflow-y-auto`}
+      >
+        <StepPanel {...props} titleId={titleId} bodyId={bodyId} anchored={false} />
+      </div>
+    </div>,
+    document.body
   );
 }
 
 function AnchoredStep(props: StepViewProps & { target: HTMLElement; onTargetLost: () => void }) {
-  const { step, position, total, onSkip, onUsed, target, onTargetLost } = props;
+  const { step, onSkip, onUsed, target, onTargetLost } = props;
   const titleId = useId();
   const bodyId = useId();
   const panel = useRef<HTMLDivElement>(null);
   const [box, setBox] = useState<DOMRect | null>(() => tourTargetBox(target));
+  const [radius, setRadius] = useState(() => spotlightRadius(target));
   const [placement, setPlacement] = useState<Placement | null>(null);
   // A dialog or menu is open (one the page opened, or the target did): out of its way.
   const [aside, setAside] = useState(false);
@@ -532,9 +631,10 @@ function AnchoredStep(props: StepViewProps & { target: HTMLElement; onTargetLost
   // Follow the target as the page scrolls, resizes or re-renders under it.
   useEffect(() => {
     const measure = () => {
-      setAside(overlayOpen());
+      setAside(overlayOpen() || typingIn(target));
       const next = tourTargetBox(target);
       if (!next) return onTargetLost();
+      setRadius(spotlightRadius(target));
       setBox((prev) =>
         prev &&
         prev.top === next.top &&
@@ -547,10 +647,15 @@ function AnchoredStep(props: StepViewProps & { target: HTMLElement; onTargetLost
     };
     window.addEventListener('scroll', measure, true);
     window.addEventListener('resize', measure);
+    // Into the search field and out of it: out of the way of its results at once.
+    document.addEventListener('focusin', measure);
+    document.addEventListener('focusout', measure);
     const timer = window.setInterval(measure, 250);
     return () => {
       window.removeEventListener('scroll', measure, true);
       window.removeEventListener('resize', measure);
+      document.removeEventListener('focusin', measure);
+      document.removeEventListener('focusout', measure);
       window.clearInterval(timer);
     };
   }, [target, onTargetLost]);
@@ -585,17 +690,19 @@ function AnchoredStep(props: StepViewProps & { target: HTMLElement; onTargetLost
   if (!box || aside) return null;
   return createPortal(
     <>
-      {/* The spotlight: the page dimmed around a ring on the real control. It
-          takes no pointer events, so the control (and the page) stay usable. */}
+      {/* The spotlight: the page dimmed around a ring on the real control,
+          shaped like it. It takes no pointer events, so the control (and the
+          page) stay usable. */}
       <div
         aria-hidden="true"
-        className="pointer-events-none fixed z-50 rounded-2xl ring-2 ring-ring ring-offset-2 ring-offset-background motion-safe:transition-all motion-safe:duration-200"
+        className="pointer-events-none fixed z-50 motion-safe:transition-all motion-safe:duration-200"
         style={{
-          top: box.top,
-          left: box.left,
-          width: box.width,
-          height: box.height,
-          boxShadow: SPOTLIGHT_SHADE,
+          top: box.top - SPOTLIGHT_PAD,
+          left: box.left - SPOTLIGHT_PAD,
+          width: box.width + 2 * SPOTLIGHT_PAD,
+          height: box.height + 2 * SPOTLIGHT_PAD,
+          borderRadius: radius,
+          boxShadow: SPOTLIGHT_SHADOW,
         }}
       />
       <div
@@ -604,7 +711,7 @@ function AnchoredStep(props: StepViewProps & { target: HTMLElement; onTargetLost
         aria-labelledby={titleId}
         aria-describedby={bodyId}
         tabIndex={-1}
-        className={`${POPOVER_SURFACE} fixed z-50 w-[min(20rem,calc(100vw-2rem))] p-4 motion-safe:transition-[top,left] motion-safe:duration-200`}
+        className={`${PANEL_CLASS} fixed z-50 motion-safe:transition-[top,left] motion-safe:duration-200`}
         style={{
           top: placement?.top ?? 0,
           left: placement?.left ?? 0,
@@ -612,16 +719,7 @@ function AnchoredStep(props: StepViewProps & { target: HTMLElement; onTargetLost
           opacity: placement ? 1 : 0,
         }}
       >
-        <StepCounter position={position} total={total} />
-        <h2 id={titleId} className="mt-1 text-base font-semibold text-foreground">
-          {step.title}
-        </h2>
-        <div id={bodyId} className="mt-1">
-          <StepBody step={step} anchored />
-        </div>
-        <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
-          <StepButtons {...props} />
-        </div>
+        <StepPanel {...props} titleId={titleId} bodyId={bodyId} anchored />
       </div>
     </>,
     document.body
