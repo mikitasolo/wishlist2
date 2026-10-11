@@ -143,12 +143,20 @@ export function WishlistRowSkeleton() {
 export function WishlistListSkeleton({
   count = 8,
   showOwner = false,
+  withSearch = false,
 }: {
   count?: number;
   showOwner?: boolean;
+  /** The search row above the lists (See all pages, WIS-427): a phone's icon, the field from `sm`. */
+  withSearch?: boolean;
 }) {
   return (
     <div>
+      {withSearch && (
+        <div className="mb-6 flex items-center gap-2">
+          <Skeleton className="size-9 sm:h-9 sm:w-full" />
+        </div>
+      )}
       <div data-wishlist-rows className={`${WISHLIST_ROWS_CLASSES} sm:hidden`}>
         {Array.from({ length: count }).map((_, i) => (
           <WishlistRowSkeleton key={i} />

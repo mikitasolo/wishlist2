@@ -89,7 +89,7 @@ export default function SharedWishlistsPage() {
 
         {loading ? (
           <div className="mt-8">
-            <WishlistListSkeleton count={8} showOwner />
+            <WishlistListSkeleton count={8} showOwner withSearch />
           </div>
         ) : loadFailed ? (
           <div className="mt-8">
