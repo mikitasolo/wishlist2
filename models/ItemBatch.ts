@@ -12,8 +12,9 @@ import mongoose, { Schema, Model } from 'mongoose';
  * `payload` is a digest of the list, the action and the ids, so a key sent
  * again with a different change is refused rather than answered with another
  * batch's result. Every row expires a day after it was written (`expiresAt`,
- * TTL), finished or not, and deleting the account deletes its rows
- * (`deleteAccount`).
+ * TTL), finished or not, a move's after a week (`ITEM_BATCH_MOVE_TTL_MS`, so
+ * the daily sweep of dead moves, `settleAllDeadMoves`, always reaches one),
+ * and deleting the account deletes its rows (`deleteAccount`).
  */
 const ItemBatchSchema = new Schema(
   {
@@ -60,7 +61,9 @@ const ItemBatchSchema = new Schema(
 ItemBatchSchema.index({ key: 1 }, { unique: true });
 // A user's rows, for account deletion.
 ItemBatchSchema.index({ user: 1 });
-// Rows go a day after they were written.
+// The daily sweep of everyone's dead moves (WIS-443): unfinished rows, oldest first.
+ItemBatchSchema.index({ done: 1, createdAt: 1 });
+// Rows go at their `expiresAt` (a day after they were written, a move's a week).
 ItemBatchSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 export interface IItemBatch {

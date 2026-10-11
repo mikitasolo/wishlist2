@@ -60,7 +60,12 @@ import { sendOccasionReminders } from '@/lib/utils/occasionReminders';
 import { sendGiftReminders } from '@/lib/utils/giftReminders';
 import { runBirthdayTasks } from '@/lib/utils/birthdayCron';
 import { liveGiftOf, holdsItem, readGroupGiftSummaries } from '@/lib/utils/groupGifts';
-import { settleDeadMoves } from '@/lib/utils/bulkItemActions';
+import {
+  ITEM_BATCH_STALE_MS,
+  settleAllDeadMoves,
+  settleDeadMoves,
+} from '@/lib/utils/bulkItemActions';
+import ItemBatch from '@/models/ItemBatch';
 import User from '@/models/User';
 import Follow from '@/models/Follow';
 import Wishlist from '@/models/Wishlist';
@@ -445,6 +450,31 @@ describe('index audit (WIS-377): the hot queries never scan a collection', () =>
   // WIS-434: every move first looks for the caller's dead moves to settle.
   it('a move’s sweep of the caller’s dead moves', async () => {
     await expectIndexed(() => settleDeadMoves(w.owner));
+  });
+
+  // WIS-443: the gift reminders cron's sweep of everyone's dead moves.
+  it('the daily sweep of dead moves', async () => {
+    const old = new Date(Date.now() - ITEM_BATCH_STALE_MS - 60_000);
+    const rows = await ItemBatch.create(
+      Array.from({ length: 20 }, (_, i) => ({
+        user: w.owner,
+        key: `audit-batch-${i}`,
+        wishlist: new mongoose.Types.ObjectId(),
+        payload: 'x',
+        // Finished batches as filler, and one dead move.
+        done: i > 0,
+        moves: [{ from: new mongoose.Types.ObjectId(), to: new mongoose.Types.ObjectId() }],
+        expiresAt: new Date(Date.now() + 60_000),
+      }))
+    );
+    await ItemBatch.collection.updateMany(
+      { _id: { $in: rows.map((r) => r._id) } },
+      { $set: { createdAt: old } }
+    );
+    await expectIndexed(async () => {
+      expect((await settleAllDeadMoves()).settled).toBe(1);
+    });
+    await ItemBatch.deleteMany({ key: /^audit-batch-/ });
   });
 });
 

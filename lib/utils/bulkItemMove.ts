@@ -1,7 +1,7 @@
 import mongoose from 'mongoose';
 import Item, { type IItem } from '@/models/Item';
 import ItemBatch, { type IItemBatch } from '@/models/ItemBatch';
-import type { IWishlist } from '@/models/Wishlist';
+import Wishlist, { type IWishlist } from '@/models/Wishlist';
 import { copyBlobsToUploads, deleteOwnBlobs, isOwnBlob } from '@/lib/utils/blob';
 import { deleteItem } from '@/lib/utils/itemActions';
 import { remapLinks } from '@/lib/utils/itemLinks';
@@ -272,6 +272,16 @@ export async function applyBulkMove({
     }
     let kind: Kind;
     try {
+      // The target is read again right before each delete: one deleted since
+      // the re-check took (or is taking) its copies with it, so the item
+      // stays here rather than going nowhere (WIS-443). A delete in the
+      // moment between this read and the item's is the same as moving the
+      // item and then deleting the list.
+      if (!(await Wishlist.exists({ _id: targetId }))) {
+        kinds.set(id, 'failed');
+        await takeBackCopy(copyIds.get(id)!, userId);
+        return;
+      }
       const deleted = await deleteItem({
         item,
         wishlist: source,

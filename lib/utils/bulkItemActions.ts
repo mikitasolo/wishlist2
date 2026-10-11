@@ -48,6 +48,20 @@ const BULK_CONCURRENCY = 4;
 /** How long a batch's key keeps answering retries. */
 const ITEM_BATCH_TTL_MS = 24 * 60 * 60 * 1000;
 
+/**
+ * How long a move's row is kept (WIS-443): long enough that the daily sweep
+ * (`settleAllDeadMoves`, from the gift reminders cron) reaches a dead one even
+ * after a few missed runs (Hobby crons are never retried), since once the row
+ * expires nothing can settle what its attempt left.
+ */
+export const ITEM_BATCH_MOVE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** How many dead moves one run of the sweep settles at most. */
+export const DEAD_MOVE_SWEEP_MAX_ROWS = 50;
+
+/** How long one run of the sweep starts settling rows for. */
+export const DEAD_MOVE_SWEEP_BUDGET_MS = 15_000;
+
 /** The answer while the first attempt with this key is still being applied. */
 export const ITEM_BATCH_IN_PROGRESS_ERROR = 'These changes are still being saved. Try again.';
 
@@ -224,9 +238,74 @@ export async function settleDeadMoves(userId: string): Promise<void> {
     .lean();
   for (const row of dead) {
     if (!row.moves?.length && !row.copiedUrls?.length) continue;
-    await settleDeadMove(row, userId);
-    await ItemBatch.deleteOne({ _id: row._id, done: false });
+    await settleDeadMoveRow(row, userId);
   }
+}
+
+/**
+ * Settle one dead move's row and drop it, only if it's still the same
+ * unfinished row: a retry of its key that took it over meanwhile wrote a new
+ * one, which this leaves alone. Settling is safe to run twice, so a retry or
+ * the caller's next move settling the same row at once does no harm.
+ */
+async function settleDeadMoveRow(
+  row: Pick<IItemBatch, '_id' | 'moves' | 'copiedUrls'>,
+  userId: string
+): Promise<void> {
+  await settleDeadMove(row, userId);
+  await ItemBatch.deleteOne({ _id: row._id, done: false });
+}
+
+export type DeadMoveSweep = {
+  /** Rows settled and dropped. */
+  settled: number;
+  /** Rows whose settling failed: left for the next run. */
+  failed: number;
+  /** Whether the cap or the time budget stopped the run with rows left. */
+  capped: boolean;
+};
+
+/**
+ * Settle everyone's moves whose attempts died unfinished (WIS-443), from the
+ * daily gift reminders cron, so a dead move nobody retried (and whose owner
+ * never moves again) doesn't leave items on two lists until its row expires.
+ * Only rows a move wrote to (`moves` / `copiedUrls`), unfinished, and older
+ * than `ITEM_BATCH_STALE_MS` (past the route's `maxDuration`, so their attempt
+ * is over), oldest first, at most `maxRows` a run, none started after
+ * `budgetMs`. One that fails is logged (its kind only) and left for the next
+ * run. Settled as the caller's own next move would (`settleDeadMove`, as the
+ * row's user). Answers counts only.
+ */
+export async function settleAllDeadMoves({
+  now = Date.now(),
+  maxRows = DEAD_MOVE_SWEEP_MAX_ROWS,
+  budgetMs = DEAD_MOVE_SWEEP_BUDGET_MS,
+}: { now?: number; maxRows?: number; budgetMs?: number } = {}): Promise<DeadMoveSweep> {
+  const deadline = Date.now() + budgetMs;
+  const dead = await ItemBatch.find({
+    done: false,
+    createdAt: { $lt: new Date(now - ITEM_BATCH_STALE_MS) },
+    $or: [{ 'moves.0': { $exists: true } }, { 'copiedUrls.0': { $exists: true } }],
+  })
+    .sort({ createdAt: 1 })
+    .limit(maxRows + 1)
+    .select('user moves copiedUrls')
+    .lean();
+  const result: DeadMoveSweep = { settled: 0, failed: 0, capped: dead.length > maxRows };
+  for (const row of dead.slice(0, maxRows)) {
+    if (Date.now() >= deadline) {
+      result.capped = true;
+      break;
+    }
+    try {
+      await settleDeadMoveRow(row, row.user.toString());
+      result.settled++;
+    } catch (err) {
+      result.failed++;
+      console.error('Settling a dead item move failed:', errorKind(err));
+    }
+  }
+  return result;
 }
 
 /**
@@ -343,7 +422,9 @@ export async function claimItemBatch({
         key: scopedKey,
         wishlist: wishlistId,
         payload,
-        expiresAt: new Date(Date.now() + ITEM_BATCH_TTL_MS),
+        expiresAt: new Date(
+          Date.now() + (action === 'move' ? ITEM_BATCH_MOVE_TTL_MS : ITEM_BATCH_TTL_MS)
+        ),
       });
       return { kind: 'claimed', batchId: created._id };
     } catch (err) {
