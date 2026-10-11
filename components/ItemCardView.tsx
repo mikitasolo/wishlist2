@@ -190,7 +190,7 @@ export default function ItemCardView({
               truncated, under the body's ::after like the notes so a tap still
               opens the sheet. */}
           {!!item.tags?.length && (
-            <ul aria-label="Tags" className="mb-2 flex min-w-0 gap-1 sm:mb-3">
+            <ul role="list" aria-label="Tags" className="mb-2 flex min-w-0 gap-1 sm:mb-3">
               {item.tags.slice(0, CARD_TAGS_LIMIT).map((tag) => (
                 <li key={tag} className="flex min-w-0">
                   <Badge size="sm" className="min-w-0 max-w-full">
