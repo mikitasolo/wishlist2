@@ -262,7 +262,10 @@ export default function WishlistItemsTab({
               actions={
                 isOwner ? (
                   <>
-                    <Button onClick={() => setShowAddItemModal(true)}>Add your first item</Button>
+                    {/* The tour's Adding items step points here on an empty list. */}
+                    <Button onClick={() => setShowAddItemModal(true)} data-tour="add-item">
+                      Add your first item
+                    </Button>
                     {/* Not on an archived list, as the header's Share isn't. */}
                     {!wishlist.archived && (
                       <ShareButton

@@ -210,6 +210,18 @@ describe('a list with no items at all', () => {
     expect(await screen.findByRole('dialog', { name: 'Add new item' })).toBeInTheDocument();
   });
 
+  // regression: an empty list had no add-item target (no tile is drawn), so
+  // the tour's Adding items step, on a list made during it, fell back to the
+  // centred card.
+  it('points the tour’s Adding items step at Add your first item', async () => {
+    await open();
+    const box = emptyState('Your list is empty');
+    expect(within(box).getByRole('button', { name: 'Add your first item' })).toHaveAttribute(
+      'data-tour',
+      'add-item'
+    );
+  });
+
   it("takes the owner from Share's invite to People's invite form", async () => {
     const user = userEvent.setup();
     await open();

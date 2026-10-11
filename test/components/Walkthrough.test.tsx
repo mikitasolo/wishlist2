@@ -24,7 +24,13 @@ vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }
 vi.mock('@/lib/analytics', () => ({ track }));
 
 import Walkthrough, { TOUR_AGAIN_TOAST } from '@/components/Walkthrough';
-import { resetWalkthroughForTests, tourListCreated } from '@/components/walkthroughStore';
+import {
+  markTourRunning,
+  resetWalkthroughForTests,
+  TOUR_BEAT_FRESH_MS,
+  tourListCreated,
+  tourRunningElsewhere,
+} from '@/components/walkthroughStore';
 import TourSetting from '@/components/TourSetting';
 import type { WalkthroughStatus } from '@/lib/utils/walkthrough';
 
@@ -271,6 +277,20 @@ describe('Walkthrough', () => {
     expect(within(closing).queryByRole('button', { name: 'Create a list' })).toBeNull();
   });
 
+  // regression: a list made at the New list step without the step seeing the
+  // click (New list pressed before its target was found) left the New list
+  // step open, so it showed again over the new list, which has no New list.
+  it('moves on to Adding items in a list made at the New list step, however it was reached', async () => {
+    answer({ due: 'tour', ownsList: false });
+    render(<Walkthrough userId="u1" />);
+    // No New list target: the step is the centred card, and nothing marks it used.
+    await step('Lists for every occasion');
+    act(() => tourListCreated('/wishlists/brand-new'));
+    addTarget('add-item');
+    expect(await step('Adding items')).toBeInTheDocument();
+    expect(visited()).toEqual(['/wishlists/brand-new']);
+  });
+
   it('moves on when the try-it control is used, once the dialog it opened closes', async () => {
     const { 'add-item': addItem } = addAllTargets();
     answer({ due: 'tour', ownsList: true, listPath: '/wishlists/maya' });
@@ -290,6 +310,35 @@ describe('Walkthrough', () => {
 
     dialog.remove();
     expect(await step('Sharing')).toBeInTheDocument();
+  });
+
+  // regression: a page opened in a new tab mid-tour (the bookmarklet's) read
+  // the tour as due and started it over at step 1 there.
+  it('leaves a tour running in another tab to that tab', async () => {
+    addTarget('new-list');
+    answer({ due: 'tour', ownsList: false });
+    // Another tab's heartbeat: this tab's own id differs, so stamp a foreign one.
+    localStorage.setItem(
+      'tour-running',
+      JSON.stringify({ userId: 'u1', tab: 'other-tab', at: Date.now() })
+    );
+    render(<Walkthrough userId="u1" />);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await act(() => new Promise((r) => setTimeout(r, 50)));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(track).not.toHaveBeenCalledWith('tour_started', expect.anything());
+  });
+
+  it('marks the tour as running while it runs here, and stops once it ends', async () => {
+    addTarget('new-list');
+    answer({ due: 'tour', ownsList: false });
+    render(<Walkthrough userId="u1" />);
+    const first = await step('Lists for every occasion');
+    expect(JSON.parse(localStorage.getItem('tour-running')!)).toMatchObject({ userId: 'u1' });
+    // Its own heartbeat isn't another tab's.
+    expect(tourRunningElsewhere('u1')).toBe(false);
+    await userEvent.click(within(first).getByRole('button', { name: 'Skip tour' }));
+    await waitFor(() => expect(localStorage.getItem('tour-running')).toBeNull());
   });
 
   it('reads again on the next page after a failed read', async () => {
@@ -449,6 +498,23 @@ describe('Walkthrough', () => {
     render(<Walkthrough userId="u1" />);
     await act(async () => {});
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('tour heartbeat', () => {
+  it('counts another tab’s fresh heartbeat for the same account only', () => {
+    const now = 1_000_000;
+    const other = (userId: string, at: number) =>
+      localStorage.setItem('tour-running', JSON.stringify({ userId, tab: 'other-tab', at }));
+    other('u1', now - 1000);
+    expect(tourRunningElsewhere('u1', now)).toBe(true);
+    expect(tourRunningElsewhere('u2', now)).toBe(false);
+    other('u1', now - TOUR_BEAT_FRESH_MS);
+    expect(tourRunningElsewhere('u1', now)).toBe(false);
+    localStorage.setItem('tour-running', 'not json');
+    expect(tourRunningElsewhere('u1', now)).toBe(false);
+    markTourRunning('u1', now);
+    expect(tourRunningElsewhere('u1', now)).toBe(false);
   });
 });
 

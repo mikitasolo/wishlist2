@@ -38,11 +38,15 @@ import {
   type TourTarget,
 } from '@/lib/utils/tourSteps';
 import {
+  clearTourRunning,
   getCheckedFor,
   getStore,
+  markTourRunning,
   setCheckedFor,
   setStore,
   subscribe,
+  TOUR_BEAT_MS,
+  tourRunningElsewhere,
   type TourBasis,
   type TourRun,
 } from '@/components/walkthroughStore';
@@ -67,7 +71,9 @@ import type { WalkthroughAction, WalkthroughStatus } from '@/lib/utils/walkthrou
  *   around?".
  *
  * Skipping, finishing or dismissing the offer always ends on a toast saying
- * Settings can start it again. Never on a page `tourAllowedOn` refuses, and
+ * Settings can start it again. A tab opened while another runs the tour (a
+ * link opened in a new tab, the bookmarklet's) leaves it to that one
+ * (`tourRunningElsewhere`). Never on a page `tourAllowedOn` refuses, and
  * not over a list just joined (`?welcome=1`, which has its own welcome note):
  * the next page shows it.
  */
@@ -237,10 +243,29 @@ export default function Walkthrough({ userId }: { userId: string }) {
       if (!status || getCheckedFor() !== userId || getStore().run) return;
       const basis = { ownsList: status.ownsList, listPath: status.listPath ?? null };
       if (fromSettings) start(basis, 'settings');
+      // Running in another tab: this one (opened from it, say) leaves it there.
+      else if (tourRunningElsewhere(userId)) return;
       else if (status.due === 'tour') start(basis, 'auto');
       else if (status.due === 'offer') setStore({ offer: basis });
     })();
   }, [allowed, pathname, userId, start]);
+
+  // While it runs here, the account's other tabs know not to start it over.
+  const running = !!run;
+  useEffect(() => {
+    if (!running) return;
+    const beat = () => markTourRunning(userId);
+    beat();
+    const timer = window.setInterval(beat, TOUR_BEAT_MS);
+    window.addEventListener('pageshow', beat);
+    window.addEventListener('pagehide', clearTourRunning);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('pageshow', beat);
+      window.removeEventListener('pagehide', clearTourRunning);
+      clearTourRunning();
+    };
+  }, [running, userId]);
 
   const remind = useCallback(() => {
     showToast(TOUR_AGAIN_TOAST, 'info', {

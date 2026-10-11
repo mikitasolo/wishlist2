@@ -138,6 +138,8 @@ export default function PracticeList({ view }: { view: PracticeView }) {
               isAuthenticated
               isOwner={isOwner}
               isMember={!isOwner}
+              // Made-up reservations spoil nothing, and the tour points at their controls.
+              ignoreDiscreet
               tourTargets={
                 isOwner
                   ? undefined

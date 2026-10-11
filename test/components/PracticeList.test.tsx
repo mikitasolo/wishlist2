@@ -18,6 +18,7 @@ vi.mock('@/components/AppHeader', () => ({ default: () => null }));
 vi.mock('@/components/AuthButton', () => ({ default: () => null }));
 
 import PracticeList from '@/components/PracticeList';
+import { resetDiscreetModeForTests, setDiscreetMode } from '@/lib/hooks/useDiscreetMode';
 import { practiceItems } from '@/lib/utils/practiceList';
 
 const fetchMock = vi.fn();
@@ -30,6 +31,8 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  localStorage.clear();
+  resetDiscreetModeForTests();
 });
 
 /** The card for this item, by its name (its anchor, `item-<id>`). */
@@ -48,6 +51,16 @@ describe('PracticeList (WIS-436)', () => {
       await within(card('Ceramic pour-over set')).findByRole('button', { name: /release/i })
     ).toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  // regression: a device left in No spoiler mode (by an earlier account's
+  // tour, say) drew the practice cards with no Reserve or menu target, so
+  // the tour's steps fell back to the centred card.
+  it('keeps Reserve and the group gift menu with No spoiler mode on', () => {
+    setDiscreetMode(true);
+    const { container } = render(<PracticeList view="friend" />);
+    expect(container.querySelector('[data-tour="reserve"]')).not.toBeNull();
+    expect(container.querySelector('[data-tour="group-gift"]')).not.toBeNull();
   });
 
   it('points the group gift step at an available item’s menu', () => {
