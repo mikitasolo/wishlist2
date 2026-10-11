@@ -3,7 +3,6 @@ import mongoose, { type UpdateQuery } from 'mongoose';
 import { auth } from '@/lib/auth';
 import connectDB from '@/lib/mongodb';
 import Wishlist, { IWishlist } from '@/models/Wishlist';
-import User from '@/models/User';
 import { updateWishlistSchema, validateRequestBody } from '@/lib/validations';
 import {
   canAttachImage,
@@ -17,13 +16,9 @@ import {
   isReservedWishlistSlug,
 } from '@/lib/utils/wishlistSlug';
 import { getOwnerAccess } from '@/lib/utils/wishlistAccess';
-import {
-  ownedByFilter,
-  ownerIds,
-  primaryOwnerId,
-  serializeWishlist,
-} from '@/lib/utils/wishlistOwners';
+import { ownedByFilter, serializeWishlist } from '@/lib/utils/wishlistOwners';
 import { purgeShareCards } from '@/lib/og/purge';
+import { readOwnerUsernames } from '@/lib/utils/ownerUsernames';
 import { syncOccasionLinks } from '@/lib/utils/shareLinks';
 import { errorKind } from '@/lib/utils/errorKind';
 import { admitListViewer, linkModeAnswer } from '@/lib/utils/shareLinkAccess';
@@ -75,12 +70,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     // Fetch owners' public usernames (never expose their emails to viewers).
     // `ownerUsernames` is ordered like `owners`, so [0] is the primary owner.
-    const owners = ownerIds(wishlist);
-    const ownerUsers = await User.find({ _id: { $in: owners } }).select('username');
-    const usernameById = new Map(ownerUsers.map((u) => [u._id.toString(), u.username]));
-    const ownerUsernames = owners.map((id) => usernameById.get(id)).filter((u): u is string => !!u);
-    const primaryId = primaryOwnerId(wishlist);
-    const ownerUsername = (primaryId && usernameById.get(primaryId)) || null;
+    const { ownerUsernames, ownerUsername } = await readOwnerUsernames(wishlist);
 
     // Archived (owners only), visibility tier, membership, any owner's friends,
     // or a live share link to this list: the same rules as the items read, so

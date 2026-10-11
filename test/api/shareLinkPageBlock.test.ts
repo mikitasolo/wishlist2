@@ -57,7 +57,10 @@ beforeEach(async () => {
   await blockFromShareLinks(listId, kickedId);
 });
 
-afterEach(() => __setRateLimiters(null));
+afterEach(() => {
+  __setRateLimiters(null);
+  vi.restoreAllMocks();
+});
 
 async function render(token: string) {
   const tree = (await ShareLinkPage({
@@ -121,6 +124,67 @@ describe('the share link page for someone kicked from the list', () => {
     session.mockRejectedValue(new Error('db down'));
     vi.spyOn(console, 'error').mockImplementation(() => {});
     expect(isDead(await render(token))).toBe(false);
-    vi.restoreAllMocks();
+  });
+});
+
+/** The `visitorView` the page handed `WishlistPage`, if it drew the list. */
+function visitorViewOf(tree: ReactElement): unknown {
+  expect(tree.type).toBe(WishlistPage);
+  return (tree.props as { address: { visitorView?: unknown } }).address.visitorView;
+}
+
+describe('the share link page’s server-drawn top for a signed-out visitor (WIS-447)', () => {
+  it('reads the list’s top for a signed-out visitor: usernames, never an email or the token', async () => {
+    const token = await liveToken();
+    const coOwner = await User.create({ email: 'c@x.com', username: 'co_owner' });
+    await Wishlist.updateOne(
+      { _id: listId },
+      {
+        $set: { description: 'For the big day', bannerUrl: 'https://example.com/b.webp' },
+        $push: { owners: coOwner._id },
+      }
+    );
+    await Wishlist.updateOne(
+      { _id: listId },
+      { $set: { occasion: { kind: 'wedding', date: '2027-06-12', recurrence: null } } }
+    );
+    session.mockResolvedValue(null as never);
+    const view = visitorViewOf(await render(token));
+    expect(view).toEqual({
+      name: 'Wedding',
+      ownerUsernames: ['owner', 'co_owner'],
+      ownerCount: 2,
+      occasion: { kind: 'wedding', date: '2027-06-12', recurrence: null },
+      visibility: 'private',
+      bannerUrl: 'https://example.com/b.webp',
+      description: 'For the big day',
+      todayHint: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+    });
+    const text = JSON.stringify(view);
+    expect(text).not.toContain('@x.com');
+    expect(text).not.toContain(token);
+  });
+
+  it('draws nothing on the server for anyone signed in, who may be an owner or member', async () => {
+    const token = await liveToken();
+    session.mockResolvedValue({ user: { id: otherId } } as never);
+    expect(visitorViewOf(await render(token))).toBeUndefined();
+  });
+
+  it('draws nothing on the server when the session can’t be read', async () => {
+    const token = await liveToken();
+    session.mockRejectedValue(new Error('db down'));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(visitorViewOf(await render(token))).toBeUndefined();
+  });
+
+  it('draws nothing on the server for Preview as visitor, which only an owner is offered', async () => {
+    const token = await liveToken();
+    session.mockResolvedValue(null as never);
+    const tree = (await ShareLinkPage({
+      params: Promise.resolve({ token }),
+      searchParams: Promise.resolve({ as: 'visitor' }),
+    })) as ReactElement;
+    expect(visitorViewOf(tree)).toBeUndefined();
   });
 });

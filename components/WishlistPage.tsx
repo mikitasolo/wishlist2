@@ -44,6 +44,10 @@ import { countListChips } from '@/lib/utils/listChips';
 import { useListFilters } from '@/lib/hooks/useListFilters';
 import { useWishlistItems } from '@/lib/hooks/useWishlistItems';
 import { useUpdateItem } from '@/lib/hooks/useItems';
+import type { LinkVisitorView } from '@/lib/utils/linkVisitorView';
+
+/** The header's owner and member actions, which a visitor's header never offers. */
+const noop = () => {};
 
 /**
  * How the page was reached (WIS-335):
@@ -59,6 +63,9 @@ import { useUpdateItem } from '@/lib/hooks/useItems';
  *   `level` is the link's: a `join` link offers Join this list (WIS-337) in
  *   place of Ask to join, and `then: 'join'` (back from signing in to join)
  *   opens its confirmation at once; joining still takes a click.
+ *   `visitorView` is set only when the server knows the viewer is a visitor
+ *   (signed out, WIS-447): the list's top as the server read it, drawn while
+ *   the page's own reads load in place of the skeleton's header.
  */
 export type WishlistAddress =
   | { kind: 'slug'; id: string }
@@ -69,6 +76,7 @@ export type WishlistAddress =
       level?: ShareLinkLevel;
       preview?: boolean;
       then?: 'ask' | 'join' | null;
+      visitorView?: LinkVisitorView;
     };
 
 /**
@@ -91,6 +99,7 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
   // A Join link (WIS-337): Join this list in place of Ask to join.
   const joinLink = address?.kind === 'link' && address.level === 'join';
   const linkLevel = address?.kind === 'link' ? address.level : undefined;
+  const visitorView = address?.kind === 'link' ? address.visitorView : undefined;
   const readInit = useMemo<RequestInit | undefined>(
     () => (linkToken ? { headers: { [SHARE_TOKEN_HEADER]: linkToken } } : undefined),
     [linkToken]
@@ -309,6 +318,19 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
       }
     : {};
 
+  // A share link visitor's note: Ask to join, or Join this list on a Join link.
+  const linkCallout = linkToken
+    ? {
+        token: linkToken,
+        highlightAsk: askOnArrival === 'ask',
+        // Never on an owner's Preview as visitor: they can't join.
+        join:
+          joinLink && !previewAsVisitor
+            ? { control: linkJoin, confirmOnArrival: askOnArrival === 'join' }
+            : undefined,
+      }
+    : undefined;
+
   // Not available, or not loaded: said in place, at this URL. Which way to put
   // "not available" depends only on whether the viewer is signed in, so it
   // waits for the session to be known.
@@ -334,6 +356,64 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
   // The list is read alongside the session, not after it (WIS-444), so it can
   // land first: the page waits for both, as it names and acts for the viewer.
   if (pageLoad !== 'ready' || !wishlist || status === 'loading') {
+    // A signed-out share link visitor (WIS-447): the server read the list's top
+    // for them, so it's drawn as it will be once the reads land, box for box,
+    // and only the items wait. Never once the browser finds someone signed in
+    // (they signed in elsewhere since): the skeleton then, as anyone gets.
+    // Keep this in step with the loaded page's top below. A list read that has
+    // landed while the session hasn't is newer than the server's, so it's used.
+    if (visitorView && linkToken && wishlistId && status !== 'authenticated') {
+      const top: LinkVisitorView =
+        pageLoad === 'ready' && wishlist
+          ? {
+              ...visitorView,
+              name: wishlist.name,
+              ownerUsernames,
+              ownerCount,
+              occasion: wishlist.occasion ?? null,
+              visibility: getVisibility(wishlist),
+              bannerUrl: wishlist.bannerUrl ?? null,
+              description: wishlist.description ?? null,
+            }
+          : visitorView;
+      return (
+        <div className="min-h-screen">
+          <AppHeader actions={<AuthButton />} />
+          <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
+            <WishlistCover bannerUrl={top.bannerUrl} seed={wishlistId} />
+            <WishlistHeader
+              name={top.name}
+              ownerUsernames={top.ownerUsernames}
+              role="visitor"
+              occasion={top.occasion}
+              visibility={top.visibility}
+              archived={false}
+              todayHint={top.todayHint}
+              onAddItem={noop}
+              onPropose={noop}
+              onTogglePin={noop}
+              onLeave={noop}
+              share={
+                <span className="contents">
+                  <ShareButton url={`/l/${linkToken}`} title={top.name} />
+                </span>
+              }
+            />
+            {top.description && <WishlistDescription text={top.description} />}
+            <JoinListCallout
+              ownerUsernames={top.ownerUsernames}
+              ownerCount={top.ownerCount}
+              signedIn={false}
+              shareLink={linkCallout}
+            />
+            <div>
+              <ListControlsSkeleton chips={0} />
+              <SkeletonGrid count={8} variant="item" />
+            </div>
+          </main>
+        </div>
+      );
+    }
     // The server renders this skeleton before the session is known, so the
     // viewer has to be guessed, and a wrong guess moves the whole grid once the
     // session lands (CLS 0.14, WIS-444). A share link's page is a visitor's by
@@ -395,7 +475,9 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
     <div className="min-h-screen">
       <AppHeader actions={<AuthButton />} />
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
-        {/* The banner, as a short strip across the top (none without one), then
+        {/* Kept in step with a signed-out link visitor's server-drawn top above
+            (WIS-447), so nothing moves or remounts when the reads land.
+            The banner, as a short strip across the top (none without one), then
             the name, the meta line (owners, occasion, visibility) and the
             viewer's actions, with Leave list and Pin in the ⋯ menu, then the
             description. The same on every tab, so moving between them doesn't move them. */}
@@ -448,19 +530,7 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
             ownerCount={ownerCount}
             signedIn={!!session?.user}
             joinRequest={joinRequest}
-            shareLink={
-              linkToken
-                ? {
-                    token: linkToken,
-                    highlightAsk: askOnArrival === 'ask',
-                    // Never on an owner's Preview as visitor: they can't join.
-                    join:
-                      joinLink && !previewAsVisitor
-                        ? { control: linkJoin, confirmOnArrival: askOnArrival === 'join' }
-                        : undefined,
-                  }
-                : undefined
-            }
+            shareLink={linkCallout}
           />
         )}
 

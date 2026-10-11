@@ -41,6 +41,12 @@ interface WishlistHeaderProps {
   /** Leave list: the page asks to confirm, or tells a sole owner why they can't. */
   onLeave: () => void;
   /**
+   * A server-drawn header's stand-in for the viewer's date (WIS-447): holds
+   * the occasion's date and countdown at their width, unseen, until the
+   * browser's own date is known (`OccasionMeta`).
+   */
+  todayHint?: string | null;
+  /**
    * The list's Share (a `ShareButton`, which the page sets up with the list's
    * link and, for an owner, its invite popover), or nothing on an archived
    * list: its link opens for its owners only, so anyone they'd share it with
@@ -76,6 +82,7 @@ export default function WishlistHeader({
   onTogglePin,
   onLeave,
   share,
+  todayHint,
 }: WishlistHeaderProps) {
   const isOwner = role === 'owner';
   const menuItems: MenuItem[] = [];
@@ -106,6 +113,7 @@ export default function WishlistHeader({
           occasion={occasion}
           visibility={visibility}
           archived={archived}
+          todayHint={todayHint}
         />
       </div>
       <div
@@ -146,6 +154,7 @@ function WishlistMeta({
   occasion,
   visibility,
   archived,
+  todayHint,
 }: {
   ownerUsernames: readonly string[];
   /** Set only when the viewer is an owner, so only an owner is ever "you". */
@@ -153,6 +162,7 @@ function WishlistMeta({
   occasion?: Occasion | null;
   visibility?: Visibility | null;
   archived?: boolean | null;
+  todayHint?: string | null;
 }) {
   const badge = coverBadge({ visibility, archived });
   return (
@@ -179,7 +189,7 @@ function WishlistMeta({
           {ownerUsernames.length > 2 && ` +${ownerUsernames.length - 2}`}
         </span>
       )}
-      {occasion && <OccasionMeta occasion={occasion} />}
+      {occasion && <OccasionMeta occasion={occasion} todayHint={todayHint} />}
       <Badge size="sm" icon={badge.icon}>
         {badge.label}
       </Badge>
@@ -193,15 +203,38 @@ function WishlistMeta({
  * known (a server render, and the render that hydrates it) only the kind shows,
  * the same on both sides. A yearly occasion shows its next occurrence, never
  * the placeholder year it's stored on.
+ *
+ * Drawn on the server for a page whose top is there before its scripts
+ * (WIS-447), a `todayHint` (the server's date, which both sides render alike)
+ * lays out the date and countdown as they'll most likely read, but unseen, so
+ * the line has its width from the first paint and doesn't wrap later.
  */
-export function OccasionMeta({ occasion }: { occasion: Occasion }) {
+export function OccasionMeta({
+  occasion,
+  todayHint,
+}: {
+  occasion: Occasion;
+  todayHint?: string | null;
+}) {
   const today = useLocalToday();
   const details = today ? occasionDetails(occasion, today) : null;
+  const held = !today && todayHint ? occasionDetails(occasion, todayHint) : null;
   return (
     <span className="inline-flex items-center gap-1.5">
       <Icon name="calendar" size={16} className="flex-shrink-0" />
       <span>
         {details?.kind ?? occasionKindLabel(occasion.kind)}
+        {held && (
+          <span aria-hidden="true" className="invisible">
+            {held.date && (
+              <>
+                {' · '}
+                <span className="font-semibold">{held.date}</span>
+              </>
+            )}
+            {held.countdown && ` · ${held.countdown}`}
+          </span>
+        )}
         {details?.date && details.dateTime && (
           <>
             {' · '}

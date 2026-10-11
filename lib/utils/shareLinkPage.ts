@@ -5,6 +5,20 @@ import { checkRateLimit, ipKey } from '@/lib/rateLimit';
 import { errorKind } from '@/lib/utils/errorKind';
 import { isBlockedFromShareLinks } from '@/lib/utils/linkBlocks';
 import { resolveShareLink, type ResolvedShareLink } from '@/lib/utils/shareLinks';
+import { ownerIds } from '@/lib/utils/wishlistOwners';
+import { getVisibility } from '@/lib/utils/visibility';
+import type { LinkVisitorView } from '@/lib/utils/linkVisitorView';
+import { readOwnerUsernames } from '@/lib/utils/ownerUsernames';
+import { localDateString } from '@/lib/utils/occasion';
+import type { IWishlist } from '@/models/Wishlist';
+
+/**
+ * A live link, its list, and whether the request came with no session at all
+ * (`signedOut`), which the page's kick check (below) read anyway. Only a
+ * signed-out viewer is known on the server to be a visitor: anyone signed in
+ * may be one of the list's owners or members, whom the browser sends on.
+ */
+export type ResolvedLinkForViewer = ResolvedShareLink & { signedOut: boolean };
 
 /**
  * The live link `token` opens for whoever is viewing, for a server-rendered
@@ -15,30 +29,61 @@ import { resolveShareLink, type ResolvedShareLink } from '@/lib/utils/shareLinks
  * way to test tokens. A read that fails (the database, say) throws to the
  * error page rather than passing for a dead link.
  */
-export async function resolveLinkForViewer(token: string): Promise<ResolvedShareLink | null> {
+export async function resolveLinkForViewer(token: string): Promise<ResolvedLinkForViewer | null> {
   const live = await resolveShareLink(token);
-  const resolved = live && !(await isKickedViewer(live.wishlist._id)) ? live : null;
+  const viewer = live ? await readViewer(live.wishlist._id) : null;
+  const resolved =
+    live && viewer && !viewer.kicked ? { ...live, signedOut: viewer.signedOut } : null;
   if (!resolved) await checkRateLimit('shareLinkInvalid', ipKey(new Headers(await headers())));
   return resolved;
 }
 
 /**
- * Whether the signed-in viewer was kicked from the list (`WishlistLinkBlock`).
- * Read only for a live link, and only for this: nothing about the session
- * reaches the page. A session that can't be read lets the page render; its
- * reads are refused by the same check in `admitListViewer`, which then shows
- * the same dead state.
+ * Whether the signed-in viewer was kicked from the list (`WishlistLinkBlock`),
+ * and whether there was no session at all. Read only for a live link. Nothing
+ * about who the viewer is reaches the page: only that nobody is signed in,
+ * which lets it draw a visitor's view on the server (WIS-447). A session that
+ * can't be read lets the page render, as not known to be signed out; its reads
+ * are refused by the same check in `admitListViewer`, which then shows the same
+ * dead state.
  */
-async function isKickedViewer(
+async function readViewer(
   wishlistId: Parameters<typeof isBlockedFromShareLinks>[0]
-): Promise<boolean> {
+): Promise<{ kicked: boolean; signedOut: boolean }> {
   let viewerId: string | undefined;
   try {
     viewerId = (await auth())?.user?.id;
   } catch (error) {
     unstable_rethrow(error);
     console.error('Share link page could not read the session:', errorKind(error));
-    return false;
+    return { kicked: false, signedOut: false };
   }
-  return isBlockedFromShareLinks(wishlistId, viewerId);
+  if (!viewerId) return { kicked: false, signedOut: true };
+  return { kicked: await isBlockedFromShareLinks(wishlistId, viewerId), signedOut: false };
+}
+
+/**
+ * What a signed-out visitor's `/l/<token>` page draws on the server above the
+ * items (WIS-447): the list's name, owners, occasion, visibility, banner and
+ * description, the same fields the list's own read answers a link visitor, so
+ * the page's largest text is in the HTML. Owners are named as that read names
+ * them (`readOwnerUsernames`: public usernames, never an email).
+ */
+export async function linkVisitorView(wishlist: IWishlist): Promise<LinkVisitorView> {
+  const { ownerUsernames } = await readOwnerUsernames(wishlist);
+  const occasion = wishlist.occasion;
+  return {
+    name: wishlist.name,
+    ownerUsernames,
+    ownerCount: ownerIds(wishlist).length,
+    occasion: occasion
+      ? { kind: occasion.kind, date: occasion.date, recurrence: occasion.recurrence }
+      : null,
+    visibility: getVisibility(wishlist),
+    bannerUrl: wishlist.bannerUrl || null,
+    description: wishlist.description || null,
+    // The server's own date: only to hold the occasion's line at its width
+    // until the browser's is known (`OccasionMeta`), never shown.
+    todayHint: localDateString(),
+  };
 }
