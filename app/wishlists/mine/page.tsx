@@ -113,7 +113,7 @@ export default function MyWishlistsPage() {
 
         {loading ? (
           <div className="mt-8">
-            <WishlistListSkeleton count={8} />
+            <WishlistListSkeleton count={8} withSearch />
           </div>
         ) : loadFailed ? (
           <div className="mt-8">
