@@ -7,6 +7,10 @@ import { coverInitial } from '@/lib/utils/cover';
 import { itemAnchorId } from '@/lib/utils/itemDeepLink';
 import type { statusMeta } from '@/lib/utils/itemStatus';
 import type { CardMotion } from '@/lib/utils/motion';
+import { plural } from '@/lib/utils/plural';
+
+/** How many tags a card names; the rest are a "+N" (the sheet lists them all). */
+export const CARD_TAGS_LIMIT = 2;
 
 interface ItemCardViewProps {
   item: {
@@ -15,6 +19,8 @@ interface ItemCardViewProps {
     imageUrl?: string | null;
     notes?: string | null;
     mostWanted?: boolean;
+    /** The owners' tags (WIS-385, shown WIS-452): the first two, then "+N". */
+    tags?: readonly string[] | null;
   };
   /** From `statusMeta`, so an owner never gets a booking badge. */
   status: ReturnType<typeof statusMeta>;
@@ -178,6 +184,31 @@ export default function ItemCardView({
             <p className="mb-2 line-clamp-1 break-words text-meta text-muted-foreground sm:mb-3">
               {item.notes}
             </p>
+          )}
+
+          {/* The owners' tags, display only (WIS-452): one line, a long name
+              truncated, under the body's ::after like the notes so a tap still
+              opens the sheet. */}
+          {!!item.tags?.length && (
+            <ul role="list" aria-label="Tags" className="mb-2 flex min-w-0 gap-1 sm:mb-3">
+              {item.tags.slice(0, CARD_TAGS_LIMIT).map((tag) => (
+                <li key={tag} className="flex min-w-0 max-w-[45%]">
+                  <Badge size="sm" className="min-w-0 max-w-full">
+                    <span className="truncate">{tag}</span>
+                  </Badge>
+                </li>
+              ))}
+              {item.tags.length > CARD_TAGS_LIMIT && (
+                <li className="flex flex-shrink-0">
+                  <Badge size="sm">
+                    <span aria-hidden>+{item.tags.length - CARD_TAGS_LIMIT}</span>
+                    <span className="sr-only">
+                      and {plural(item.tags.length - CARD_TAGS_LIMIT, 'more tag')}
+                    </span>
+                  </Badge>
+                </li>
+              )}
+            </ul>
           )}
         </div>
 

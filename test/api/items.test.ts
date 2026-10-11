@@ -724,6 +724,40 @@ describe('GET /api/users/me/items', () => {
       },
     ]);
   });
+
+  // The cards show tags on /items (WIS-452): only that one field is added, and
+  // only on an item that has some; the rest of the answer is the test above's.
+  it("returns an item's tags, and none on an untagged one", async () => {
+    const tagged = await Item.create({
+      wishlist: wishlistId,
+      name: 'Novel',
+      tags: ['Books', 'Gifts'],
+    });
+    const plain = await Item.create({ wishlist: wishlistId, name: 'Lamp' });
+
+    session.mockResolvedValue({ user: { id: ownerId } } as never);
+    const res = await MY_ITEMS(new NextRequest('http://localhost/api/users/me/items'));
+    const data = (await res.json()).data as Record<string, unknown>[];
+    expect(data).toHaveLength(2);
+    expect(data.find((i) => i._id === tagged._id.toString())?.tags).toEqual(['Books', 'Gifts']);
+    const lamp = data.find((i) => i._id === plain._id.toString());
+    expect(lamp).toBeDefined();
+    expect('tags' in lamp!).toBe(false);
+  });
+
+  it("never returns another owner's items or their tags", async () => {
+    const other = await User.create({ email: 'other-owner@example.com', username: 'otherowner' });
+    const theirs = await Wishlist.create({
+      name: 'Theirs',
+      owners: [other._id],
+      visibility: 'everyone',
+    });
+    await Item.create({ wishlist: theirs._id, name: 'Secret', tags: ['Hidden'] });
+
+    session.mockResolvedValue({ user: { id: ownerId } } as never);
+    const res = await MY_ITEMS(new NextRequest('http://localhost/api/users/me/items'));
+    expect(JSON.stringify((await res.json()).data)).not.toContain('Hidden');
+  });
 });
 
 describe('/api/items/[id] — a malformed id', () => {

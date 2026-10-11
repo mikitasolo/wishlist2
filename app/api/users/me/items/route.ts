@@ -52,6 +52,9 @@ export async function GET(request: NextRequest) {
         notes: i.notes ?? null,
         // lean() skips schema defaults, so an item saved before the flag has none.
         mostWanted: i.mostWanted === true,
+        // The owners' tags (WIS-385), shown on the card (WIS-452); absent when
+        // none, as on the list's items answer.
+        ...(i.tags?.length ? { tags: i.tags } : {}),
         status: i.status === 'booked' ? 'available' : i.status,
         wishlistId: i.wishlist.toString(),
         wishlistSlug: wishlist?.slug ?? null,
