@@ -14,6 +14,12 @@ import { SHARE_LINK_LABEL_MAX, SHARE_LINK_LEVELS } from '@/lib/utils/shareLinkFi
 import { isTimeZone } from '@/lib/utils/zonedDate';
 import { COPY_ITEMS_MAX } from '@/lib/utils/wishlistCopy';
 import { ITEM_LINKS_MAX } from '@/lib/utils/itemLinks';
+import {
+  ITEM_TAG_LENGTH_MAX,
+  ITEM_TAGS_MAX,
+  normalizeTagName,
+  uniqueTags,
+} from '@/lib/utils/itemTags';
 import { GROUP_GIFT_MAX_CENTS } from '@/lib/utils/groupGiftSummary';
 import { WALKTHROUGH_ACTIONS } from '@/lib/utils/walkthrough';
 import { BULK_ITEM_ACTIONS, BULK_ITEMS_MAX } from '@/lib/utils/bulkItems';
@@ -384,6 +390,34 @@ const itemLinkIdsSchema = z
   .max(ITEM_LINKS_MAX, `An item can go with up to ${ITEM_LINKS_MAX} others`)
   .transform((ids) => [...new Set(ids.map((id) => id.toLowerCase()))]);
 
+/**
+ * An item's tags (WIS-385): the whole set it should carry, each one visible
+ * line of up to `ITEM_TAG_LENGTH_MAX` (spaces tidied), repeats (by case) counted
+ * once, at most `ITEM_TAGS_MAX`. Only an owner's create or edit takes them; the
+ * route fits them to the list's and checks the list's cap.
+ */
+const itemTagsSchema = z
+  .array(
+    z
+      .string()
+      .transform(normalizeTagName)
+      .pipe(
+        z
+          .string()
+          .refine((tag) => !isVisiblyBlank(tag), { message: 'A tag can’t be empty', abort: true })
+          .max(ITEM_TAG_LENGTH_MAX, `A tag must be ${ITEM_TAG_LENGTH_MAX} characters or less`)
+          .refine((tag) => !LINE_BREAK_OR_CONTROL_CHAR.test(tag), {
+            message: 'A tag can’t contain control characters',
+          })
+          .refine((tag) => !BIDI_CONTROL_CHAR.test(tag), { message: NAME_BIDI_MESSAGE })
+      )
+  )
+  .max(50, 'Too many tags')
+  .transform(uniqueTags)
+  .refine((tags) => tags.length <= ITEM_TAGS_MAX, {
+    message: `An item can have up to ${ITEM_TAGS_MAX} tags`,
+  });
+
 export const createItemSchema = z.object({
   name: visibleLineName('Item name is required', 200),
   imageUrl: z.url('Invalid image URL').optional(),
@@ -414,6 +448,9 @@ export const createItemSchema = z.object({
   // The items it goes with (WIS-29), owners only. A copy ("Save to my list")
   // never takes any: they'd be on another list.
   linkItems: itemLinkIdsSchema.optional(),
+  // Its tags (WIS-385), owners only. A copy ("Save to my list") never takes
+  // any: they're the source list's.
+  tags: itemTagsSchema.optional(),
 });
 
 export const updateItemSchema = z
@@ -449,6 +486,9 @@ export const updateItemSchema = z
     // co-owner's other link changes meanwhile aren't undone.
     linkItems: itemLinkIdsSchema.optional(),
     unlinkItems: itemLinkIdsSchema.optional(),
+    // The tags it should carry from now on (WIS-385), owners only; `[]` clears
+    // them.
+    tags: itemTagsSchema.optional(),
   })
   .refine(
     (data) =>

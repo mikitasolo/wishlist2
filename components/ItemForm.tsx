@@ -23,6 +23,7 @@ import { useViewerLocale } from '@/lib/hooks/useViewerLocale';
 import { useFreshUploads } from '@/lib/hooks/useFreshUploads';
 import type { FreshUploads } from '@/lib/utils/freshUploads';
 import ItemLinkPicker, { type LinkOption } from './ItemLinkPicker';
+import ItemTagsField from './ItemTagsField';
 
 export { itemToFormData, type ItemFormData } from '@/lib/utils/itemForm';
 
@@ -35,6 +36,7 @@ const BLANK_ITEM_FIELDS: Omit<ItemFormData, 'currency'> = {
   link: '',
   notes: '',
   mostWanted: false,
+  tags: [],
   isDraft: false,
   relatedItems: [],
 };
@@ -58,6 +60,8 @@ interface ItemFormProps {
       status: 'draft' | 'available' | 'proposed';
       // A new item's partners (WIS-29): only with `linkOptions`, only if any.
       linkItems?: string[];
+      // A new item's tags (WIS-385): only with `tagOptions`, only if any.
+      tags?: string[];
     },
     changes: ItemContentChanges
   ) => Promise<void>;
@@ -104,6 +108,9 @@ interface ItemFormProps {
   // The other items on the list it can go with (WIS-29), for an owner's add
   // or edit: shows "Goes with". Never given for a proposal or a review.
   linkOptions?: readonly LinkOption[];
+  // The tags the list's items carry (WIS-385), for an owner's add or edit:
+  // shows Tags. Never given for a proposal, a review or a copy of an item.
+  tagOptions?: readonly string[];
 }
 
 /**
@@ -141,6 +148,7 @@ export default function ItemForm({
   defaultCurrency,
   formId: externalFormId,
   linkOptions,
+  tagOptions,
   uploads: sharedUploads,
   image,
 }: ItemFormProps) {
@@ -299,6 +307,8 @@ export default function ItemForm({
   // "Goes with" (WIS-29): an owner's add or edit, on a list with other items.
   const showLinks =
     !!linkOptions && linkOptions.length > 0 && (mode === 'create' || mode === 'edit');
+  // Tags (WIS-385): an owner's add or edit, never a proposal's.
+  const showTags = !!tagOptions && (mode === 'create' || mode === 'edit');
 
   // Check if form has changes and notify parent
   useEffect(() => {
@@ -383,6 +393,7 @@ export default function ItemForm({
           ...(!isEditing && showLinks && formData.relatedItems.length
             ? { linkItems: formData.relatedItems }
             : {}),
+          ...(!isEditing && showTags && content.tags.length ? { tags: content.tags } : {}),
         },
         itemChanges(formData, initialDataRef.current, locale)
       ).catch((error: unknown) => {
@@ -550,6 +561,15 @@ export default function ItemForm({
           description="Gifters see a star on it, and it's listed first."
           checked={formData.mostWanted}
           onChange={(mostWanted) => setFormData({ ...formData, mostWanted })}
+          disabled={submitting}
+        />
+      )}
+
+      {showTags && (
+        <ItemTagsField
+          options={tagOptions!}
+          selected={formData.tags}
+          onChange={(tags) => setFormData((f) => ({ ...f, tags }))}
           disabled={submitting}
         />
       )}

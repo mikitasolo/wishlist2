@@ -39,6 +39,7 @@ export type ItemUpdateData = Partial<
     | 'link'
     | 'notes'
     | 'mostWanted'
+    | 'tags'
     | 'status'
     | 'bookedBy'
     | 'proposedBy'

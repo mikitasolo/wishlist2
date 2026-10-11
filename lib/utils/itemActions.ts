@@ -16,6 +16,8 @@ import {
   writeItemLinks,
 } from '@/lib/utils/itemLinkWrites';
 import type { LinkChanges } from '@/lib/utils/itemLinks';
+import { fitItemTags, listTagsOverCap, revertItemTags } from '@/lib/utils/itemTagWrites';
+import { LIST_TAGS_FULL_ERROR, OWNER_ONLY_TAGS_ERROR } from '@/lib/utils/itemTags';
 import { deleteOwnBlob, freeReplacedImage } from '@/lib/utils/blob';
 import {
   cancelUnbookedReservation,
@@ -219,9 +221,22 @@ export async function updateItem({
     linkChanges = checked.changes;
   }
 
+  // Tags (WIS-385) are the owners' alone, as links are: anyone else sending
+  // them is refused, so a proposal never carries one. Fitted to the list's
+  // (its spelling of a tag it has, within its cap) before anything is written.
+  let tagWrite: { tags: string[]; addsNew: boolean } | null = null;
+  if (validatedData.tags !== undefined) {
+    if (!isOwner) return { ok: false, status: 403, error: OWNER_ONLY_TAGS_ERROR };
+    const fitted = await fitItemTags(wishlist._id, currentItem._id, validatedData.tags);
+    if (!fitted.ok) return { ok: false, status: 409, error: LIST_TAGS_FULL_ERROR };
+    tagWrite = { tags: fitted.tags, addsNew: fitted.addsNew };
+  }
+
   // Who may change what, and under which condition each write is made.
   const plan = planItemUpdate(currentItem, validatedData, actor);
   if (!plan.ok) return plan;
+  // Written with the rest of the edit, under the same guard.
+  if (tagWrite) plan.updateData.tags = tagWrite.tags;
 
   // A price needs a currency with a rate, checked only on one this edit writes
   // (WIS-431): a member's reserve with a price their role can't write goes
@@ -353,6 +368,16 @@ export async function updateItem({
   }
 
   if (endsGroupGift) await endItemGroupGifts(item._id);
+
+  // A tag new to the list was checked against its cap before the write; a
+  // co-owner adding one at the same time could have passed that check too, so
+  // it's re-checked now both may have landed. Over it, this edit's tags are
+  // taken back (only while the item still carries them) and the edit answered
+  // as refused, as the first check would have; the rest of it stays.
+  if (tagWrite?.addsNew && (await listTagsOverCap(wishlist._id))) {
+    await revertItemTags(item._id, tagWrite.tags, currentItem.tags);
+    return { ok: false, status: 409, error: LIST_TAGS_FULL_ERROR };
+  }
 
   // An owner's status change or review can move the item in or out of the count
   // on the list's share card (a member's booking never does).

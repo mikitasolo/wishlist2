@@ -30,6 +30,9 @@ interface EditItemModalProps {
   // The list's other items it can go with (WIS-29), for an owner: shows "Goes
   // with", and a save sends the links added and removed.
   linkOptions?: readonly LinkOption[];
+  // The list's tags (WIS-385), for an owner: shows Tags. Never for a copy of
+  // an item or a proposal.
+  tagOptions?: readonly string[];
 }
 
 export default function EditItemModal({
@@ -42,6 +45,7 @@ export default function EditItemModal({
   userCurrency,
   initialFocus,
   linkOptions,
+  tagOptions,
 }: EditItemModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const formId = useId();
@@ -167,6 +171,7 @@ export default function EditItemModal({
           formId={formId}
           initialFocus={initialFocus}
           linkOptions={linkOptions}
+          tagOptions={tagOptions}
         />
       </BaseModal>
 

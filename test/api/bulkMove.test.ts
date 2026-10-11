@@ -276,6 +276,14 @@ describe('moving items: what moves', () => {
     expect(purge).toHaveBeenCalledWith({ wishlistIds: [w.wishlistId, target] });
   });
 
+  it('leaves an item’s tags behind: the list it goes to has its own (WIS-385)', async () => {
+    const tagged = await makeItem({ name: 'Book', tags: ['Books'] });
+    expect((await move(w.owner, [tagged])).status).toBe(200);
+    const [moved] = await onTarget();
+    expect(moved.name).toBe('Book');
+    expect(moved.tags).toBeUndefined();
+  });
+
   it('leaves an item marked as received, and a proposal, where they are', async () => {
     const received = await makeItem({ status: 'completed' });
     const proposal = await makeItem({ status: 'proposed', proposedBy: w.alice });

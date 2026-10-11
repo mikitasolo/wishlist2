@@ -150,6 +150,7 @@ export function useCreateItem(
         link?: string | null;
         notes?: string | null;
         mostWanted?: boolean;
+        tags?: string[];
         status?: 'draft' | 'available';
         linkItems?: string[];
       },

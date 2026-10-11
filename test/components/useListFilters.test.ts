@@ -130,3 +130,60 @@ describe('useListFilters', () => {
     expect(setup({ items: [], itemsLoaded: true }).result.current.listIsEmpty).toBe(true);
   });
 });
+
+describe('useListFilters: tag chips (WIS-385)', () => {
+  const TAGGED = [
+    item('book', 'available', { tags: ['Books'] }),
+    item('pan', 'available', { tags: ['Kitchen'] }),
+    item('cookbook', 'available', { tags: ['books', 'Kitchen'] }),
+    item('plain', 'available'),
+    // A member is never sent a draft; one that got through gives no chip.
+    item('secret', 'draft', { tags: ['Hidden'] }),
+  ];
+
+  it('offers the tags on the items the viewer sees, once each, alphabetical', () => {
+    const { result } = setup({ items: TAGGED });
+    expect(result.current.tagOptions).toEqual(['Books', 'Kitchen']);
+  });
+
+  it('shows items with any picked tag, without moving the status chips’ counts', () => {
+    const { result } = setup({ items: TAGGED });
+    const allBefore = result.current.chips.find((c) => c.value === 'all')?.count;
+    act(() => result.current.toggleTag('Books'));
+    expect(result.current.sortedItems.map((i) => i._id).sort()).toEqual(['book', 'cookbook']);
+    act(() => result.current.toggleTag('Kitchen'));
+    expect(result.current.sortedItems.map((i) => i._id).sort()).toEqual([
+      'book',
+      'cookbook',
+      'pan',
+    ]);
+    expect(result.current.chips.find((c) => c.value === 'all')?.count).toBe(allBefore);
+    act(() => result.current.toggleTag('books'));
+    act(() => result.current.toggleTag('Kitchen'));
+    expect(result.current.activeTags).toEqual([]);
+  });
+
+  it('hides the add tile while a tag is picked, and Show all clears the pick', () => {
+    const { result } = setup({
+      items: TAGGED,
+      viewerRole: 'owner',
+      isOwner: true,
+      isMember: false,
+    });
+    expect(result.current.addTile).toBe('add');
+    act(() => result.current.toggleTag('Kitchen'));
+    expect(result.current.addTile).toBeNull();
+    act(() => result.current.showAllItems());
+    expect(result.current.activeTags).toEqual([]);
+    expect(result.current.addTile).toBe('add');
+  });
+
+  it('drops a picked tag once no item carries it any more', () => {
+    const { result, rerender, options } = setup({ items: TAGGED });
+    act(() => result.current.toggleTag('Kitchen'));
+    rerender({ ...options, items: TAGGED.map((i) => ({ ...i, tags: undefined })) });
+    expect(result.current.activeTags).toEqual([]);
+    expect(result.current.tagOptions).toEqual([]);
+    expect(result.current.sortedItems).toHaveLength(4);
+  });
+});

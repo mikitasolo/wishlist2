@@ -35,6 +35,12 @@ import { isCountedOnShareCard } from '@/lib/og/data';
 import { admitListViewer, linkModeAnswer } from '@/lib/utils/shareLinkAccess';
 import { SHARE_TOKEN_HEADER } from '@/lib/utils/shareLinkFields';
 import { purgeShareCards } from '@/lib/og/purge';
+import { fitItemTags, listTagsOverCap, revertItemTags } from '@/lib/utils/itemTagWrites';
+import {
+  LIST_TAGS_FULL_ERROR,
+  OWNER_ONLY_TAGS_ERROR,
+  TAGS_DROPPED_NOTICE,
+} from '@/lib/utils/itemTags';
 import {
   IDEMPOTENCY_HEADER,
   isIdempotencyKeyClash,
@@ -316,6 +322,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const isCopy = sourceItemId !== undefined;
     // A copy of an item never takes links: its partners are on another list.
     const linkItems = isCopy ? [] : (validation.data.linkItems ?? []);
+    // Nor tags (WIS-385): they're the source list's, not this one's.
+    const sentTags = isCopy ? [] : (validation.data.tags ?? []);
 
     // Covers owner-created items and member proposals alike. A copy's image is
     // checked against its source, below.
@@ -365,6 +373,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       );
     }
 
+    // Only owners tag items (WIS-385): a proposal never carries a tag.
+    if (sentTags.length && !isOwner) {
+      return NextResponse.json({ success: false, error: OWNER_ONLY_TAGS_ERROR }, { status: 403 });
+    }
+
     // A retry of a create that was saved answers with that item. Checked once
     // everything that could refuse the request has passed again, and before a
     // copy's image is copied, which a retry mustn't do twice.
@@ -384,6 +397,19 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           { status: checked.status }
         );
       }
+    }
+
+    // The tags, fitted to the list's (its spelling of a tag it has, within its
+    // cap), once a retry has been answered and before anything is written.
+    let tags: string[] = [];
+    let tagsAddNew = false;
+    if (sentTags.length) {
+      const fitted = await fitItemTags(wishlistId, null, sentTags);
+      if (!fitted.ok) {
+        return NextResponse.json({ success: false, error: LIST_TAGS_FULL_ERROR }, { status: 409 });
+      }
+      tags = fitted.tags;
+      tagsAddNew = fitted.addsNew;
     }
 
     // "Save to my list": a copy goes into a list of your own (members only ever
@@ -438,6 +464,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       link?: string;
       notes?: string;
       mostWanted: boolean;
+      tags?: string[];
       status: string;
       bookedBy: null;
       proposedBy?: mongoose.Types.ObjectId;
@@ -458,6 +485,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       notes,
       // Owners set it. A proposal starts without it; the owner decides on review.
       mostWanted: isOwner ? (mostWanted ?? false) : false,
+      // An owner's only (checked above), and none on a copy.
+      ...(tags.length ? { tags } : {}),
       status: status || 'available',
       // Always unbooked. A booking with no Reservation behind it is one nobody
       // can release (only the holder can unbook, and owners are booking-blind).
@@ -504,6 +533,20 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       }
       if (!linked.ok) notice = linked.error;
       item = now;
+    }
+
+    // A tag new to the list passed the cap's check before the write; a
+    // co-owner tagging another item at the same time could have passed it
+    // too, so it's re-checked now. Over it, the item keeps none of its tags
+    // and the answer says so: the item itself is saved.
+    if (tagsAddNew && (await listTagsOverCap(wishlistId))) {
+      await revertItemTags(item._id, tags, []);
+      const now = await Item.findById(item._id);
+      if (!now) {
+        return NextResponse.json({ success: false, error: 'Item not found' }, { status: 404 });
+      }
+      item = now;
+      notice = TAGS_DROPPED_NOTICE;
     }
 
     // A visible new item changes the count on the list's share card.
