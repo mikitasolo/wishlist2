@@ -79,8 +79,8 @@ export default function EmptyState({
       {illustration ? (
         <SpotIllustration
           name={illustration}
-          size={compact ? 64 : 96}
-          className={compact ? 'mb-2' : 'mb-4'}
+          size={compact ? 48 : 96}
+          className={`${compact ? 'mb-2' : 'mb-4'} ${tone === 'muted' ? 'opacity-70' : ''}`}
         />
       ) : (
         <span

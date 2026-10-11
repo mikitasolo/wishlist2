@@ -37,8 +37,7 @@ const DRAWINGS: Record<IllustrationName, ReactNode> = {
     <>
       <rect x="20" y="12" width="56" height="72" rx="8" className={TINT} />
       <path d="M32 34h32M32 48h32M32 62h18" className={LINE} />
-      <circle cx="72" cy="72" r="12" className="fill-background stroke-accent2 stroke-[2.5]" />
-      <path d="M72 66v12M66 72h12" className={WARM} />
+      <path d="M84 62v14M77 69h14" className={WARM} />
     </>
   ),
   people: (
@@ -61,8 +60,8 @@ const DRAWINGS: Record<IllustrationName, ReactNode> = {
   ),
   'link-off': (
     <>
-      <path d="M40 56l-8 8a12 12 0 0 1-17-17l12-12a12 12 0 0 1 17 0" className={TINT} />
-      <path d="M56 40l8-8a12 12 0 0 1 17 17L69 61a12 12 0 0 1-17 0" className={TINT} />
+      <path d="M40 56l-8 8a12 12 0 0 1-17-17l12-12a12 12 0 0 1 17 0" className={LINE} />
+      <path d="M56 40l8-8a12 12 0 0 1 17 17L69 61a12 12 0 0 1-17 0" className={LINE} />
       <path d="M44 20l-4 10M20 44l10-4M52 76l4-10M76 52l-10 4" className={WARM} />
     </>
   ),
@@ -86,7 +85,6 @@ const ILLUSTRATION_FOR_ICON: Partial<Record<IconName, IllustrationName>> = {
   package: 'gift',
   list: 'list',
   users: 'people',
-  user: 'people',
   search: 'search',
   'link-off': 'link-off',
   bell: 'bell',

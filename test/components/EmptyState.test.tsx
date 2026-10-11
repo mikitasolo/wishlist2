@@ -58,7 +58,8 @@ describe('EmptyState', () => {
     const svg = document.querySelector('svg')!;
     expect(svg).toHaveAttribute('viewBox', '0 0 96 96');
     expect(svg).toHaveAttribute('aria-hidden', 'true');
-    expect(svg.parentElement).not.toHaveClass('rounded-2xl');
+    expect(document.querySelectorAll('svg')).toHaveLength(1);
+    expect(svg.parentElement).toBe(screen.getByRole('heading').parentElement);
   });
 
   it('keeps the icon chip for an icon with no illustration, and for the error tone', () => {
@@ -70,7 +71,7 @@ describe('EmptyState', () => {
 
   it('draws a smaller one when compact', () => {
     render(<EmptyState icon="gift" title="T" compact />);
-    expect(document.querySelector('svg')).toHaveAttribute('width', '64');
+    expect(document.querySelector('svg')).toHaveAttribute('width', '48');
   });
 
   it('stands in a dashed frame by default, and on the page itself unframed', () => {
