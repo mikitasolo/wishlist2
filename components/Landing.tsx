@@ -5,7 +5,7 @@ import GlobalSearch from '@/components/GlobalSearch';
 import Icon, { type IconName } from '@/components/Icon';
 import LandingCta from '@/components/LandingCta';
 import { MOCK_ITEMS, MOCK_RESERVED, MockThumb, mockPrice } from '@/components/MockList';
-import { coverGradient, coverInitial } from '@/lib/utils/cover';
+import { coverGradient } from '@/lib/utils/cover';
 import { statusMeta } from '@/lib/utils/itemStatus';
 import { plural } from '@/lib/utils/plural';
 
@@ -14,9 +14,10 @@ import { plural } from '@/lib/utils/plural';
  * on the server, for visitors and crawlers alike, with only the call to action
  * and the search as client islands. It leads with the promise (nobody sees
  * what's been reserved on their own list, and nobody buys a gift twice), has
- * one call to action, and puts the search for someone's list right under it,
- * for a visitor who was told to find someone here. The header keeps its own
- * Sign in.
+ * one call to action, puts the search for someone's list right under it, for a
+ * visitor who was told to find someone here, then shows the two views of one
+ * list playing out (WIS-406) and a three-step story strip. The header keeps
+ * its own Sign in.
  */
 export default function Landing() {
   return (
@@ -41,56 +42,84 @@ export default function Landing() {
             </p>
             <GlobalSearch variant="inline" />
           </div>
+          <div className="mt-14 text-left sm:mt-16">
+            <TwoViews />
+          </div>
         </section>
 
-        <ProductMock />
-
-        <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
-          {FEATURES.map((f) => (
-            <div
-              key={f.title}
-              className="rounded-3xl border border-border bg-surface p-7 shadow-md"
-            >
-              <span className="mb-5 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-primary-500/12 text-accent">
-                <Icon name={f.icon} size={18} />
-              </span>
-              <h3 className="mb-2 text-lg font-semibold text-foreground">{f.title}</h3>
-              <p className="text-body leading-relaxed text-muted-foreground">{f.body}</p>
-            </div>
-          ))}
-        </div>
+        <StoryStrip />
       </main>
     </div>
   );
 }
 
-const FEATURES: { icon: IconName; title: string; body: string }[] = [
+const STORY: { icon: IconName; title: string; body: string }[] = [
   {
     icon: 'list',
-    title: 'Create wishlists',
-    body: 'Organize your wishes into lists for any occasion — birthdays, holidays, the new place.',
+    title: 'Make a list',
+    body: 'Birthday, holidays, the new place. Add what you’d love.',
   },
   {
     icon: 'users',
-    title: 'Share & collaborate',
-    body: 'Invite people to view your lists and let them propose items you might love.',
+    title: 'Share the link',
+    body: 'Friends open it and can suggest ideas of their own.',
   },
   {
     icon: 'sparkles',
-    title: 'Keep it a surprise',
-    body: 'Friends quietly reserve gifts — you never see what’s been reserved on your own list.',
+    title: 'Stay surprised',
+    body: 'They quietly reserve gifts. You never see what’s taken.',
   },
 ];
 
 /**
- * One list, two views, in static markup: the owner's card, where the item a
- * friend reserved looks like any other, beside a friend's view of that same
- * item marked Reserved. The badge comes from the status map, as on a real
+ * The story strip (WIS-406): the three steps as one connected panel, in place
+ * of the generic feature cards. SPOT: each step's icon tile is where a spot
+ * illustration (WIS-408) can swap in.
+ */
+function StoryStrip() {
+  return (
+    <section aria-labelledby="landing-story-title">
+      <h2 id="landing-story-title" className="sr-only">
+        How it works
+      </h2>
+      <ol className="grid grid-cols-1 divide-y divide-border overflow-hidden rounded-3xl border border-border bg-surface shadow-md md:grid-cols-3 md:divide-x md:divide-y-0">
+        {STORY.map((step, i) => (
+          <li key={step.title} className="flex gap-4 p-6 sm:p-7 md:flex-col">
+            <span
+              aria-hidden
+              className="inline-flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-primary-500/12 text-accent"
+            >
+              <Icon name={step.icon} size={18} />
+            </span>
+            <div>
+              <h3 className="mb-1 text-lg font-semibold text-foreground">
+                <span aria-hidden className="text-muted-foreground">
+                  {i + 1}.{' '}
+                </span>
+                {step.title}
+              </h3>
+              <p className="text-body leading-relaxed text-muted-foreground">{step.body}</p>
+            </div>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
+/**
+ * One list, two views (WIS-406), in server markup with a CSS-only loop: a
+ * friend's view of the list, where a Reserve tap swaps the first item to
+ * Reserved, beside the owner's view of the same item, which never changes.
+ * Made-up data, no fetches, no script. The resting state is the finished
+ * moment (Reserved on the friend's side); the loop (`.landing-demo-*` rules in
+ * `globals.css`) only plays without `prefers-reduced-motion`, as in
+ * `lib/utils/motion.ts`. The badge comes from the status map, as on a real
  * card (`statusMeta`: a member seeing someone else's reservation).
  */
-function ProductMock() {
+function TwoViews() {
   return (
-    <section aria-labelledby="landing-mock-title" className="mb-14 sm:mb-20">
+    <section aria-labelledby="landing-mock-title">
       <h2
         id="landing-mock-title"
         className="mb-6 text-center text-xl font-semibold tracking-tight text-foreground"
@@ -100,59 +129,78 @@ function ProductMock() {
       <div className="mx-auto grid max-w-3xl grid-cols-1 items-start gap-8 md:grid-cols-2 md:gap-5">
         <figure className="min-w-0">
           <MockCaption icon="user">What Maya sees</MockCaption>
-          <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-sm">
-            <div
-              aria-hidden
-              className="flex h-20 items-center justify-center text-white/90"
-              style={{ background: coverGradient('landing-mock-list') }}
-            >
-              <Icon name="gift" size={28} />
-            </div>
-            <div className="p-5">
-              <p className="text-title font-semibold text-foreground">Maya’s birthday</p>
-              <p className="mt-0.5 text-meta text-muted-foreground">
-                {plural(MOCK_ITEMS.length, 'item')}
-              </p>
-              <ul className="mt-4 divide-y divide-border">
-                {MOCK_ITEMS.map((item) => (
-                  <li key={item.name} className="flex items-center gap-3 py-2.5">
-                    <MockThumb name={item.name} />
-                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
-                      {item.name}
-                    </span>
-                    <span className="text-sm text-muted-foreground">{mockPrice(item.cents)}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
+          <MockCard friend={false} />
           <MockNote>No badge, no hint: nothing tells her what’s been reserved.</MockNote>
         </figure>
 
         <figure className="min-w-0">
           <MockCaption icon="users">What her friends see</MockCaption>
-          <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-sm">
-            <div
-              aria-hidden
-              className="flex aspect-[2/1] items-center justify-center text-4xl font-semibold text-white/90"
-              style={{ background: coverGradient(MOCK_RESERVED.name) }}
-            >
-              {coverInitial(MOCK_RESERVED.name)}
-            </div>
-            <div className="p-5">
-              <div className="flex items-start justify-between gap-3">
-                <p className="min-w-0 text-title font-semibold text-foreground">
-                  {MOCK_RESERVED.name}
-                </p>
-                <Badge status={statusMeta('booked', 'member')} />
-              </div>
-              <p className="mt-1 text-sm text-muted-foreground">{mockPrice(MOCK_RESERVED.cents)}</p>
-            </div>
-          </div>
+          <MockCard friend />
           <MockNote>Someone’s already giving it, so nobody buys it twice.</MockNote>
         </figure>
       </div>
     </section>
+  );
+}
+
+function MockCard({ friend }: { friend: boolean }) {
+  return (
+    <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-md">
+      <div
+        aria-hidden
+        className="flex h-16 items-center justify-center text-white/90"
+        style={{ background: coverGradient('landing-mock-list') }}
+      >
+        <Icon name="gift" size={28} />
+      </div>
+      <div className="p-5">
+        <p className="text-title font-semibold text-foreground">Maya’s birthday</p>
+        <p className="mt-0.5 text-meta text-muted-foreground">
+          {plural(MOCK_ITEMS.length, 'item')}
+        </p>
+        <ul className="mt-4 divide-y divide-border">
+          {MOCK_ITEMS.map((item) => {
+            const reserved = friend && item === MOCK_RESERVED;
+            return (
+              <li
+                key={item.name}
+                className={`flex items-center gap-3 py-2.5 ${reserved ? 'landing-demo-row' : ''}`}
+              >
+                <MockThumb name={item.name} />
+                <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+                  {item.name}
+                </span>
+                <span className="text-sm text-muted-foreground">{mockPrice(item.cents)}</span>
+                {friend && (
+                  <span className="landing-demo-slot grid w-[5.5rem] justify-items-end">
+                    {reserved ? (
+                      <>
+                        <span
+                          aria-hidden
+                          className="landing-demo-reserve rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-foreground"
+                        >
+                          Reserve
+                        </span>
+                        <span className="landing-demo-reserved">
+                          <Badge status={statusMeta('booked', 'member')} />
+                        </span>
+                      </>
+                    ) : (
+                      <span
+                        aria-hidden
+                        className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-foreground"
+                      >
+                        Reserve
+                      </span>
+                    )}
+                  </span>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+    </div>
   );
 }
 

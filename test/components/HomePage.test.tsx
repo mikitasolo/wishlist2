@@ -137,4 +137,21 @@ describe('the landing', () => {
     expect(friends).toHaveTextContent('Ceramic pour-over set');
     expect(within(friends).getByText('Reserved')).toBeInTheDocument();
   });
+
+  // WIS-406: the cards are one three-step strip, and the demo's owner side
+  // never carries a Reserve control or a Reserved badge.
+  it('shows one three-step story strip in place of the feature cards', () => {
+    home({ data: null, status: 'unauthenticated', update }, null);
+    expect(screen.queryByText('Create wishlists')).toBeNull();
+    const strip = screen.getByRole('heading', { name: 'How it works', hidden: true }).parentElement;
+    expect(within(strip as HTMLElement).getAllByRole('listitem')).toHaveLength(3);
+    expect(screen.getByText('Stay surprised')).toBeInTheDocument();
+  });
+
+  it('keeps the owner side of the demo free of Reserve and Reserved', () => {
+    home({ data: null, status: 'unauthenticated', update }, null);
+    const [owner] = screen.getAllByRole('figure');
+    expect(within(owner).queryByText('Reserve')).toBeNull();
+    expect(within(owner).queryByText('Reserved')).toBeNull();
+  });
 });
