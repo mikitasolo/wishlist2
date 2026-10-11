@@ -7,6 +7,7 @@ import {
   NO_DATE_GROUP,
   changedCardPrimary,
   totalInCurrency,
+  occasionProgress,
 } from '@/lib/utils/reservations';
 import type { Occasion } from '@/lib/utils/occasion';
 
@@ -294,5 +295,30 @@ describe('totalInCurrency (D9)', () => {
     expect(totalInCurrency([], 'EUR', rates)).toBeNull();
     expect(totalInCurrency([{ value: 100, currency: 'gbp' }], 'EUR', null)).toBeNull();
     expect(totalInCurrency([{ value: 100, currency: 'xyz' }], 'EUR', rates)).toBeNull();
+  });
+});
+
+describe('occasionProgress (WIS-394)', () => {
+  const birthday: Occasion = { kind: 'birthday', date: '2000-10-14', recurrence: 'yearly' };
+  const at = (y: number, m: number, d: number) => new Date(y, m - 1, d, 12).toISOString();
+  const today = '2026-10-02';
+
+  it('counts only gifts given on that list within the window before the next occurrence', () => {
+    const gifts = [
+      { wishlistId: 'w1', giftedAt: at(2026, 9, 20) },
+      { wishlistId: 'w1', giftedAt: at(2025, 10, 20) }, // last year's
+      { wishlistId: 'w2', giftedAt: at(2026, 9, 20) }, // another list
+      { wishlistId: null, giftedAt: at(2026, 9, 20) }, // a list that's gone
+    ];
+    expect(occasionProgress(birthday, 'w1', 2, gifts, today)).toEqual({ given: 1, total: 3 });
+  });
+
+  it('is nothing given of what is to give when no gift counts', () => {
+    expect(occasionProgress(birthday, 'w1', 2, [], today)).toEqual({ given: 0, total: 2 });
+  });
+
+  it('has none for a one-off that has passed', () => {
+    const passed: Occasion = { kind: 'other', date: '2026-01-01', recurrence: null };
+    expect(occasionProgress(passed, 'w1', 1, [], today)).toBeNull();
   });
 });

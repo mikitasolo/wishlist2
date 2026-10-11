@@ -210,14 +210,16 @@ function toResponse(reply: Reply) {
 function mockHeldFetch({
   holdReads = false,
   initial = reservations,
+  initialGifts = gifts,
   rates,
 }: {
   holdReads?: boolean;
   initial?: Reservation[];
+  initialGifts?: (typeof gifts)[number][];
   /** Exchange rates `/api/currency-rates` answers with; without them it fails. */
   rates?: Record<string, number>;
 } = {}) {
-  const lists = { reservations: [...initial], gifts: [...gifts] };
+  const lists = { reservations: [...initial], gifts: [...initialGifts] };
   const server = {
     /** Both lists as the server holds them right now. */
     snapshot: (): Lists => ({
@@ -828,9 +830,10 @@ describe('BookedPage — Release on an active card, Dismiss on a changed one', (
     expect(noteOn('Kite')).toBe('No longer reserved to you');
     expect(document.body.textContent).not.toMatch(/archiv/i);
     // Both need confirmation; nothing is left to give.
-    expect(
-      screen.getByRole('heading', { level: 2, name: /Changed since you reserved/ })
-    ).toHaveTextContent('Changed since you reserved2');
+    // An inline banner (WIS-394), not a section with a heading.
+    expect(screen.getByRole('region', { name: 'Changed since you reserved' })).toHaveTextContent(
+      '2 gifts changed since you reserved'
+    );
     expect(screen.getByText('Nothing to give right now.')).toBeInTheDocument();
   });
 });
@@ -1235,9 +1238,10 @@ describe('BookedPage — reading both lists again while the page is open', () =>
     expect(document.body.textContent).not.toMatch(
       /removed|received|draft|no longer reserved|no longer available/i
     );
-    expect(
-      screen.getByRole('heading', { level: 2, name: /Changed since you reserved/ })
-    ).toHaveTextContent('Changed since you reserved2');
+    // An inline banner (WIS-394), not a section with a heading.
+    expect(screen.getByRole('region', { name: 'Changed since you reserved' })).toHaveTextContent(
+      '2 gifts changed since you reserved'
+    );
     expect(screen.getByText('Nothing to give right now.')).toBeInTheDocument();
 
     // Unarchived: as before, the link and the item's hints with it.
@@ -1819,6 +1823,40 @@ describe('BookedPage — "To give" grouped by the list’s upcoming occasion', (
     expect(document.body.innerHTML).not.toContain('2000');
   });
 
+  it('shows each dated group’s progress: only what’s marked as given counts as done (WIS-394)', async () => {
+    mockHeldFetch({
+      initial: grouped,
+      initialGifts: [
+        // Given on Anna's list a week ago: counts toward the birthday.
+        {
+          ...gift,
+          _id: 'gift-recent',
+          itemName: 'Puzzle',
+          wishlistId: 'w-anna',
+          giftedAt: new Date(2026, 8, 25, 12).toISOString(),
+        },
+        // Given on the same list last year: not toward this one.
+        {
+          ...gift,
+          _id: 'gift-old',
+          itemName: 'Old toy',
+          wishlistId: 'w-anna',
+          giftedAt: new Date(2025, 9, 20, 12).toISOString(),
+        },
+      ],
+    });
+    render(<BookedPage />);
+    await screen.findByText('Toy train');
+    const progress = screen.getAllByTestId('occasion-progress');
+    // Wedding (nothing given yet, one to give), then Anna's birthday (1 given, 2 to give).
+    expect(progress.map((el) => el.querySelector('p')?.textContent)).toEqual([
+      '0 of 1 given',
+      '1 of 3 given',
+    ]);
+    // "No date" has no occasion to count toward.
+    expect(screen.getAllByRole('progressbar', { name: 'Given' })).toHaveLength(2);
+  });
+
   it('shows no group headings while no list has an occasion coming up', async () => {
     mockHeldFetch({
       initial: [
@@ -1914,11 +1952,18 @@ describe('BookedPage — what to give next (WIS-263)', () => {
       (el) => el.textContent?.trim() || el.getAttribute('aria-label')
     );
 
-  it('shows To give first, then what changed, then the gift history', async () => {
+  it('shows what changed as a banner above To give, then the gift history, shut until opened', async () => {
     mockHeldFetch();
     render(<BookedPage />);
     await screen.findByText('Lego set');
-    expect(sections()).toEqual(['To give', 'Changed since you reserved', 'Gift history']);
+    // (WIS-394) The banner is no section: To give and the history are the headings.
+    expect(sections()).toEqual(['To give', 'Gift history']);
+    const banner = screen.getByTestId('changed-banner');
+    const toGive = screen.getByRole('heading', { level: 2, name: /To give/ });
+    expect(banner.compareDocumentPosition(toGive) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(
+      screen.getByRole('heading', { level: 2, name: /Gift history/ }).closest('details')
+    ).not.toHaveAttribute('open');
   });
 
   it('sums up under the title: to give, to review, and the total in the viewer’s currency', async () => {

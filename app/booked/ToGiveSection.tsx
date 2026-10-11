@@ -1,8 +1,9 @@
-import { groupByOccasion } from '@/lib/utils/reservations';
+import { groupByOccasion, occasionProgress, totalInCurrency } from '@/lib/utils/reservations';
+import OccasionProgress from './OccasionProgress';
 import ReservationCard from './ReservationCard';
 import ReservationGroup from './ReservationGroup';
 import SectionHeading from './SectionHeading';
-import type { Reservation } from './types';
+import type { Gift, Reservation } from './types';
 
 /**
  * "To give": what's still to give comes first, as it's what the page is for.
@@ -14,6 +15,8 @@ import type { Reservation } from './types';
  */
 export default function ToGiveSection({
   active,
+  gifts,
+  showProgress,
   today,
   busy,
   givenIds,
@@ -25,6 +28,10 @@ export default function ToGiveSection({
   onLeaveGroupGift,
 }: {
   active: Reservation[];
+  /** The gift history, which a dated group's progress counts what's given from. */
+  gifts: Gift[];
+  /** Off while a search narrows `active`: a group's progress is of the whole occasion, not of its matches. */
+  showProgress: boolean;
   today: string | null;
   busy: (id: string) => boolean;
   givenIds: ReadonlySet<string>;
@@ -50,7 +57,32 @@ export default function ToGiveSection({
       ) : (
         <div className="space-y-8">
           {toGive.map((group) => (
-            <ReservationGroup key={group.key} group={group} headed={headed}>
+            <ReservationGroup
+              key={group.key}
+              group={group}
+              headed={headed}
+              progress={
+                showProgress &&
+                group.occasion &&
+                today && (
+                  <OccasionProgress
+                    progress={occasionProgress(
+                      group.occasion,
+                      group.reservations[0].wishlistId,
+                      group.reservations.length,
+                      gifts,
+                      today
+                    )}
+                    // A group gift counts as the viewer's own share of it.
+                    leftTotal={totalInCurrency(
+                      group.reservations.map((r) => r.pledge ?? r.itemPrice),
+                      viewerCurrency,
+                      rates
+                    )}
+                  />
+                )
+              }
+            >
               {group.reservations.map((r) => (
                 <ReservationCard
                   key={r._id}

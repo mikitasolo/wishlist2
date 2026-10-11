@@ -13,10 +13,13 @@ import type { Reservation } from './types';
 export default function ReservationGroup({
   group,
   headed,
+  progress,
   children,
 }: {
   group: OccasionGroup<Reservation>;
   headed: boolean;
+  /** A dated group's progress line (WIS-394), under its heading. */
+  progress?: React.ReactNode;
   children: React.ReactNode;
 }) {
   const headingId = useId();
@@ -48,6 +51,7 @@ export default function ReservationGroup({
           )}
         </h3>
       )}
+      {headed && progress}
       {/* One column: a card carries its notes and up to three actions. */}
       <div className="grid grid-cols-1 gap-4">{children}</div>
     </section>
