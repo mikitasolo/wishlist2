@@ -28,7 +28,13 @@ import type { IWishlist } from '@/models/Wishlist';
 export interface WishlistLoadOptions {
   /** The list's slug or id from the URL (link mode: the id the token resolved to). */
   wishlistId: string | null;
-  /** The session's status: the first read waits until it's known. */
+  /**
+   * The session's status. The first read doesn't wait for it (WIS-444): the
+   * route answers by the request's own cookie, whatever the client has read of
+   * the session, so the two reads go out together. Only a change of status once
+   * known (signed out, or signed in, elsewhere) reads the list again; a switch
+   * from one signed-in account to another isn't seen here, as before.
+   */
   sessionStatus: 'loading' | 'authenticated' | 'unauthenticated';
   /** What every read of the list sends (link mode: the share token). */
   readInit: RequestInit | undefined;
@@ -144,6 +150,19 @@ export function useWishlistLoad({
     [wishlistId, linkToken, readInit, markRefused]
   );
 
+  // Bumped when the session changes from one known status to another, not when
+  // it first becomes known: the first read went out with the same cookie the
+  // session read did, so its answer already is that session's (WIS-444).
+  const [sessionChanges, setSessionChanges] = useState(0);
+  const knownStatus = useRef<string | null>(null);
+  useEffect(() => {
+    if (status === 'loading') return;
+    if (knownStatus.current !== null && knownStatus.current !== status) {
+      setSessionChanges((n) => n + 1);
+    }
+    knownStatus.current = status;
+  }, [status]);
+
   // The id belongs to the URL it was read at: another URL (another list, or the
   // same one under its new slug) is read afresh before the id is used again.
   useEffect(() => {
@@ -153,7 +172,7 @@ export function useWishlistLoad({
   // Fetch wishlist and determine role. Whatever the answer, the page stays at
   // this URL and says where things stand (see `pageLoad`), with no toast.
   useEffect(() => {
-    if (!wishlistId || status === 'loading') return;
+    if (!wishlistId) return;
     // A read outdated by another (the session changed, Try again) is dropped.
     let current = true;
 
@@ -230,7 +249,7 @@ export function useWishlistLoad({
     };
   }, [
     wishlistId,
-    status,
+    sessionChanges,
     refillSettings,
     ownerRemovals,
     readRefused,

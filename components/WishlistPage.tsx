@@ -331,7 +331,9 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
     );
   }
 
-  if (pageLoad !== 'ready' || !wishlist) {
+  // The list is read alongside the session, not after it (WIS-444), so it can
+  // land first: the page waits for both, as it names and acts for the viewer.
+  if (pageLoad !== 'ready' || !wishlist || status === 'loading') {
     // The server renders this skeleton before the session is known, so the
     // viewer has to be guessed, and a wrong guess moves the whole grid once the
     // session lands (CLS 0.14, WIS-444). A share link's page is a visitor's by

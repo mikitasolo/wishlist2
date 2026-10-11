@@ -1,5 +1,3 @@
-import { z } from 'zod';
-
 /**
  * A share link's fields and the token's shape (WIS-334): pure, so client code
  * (the owners' link list, `lib/validations.ts`) can use them. The server side,
@@ -22,14 +20,19 @@ export const SHARE_TOKEN_LENGTH = 22;
 /**
  * A token's shape, `^[0-9A-Za-z]{22}$`. Anything taking a token from outside
  * (the `/l/[token]` param, the `X-Share-Token` header, a body) checks it with
- * this before any query, so an object like `{"$ne": null}`, or any string that
- * isn't a token, never reaches a filter.
+ * `isShareTokenFormat` before any query, so an object like `{"$ne": null}`, or
+ * any string that isn't a token, never reaches a filter.
  */
-export const shareTokenSchema = z.string().regex(/^[0-9A-Za-z]{22}$/);
+const SHARE_TOKEN_PATTERN = /^[0-9A-Za-z]{22}$/;
 
-/** Whether `value` has a token's shape (`shareTokenSchema`). Run before any query that takes a token. */
+/**
+ * Whether `value` has a token's shape (`SHARE_TOKEN_PATTERN`). Run before any
+ * query that takes a token. A plain check, not a Zod schema: the list page
+ * imports this module, and Zod would ship to every visitor with it (64 KB
+ * gzipped, WIS-444).
+ */
 export function isShareTokenFormat(value: unknown): value is string {
-  return shareTokenSchema.safeParse(value).success;
+  return typeof value === 'string' && SHARE_TOKEN_PATTERN.test(value);
 }
 
 /**
