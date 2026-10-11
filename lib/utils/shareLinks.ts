@@ -14,7 +14,6 @@ import {
 
 export {
   isShareTokenFormat,
-  shareTokenSchema,
   SHARE_LINK_CAP,
   SHARE_TOKEN_LENGTH,
 } from '@/lib/utils/shareLinkFields';

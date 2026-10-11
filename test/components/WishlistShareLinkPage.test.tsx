@@ -4,7 +4,7 @@
 // to the list's own URL (unless previewing), visitors get the link-mode callout,
 // and any refusal is the dead-link state.
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup, waitFor } from '@testing-library/react';
+import { render, screen, cleanup, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 const { router, showToast, signIn, auth } = vi.hoisted(() => ({
@@ -406,5 +406,45 @@ describe('the skeleton before the session is known (WIS-444)', () => {
     const { container } = render(<WishlistPage address={{ kind: 'slug', id: 'wedding' }} />);
     expect(chips(container)).toBe(4);
     expect(note(container)).toBe(0);
+  });
+});
+
+describe('the list read and the session read (WIS-444)', () => {
+  // The list read used to wait for the session read to answer, so the page's
+  // largest paint waited on both one after the other (LCP about 3.5s on a
+  // throttled phone). The route answers by the request's cookie, so the two go
+  // out together; the page still waits for both before showing the list.
+  const listReads = () =>
+    fetchMock.mock.calls.filter(
+      ([url, init]) =>
+        url === '/api/wishlists/w1' &&
+        ((init as RequestInit | undefined)?.method ?? 'GET') === 'GET'
+    ).length;
+
+  it('sends the list read before the session is known, and shows the list once both are in', async () => {
+    auth.session = { data: null, status: 'loading' };
+    const { rerender } = render(<WishlistPage address={{ kind: 'slug', id: 'w1' }} />);
+    await waitFor(() => expect(listReads()).toBe(1));
+    // The list has landed, but who's viewing isn't known yet: still the skeleton.
+    await Promise.all(fetchMock.mock.results.map((r) => r.value));
+    await act(() => new Promise((r) => setTimeout(r, 50)));
+    expect(screen.queryByText('Wedding')).toBeNull();
+
+    viewAs(null);
+    rerender(<WishlistPage address={{ kind: 'slug', id: 'w1' }} />);
+    expect(await screen.findByText('Wedding')).toBeTruthy();
+    // The session becoming known doesn't read the list again.
+    expect(listReads()).toBe(1);
+  });
+
+  it('reads the list again when the session changes once known', async () => {
+    viewAs(null);
+    const { rerender } = render(<WishlistPage address={{ kind: 'slug', id: 'w1' }} />);
+    await screen.findByText('Wedding');
+    expect(listReads()).toBe(1);
+
+    viewAs({ id: 'u1', username: 'masha' });
+    rerender(<WishlistPage address={{ kind: 'slug', id: 'w1' }} />);
+    await waitFor(() => expect(listReads()).toBe(2));
   });
 });
