@@ -168,20 +168,6 @@ export default function BookedPage() {
               )
             ) : (
               <>
-                {(!searching || shownActive.length > 0) && (
-                  <ToGiveSection
-                    active={shownActive}
-                    today={today}
-                    busy={busy}
-                    givenIds={givenIds}
-                    viewerCurrency={viewerCurrency}
-                    rates={rates}
-                    onGift={confirms.setGift}
-                    onRelease={actions.release}
-                    onGiveGroupGift={confirms.setGroupGive}
-                    onLeaveGroupGift={actions.leaveGroupGift}
-                  />
-                )}
                 {shownConfirm.length > 0 && (
                   <ChangedSection
                     needsConfirm={shownConfirm}
@@ -193,13 +179,30 @@ export default function BookedPage() {
                     onDismiss={actions.dismiss}
                   />
                 )}
+                {(!searching || shownActive.length > 0) && (
+                  <ToGiveSection
+                    active={shownActive}
+                    gifts={gifts}
+                    today={today}
+                    busy={busy}
+                    givenIds={givenIds}
+                    viewerCurrency={viewerCurrency}
+                    rates={rates}
+                    onGift={confirms.setGift}
+                    onRelease={actions.release}
+                    onGiveGroupGift={confirms.setGroupGive}
+                    onLeaveGroupGift={actions.leaveGroupGift}
+                  />
+                )}
               </>
             )}
 
-            {/* Gift history, last: what's done. */}
+            {/* Gift history, last: what's done, shut until opened. */}
             {shownGifts.length > 0 && (
               <GiftHistory
                 gifts={shownGifts}
+                collapsible
+                forceOpen={searching}
                 busy={busy}
                 onDelete={actions.deleteGift}
                 currency={viewerCurrency}

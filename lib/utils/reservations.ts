@@ -5,7 +5,14 @@
 // (`listArchived`); these helpers turn that into UI grouping and copy.
 
 import { convertPrice, normalizeCurrency } from '@/lib/utils/currency';
-import { NO_UPCOMING_OCCASION, occasionSortKey, type Occasion } from '@/lib/utils/occasion';
+import {
+  NO_UPCOMING_OCCASION,
+  addDays,
+  localDateString,
+  nextOccurrence,
+  occasionSortKey,
+  type Occasion,
+} from '@/lib/utils/occasion';
 
 export interface ReservationStatusInfo {
   /** The live item's status: `null` on a list the gifter can't open, which shows none. */
@@ -215,4 +222,34 @@ export function totalInCurrency(
     approx = true;
   }
   return any ? { price: { value: Math.round(sum), currency: target }, approx } : null;
+}
+
+/** How far before an occasion a gift marked as given still counts toward its progress. */
+export const OCCASION_PROGRESS_WINDOW_DAYS = 60;
+
+/**
+ * How far along an occasion's gifts are (WIS-394): `given` of `total`, where
+ * only what's marked as given counts as done (a reserved or bought gift is
+ * still to give). `given` is the gifts in the history for that list, marked
+ * within the window before the occasion's next date (`OCCASION_PROGRESS_WINDOW_DAYS`)
+ * and not in the future, so last year's birthday gifts don't count toward this
+ * year's. `total` is those plus what's still to give. `null` when the occasion
+ * has no next date.
+ */
+export function occasionProgress(
+  occasion: Occasion,
+  wishlistId: string,
+  toGiveCount: number,
+  gifts: readonly { wishlistId: string | null; giftedAt: string }[],
+  today: string
+): { given: number; total: number } | null {
+  const next = nextOccurrence(occasion.date, occasion.recurrence, today);
+  const from = next && addDays(next, -OCCASION_PROGRESS_WINDOW_DAYS);
+  if (!next || !from) return null;
+  const given = gifts.filter((g) => {
+    if (g.wishlistId !== wishlistId) return false;
+    const day = localDateString(new Date(g.giftedAt));
+    return day >= from && day <= today;
+  }).length;
+  return { given, total: given + toGiveCount };
 }

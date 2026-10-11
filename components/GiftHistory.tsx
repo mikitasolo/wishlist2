@@ -1,7 +1,9 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import Badge from '@/components/Badge';
+import Icon from '@/components/Icon';
 import IconButton from '@/components/IconButton';
 import SnapshotThumb from '@/components/SnapshotThumb';
 import { convertedPrice, formatApproxPrice, formatPrice } from '@/lib/utils/currency';
@@ -95,11 +97,18 @@ export default function GiftHistory({
   onDelete,
   currency,
   rates,
+  collapsible = false,
+  forceOpen = false,
 }: {
   gifts: GiftEntry[];
   busy: (id: string) => boolean;
   onDelete: (id: string) => void;
+  /** Shut until opened (WIS-394): the heading is the toggle, the entries stay out of the way. */
+  collapsible?: boolean;
+  /** Open whatever the toggle says (a search is narrowing it, so its matches show). */
+  forceOpen?: boolean;
 } & ShownIn) {
+  const [opened, setOpened] = useState(false);
   const byYear = gifts.length > YEAR_HEADER_THRESHOLD;
   const groups: { year: string | null; items: GiftEntry[] }[] = [];
   for (const g of gifts) {
@@ -108,12 +117,8 @@ export default function GiftHistory({
     if (last && last.year === year) last.items.push(g);
     else groups.push({ year, items: [g] });
   }
-  return (
-    <section>
-      <h2 className="mb-4 flex items-center gap-2 px-1 text-xl font-semibold tracking-tight text-foreground">
-        Gift history
-        <Badge size="sm">{gifts.length}</Badge>
-      </h2>
+  const list = (
+    <>
       <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-sm">
         {groups.map((group) => (
           <div key={group.year ?? 'all'} className="border-border [&:not(:first-child)]:border-t">
@@ -137,6 +142,49 @@ export default function GiftHistory({
           </div>
         ))}
       </div>
+    </>
+  );
+  const title = (
+    <>
+      Gift history
+      <Badge size="sm">{gifts.length}</Badge>
+    </>
+  );
+  if (collapsible) {
+    return (
+      // A native disclosure: its summary is the toggle, keyboard and screen reader included.
+      <details
+        open={forceOpen || opened}
+        onToggle={(e) => {
+          if (!forceOpen) setOpened(e.currentTarget.open);
+        }}
+        className="group"
+      >
+        <summary
+          onClick={(e) => {
+            if (forceOpen) e.preventDefault();
+          }}
+          className="mb-4 flex cursor-pointer list-none items-center rounded-lg px-1 [&::-webkit-details-marker]:hidden"
+        >
+          <h2 className="flex items-center gap-2 text-xl font-semibold tracking-tight text-foreground">
+            {title}
+          </h2>
+          <Icon
+            name="chevron-down"
+            size={18}
+            className="ml-auto text-muted-foreground transition-transform group-open:rotate-180"
+          />
+        </summary>
+        {list}
+      </details>
+    );
+  }
+  return (
+    <section>
+      <h2 className="mb-4 flex items-center gap-2 px-1 text-xl font-semibold tracking-tight text-foreground">
+        {title}
+      </h2>
+      {list}
     </section>
   );
 }

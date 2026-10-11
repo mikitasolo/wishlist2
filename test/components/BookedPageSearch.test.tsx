@@ -2,7 +2,7 @@
 // The Reserved page's search (WIS-424): item, person and list over the rows
 // already loaded, kept in ?q=, never over what No spoiler mode covers.
 import { describe, it, expect, vi, beforeEach, afterEach, onTestFinished } from 'vitest';
-import { render, screen, cleanup, act } from '@testing-library/react';
+import { render, screen, cleanup, act, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 vi.mock('next-auth/react', () => ({
@@ -118,6 +118,24 @@ describe('BookedPage search', () => {
     await user.type(field, '@dave');
     expect(screen.getByText('Cookbook')).toBeInTheDocument();
     expect(screen.queryByText('Scarf')).toBeNull();
+  });
+
+  it('keeps the gift history shut until opened, and open while a search narrows it (WIS-394)', async () => {
+    const user = userEvent.setup();
+    render(<BookedPage />);
+    const field = await box();
+    const history = (await screen.findByRole('heading', { name: /Gift history/ })).closest(
+      'details'
+    )!;
+    expect(history).not.toHaveAttribute('open');
+    await user.click(within(history).getByRole('heading', { name: /Gift history/ }));
+    expect(history).toHaveAttribute('open');
+    await user.click(within(history).getByRole('heading', { name: /Gift history/ }));
+    expect(history).not.toHaveAttribute('open');
+
+    await user.type(field, 'cookbook');
+    expect(history).toHaveAttribute('open');
+    expect(within(history).getByText('Cookbook')).toBeInTheDocument();
   });
 
   it('says no matches, and Show all brings everything back and drops ?q=', async () => {
