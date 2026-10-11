@@ -8,7 +8,8 @@ import { resolveShareLink, type ResolvedShareLink } from '@/lib/utils/shareLinks
 import { ownerIds } from '@/lib/utils/wishlistOwners';
 import { getVisibility } from '@/lib/utils/visibility';
 import type { LinkVisitorView } from '@/lib/utils/linkVisitorView';
-import User from '@/models/User';
+import { readOwnerUsernames } from '@/lib/utils/ownerUsernames';
+import { localDateString } from '@/lib/utils/occasion';
 import type { IWishlist } from '@/models/Wishlist';
 
 /**
@@ -65,25 +66,24 @@ async function readViewer(
  * What a signed-out visitor's `/l/<token>` page draws on the server above the
  * items (WIS-447): the list's name, owners, occasion, visibility, banner and
  * description, the same fields the list's own read answers a link visitor, so
- * the page's largest text is in the HTML. Owners are named by their public
- * usernames, in `owners` order, as that read does (never an email).
+ * the page's largest text is in the HTML. Owners are named as that read names
+ * them (`readOwnerUsernames`: public usernames, never an email).
  */
 export async function linkVisitorView(wishlist: IWishlist): Promise<LinkVisitorView> {
-  const owners = ownerIds(wishlist);
-  const users = await User.find({ _id: { $in: owners } })
-    .select('username')
-    .lean();
-  const usernameById = new Map(users.map((u) => [String(u._id), u.username]));
+  const { ownerUsernames } = await readOwnerUsernames(wishlist);
   const occasion = wishlist.occasion;
   return {
     name: wishlist.name,
-    ownerUsernames: owners.map((id) => usernameById.get(id)).filter((u): u is string => !!u),
-    ownerCount: owners.length,
+    ownerUsernames,
+    ownerCount: ownerIds(wishlist).length,
     occasion: occasion
       ? { kind: occasion.kind, date: occasion.date, recurrence: occasion.recurrence }
       : null,
     visibility: getVisibility(wishlist),
     bannerUrl: wishlist.bannerUrl || null,
     description: wishlist.description || null,
+    // The server's own date: only to hold the occasion's line at its width
+    // until the browser's is known (`OccasionMeta`), never shown.
+    todayHint: localDateString(),
   };
 }

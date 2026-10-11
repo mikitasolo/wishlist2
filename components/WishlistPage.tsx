@@ -44,7 +44,6 @@ import { countListChips } from '@/lib/utils/listChips';
 import { useListFilters } from '@/lib/hooks/useListFilters';
 import { useWishlistItems } from '@/lib/hooks/useWishlistItems';
 import { useUpdateItem } from '@/lib/hooks/useItems';
-import { listChips } from '@/lib/utils/listChips';
 import type { LinkVisitorView } from '@/lib/utils/linkVisitorView';
 
 /** The header's owner and member actions, which a visitor's header never offers. */
@@ -361,38 +360,54 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
     // for them, so it's drawn as it will be once the reads land, box for box,
     // and only the items wait. Never once the browser finds someone signed in
     // (they signed in elsewhere since): the skeleton then, as anyone gets.
+    // Keep this in step with the loaded page's top below. A list read that has
+    // landed while the session hasn't is newer than the server's, so it's used.
     if (visitorView && linkToken && wishlistId && status !== 'authenticated') {
+      const top: LinkVisitorView =
+        pageLoad === 'ready' && wishlist
+          ? {
+              ...visitorView,
+              name: wishlist.name,
+              ownerUsernames,
+              ownerCount,
+              occasion: wishlist.occasion ?? null,
+              visibility: getVisibility(wishlist),
+              bannerUrl: wishlist.bannerUrl ?? null,
+              description: wishlist.description ?? null,
+            }
+          : visitorView;
       return (
         <div className="min-h-screen">
           <AppHeader actions={<AuthButton />} />
           <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
-            <WishlistCover bannerUrl={visitorView.bannerUrl} seed={wishlistId} />
+            <WishlistCover bannerUrl={top.bannerUrl} seed={wishlistId} />
             <WishlistHeader
-              name={visitorView.name}
-              ownerUsernames={visitorView.ownerUsernames}
+              name={top.name}
+              ownerUsernames={top.ownerUsernames}
               role="visitor"
-              occasion={visitorView.occasion}
-              visibility={visitorView.visibility}
+              occasion={top.occasion}
+              visibility={top.visibility}
               archived={false}
+              todayHint={top.todayHint}
               onAddItem={noop}
               onPropose={noop}
               onTogglePin={noop}
               onLeave={noop}
               share={
                 <span className="contents">
-                  <ShareButton url={`/l/${linkToken}`} title={visitorView.name} />
+                  <ShareButton url={`/l/${linkToken}`} title={top.name} />
                 </span>
               }
             />
-            {visitorView.description && <WishlistDescription text={visitorView.description} />}
+            {top.description && <WishlistDescription text={top.description} />}
             <JoinListCallout
-              ownerUsernames={visitorView.ownerUsernames}
-              ownerCount={visitorView.ownerCount}
+              ownerUsernames={top.ownerUsernames}
+              ownerCount={top.ownerCount}
               signedIn={false}
               shareLink={linkCallout}
             />
             <div>
-              <ListControlsSkeleton chips={listChips('visitor').length} />
+              <ListControlsSkeleton chips={0} />
               <SkeletonGrid count={8} variant="item" />
             </div>
           </main>
@@ -460,7 +475,9 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
     <div className="min-h-screen">
       <AppHeader actions={<AuthButton />} />
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
-        {/* The banner, as a short strip across the top (none without one), then
+        {/* Kept in step with a signed-out link visitor's server-drawn top above
+            (WIS-447), so nothing moves or remounts when the reads land.
+            The banner, as a short strip across the top (none without one), then
             the name, the meta line (owners, occasion, visibility) and the
             viewer's actions, with Leave list and Pin in the ⋯ menu, then the
             description. The same on every tab, so moving between them doesn't move them. */}

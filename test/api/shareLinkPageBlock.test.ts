@@ -57,7 +57,10 @@ beforeEach(async () => {
   await blockFromShareLinks(listId, kickedId);
 });
 
-afterEach(() => __setRateLimiters(null));
+afterEach(() => {
+  __setRateLimiters(null);
+  vi.restoreAllMocks();
+});
 
 async function render(token: string) {
   const tree = (await ShareLinkPage({
@@ -121,7 +124,6 @@ describe('the share link page for someone kicked from the list', () => {
     session.mockRejectedValue(new Error('db down'));
     vi.spyOn(console, 'error').mockImplementation(() => {});
     expect(isDead(await render(token))).toBe(false);
-    vi.restoreAllMocks();
   });
 });
 
@@ -156,6 +158,7 @@ describe('the share link page’s server-drawn top for a signed-out visitor (WIS
       visibility: 'private',
       bannerUrl: 'https://example.com/b.webp',
       description: 'For the big day',
+      todayHint: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
     });
     const text = JSON.stringify(view);
     expect(text).not.toContain('@x.com');
@@ -173,7 +176,6 @@ describe('the share link page’s server-drawn top for a signed-out visitor (WIS
     session.mockRejectedValue(new Error('db down'));
     vi.spyOn(console, 'error').mockImplementation(() => {});
     expect(visitorViewOf(await render(token))).toBeUndefined();
-    vi.restoreAllMocks();
   });
 
   it('draws nothing on the server for Preview as visitor, which only an owner is offered', async () => {

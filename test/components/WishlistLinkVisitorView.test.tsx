@@ -5,7 +5,8 @@
 // first paint. Anyone the browser finds signed in gets the skeleton instead,
 // so an owner or member is never shown the visitor's view.
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen, cleanup, act } from '@testing-library/react';
+import { renderToString } from 'react-dom/server';
 import userEvent from '@testing-library/user-event';
 
 const { router, signIn, auth } = vi.hoisted(() => ({
@@ -29,6 +30,7 @@ vi.mock('@/lib/analytics', () => ({ track: vi.fn() }));
 import WishlistPage, { type WishlistAddress } from '@/components/WishlistPage';
 import { KEEP_LINK_TEXT } from '@/components/JoinListCallout';
 import type { LinkVisitorView } from '@/lib/utils/linkVisitorView';
+import { OccasionMeta } from '@/components/WishlistHeader';
 
 const TOKEN = 'AbCdEfGhIjKlMnOpQrStUv';
 const fetchMock = vi.fn();
@@ -41,7 +43,26 @@ const VIEW: LinkVisitorView = {
   visibility: 'private',
   bannerUrl: null,
   description: 'Things for the new flat',
+  todayHint: '2026-10-11',
 };
+
+/** The list as its own read answers a signed-out link visitor. */
+const LIST = {
+  _id: 'w1',
+  name: 'Wedding',
+  slug: 'wedding',
+  description: 'Things for the new flat',
+  owners: ['u0'],
+  ownerUsernames: ['anna_m'],
+  userRole: null,
+  visibility: 'private',
+  archived: false,
+  featured: false,
+  currency: 'EUR',
+  bannerUrl: null,
+  occasion: null,
+};
+const reply = (body: unknown) => ({ ok: true, status: 200, json: async () => body });
 
 beforeAll(() => {
   vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
@@ -128,5 +149,67 @@ describe('a signed-out visitor’s share link page before its reads land', () =>
     render(<WishlistPage address={link({ visitorView: undefined })} />);
     expect(screen.queryByRole('heading', { level: 1 })).toBeNull();
     expect(screen.queryByText('Want to reserve a gift?')).toBeNull();
+  });
+});
+
+// Its own list id, so nothing the earlier tests left keyed by w1 (their reads
+// never answer) carries over.
+describe('once the reads land', () => {
+  it('keeps the same header and note, not redrawn, and adds the items', async () => {
+    session('unauthenticated');
+    let answerList: (value: unknown) => void = () => {};
+    fetchMock.mockImplementation((url: string) => {
+      if (url === '/api/wishlists/w2') return new Promise((r) => (answerList = r));
+      if (url === '/api/wishlists/w2/items') {
+        return Promise.resolve(
+          reply({
+            success: true,
+            data: [{ _id: 'i1', wishlist: 'w2', name: 'Kettle', status: 'available' }],
+          })
+        );
+      }
+      return Promise.resolve(reply({ success: true, data: [] }));
+    });
+    render(<WishlistPage address={link({ listId: 'w2' })} />);
+    const heading = screen.getByRole('heading', { level: 1, name: 'Wedding' });
+    const note = screen.getByText('Want to reserve a gift?');
+    await act(async () => answerList(reply({ success: true, data: { ...LIST, _id: 'w2' } })));
+    await screen.findByText('Kettle');
+    // The very same nodes: the loaded page's top lines up with the server's.
+    expect(screen.getByRole('heading', { level: 1, name: 'Wedding' })).toBe(heading);
+    expect(screen.getByText('Want to reserve a gift?')).toBe(note);
+  });
+
+  it('shows the read’s newer list over the server’s while the session is still loading', async () => {
+    session('loading');
+    fetchMock.mockImplementation((url: string) =>
+      url === '/api/wishlists/w2'
+        ? Promise.resolve(
+            reply({ success: true, data: { ...LIST, _id: 'w2', name: 'Wedding (renamed)' } })
+          )
+        : new Promise(() => {})
+    );
+    render(<WishlistPage address={link({ listId: 'w2' })} />);
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Wedding (renamed)' })
+    ).toBeTruthy();
+  });
+});
+
+describe('the occasion on a server-drawn header', () => {
+  const occasion = { kind: 'birthday' as const, date: '2000-10-25', recurrence: 'yearly' as const };
+
+  it('holds the date and countdown’s place, unseen, until the browser’s date is known', () => {
+    const html = renderToString(<OccasionMeta occasion={occasion} todayHint="2026-10-11" />);
+    expect(html).toMatch(/aria-hidden="true" class="invisible"/);
+    expect(html).toContain('in 14 days');
+    // Nothing visible claims a date the browser hasn't confirmed.
+    expect(html).not.toContain('<time');
+  });
+
+  it('shows the browser’s own date, with nothing held, once it is known', () => {
+    render(<OccasionMeta occasion={occasion} todayHint="2026-10-11" />);
+    expect(document.querySelector('.invisible')).toBeNull();
+    expect(document.querySelector('time')).not.toBeNull();
   });
 });

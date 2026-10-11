@@ -17,4 +17,11 @@ export interface LinkVisitorView {
   visibility: Visibility;
   bannerUrl: string | null;
   description: string | null;
+  /**
+   * The server's date (`YYYY-MM-DD`) when it drew the page. Not shown: the
+   * occasion's date and countdown wait for the browser's own date, and this
+   * only holds their place meanwhile, so the line doesn't grow (and wrap) once
+   * the page has loaded.
+   */
+  todayHint: string;
 }

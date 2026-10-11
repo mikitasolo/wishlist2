@@ -23,9 +23,12 @@ import { linkVisitorView, resolveLinkForViewer } from '@/lib/utils/shareLinkPage
  * That same session read also tells when nobody is signed in, the one viewer
  * the server knows is a visitor: their page draws the list's header and the
  * visitor's note on the server (`visitorView`, WIS-447), so its largest text is
- * in the HTML rather than after the scripts and the reads. Anyone signed in (an
- * owner or member, maybe) gets the skeleton until the browser knows who they
- * are, as before, so nobody on the list is ever shown the visitor's view.
+ * in the HTML rather than after the scripts and the reads. A request with a
+ * session (an owner or member, maybe), or one whose session can't be read, gets
+ * the skeleton until the browser knows who's viewing, as before; and the
+ * browser drops the visitor's view if it finds a session there (signed in in
+ * another tab since). So the view is only ever drawn for a request that
+ * carried no session.
  *
  * `?as=visitor` is an owner's Preview as visitor; `?then=ask` / `?then=join` a
  * visitor back from signing in to ask to join, or to join (a Join link, whose
