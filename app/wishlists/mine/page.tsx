@@ -9,13 +9,16 @@ import AuthButton from '@/components/AuthButton';
 import Button from '@/components/Button';
 import WishlistList, { ArchivedLists } from '@/components/WishlistList';
 import EmptyState from '@/components/EmptyState';
+import ListSearch from '@/components/ListSearch';
 import LoadError from '@/components/LoadError';
 import { WishlistListSkeleton } from '@/components/Skeleton';
 import { useLocalToday } from '@/lib/hooks/useLocalToday';
+import { useListsSearch } from '@/lib/hooks/useListsSearch';
 import { usePinToTop } from '@/lib/hooks/usePinToTop';
 import { signInPath } from '@/lib/utils/callbackUrl';
 import { sortByUpcomingOccasion } from '@/lib/utils/occasion';
 import { pinnedFirst } from '@/lib/utils/pinnedLists';
+import { searchWishlists } from '@/lib/utils/wishlistSearch';
 import { IWishlist } from '@/models/Wishlist';
 
 type Wishlist = IWishlist & {
@@ -33,6 +36,8 @@ export default function MyWishlistsPage() {
   // A failed first read is not an empty one: it gets LoadError, never the empty state.
   const [loadFailed, setLoadFailed] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
+  // The name filter lives in the URL's ?q=, never saved (WIS-427).
+  const [query, setQuery] = useListsSearch('/wishlists/mine');
   // Pin to top: per-owner, one at a time (`usePinToTop`).
   const { pinning, toggle: togglePin } = usePinToTop(setOwned);
   const pins = useMemo(() => ({ pinning, onToggle: togglePin }), [pinning, togglePin]);
@@ -67,23 +72,24 @@ export default function MyWishlistsPage() {
   // first; the rest keep the API's order (newest first). Your pinned list goes
   // above them all, as on Home.
   const today = useLocalToday();
+  const matching = useMemo(() => searchWishlists(owned, query), [owned, query]);
   const active = useMemo(
     () =>
       pinnedFirst(
         sortByUpcomingOccasion(
-          owned.filter((w) => !w.archived),
+          matching.filter((w) => !w.archived),
           today
         )
       ),
-    [owned, today]
+    [matching, today]
   );
   const archived = useMemo(
     () =>
       sortByUpcomingOccasion(
-        owned.filter((w) => w.archived),
+        matching.filter((w) => w.archived),
         today
       ),
-    [owned, today]
+    [matching, today]
   );
 
   return (
@@ -126,17 +132,30 @@ export default function MyWishlistsPage() {
             }
           />
         ) : (
-          <div className="mt-8 space-y-12">
-            {active.length > 0 && (
-              <WishlistList wishlists={active} viewerId={viewerId} pins={pins} />
-            )}
-            {/* Archived, folded away at the end: open when it's all there is. */}
-            <ArchivedLists
-              wishlists={archived}
-              viewerId={viewerId}
-              defaultOpen={active.length === 0}
-            />
-          </div>
+          <>
+            <div className="mt-8 mb-6 flex items-center gap-2">
+              <ListSearch value={query} onChange={setQuery} label="Search your wishlists" />
+            </div>
+            <div className="space-y-12">
+              {matching.length === 0 && (
+                <EmptyState
+                  tone="muted"
+                  icon="search"
+                  title="No wishlists found"
+                  body="No wishlists match your search."
+                />
+              )}
+              {active.length > 0 && (
+                <WishlistList wishlists={active} viewerId={viewerId} pins={pins} />
+              )}
+              {/* Archived, folded away at the end: open when it's all there is. */}
+              <ArchivedLists
+                wishlists={archived}
+                viewerId={viewerId}
+                defaultOpen={active.length === 0}
+              />
+            </div>
+          </>
         )}
       </main>
       {showCreate && <CreateWishlistModal isOpen onClose={() => setShowCreate(false)} />}

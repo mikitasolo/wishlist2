@@ -8,15 +8,19 @@ import AuthButton from '@/components/AuthButton';
 import OwnHandle from '@/components/OwnHandle';
 import WishlistList from '@/components/WishlistList';
 import EmptyState from '@/components/EmptyState';
+import ListSearch from '@/components/ListSearch';
 import LoadError from '@/components/LoadError';
 import { WishlistListSkeleton } from '@/components/Skeleton';
+import { useListsSearch } from '@/lib/hooks/useListsSearch';
 import { useLocalToday } from '@/lib/hooks/useLocalToday';
 import { signInPath } from '@/lib/utils/callbackUrl';
 import { sortByUpcomingOccasion } from '@/lib/utils/occasion';
+import { searchWishlists } from '@/lib/utils/wishlistSearch';
 import { IWishlist } from '@/models/Wishlist';
 
 type Wishlist = IWishlist & {
   ownerUsername?: string | null;
+  ownerUsernames?: string[] | null;
   itemCount?: number;
   /** The items you've reserved on it (`/api/wishlists`). */
   reservedByYou?: number;
@@ -31,6 +35,8 @@ export default function SharedWishlistsPage() {
   const [loading, setLoading] = useState(true);
   // A failed first read is not an empty one: it gets LoadError, never the empty state.
   const [loadFailed, setLoadFailed] = useState(false);
+  // The name filter lives in the URL's ?q=, never saved (WIS-427).
+  const [query, setQuery] = useListsSearch('/wishlists/shared');
 
   useEffect(() => {
     if (status === 'unauthenticated') router.replace(signInPath('/wishlists/shared'));
@@ -62,7 +68,17 @@ export default function SharedWishlistsPage() {
   // local date; the rest keep the API's order (newest first), which is also
   // the order until that date is known.
   const today = useLocalToday();
-  const byOccasion = useMemo(() => sortByUpcomingOccasion(member, today), [member, today]);
+  const byOccasion = useMemo(
+    () =>
+      sortByUpcomingOccasion(
+        // The owners' usernames are on each card, so it's as public as the name.
+        searchWishlists(member, query, (w) =>
+          [w.ownerUsername, ...(w.ownerUsernames ?? [])].join(' ')
+        ),
+        today
+      ),
+    [member, query, today]
+  );
 
   return (
     <div className="min-h-screen">
@@ -97,9 +113,20 @@ export default function SharedWishlistsPage() {
             }
           />
         ) : (
-          <div className="mt-8">
+          <div className="mt-8 space-y-6">
+            <div className="flex items-center gap-2">
+              <ListSearch value={query} onChange={setQuery} label="Search shared wishlists" />
+            </div>
+            {byOccasion.length === 0 && (
+              <EmptyState
+                tone="muted"
+                icon="search"
+                title="No wishlists found"
+                body="No wishlists match your search."
+              />
+            )}
             {/* Every list here is one you're a member of: the page says so, so no Member badge. */}
-            <WishlistList wishlists={byOccasion} shared />
+            {byOccasion.length > 0 && <WishlistList wishlists={byOccasion} shared />}
           </div>
         )}
       </main>
