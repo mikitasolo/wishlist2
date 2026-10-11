@@ -342,14 +342,28 @@ export const UPLOAD_COPY_TIMEOUT_MS = 5000;
  * checks it and reserves its size in one step before copying (and gives it
  * back if the copy doesn't stand), so copies running together can't go over
  * the quota between them, and the folder is listed once, not per image.
+ *
+ * `replacesSource` (moving items, WIS-442) says the caller frees `url` once the
+ * copy has taken its place, so the copy is checked against the quota net of
+ * it: it adds nothing, and goes ahead while their bytes (with the budget's
+ * other reservations) are within the quota, so an owner at the quota can
+ * still move what they uploaded. Only a file in the user's own folder is
+ * credited (`isUploadedBy`): freeing anyone else's frees nothing of theirs.
+ * The copy still lands before the source is freed, so the store holds both
+ * for that moment. A credit gives no room to a user already over the quota,
+ * so a move that leaves a credited copy behind (its cleanup failing) puts
+ * them over by at most that move's credited bytes, and the next can't add to
+ * it.
  */
 export async function copyBlobToUploads(
   url: string,
   userId: string,
-  budget?: UploadBudget
+  budget?: UploadBudget,
+  { replacesSource = false }: { replacesSource?: boolean } = {}
 ): Promise<UploadCopy> {
   const parsed = parseOwnBlobUrl(url);
   if (!parsed || !userId) return { ok: false, reason: 'failed' };
+  const credited = replacesSource && isUploadedBy(url, userId);
   const started: { copy?: Promise<{ url: string }> } = {};
   let reserved = 0;
   const release = () => {
@@ -363,11 +377,13 @@ export async function copyBlobToUploads(
         budget ? budget.used : getUserUploadBytes(userId),
       ]);
       // Checked and reserved with no await between, against the budget as it
-      // is now (others may have reserved since it was read above).
-      if ((budget ? budget.used : used) + source.size > USER_UPLOAD_QUOTA_BYTES) return null;
+      // is now (others may have reserved since it was read above). A credited
+      // copy adds nothing net, but still needs the rest within the quota.
+      const adds = credited ? 0 : source.size;
+      if ((budget ? budget.used : used) + adds > USER_UPLOAD_QUOTA_BYTES) return null;
       abortSignal.throwIfAborted(); // too late: don't start a copy nobody will keep
       if (budget) {
-        reserved = source.size;
+        reserved = adds;
         budget.used += reserved;
       }
       started.copy = copy(url, `uploads/${userId}/image${extensionOf(parsed)}`, {
@@ -408,12 +424,19 @@ const IMAGE_COPY_CONCURRENCY = 4;
  * `onCopied` records each copy as it lands, before the next is started, so an
  * attempt that never finishes can still free them. Images not started within
  * `budgetMs` aren't copied (`failed`). Answered in the order of `urls`.
+ *
+ * `replacing` (a move, WIS-442) names the sources the caller frees once their
+ * copies have taken over, each copied with `copyBlobToUploads`'s
+ * `replacesSource`. Name only a blob one item holds: one held by two is freed
+ * once (or, if only one of them moves, frees the other's picture), so it
+ * mustn't be credited twice, nor once.
  */
 export async function copyBlobsToUploads(
   urls: readonly string[],
   userId: string,
   budgetMs: number,
-  onCopied: (url: string) => Promise<void>
+  onCopied: (url: string) => Promise<void>,
+  replacing: ReadonlySet<string> = new Set()
 ): Promise<UploadCopy[]> {
   if (urls.length === 0) return [];
   const results: UploadCopy[] = new Array(urls.length);
@@ -427,7 +450,9 @@ export async function copyBlobsToUploads(
         results[i] = { ok: false, reason: 'failed' };
         continue;
       }
-      const copied = await copyBlobToUploads(urls[i], userId, budget);
+      const copied = await copyBlobToUploads(urls[i], userId, budget, {
+        replacesSource: replacing.has(urls[i]),
+      });
       if (copied.ok) await onCopied(copied.url);
       results[i] = copied;
     }

@@ -51,6 +51,7 @@ import { GET as giftRemindersCron } from '@/app/api/cron/gift-reminders/route';
 import { NextRequest } from 'next/server';
 import { MOVE_TARGET_ERROR } from '@/lib/utils/bulkItems';
 import { MOVE_DEADLINE_MS } from '@/lib/utils/bulkItemMove';
+import { USER_UPLOAD_QUOTA_BYTES } from '@/lib/utils/blob';
 import { scopedIdempotencyKey } from '@/lib/utils/itemIdempotency';
 import {
   api,
@@ -318,7 +319,9 @@ describe('moving items: what moves', () => {
   });
 
   it('leaves an item whose image can’t be copied where it is, and moves the rest', async () => {
-    const stuck = await makeItem({ imageUrl: blobOf(w.owner) });
+    // Someone else's upload (an approved proposal's), so the move frees none
+    // of the caller's quota and the copy is counted in full.
+    const stuck = await makeItem({ imageUrl: blobOf(w.alice) });
     head.mockResolvedValue({ size: 200 * 1024 * 1024 }); // over the quota
     const res = await move(w.owner, [stuck, w.itemId]);
     const { data } = await res.json();
@@ -327,6 +330,88 @@ describe('moving items: what moves', () => {
     expect(await Item.exists({ _id: stuck, wishlist: w.wishlistId })).toBeTruthy();
     expect((await onTarget()).map((i) => i.name)).toEqual(['Camera']);
     expect(del).not.toHaveBeenCalled();
+  });
+
+  describe('the quota, net of the images the move frees (WIS-442)', () => {
+    /** The caller's uploads folder already holds `bytes`. */
+    const using = (bytes: number) =>
+      list.mockResolvedValue({ blobs: [{ size: bytes }], cursor: undefined });
+
+    // regression: WIS-442 — a move copied each image under the caller's quota
+    // before freeing the original, so an owner at the quota couldn't move
+    // items with images they had uploaded, although the move frees that space.
+    it('moves an owner’s own images when they’re at the quota', async () => {
+      using(USER_UPLOAD_QUOTA_BYTES);
+      const a = await makeItem({ name: 'Lamp', imageUrl: blobOf(w.owner, 'image-a.jpg') });
+      const b = await makeItem({ name: 'Vase', imageUrl: blobOf(w.owner, 'image-b.jpg') });
+      const { data } = await (await move(w.owner, [a, b])).json();
+      expect(data.done).toEqual([a, b]);
+      expect(data.failed).toEqual([]);
+      const moved = await onTarget();
+      expect(moved.map((i) => i.name)).toEqual(['Lamp', 'Vase']);
+      // Copied, never shared: each copy is a new blob, each original freed.
+      for (const item of moved) expect(item.imageUrl).toMatch(/-c\d\.jpg$/);
+      expect(del).toHaveBeenCalledWith(blobOf(w.owner, 'image-a.jpg'));
+      expect(del).toHaveBeenCalledWith(blobOf(w.owner, 'image-b.jpg'));
+    });
+
+    it('credits nothing for an image in someone else’s folder', async () => {
+      using(USER_UPLOAD_QUOTA_BYTES - 500);
+      const theirs = await makeItem({ name: 'Lamp', imageUrl: blobOf(w.alice) });
+      const { data } = await (await move(w.owner, [theirs])).json();
+      expect(data.failed).toEqual([theirs]);
+      expect(await onTarget()).toHaveLength(0);
+      expect(copy).not.toHaveBeenCalled();
+    });
+
+    it('counts the other images in full against what’s left', async () => {
+      using(USER_UPLOAD_QUOTA_BYTES - 1500);
+      const mine = await makeItem({ name: 'Lamp', imageUrl: blobOf(w.owner) });
+      const first = await makeItem({ name: 'Vase', imageUrl: blobOf(w.alice, 'image-1.jpg') });
+      const second = await makeItem({ name: 'Book', imageUrl: blobOf(w.bob, 'image-2.jpg') });
+      const { data } = await (await move(w.owner, [mine, first, second])).json();
+      // 1000 bytes of room: the credited copy takes none, one other takes it all.
+      expect(data.done).toHaveLength(2);
+      expect(data.done).toContain(mine);
+      expect(data.failed).toHaveLength(1);
+      expect([first, second]).toContain(data.failed[0]);
+    });
+
+    it('credits nothing once the caller is over the quota, so a failed move can’t compound', async () => {
+      // Over by what an earlier move's leftover copy might have left.
+      using(USER_UPLOAD_QUOTA_BYTES + 1);
+      const mine = await makeItem({ imageUrl: blobOf(w.owner) });
+      const { data } = await (await move(w.owner, [mine])).json();
+      expect(data.failed).toEqual([mine]);
+      expect(copy).not.toHaveBeenCalled();
+      expect(await Item.exists({ _id: mine, wishlist: w.wishlistId })).toBeTruthy();
+    });
+
+    it('credits nothing for a blob two moving items hold, so neither loses its picture', async () => {
+      // Legacy data: one blob on two items, freed with the first one deleted.
+      using(USER_UPLOAD_QUOTA_BYTES - 500);
+      const shared = blobOf(w.owner);
+      const a = await makeItem({ name: 'Lamp', imageUrl: shared });
+      const b = await makeItem({ name: 'Vase', imageUrl: shared });
+      const { data } = await (await move(w.owner, [a, b])).json();
+      expect(data.failed).toEqual([a, b]);
+      expect(copy).not.toHaveBeenCalled();
+      expect(del).not.toHaveBeenCalled();
+    });
+
+    it('takes back and frees a credited copy whose original’s delete fails', async () => {
+      using(USER_UPLOAD_QUOTA_BYTES);
+      const mine = await makeItem({ imageUrl: blobOf(w.owner) });
+      vi.spyOn(Item, 'findOneAndDelete').mockRejectedValueOnce(new Error('db down'));
+      const { data } = await (await move(w.owner, [mine])).json();
+      expect(data.failed).toEqual([mine]);
+      expect(await onTarget()).toHaveLength(0);
+      // The copy went, so the store is back to what it held: over by nothing.
+      const copyUrl = (await copy.mock.results[0].value).url;
+      expect(del).toHaveBeenCalledWith(copyUrl);
+      expect(del).not.toHaveBeenCalledWith(blobOf(w.owner));
+      expect(await Item.exists({ _id: mine, imageUrl: blobOf(w.owner) })).toBeTruthy();
+    });
   });
 
   it('moves links among the moved items, and drops those to items left behind', async () => {

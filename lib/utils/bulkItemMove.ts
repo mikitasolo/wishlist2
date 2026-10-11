@@ -178,15 +178,26 @@ export async function applyBulkMove({
   // Each image of ours is copied into the caller's uploads before anything is
   // written; one that can't be (quota, failure, out of time) keeps its item
   // where it is, rather than moving it without its picture. An external URL
-  // goes as it is: we never delete those.
+  // goes as it is: we never delete those. The quota is checked net of the
+  // caller's own images the deletes below free (WIS-442), so an owner at the
+  // quota can move what they uploaded: only while they're within it, and only
+  // for a blob one moving item holds (a legacy blob two items share is freed
+  // with the first, so it's charged in full, as before). Until each delete
+  // lands the store holds both; a copy whose original stays is taken back
+  // with it, so only a cleanup that fails too can leave them over the quota,
+  // by at most this move's credited images, and nothing more is credited then.
   const toCopy = moving.filter((item) => isOwnBlob(item.imageUrl));
+  const urls = toCopy.map((item) => item.imageUrl as string);
+  const holders = new Map<string, number>();
+  for (const url of urls) holders.set(url, (holders.get(url) ?? 0) + 1);
   const copied = await copyBlobsToUploads(
-    toCopy.map((item) => item.imageUrl as string),
+    urls,
     userId,
     MOVE_IMAGES_BUDGET_MS,
     async (url) => {
       await ItemBatch.updateOne({ _id: batchId }, { $push: { copiedUrls: url } });
-    }
+    },
+    new Set(urls.filter((url) => holders.get(url) === 1))
   );
   const images = new Map<string, string>();
   toCopy.forEach((item, k) => {
