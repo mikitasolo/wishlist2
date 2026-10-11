@@ -106,7 +106,7 @@ test('from sm up the header links Home · Reserved · Activity, and there is no 
 });
 
 // WIS-302: the header's bell duplicated Activity, so it's gone, and Activity
-// carries the unread count: on the tab's icon, and beside the header's link.
+// carries the unread signal: a dot on the tab's icon, the count beside the header's link (WIS-415).
 test('Activity badges what’s unread on the tab and the header link, and clears once visited', async ({
   page,
   playwright,
@@ -133,13 +133,14 @@ test('Activity badges what’s unread on the tab and the header link, and clears
 
     await page.setViewportSize({ width: 390, height: 844 });
     const activityTab = tabBar(page).getByRole('link', { name: unreadName });
-    await expect(activityTab.locator('[data-badge]')).toBeInViewport({ ratio: 1 });
+    await expect(activityTab.locator('[data-dot]')).toBeInViewport({ ratio: 1 });
+    await expect(activityTab.locator('[data-badge]')).toHaveCount(0);
 
     // Visiting Activity marks everything read, and the badge follows.
     await activityTab.click();
     await expect(page).toHaveURL('/notifications');
     await expect(tab(page, 'Activity')).toHaveAttribute('aria-current', 'page');
-    await expect(page.locator('[data-badge]')).toHaveCount(0);
+    await expect(page.locator('[data-badge], [data-dot]')).toHaveCount(0);
   } finally {
     await friend.delete(`/api/users/${me}/follow`);
     await friend.dispose();
