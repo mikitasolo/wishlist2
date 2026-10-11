@@ -1,9 +1,6 @@
-import type {
-  BirthdayNudgeEmailDetails,
-  EmailedNotificationType,
-  NotificationEmailDetails,
-  WishlistInvitationDetails,
-} from '@/lib/email';
+import type { BirthdayNudgeEmailDetails } from './birthdayNudge';
+import type { EmailedNotificationType, NotificationEmailDetails } from './notifications/types';
+import type { WishlistInvitationDetails } from './wishlistInvite';
 
 /**
  * Made-up data for every email the app sends (WIS-375): the dev-only gallery
