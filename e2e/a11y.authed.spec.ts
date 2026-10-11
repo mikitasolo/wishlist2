@@ -31,7 +31,7 @@ for (const theme of ['light', 'dark'] as const) {
       expect(await seriousViolations(page, `Settings (${theme})`)).toEqual([]);
     });
 
-    test('a list as owner and as member, and an item dialog, have no serious violations', async ({
+    test('a list as owner and as member, the item sheet and the edit dialog, have no serious violations', async ({
       page,
     }) => {
       await page.goto('/wishlists/e2e-birthday');
@@ -39,6 +39,11 @@ for (const theme of ['light', 'dark'] as const) {
       await expect(card).toBeVisible();
       expect(await seriousViolations(page, `list as owner (${theme})`)).toEqual([]);
 
+      await card.getByRole('button', { name: 'E2E Gift' }).click();
+      await expect(page.getByRole('dialog', { name: 'E2E Gift' })).toBeVisible();
+      expect(await seriousViolations(page, `item sheet (${theme})`)).toEqual([]);
+
+      await page.keyboard.press('Escape');
       await card.getByRole('button', { name: 'Edit item' }).click();
       await expect(page.getByRole('dialog', { name: 'Edit item' })).toBeVisible();
       expect(await seriousViolations(page, `item dialog (${theme})`)).toEqual([]);
