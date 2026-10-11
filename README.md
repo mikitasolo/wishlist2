@@ -57,7 +57,7 @@ A modern wishlist app: create wishlists, share them, follow friends, and quietly
 - **Product analytics**: Umami Cloud (cookie-less; its script, no npm dependency) — production only, off when unconfigured
 - **Bot protection**: Cloudflare Turnstile on the sign-in form (Cloudflare's script, no npm dependency) — optional; off when unconfigured
 - **Styling**: Tailwind CSS v4
-- **Testing**: Vitest + Testing Library + `mongodb-memory-server`, Playwright for E2E
+- **Testing**: Vitest + Testing Library + `mongodb-memory-server`, Playwright for E2E (with `@axe-core/playwright` accessibility scans)
 - **Deployment**: Vercel
 
 ## 📋 Prerequisites
@@ -149,7 +149,7 @@ Tests live in `test/` and run on Vitest:
 - `test/unit/**` — pure logic and Zod schemas (currency, slugs, filters, validation, …)
 - `test/components/**` — React Testing Library (jsdom)
 - `test/api/**` — route handlers against an in-memory MongoDB with a mocked session
-- `e2e/**` — Playwright end-to-end smoke tests (`npm run test:e2e`). `global-setup` boots an ephemeral MongoDB, seeds a signed-in user (owner of one list, member of another) and a few unused magic links for the sign-up specs, builds and starts the app — no external services needed. Public and signed-in flows run as separate projects. Specs import `test` from `e2e/fixtures.ts`, which fails any spec whose pages throw an uncaught error or log a `console.error` that isn't allowed.
+- `e2e/**` — Playwright end-to-end smoke tests (`npm run test:e2e`). `global-setup` boots an ephemeral MongoDB, seeds a signed-in user (owner of one list, member of another) and a few unused magic links for the sign-up specs, builds and starts the app — no external services needed. Public and signed-in flows run as separate projects. Specs import `test` from `e2e/fixtures.ts`, which fails any spec whose pages throw an uncaught error or log a `console.error` that isn't allowed. `a11y.*.spec.ts` run an axe scan (`e2e/axe.ts`, WIS-383) of the key screens in light and dark and fail on serious or critical violations; exceptions go in `ALLOWED_A11Y_VIOLATIONS` there, each with a comment and a tracking issue.
 
 **Every change that touches logic should add or update tests, and every bug fix should add a regression test.** See [AGENTS.md](AGENTS.md) for the full policy and the API-test harness pattern, and [docs/agents/invariants.md](docs/agents/invariants.md) for the domain invariants that must not regress.
 
