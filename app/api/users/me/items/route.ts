@@ -48,6 +48,8 @@ export async function GET(request: NextRequest) {
         price: i.price ?? null,
         priceInUsdCents: itemPriceInUsdCents(i.price, rates),
         link: i.link ?? null,
+        // Searched on the page with the name (WIS-423); the owner's own text.
+        notes: i.notes ?? null,
         // lean() skips schema defaults, so an item saved before the flag has none.
         mostWanted: i.mostWanted === true,
         status: i.status === 'booked' ? 'available' : i.status,

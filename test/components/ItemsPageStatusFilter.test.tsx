@@ -31,7 +31,8 @@ vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ showToast }) }
 
 import MyItemsPage from '@/app/items/page';
 
-const item = (name: string, status: string, day: number) => ({
+const item = (name: string, status: string, day: number, notes: string | null = null) => ({
+  notes,
   _id: name,
   name,
   imageUrl: null,
@@ -60,7 +61,7 @@ beforeEach(() => {
           success: true,
           data: [
             item('Lamp', 'available', 1),
-            item('Sketch', 'draft', 2),
+            item('Sketch', 'draft', 2, 'charcoal on paper'),
             item('Idea', 'proposed', 3),
             item('Vase', 'completed', 4),
           ],
@@ -141,10 +142,31 @@ describe('/items status chips', () => {
   it('searches by name within the chip, and says so when nothing matches', async () => {
     const user = userEvent.setup();
     await visit();
-    await user.type(screen.getByLabelText('Search items by name'), 'sk');
+    await user.type(screen.getByLabelText('Search items'), 'sk');
     expect(shown()).toEqual(['Sketch']);
     await user.click(chip('Live'));
     expect(screen.getByText('No items found')).toBeInTheDocument();
+  });
+
+  it('matches notes and the list name, and keeps the query in ?q= (WIS-423)', async () => {
+    const user = userEvent.setup();
+    await visit();
+    const box = screen.getByLabelText('Search items');
+    await user.type(box, 'charcoal');
+    expect(shown()).toEqual(['Sketch']);
+    expect(window.location.search).toBe('?q=charcoal');
+    await user.clear(box);
+    await user.type(box, 'birthday');
+    expect(shown()).toEqual(ALL);
+    await user.clear(box);
+    expect(window.location.search).toBe('');
+  });
+
+  it('opens on the query a ?q= link carries', async () => {
+    window.history.replaceState(null, '', '/items?q=sketch');
+    await visit('Sketch');
+    expect(shown()).toEqual(['Sketch']);
+    expect(screen.getByLabelText('Search items')).toHaveValue('sketch');
   });
 
   it('links a card to its item on its list, and names the list', async () => {

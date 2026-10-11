@@ -36,13 +36,23 @@ export function forgetSavedStatusFilters(storage: Pick<Storage, 'removeItem'>): 
  * Filters items to those whose name or notes contain the query (case-insensitive
  * substring match, WIS-389). An empty or whitespace-only query returns all items.
  * It reads only `name` and `notes`, never a booking or proposer field, so it can
- * show an owner nothing the item's serialized form didn't already carry.
+ * show an owner nothing the item's serialized form didn't already carry. A caller's
+ * `extraText` must be as public to the viewer (the list's name), never a booking
+ * or proposer field.
  */
-export function searchItems(items: ApiItem[], query: string): ApiItem[] {
+export function searchItems<T extends { name?: string | null; notes?: string | null }>(
+  items: T[],
+  query: string,
+  /** More text each item answers to (/items adds its list's name, WIS-423). */
+  extraText?: (item: T) => string | null | undefined
+): T[] {
   const q = query.trim().toLowerCase();
   if (!q) return items;
   return items.filter(
-    (item) => item.name?.toLowerCase().includes(q) || item.notes?.toLowerCase().includes(q)
+    (item) =>
+      item.name?.toLowerCase().includes(q) ||
+      item.notes?.toLowerCase().includes(q) ||
+      extraText?.(item)?.toLowerCase().includes(q)
   );
 }
 

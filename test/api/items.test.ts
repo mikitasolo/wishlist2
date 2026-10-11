@@ -698,6 +698,7 @@ describe('GET /api/users/me/items', () => {
       status: 'booked',
       bookedBy: memberId,
       mostWanted: true,
+      notes: 'in red',
     });
     const slug = (await Wishlist.findById(wishlistId).lean())?.slug ?? null;
 
@@ -712,6 +713,7 @@ describe('GET /api/users/me/items', () => {
         price: null,
         priceInUsdCents: null,
         link: null,
+        notes: 'in red', // searched on /items (WIS-423)
         mostWanted: true,
         status: 'available', // an owner never sees a booking
         wishlistId,

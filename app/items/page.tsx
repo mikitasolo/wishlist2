@@ -13,7 +13,8 @@ import ItemCardView from '@/components/ItemCardView';
 import LoadError from '@/components/LoadError';
 import Select from '@/components/Select';
 import MultiSelectDropdown from '@/components/MultiSelectDropdown';
-import SearchField from '@/components/SearchField';
+import ListSearch from '@/components/ListSearch';
+import { useListUrlParam } from '@/lib/hooks/useListUrlParam';
 import { ITEM_GRID_CLASSES, ListControlsSkeleton, SkeletonGrid } from '@/components/Skeleton';
 import { useToast } from '@/components/ToastProvider';
 import { signInPath } from '@/lib/utils/callbackUrl';
@@ -27,6 +28,7 @@ import {
   SORT_OPTIONS,
   SORT_SHORT_LABELS,
   type SortType,
+  searchItems,
 } from '@/lib/utils/itemFilters';
 import { formatOwnerItemSummary, tallyItems } from '@/lib/utils/itemCounts';
 import { statusMeta } from '@/lib/utils/itemStatus';
@@ -35,6 +37,7 @@ import {
   isDimmedInAll,
   LIST_CHIP_LABELS,
   LIST_CHIP_PARAM,
+  LIST_SEARCH_PARAM,
   listChipFor,
   listChips,
   orderListItems,
@@ -54,6 +57,7 @@ interface MyItem {
   wishlistId: string;
   wishlistSlug: string | null;
   wishlistName: string;
+  notes: string | null;
   wishlistArchived: boolean;
   createdAt: string; // ISO date string
 }
@@ -68,6 +72,7 @@ const LS_SORT = 'items-sort';
 // This page shows the items on lists you own, so it's the owner's view of a
 // list: the owner's chips, and booked already folded into available.
 const OWNER_CHIPS = listChips('owner');
+const ITEMS_SCOPE = { id: 'items' };
 
 export default function MyItemsPage() {
   const { status } = useKnownSession();
@@ -83,7 +88,16 @@ export default function MyItemsPage() {
   const loadedOnce = useRef(false);
   const [wishlistFilters, setWishlistFilters] = useState<string[]>([]);
   const [chip, setChip] = useState<ListChip>('all');
-  const [searchQuery, setSearchQuery] = useState('');
+  // The query lives in the URL's ?q= like the in-list search, never saved.
+  const [searchQuery, setSearchQuery] = useListUrlParam<string>({
+    list: ITEMS_SCOPE,
+    urlId: null,
+    pagePath: '/items',
+    param: LIST_SEARCH_PARAM,
+    scope: ITEMS_SCOPE.id,
+    parse: (raw) => raw ?? '',
+    serialize: (query) => (query.trim() === '' ? null : query),
+  });
   const [sort, setSort] = useState<SortType>('date-desc');
   // Archived lists are left out unless asked for, so the counts here match the
   // dashboard's. Not saved: every visit starts without them. `includeArchived`
@@ -236,8 +250,8 @@ export default function MyItemsPage() {
   }, [scopedItems]);
 
   const visibleItems = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    const matching = q ? scopedItems.filter((i) => i.name.toLowerCase().includes(q)) : scopedItems;
+    // Name, notes and the list's name (WIS-423).
+    const matching = searchItems(scopedItems, searchQuery, (i) => i.wishlistName);
     // The list page's ordering: under All the actionable items come first.
     return orderListItems(matching, chip, 'owner', null, sort);
   }, [scopedItems, searchQuery, chip, sort]);
@@ -305,15 +319,7 @@ export default function MyItemsPage() {
                 up and on a phone the search on a row of its own. The Lists
                 filter sits beside them. */}
             <div className="mb-6 flex flex-wrap items-center gap-2 sm:mb-8 sm:flex-nowrap sm:gap-3">
-              <SearchField
-                size="sm"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onClear={() => setSearchQuery('')}
-                placeholder="Search items"
-                aria-label="Search items by name"
-                className="w-full sm:w-auto sm:min-w-0 sm:flex-1"
-              />
+              <ListSearch value={searchQuery} onChange={setSearchQuery} />
               <MultiSelectDropdown
                 className="min-w-0 flex-1 sm:w-48 sm:flex-none"
                 options={wishlistOptions}

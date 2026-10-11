@@ -298,6 +298,15 @@ describe('searchItems', () => {
     item({ name: 'Grinder Brush' }),
   ];
 
+  it('also matches the extra text it is given (the list name on /items)', () => {
+    const named = [
+      { ...items[0], list: 'Birthday' },
+      { ...items[1], list: 'Home' },
+    ];
+    expect(searchItems(named, 'birth', (i) => i.list)).toEqual([named[0]]);
+    expect(searchItems(named, 'birth')).toEqual([]);
+  });
+
   it('returns all items for an empty or whitespace query', () => {
     expect(searchItems(items, '')).toHaveLength(3);
     expect(searchItems(items, '   ')).toHaveLength(3);
