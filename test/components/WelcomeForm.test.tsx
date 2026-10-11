@@ -98,6 +98,13 @@ beforeEach(() => {
 });
 
 describe('Welcome page', () => {
+  it('opens with a short welcoming list of what Wishlist is for', () => {
+    render(<WelcomePage />);
+
+    const points = screen.getByRole('list', { name: 'What you can do here' });
+    expect(points.querySelectorAll('li')).toHaveLength(3);
+  });
+
   it('offers a username with an empty field, the generated one only on Keep', () => {
     render(<WelcomePage />);
 

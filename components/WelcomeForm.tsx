@@ -6,6 +6,7 @@ import { useKnownSession } from '@/lib/hooks/useKnownSession';
 import AppHeader from '@/components/AppHeader';
 import AuthButton from '@/components/AuthButton';
 import Button from '@/components/Button';
+import Icon from '@/components/Icon';
 import Panel from '@/components/Panel';
 import { Skeleton } from '@/components/Skeleton';
 import Field from '@/components/Field';
@@ -62,6 +63,12 @@ function Loading() {
     </div>
   );
 }
+
+const FIRST_RUN_POINTS = [
+  { icon: 'list', label: 'Make a list of what you’d love' },
+  { icon: 'users', label: 'Share it with people you trust' },
+  { icon: 'gift', label: 'Reserve gifts without doubling up' },
+] as const;
 
 /**
  * The first page a brand-new account sees: Auth.js sends their first sign-in
@@ -173,7 +180,25 @@ function Welcome({ nextList }: { nextList: WelcomeNextList | null }) {
         <h1 className="mb-1 text-3xl font-semibold tracking-tight text-foreground">
           Welcome to Wishlist
         </h1>
-        <p className="mb-8 text-muted-foreground">{welcomeSubtitle(nextList)}</p>
+        <p className="mb-6 text-muted-foreground">{welcomeSubtitle(nextList)}</p>
+
+        {/* A warm first-run moment: what Wishlist is for, in the kit's own parts. */}
+        <ul
+          aria-label="What you can do here"
+          className="mb-8 grid gap-3 rounded-2xl border border-border bg-surface-2 p-4 sm:grid-cols-3"
+        >
+          {FIRST_RUN_POINTS.map((point) => (
+            <li key={point.label} className="flex items-center gap-3 text-sm text-foreground">
+              <span
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-surface text-accent"
+                aria-hidden="true"
+              >
+                <Icon name={point.icon} size={18} />
+              </span>
+              {point.label}
+            </li>
+          ))}
+        </ul>
 
         <Panel
           as="form"

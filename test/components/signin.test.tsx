@@ -492,13 +492,17 @@ describe('SignInForm — copy and inline validation', () => {
   it('greets new and returning people alike, with no footer line', () => {
     render(<SignInForm />);
 
-    expect(
-      screen.getByRole('heading', { name: 'Sign in or create an account' })
-    ).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Sign in or sign up' })).toBeInTheDocument();
     expect(screen.getByText("We'll email you a link — no password.")).toBeInTheDocument();
     expect(screen.queryByText(/welcome back/i)).toBeNull();
     expect(screen.queryByText(/new users will automatically/i)).toBeNull();
     expect(screen.queryByText(/continue to the/i)).toBeNull();
+  });
+
+  it('shows the wordmark linking home, not a gift tile', () => {
+    render(<SignInForm />);
+
+    expect(screen.getByRole('link', { name: 'Wishlist home' })).toHaveAttribute('href', '/');
   });
 
   it.each([
