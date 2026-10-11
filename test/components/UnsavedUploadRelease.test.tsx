@@ -106,6 +106,7 @@ const existing: ItemFormData = {
   link: '',
   notes: '',
   mostWanted: false,
+  tags: [],
   isDraft: false,
   relatedItems: [],
 };

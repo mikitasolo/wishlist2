@@ -288,7 +288,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         items.map((item, i) => ({
           _id: copyIds.get(item._id.toString()),
           wishlist: newId,
-          ...copiedItemFields(item),
+          ...copiedItemFields(item, { withTags: true }),
           imageUrl: itemImages[i] ?? undefined,
           relatedItems: links.get(item._id.toString()) ?? [],
           createdAt: new Date(base + i),

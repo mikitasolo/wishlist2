@@ -50,6 +50,16 @@ const ItemSchema = new Schema(
       type: Boolean,
       default: false,
     },
+    // The owners' tags on it (WIS-385, lib/utils/itemTags.ts): at most
+    // ITEM_TAGS_MAX, each one visible line of up to ITEM_TAG_LENGTH_MAX, and at
+    // most LIST_TAGS_MAX different ones across a list's items. Written only by
+    // an owner's create or edit (never a proposal's, never "Save to my list"),
+    // which fit them to the list's (`fitItemTags`, lib/utils/itemTagWrites.ts).
+    // Items never tagged have no field; cleared ones have `[]`.
+    tags: {
+      type: [String],
+      default: undefined,
+    },
     status: {
       type: String,
       enum: ['draft', 'available', 'booked', 'completed', 'proposed'],
@@ -130,6 +140,7 @@ export interface IItem {
   link?: string | null;
   notes?: string | null;
   mostWanted?: boolean;
+  tags?: string[];
   status: 'draft' | 'available' | 'booked' | 'completed' | 'proposed';
   bookedBy?: mongoose.Types.ObjectId | null;
   proposedBy?: mongoose.Types.ObjectId | null;

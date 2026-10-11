@@ -18,6 +18,7 @@ const filled: ItemFormData = {
   link: '',
   notes: '',
   mostWanted: false,
+  tags: [],
   isDraft: false,
   relatedItems: [],
 };

@@ -25,6 +25,8 @@ export interface NewItemData {
   status?: 'draft' | 'available';
   /** The items on the list it goes with (WIS-29). */
   linkItems?: string[];
+  /** Its tags (WIS-385). */
+  tags?: string[];
 }
 
 interface AddItemModalProps {
@@ -50,6 +52,9 @@ interface AddItemModalProps {
   // The list's items the new one can go with (WIS-29): shows "Goes with".
   // Never for a copy of an item, whose list may be another.
   linkOptions?: readonly LinkOption[];
+  // The list's tags (WIS-385), for an owner: shows Tags. Never for a copy of
+  // an item or a proposal.
+  tagOptions?: readonly string[];
   // The form's unsaved uploads, when this caller holds them (see ItemForm).
   uploads?: FreshUploads;
   // A photo still being fetched when the form opens (see ItemForm).
@@ -66,6 +71,7 @@ export default function AddItemModal({
   title = 'Add new item',
   back,
   linkOptions,
+  tagOptions,
   uploads,
   image,
 }: AddItemModalProps) {
@@ -122,6 +128,7 @@ export default function AddItemModal({
     mostWanted?: boolean;
     status: 'draft' | 'available' | 'proposed';
     linkItems?: string[];
+    tags?: string[];
   }) => {
     setIsSubmitting(true);
     // No catch: a failed add must reject through to ItemForm, which then keeps
@@ -202,6 +209,7 @@ export default function AddItemModal({
           defaultCurrency={defaultCurrency}
           formId={formId}
           linkOptions={linkOptions}
+          tagOptions={tagOptions}
           uploads={uploads}
           image={image}
         />

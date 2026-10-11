@@ -103,6 +103,20 @@ export default function ItemSheet({
 
         <RelatedItemChips items={related} onShow={onShowItem} />
 
+        {/* The owners' tags (WIS-385), as everyone who sees the item sees them */}
+        {!!item.tags?.length && (
+          <ul aria-label="Tags" className="flex flex-wrap gap-1.5">
+            {item.tags.map((tag) => (
+              <li key={tag}>
+                <Badge>
+                  <Icon name="tag" size={12} />
+                  {tag}
+                </Badge>
+              </li>
+            ))}
+          </ul>
+        )}
+
         {/* Only an http(s) link is offered (`linkDomain`), in a new tab. */}
         {domain && item.link && (
           <a

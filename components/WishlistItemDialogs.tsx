@@ -63,6 +63,7 @@ export default function WishlistItemDialogs({
           wishlistCurrency={wishlistCurrency}
           userCurrency={userCurrency}
           linkOptions={actions.linkOptions}
+          tagOptions={actions.tagOptions}
         />
       )}
 
@@ -90,6 +91,7 @@ export default function WishlistItemDialogs({
           wishlistCurrency={wishlistCurrency}
           userCurrency={userCurrency}
           linkOptions={isOwner ? actions.editLinkOptions : undefined}
+          tagOptions={isOwner ? actions.tagOptions : undefined}
         />
       )}
 

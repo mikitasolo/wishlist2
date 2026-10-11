@@ -10,6 +10,7 @@
  */
 import type { Occasion } from '@/lib/utils/occasion';
 import { normalizeCurrency } from '@/lib/utils/currency';
+import { uniqueTags } from '@/lib/utils/itemTags';
 
 /** The most items one copy brings over. */
 export const COPY_ITEMS_MAX = 100;
@@ -34,6 +35,7 @@ interface CopiedSource {
   link?: string | null;
   notes?: string | null;
   mostWanted?: boolean;
+  tags?: string[] | null;
   status: string;
 }
 
@@ -41,8 +43,13 @@ interface CopiedSource {
  * What a copy of `item` starts with, on a new list (`/copy`, WIS-325) or on
  * the list it's moved to (WIS-434): its own fields, never a reservation or a
  * proposer. The image, links, list and dates are the caller's.
+ *
+ * Its tags (WIS-385) come along only to a new list (`withTags`), whose tags
+ * are then the source's own, within its cap; a move leaves them behind, since
+ * the list it goes to has tags of its own.
  */
-export function copiedItemFields(item: CopiedSource) {
+export function copiedItemFields(item: CopiedSource, { withTags }: { withTags: boolean }) {
+  const tags = withTags ? uniqueTags(item.tags ?? []) : [];
   return {
     name: item.name,
     price: item.price
@@ -51,6 +58,7 @@ export function copiedItemFields(item: CopiedSource) {
     link: item.link || undefined,
     notes: item.notes || undefined,
     mostWanted: !!item.mostWanted,
+    ...(tags.length ? { tags } : {}),
     status: copiedStatus(item.status),
     // Never reserved, never anyone's proposal: a new item to whoever sees it.
     bookedBy: null,

@@ -78,3 +78,34 @@ test('a member filters a list to Available and back to All', async ({ page }) =>
   await expect(cards).toHaveCount(4);
   await expect(page).toHaveURL(/\/wishlists\/e2e-friend$/);
 });
+
+// Tag chips (WIS-385): any picked tag matches, and the status chips' counts stay.
+test('a member filters a list by tags', async ({ page }) => {
+  const items = [
+    listed('E2E Novel', 1, { tags: ['Books'] }),
+    listed('E2E Pan', 2, { tags: ['Kitchen'] }),
+    listed('E2E Lamp', 3),
+  ];
+  await page.route('**/api/wishlists/e2e-friend/items', (route) =>
+    route.request().method() === 'GET'
+      ? route.fulfill({ json: { success: true, data: items } })
+      : route.fallback()
+  );
+  await page.goto('/wishlists/e2e-friend');
+
+  const tags = page.getByRole('group', { name: 'Filter by tag' });
+  const cards = page.getByRole('article');
+  await expect(cards).toHaveCount(3);
+
+  await tags.getByRole('button', { name: 'Books' }).click();
+  await expect(tags.getByRole('button', { name: 'Books' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(cards).toHaveCount(1);
+  await expect(cards.first()).toHaveAccessibleName('Item: E2E Novel');
+
+  await tags.getByRole('button', { name: 'Kitchen' }).click();
+  await expect(cards).toHaveCount(2);
+  // The status chips' counts never move with a tag.
+  await expect(
+    page.getByRole('radiogroup', { name: 'Show items' }).getByRole('radio', { name: 'All 3' })
+  ).toBeChecked();
+});

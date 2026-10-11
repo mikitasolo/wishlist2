@@ -381,6 +381,20 @@ describe('POST /api/wishlists/[id]/copy — the new list', () => {
     expect(items.map((i: { name: string }) => i.name)).toEqual(['External', 'Booked', 'Draft']);
   });
 
+  it('brings an item’s tags onto its copy (WIS-385)', async () => {
+    const tagged = await makeItem({ tags: ['Books', 'Kitchen'] });
+    const plain = await makeItem();
+    as(alice);
+
+    const { data } = await (
+      await postCopy({ itemIds: [tagged._id, plain._id].map(String) })
+    ).json();
+
+    const copied = await Item.find({ wishlist: data._id }).sort({ createdAt: 1 }).lean();
+    expect(copied[0].tags).toEqual(['Books', 'Kitchen']);
+    expect(copied[1].tags).toBeUndefined();
+  });
+
   it('gives two items sharing one source image a copy each', async () => {
     const a = await makeItem({ imageUrl: blobOf(alice, 'same.jpg') });
     const b = await makeItem({ imageUrl: blobOf(alice, 'same.jpg') });

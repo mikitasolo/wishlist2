@@ -7,6 +7,7 @@ import BulkActionBar from '@/components/BulkActionBar';
 import Button from '@/components/Button';
 import EmptyState from '@/components/EmptyState';
 import FilterChips from '@/components/FilterChips';
+import TagChips from '@/components/TagChips';
 import Icon from '@/components/Icon';
 import LoadError from '@/components/LoadError';
 import ListSearch from '@/components/ListSearch';
@@ -93,6 +94,9 @@ export default function WishlistItemsTab({
     budgetText,
     setBudgetText,
     budgetOffered,
+    tagOptions,
+    activeTags,
+    toggleTag,
     budgetInvalid,
     budgetLimit,
     viewerCurrency,
@@ -186,6 +190,16 @@ export default function WishlistItemsTab({
                     value={activeChip}
                     onChange={chooseChip}
                     ariaLabel="Show items"
+                    className="mb-2"
+                  />
+                )}
+
+                {/* The tag chips (WIS-385): any number on, no counts */}
+                {tagOptions.length > 0 && (
+                  <TagChips
+                    tags={tagOptions}
+                    picked={activeTags}
+                    onToggle={toggleTag}
                     className="mb-2"
                   />
                 )}

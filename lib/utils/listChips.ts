@@ -28,6 +28,7 @@ import {
 } from '@/lib/utils/itemStatus';
 import { isPublishedItem } from '@/lib/utils/itemCounts';
 import { compareItems, type SortableItem, type SortType } from '@/lib/utils/itemFilters';
+import { listTags } from '@/lib/utils/itemTags';
 import type { ApiItem } from '@/types/api';
 
 /** A chip's id, which is also its `?show=` value (All has none). */
@@ -188,6 +189,22 @@ export function orderListItems<T extends ChipItem & SortableItem>(
     .map(({ item }) => item);
 }
 
+/**
+ * The tag chips a viewer gets (WIS-385): the tags on the items they may see
+ * (as every chip's count does, never a draft to a non-owner or someone else's
+ * proposal), alphabetical. A tag chip carries no count, so nothing about it
+ * moves with a reservation.
+ */
+export function visibleListTags(
+  items: Iterable<ChipItem & Pick<ApiItem, 'tags'>>,
+  role: ViewerRole,
+  viewerId: string | null
+): string[] {
+  const seen: Pick<ApiItem, 'tags'>[] = [];
+  for (const item of items) if (viewOf(item, role, viewerId) !== null) seen.push(item);
+  return listTags(seen);
+}
+
 /** The grid's first cell: an owner's Add item tile, or a member's Propose an item. */
 export type AddTile = 'add' | 'propose';
 
@@ -207,6 +224,8 @@ const ADD_TILE_CHIPS: Record<ViewerRole, readonly ListChip[]> = {
  * may not match.
  */
 export function addTileFor(role: ViewerRole, chip: ListChip, searching: boolean): AddTile | null {
+  // `searching` is any narrowing a new item may not match: a search, a budget
+  // or a tag chip.
   if (searching || !ADD_TILE_CHIPS[role].includes(chip)) return null;
   return role === 'owner' ? 'add' : 'propose';
 }

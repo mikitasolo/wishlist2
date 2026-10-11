@@ -8,6 +8,7 @@ import {
   parsePriceInput,
 } from '@/lib/utils/currency';
 import { linkChanges, type LinkChanges } from '@/lib/utils/itemLinks';
+import { sameTags, uniqueTags } from '@/lib/utils/itemTags';
 
 /**
  * The item form (`components/ItemForm.tsx`, behind the add, edit, propose and
@@ -37,6 +38,8 @@ export interface ItemFormData {
   link: string;
   notes: string;
   mostWanted: boolean;
+  /** The owners' tags on it (WIS-385), as picked. */
+  tags: string[];
   isDraft: boolean;
   /** The ids of the items it goes with (WIS-29), sorted. */
   relatedItems: string[];
@@ -54,6 +57,7 @@ export interface ItemContent {
   link: string | null;
   notes: string | null;
   mostWanted: boolean;
+  tags: string[];
 }
 
 /** What an edit sends: only the content the owner changed, and the links added and removed. */
@@ -70,7 +74,7 @@ export type ItemContentChanges = Partial<ItemContent> & LinkChanges;
  */
 export function itemToFormData(
   item: Pick<ApiItem, 'name' | 'imageUrl' | 'price' | 'link' | 'notes' | 'mostWanted' | 'status'> &
-    Partial<Pick<ApiItem, 'relatedItems'>>,
+    Partial<Pick<ApiItem, 'relatedItems' | 'tags'>>,
   defaultCurrency: string,
   locale: string = PRICE_FALLBACK_LOCALE
 ): ItemFormData {
@@ -91,6 +95,7 @@ export function itemToFormData(
     link: item.link || '',
     notes: item.notes || '',
     mostWanted: item.mostWanted === true,
+    tags: [...(item.tags ?? [])],
     isDraft: item.status === 'draft',
     relatedItems: (item.relatedItems ?? []).map((ref) => ref.id).sort(),
   };
@@ -127,6 +132,7 @@ export function itemFormContent(
     link: normalizeItemLink(form.link) || null,
     notes: form.notes.trim() || null,
     mostWanted: form.mostWanted,
+    tags: uniqueTags(form.tags ?? []),
   };
 }
 
@@ -163,6 +169,9 @@ export function itemChanges(
     if (next[field] !== saved[field]) copyField(changes, next, field);
   }
   if (!samePrice(next.price, saved.price)) changes.price = next.price;
+  // The whole set, sent only when it's another set: reordering or recasing
+  // what's there isn't a change.
+  if (!sameTags(next.tags, saved.tags)) changes.tags = next.tags;
   // Links as what was added and removed, so a co-owner's other link changes
   // meanwhile stay (WIS-29).
   return { ...changes, ...linkChanges(filledFrom.relatedItems ?? [], form.relatedItems ?? []) };
@@ -183,7 +192,7 @@ export function rebaseItemForm(
   const rebased = { ...next };
   // By value: the links are an array, rebuilt by every tick in the picker.
   const same = (a: unknown, b: unknown) =>
-    Array.isArray(a) && Array.isArray(b) ? a.join() === b.join() : a === b;
+    Array.isArray(a) && Array.isArray(b) ? JSON.stringify(a) === JSON.stringify(b) : a === b;
   const keep = <K extends keyof ItemFormData>(...keys: K[]) => {
     if (keys.some((key) => !same(form[key], filledFrom[key]))) {
       for (const key of keys) rebased[key] = form[key];
@@ -195,6 +204,7 @@ export function rebaseItemForm(
   keep('link');
   keep('notes');
   keep('mostWanted');
+  keep('tags');
   keep('isDraft');
   keep('relatedItems');
   return rebased;

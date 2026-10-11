@@ -18,7 +18,9 @@ import {
   LIST_CHIP_LABELS,
   type ListChip,
   orderListItems,
+  visibleListTags,
 } from '@/lib/utils/listChips';
+import { matchesTags, tagKey } from '@/lib/utils/itemTags';
 import { useListChip } from '@/lib/hooks/useListChip';
 import { useListSearch } from '@/lib/hooks/useListSearch';
 import { useDiscreetMode } from '@/lib/hooks/useDiscreetMode';
@@ -53,15 +55,16 @@ export interface ListFiltersOptions {
  *
  * - the status chip (`?show=`, `useListChip`), never saved;
  * - the sort, one saved setting for every list, saved only once picked;
- * - the item search (name and notes, in the URL's `?q=`, `useListSearch`, WIS-389)
- *   and the budget filter ("Under X", gifters only, WIS-326, page state),
- *   both cleared by Show all and on another list;
+ * - the item search (name and notes, in the URL's `?q=`, `useListSearch`, WIS-389),
+ *   the budget filter ("Under X", gifters only, WIS-326, page state) and the
+ *   tag chips (any picked tag matches, WIS-385, page state, never saved), all
+ *   cleared by Show all and on another list;
  * - the Prices currency pick (`useListPrices`), which the budget is read in;
  * - discreet mode (WIS-46), applied here at render time only (`viewItems`),
  *   never to `items`, so the poll can't flash the real state back.
  *
- * The chips count before the search and budget narrow, so a count never moves
- * with them. Cards the viewer has just changed stay put (`pinItem`, WIS-297)
+ * The chips count before the search, budget and tags narrow, so a count never
+ * moves with them; a tag chip has no count at all. Cards the viewer has just changed stay put (`pinItem`, WIS-297)
  * until the chip, search, sort or budget change.
  */
 export function useListFilters({
@@ -150,10 +153,43 @@ export function useListFilters({
   );
   const budgetRates = prices.rates ?? ownRates;
 
+  // The tag chips (WIS-385): the tags on the items this viewer sees, and the
+  // ones picked, of those still there (a tag removed from its last item goes
+  // from the pick too). Page state, never saved, cleared with the list.
+  const tagOptions = useMemo(
+    () => visibleListTags(viewItems, viewerRole, viewerId),
+    [viewItems, viewerRole, viewerId]
+  );
+  const [pickedTags, setPickedTags] = useState<string[]>([]);
+  const activeTags = useMemo(() => {
+    const there = new Set(tagOptions.map(tagKey));
+    return pickedTags.filter((tag) => there.has(tagKey(tag)));
+  }, [pickedTags, tagOptions]);
+  // A tag gone from the list goes from the pick for good, so it doesn't come
+  // back pressed if it's ever used again.
+  useEffect(() => {
+    if (activeTags.length < pickedTags.length) setPickedTags(activeTags);
+  }, [activeTags, pickedTags.length]);
+  const toggleTag = useCallback((tag: string) => {
+    setPickedTags((prev) =>
+      prev.some((t) => tagKey(t) === tagKey(tag))
+        ? prev.filter((t) => tagKey(t) !== tagKey(tag))
+        : [...prev, tag]
+    );
+  }, []);
+
   const filteredItems = useMemo(
     () =>
-      filterByBudget(searchItems(chipItems, searchQuery), budgetLimit, viewerCurrency, budgetRates),
-    [chipItems, searchQuery, budgetLimit, viewerCurrency, budgetRates]
+      filterByBudget(
+        searchItems(
+          chipItems.filter((item) => matchesTags(item, activeTags)),
+          searchQuery
+        ),
+        budgetLimit,
+        viewerCurrency,
+        budgetRates
+      ),
+    [chipItems, activeTags, searchQuery, budgetLimit, viewerCurrency, budgetRates]
   );
 
   // A card the viewer reserves, releases, publishes or marks stays in its
@@ -161,7 +197,15 @@ export function useListFilters({
   const { items: sortedItems, pin: pinItem } = useStickyItems(
     filteredItems,
     viewItems,
-    JSON.stringify([wishlistId, viewerRole, activeChip, sortBy, searchQuery, budgetLimit])
+    JSON.stringify([
+      wishlistId,
+      viewerRole,
+      activeChip,
+      sortBy,
+      searchQuery,
+      budgetLimit,
+      activeTags.map(tagKey).sort(),
+    ])
   );
 
   // The list has no items at all, as far as this viewer can see: no filter is
@@ -177,6 +221,7 @@ export function useListFilters({
     if (!listIsEmpty) return;
     chooseChip('all');
     setSearchQuery('');
+    setPickedTags([]);
   }, [listIsEmpty, chooseChip, setSearchQuery]);
 
   // The way out of a search or chip that hides every item: All, and no search.
@@ -184,12 +229,14 @@ export function useListFilters({
     chooseChip('all');
     setSearchQuery('');
     setBudgetText('');
+    setPickedTags([]);
   }, [chooseChip, setSearchQuery]);
 
   // Clear the budget when switching to a different wishlist (the search is
   // kept per list by `useListSearch`).
   useEffect(() => {
     setBudgetText('');
+    setPickedTags([]);
   }, [wishlistId]);
 
   // The grid's first cell: an owner's Add item or a member's Propose an item,
@@ -197,7 +244,7 @@ export function useListFilters({
   const addTile = addTileFor(
     viewerRole,
     activeChip,
-    searchQuery.trim() !== '' || budgetLimit !== null
+    searchQuery.trim() !== '' || budgetLimit !== null || activeTags.length > 0
   );
 
   const chips = listChips(viewerRole)
@@ -222,6 +269,9 @@ export function useListFilters({
     budgetText,
     setBudgetText,
     budgetOffered,
+    tagOptions,
+    activeTags,
+    toggleTag,
     budgetInvalid: budget === 'invalid',
     budgetLimit,
     viewerCurrency,

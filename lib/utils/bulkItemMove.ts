@@ -237,7 +237,7 @@ export async function applyBulkMove({
           _id: copyIds.get(id),
           wishlist: targetId,
           // Unreserved: the target's members start afresh with it.
-          ...copiedItemFields(item),
+          ...copiedItemFields(item, { withTags: false }),
           imageUrl: images.get(id) ?? (isOwnBlob(item.imageUrl) ? undefined : item.imageUrl),
           relatedItems: links.get(id) ?? [],
           createdAt: new Date(base + i),

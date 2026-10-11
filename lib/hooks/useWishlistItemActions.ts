@@ -24,6 +24,7 @@ import type { ShownOwners } from '@/lib/utils/shownOwners';
 import { cueItemCard } from '@/lib/utils/motion';
 import { createSubmissionKeys, IDEMPOTENCY_HEADER } from '@/lib/utils/submissionKey';
 import type { ApiItem, ApiResponse, ItemUpdate } from '@/types/api';
+import { listTags } from '@/lib/utils/itemTags';
 
 export interface WishlistItemActionsOptions {
   wishlistId: string | null;
@@ -70,13 +71,15 @@ export function useWishlistItemActions({
   const { itemToEdit, itemToReview, setItemToReview, onItemRequestError } = dialogs;
 
   const createItemHook = useCreateItem(
-    (newItem) => {
+    (newItem, notice) => {
       // handleCreateItem tracks the request until after this runs, so a poll
       // whose read started before it settled is dropped instead of replacing
       // the list without the new item. One that read after the write may
       // already list it: don't add a second copy.
       setItems((prevItems) => prependCreatedItem(prevItems, newItem));
-      showToast('Item added successfully', 'success');
+      // Saved, but with something left out (a link, its tags): said instead.
+      if (notice) showToast(notice, 'info');
+      else showToast('Item added successfully', 'success');
     },
     (error) => {
       showToast(error, 'error');
@@ -132,6 +135,7 @@ export function useWishlistItemActions({
       link?: string | null;
       notes?: string | null;
       mostWanted?: boolean;
+      tags?: string[];
       status?: 'draft' | 'available';
       linkItems?: string[];
     }) => {
@@ -380,6 +384,8 @@ export function useWishlistItemActions({
         : undefined,
     [isOwner, items]
   );
+  // The tags an owner's add and edit dialogs offer (WIS-385): the list's own.
+  const tagOptions = useMemo(() => (isOwner ? listTags(items) : undefined), [isOwner, items]);
   const editLinkOptions = useMemo(
     () => linkOptions?.filter((option) => option.id !== itemToEdit?._id),
     [linkOptions, itemToEdit?._id]
@@ -399,6 +405,7 @@ export function useWishlistItemActions({
     handleDeleteItem,
     linkOptions,
     editLinkOptions,
+    tagOptions,
   };
 }
 

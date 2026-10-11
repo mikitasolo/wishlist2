@@ -66,6 +66,7 @@ import {
   settleDeadMoves,
 } from '@/lib/utils/bulkItemActions';
 import ItemBatch from '@/models/ItemBatch';
+import { fitItemTags, listTagsOverCap } from '@/lib/utils/itemTagWrites';
 import User from '@/models/User';
 import Follow from '@/models/Follow';
 import Wishlist from '@/models/Wishlist';
@@ -444,6 +445,14 @@ describe('index audit (WIS-377): the hot queries never scan a collection', () =>
         await ok(RESERVATIONS());
         await ok(RESERVATION_SUMMARY());
       }
+    });
+  });
+
+  // WIS-385: every tagged item write reads the list's tags, before and after.
+  it('a list’s tags, for an item write’s cap', async () => {
+    await expectIndexed(async () => {
+      await fitItemTags(w.listId, null, ['Books']);
+      await listTagsOverCap(w.listId);
     });
   });
 
