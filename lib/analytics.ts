@@ -124,6 +124,8 @@ const STATIC_PATHS = new Set([
   '/auth/signin',
   '/auth/verify-request',
   '/booked',
+  // Local dev only (a 404 elsewhere, WIS-375), where analytics never runs.
+  '/dev/emails',
   '/invites',
   '/items',
   '/items/new',

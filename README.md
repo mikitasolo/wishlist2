@@ -80,6 +80,8 @@ npm run dev
 
 You don't need an SMTP account to run locally: set `EMAIL_TRANSPORT=console` in `.env.local` (the `SMTP_*` variables can then stay empty) and every email the app would send, the magic link included, is printed to the terminal running `npm run dev` instead. Nothing is sent.
 
+To see what every email looks like without sending one, open `/dev/emails` on the dev server: a gallery of each email, light and dark, rendered from made-up data. It exists only in local dev (`VERCEL_ENV` unset or `development`, as for `EMAIL_TRANSPORT=console`) and is a 404 on Preview and Production.
+
 Open [http://localhost:3000](http://localhost:3000) (in an agent workspace, a git worktree, `npm run dev` prints the workspace's own port instead: see `scripts/dev-port.mjs`). Sign in from `/auth/signin` with your email, then click the magic link in the email, or, in console mode, copy the link from the terminal into your browser. On first sign-in an account is created with a random username (`user_…`), and you land on `/welcome`, which offers to pick your own — there is no separate admin/seed step. Each wishlist has owners (any number, all equal) and members.
 
 ## 🔑 Environment variables

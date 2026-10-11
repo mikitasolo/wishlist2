@@ -116,6 +116,17 @@ export function getUmamiWebsiteId(): string | null {
 }
 
 /**
+ * Whether this is a local-dev runtime, where output meant only for a developer
+ * may exist: `EMAIL_TRANSPORT=console` (which prints sign-in links) and the
+ * email gallery (`/dev/emails`, WIS-375). An allow-list: only `VERCEL_ENV`
+ * unset (local dev, CI, E2E) or `development` passes, so `preview`,
+ * `production`, an empty value and anything Vercel adds later don't.
+ */
+export function isLocalDevRuntime(vercelEnv: string | undefined = process.env.VERCEL_ENV): boolean {
+  return vercelEnv === undefined || vercelEnv === 'development';
+}
+
+/**
  * The configured email transport. Unset (or empty) means `smtp`; anything else
  * that isn't a known transport throws rather than silently falling back.
  */
@@ -153,7 +164,7 @@ export function validateEnvVars(): void {
   // An allow-list: only unset (local dev, CI, E2E) or `development` passes, so
   // `preview`, `production`, an empty value and anything Vercel adds later fail.
   const vercelEnv = process.env.VERCEL_ENV;
-  if (transport === 'console' && vercelEnv !== undefined && vercelEnv !== 'development') {
+  if (transport === 'console' && !isLocalDevRuntime(vercelEnv)) {
     throw new Error(
       `EMAIL_TRANSPORT=console is not allowed with VERCEL_ENV="${vercelEnv}", only with ` +
         'VERCEL_ENV unset (local dev) or "development": it prints emails, sign-in links ' +
