@@ -256,6 +256,59 @@ describe('Settings → Groups', () => {
   });
 });
 
+describe('Filtering a group (WIS-425)', () => {
+  const many = Array.from({ length: 7 }, (_, i) => ({
+    id: `m${i}`,
+    username: `user${i}`,
+    displayName: i === 3 ? 'Zelda Q' : `user${i}`,
+    image: null,
+  }));
+
+  it('filters the members by username or display name, and says when none match', async () => {
+    serve(groupsRead([{ id: 'g1', name: 'Family', members: many }]));
+    const user = userEvent.setup();
+    render(<GroupsSettings />);
+    const search = await screen.findByRole('textbox', { name: 'Search people in Family' });
+    await user.type(search, 'zeld');
+    expect(screen.getByRole('link', { name: '@user3' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: '@user1' })).not.toBeInTheDocument();
+    await user.clear(search);
+    await user.type(search, '@USER5');
+    expect(screen.getAllByRole('link')).toHaveLength(1);
+    await user.clear(search);
+    await user.type(search, 'nobody');
+    expect(screen.getByText('No one in this group matches.')).toBeInTheDocument();
+  });
+
+  it('offers no member search for a short group', async () => {
+    serve(groupsRead([{ id: 'g1', name: 'Family', members: many.slice(0, 3) }]));
+    render(<GroupsSettings />);
+    await screen.findByRole('heading', { name: 'Family' });
+    expect(screen.queryByRole('textbox', { name: 'Search people in Family' })).toBeNull();
+  });
+
+  it('matches a member by display name in the Add people picker', async () => {
+    serve(groupsRead([{ id: 'g1', name: 'Family', members: many }]), (url) =>
+      url === '/api/users/me/following'
+        ? answer(200, {
+            success: true,
+            data: [
+              { _id: 'm3', username: 'user3', image: null },
+              { _id: 'x1', username: 'other', image: null },
+            ],
+          })
+        : undefined
+    );
+    const user = userEvent.setup();
+    render(<GroupsSettings />);
+    await user.click(await screen.findByRole('button', { name: 'Add people to Family' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.type(await within(dialog).findByRole('textbox'), 'zelda');
+    expect(within(dialog).getByRole('checkbox', { name: '@user3' })).toBeInTheDocument();
+    expect(within(dialog).queryByRole('checkbox', { name: '@other' })).toBeNull();
+  });
+});
+
 describe('Tag into groups', () => {
   it('ticks the groups they are in, and tags them in as a box is ticked', async () => {
     serve(

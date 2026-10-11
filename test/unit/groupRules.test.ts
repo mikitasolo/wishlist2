@@ -1,6 +1,21 @@
 import { describe, it, expect } from 'vitest';
-import { GROUP_LIMIT, groupLimitNote, groupNameKey } from '@/lib/utils/groupRules';
+import { GROUP_LIMIT, groupLimitNote, groupNameKey, personMatches } from '@/lib/utils/groupRules';
 import { groupNameSchema } from '@/lib/validations';
+
+// WIS-425: the filter over a group's people and the Add people picker.
+describe('personMatches', () => {
+  const p = { username: 'bo_k', displayName: 'Bohdan K' };
+  it('matches username or display name, ignoring case and a leading @', () => {
+    expect(personMatches(p, '')).toBe(true);
+    expect(personMatches(p, '@BO_')).toBe(true);
+    expect(personMatches(p, ' bohdan ')).toBe(true);
+    expect(personMatches(p, 'zed')).toBe(false);
+  });
+  it('copes with no display name', () => {
+    expect(personMatches({ username: 'cy' }, 'cy')).toBe(true);
+    expect(personMatches({ username: 'cy', displayName: null }, 'x')).toBe(false);
+  });
+});
 
 // WIS-27: what makes two group names the same, and when New group is held.
 

@@ -22,7 +22,12 @@ import { useKnownSession } from '@/lib/hooks/useKnownSession';
 import { useUndoableAction } from '@/lib/hooks/useUndoableAction';
 import type { PendingCommit } from '@/lib/utils/deferredCommit';
 import { usePeopleGroups, type GroupPerson, type GroupView } from '@/lib/hooks/usePeopleGroups';
-import { GROUP_MEMBER_LIMIT, groupLimitNote } from '@/lib/utils/groupRules';
+import {
+  GROUP_MEMBER_LIMIT,
+  GROUP_MEMBER_SEARCH_MIN,
+  groupLimitNote,
+  personMatches,
+} from '@/lib/utils/groupRules';
 import { GROUP_NAME_MAX } from '@/lib/validations';
 import { plural } from '@/lib/utils/plural';
 
@@ -157,24 +162,7 @@ export default function GroupsSettings() {
                   />
                 </div>
                 {group.members.length > 0 && (
-                  <ul className="divide-y divide-border border-t border-border">
-                    {group.members.map((person) => (
-                      <li key={person.id} className="flex items-center gap-3 px-4 py-2">
-                        <Avatar name={person.displayName} src={person.image} size="sm" />
-                        <Link
-                          href={`/users/${encodeURIComponent(person.username)}`}
-                          className="min-w-0 flex-1 truncate text-sm font-medium text-foreground transition-colors hover:text-accent"
-                        >
-                          @{person.username}
-                        </Link>
-                        <IconButton
-                          icon="close"
-                          label={`Remove @${person.username} from ${group.name}`}
-                          onClick={() => untag(group, person)}
-                        />
-                      </li>
-                    ))}
-                  </ul>
+                  <GroupMembers group={group} onRemove={(person) => untag(group, person)} />
                 )}
               </section>
             ))
@@ -210,6 +198,57 @@ export default function GroupsSettings() {
         />
       )}
     </Panel>
+  );
+}
+
+/** A group's people, with a search once there are enough to scroll. */
+function GroupMembers({
+  group,
+  onRemove,
+}: {
+  group: GroupView;
+  onRemove: (person: GroupPerson) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const searchable = group.members.length > GROUP_MEMBER_SEARCH_MIN;
+  const shown = searchable ? group.members.filter((p) => personMatches(p, query)) : group.members;
+  return (
+    <div className="border-t border-border">
+      {searchable && (
+        <div className="px-4 py-2">
+          <SearchField
+            size="sm"
+            aria-label={`Search people in ${group.name}`}
+            placeholder="Search this group"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onClear={() => setQuery('')}
+          />
+        </div>
+      )}
+      {shown.length === 0 ? (
+        <p className="px-4 pb-3 text-sm text-muted-foreground">No one in this group matches.</p>
+      ) : (
+        <ul className="divide-y divide-border">
+          {shown.map((person) => (
+            <li key={person.id} className="flex items-center gap-3 px-4 py-2">
+              <Avatar name={person.displayName} src={person.image} size="sm" />
+              <Link
+                href={`/users/${encodeURIComponent(person.username)}`}
+                className="min-w-0 flex-1 truncate text-sm font-medium text-foreground transition-colors hover:text-accent"
+              >
+                @{person.username}
+              </Link>
+              <IconButton
+                icon="close"
+                label={`Remove @${person.username} from ${group.name}`}
+                onClick={() => onRemove(person)}
+              />
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 
@@ -313,8 +352,15 @@ function AddPeopleDialog({
 
   const inGroup = useMemo(() => new Set(group.members.map((m) => m.id)), [group.members]);
   const full = group.members.length >= GROUP_MEMBER_LIMIT;
-  const q = query.trim().toLowerCase().replace(/^@/, '');
-  const shown = (people ?? []).filter((p) => !q || p.username.toLowerCase().includes(q));
+  // The following list carries usernames only; a display name is known (and
+  // matched) for the people already in this group.
+  const knownNames = useMemo(
+    () => new Map(group.members.map((m) => [m.id, m.displayName])),
+    [group.members]
+  );
+  const shown = (people ?? []).filter((p) =>
+    personMatches({ username: p.username, displayName: knownNames.get(p._id) }, query)
+  );
 
   async function toggle(p: FollowedPerson, on: boolean) {
     setBusy((b) => new Set(b).add(p._id));
