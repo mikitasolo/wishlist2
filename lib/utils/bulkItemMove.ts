@@ -91,7 +91,7 @@ async function takeBackCopy(copyId: mongoose.Types.ObjectId, userId: string): Pr
       purgeShareCard: false,
     });
   } catch (err) {
-    console.error(`Taking back a moved item's copy failed (${errorKind(err)})`);
+    console.error("Taking back a moved item's copy failed:", errorKind(err));
   }
 }
 
