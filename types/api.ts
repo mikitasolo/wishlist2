@@ -26,7 +26,7 @@ export interface ApiItem {
   link?: string | null;
   notes?: string | null;
   mostWanted?: boolean; // Absent on items saved before the flag existed — treat as false
-  tags?: string[]; // The owners' tags (WIS-385); absent on an item with none
+  tags?: string[]; // The owners' tags (WIS-385); absent or [] on an item with none
   status: 'draft' | 'available' | 'booked' | 'completed' | 'proposed';
   bookedBy?: string | null; // User ID as string, or undefined if hidden
   proposedBy?: string | null; // User ID as string, or undefined if hidden

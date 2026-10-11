@@ -207,7 +207,14 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
   });
 
   const itemDialogs = useItemDialogs();
-  const updateItemHook = useUpdateItem(undefined, itemDialogs.onItemRequestError);
+  // A saved edit's notice (WIS-385: tags that didn't fit the list) is said.
+  const onItemSaved = useCallback(
+    (_item: unknown, notice?: string) => {
+      if (notice) showToast(notice, 'info');
+    },
+    [showToast]
+  );
+  const updateItemHook = useUpdateItem(onItemSaved, itemDialogs.onItemRequestError);
   const failedItemsToast = useCallback(
     () => showToast('Failed to load items', 'error'),
     [showToast]

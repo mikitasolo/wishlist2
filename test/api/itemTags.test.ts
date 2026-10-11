@@ -21,7 +21,13 @@ import User from '@/models/User';
 import Wishlist from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
 import Item from '@/models/Item';
-import { LIST_TAGS_FULL_ERROR, LIST_TAGS_MAX, TAGS_DROPPED_NOTICE } from '@/lib/utils/itemTags';
+import {
+  LIST_TAGS_FULL_ERROR,
+  LIST_TAGS_MAX,
+  PROPOSAL_TAGS_ERROR,
+  TAGS_DROPPED_NOTICE,
+  TAGS_NOT_KEPT_NOTICE,
+} from '@/lib/utils/itemTags';
 
 const session = vi.mocked(auth);
 
@@ -158,6 +164,18 @@ describe('the list’s cap of 20 different tags', () => {
     expect((await update(item._id.toString(), { tags: ['New'] })).status).toBe(200);
   });
 
+  it('lets an item keep a tag only it carries on a list past the cap', async () => {
+    await fillTags(LIST_TAGS_MAX);
+    const item = await Item.create({
+      wishlist: wishlistId,
+      name: 'Mug',
+      status: 'available',
+      tags: ['Own', 'T1'],
+    });
+    // 21 different tags (left by an old race); dropping T1 while keeping Own is fine.
+    expect((await update(item._id.toString(), { tags: ['Own'] })).status).toBe(200);
+  });
+
   // regression: two co-owners each adding the list's last free tag at once both
   // pass the check made before the write; the re-check after it takes back the
   // one that lands over the cap.
@@ -180,10 +198,15 @@ describe('the list’s cap of 20 different tags', () => {
       }).then(() => (realWrite as (...a: unknown[]) => unknown)(...args));
     }) as never);
 
-    const res = await update(item._id.toString(), { tags: ['T1', 'Mine'] });
-    expect(res.status).toBe(409);
-    expect((await res.json()).error).toBe(LIST_TAGS_FULL_ERROR);
-    expect((await Item.findById(item._id))?.tags).toEqual(['T1']);
+    const res = await update(item._id.toString(), { tags: ['T1', 'Mine'], name: 'Big mug' });
+    // The rest of the edit landed, so it's answered as saved, with a notice.
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.notice).toBe(TAGS_NOT_KEPT_NOTICE);
+    expect(body.data).toMatchObject({ name: 'Big mug', tags: ['T1'] });
+    const after = await Item.findById(item._id);
+    expect(after?.tags).toEqual(['T1']);
+    expect(after?.name).toBe('Big mug');
   });
 
   // regression: the same race on a create keeps the item but none of its tags.
@@ -237,6 +260,23 @@ describe('nobody but an owner writes tags', () => {
     as(member);
     expect((await update(proposal._id.toString(), { tags: ['Mine'] })).status).toBe(403);
     expect((await Item.findById(proposal._id))?.tags).toBeUndefined();
+  });
+
+  it('refuses an owner’s tags on a proposal, unless the same edit adds it to the list', async () => {
+    const proposal = await Item.create({
+      wishlist: wishlistId,
+      name: 'Idea',
+      status: 'proposed',
+      proposedBy: member,
+    });
+    const id = proposal._id.toString();
+    const res = await update(id, { tags: ['Books'] });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe(PROPOSAL_TAGS_ERROR);
+    expect((await Item.findById(id))?.tags).toBeUndefined();
+
+    expect((await update(id, { tags: ['Books'], status: 'available' })).status).toBe(200);
+    expect(await Item.findById(id)).toMatchObject({ status: 'available', tags: ['Books'] });
   });
 
   it('saves a copy ("Save to my list") without the tags it was sent', async () => {

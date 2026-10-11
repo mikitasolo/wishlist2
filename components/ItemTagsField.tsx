@@ -3,6 +3,7 @@
 import { useId, useState, type KeyboardEvent } from 'react';
 import Button from '@/components/Button';
 import Input from '@/components/Input';
+import TagToggle from '@/components/TagToggle';
 import { FIELD_ERROR, FIELD_HELPER, FIELD_LABEL } from '@/components/fieldStyles';
 import {
   ITEM_TAG_LENGTH_MAX,
@@ -83,8 +84,9 @@ export default function ItemTagsField({
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLInputElement>) {
-    // Enter adds the tag rather than submitting the form; so does a comma.
-    if (e.key === 'Enter' || e.key === ',') {
+    // Enter adds a typed tag rather than submitting the form (an empty field
+    // leaves Enter to submit it, as in any other field); so does a comma.
+    if ((e.key === 'Enter' && normalizeTagName(draft)) || e.key === ',') {
       e.preventDefault();
       add();
     }
@@ -100,20 +102,13 @@ export default function ItemTagsField({
           {shown.map((tag) => {
             const on = pickedKeys.has(tagKey(tag));
             return (
-              <button
+              <TagToggle
                 key={tagKey(tag)}
-                type="button"
-                aria-pressed={on}
+                tag={tag}
+                pressed={on}
                 disabled={disabled || (!on && full)}
                 onClick={() => toggle(tag)}
-                className={`inline-flex h-8 items-center rounded-full border px-3 text-sm font-medium transition-colors disabled:opacity-50 ${
-                  on
-                    ? 'border-transparent bg-foreground text-background'
-                    : 'border-border bg-surface text-foreground hover:bg-surface-hover'
-                }`}
-              >
-                {tag}
-              </button>
+              />
             );
           })}
         </div>

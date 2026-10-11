@@ -108,7 +108,10 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       data: validation.data,
     });
     if (!result.ok) return failureResponse(result);
-    return NextResponse.json({ success: true, data: result.data }, { status: 200 });
+    return NextResponse.json(
+      { success: true, data: result.data, ...(result.notice && { notice: result.notice }) },
+      { status: 200 }
+    );
   } catch (error) {
     console.error('Error updating item:', error);
     return NextResponse.json({ success: false, error: 'Failed to update item' }, { status: 500 });

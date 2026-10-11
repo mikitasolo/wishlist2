@@ -27,6 +27,12 @@ export const LIST_TAGS_FULL_ERROR = `A list can have up to ${LIST_TAGS_MAX} tags
 /** Answered to anyone but an owner sending tags. */
 export const OWNER_ONLY_TAGS_ERROR = 'Only owners can tag items';
 
+/** Refused when an owner tags an item that's still a proposal, without approving it. */
+export const PROPOSAL_TAGS_ERROR = 'Add the proposal to the list before tagging it';
+
+/** Sent back with an edit saved without its new tags: the list filled up meanwhile. */
+export const TAGS_NOT_KEPT_NOTICE = `Saved, but without the new tags: this list already has ${LIST_TAGS_MAX}.`;
+
 /** Sent back with a new item saved without its tags: the list filled up meanwhile. */
 export const TAGS_DROPPED_NOTICE = `Saved without its tags: this list already has ${LIST_TAGS_MAX}.`;
 
@@ -91,24 +97,29 @@ export function matchesTags(
  * An item's new tags, fitted to the list's: each one the list has already
  * takes the list's spelling, and the item may bring in new ones only while the
  * list stays within `LIST_TAGS_MAX`. `existing` is what the list's other items
- * carry. `addsNew` says whether any tag is new to the list, which is when the
- * write must be re-checked against the cap once it has landed.
+ * carry, `current` what this item carries now (none for a new item): its own
+ * tags are the list's too, so keeping one is never new, but replacing one
+ * frees its place. `addsNew` says whether any tag is new to the list, which is
+ * when the write must be re-checked against the cap once it has landed.
  */
 export function fitTagsToList(
   existing: readonly string[],
-  tags: readonly string[]
+  tags: readonly string[],
+  current: readonly string[] = []
 ): { ok: true; tags: string[]; addsNew: boolean } | { ok: false } {
-  const known = new Map<string, string>();
+  const others = new Map<string, string>();
   for (const tag of existing) {
     const key = tagKey(tag);
-    if (key && !known.has(key)) known.set(key, normalizeTagName(tag));
+    if (key && !others.has(key)) others.set(key, normalizeTagName(tag));
   }
-  const fitted = uniqueTags(tags).map((tag) => known.get(tagKey(tag)) ?? tag);
-  const added = fitted.filter((tag) => !known.has(tagKey(tag))).length;
+  const own = new Set(current.map(tagKey));
+  const fitted = uniqueTags(tags).map((tag) => others.get(tagKey(tag)) ?? tag);
+  const addsNew = fitted.some((tag) => !others.has(tagKey(tag)) && !own.has(tagKey(tag)));
+  const after = new Set([...others.keys(), ...fitted.map(tagKey)]).size;
   // Only a new tag can be refused: one the list has already is always fine,
   // even on a list somehow past the cap, so its tags can still be tidied.
-  if (added > 0 && known.size + added > LIST_TAGS_MAX) return { ok: false };
-  return { ok: true, tags: fitted, addsNew: added > 0 };
+  if (addsNew && after > LIST_TAGS_MAX) return { ok: false };
+  return { ok: true, tags: fitted, addsNew };
 }
 
 /** How many different tags a list's items carry, from what `Item.distinct('tags')` reads. */

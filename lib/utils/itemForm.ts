@@ -192,7 +192,7 @@ export function rebaseItemForm(
   const rebased = { ...next };
   // By value: the links are an array, rebuilt by every tick in the picker.
   const same = (a: unknown, b: unknown) =>
-    Array.isArray(a) && Array.isArray(b) ? a.join() === b.join() : a === b;
+    Array.isArray(a) && Array.isArray(b) ? JSON.stringify(a) === JSON.stringify(b) : a === b;
   const keep = <K extends keyof ItemFormData>(...keys: K[]) => {
     if (keys.some((key) => !same(form[key], filledFrom[key]))) {
       for (const key of keys) rebased[key] = form[key];

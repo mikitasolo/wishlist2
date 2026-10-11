@@ -54,8 +54,8 @@ const ItemSchema = new Schema(
     // ITEM_TAGS_MAX, each one visible line of up to ITEM_TAG_LENGTH_MAX, and at
     // most LIST_TAGS_MAX different ones across a list's items. Written only by
     // an owner's create or edit (never a proposal's, never "Save to my list"),
-    // which fit them to the list's (`writeItemTags`). Items without any have no
-    // field.
+    // which fit them to the list's (`fitItemTags`, lib/utils/itemTagWrites.ts).
+    // Items never tagged have no field; cleared ones have `[]`.
     tags: {
       type: [String],
       default: undefined,

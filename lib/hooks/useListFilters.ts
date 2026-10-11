@@ -165,6 +165,11 @@ export function useListFilters({
     const there = new Set(tagOptions.map(tagKey));
     return pickedTags.filter((tag) => there.has(tagKey(tag)));
   }, [pickedTags, tagOptions]);
+  // A tag gone from the list goes from the pick for good, so it doesn't come
+  // back pressed if it's ever used again.
+  useEffect(() => {
+    if (activeTags.length < pickedTags.length) setPickedTags(activeTags);
+  }, [activeTags, pickedTags.length]);
   const toggleTag = useCallback((tag: string) => {
     setPickedTags((prev) =>
       prev.some((t) => tagKey(t) === tagKey(tag))

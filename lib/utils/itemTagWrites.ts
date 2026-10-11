@@ -11,7 +11,8 @@ import { countListTags, fitTagsToList, LIST_TAGS_MAX } from '@/lib/utils/itemTag
  * (`fitItemTags`) and, when the write brought in a tag new to the list, again
  * once it has landed (`listTagsOverCap`): two co-owners each adding the list's
  * last free tag at once both pass the first check, and the second catches
- * them. A write found over the cap is taken back (`revertItemTags`).
+ * them. A write found over the cap is taken back (`revertItemTags`); when two
+ * race, both are, which errs on the side of the cap (either can try again).
  */
 
 type Id = mongoose.Types.ObjectId | string;
@@ -20,12 +21,17 @@ type Id = mongoose.Types.ObjectId | string;
  * `tags` fitted to the list `wishlistId` (`fitTagsToList`), against the tags
  * its other items carry (all of them but `itemId`, the one being written).
  */
-export async function fitItemTags(wishlistId: Id, itemId: Id | null, tags: readonly string[]) {
+export async function fitItemTags(
+  wishlistId: Id,
+  itemId: Id | null,
+  tags: readonly string[],
+  current: readonly string[] = []
+) {
   const existing: string[] = await Item.distinct('tags', {
     wishlist: wishlistId,
     ...(itemId && { _id: { $ne: itemId } }),
   });
-  return fitTagsToList(existing, tags);
+  return fitTagsToList(existing, tags, current);
 }
 
 /** Whether the list's items carry more than `LIST_TAGS_MAX` different tags between them. */

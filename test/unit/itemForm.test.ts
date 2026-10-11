@@ -51,6 +51,7 @@ describe('itemFormContent', () => {
       link: 'https://shop.example.com/mug',
       notes: 'Size M',
       mostWanted: true,
+      tags: [],
     });
   });
 

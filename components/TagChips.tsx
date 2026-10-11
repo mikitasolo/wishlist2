@@ -1,6 +1,7 @@
 'use client';
 
 import Icon from '@/components/Icon';
+import TagToggle from '@/components/TagToggle';
 import { tagKey } from '@/lib/utils/itemTags';
 
 /**
@@ -32,19 +33,7 @@ export default function TagChips({
       {tags.map((tag) => {
         const pressed = on.has(tagKey(tag));
         return (
-          <button
-            key={tagKey(tag)}
-            type="button"
-            aria-pressed={pressed}
-            onClick={() => onToggle(tag)}
-            className={`inline-flex h-8 flex-shrink-0 items-center whitespace-nowrap rounded-full border px-3 text-sm font-medium transition-colors ${
-              pressed
-                ? 'border-transparent bg-foreground text-background'
-                : 'border-border bg-surface text-foreground hover:bg-surface-hover'
-            }`}
-          >
-            {tag}
-          </button>
+          <TagToggle key={tagKey(tag)} tag={tag} pressed={pressed} onClick={() => onToggle(tag)} />
         );
       })}
     </div>

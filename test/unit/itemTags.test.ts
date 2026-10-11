@@ -74,6 +74,19 @@ describe('fitTagsToList', () => {
     expect(fitTagsToList(many(LIST_TAGS_MAX - 1), ['Last'])).toMatchObject({ ok: true });
   });
 
+  it('counts an item’s own tags as the list’s, and frees the place of one it drops', () => {
+    const others = many(LIST_TAGS_MAX - 1);
+    // Keeping its own unique tag is never new.
+    expect(fitTagsToList(many(LIST_TAGS_MAX), ['Own'], ['Own'])).toEqual({
+      ok: true,
+      tags: ['Own'],
+      addsNew: false,
+    });
+    // Swapping it for another stays within the cap.
+    expect(fitTagsToList(others, ['New'], ['Old'])).toMatchObject({ ok: true, addsNew: true });
+    expect(fitTagsToList(others, ['Old', 'New'], ['Old'])).toEqual({ ok: false });
+  });
+
   it('lets a list somehow past the cap keep using what it has', () => {
     expect(fitTagsToList(many(LIST_TAGS_MAX + 2), ['T21'])).toMatchObject({ ok: true });
   });

@@ -75,7 +75,9 @@ const failureOf = (error: unknown, expectProposal: boolean): ItemRequestFailure 
  * Hook for updating an item
  */
 export function useUpdateItem(
-  onSuccess?: (updatedItem: ApiItem) => void,
+  // `notice`: something about the save the user should hear (WIS-385: tags
+  // that didn't fit the list), from the answer's `notice`.
+  onSuccess?: (updatedItem: ApiItem, notice?: string) => void,
   onError?: (error: string, failure: ItemRequestFailure) => void
 ) {
   return useCallback(
@@ -116,12 +118,12 @@ export function useUpdateItem(
               );
             }
 
-            return result.data!;
+            return { item: result.data!, notice: result.notice };
           })
         );
 
-        onSuccess?.(data);
-        return data;
+        onSuccess?.(data.item, data.notice);
+        return data.item;
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Failed to update item';
         onError?.(errorMessage, failureOf(error, expectProposal));
@@ -137,7 +139,9 @@ export function useUpdateItem(
  * Hook for creating an item
  */
 export function useCreateItem(
-  onSuccess?: (newItem: ApiItem) => void,
+  // `notice`: something about the save the user should hear (a link or tags
+  // left out, WIS-385), from the answer's `notice`.
+  onSuccess?: (newItem: ApiItem, notice?: string) => void,
   onError?: (error: string) => void
 ) {
   return useCallback(
@@ -178,12 +182,12 @@ export function useCreateItem(
               throw new Error(result.error || 'Failed to create item');
             }
 
-            return result.data!;
+            return { item: result.data!, notice: result.notice };
           })
         );
 
-        onSuccess?.(data);
-        return data;
+        onSuccess?.(data.item, data.notice);
+        return data.item;
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Failed to create item';
         onError?.(errorMessage);

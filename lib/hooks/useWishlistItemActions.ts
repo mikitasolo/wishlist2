@@ -71,13 +71,15 @@ export function useWishlistItemActions({
   const { itemToEdit, itemToReview, setItemToReview, onItemRequestError } = dialogs;
 
   const createItemHook = useCreateItem(
-    (newItem) => {
+    (newItem, notice) => {
       // handleCreateItem tracks the request until after this runs, so a poll
       // whose read started before it settled is dropped instead of replacing
       // the list without the new item. One that read after the write may
       // already list it: don't add a second copy.
       setItems((prevItems) => prependCreatedItem(prevItems, newItem));
-      showToast('Item added successfully', 'success');
+      // Saved, but with something left out (a link, its tags): said instead.
+      if (notice) showToast(notice, 'info');
+      else showToast('Item added successfully', 'success');
     },
     (error) => {
       showToast(error, 'error');
