@@ -97,6 +97,13 @@ test('a member filters a list by tags', async ({ page }) => {
   const cards = page.getByRole('article');
   await expect(cards).toHaveCount(3);
 
+  // The cards name their tags (WIS-452), display only: no chip on the untagged one.
+  const novel = page.getByRole('article', { name: 'Item: E2E Novel' });
+  await expect(novel.getByRole('list', { name: 'Tags' }).getByText('Books')).toBeVisible();
+  await expect(
+    page.getByRole('article', { name: 'Item: E2E Lamp' }).getByRole('list', { name: 'Tags' })
+  ).toHaveCount(0);
+
   await tags.getByRole('button', { name: 'Books' }).click();
   await expect(tags.getByRole('button', { name: 'Books' })).toHaveAttribute('aria-pressed', 'true');
   await expect(cards).toHaveCount(1);
