@@ -361,3 +361,50 @@ describe('a Join link (WIS-337)', () => {
     expect(screen.queryByRole('button', { name: 'Join this list' })).toBeNull();
   });
 });
+
+describe('the skeleton before the session is known (WIS-444)', () => {
+  // regression: the server renders the skeleton with the session still loading,
+  // and it guessed a member's layout (status chips, no note); the session then
+  // read signed out, the note appeared and the chips went, and the whole grid
+  // moved (CLS 0.14). A share link is a visitor's page, so it holds that layout;
+  // a list URL holds both while the session loads and the remembered
+  // session hint (CSS, `session-hint:`) shows one.
+  const chips = (c: HTMLElement) => c.querySelectorAll('.h-9.flex-shrink-0.rounded-full').length;
+  const note = (c: HTMLElement) => c.querySelectorAll('.h-\\[8\\.625rem\\]').length;
+
+  beforeEach(() => {
+    // The reads never answer, so the page stays on its skeleton.
+    fetchMock.mockImplementation(() => new Promise(() => {}));
+  });
+
+  it('is the visitor layout while the session loads, on a share link', () => {
+    auth.session = { data: null, status: 'loading' };
+    const { container } = render(<WishlistPage address={link()} />);
+    expect(chips(container)).toBe(0);
+    expect(note(container)).toBe(1);
+  });
+
+  it('holds both layouts, the hint choosing, while the session loads on a list URL', () => {
+    auth.session = { data: null, status: 'loading' };
+    const { container } = render(<WishlistPage address={{ kind: 'slug', id: 'wedding' }} />);
+    expect(chips(container)).toBe(4);
+    expect(note(container)).toBe(1);
+    expect(
+      container.querySelectorAll('.session-hint\\:hidden, .session-hint\\:block')
+    ).toHaveLength(2);
+  });
+
+  it('is the visitor layout once the session reads signed out', () => {
+    viewAs(null);
+    const { container } = render(<WishlistPage address={{ kind: 'slug', id: 'wedding' }} />);
+    expect(chips(container)).toBe(0);
+    expect(note(container)).toBe(1);
+  });
+
+  it('keeps the status chips and no note for a signed-in viewer', () => {
+    viewAs({ id: 'u1', username: 'masha' });
+    const { container } = render(<WishlistPage address={{ kind: 'slug', id: 'wedding' }} />);
+    expect(chips(container)).toBe(4);
+    expect(note(container)).toBe(0);
+  });
+});

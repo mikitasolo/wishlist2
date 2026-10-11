@@ -332,6 +332,25 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
   }
 
   if (pageLoad !== 'ready' || !wishlist) {
+    // The server renders this skeleton before the session is known, so the
+    // viewer has to be guessed, and a wrong guess moves the whole grid once the
+    // session lands (CLS 0.14, WIS-444). A share link's page is a visitor's by
+    // definition (an owner or member is sent on to the list's own URL), and so
+    // is a signed-out viewer's. While the session is unknown, the browser's
+    // remembered answer picks (the `session-hint:` variant, as the header's
+    // does, lib/utils/sessionHint.ts): both are in the markup, CSS shows one.
+    const sessionUnknown = status === 'loading' && !linkToken;
+    const visitorLayout = status !== 'authenticated' || !!linkToken;
+    // A visitor gets the note on getting invited (its text wraps to three lines
+    // on a phone, two at sm, one at lg, over Sign in) and no status chips.
+    const visitorTop = (
+      <>
+        <Skeleton className="mb-6 h-[8.625rem] rounded-xl sm:mb-8 sm:h-[7.25rem] lg:h-[6.125rem]" />
+        <ListControlsSkeleton chips={0} />
+      </>
+    );
+    // Anyone else gets the chips; their role isn't known yet, so a member's four.
+    const memberTop = <ListControlsSkeleton chips={4} />;
     return (
       <div className="min-h-screen">
         <AppHeader actions={<AuthButton />} />
@@ -344,15 +363,16 @@ export default function WishlistPage({ address }: { address: WishlistAddress | n
               loaded, the viewer's role isn't known, and only an owner may see
               anything that hints at the tabs. An owner's tab replaces it once
               the list lands. */}
-          {/* Signed out, the viewer is a visitor, who gets the note on getting
-              invited (its text wraps to three lines on a phone, two at sm, one
-              at lg, over Sign in). Signed in, the role isn't known yet. */}
-          {status === 'unauthenticated' && (
-            <Skeleton className="mb-6 h-[8.625rem] rounded-xl sm:mb-8 sm:h-[7.25rem] lg:h-[6.125rem]" />
+          {sessionUnknown ? (
+            <>
+              <div className="session-hint:hidden">{visitorTop}</div>
+              <div className="hidden session-hint:block">{memberTop}</div>
+            </>
+          ) : visitorLayout ? (
+            visitorTop
+          ) : (
+            memberTop
           )}
-          {/* The status chips and toolbar. The role isn't known yet: signed out,
-              it's a visitor's, with no chips; otherwise a member's four. */}
-          <ListControlsSkeleton chips={status === 'unauthenticated' ? 0 : 4} />
           <SkeletonGrid count={8} variant="item" />
         </main>
       </div>
