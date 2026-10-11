@@ -102,6 +102,22 @@ describe('server error reports', () => {
     expect(out).not.toContain('example.com');
   });
 
+  // regression: a Node process warning reached stderr through console.error
+  // and was reported as an error on every cold start (Sentry WISHLIST-2).
+  it("doesn't report Node's own process warnings", async () => {
+    console.error(
+      '(node:6) ExperimentalWarning: vm.USE_MAIN_CONTEXT_DEFAULT_LOADER is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)'
+    );
+    console.error(
+      '(node:6) MaxListenersExceededWarning: Possible EventEmitter memory leak detected'
+    );
+    const out = await flushed();
+    expect(out).not.toContain('ExperimentalWarning');
+    expect(out).not.toContain('memory leak');
+    console.error('Error saving item: Warning: stock low');
+    expect(await flushed()).toContain('stock low');
+  });
+
   it('sends no user, even when one is set on the scope', async () => {
     Sentry.withScope((scope) => {
       scope.setUser({
