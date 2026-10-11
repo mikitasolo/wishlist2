@@ -41,8 +41,36 @@ describe('EmptyState', () => {
     ['muted', 'text-muted-foreground'],
     ['error', 'text-danger'],
   ] as const)('colours its chip for the %s tone', (tone, colour) => {
-    render(<EmptyState icon="gift" title="T" tone={tone} />);
+    render(<EmptyState icon="lock" title="T" tone={tone} />);
     expect(chip()).toHaveClass(colour);
+  });
+
+  it.each([
+    ['gift', 'default'],
+    ['package', 'muted'],
+    ['list', 'default'],
+    ['users', 'muted'],
+    ['search', 'muted'],
+    ['link-off', 'default'],
+    ['bell', 'default'],
+  ] as const)('draws a spot illustration, not a chip, for the %s icon (%s)', (icon, tone) => {
+    render(<EmptyState icon={icon} title="T" tone={tone} />);
+    const svg = document.querySelector('svg')!;
+    expect(svg).toHaveAttribute('viewBox', '0 0 96 96');
+    expect(svg).toHaveAttribute('aria-hidden', 'true');
+    expect(svg.parentElement).not.toHaveClass('rounded-2xl');
+  });
+
+  it('keeps the icon chip for an icon with no illustration, and for the error tone', () => {
+    const { rerender } = render(<EmptyState icon="lock" title="T" />);
+    expect(chip()).toHaveClass('rounded-2xl');
+    rerender(<EmptyState icon="gift" title="T" tone="error" />);
+    expect(chip()).toHaveClass('rounded-2xl');
+  });
+
+  it('draws a smaller one when compact', () => {
+    render(<EmptyState icon="gift" title="T" compact />);
+    expect(document.querySelector('svg')).toHaveAttribute('width', '64');
   });
 
   it('stands in a dashed frame by default, and on the page itself unframed', () => {
