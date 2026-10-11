@@ -469,6 +469,37 @@ describe('copyBlobToUploads', () => {
     expect((await copyBlobToUploads(OTHER_USERS, 'u1')).ok).toBe(true);
   });
 
+  describe('replacesSource: checked net of the source the caller frees (WIS-442)', () => {
+    beforeEach(() => {
+      list.mockResolvedValue({ blobs: [{ size: USER_UPLOAD_QUOTA_BYTES }], cursor: undefined });
+    });
+
+    it('copies the user’s own upload at the quota, reserving nothing from the budget', async () => {
+      const budget = { used: USER_UPLOAD_QUOTA_BYTES };
+      expect((await copyBlobToUploads(OWN, 'u1', budget, { replacesSource: true })).ok).toBe(true);
+      expect(budget.used).toBe(USER_UPLOAD_QUOTA_BYTES);
+      expect((await copyBlobToUploads(OWN, 'u1', undefined, { replacesSource: true })).ok).toBe(
+        true
+      );
+    });
+
+    it('credits nothing for a blob in someone else’s folder, whatever the caller says', async () => {
+      expect(
+        await copyBlobToUploads(OTHER_USERS, 'u1', undefined, { replacesSource: true })
+      ).toEqual({ ok: false, reason: 'quota' });
+      expect(copy).not.toHaveBeenCalled();
+    });
+
+    it('credits nothing once the user is over the quota', async () => {
+      const budget = { used: USER_UPLOAD_QUOTA_BYTES + 1 };
+      expect(await copyBlobToUploads(OWN, 'u1', budget, { replacesSource: true })).toEqual({
+        ok: false,
+        reason: 'quota',
+      });
+      expect(copy).not.toHaveBeenCalled();
+    });
+  });
+
   it("fails without touching the store for anything that isn't our blob", async () => {
     for (const url of [EXTERNAL, OTHER_STORE, 'not a url']) {
       expect(await copyBlobToUploads(url, 'u1')).toEqual({ ok: false, reason: 'failed' });
