@@ -149,6 +149,74 @@ describe('Walkthrough', () => {
     expect(within(popover).getByRole('button', { name: 'Next' })).toHaveFocus();
   });
 
+  // regression: the spotlight was always `rounded-2xl`, so round a pill
+  // button it left the page's undimmed corners showing.
+  it('shapes the spotlight like the control it rings', async () => {
+    const target = addTarget('new-list');
+    target.style.borderTopLeftRadius = '9999px';
+    target.style.borderTopRightRadius = '9999px';
+    target.style.borderBottomRightRadius = '9999px';
+    target.style.borderBottomLeftRadius = '9999px';
+    answer({ due: 'tour', ownsList: true });
+    render(<Walkthrough userId="u1" />);
+    await step('Lists for every occasion');
+    const spotlight = document.querySelector<HTMLElement>('div[aria-hidden="true"][style]');
+    // Half its 40px height, plus the 4px the hole reaches past it.
+    expect(spotlight?.style.borderRadius).toBe('24px 24px 24px 24px');
+    expect(spotlight?.style.top).toBe('96px');
+    expect(spotlight?.style.height).toBe('48px');
+  });
+
+  // regression: the Share target is a `display: contents` wrapper, which has no
+  // box to scroll to, so the Sharing step pointed at a button out of view.
+  it('scrolls to the node that draws a display: contents target', async () => {
+    const wrapper = document.createElement('span');
+    wrapper.dataset.tour = 'new-list';
+    wrapper.getBoundingClientRect = () => ({ top: 0, left: 0, width: 0, height: 0 }) as DOMRect;
+    wrapper.scrollIntoView = vi.fn();
+    const button = document.createElement('button');
+    button.getBoundingClientRect = () =>
+      ({ top: 100, left: 20, width: 120, height: 40 }) as DOMRect;
+    button.scrollIntoView = vi.fn();
+    wrapper.appendChild(button);
+    document.body.appendChild(wrapper);
+    answer({ due: 'tour', ownsList: true });
+    render(<Walkthrough userId="u1" />);
+    await step('Lists for every occasion');
+    expect(button.scrollIntoView).toHaveBeenCalled();
+    expect(wrapper.scrollIntoView).not.toHaveBeenCalled();
+  });
+
+  // regression: the Find your friends popover covered the search's results.
+  it('steps aside while they type in the search it points at', async () => {
+    addAllTargets();
+    const search = document.querySelector<HTMLElement>('[data-tour="search"]')!;
+    const field = document.createElement('input');
+    search.appendChild(field);
+    answer({ due: 'tour', ownsList: true, listPath: '/wishlists/maya' });
+    render(<Walkthrough userId="u1" />);
+    await nextThrough(PHONE_STEPS.slice(0, 3));
+    await step('Find your friends');
+
+    act(() => field.focus());
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Find your friends' })).toBeNull()
+    );
+    act(() => field.blur());
+    expect(await step('Find your friends')).toBeInTheDocument();
+  });
+
+  it('shows the closing card as a popover like every step, not a dialog with a close button', async () => {
+    addAllTargets();
+    answer({ due: 'tour', ownsList: true, listPath: '/wishlists/maya' });
+    render(<Walkthrough userId="u1" />);
+    await nextThrough(PHONE_STEPS);
+    const closing = await step('That’s it');
+    expect(within(closing).queryByRole('button', { name: 'Close' })).toBeNull();
+    expect(closing.parentElement?.className).not.toContain('backdrop-blur');
+    expect(within(closing).getByRole('button', { name: 'Done' })).toHaveFocus();
+  });
+
   // regression: the popover listened for Escape on the whole document, so
   // Escape closing a dialog opened from the highlighted control skipped the tour.
   it('leaves Escape pressed outside the popover to whatever has focus', async () => {
