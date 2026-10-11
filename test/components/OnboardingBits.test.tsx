@@ -49,7 +49,8 @@ describe('StarterCard', () => {
 
     expect(screen.getByText('Create a list')).toBeInTheDocument();
     expect(screen.getByText(/Add a few things/)).toBeInTheDocument();
-    expect(screen.getByText(/Friends invite you by username/)).toBeInTheDocument();
+    expect(screen.getByText(/send its link from the list’s Share button/)).toBeInTheDocument();
+    expect(screen.getByText(/Friends invite you to their lists by username/)).toBeInTheDocument();
     expect(screen.getByText('@maria_nowak')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Create wishlist' }));
     expect(onCreate).toHaveBeenCalledTimes(1);
@@ -57,7 +58,8 @@ describe('StarterCard', () => {
 
   it('names no handle for an account without a username', () => {
     render(<StarterCard username={null} onCreate={vi.fn()} />);
-    expect(screen.getByText('Share it')).toBeInTheDocument();
+    expect(screen.getByText(/Share it with friends/)).toBeInTheDocument();
+    expect(screen.queryByText(/by username/)).toBeNull();
     expect(screen.queryByText(/@/)).toBeNull();
   });
 });

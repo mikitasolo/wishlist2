@@ -444,7 +444,7 @@ describe('dashboard — a new account', () => {
 
     await screen.findByRole('heading', { name: 'Get started' });
     expect(screen.getByText('@me')).toBeInTheDocument();
-    expect(screen.getByText(/Friends invite you by username/)).toBeInTheDocument();
+    expect(screen.getByText(/Friends invite you to their lists by username/)).toBeInTheDocument();
     await userEvent.setup().click(screen.getByRole('button', { name: 'Create wishlist' }));
     expect(screen.getByRole('dialog', { name: 'Create new wishlist' })).toBeInTheDocument();
   });
