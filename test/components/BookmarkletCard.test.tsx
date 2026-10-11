@@ -33,6 +33,12 @@ describe('BookmarkletCard', () => {
     expect(container).toBeEmptyDOMElement();
   });
 
+  it('points to the add-from-link page for stores that block the bookmarklet', () => {
+    render(<BookmarkletCard />);
+    expect(screen.getByText(/A few stores block bookmarks/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'a new item' })).toHaveAttribute('href', '/items/new');
+  });
+
   it('clicking it here does nothing but hint to drag it', () => {
     render(<BookmarkletCard />);
     expect(screen.getByText(/Ctrl\+Shift\+B/)).toBeInTheDocument();

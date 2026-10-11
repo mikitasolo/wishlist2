@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import Panel from './Panel';
 import { buttonClassName } from './buttonStyles';
@@ -54,6 +55,13 @@ export default function BookmarkletCard() {
         {hint
           ? 'Drag me to your bookmarks bar, don’t click.'
           : 'Bookmarks bar hidden? Press Ctrl+Shift+B (⌘+Shift+B on a Mac) to show it.'}
+      </p>
+      <p className="mt-2 text-xs text-muted-foreground">
+        A few stores block bookmarks like this one. If yours does, paste the product link into{' '}
+        <Link href="/items/new" className="text-accent hover:underline">
+          a new item
+        </Link>{' '}
+        instead.
       </p>
     </Panel>
   );
