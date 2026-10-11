@@ -58,7 +58,7 @@ export default function BookmarkletCard() {
       </p>
       <p className="mt-2 text-xs text-muted-foreground">
         A few stores block bookmarks like this one. If yours does, paste the product link into{' '}
-        <Link href="/items/new" className="text-accent hover:underline">
+        <Link href="/items/new" className="text-accent underline underline-offset-2">
           a new item
         </Link>{' '}
         instead.
