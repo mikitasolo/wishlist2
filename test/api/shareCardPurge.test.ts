@@ -90,6 +90,8 @@ describe('PATCH /api/wishlists/[id]', () => {
     ['archived flag', { archived: true }],
     ['banner', { bannerUrl: 'https://example.com/banner.jpg' }],
     ['banner, cleared', { bannerUrl: null }],
+    // regression: WIS-428, the card's cover pattern is picked by the occasion's kind
+    ['occasion', { occasion: { kind: 'birthday', date: '2000-03-14', recurrence: 'yearly' } }],
   ])("purges the list's card when its %s changes", async (_, body) => {
     as(alice);
     const res = await patchList(body);
@@ -111,7 +113,6 @@ describe('PATCH /api/wishlists/[id]', () => {
     ['description', { description: 'Things I like' }],
     ['currency', { currency: 'EUR' }],
     ['pin', { featured: true }],
-    ['occasion', { occasion: { kind: 'birthday', date: '2000-03-14', recurrence: 'yearly' } }],
   ])('leaves the card alone when only the %s changes', async (_, body) => {
     as(alice);
     const res = await patchList(body);

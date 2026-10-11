@@ -102,6 +102,36 @@ export function coverPatternSvg(choice: CoverPatternChoice): string {
 }
 
 /**
+ * The pattern pre-tiled over a `width` x `height` canvas, as one SVG document,
+ * for next/og: it draws a tiled background image with a seam at every tile
+ * edge, so the card lays this out as a single image instead. `scale` grows the
+ * tile for the card's size (an in-app cover is a few hundred px wide, a card
+ * 1200). Same choice, same tile shapes, as `coverBackground`.
+ */
+export function coverPatternCardSvg(
+  kind: string | null | undefined,
+  name: string,
+  { width, height, scale }: { width: number; height: number; scale: number }
+): string {
+  const choice = chooseCoverPattern(kind, name);
+  // Whole pixels, as the in-app tile is, so no anti-aliased seam lands between tiles.
+  const tile = Math.round(PATTERN_TILE_SIZES[choice.size] * scale);
+  const off = Math.round(PATTERN_OFFSETS[choice.offset] * scale);
+  const body = shapes(choice.family, choice.arrangement);
+  let tiles = '';
+  // Start one tile before the edge so the offset never leaves a bare strip.
+  for (let y = off - tile; y < height; y += tile) {
+    for (let x = off - tile; x < width; x += tile) {
+      tiles += `<svg x="${x}" y="${y}" width="${tile}" height="${tile}" viewBox="0 0 40 40">${body}</svg>`;
+    }
+  }
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" ` +
+    `fill="${PATTERN_INK}" stroke="${PATTERN_INK}" stroke-linecap="round" opacity="${PATTERN_OPACITY}">${tiles}</svg>`
+  );
+}
+
+/**
  * The CSS `background` layers for a cover without a photo: the pattern over
  * the gradient the caller passes in.
  */

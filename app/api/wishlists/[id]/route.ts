@@ -33,11 +33,20 @@ import { enforce, userKey } from '@/lib/rateLimit';
 import { endGroupGiftsOnArchivedList } from '@/lib/utils/groupGifts';
 
 /**
- * The settings a list's share card depends on: its name, banner and owner, and
+ * The settings a list's share card depends on: its name, banner, occasion kind
+ * (which picks the cover pattern; the occasion is one setting, so a date-only
+ * edit purges too) and owner, and
  * whether a signed-out visitor may open it (visibility, archived). The URL too,
  * since a renamed slug leaves the old one's cached card naming the list.
  */
-const SHARE_CARD_FIELDS = ['name', 'slug', 'visibility', 'archived', 'bannerUrl'] as const;
+const SHARE_CARD_FIELDS = [
+  'name',
+  'slug',
+  'visibility',
+  'archived',
+  'bannerUrl',
+  'occasion',
+] as const;
 
 // GET /api/wishlists/[id] - Get a specific wishlist
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {

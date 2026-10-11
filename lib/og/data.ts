@@ -32,6 +32,8 @@ export type WishlistCardData =
       name: string;
       slug: string | null;
       bannerUrl: string | null;
+      /** The occasion's kind only (never its date), which picks the cover pattern. */
+      occasionKind: string | null;
       ownerId: string | null;
       ownerUsername: string | null;
       updatedAt: Date;
@@ -71,7 +73,7 @@ export async function readWishlistCard(idOrSlug: string): Promise<WishlistCardDa
   const id = await resolveWishlistId(idOrSlug);
   if (!id) return HIDDEN;
   const wishlist = await Wishlist.findById(id)
-    .select('name slug owners visibility archived bannerUrl updatedAt')
+    .select('name slug owners visibility archived bannerUrl occasion updatedAt')
     .lean();
   if (!wishlist || !(await getWishlistViewAccess(wishlist, null)).allowed) return HIDDEN;
   return shownCard(id, wishlist);
@@ -97,7 +99,7 @@ export async function readShareLinkCard(token: string): Promise<ShareLinkCardDat
 
 async function shownCard(
   id: string,
-  wishlist: Pick<IWishlist, 'name' | 'slug' | 'owners' | 'bannerUrl' | 'updatedAt'>
+  wishlist: Pick<IWishlist, 'name' | 'slug' | 'owners' | 'bannerUrl' | 'occasion' | 'updatedAt'>
 ): Promise<ShownWishlistCard> {
   // A co-owned list is credited to its primary owner.
   const ownerId = primaryOwnerId(wishlist);
@@ -108,6 +110,7 @@ async function shownCard(
     name: wishlist.name,
     slug: wishlist.slug ?? null,
     bannerUrl: wishlist.bannerUrl ?? null,
+    occasionKind: wishlist.occasion?.kind ?? null,
     ownerId,
     ownerUsername: owner?.username ?? null,
     updatedAt: wishlist.updatedAt,
