@@ -58,6 +58,7 @@ interface MyItem {
   wishlistSlug: string | null;
   wishlistName: string;
   notes: string | null;
+  tags?: string[]; // The owners' tags (WIS-385); absent on an untagged item
   wishlistArchived: boolean;
   createdAt: string; // ISO date string
 }
