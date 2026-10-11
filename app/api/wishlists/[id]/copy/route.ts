@@ -111,7 +111,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       { status: 200, headers: NO_STORE }
     );
   } catch (error) {
-    console.error(`Error reading a list to copy (${errorKind(error)})`);
+    console.error('Error reading a list to copy:', errorKind(error));
     return NextResponse.json({ success: false, error: 'Failed to load wishlist' }, { status: 500 });
   }
 }
@@ -210,7 +210,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     try {
       await settleStaleCopies(userId);
     } catch (err) {
-      console.error(`Settling stale list copies failed (${errorKind(err)})`);
+      console.error('Settling stale list copies failed:', errorKind(err));
     }
 
     // Only the source's own copyable items: an id from another list, or one
@@ -325,7 +325,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       try {
         await takeBackCopy(copyRow._id, userId);
       } catch (undoErr) {
-        console.error(`Taking back a failed list copy failed (${errorKind(undoErr)})`);
+        console.error('Taking back a failed list copy failed:', errorKind(undoErr));
       }
       throw err;
     }
@@ -335,7 +335,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     try {
       await finishCopy(copyRow._id);
     } catch (err) {
-      console.error(`Marking a list copy finished failed (${errorKind(err)})`);
+      console.error('Marking a list copy finished failed:', errorKind(err));
     }
 
     // WIS-324: friends who asked for a list, and can open this one, are told.
@@ -350,7 +350,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       { status: 201, headers: NO_STORE }
     );
   } catch (error) {
-    console.error(`Error copying a wishlist (${errorKind(error)})`);
+    console.error('Error copying a wishlist:', errorKind(error));
     return NextResponse.json(
       { success: false, error: 'Failed to create wishlist' },
       { status: 500 }

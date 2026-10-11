@@ -169,7 +169,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     await finishItemBatch(claim.batchId, answer);
     return NextResponse.json({ success: true, data: answer }, { status: 200, headers: NO_STORE });
   } catch (error) {
-    console.error(`Error applying a bulk item action (${errorKind(error)})`);
+    console.error('Error applying a bulk item action:', errorKind(error));
     return NextResponse.json({ success: false, error: 'Failed to update items' }, { status: 500 });
   }
 }

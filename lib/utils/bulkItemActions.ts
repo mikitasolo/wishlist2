@@ -179,7 +179,7 @@ export async function applyBulkMoveAction({
   try {
     await settleDeadMoves(userId);
   } catch (err) {
-    console.error(`Settling dead item moves failed (${errorKind(err)})`);
+    console.error('Settling dead item moves failed:', errorKind(err));
   }
   try {
     const outcome = await applyBulkMove({ source: wishlist, targetId, userId, itemIds, batchId });
@@ -203,7 +203,7 @@ export async function applyBulkMoveAction({
       const row = await ItemBatch.findById(batchId).select('moves copiedUrls').lean();
       if (row) await settleDeadMove(row, userId);
     } catch (settleErr) {
-      console.error(`Settling a failed item move failed (${errorKind(settleErr)})`);
+      console.error('Settling a failed item move failed:', errorKind(settleErr));
     }
     throw err;
   }
