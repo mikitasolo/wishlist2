@@ -95,6 +95,40 @@ export function getTurnstileKeys(): TurnstileKeys | null {
   return siteKey && secretKey ? { siteKey, secretKey } : null;
 }
 
+/**
+ * The healthchecks.io ping URL of each Vercel Cron job (WIS-382), by the
+ * job's route name (`app/api/cron/<name>`). Each is optional: unset means that
+ * cron pings nothing. Set, it must be an `https:` URL, or `validateEnvVars`
+ * refuses it (naming the variable, never echoing the value: a ping URL is a
+ * write credential for its check). `pingCronHeartbeat` sends the ping.
+ */
+export const CRON_HEARTBEAT_ENV_VARS = {
+  'sweep-snapshots': 'HEALTHCHECK_URL_SWEEP_SNAPSHOTS',
+  'occasion-reminders': 'HEALTHCHECK_URL_OCCASION_REMINDERS',
+  birthdays: 'HEALTHCHECK_URL_BIRTHDAYS',
+  'gift-reminders': 'HEALTHCHECK_URL_GIFT_REMINDERS',
+} as const;
+
+export type CronJob = keyof typeof CRON_HEARTBEAT_ENV_VARS;
+
+function isHttpsUrl(value: string): boolean {
+  try {
+    return new URL(value).protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * A cron's heartbeat URL, or `null` when it has none: unset, empty, or not an
+ * `https:` URL (which `validateEnvVars` refuses at startup; should one get
+ * here anyway, it pings nothing rather than somewhere unexpected).
+ */
+export function getCronHeartbeatUrl(cron: CronJob): string | null {
+  const value = process.env[CRON_HEARTBEAT_ENV_VARS[cron]]?.trim();
+  return value && isHttpsUrl(value) ? value : null;
+}
+
 export const UMAMI_WEBSITE_ID_VAR = 'NEXT_PUBLIC_UMAMI_WEBSITE_ID';
 
 /** Umami's website ids are UUIDs; anything else is a typo, not a site. */
@@ -214,6 +248,21 @@ export function validateEnvVars(): void {
     missing['turnstile'] = [
       `${unset} (${set} is set: set both to turn Turnstile on, or neither to leave it off)`,
     ];
+  }
+
+  // Cron heartbeats are optional, and one that isn't an https URL pings
+  // nothing (`getCronHeartbeatUrl`): its check then alerts, so a warning is
+  // enough, and a monitoring typo never takes the site down. Only the name is
+  // reported: a ping URL is a credential for its check.
+  const badHeartbeats = Object.values(CRON_HEARTBEAT_ENV_VARS).filter((name) => {
+    const value = process.env[name]?.trim();
+    return value && !isHttpsUrl(value);
+  });
+  if (badHeartbeats.length > 0) {
+    console.warn(
+      `Ignoring ${badHeartbeats.join(', ')}: set but not an https URL, so that cron pings ` +
+        "nothing. Set the check's ping URL, or unset it."
+    );
   }
 
   if (Object.keys(missing).length > 0) {

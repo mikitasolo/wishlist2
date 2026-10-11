@@ -6,6 +6,7 @@ import {
   getUmamiWebsiteId,
   SMTP_ENV_VARS,
   TURNSTILE_ENV_VARS,
+  CRON_HEARTBEAT_ENV_VARS,
 } from '@/lib/env';
 
 // vitest.config.mts injects a full dummy SMTP config (EMAIL_TRANSPORT=smtp);
@@ -269,4 +270,37 @@ describe('getUmamiWebsiteId', () => {
       expect(getUmamiWebsiteId()).toBeNull();
     }
   );
+});
+
+describe('validateEnvVars: cron heartbeat URLs', () => {
+  beforeEach(() => {
+    for (const name of Object.values(CRON_HEARTBEAT_ENV_VARS)) vi.stubEnv(name, undefined);
+  });
+
+  it('passes quietly with none set, or with https URLs', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(() => validateEnvVars()).not.toThrow();
+    for (const name of Object.values(CRON_HEARTBEAT_ENV_VARS)) {
+      vi.stubEnv(name, 'https://hc-ping.com/0b6c8f3e-1111-4222-8333-944455556666');
+    }
+    expect(() => validateEnvVars()).not.toThrow();
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  // A monitoring typo must never take the site down (validateEnvVars runs in
+  // the root layout); the cron pings nothing, so its check alerts instead.
+  it('warns about one that is not an https URL, naming it but never echoing its value', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.stubEnv('HEALTHCHECK_URL_BIRTHDAYS', 'http://hc-ping.com/secret-uuid');
+    vi.stubEnv('HEALTHCHECK_URL_GIFT_REMINDERS', 'secret-uuid-typo');
+    expect(() => validateEnvVars()).not.toThrow();
+    expect(warn).toHaveBeenCalledTimes(1);
+    const message = String(warn.mock.calls[0][0]);
+    warn.mockRestore();
+    expect(message).toContain('HEALTHCHECK_URL_BIRTHDAYS');
+    expect(message).toContain('HEALTHCHECK_URL_GIFT_REMINDERS');
+    expect(message).not.toContain('HEALTHCHECK_URL_OCCASION_REMINDERS');
+    expect(message).not.toContain('secret-uuid');
+  });
 });

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import { cronRefusal } from '@/lib/utils/cronAuth';
+import { pingCronHeartbeat } from '@/lib/utils/cronHeartbeat';
 import { sendGiftReminders } from '@/lib/utils/giftReminders';
 import { settleAllDeadMoves, type DeadMoveSweep } from '@/lib/utils/bulkItemActions';
 import { errorKind } from '@/lib/utils/errorKind';
@@ -34,6 +35,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       deadMoves = { error: true };
     }
     const result = await sendGiftReminders();
+    // Only a whole run pings: dead-move settling that threw is a failure too,
+    // so a check that stops hearing from this cron catches it. (Rows that
+    // failed one by one are left for the next run, and counted in the ping.)
+    if (!('error' in deadMoves))
+      await pingCronHeartbeat('gift-reminders', { ...result, deadMoves });
     return NextResponse.json({ success: true, ...result, deadMoves });
   } catch (err) {
     console.error(`Gift reminders failed (${err instanceof Error ? err.name : 'unknown error'})`);
