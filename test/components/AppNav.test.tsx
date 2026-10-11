@@ -117,30 +117,32 @@ describe('TabBar', () => {
   });
 
   // WIS-302: Activity carries the unread count, the one unread signal.
-  it('badges Activity’s icon with the unread count, and says it in the tab’s name', () => {
+  it('marks Activity’s icon with a dot, no number, and says the count in the tab’s name', () => {
     render(<TabBar username="mikita" unread={3} />);
     const activity = screen.getByRole('link', { name: 'Activity, 3 unread' });
-    const badge = activity.querySelector('[data-badge]');
-    expect(badge).toHaveTextContent(/^3$/);
+    const badge = activity.querySelector('[data-dot]');
+    expect(badge).toBeEmptyDOMElement();
+    expect(activity.querySelector('[data-badge]')).toBeNull();
+    expect(activity).toHaveTextContent(/^Activity$/);
     expect(badge).toHaveAttribute('aria-hidden', 'true');
     // On the icon, in the same box: the label stays under it.
     expect(badge?.parentElement?.querySelector('svg')).not.toBeNull();
     // Only Activity has one.
-    expect(document.querySelectorAll('[data-badge]')).toHaveLength(1);
+    expect(document.querySelectorAll('[data-dot]')).toHaveLength(1);
   });
 
-  it('shows no badge on Activity while nothing is unread', () => {
+  it('shows no dot on Activity while nothing is unread', () => {
     render(<TabBar username="mikita" unread={0} />);
     const activity = screen.getByRole('link', { name: 'Activity' });
     expect(activity).not.toHaveAttribute('aria-label');
     expect(activity).toHaveTextContent(/^Activity$/);
-    expect(document.querySelector('[data-badge]')).toBeNull();
+    expect(document.querySelector('[data-dot]')).toBeNull();
   });
 
-  it('caps the badge at 9+, while the name keeps the full count', () => {
+  it('keeps the full count in the name, and shows no number on the dot', () => {
     render(<TabBar username="mikita" unread={12} />);
     const activity = screen.getByRole('link', { name: 'Activity, 12 unread' });
-    expect(activity.querySelector('[data-badge]')).toHaveTextContent(/^9\+$/);
+    expect(activity.querySelector('[data-dot]')).toBeEmptyDOMElement();
   });
 
   it('while the session loads, is a placeholder with no links, hidden from assistive tech', () => {
@@ -172,6 +174,16 @@ describe('HeaderNav — Activity’s count', () => {
     render(<HeaderNav username="mikita" unread={30} />);
     const activity = screen.getByRole('link', { name: 'Activity, 30 unread' });
     expect(activity.querySelector('[data-badge]')).toHaveTextContent(/^9\+$/);
+  });
+
+  // WIS-415: "3" and "9+" take the same room, so the link doesn't widen as the count changes.
+  it('draws the count in one fixed-size box whatever it says', () => {
+    const { rerender } = render(<HeaderNav username="mikita" unread={3} />);
+    const size = (el: Element | null) =>
+      [...(el?.classList ?? [])].filter((c) => /^[hw]-5$/.test(c));
+    expect(size(document.querySelector('[data-badge]'))).toEqual(['h-5', 'w-5']);
+    rerender(<HeaderNav username="mikita" unread={30} />);
+    expect(size(document.querySelector('[data-badge]'))).toEqual(['h-5', 'w-5']);
   });
 });
 

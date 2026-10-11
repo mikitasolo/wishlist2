@@ -21,8 +21,8 @@ import {
  * text links, and Me is the avatar (the account menu opens the profile). The
  * page you're on is marked `aria-current="page"`, wherever it shows.
  *
- * Activity carries the unread count (WIS-302): a badge on the tab's icon and
- * beside the header's link, hidden at 0, and the link's accessible name says
+ * Activity carries the unread signal (WIS-302, WIS-415): a dot at the tab icon's
+ * corner on a phone, the count (up to 9+) beside the header's link, hidden at 0, and the link's accessible name says
  * it ("Activity, 3 unread"). It's the one unread signal; there's no bell. Both
  * take the count as `unread` from `AppHeader`, which reads it once
  * (`useUnreadNotifications`).
@@ -37,18 +37,37 @@ function useActive(username: string | null | undefined, pending: boolean): NavDe
 }
 
 /**
- * A destination's count, drawn: a small red pill with up to "9+" in it. It's
- * hidden from assistive tech, since the link's own name says the count.
+ * A destination's count, drawn (the header link's): a small accent pill with up
+ * to "9+" in it, in a fixed 20px-wide box so "3" and "9+" take the same room
+ * and the link never widens when the count changes. Accent, not `danger`:
+ * unread is a call to look, not an error (ui.md keeps red for errors and
+ * destructive actions); the dark accent is light, hence `text-background`.
+ * Hidden from assistive tech, since the link's own name says the count.
  */
-function Badge({ count, className = '' }: { count: number; className?: string }) {
+function Badge({ count }: { count: number }) {
   return (
     <span
       aria-hidden="true"
       data-badge=""
-      className={`flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-danger-fill px-1 text-badge font-semibold leading-none text-white ${className}`}
+      className="flex h-5 w-5 items-center justify-center rounded-full bg-accent text-badge font-semibold leading-none tabular-nums text-background"
     >
       {badgeText(count)}
     </span>
+  );
+}
+
+/**
+ * The phone tab's unread signal: a dot, no number (the count is in the link's
+ * name and on the Activity page), at the icon's top-right corner and clear of
+ * the glyph. The ring keeps it apart from the icon on either surface.
+ */
+function Dot() {
+  return (
+    <span
+      aria-hidden="true"
+      data-dot=""
+      className="absolute -right-1.5 -top-1 h-2.5 w-2.5 rounded-full bg-accent ring-2 ring-surface"
+    />
   );
 }
 
@@ -64,7 +83,7 @@ export function HeaderNav({
   className = '',
 }: {
   username?: string | null;
-  /** Unread notifications, for Activity's badge. */
+  /** Unread notifications, for Activity's count (header) and dot (tab bar). */
   unread?: number;
   /** The session is still loading. */
   pending?: boolean;
@@ -113,9 +132,7 @@ function TabContent({ destination, count = 0 }: { destination: NavDestination; c
     <>
       <span className="relative flex">
         <Icon name={destination.icon} size={18} />
-        {count > 0 && (
-          <Badge count={count} className="absolute -top-2 left-2.5 ring-2 ring-surface" />
-        )}
+        {count > 0 && <Dot />}
       </span>
       <span>{destination.label}</span>
     </>
@@ -131,8 +148,8 @@ function TabContent({ destination, count = 0 }: { destination: NavDestination; c
  * the bar is drawn with no links in it, as a placeholder that's shown (and
  * makes room) only where the session hint expects someone signed in, and is
  * hidden from assistive tech. The real bar replaces it in the same place. Its
- * Activity has no badge yet: the count is read once the session is known, and
- * the badge sits over the icon, so it moves nothing when it comes.
+ * Activity has no dot yet: the count is read once the session is known, and
+ * the dot sits over the icon's corner, so it moves nothing when it comes.
  */
 export function TabBar({
   username,
@@ -140,7 +157,7 @@ export function TabBar({
   pending = false,
 }: {
   username?: string | null;
-  /** Unread notifications, for Activity's badge. */
+  /** Unread notifications, for Activity's count (header) and dot (tab bar). */
   unread?: number;
   pending?: boolean;
 }) {
