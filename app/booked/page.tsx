@@ -21,6 +21,21 @@ import ReservedSkeleton from './ReservedSkeleton';
 import ReservedSummary from './ReservedSummary';
 import ToGiveSection from './ToGiveSection';
 import { useReservedData } from './useReservedData';
+import { useReservedSearch } from './useReservedSearch';
+import type { Gift, Reservation } from './types';
+import SearchField from '@/components/SearchField';
+import { matchesReservedSearch } from '@/lib/utils/reservationSearch';
+
+const reservationRow = (r: Reservation) => ({
+  itemName: r.itemName,
+  listName: r.wishlistName,
+  username: r.wishlistOwnerUsername ?? null,
+});
+const giftRow = (g: Gift) => ({
+  itemName: g.itemName,
+  listName: g.wishlistName,
+  username: g.recipientUsername,
+});
 
 export default function BookedPage() {
   const { data: session, status } = useKnownSession();
@@ -39,6 +54,10 @@ export default function BookedPage() {
   // The viewer's local date, which "To give" is grouped by: `null` until it's
   // known (see `useLocalToday`), and until then the cards aren't grouped.
   const today = useLocalToday();
+  // The search (WIS-424) narrows what's listed, never the summary's counts. Its
+  // field only exists on the uncovered page, so a covered page searches nothing.
+  const [searchQuery, setSearchQuery] = useReservedSearch();
+  const searching = searchQuery.trim() !== '';
 
   useEffect(() => {
     if (status === 'unauthenticated') router.replace(signInPath('/booked'));
@@ -46,6 +65,13 @@ export default function BookedPage() {
 
   // The cards still to give, and the ones that changed since they were reserved.
   const { needsConfirm, active } = partitionReservations(reservations);
+  const shownActive = active.filter((r) => matchesReservedSearch(reservationRow(r), searchQuery));
+  const shownConfirm = needsConfirm.filter((r) =>
+    matchesReservedSearch(reservationRow(r), searchQuery)
+  );
+  const shownGifts = gifts.filter((g) => matchesReservedSearch(giftRow(g), searchQuery));
+  const nothingMatches =
+    searching && shownActive.length + shownConfirm.length + shownGifts.length === 0;
   // D9: prices in the viewer's own currency, as "≈" with the original under
   // them. The rates are only read once some price is in another currency.
   const viewerCurrency = viewerPriceCurrency(session?.user?.defaultCurrency);
@@ -108,29 +134,55 @@ export default function BookedPage() {
           </div>
         ) : (
           <div className="mt-8 space-y-12">
-            {reservations.length === 0 ? (
-              <EmptyState
-                icon="gift"
-                title="Nothing reserved yet"
-                body="When you reserve a gift on someone’s wishlist, it’ll show up here so you can keep track."
+            {(reservations.length > 0 || gifts.length > 0) && (
+              <SearchField
+                size="sm"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onClear={() => setSearchQuery('')}
+                placeholder="Search by item, person or list"
+                aria-label="Search reservations by item, person or list"
               />
+            )}
+            {nothingMatches && (
+              <EmptyState
+                icon="search"
+                title="No matches"
+                body="Nothing reserved or given matches your search."
+                actions={
+                  <Button variant="secondary" onClick={() => setSearchQuery('')}>
+                    Show all
+                  </Button>
+                }
+              />
+            )}
+            {reservations.length === 0 ? (
+              !searching && (
+                <EmptyState
+                  icon="gift"
+                  title="Nothing reserved yet"
+                  body="When you reserve a gift on someone’s wishlist, it’ll show up here so you can keep track."
+                />
+              )
             ) : (
               <>
-                <ToGiveSection
-                  active={active}
-                  today={today}
-                  busy={busy}
-                  givenIds={givenIds}
-                  viewerCurrency={viewerCurrency}
-                  rates={rates}
-                  onGift={confirms.setGift}
-                  onRelease={actions.release}
-                  onGiveGroupGift={confirms.setGroupGive}
-                  onLeaveGroupGift={actions.leaveGroupGift}
-                />
-                {needsConfirm.length > 0 && (
+                {(!searching || shownActive.length > 0) && (
+                  <ToGiveSection
+                    active={shownActive}
+                    today={today}
+                    busy={busy}
+                    givenIds={givenIds}
+                    viewerCurrency={viewerCurrency}
+                    rates={rates}
+                    onGift={confirms.setGift}
+                    onRelease={actions.release}
+                    onGiveGroupGift={confirms.setGroupGive}
+                    onLeaveGroupGift={actions.leaveGroupGift}
+                  />
+                )}
+                {shownConfirm.length > 0 && (
                   <ChangedSection
-                    needsConfirm={needsConfirm}
+                    needsConfirm={shownConfirm}
                     busy={busy}
                     givenIds={givenIds}
                     viewerCurrency={viewerCurrency}
@@ -143,9 +195,9 @@ export default function BookedPage() {
             )}
 
             {/* Gift history, last: what's done. */}
-            {gifts.length > 0 && (
+            {shownGifts.length > 0 && (
               <GiftHistory
-                gifts={gifts}
+                gifts={shownGifts}
                 busy={busy}
                 onDelete={actions.deleteGift}
                 currency={viewerCurrency}
