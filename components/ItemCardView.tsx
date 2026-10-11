@@ -161,7 +161,7 @@ export default function ItemCardView({
             stretches over the rest of it. */}
         <div className={`flex flex-grow flex-col ${titleCoversCard ? '' : 'relative'}`}>
           {/* Top-down flow with fixed slots (WIS-398): a two-line title slot,
-              then the price, then the notes, so cards in one grid row line up
+              then the price, then the tags, then the notes, so cards in one grid row line up
               whatever their content; the spare height goes below the notes,
               above the chips and the pinned action row. */}
           <h3 className="mb-1.5 min-h-[2lh] text-body font-semibold text-foreground sm:mb-3 sm:text-title">
@@ -179,16 +179,11 @@ export default function ItemCardView({
             )}
           </div>
 
-          {/* A line of the notes; the sheet has them all. */}
-          {item.notes && (
-            <p className="mb-2 line-clamp-1 break-words text-meta text-muted-foreground sm:mb-3">
-              {item.notes}
-            </p>
-          )}
-
           {/* The owners' tags, display only (WIS-452): one line, a long name
               truncated, under the body's ::after like the notes so a tap still
-              opens the sheet. */}
+              opens the sheet. Straight under the fixed price slot, so tags line
+              up across a grid row whatever the notes or the chips under the
+              body (group gift, "Goes with") on each card. */}
           {!!item.tags?.length && (
             <ul role="list" aria-label="Tags" className="mb-2 flex min-w-0 gap-1 sm:mb-3">
               {item.tags.slice(0, CARD_TAGS_LIMIT).map((tag) => (
@@ -209,6 +204,13 @@ export default function ItemCardView({
                 </li>
               )}
             </ul>
+          )}
+
+          {/* A line of the notes; the sheet has them all. */}
+          {item.notes && (
+            <p className="mb-2 line-clamp-1 break-words text-meta text-muted-foreground sm:mb-3">
+              {item.notes}
+            </p>
           )}
         </div>
 

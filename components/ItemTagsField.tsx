@@ -24,7 +24,9 @@ export function tagsFieldNote(picked: number): string {
 
 /**
  * Tags in an owner's add and edit item dialogs (WIS-385): the list's tags as
- * toggles, ticked ones on the item, and a field for a new one (Enter or Add).
+ * toggles, ticked ones on the item (with a ×: a tap takes it off), and a field
+ * for a new one (Enter or Add). A list's tags are just those its items carry,
+ * so taking a tag off the last item that has it removes it from the list.
  * At most `ITEM_TAGS_MAX` on the item, and a new one only while the list stays
  * within `LIST_TAGS_MAX`; the server holds both caps, and fits a tag the list
  * has in another case to the list's spelling.
@@ -106,6 +108,7 @@ export default function ItemTagsField({
                 key={tagKey(tag)}
                 tag={tag}
                 pressed={on}
+                removable
                 disabled={disabled || (!on && full)}
                 onClick={() => toggle(tag)}
               />
