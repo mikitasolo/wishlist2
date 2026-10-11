@@ -192,7 +192,7 @@ export default function ItemCardView({
           {!!item.tags?.length && (
             <ul role="list" aria-label="Tags" className="mb-2 flex min-w-0 gap-1 sm:mb-3">
               {item.tags.slice(0, CARD_TAGS_LIMIT).map((tag) => (
-                <li key={tag} className="flex min-w-0">
+                <li key={tag} className="flex min-w-0 max-w-[45%]">
                   <Badge size="sm" className="min-w-0 max-w-full">
                     <span className="truncate">{tag}</span>
                   </Badge>
