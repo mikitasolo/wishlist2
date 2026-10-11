@@ -59,8 +59,11 @@ export const ITEM_BATCH_MOVE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 /** How many dead moves one run of the sweep settles at most. */
 export const DEAD_MOVE_SWEEP_MAX_ROWS = 50;
 
-/** How long one run of the sweep starts settling rows for. */
-export const DEAD_MOVE_SWEEP_BUDGET_MS = 15_000;
+/**
+ * How long one run of the sweep works for: it starts no copy's take-back
+ * after it, so the gift reminders after it keep most of the cron's 60 s.
+ */
+export const DEAD_MOVE_SWEEP_BUDGET_MS = 10_000;
 
 /** The answer while the first attempt with this key is still being applied. */
 export const ITEM_BATCH_IN_PROGRESS_ERROR = 'These changes are still being saved. Try again.';
@@ -250,10 +253,12 @@ export async function settleDeadMoves(userId: string): Promise<void> {
  */
 async function settleDeadMoveRow(
   row: Pick<IItemBatch, '_id' | 'moves' | 'copiedUrls'>,
-  userId: string
-): Promise<void> {
-  await settleDeadMove(row, userId);
+  userId: string,
+  deadline?: number
+): Promise<boolean> {
+  if (!(await settleDeadMove(row, userId, deadline))) return false;
   await ItemBatch.deleteOne({ _id: row._id, done: false });
+  return true;
 }
 
 export type DeadMoveSweep = {
@@ -271,20 +276,20 @@ export type DeadMoveSweep = {
  * never moves again) doesn't leave items on two lists until its row expires.
  * Only rows a move wrote to (`moves` / `copiedUrls`), unfinished, and older
  * than `ITEM_BATCH_STALE_MS` (past the route's `maxDuration`, so their attempt
- * is over), oldest first, at most `maxRows` a run, none started after
- * `budgetMs`. One that fails is logged (its kind only) and left for the next
- * run. Settled as the caller's own next move would (`settleDeadMove`, as the
- * row's user). Answers counts only.
+ * is over), oldest first, at most `maxRows` a run, no copy taken back after
+ * `budgetMs` (a row cut short is kept, and finished by a later run: settling
+ * is safe to repeat). One that fails is logged (its kind only) and left for
+ * the next run. Settled as the caller's own next move would
+ * (`settleDeadMove`, as the row's user). Answers counts only.
  */
 export async function settleAllDeadMoves({
-  now = Date.now(),
   maxRows = DEAD_MOVE_SWEEP_MAX_ROWS,
   budgetMs = DEAD_MOVE_SWEEP_BUDGET_MS,
-}: { now?: number; maxRows?: number; budgetMs?: number } = {}): Promise<DeadMoveSweep> {
+}: { maxRows?: number; budgetMs?: number } = {}): Promise<DeadMoveSweep> {
   const deadline = Date.now() + budgetMs;
   const dead = await ItemBatch.find({
     done: false,
-    createdAt: { $lt: new Date(now - ITEM_BATCH_STALE_MS) },
+    createdAt: { $lt: new Date(Date.now() - ITEM_BATCH_STALE_MS) },
     $or: [{ 'moves.0': { $exists: true } }, { 'copiedUrls.0': { $exists: true } }],
   })
     .sort({ createdAt: 1 })
@@ -298,7 +303,10 @@ export async function settleAllDeadMoves({
       break;
     }
     try {
-      await settleDeadMoveRow(row, row.user.toString());
+      if (!(await settleDeadMoveRow(row, row.user.toString(), deadline))) {
+        result.capped = true;
+        break;
+      }
       result.settled++;
     } catch (err) {
       result.failed++;

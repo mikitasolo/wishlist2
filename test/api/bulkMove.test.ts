@@ -552,6 +552,18 @@ describe('moving items: the target deleted mid-move (WIS-443)', () => {
   });
 });
 
+describe('moving items: the copy deleted mid-move (WIS-443)', () => {
+  it('leaves the item here when its copy is deleted after the re-check', async () => {
+    const race = holdFirstCall(Item, 'exists', () =>
+      Item.deleteMany({ wishlist: target }).then(() => undefined)
+    );
+    const { data } = await (await move(w.owner, [w.itemId])).json();
+    expect(race.held()).toBe(true);
+    expect(data.failed).toEqual([w.itemId]);
+    expect(await Item.exists({ _id: w.itemId, wishlist: w.wishlistId })).toBeTruthy();
+  });
+});
+
 describe('moving items: the daily sweep of dead moves (WIS-443)', () => {
   it('keeps a move’s row a week, and any other batch’s a day', async () => {
     const before = Date.now();
@@ -640,6 +652,37 @@ describe('moving items: the daily sweep of dead moves (WIS-443)', () => {
       capped: true,
     });
     expect(await Item.exists({ _id: copyId })).toBeTruthy();
+  });
+
+  it('stops part-way through a row at its budget, keeping the row for the next run', async () => {
+    const first = await makeItem({ name: 'First' }, target);
+    const second = await makeItem({ name: 'Second' }, target);
+    const lamp = await makeItem({ name: 'Lamp' });
+    await deadBatch({
+      key: 'dead',
+      payload: 'x',
+      moves: [
+        { from: w.itemId, to: first },
+        { from: lamp, to: second },
+      ],
+      copiedUrls: [blobOf(w.owner, 'orphan.jpg')],
+    });
+    const realNow = Date.now.bind(Date);
+    // Time runs out while the first copy is being taken back.
+    holdFirstCall(Item, 'findById', async () => {
+      vi.spyOn(Date, 'now').mockImplementation(() => realNow() + 60_000);
+    });
+    expect(await settleAllDeadMoves()).toEqual({ settled: 0, failed: 0, capped: true });
+    expect(await Item.exists({ _id: first })).toBeNull();
+    expect(await Item.exists({ _id: second })).toBeTruthy();
+    // No image freed yet, and the row stays for the next run, which finishes it.
+    expect(del).not.toHaveBeenCalled();
+    expect(await ItemBatch.countDocuments()).toBe(1);
+    vi.restoreAllMocks();
+    expect(await settleAllDeadMoves()).toEqual({ settled: 1, failed: 0, capped: false });
+    expect(await Item.exists({ _id: second })).toBeNull();
+    expect(del).toHaveBeenCalledWith(blobOf(w.owner, 'orphan.jpg'));
+    expect(await ItemBatch.countDocuments()).toBe(0);
   });
 
   it('logs a row that fails and goes on to the next, leaving it for the next run', async () => {

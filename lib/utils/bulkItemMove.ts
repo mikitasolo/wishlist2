@@ -100,12 +100,15 @@ async function takeBackCopy(copyId: mongoose.Types.ObjectId, userId: string): Pr
  * re-check refused it): each copy whose item is still on its list is taken
  * back, a copy whose item is gone stays (that item was moved), and every
  * image the attempt copied that no kept copy holds is freed. Safe to run
- * twice.
+ * twice, and to stop part-way: with a `deadline` (`Date.now()` ms), it starts
+ * no copy's take-back after it and then frees no image, answering `false`,
+ * so its caller keeps the row for a later run to finish.
  */
 export async function settleDeadMove(
   row: Pick<IItemBatch, 'moves' | 'copiedUrls'>,
-  userId: string
-): Promise<void> {
+  userId: string,
+  deadline = Infinity
+): Promise<boolean> {
   const moves = row.moves ?? [];
   const kept = new Set<string>();
   if (moves.length) {
@@ -118,11 +121,14 @@ export async function settleDeadMove(
       ).map((i) => i._id.toString())
     );
     for (const move of moves) {
-      if (there.has(move.from.toString())) await takeBackCopy(move.to, userId);
-      else if (there.has(move.to.toString()) && move.imageUrl) kept.add(move.imageUrl);
+      if (there.has(move.from.toString())) {
+        if (Date.now() >= deadline) return false;
+        await takeBackCopy(move.to, userId);
+      } else if (there.has(move.to.toString()) && move.imageUrl) kept.add(move.imageUrl);
     }
   }
   await deleteOwnBlobs((row.copiedUrls ?? []).filter((url) => !kept.has(url)));
+  return true;
 }
 
 /**
@@ -272,12 +278,17 @@ export async function applyBulkMove({
     }
     let kind: Kind;
     try {
-      // The target is read again right before each delete: one deleted since
-      // the re-check took (or is taking) its copies with it, so the item
-      // stays here rather than going nowhere (WIS-443). A delete in the
-      // moment between this read and the item's is the same as moving the
-      // item and then deleting the list.
-      if (!(await Wishlist.exists({ _id: targetId }))) {
+      // The target and this item's copy are read again right before each
+      // delete: a target deleted since the re-check took (or is taking) the
+      // copy with it, and a copy someone deleted is gone, so the item stays
+      // here rather than going nowhere (WIS-443). A delete in the moment
+      // between this read and the item's is the same as moving the item and
+      // then deleting the list (or its copy).
+      const [targetThere, copyThere] = await Promise.all([
+        Wishlist.exists({ _id: targetId }),
+        Item.exists({ _id: copyIds.get(id)!, wishlist: targetId }),
+      ]);
+      if (!targetThere || !copyThere) {
         kinds.set(id, 'failed');
         await takeBackCopy(copyIds.get(id)!, userId);
         return;
