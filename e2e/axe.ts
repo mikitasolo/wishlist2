@@ -1,5 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import type { Page } from '@playwright/test';
+import { expect } from './fixtures';
 
 /**
  * Accessibility violations the axe scan (`e2e/a11y.*.spec.ts`, WIS-383) lets
@@ -16,6 +17,10 @@ export const ALLOWED_A11Y_VIOLATIONS: readonly RegExp[] = [];
 
 /** Runs axe on the page as it is now and returns its serious / critical violations, minus the allowed. */
 export async function seriousViolations(page: Page, screen: string): Promise<string[]> {
+  // Scan the loaded page, not its skeleton, and no frame of a transition
+  // (axe's contrast check reads a half-faded colour as it is).
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect(page.locator('.skeleton')).toHaveCount(0);
   const { violations } = await new AxeBuilder({ page })
     .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
     .analyze();
