@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useImperativeHandle, useRef, type Ref } from 'react';
+import { useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react';
 import { appliedTheme } from '@/components/ThemeProvider';
 
 /**
@@ -46,6 +46,8 @@ interface TurnstileRenderOptions {
   callback?: (token: string) => void;
   'expired-callback'?: () => void;
   'timeout-callback'?: () => void;
+  'before-interactive-callback'?: () => void;
+  'after-interactive-callback'?: () => void;
   'error-callback'?: (code: string) => void;
 }
 
@@ -122,6 +124,8 @@ export default function TurnstileWidget({
   ref,
 }: TurnstileWidgetProps) {
   const container = useRef<HTMLDivElement>(null);
+  /** Cloudflare is showing a challenge the visitor has to click. */
+  const [interactive, setInteractive] = useState(false);
   const widgetId = useRef<string | null>(null);
   const token = useRef<string | null>(null);
   /** No widget, so no token is ever coming: the script didn't load or render threw. */
@@ -151,6 +155,7 @@ export default function TurnstileWidget({
       },
       reset() {
         token.current = null;
+        setInteractive(false);
         if (widgetId.current) window.turnstile?.reset(widgetId.current);
       },
     }),
@@ -190,6 +195,7 @@ export default function TurnstileWidget({
               // The token goes to the server action, not into a form field.
               'response-field': false,
               callback: (value) => {
+                setInteractive(false);
                 token.current = value;
                 settleAll(value);
               },
@@ -198,7 +204,13 @@ export default function TurnstileWidget({
               'expired-callback': clearToken,
               'timeout-callback': clearToken,
               // Returning nothing lets Turnstile log the error code to the console.
-              'error-callback': clearToken,
+              // An error shows Cloudflare's own message and retry, which needs room.
+              'error-callback': () => {
+                clearToken();
+                setInteractive(true);
+              },
+              'before-interactive-callback': () => setInteractive(true),
+              'after-interactive-callback': () => setInteractive(false),
             }) ?? null;
         } catch {
           fail();
@@ -214,9 +226,20 @@ export default function TurnstileWidget({
       widgetId.current = null;
       token.current = null;
       failed.current = false;
+      setInteractive(false);
       settleAll(null);
     };
   }, [siteKey, action]);
 
-  return <div ref={container} className="empty:hidden" />;
+  // The invisible check takes no room: Turnstile fills this box with an iframe
+  // as soon as it renders, and any height it gave the card would shift the page
+  // (the sign-in card is vertically centred, so it moves everything). The box
+  // opens up only while a challenge needs a click.
+  return (
+    <div
+      ref={container}
+      data-interactive={interactive || undefined}
+      className={interactive ? 'mt-6' : 'h-0 overflow-hidden'}
+    />
+  );
 }

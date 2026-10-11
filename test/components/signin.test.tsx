@@ -67,6 +67,8 @@ function fakeTurnstile() {
     pass: (token = TOKEN) => act(async () => options!.callback!(token)),
     expire: () => act(async () => options!['expired-callback']!()),
     error: () => act(async () => options!['error-callback']!('110200')),
+    showChallenge: () => act(async () => options!['before-interactive-callback']!()),
+    hideChallenge: () => act(async () => options!['after-interactive-callback']!()),
   };
 }
 
@@ -178,6 +180,26 @@ describe('SignInForm — Turnstile widget', () => {
         appearance: 'interaction-only',
       })
     );
+  });
+
+  // regression: Turnstile's iframe (and the old wrapper's margin) gave the
+  // centred sign-in card extra height as soon as the widget rendered: CLS 0.56.
+  it('takes no room until Cloudflare asks for a click, then opens up', async () => {
+    const { turnstile, container } = await renderWithWidget();
+    const box = () => container.querySelector('[data-interactive], .h-0') as HTMLElement;
+
+    expect(box()).toHaveClass('h-0', 'overflow-hidden');
+    await turnstile.showChallenge();
+    expect(box()).not.toHaveClass('h-0');
+    expect(box()).toHaveClass('mt-6');
+    await turnstile.hideChallenge();
+    expect(box()).toHaveClass('h-0');
+
+    // An error shows Cloudflare's message, so it opens too; a passing check closes it.
+    await turnstile.error();
+    expect(box()).toHaveClass('mt-6');
+    await turnstile.pass();
+    expect(box()).toHaveClass('h-0');
   });
 
   it("loads Cloudflare's script once, then renders into it", async () => {
