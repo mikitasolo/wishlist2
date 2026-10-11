@@ -8,6 +8,7 @@ vi.mock('@/components/ImageUpload', () => ({
 }));
 
 import ItemForm from './ItemFormWithFooter';
+import type { ItemFormData } from '@/lib/utils/itemForm';
 import TagChips from '@/components/TagChips';
 import { ITEM_TAGS_MAX, LIST_TAGS_MAX } from '@/lib/utils/itemTags';
 
@@ -46,6 +47,43 @@ describe('ItemForm — tags', () => {
         expect.anything()
       )
     );
+  });
+
+  it('marks picked tags with a × and takes one off the item when tapped, sending the change', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    const item: ItemFormData = {
+      name: 'Pan',
+      price: '',
+      currency: 'USD',
+      link: '',
+      imageUrl: '',
+      notes: '',
+      mostWanted: false,
+      tags: ['Books', 'Kitchen'],
+      isDraft: false,
+      relatedItems: [],
+    };
+    render(
+      <ItemForm
+        onSubmit={onSubmit}
+        onCancel={vi.fn()}
+        mode="edit"
+        initialData={item}
+        tagOptions={['Books', 'Kitchen']}
+      />
+    );
+    const books = screen.getByRole('button', { name: 'Books', pressed: true });
+    // The × is decoration: the name stays the tag's.
+    expect(books.querySelector('svg')).not.toBeNull();
+
+    fireEvent.click(books);
+    expect(
+      screen.getByRole('button', { name: 'Books', pressed: false }).querySelector('svg')
+    ).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: /^submit$/i }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(onSubmit.mock.calls[0][1]).toEqual({ tags: ['Kitchen'] });
   });
 
   it('takes the list’s spelling of a tag typed in another case', () => {
