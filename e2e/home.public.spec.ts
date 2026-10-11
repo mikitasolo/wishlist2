@@ -26,12 +26,12 @@ test('regression: the server HTML for / is the landing itself, with no spinner',
 test('the landing’s one call to action opens sign-in', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('main').getByRole('button', { name: 'Create your wishlist' }).click();
-  await expect(page.getByRole('heading', { name: 'Sign in or create an account' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Sign in or sign up' })).toBeVisible();
 });
 
 test('sign-in page shows the magic-link email field', async ({ page }) => {
   await page.goto('/auth/signin');
-  await expect(page.getByRole('heading', { name: 'Sign in or create an account' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Sign in or sign up' })).toBeVisible();
   await expect(page.locator('input[type="email"]')).toBeVisible();
 });
 
@@ -102,7 +102,7 @@ for (const [path, back] of [
   }) => {
     await page.goto(path);
     await expect(page).toHaveURL(`/auth/signin?callbackUrl=${encodeURIComponent(back)}`);
-    await expect(page.getByRole('heading', { name: 'Sign in or create an account' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Sign in or sign up' })).toBeVisible();
   });
 }
 

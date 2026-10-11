@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import Link from 'next/link';
+import BrandLink from '@/components/BrandLink';
 import Icon from '@/components/Icon';
 import TurnstileWidget, { type TurnstileHandle } from '@/components/TurnstileWidget';
 import { requestMagicLink } from './actions';
@@ -240,15 +240,11 @@ export default function SignInForm({ turnstileSiteKey, destination = null }: Sig
         ) : (
           <>
             <div className="mb-8 text-center">
-              <Link
-                href="/"
-                className="mb-5 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-primary-500 to-primary-700 text-white shadow-sm transition-transform hover:scale-105"
-                aria-label="Wishlist home"
-              >
-                <Icon name="gift" size={28} />
-              </Link>
+              <div className="mb-5 flex justify-center">
+                <BrandLink />
+              </div>
               <h1 className="mb-2 text-3xl font-semibold tracking-tight text-foreground">
-                Sign in or create an account
+                Sign in or sign up
               </h1>
               <p className="text-muted-foreground">{signInSubtitle(destination)}</p>
             </div>
