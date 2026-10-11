@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vites
 import { render, screen, cleanup } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { StrictMode, useState } from 'react';
-import FollowListModal from '@/components/FollowListModal';
+import FollowListModal, { FOLLOW_SEARCH_MIN } from '@/components/FollowListModal';
 
 // useBodyScrollLock restores the scroll position on close; jsdom lacks scrollTo.
 beforeAll(() => {
@@ -213,5 +213,144 @@ describe('FollowListModal — a list that couldn’t be loaded', () => {
     vi.mocked(fetch).mockImplementation(followers);
     await user.click(tab('2 followers'));
     expect(await screen.findByRole('link', { name: '@bob' })).toBeInTheDocument();
+  });
+});
+
+describe('FollowListModal — searching a list (WIS-426)', () => {
+  type Person = { _id: string; username: string; image: null };
+  const people = (names: string[]): Person[] =>
+    names.map((username, i) => ({ _id: `p${i}`, username, image: null }));
+  const FOLLOWERS = people(['alice', 'albert', 'bob', 'carol', 'dave', 'erin']);
+  const FOLLOWING = people(['zed', 'yara', 'xavi', 'walt', 'vera', 'alina']);
+
+  /** Each tab answers its own list. */
+  function serve(following: Person[]) {
+    vi.mocked(fetch).mockImplementation((async (url: string) => ({
+      json: async () => ({
+        success: true,
+        data: String(url).endsWith('/following') ? following : FOLLOWERS,
+      }),
+    })) as unknown as typeof fetch);
+  }
+
+  async function open(following = FOLLOWING, { counts = true } = {}) {
+    serve(following);
+    const user = userEvent.setup();
+    render(
+      <FollowListModal
+        userId="u1"
+        initialTab="followers"
+        followerCount={counts ? FOLLOWERS.length : undefined}
+        followingCount={counts ? following.length : undefined}
+        onClose={() => {}}
+      />
+    );
+    await screen.findByRole('link', { name: '@bob' });
+    return user;
+  }
+  const search = (name: string) => screen.getByRole('textbox', { name });
+  const names = () =>
+    screen.queryAllByRole('link').map((a) => '@' + a.getAttribute('href')!.split('/').pop());
+
+  it('filters the loaded rows by username, as the global search reads a handle', async () => {
+    const user = await open();
+    expect(FOLLOWERS.length).toBeGreaterThanOrEqual(FOLLOW_SEARCH_MIN);
+
+    await user.type(search('Search followers'), '@AL');
+    expect(names()).toEqual(['@alice', '@albert']);
+    expect(screen.getByRole('status')).toHaveTextContent('2 matches');
+
+    // A space after the @ is no part of the handle (`usernameQuery`).
+    await user.clear(search('Search followers'));
+    await user.type(search('Search followers'), '@ car');
+    expect(names()).toEqual(['@carol']);
+
+    // A lone @ searches for nothing: everyone stays.
+    await user.clear(search('Search followers'));
+    await user.type(search('Search followers'), '@');
+    expect(names()).toHaveLength(FOLLOWERS.length);
+
+    // Typing only filters what's here: no request per keystroke.
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('says no one matches, not that the list is empty, and Clear brings everyone back', async () => {
+    const user = await open();
+
+    await user.type(search('Search followers'), 'nobody');
+    expect(names()).toEqual([]);
+    expect(screen.getByRole('heading', { name: 'No one matches' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'No followers yet' })).toBeNull();
+    expect(screen.getByRole('status')).toHaveTextContent('0 matches');
+
+    await user.click(button('Clear search'));
+    expect(names()).toHaveLength(FOLLOWERS.length);
+    expect(search('Search followers')).toHaveFocus();
+  });
+
+  it('keeps a query per tab', async () => {
+    const user = await open();
+    await user.type(search('Search followers'), 'ali');
+    expect(names()).toEqual(['@alice']);
+
+    await user.click(tab(`${FOLLOWING.length} following`));
+    await screen.findByRole('link', { name: '@zed' });
+    expect(search('Search following')).toHaveValue('');
+    expect(names()).toHaveLength(FOLLOWING.length);
+
+    await user.click(tab(`${FOLLOWERS.length} followers`));
+    expect(search('Search followers')).toHaveValue('ali');
+    expect(names()).toEqual(['@alice']);
+  });
+
+  it('offers no search on a short list', async () => {
+    const user = await open(people(['zed', 'yara']));
+    await user.click(tab('2 following'));
+    await screen.findByRole('link', { name: '@zed' });
+
+    expect(screen.queryByRole('textbox')).toBeNull();
+    expect(names()).toEqual(['@zed', '@yara']);
+  });
+
+  // The field goes by the tab's count, so it's there before the rows arrive
+  // and the header doesn't move when they do.
+  it('shows the field while a long list loads', async () => {
+    vi.mocked(fetch).mockImplementation(() => new Promise(() => {}));
+    render(
+      <FollowListModal
+        userId="u1"
+        initialTab="followers"
+        followerCount={40}
+        followingCount={0}
+        onClose={() => {}}
+      />
+    );
+
+    expect(search('Search followers')).toBeInTheDocument();
+  });
+
+  it('goes by the rows read when the opener has no counts (Activity)', async () => {
+    const user = await open(people(['zed']), { counts: false });
+    expect(search('Search followers')).toBeInTheDocument();
+
+    await user.click(tab('Following'));
+    await screen.findByRole('link', { name: '@zed' });
+    expect(screen.queryByRole('textbox')).toBeNull();
+  });
+
+  it('offers no search in place of a list that couldn’t be loaded', async () => {
+    vi.mocked(fetch).mockRejectedValue(new TypeError('Failed to fetch'));
+    render(
+      <FollowListModal
+        userId="u1"
+        initialTab="followers"
+        followerCount={40}
+        followingCount={0}
+        onClose={() => {}}
+      />
+    );
+
+    await screen.findByRole('heading', { name: 'Couldn’t load followers' });
+    expect(screen.queryByRole('textbox')).toBeNull();
   });
 });
