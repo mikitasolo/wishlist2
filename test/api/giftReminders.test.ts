@@ -199,6 +199,8 @@ describe('GET /api/cron/gift-reminders', () => {
       reminders: { lists: 1, sent: 1, capped: false },
       nudges: { lists: 0, sent: 0, capped: false },
       emailed: 0,
+      // WIS-443: the same run settles dead item moves first (none here).
+      deadMoves: { settled: 0, failed: 0, capped: false },
     });
   });
 });

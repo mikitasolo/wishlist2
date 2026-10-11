@@ -41,7 +41,14 @@ import ItemBatch from '@/models/ItemBatch';
 import Reservation from '@/models/Reservation';
 import Wishlist from '@/models/Wishlist';
 import WishlistMember from '@/models/WishlistMember';
-import { ITEM_BATCH_STALE_MS, ITEM_BATCH_KEY_REUSED_ERROR } from '@/lib/utils/bulkItemActions';
+import {
+  ITEM_BATCH_STALE_MS,
+  ITEM_BATCH_KEY_REUSED_ERROR,
+  ITEM_BATCH_MOVE_TTL_MS,
+  settleAllDeadMoves,
+} from '@/lib/utils/bulkItemActions';
+import { GET as giftRemindersCron } from '@/app/api/cron/gift-reminders/route';
+import { NextRequest } from 'next/server';
 import { MOVE_TARGET_ERROR } from '@/lib/utils/bulkItems';
 import { MOVE_DEADLINE_MS } from '@/lib/utils/bulkItemMove';
 import { scopedIdempotencyKey } from '@/lib/utils/itemIdempotency';
@@ -135,7 +142,7 @@ async function reserveAsAlice(id: string) {
 }
 
 /** An unfinished batch row, dated past `ITEM_BATCH_STALE_MS`: an attempt that died. */
-async function deadBatch(fields: Record<string, unknown>) {
+async function deadBatch(fields: Record<string, unknown>, ageMs = ITEM_BATCH_STALE_MS + 1000) {
   const row = await ItemBatch.create({
     user: w.owner,
     wishlist: w.wishlistId,
@@ -144,8 +151,9 @@ async function deadBatch(fields: Record<string, unknown>) {
   });
   await ItemBatch.collection.updateOne(
     { _id: row._id },
-    { $set: { createdAt: new Date(Date.now() - ITEM_BATCH_STALE_MS - 1000) } }
+    { $set: { createdAt: new Date(Date.now() - ageMs) } }
   );
+  return row._id;
 }
 
 const onTarget = () => Item.find({ wishlist: target }).sort({ createdAt: 1 }).lean();
@@ -523,5 +531,212 @@ describe('moving items: races and retries', () => {
     expect(await Item.exists({ _id: deadCopy })).toBeNull();
     expect(await Item.exists({ _id: w.itemId, wishlist: w.wishlistId })).toBeTruthy();
     expect(await ItemBatch.countDocuments({ done: false })).toBe(0);
+  });
+});
+
+describe('moving items: the target deleted mid-move (WIS-443)', () => {
+  // regression: the target was read once, after the copies were written; one
+  // deleted after that took the copies with it while the moved items were
+  // still deleted here, so they were lost.
+  // (A delete landing between that read and the item's own delete, the
+  // residual window, is the same as moving the item and then deleting the list.)
+  it('leaves the item here when the target is deleted after the re-check', async () => {
+    const { deleteOwnedWishlist } = await import('@/lib/utils/wishlistDeletion');
+    const race = holdFirstCall(Wishlist, 'exists', () => deleteOwnedWishlist(target, w.owner));
+    const { data } = await (await move(w.owner, [w.itemId])).json();
+    expect(race.held()).toBe(true);
+    expect(data.failed).toEqual([w.itemId]);
+    expect(data.done).toEqual([]);
+    expect(await Item.exists({ _id: w.itemId, wishlist: w.wishlistId })).toBeTruthy();
+    expect(await Item.countDocuments({ wishlist: target })).toBe(0);
+  });
+});
+
+describe('moving items: the copy deleted mid-move (WIS-443)', () => {
+  it('leaves the item here when its copy is deleted after the re-check', async () => {
+    const race = holdFirstCall(Item, 'exists', () =>
+      Item.deleteMany({ wishlist: target }).then(() => undefined)
+    );
+    const { data } = await (await move(w.owner, [w.itemId])).json();
+    expect(race.held()).toBe(true);
+    expect(data.failed).toEqual([w.itemId]);
+    expect(await Item.exists({ _id: w.itemId, wishlist: w.wishlistId })).toBeTruthy();
+  });
+});
+
+describe('moving items: the daily sweep of dead moves (WIS-443)', () => {
+  it('keeps a move’s row a week, and any other batch’s a day', async () => {
+    const before = Date.now();
+    expect((await move(w.owner, [w.itemId])).status).toBe(200);
+    const moveRow = await ItemBatch.findOne({ done: true }).lean();
+    expect(moveRow!.expiresAt.getTime()).toBeGreaterThanOrEqual(before + ITEM_BATCH_MOVE_TTL_MS);
+    await ItemBatch.deleteMany({});
+    const lamp = await makeItem({ name: 'Lamp' });
+    as(w.owner);
+    const res = await bulkRoute(
+      json(
+        `/api/wishlists/${w.wishlistId}/items/bulk`,
+        'POST',
+        { action: 'delete', itemIds: [lamp] },
+        { 'Idempotency-Key': newKey() }
+      ),
+      { params: Promise.resolve({ id: w.wishlistId }) }
+    );
+    expect(res.status).toBe(200);
+    const deleteRow = await ItemBatch.findOne({ done: true }).lean();
+    expect(deleteRow!.expiresAt.getTime()).toBeLessThan(before + 25 * 60 * 60 * 1000);
+  });
+
+  it('settles anyone’s dead move nobody retried, and drops its row', async () => {
+    const deadCopy = await makeItem({ name: 'Camera' }, target);
+    const goneCopy = await makeItem({ name: 'Gone', imageUrl: blobOf(w.owner, 'g.jpg') }, target);
+    await deadBatch({
+      key: 'dead-1',
+      payload: 'x',
+      moves: [
+        { from: w.itemId, to: deadCopy },
+        { from: new mongoose.Types.ObjectId(), to: goneCopy, imageUrl: blobOf(w.owner, 'g.jpg') },
+      ],
+      copiedUrls: [blobOf(w.owner, 'g.jpg'), blobOf(w.owner, 'orphan.jpg')],
+    });
+    expect(await settleAllDeadMoves()).toEqual({ settled: 1, failed: 0, capped: false });
+    // The copy whose item is still here is taken back; the other stays, image and all.
+    expect(await Item.exists({ _id: deadCopy })).toBeNull();
+    expect(await Item.exists({ _id: goneCopy })).toBeTruthy();
+    expect(await Item.exists({ _id: w.itemId, wishlist: w.wishlistId })).toBeTruthy();
+    expect(del).toHaveBeenCalledWith(blobOf(w.owner, 'orphan.jpg'));
+    expect(del).not.toHaveBeenCalledWith(blobOf(w.owner, 'g.jpg'));
+    expect(await ItemBatch.countDocuments()).toBe(0);
+  });
+
+  it('leaves an attempt that may still be running, a finished batch and one that copied nothing', async () => {
+    const copyId = await makeItem({ name: 'Camera' }, target);
+    const moves = [{ from: w.itemId, to: copyId }];
+    await deadBatch({ key: 'fresh', payload: 'x', moves }, ITEM_BATCH_STALE_MS - 10_000);
+    await deadBatch({ key: 'finished', payload: 'x', moves, done: true });
+    await deadBatch({ key: 'nothing-copied', payload: 'x' });
+    expect(await settleAllDeadMoves()).toEqual({ settled: 0, failed: 0, capped: false });
+    expect(await Item.exists({ _id: copyId })).toBeTruthy();
+    expect(await ItemBatch.countDocuments()).toBe(3);
+  });
+
+  it('settles the oldest first, at most its cap a run, and the rest on the next', async () => {
+    const older = await makeItem({ name: 'Older' }, target);
+    const newer = await makeItem({ name: 'Newer' }, target);
+    await deadBatch({ key: 'newer', payload: 'x', moves: [{ from: w.itemId, to: newer }] });
+    await deadBatch(
+      { key: 'older', payload: 'x', moves: [{ from: w.itemId, to: older }] },
+      ITEM_BATCH_STALE_MS + 60_000
+    );
+    expect(await settleAllDeadMoves({ maxRows: 1 })).toEqual({
+      settled: 1,
+      failed: 0,
+      capped: true,
+    });
+    expect(await Item.exists({ _id: older })).toBeNull();
+    expect(await Item.exists({ _id: newer })).toBeTruthy();
+    expect(await settleAllDeadMoves({ maxRows: 1 })).toEqual({
+      settled: 1,
+      failed: 0,
+      capped: false,
+    });
+    expect(await Item.exists({ _id: newer })).toBeNull();
+  });
+
+  it('starts no row once its time budget is spent', async () => {
+    const copyId = await makeItem({ name: 'Camera' }, target);
+    await deadBatch({ key: 'dead', payload: 'x', moves: [{ from: w.itemId, to: copyId }] });
+    expect(await settleAllDeadMoves({ budgetMs: -1 })).toEqual({
+      settled: 0,
+      failed: 0,
+      capped: true,
+    });
+    expect(await Item.exists({ _id: copyId })).toBeTruthy();
+  });
+
+  it('stops part-way through a row at its budget, keeping the row for the next run', async () => {
+    const first = await makeItem({ name: 'First' }, target);
+    const second = await makeItem({ name: 'Second' }, target);
+    const lamp = await makeItem({ name: 'Lamp' });
+    await deadBatch({
+      key: 'dead',
+      payload: 'x',
+      moves: [
+        { from: w.itemId, to: first },
+        { from: lamp, to: second },
+      ],
+      copiedUrls: [blobOf(w.owner, 'orphan.jpg')],
+    });
+    const realNow = Date.now.bind(Date);
+    // Time runs out while the first copy is being taken back.
+    holdFirstCall(Item, 'findById', async () => {
+      vi.spyOn(Date, 'now').mockImplementation(() => realNow() + 60_000);
+    });
+    expect(await settleAllDeadMoves()).toEqual({ settled: 0, failed: 0, capped: true });
+    expect(await Item.exists({ _id: first })).toBeNull();
+    expect(await Item.exists({ _id: second })).toBeTruthy();
+    // No image freed yet, and the row stays for the next run, which finishes it.
+    expect(del).not.toHaveBeenCalled();
+    expect(await ItemBatch.countDocuments()).toBe(1);
+    vi.restoreAllMocks();
+    expect(await settleAllDeadMoves()).toEqual({ settled: 1, failed: 0, capped: false });
+    expect(await Item.exists({ _id: second })).toBeNull();
+    expect(del).toHaveBeenCalledWith(blobOf(w.owner, 'orphan.jpg'));
+    expect(await ItemBatch.countDocuments()).toBe(0);
+  });
+
+  it('logs a row that fails and goes on to the next, leaving it for the next run', async () => {
+    const first = await makeItem({ name: 'First' }, target);
+    const second = await makeItem({ name: 'Second' }, target);
+    await deadBatch(
+      { key: 'first', payload: 'x', moves: [{ from: w.itemId, to: first }] },
+      ITEM_BATCH_STALE_MS + 60_000
+    );
+    await deadBatch({ key: 'second', payload: 'x', moves: [{ from: w.itemId, to: second }] });
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(ItemBatch, 'deleteOne').mockRejectedValueOnce(new Error('db down'));
+    expect(await settleAllDeadMoves()).toEqual({ settled: 1, failed: 1, capped: false });
+    expect(errors).toHaveBeenCalledWith('Settling a dead item move failed:', {
+      name: 'Error',
+      code: undefined,
+    });
+    expect(await ItemBatch.countDocuments({ key: 'first' })).toBe(1);
+    expect(await ItemBatch.countDocuments({ key: 'second' })).toBe(0);
+  });
+
+  it('never drops a row a retry of its key wrote meanwhile', async () => {
+    const copyId = await makeItem({ name: 'Camera' }, target);
+    await deadBatch({ key: 'taken-over', payload: 'x', moves: [{ from: w.itemId, to: copyId }] });
+    // A retry takes the dead row over just before the sweep drops it.
+    holdFirstCall(ItemBatch, 'deleteOne', async () => {
+      await ItemBatch.deleteMany({ key: 'taken-over' });
+      await ItemBatch.create({
+        user: w.owner,
+        key: 'taken-over',
+        wishlist: w.wishlistId,
+        payload: 'x',
+        expiresAt: new Date(Date.now() + 60_000),
+      });
+    });
+    expect((await settleAllDeadMoves()).settled).toBe(1);
+    expect(await ItemBatch.countDocuments({ key: 'taken-over', done: false })).toBe(1);
+  });
+
+  it('runs from the gift reminders cron, behind its secret', async () => {
+    vi.stubEnv('CRON_SECRET', 'cron-secret');
+    const copyId = await makeItem({ name: 'Camera' }, target);
+    await deadBatch({ key: 'dead', payload: 'x', moves: [{ from: w.itemId, to: copyId }] });
+    const cron = (token?: string) =>
+      giftRemindersCron(
+        new NextRequest('http://localhost/api/cron/gift-reminders', {
+          headers: token ? { authorization: `Bearer ${token}` } : {},
+        })
+      );
+    expect((await cron('wrong')).status).toBe(401);
+    expect(await Item.exists({ _id: copyId })).toBeTruthy();
+    const res = await cron('cron-secret');
+    expect(res.status).toBe(200);
+    expect((await res.json()).deadMoves).toEqual({ settled: 1, failed: 0, capped: false });
+    expect(await Item.exists({ _id: copyId })).toBeNull();
   });
 });
