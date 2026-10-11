@@ -112,14 +112,14 @@ function StoryStrip() {
  * friend's view of the list, where a Reserve tap swaps the first item to
  * Reserved, beside the owner's view of the same item, which never changes.
  * Made-up data, no fetches, no script. The resting state is the finished
- * moment (Reserved on the friend's side); the loop (`.landing-demo` in
+ * moment (Reserved on the friend's side); the loop (`.landing-demo-*` rules in
  * `globals.css`) only plays without `prefers-reduced-motion`, as in
  * `lib/utils/motion.ts`. The badge comes from the status map, as on a real
  * card (`statusMeta`: a member seeing someone else's reservation).
  */
 function TwoViews() {
   return (
-    <section aria-labelledby="landing-mock-title" className="landing-demo">
+    <section aria-labelledby="landing-mock-title">
       <h2
         id="landing-mock-title"
         className="mb-6 text-center text-xl font-semibold tracking-tight text-foreground"
@@ -172,7 +172,7 @@ function MockCard({ friend }: { friend: boolean }) {
                 </span>
                 <span className="text-sm text-muted-foreground">{mockPrice(item.cents)}</span>
                 {friend && (
-                  <span className="landing-demo-slot grid w-24 justify-items-end">
+                  <span className="landing-demo-slot grid w-[5.5rem] justify-items-end">
                     {reserved ? (
                       <>
                         <span
