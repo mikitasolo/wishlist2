@@ -250,15 +250,18 @@ export function validateEnvVars(): void {
     ];
   }
 
-  // Cron heartbeats are optional, but one that is set must be an https URL.
-  // Only the name is reported: a ping URL is a credential for its check.
+  // Cron heartbeats are optional, and one that isn't an https URL pings
+  // nothing (`getCronHeartbeatUrl`): its check then alerts, so a warning is
+  // enough, and a monitoring typo never takes the site down. Only the name is
+  // reported: a ping URL is a credential for its check.
   const badHeartbeats = Object.values(CRON_HEARTBEAT_ENV_VARS).filter((name) => {
     const value = process.env[name]?.trim();
     return value && !isHttpsUrl(value);
   });
   if (badHeartbeats.length > 0) {
-    missing['cron heartbeats'] = badHeartbeats.map(
-      (name) => `${name} (set but not an https URL: set the check's ping URL, or unset it)`
+    console.warn(
+      `Ignoring ${badHeartbeats.join(', ')}: set but not an https URL, so that cron pings ` +
+        "nothing. Set the check's ping URL, or unset it."
     );
   }
 

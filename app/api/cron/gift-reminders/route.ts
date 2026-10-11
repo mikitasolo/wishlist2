@@ -35,8 +35,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       deadMoves = { error: true };
     }
     const result = await sendGiftReminders();
-    // Only a whole run pings: a dead-move settling that failed is a failure
-    // too, so a check that stops hearing from this cron catches it.
+    // Only a whole run pings: dead-move settling that threw is a failure too,
+    // so a check that stops hearing from this cron catches it. (Rows that
+    // failed one by one are left for the next run, and counted in the ping.)
     if (!('error' in deadMoves))
       await pingCronHeartbeat('gift-reminders', { ...result, deadMoves });
     return NextResponse.json({ success: true, ...result, deadMoves });
