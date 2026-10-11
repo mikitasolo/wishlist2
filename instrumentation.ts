@@ -23,6 +23,10 @@ export async function register() {
   const Sentry = await import('@sentry/nextjs');
   Sentry.init({
     ...sharedSentryOptions(dsn, getSentryRelease()),
+    // Node prints its own process warnings (`(node:6) ExperimentalWarning: …`)
+    // to stderr through console.error, so the console integration would
+    // report one per cold start. They're the runtime's, not our errors.
+    ignoreErrors: [/^\(node:\d+\) \w*Warning: /],
     integrations: [
       Sentry.captureConsoleIntegration({ levels: ['error'] }),
       // Next also console.errors what it hands onRequestError. The SDK skips
