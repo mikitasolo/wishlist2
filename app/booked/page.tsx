@@ -183,6 +183,7 @@ export default function BookedPage() {
                   <ToGiveSection
                     active={shownActive}
                     gifts={gifts}
+                    showProgress={!searching}
                     today={today}
                     busy={busy}
                     givenIds={givenIds}

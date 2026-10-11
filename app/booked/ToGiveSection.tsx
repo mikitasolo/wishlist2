@@ -16,6 +16,7 @@ import type { Gift, Reservation } from './types';
 export default function ToGiveSection({
   active,
   gifts,
+  showProgress,
   today,
   busy,
   givenIds,
@@ -29,6 +30,8 @@ export default function ToGiveSection({
   active: Reservation[];
   /** The gift history, which a dated group's progress counts what's given from. */
   gifts: Gift[];
+  /** Off while a search narrows `active`: a group's progress is of the whole occasion, not of its matches. */
+  showProgress: boolean;
   today: string | null;
   busy: (id: string) => boolean;
   givenIds: ReadonlySet<string>;
@@ -59,6 +62,7 @@ export default function ToGiveSection({
               group={group}
               headed={headed}
               progress={
+                showProgress &&
                 group.occasion &&
                 today && (
                   <OccasionProgress
