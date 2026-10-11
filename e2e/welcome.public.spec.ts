@@ -48,9 +48,14 @@ test('a new account can pick its own username on the welcome page', async ({ pag
   await expect(page.getByText('Available', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Save username' }).click();
 
-  // Back on course, with the new name saved.
-  await expect(page).toHaveURL('/settings');
-  await expect(page.getByLabel('Username', { exact: true })).toHaveValue('e2e_newcomer');
+  // regression: a brand-new account hasn't done the guided walkthrough
+  // (WIS-371, WIS-436), so once Welcome hands over, the tour sends it Home
+  // (where it starts) at a moment that raced with this spec's /settings
+  // assertions. What this test is about is the saved name, so check that
+  // through the account itself, wherever the tour has taken the page.
+  await expect
+    .poll(async () => (await (await page.request.get('/api/users/me')).json()).data?.username)
+    .toBe('e2e_newcomer');
 });
 
 test('an existing account signs straight in, without the welcome page', async ({ page }) => {
