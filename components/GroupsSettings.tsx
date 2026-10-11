@@ -227,7 +227,9 @@ function GroupMembers({
         </div>
       )}
       {shown.length === 0 ? (
-        <p className="px-4 pb-3 text-sm text-muted-foreground">No one in this group matches.</p>
+        <p role="status" className="px-4 pb-3 text-sm text-muted-foreground">
+          No one in this group matches.
+        </p>
       ) : (
         <ul className="divide-y divide-border">
           {shown.map((person) => (
@@ -238,6 +240,11 @@ function GroupMembers({
                 className="min-w-0 flex-1 truncate text-sm font-medium text-foreground transition-colors hover:text-accent"
               >
                 @{person.username}
+                {person.displayName !== person.username && (
+                  <span className="ml-2 font-normal text-muted-foreground">
+                    {person.displayName}
+                  </span>
+                )}
               </Link>
               <IconButton
                 icon="close"

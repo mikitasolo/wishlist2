@@ -270,8 +270,8 @@ describe('Filtering a group (WIS-425)', () => {
     render(<GroupsSettings />);
     const search = await screen.findByRole('textbox', { name: 'Search people in Family' });
     await user.type(search, 'zeld');
-    expect(screen.getByRole('link', { name: '@user3' })).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: '@user1' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /@user3/ })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /@user1/ })).not.toBeInTheDocument();
     await user.clear(search);
     await user.type(search, '@USER5');
     expect(screen.getAllByRole('link')).toHaveLength(1);
