@@ -2,8 +2,10 @@ import { describe, it, expect } from 'vitest';
 import {
   chooseCoverPattern,
   coverBackground,
+  coverPatternCardSvg,
   coverPatternFamily,
   coverPatternSvg,
+  PATTERN_OPACITY,
 } from '@/lib/utils/coverPattern';
 
 describe('coverPattern', () => {
@@ -51,5 +53,15 @@ describe('coverPattern', () => {
     const bg = coverBackground('linear-gradient(red, blue)', 'birthday', 'x');
     expect(bg).toContain('data:image/svg+xml');
     expect(bg.endsWith('linear-gradient(red, blue)')).toBe(true);
+  });
+
+  it('pre-tiles one card-sized SVG with the same ink, without a tiled background', () => {
+    const size = { width: 1200, height: 630, scale: 2.4 };
+    const svg = coverPatternCardSvg('birthday', 'x', size);
+    expect(svg).toContain('viewBox="0 0 1200 630"');
+    expect(svg).toContain(`opacity="${PATTERN_OPACITY}"`);
+    expect(svg.match(/<svg x=/g)!.length).toBeGreaterThan(20);
+    expect(svg).not.toContain('<pattern');
+    expect(coverPatternCardSvg('birthday', 'x', size)).toBe(svg);
   });
 });

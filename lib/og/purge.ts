@@ -10,7 +10,7 @@ export const PURGE_BUDGET_MS = 2000;
  * next crawler gets one drawn from the data as it is now. Called once a write
  * that changes what a card shows has landed:
  *
- *  - a list's name, URL, visibility, archived flag or banner, its deletion, and
+ *  - a list's name, URL, visibility, archived flag, banner or occasion (its kind picks the cover pattern), its deletion, and
  *    a change to its primary owner (an owner removed, demoted or leaving);
  *  - a user's username, bio, profile visibility or avatar, which purges their
  *    profile card and the cards of the lists they're the primary owner of;

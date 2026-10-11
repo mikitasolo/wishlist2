@@ -189,6 +189,30 @@ describe('wishlist share metadata and share card', () => {
     expect(res.headers.get('Vercel-Cache-Tag')).toBe(`og-wishlist-${id},og-user-${owner}`);
   });
 
+  // WIS-428: a list without a banner wears its occasion's cover pattern, drawn from the kind only.
+  it("draw the occasion's cover pattern on a list with no banner, and not over a banner", async () => {
+    const occasion = { kind: 'wedding', date: '2000-06-01', recurrence: 'yearly' };
+    const id = await list({ occasion });
+    const svgs = (images: string[]) =>
+      images
+        .filter((src) => src.startsWith('data:image/svg+xml;base64,'))
+        .map((src) => Buffer.from(src.split(',')[1], 'base64').toString());
+    const patterned = svgs((await card(id)).images).filter((svg) =>
+      svg.includes('viewBox="0 0 1200 630"')
+    );
+    expect(patterned).toHaveLength(1);
+    // The wedding family is the wavy line; the date never reaches the card.
+    expect(patterned[0]).toContain('S33');
+    expect(patterned[0]).not.toContain('2000-06');
+
+    const withBanner = await list({ occasion, bannerUrl: OWN_BANNER, slug: 'other-ab12c' });
+    loadCardPhoto.mockResolvedValue({ status: 'ok', src: 'data:image/jpeg;base64,AAAA' });
+    const shown = svgs((await card(withBanner)).images).filter((svg) =>
+      svg.includes('viewBox="0 0 1200 630"')
+    );
+    expect(shown).toHaveLength(0);
+  });
+
   // The gradient stands in, but the next fetch should try the photo again.
   it("don't cache a card whose banner couldn't be loaded", async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});

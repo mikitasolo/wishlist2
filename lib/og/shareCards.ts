@@ -146,6 +146,7 @@ async function drawWishlistCard(
         wishlistCard({
           id: card.id,
           name: card.name,
+          occasionKind: card.occasionKind,
           ownerUsername: card.ownerUsername,
           count,
           photo: photo.status === 'ok' ? photo.src : null,

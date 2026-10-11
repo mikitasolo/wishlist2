@@ -1,5 +1,6 @@
 import type { ReactElement, ReactNode } from 'react';
 import { LOGO_SVG } from '@/lib/brandLogo';
+import { coverPatternCardSvg } from '@/lib/utils/coverPattern';
 import { clampText, OG_CARD_SIZE, ogCoverBackground, titleFontSize } from '@/lib/utils/og';
 import { formatItemCount } from '@/lib/utils/itemCounts';
 
@@ -38,6 +39,18 @@ function BrandChip() {
   );
 }
 
+/** A pattern tile on a 1200px card is this many times its in-app size. */
+const CARD_PATTERN_SCALE = 2.4;
+
+/**
+ * The cover pattern as one card-sized image: next/og tiles a background image
+ * with a visible seam per tile, so the whole pattern is laid out up front.
+ */
+function patternSrc(kind: string | null, name: string): string {
+  const svg = coverPatternCardSvg(kind, name, { ...OG_CARD_SIZE, scale: CARD_PATTERN_SCALE });
+  return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
+}
+
 /**
  * A card's frame: a background (a gradient, or a photo drawn over it), a scrim
  * that keeps white text readable on any of them, and the content on top.
@@ -45,11 +58,14 @@ function BrandChip() {
 function Frame({
   background,
   photo,
+  pattern,
   scrim,
   children,
 }: {
   background: string;
   photo?: string | null;
+  /** The cover pattern drawn over the gradient; only for a list with no photo. */
+  pattern?: { kind: string | null; name: string } | null;
   scrim: string;
   children: ReactNode;
 }) {
@@ -65,6 +81,16 @@ function Frame({
         fontFamily: CARD_FONT,
       }}
     >
+      {pattern ? (
+        // eslint-disable-next-line @next/next/no-img-element -- Satori draws <img>, not next/image
+        <img
+          src={patternSrc(pattern.kind, pattern.name)}
+          width={OG_CARD_SIZE.width}
+          height={OG_CARD_SIZE.height}
+          alt=""
+          style={{ position: 'absolute', top: 0, left: 0 }}
+        />
+      ) : null}
       {photo ? (
         // eslint-disable-next-line @next/next/no-img-element -- Satori draws <img>, not next/image
         <img
@@ -149,12 +175,15 @@ function itemCount(count: number): string {
 export function wishlistCard({
   id,
   name,
+  occasionKind = null,
   ownerUsername,
   count,
   photo,
 }: {
   id: string;
   name: string;
+  /** The list's occasion kind, which picks the cover pattern (no photo only). */
+  occasionKind?: string | null;
   ownerUsername: string | null;
   count: number;
   photo: string | null;
@@ -167,6 +196,7 @@ export function wishlistCard({
     <Frame
       background={ogCoverBackground(id)}
       photo={photo}
+      pattern={photo ? null : { kind: occasionKind, name }}
       scrim={
         photo
           ? 'linear-gradient(180deg, rgba(0, 0, 0, 0.18) 0%, rgba(0, 0, 0, 0) 30%, rgba(0, 0, 0, 0.1) 52%, rgba(0, 0, 0, 0.74) 100%)'
