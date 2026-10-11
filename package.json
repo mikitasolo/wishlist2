@@ -34,6 +34,8 @@
   },
   "dependencies": {
     "@auth/mongodb-adapter": "^3.11.1",
+    "@sentry/browser": "11.1.0",
+    "@sentry/nextjs": "11.1.0",
     "@upstash/ratelimit": "^2.0.8",
     "@upstash/redis": "^1.38.0",
     "@vercel/blob": "^2.6.1",

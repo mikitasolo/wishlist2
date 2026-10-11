@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { UMAMI_HOST_URL, UMAMI_SCRIPT_URL } from '@/lib/analytics';
+import { getSentryDsn } from '@/lib/monitoring/config';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
@@ -156,5 +157,53 @@ describe('next.config.js — the CSP for analytics', () => {
     vi.stubEnv('NEXT_PUBLIC_UMAMI_WEBSITE_ID', id);
     const policy = await csp();
     expect(Object.values(policy).join(' ')).not.toContain('umami');
+  });
+});
+
+// WIS-381: the browser SDK's reports go to the DSN's ingest host, allowed by
+// the CSP exactly where the app starts the SDK (getSentryDsn): on Production
+// with a well-formed DSN. Anywhere else the policy stays as it was.
+describe('next.config.js — the CSP for error monitoring', () => {
+  const CONFIG = require.resolve('../../next.config.js');
+  const DSN = 'https://0123456789abcdef0123456789abcdef@o4507.ingest.de.sentry.io/4507123';
+
+  async function csp(): Promise<Record<string, string>> {
+    delete require.cache[CONFIG];
+    const fresh = require(CONFIG) as {
+      headers: () => Promise<{ headers: { key: string; value: string }[] }[]>;
+    };
+    const [{ headers }] = await fresh.headers();
+    const value = headers.find((h) => h.key === 'Content-Security-Policy')!.value;
+    return Object.fromEntries(
+      value.split('; ').map((d) => [d.split(' ')[0], d.slice(d.indexOf(' ') + 1)])
+    );
+  }
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    delete require.cache[CONFIG];
+  });
+
+  it('allows the DSN’s ingest host to be posted to, on Production with a DSN', async () => {
+    vi.stubEnv('VERCEL_ENV', 'production');
+    vi.stubEnv('SENTRY_DSN', DSN);
+    // The layout starts the SDK under the same condition.
+    expect(getSentryDsn()).toBe(DSN);
+    const policy = await csp();
+    expect(policy['connect-src']).toContain('https://o4507.ingest.de.sentry.io');
+    expect(policy['script-src']).not.toContain('sentry');
+  });
+
+  it.each([
+    ['no DSN on Production', 'production', undefined],
+    ['a malformed DSN on Production', 'production', 'https://sentry.io'],
+    ['staging / previews', 'preview', DSN],
+    ['local dev, CI and E2E', undefined, DSN],
+  ])('allows nothing of Sentry’s with %s', async (_label, env, dsn) => {
+    vi.stubEnv('VERCEL_ENV', env);
+    vi.stubEnv('SENTRY_DSN', dsn);
+    expect(getSentryDsn()).toBeNull();
+    const policy = await csp();
+    expect(Object.values(policy).join(' ')).not.toContain('sentry');
   });
 });

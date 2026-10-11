@@ -4,6 +4,7 @@ import React, { Component, ReactNode } from 'react';
 import Icon from '@/components/Icon';
 import Button from './Button';
 import { TONE_CLASSES } from '@/lib/utils/statusTones';
+import { reportError } from '@/lib/monitoring/browser';
 
 interface ErrorBoundaryState {
   hasError: boolean;
@@ -28,6 +29,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     console.error('ErrorBoundary caught an error:', error, errorInfo);
+    reportError(error);
     this.props.onError?.(error, errorInfo);
   }
 

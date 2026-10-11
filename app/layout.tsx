@@ -4,7 +4,9 @@ import { ToastProvider } from '@/components/ToastProvider';
 import { ThemeProvider } from '@/components/ThemeProvider';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import Analytics from '@/components/Analytics';
+import ErrorMonitoring from '@/components/ErrorMonitoring';
 import { getUmamiWebsiteId, validateEnvVars } from '@/lib/env';
+import { getSentryDsn, getSentryRelease } from '@/lib/monitoring/config';
 import { SESSION_HINT_SCRIPT } from '@/lib/utils/sessionHint';
 import './globals.css';
 
@@ -59,6 +61,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   // Product analytics (lib/analytics.ts): production only, and only once its
   // website id is set. Otherwise no script tag at all.
   const umamiWebsiteId = getUmamiWebsiteId();
+  // Error monitoring (lib/monitoring/): the same, with its DSN.
+  const sentryDsn = getSentryDsn();
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
@@ -83,6 +87,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </SessionProvider>
         </ErrorBoundary>
         {umamiWebsiteId && <Analytics websiteId={umamiWebsiteId} />}
+        {sentryDsn && <ErrorMonitoring dsn={sentryDsn} release={getSentryRelease()} />}
       </body>
     </html>
   );
