@@ -7,6 +7,8 @@ import SearchField from '@/components/SearchField';
 interface ListSearchProps {
   value: string;
   onChange: (value: string) => void;
+  /** The field's placeholder and accessible name. */
+  label?: string;
 }
 
 /**
@@ -15,7 +17,7 @@ interface ListSearchProps {
  * (focused) when tapped, and folds back when it loses focus empty; it stays
  * open while it holds text, so a query (a `?q=` link) is always in view.
  */
-export default function ListSearch({ value, onChange }: ListSearchProps) {
+export default function ListSearch({ value, onChange, label = 'Search items' }: ListSearchProps) {
   const [open, setOpen] = useState(false);
   const inputWrap = useRef<HTMLDivElement>(null);
   const expanded = open || value !== '';
@@ -63,8 +65,8 @@ export default function ListSearch({ value, onChange }: ListSearchProps) {
           value={value}
           onChange={(e) => onChange(e.target.value)}
           onClear={() => onChange('')}
-          placeholder="Search items"
-          aria-label="Search items"
+          placeholder={label}
+          aria-label={label}
         />
       </div>
     </>
