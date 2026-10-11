@@ -51,6 +51,27 @@ describe('useListUrlParam', () => {
     expect(window.history.length).toBe(before);
   });
 
+  it('keeps a value on a non-list page (pagePath) and leaves other pages alone', () => {
+    setUrl('/items?p=hi');
+    const { result } = renderHook(() =>
+      useListUrlParam<string>({
+        list: { id: 'items' },
+        urlId: null,
+        pagePath: '/items',
+        param: 'p',
+        scope: 'items',
+        parse: (raw) => raw ?? '',
+        serialize: (v) => (v === '' ? null : v),
+      })
+    );
+    expect(result.current[0]).toBe('hi');
+    act(() => result.current[1]('x'));
+    expect(window.location.search).toBe('?p=x');
+    setUrl('/elsewhere');
+    act(() => result.current[1]('y'));
+    expect(window.location.search).toBe('');
+  });
+
   it('leaves the URL alone while it names another list', () => {
     setUrl('/wishlists/other');
     const { result } = setup({ list: A, urlId: 'other' });

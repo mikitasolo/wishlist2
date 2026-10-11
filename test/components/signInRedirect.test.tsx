@@ -2,12 +2,17 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, cleanup, waitFor } from '@testing-library/react';
 
-const { push, replace } = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn() }));
+const { push, replace, router } = vi.hoisted(() => {
+  const push = vi.fn();
+  const replace = vi.fn();
+  // One object, as Next's router is: a new one per render would re-run effects.
+  return { push, replace, router: { push, replace } };
+});
 
 vi.mock('next-auth/react', () => ({
   useSession: () => ({ data: null, status: 'unauthenticated', update: vi.fn() }),
 }));
-vi.mock('next/navigation', () => ({ useRouter: () => ({ push, replace }) }));
+vi.mock('next/navigation', () => ({ useRouter: () => router }));
 // The header has its own session handling and tests.
 vi.mock('@/components/AppHeader', () => ({ default: () => null }));
 vi.mock('@/components/AuthButton', () => ({ default: () => null }));

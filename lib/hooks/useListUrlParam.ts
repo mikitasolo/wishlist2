@@ -29,6 +29,12 @@ type Options<T> = {
   list: { id: string; slug?: string | null } | null;
   /** The id or slug the page's URL names a list by (null in link mode). */
   urlId: string | null;
+  /**
+   * For a page that isn't a list's (`/items`): the pathname the value lives on.
+   * It stands in for `/wishlists/<urlId>`: the id/slug check is skipped, so `list`
+   * only scopes the value (pass a fixed id) and `urlId` is unused.
+   */
+  pagePath?: string;
   /** The URL query parameter, e.g. `show` or `q`. */
   param: string;
   /** What the value is kept with: another scope starts again from `parse(null)`. */
@@ -54,13 +60,15 @@ export function useListUrlParam<T>({
   list,
   urlId,
   param,
+  pagePath,
   scope,
   parse,
   serialize,
 }: Options<T>): [T, (value: T) => void] {
-  const path = urlId ? `/wishlists/${urlId}` : null;
+  const path = pagePath ?? (urlId ? `/wishlists/${urlId}` : null);
   // The URL is this list's page.
-  const urlIsList = !!list && !!urlId && (urlId === list.id || urlId === list.slug);
+  const urlIsList =
+    !!list && (pagePath ? true : !!urlId && (urlId === list.id || urlId === list.slug));
   const [state, setState] = useState<{ scope: string; value: T } | null>(null);
   // Read by the effects below without being their dependencies: a change of
   // value (which `choose` already writes to the URL) isn't written twice, and
