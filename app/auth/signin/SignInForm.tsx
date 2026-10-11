@@ -281,19 +281,17 @@ export default function SignInForm({ turnstileSiteKey, destination = null }: Sig
         )}
 
         {/* One widget for both views, so a resend gets its fresh token from the
-            same check. Invisible unless Cloudflare wants a click. */}
+            same check. Takes no room unless Cloudflare wants a click. */}
         {turnstileSiteKey && (
-          <div className="[&>div:not(:empty)]:mt-6">
-            <TurnstileWidget
-              ref={turnstile}
-              siteKey={turnstileSiteKey}
-              action="signin"
-              onLoadError={() => {
-                setCheckLoadFailed(true);
-                setSubmitError(CHALLENGE_LOAD_FAILED_MESSAGE);
-              }}
-            />
-          </div>
+          <TurnstileWidget
+            ref={turnstile}
+            siteKey={turnstileSiteKey}
+            action="signin"
+            onLoadError={() => {
+              setCheckLoadFailed(true);
+              setSubmitError(CHALLENGE_LOAD_FAILED_MESSAGE);
+            }}
+          />
         )}
       </div>
     </div>
