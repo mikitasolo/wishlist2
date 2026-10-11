@@ -35,6 +35,17 @@ const umamiEnabled =
     (process.env.NEXT_PUBLIC_UMAMI_WEBSITE_ID || '').trim()
   );
 
+// Error monitoring (WIS-381, lib/monitoring/): the browser SDK posts its reports
+// to the ingest host named in the DSN, allowed only where the app loads the SDK:
+// on Vercel's Production with SENTRY_DSN a well-formed DSN, the condition
+// getSentryDsn (lib/monitoring/config.ts) checks. Elsewhere it's not added.
+const SENTRY_DSN_RE = /^https:\/\/[0-9a-f]+@[a-z0-9.-]+\.[a-z]{2,}\/\d+$/i;
+const sentryDsn = (process.env.SENTRY_DSN || '').trim();
+const sentryOrigin =
+  process.env.VERCEL_ENV === 'production' && SENTRY_DSN_RE.test(sentryDsn)
+    ? new URL(sentryDsn).origin
+    : '';
+
 const csp = [
   "default-src 'self'",
   `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ''} ${TURNSTILE_ORIGIN}${umamiEnabled ? ` ${UMAMI_SCRIPT_ORIGIN}` : ''}`,
@@ -42,7 +53,7 @@ const csp = [
   // Vercel Blob serves public images over https; next/image also emits data URIs.
   "img-src 'self' data: blob: https:",
   "font-src 'self' data:",
-  `connect-src 'self'${isDev ? ' ws:' : ''}${umamiEnabled ? ` ${UMAMI_HOST_ORIGIN}` : ''}`,
+  `connect-src 'self'${isDev ? ' ws:' : ''}${umamiEnabled ? ` ${UMAMI_HOST_ORIGIN}` : ''}${sentryOrigin ? ` ${sentryOrigin}` : ''}`,
   "frame-ancestors 'none'",
   `frame-src ${TURNSTILE_ORIGIN}`,
   "object-src 'none'",
