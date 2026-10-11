@@ -30,6 +30,25 @@ export function groupNameKey(name: string): string {
   return name.normalize('NFKC').trim().replace(/\s+/g, ' ').toLowerCase();
 }
 
+/** A group with more people than this offers a search over them. */
+export const GROUP_MEMBER_SEARCH_MIN = 6;
+
+/**
+ * Whether a person matches a search: the username or display name contains it,
+ * ignoring case and a leading "@". Never looks at an email (none is loaded).
+ */
+export function personMatches(
+  person: { username: string; displayName?: string | null },
+  query: string
+): boolean {
+  const q = query.trim().toLowerCase().replace(/^@/, '');
+  if (!q) return true;
+  return (
+    person.username.toLowerCase().includes(q) ||
+    (person.displayName ?? '').toLowerCase().includes(q)
+  );
+}
+
 /** What New group says once no more can be made, or null while one can. */
 export function groupLimitNote(count: number): string | null {
   return count >= GROUP_LIMIT ? `You have ${GROUP_LIMIT} groups, the most you can have.` : null;
