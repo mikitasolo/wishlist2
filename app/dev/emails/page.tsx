@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import { isLocalDevRuntime } from '@/lib/env';
+import { getEnvVars, isLocalDevRuntime } from '@/lib/env';
 
 /**
  * The email gallery (WIS-375): every email the app sends, rendered from
@@ -11,7 +11,8 @@ import { isLocalDevRuntime } from '@/lib/env';
  * (`isLocalDevRuntime`: `VERCEL_ENV` unset or `development`); on Preview and
  * Production it's the app's plain 404, and its title isn't set either. The gate
  * runs per request, never baked in at build, and the templates load only once
- * it has passed.
+ * it has passed. `app/dev/layout.tsx` gates the whole `/dev` segment the same
+ * way, so a page added there later is covered too.
  */
 export const dynamic = 'force-dynamic';
 
@@ -20,17 +21,16 @@ export async function generateMetadata(): Promise<Metadata> {
   return { title: 'Email gallery', robots: { index: false, follow: false } };
 }
 
-const SCHEMES = ['light', 'dark'] as const;
-
 export default async function EmailGallery() {
   if (!isLocalDevRuntime()) notFound();
-  const { galleryEntries } = await import('@/lib/emailTemplates/gallery');
-  const entries = galleryEntries(process.env.NEXTAUTH_URL ?? 'http://localhost:3000');
+  const { galleryEntries, PREVIEW_SCHEMES } = await import('@/lib/emailTemplates/gallery');
+  // The site URL the transport gives real emails, so every link matches what's sent.
+  const entries = galleryEntries(getEnvVars().NEXTAUTH_URL);
 
   return (
     <main className="mx-auto max-w-7xl space-y-8 px-4 py-8 sm:px-6 lg:px-8">
       <header className="space-y-2">
-        <h1 className="text-2xl font-semibold text-foreground">Email gallery</h1>
+        <h1 className="text-3xl font-semibold tracking-tight text-foreground">Email gallery</h1>
         <p className="text-sm text-muted-foreground">
           Every email, rendered from made-up data through its real template. Local dev only: nothing
           here is sent, and its unsubscribe links are unsigned.
@@ -48,14 +48,14 @@ export default async function EmailGallery() {
         </nav>
       </header>
 
-      {entries.map(({ fixture, email, preview }) => (
+      {entries.map(({ fixture, email, previews }) => (
         <section
           key={fixture.id}
           id={fixture.id}
           aria-labelledby={`${fixture.id}-title`}
           className="scroll-mt-4 space-y-3 border-t border-border pt-6"
         >
-          <h2 id={`${fixture.id}-title`} className="text-lg font-semibold text-foreground">
+          <h2 id={`${fixture.id}-title`} className="text-xl font-semibold text-foreground">
             {fixture.label}
           </h2>
           <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
@@ -69,18 +69,16 @@ export default async function EmailGallery() {
             </dd>
           </dl>
           <div className="grid gap-4 lg:grid-cols-2">
-            {SCHEMES.map((scheme) => (
+            {PREVIEW_SCHEMES.map((scheme) => (
               <figure key={scheme} className="space-y-1">
                 <figcaption className="text-sm text-muted-foreground">
                   {scheme === 'light' ? 'Light' : 'Dark'}
                 </figcaption>
                 <iframe
                   title={`${fixture.label}, ${scheme}`}
-                  srcDoc={preview}
+                  srcDoc={previews[scheme]}
                   sandbox=""
                   loading="lazy"
-                  // An iframe's prefers-color-scheme follows its own color-scheme,
-                  // so this shows the email's dark-mode styles as a mail client would.
                   style={{ colorScheme: scheme }}
                   className="h-[46rem] w-full rounded-lg border border-border"
                 />

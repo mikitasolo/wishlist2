@@ -90,6 +90,23 @@ describe('/dev/emails', () => {
     }
   );
 
+  it.each(['production', 'preview', ''])(
+    'gates the whole /dev segment too with VERCEL_ENV=%j',
+    async (vercelEnv) => {
+      vi.stubEnv('VERCEL_ENV', vercelEnv);
+      vi.resetModules();
+      const { default: DevLayout } = await import('@/app/dev/layout');
+      expect(() => DevLayout({ children: 'page' })).toThrow(NOT_FOUND);
+    }
+  );
+
+  it.each([undefined, 'development'])('lets /dev through with VERCEL_ENV=%j', async (vercelEnv) => {
+    vi.stubEnv('VERCEL_ENV', vercelEnv);
+    vi.resetModules();
+    const { default: DevLayout } = await import('@/app/dev/layout');
+    expect(DevLayout({ children: 'page' })).toBe('page');
+  });
+
   it('decides per request, not once at build', async () => {
     const { default: EmailGallery } = await loadPage();
     vi.stubEnv('VERCEL_ENV', 'production');
@@ -128,10 +145,25 @@ describe('galleryEntries', () => {
   });
 
   it('shows the logo inline, as no attachment comes with a preview', () => {
-    for (const { email, preview } of entries) {
+    for (const { email, previews } of entries) {
       expect(email.html).toContain('cid:wishlist-logo');
-      expect(preview).not.toContain('cid:');
-      expect(preview).toContain('data:image/png;base64,');
+      for (const preview of Object.values(previews)) {
+        expect(preview).not.toContain('cid:');
+        expect(preview).toContain('data:image/png;base64,');
+      }
+    }
+  });
+
+  it('forces each scheme, whatever the browser prefers, and changes nothing else', () => {
+    for (const { email, previews } of entries) {
+      expect(email.html).toContain('@media (prefers-color-scheme: dark)');
+      expect(previews.dark).not.toContain('prefers-color-scheme: dark');
+      expect(previews.light).not.toContain('prefers-color-scheme: dark');
+      expect(previews.dark).toContain('@media all {');
+      expect(previews.light).toContain('@media not all {');
+      const unforced = (html: string) =>
+        html.replace(/@media (not )?all \{/, '@media (prefers-color-scheme: dark) {');
+      expect(unforced(previews.dark)).toBe(unforced(previews.light));
     }
   });
 

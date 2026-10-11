@@ -18,9 +18,13 @@ export const FIXTURE_RECIPIENT = {
   email: 'sam@example.com',
 } as const;
 
-/** A sign-in link shaped like Auth.js's, with a token that signs no one in. */
-export const FIXTURE_MAGIC_LINK =
-  'http://localhost:3000/api/auth/callback/nodemailer?token=fixture-token&email=sam%40example.com';
+/**
+ * A sign-in link's path and query, shaped like Auth.js's, with a token that
+ * signs no one in. Joined to the site URL where it's rendered, as every other
+ * link is.
+ */
+export const FIXTURE_MAGIC_LINK_PATH =
+  '/api/auth/callback/nodemailer?token=fixture-token&email=sam%40example.com';
 
 /** The day each dated fixture is about: an occasion's, and a friend's birthday. */
 export const FIXTURE_OCCASION_DATE = '2026-12-24';
@@ -84,7 +88,7 @@ function invite(overrides: Partial<WishlistInvitationDetails> = {}): WishlistInv
 }
 
 export type EmailFixture = { id: string; label: string } & (
-  | { template: 'magic_link'; magicLink: string }
+  | { template: 'magic_link'; magicLinkPath: string }
   | { template: 'wishlist_invite'; details: WishlistInvitationDetails }
   | { template: 'notification'; details: NotificationEmailDetails }
   | { template: 'birthday_nudge'; details: BirthdayNudgeEmailDetails }
@@ -96,7 +100,7 @@ export const EMAIL_FIXTURES: readonly EmailFixture[] = [
     id: 'magic-link',
     label: 'Sign-in link',
     template: 'magic_link',
-    magicLink: FIXTURE_MAGIC_LINK,
+    magicLinkPath: FIXTURE_MAGIC_LINK_PATH,
   },
   { id: 'invite-member', label: 'Invitation', template: 'wishlist_invite', details: invite() },
   {

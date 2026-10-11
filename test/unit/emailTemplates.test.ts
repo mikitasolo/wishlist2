@@ -3,6 +3,13 @@ import { SMTP_ENV_VARS } from '@/lib/env';
 import { formatOccasionDay } from '@/lib/utils/occasion';
 import { formatBirthday } from '@/lib/utils/birthday';
 import {
+  NOTIFICATION_EVENTS,
+  NOTIFICATION_EVENT_KEYS,
+  offersChannel,
+  type NotificationEvent,
+} from '@/lib/utils/notificationPrefs';
+import { NOTIFICATION_EMAILS_BY_EVENT } from '@/lib/emailTemplates/notification';
+import {
   EMAIL_FIXTURES,
   FIXTURE_BIRTHDAY,
   FIXTURE_OCCASION_DATE,
@@ -48,7 +55,7 @@ async function send(email: Awaited<ReturnType<typeof loadEmail>>, fixture: Email
   const to = FIXTURE_RECIPIENT.email;
   switch (fixture.template) {
     case 'magic_link':
-      return email.sendMagicLinkEmail(to, fixture.magicLink);
+      return email.sendMagicLinkEmail(to, `http://localhost:3000${fixture.magicLinkPath}`);
     case 'wishlist_invite':
       return email.sendWishlistInvitationEmail(to, fixture.details);
     case 'notification':
@@ -71,6 +78,23 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
+});
+
+describe('one module per event', () => {
+  it('holds each event module to exactly the types its event covers', () => {
+    for (const [event, copies] of Object.entries(NOTIFICATION_EMAILS_BY_EVENT)) {
+      expect(Object.keys(copies).sort(), event).toEqual(
+        [...NOTIFICATION_EVENTS[event as NotificationEvent].types].sort()
+      );
+    }
+  });
+
+  it('has a module for every event with an email, besides the ones with their own template', () => {
+    const emailed = NOTIFICATION_EVENT_KEYS.filter((event) => offersChannel(event, 'email'));
+    expect(
+      [...Object.keys(NOTIFICATION_EMAILS_BY_EVENT), 'wishlist_invite', 'birthday_nudge'].sort()
+    ).toEqual(emailed.sort());
+  });
 });
 
 describe('every email, byte for byte', () => {

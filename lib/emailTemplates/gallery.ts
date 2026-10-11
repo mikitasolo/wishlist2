@@ -31,7 +31,7 @@ export function galleryContext(siteUrl: string): EmailContext {
 export function renderFixture(fixture: EmailFixture, ctx: EmailContext): RenderedEmail {
   switch (fixture.template) {
     case 'magic_link':
-      return magicLinkEmail(fixture.magicLink);
+      return magicLinkEmail(`${ctx.siteUrl}${fixture.magicLinkPath}`);
     case 'wishlist_invite':
       return wishlistInvitationEmail(FIXTURE_RECIPIENT.email, fixture.details, ctx);
     case 'notification':
@@ -41,18 +41,28 @@ export function renderFixture(fixture: EmailFixture, ctx: EmailContext): Rendere
   }
 }
 
+export const PREVIEW_SCHEMES = ['light', 'dark'] as const;
+export type PreviewScheme = (typeof PREVIEW_SCHEMES)[number];
+
+/** The layout's dark-mode block, which a mail client applies under a dark OS setting. */
+const DARK_MEDIA = '@media (prefers-color-scheme: dark)';
+
 /**
- * The HTML for a browser preview: the inline logo, which a mail client finds
- * among the message's attachments (`cid:`), as a data URL instead.
+ * The HTML for a browser preview in `scheme`: the inline logo, which a mail
+ * client finds among the message's attachments (`cid:`), as a data URL; and
+ * the dark-mode block always on (dark) or off (light), so the preview shows
+ * that scheme whatever the browser's own setting.
  */
-export function previewHtml(html: string): string {
-  return html.replaceAll(`cid:${LOGO_CID}`, `data:image/png;base64,${EMAIL_LOGO_PNG_BASE64}`);
+export function previewHtml(html: string, scheme: PreviewScheme): string {
+  return html
+    .replaceAll(`cid:${LOGO_CID}`, `data:image/png;base64,${EMAIL_LOGO_PNG_BASE64}`)
+    .replaceAll(DARK_MEDIA, scheme === 'dark' ? '@media all' : '@media not all');
 }
 
 export interface GalleryEntry {
   fixture: EmailFixture;
   email: RenderedEmail;
-  preview: string;
+  previews: Record<PreviewScheme, string>;
 }
 
 /** Every email in the gallery, in fixture order. */
@@ -60,6 +70,10 @@ export function galleryEntries(siteUrl: string): GalleryEntry[] {
   const ctx = galleryContext(siteUrl);
   return EMAIL_FIXTURES.map((fixture) => {
     const email = renderFixture(fixture, ctx);
-    return { fixture, email, preview: previewHtml(email.html) };
+    return {
+      fixture,
+      email,
+      previews: { light: previewHtml(email.html, 'light'), dark: previewHtml(email.html, 'dark') },
+    };
   });
 }

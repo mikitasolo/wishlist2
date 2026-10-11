@@ -1,5 +1,9 @@
 import { isolateForText } from '@/lib/utils/emailText';
-import { NOTIFICATION_EVENTS, notificationEventOf } from '@/lib/utils/notificationPrefs';
+import {
+  NOTIFICATION_EVENTS,
+  notificationEventOf,
+  type NotificationEvent,
+} from '@/lib/utils/notificationPrefs';
 import {
   notificationLink,
   notificationParts,
@@ -39,9 +43,34 @@ import { wishlistAskEmail } from './notifications/wishlistAsk';
 export type { EmailedNotificationType, NotificationEmailDetails } from './notifications/types';
 
 /**
- * Every emailed type's copy, one module per `NOTIFICATION_EVENTS` event. Typed
- * as the full record, so a new emailed type doesn't compile without its copy.
+ * The copy of each `NOTIFICATION_EVENTS` event's emails, one module per event
+ * (WIS-375). A test holds each module to exactly its event's types, so no two
+ * modules can define the same type.
  */
+export const NOTIFICATION_EMAILS_BY_EVENT = {
+  join_request: joinRequestEmail,
+  link_join: linkJoinEmail,
+  proposal: proposalEmail,
+  access_changed: accessChangedEmail,
+  invite_accepted: inviteAcceptedEmail,
+  proposal_approved: proposalApprovedEmail,
+  occasion_reminder: occasionReminderEmail,
+  birthday_reminder: birthdayReminderEmail,
+  wishlist_ask: wishlistAskEmail,
+  asked_list_made: askedListMadeEmail,
+  group_gift_joined: groupGiftJoinedEmail,
+  group_gift_funded: groupGiftFundedEmail,
+  group_gift_organizer: groupGiftOrganizerEmail,
+  group_gift_cancelled: groupGiftCancelledEmail,
+  group_gift_converted: groupGiftConvertedEmail,
+  group_gift_given: groupGiftGivenEmail,
+  gift_reminder: giftReminderEmail,
+  gift_nudge: giftNudgeEmail,
+} satisfies Partial<
+  Record<NotificationEvent, Partial<NotificationEmailCopies<EmailedNotificationType>>>
+>;
+
+/** Every emailed type's copy: typed as the full record, so a new type doesn't compile without one. */
 const COPY: NotificationEmailCopies<EmailedNotificationType> = {
   ...joinRequestEmail,
   ...linkJoinEmail,
