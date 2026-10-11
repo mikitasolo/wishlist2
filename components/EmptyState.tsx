@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import Icon, { type IconName } from '@/components/Icon';
+import SpotIllustration, { illustrationForIcon } from '@/components/SpotIllustration';
 import { TONE_CLASSES } from '@/lib/utils/statusTones';
 
 /**
@@ -65,6 +66,8 @@ export default function EmptyState({
   compact = false,
   className = '',
 }: EmptyStateProps) {
+  // A spot illustration where the icon has one; an error, and an icon with none, keep the chip.
+  const illustration = tone === 'error' ? undefined : illustrationForIcon(icon);
   const Heading = `h${level}` as const;
   const padding = compact ? 'py-6' : framed ? 'py-16 sm:py-20' : 'py-16 sm:py-24';
   return (
@@ -73,13 +76,21 @@ export default function EmptyState({
         framed ? 'rounded-3xl border border-dashed border-border-strong' : ''
       } ${className}`}
     >
-      <span
-        className={`inline-flex items-center justify-center ${
-          compact ? 'mb-3 h-10 w-10 rounded-xl' : 'mb-5 h-14 w-14 rounded-2xl'
-        } ${CHIP_TONES[tone]}`}
-      >
-        <Icon name={icon} size={compact ? 18 : 28} />
-      </span>
+      {illustration ? (
+        <SpotIllustration
+          name={illustration}
+          size={compact ? 48 : 96}
+          className={`${compact ? 'mb-2' : 'mb-4'} ${tone === 'muted' ? 'opacity-70' : ''}`}
+        />
+      ) : (
+        <span
+          className={`inline-flex items-center justify-center ${
+            compact ? 'mb-3 h-10 w-10 rounded-xl' : 'mb-5 h-14 w-14 rounded-2xl'
+          } ${CHIP_TONES[tone]}`}
+        >
+          <Icon name={icon} size={compact ? 18 : 28} />
+        </span>
+      )}
       <Heading
         className={`max-w-lg font-semibold tracking-tight text-foreground [overflow-wrap:anywhere] ${
           compact ? 'text-base' : level === 1 ? 'text-xl sm:text-2xl' : 'text-xl'
