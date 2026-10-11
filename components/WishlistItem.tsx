@@ -183,6 +183,11 @@ interface WishlistItemProps {
    * for the guided walkthrough to point at (the practice list's, WIS-436).
    */
   tourTargets?: { primary?: string; menu?: string };
+  /**
+   * Drawn as if No spoiler mode were off: the practice list's made-up items
+   * (WIS-436), which spoil nothing and whose controls the tour points at.
+   */
+  ignoreDiscreet?: boolean;
 }
 
 /** How many "Goes with" chips the card shows before "+N more". */
@@ -234,12 +239,13 @@ function WishlistItem({
   onToggleSelect,
   selectBusy = false,
   tourTargets,
+  ignoreDiscreet = false,
 }: WishlistItemProps) {
   const { data: session } = useSession();
   // Discreet mode (WIS-46): a member's card is drawn as plain available, with
   // nothing to reserve or release, whatever the item's state. The item itself
   // (and the poll's updates to it) is left as it is.
-  const { discreet } = useDiscreetMode();
+  const discreet = useDiscreetMode().discreet && !ignoreDiscreet;
   const hideBooking = discreet && isMember && !isOwner;
   const item = useMemo(
     () => (hideBooking ? withoutReservation(shownItem) : shownItem),
