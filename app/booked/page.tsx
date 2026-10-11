@@ -71,7 +71,9 @@ export default function BookedPage() {
   );
   const shownGifts = gifts.filter((g) => matchesReservedSearch(giftRow(g), searchQuery));
   const nothingMatches =
-    searching && shownActive.length + shownConfirm.length + shownGifts.length === 0;
+    searching &&
+    reservations.length + gifts.length > 0 &&
+    shownActive.length + shownConfirm.length + shownGifts.length === 0;
   // D9: prices in the viewer's own currency, as "≈" with the original under
   // them. The rates are only read once some price is in another currency.
   const viewerCurrency = viewerPriceCurrency(session?.user?.defaultCurrency);
@@ -157,7 +159,7 @@ export default function BookedPage() {
               />
             )}
             {reservations.length === 0 ? (
-              !searching && (
+              (!searching || gifts.length === 0) && (
                 <EmptyState
                   icon="gift"
                   title="Nothing reserved yet"

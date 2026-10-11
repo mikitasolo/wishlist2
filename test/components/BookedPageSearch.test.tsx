@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // The Reserved page's search (WIS-424): item, person and list over the rows
 // already loaded, kept in ?q=, never over what No spoiler mode covers.
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, onTestFinished } from 'vitest';
 import { render, screen, cleanup, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
@@ -128,6 +128,21 @@ describe('BookedPage search', () => {
     await user.click(screen.getByRole('button', { name: 'Show all' }));
     expect(screen.getByText('Lego set')).toBeInTheDocument();
     expect(window.location.search).toBe('');
+  });
+
+  // regression: a ?q= link to an account with nothing reserved said "No matches" with no field to clear.
+  it('shows the real empty state for a ?q= link when nothing is reserved or given', async () => {
+    const [savedReservations, savedGifts] = [[...reservations], [...gifts]];
+    onTestFinished(() => {
+      reservations.splice(0, 0, ...savedReservations);
+      gifts.splice(0, 0, ...savedGifts);
+    });
+    reservations.splice(0);
+    gifts.splice(0);
+    window.history.replaceState(null, '', '/booked?q=kettle');
+    render(<BookedPage />);
+    expect(await screen.findByText('Nothing reserved yet')).toBeInTheDocument();
+    expect(screen.queryByText('No matches')).toBeNull();
   });
 
   it('opens at a ?q= link already filtered', async () => {
