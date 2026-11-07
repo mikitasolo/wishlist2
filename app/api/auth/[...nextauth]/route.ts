@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
+import { isAuthActionPath } from '@/lib/utils/authActionPath';
 import { handlers } from '@/lib/auth';
 import { getEnvVars } from '@/lib/env';
 import { isMagicLinkSignInPath } from '@/lib/signInEmail';
@@ -13,6 +14,9 @@ import { verificationErrorLocation } from '@/lib/utils/authErrorRedirect';
  * (`verificationErrorLocation`). Every other response passes as Auth.js gave it.
  */
 export async function GET(request: NextRequest) {
+  if (!isAuthActionPath(request.nextUrl.pathname)) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  }
   const response = await handlers.GET(request);
   const location = verificationErrorLocation(
     request.nextUrl,
@@ -37,6 +41,9 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   if (isMagicLinkSignInPath(request.nextUrl.pathname)) {
     return NextResponse.json({ error: 'Sign in from the sign-in page.' }, { status: 403 });
+  }
+  if (!isAuthActionPath(request.nextUrl.pathname)) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
   return handlers.POST(request);
 }

@@ -31,3 +31,11 @@ test("Auth.js's own sign-in POST is refused", async ({ request }) => {
   });
   expect(res.status()).toBe(403);
 });
+
+// regression: WIS-454. Malformed auth paths must not reach Auth.js's error logger.
+test('unknown auth actions return 404', async ({ request }) => {
+  for (const path of ['/api/auth/*', '/api/auth/unknown', '/api/auth/session/extra']) {
+    expect((await request.get(path)).status()).toBe(404);
+    expect((await request.post(path)).status()).toBe(404);
+  }
+});
