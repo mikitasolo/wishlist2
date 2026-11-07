@@ -89,3 +89,24 @@ describe('GET /api/auth/[...nextauth]', () => {
     expect(res.headers.getSetCookie()).toEqual(['a=1; Path=/', 'b=2; Path=/']);
   });
 });
+
+// regression: WIS-454. Malformed requests reached Auth.js and logged UnknownAction
+// errors in Sentry, although no application action could handle these paths.
+describe.each(['GET', 'POST'] as const)('%s invalid auth paths', (method) => {
+  it.each([
+    '/api/auth/*',
+    '/api/auth/%2A',
+    '/api/auth/unknown',
+    '/api/auth/session/extra',
+    '/api/auth/callback/nodemailer/extra',
+    '/api/auth/',
+  ])('returns 404 before Auth.js runs for %s', async (path) => {
+    const res = await (method === 'GET'
+      ? GET(new NextRequest(`${BASE}${path}`))
+      : POST(post(path)));
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: 'Not found' });
+    expect(handlers.GET).not.toHaveBeenCalled();
+    expect(handlers.POST).not.toHaveBeenCalled();
+  });
+});
