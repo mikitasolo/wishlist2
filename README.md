@@ -47,7 +47,7 @@ A modern wishlist app: create wishlists, share them, follow friends, and quietly
 
 ## 🛠️ Tech stack
 
-- **Framework**: Next.js 16 (App Router), React 19, TypeScript
+- **Framework**: Next.js 16.4.5 (App Router), React 19, TypeScript
 - **Database**: MongoDB with Mongoose
 - **Auth**: NextAuth v5 / Auth.js (`next-auth@5`) with the MongoDB adapter — **database sessions**, magic-link email (Nodemailer provider)
 - **Email**: SMTP via Nodemailer (works with Brevo, Postmark, Gmail, etc.), or printed to the server log in local dev (`EMAIL_TRANSPORT=console`)
