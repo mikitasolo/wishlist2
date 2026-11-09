@@ -24,9 +24,11 @@ describe('security floors of installed dependencies', () => {
   // regression: next 16.2.11 was inside GHSA-vcvr-r3jv-pc5j (next/og
   // ImageResponse, patched in 16.3.6) and GHSA-2xp9-vwfh-vxw4 / GHSA-p293-qw3h-jr36
   // (patched in 16.3.3).
-  it('runs a Next.js with the 16.3.6 security fixes', () => {
+  // regression: 16.3.8 also carried GHSA-2464-fhr4-w9xw, GHSA-p3m5-59mp-jv5r
+  // and GHSA-673q-mjm6-r5xr, patched in 16.4.1.
+  it('runs a Next.js with the 16.4.1 security fixes', () => {
     const { version } = require('next/package.json') as { version: string };
-    expect(atLeast(version, '16.3.6'), `next ${version}`).toBe(true);
+    expect(atLeast(version, '16.4.1'), `next ${version}`).toBe(true);
   });
 
   // regression: sharp 0.35.3 bundled libheif 1.23.1 (GHSA-rgj7-g3m4-5g8c, patched
@@ -59,8 +61,26 @@ describe('security floors of installed dependencies', () => {
   // patched in 3.3.18. Both resolve to the hoisted copy checked here.
   it('runs the undici and nanoid with their security fixes', () => {
     const undici = (require('undici/package.json') as { version: string }).version;
+    // regression: Blob's separate Undici 6 copy must also clear the November
+    // TLS bypass / DoS advisories (including GHSA-2m5v-pch6-74hx).
+    const blobRequire = createRequire(require.resolve('@vercel/blob'));
+    const blobUndici = (blobRequire('undici/package.json') as { version: string }).version;
+    expect(atLeast(blobUndici, '6.29.1'), `Blob undici ${blobUndici}`).toBe(true);
     const nanoid = (require('nanoid/package.json') as { version: string }).version;
-    expect(atLeast(undici, '6.28.1'), `undici ${undici}`).toBe(true);
+    expect(atLeast(undici, '7.30.1'), `undici ${undici}`).toBe(true);
     expect(atLeast(nanoid, '3.3.18'), `nanoid ${nanoid}`).toBe(true);
+  });
+  // regression: GHSA-mrhx-c7xc-m3w5 affects both our schemas and Vercel's
+  // CLI config dependency; checking only the hoisted Zod misses the latter.
+  it('runs patched Zod in the app and Vercel CLI config', () => {
+    const configReaders = ['@vercel/blob', '@vercel/functions'].map((pkg) => {
+      const packageRequire = createRequire(require.resolve(pkg));
+      const oidcRequire = createRequire(packageRequire.resolve('@vercel/oidc'));
+      return createRequire(oidcRequire.resolve('@vercel/cli-config'));
+    });
+    for (const read of [require, ...configReaders]) {
+      const { version } = read('zod/package.json') as { version: string };
+      expect(atLeast(version, '4.6.6'), `zod ${version}`).toBe(true);
+    }
   });
 });
