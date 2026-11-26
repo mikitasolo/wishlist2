@@ -840,6 +840,7 @@ function WishlistItem({
       priceText={priceText}
       originalPriceText={originalPriceText}
       onCoverClick={() => setSheetOpen(true)}
+      coverNewTabHref={item.link}
       groupGift={gift && <GroupGiftProgress gift={gift} locale={locale} />}
       related={
         related.length > 0 ? (
@@ -865,8 +866,9 @@ function WishlistItem({
       }
       // The card's body (its name, price and notes) opens the item's details:
       // the name is the button, and its ::after stretches over the rest of the
-      // body. The cover opens it too (a pointer target only), and the
-      // actions sit outside it. The product link is in the action row, the
+      // body. The cover opens it too (a pointer target only; a middle or
+      // Ctrl/Cmd click there opens the product page in a new tab, WIS-458),
+      // and the actions sit outside it. The product link is in the action row, the
       // menu and the sheet.
       title={
         <button
