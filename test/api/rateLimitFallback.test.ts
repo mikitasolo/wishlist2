@@ -7,7 +7,13 @@ import { fallbackAllows, fallbackKey } from '@/lib/rateLimitFallback';
 import RateLimitFallbackHit from '@/models/RateLimitFallbackHit';
 
 const WINDOW = 15 * 60_000;
-const limit = (key: string, id = 'signinEmail') => ({ id, key, tokens: 3, windowMs: WINDOW });
+const limit = (key: string, id = 'signinEmail') => ({
+  id,
+  key,
+  tokens: 3,
+  windowMs: WINDOW,
+  deadline: Date.now() + 3_000,
+});
 
 beforeAll(connectTestDB);
 afterAll(disconnectTestDB);
@@ -52,13 +58,35 @@ describe('fallbackAllows (the sign-in limiters’ MongoDB stand-in, WIS-457)', (
     expect(await fallbackAllows(limit('a@b.com', 'signinIp'))).toBe(true);
   });
 
-  it('never refuses more than it must when requests race for the last token', async () => {
+  it('allows exactly the tokens left when requests race for them', async () => {
     await fallbackAllows(limit('a@b.com'));
     await fallbackAllows(limit('a@b.com'));
     const answers = await Promise.all(
       Array.from({ length: 5 }, () => fallbackAllows(limit('a@b.com')))
     );
-    expect(answers.filter(Boolean).length).toBeLessThanOrEqual(1);
+    expect(answers.filter(Boolean)).toHaveLength(1);
+    expect(await RateLimitFallbackHit.countDocuments()).toBe(3);
+  });
+
+  // regression: a MongoDB slower than the caller's timeout still wrote the hit
+  // after the request had been refused, spending a token for nothing.
+  it('spends nothing for a request whose caller gave up before it was counted', async () => {
+    const late = { ...limit('a@b.com'), deadline: Date.now() - 1 };
+    expect(await fallbackAllows(late)).toBe(false);
+    expect(await RateLimitFallbackHit.countDocuments()).toBe(0);
+
+    // Written in time, but the caller's deadline passed before the count came back.
+    const passing = { ...limit('a@b.com'), deadline: Date.now() + 1_000 };
+    const countDocuments = RateLimitFallbackHit.countDocuments.bind(RateLimitFallbackHit);
+    const spy = vi.spyOn(RateLimitFallbackHit, 'countDocuments').mockImplementationOnce(((
+      ...args: Parameters<typeof countDocuments>
+    ) => {
+      vi.setSystemTime(new Date(Date.now() + 2_000));
+      return countDocuments(...args);
+    }) as typeof countDocuments);
+    expect(await fallbackAllows(passing)).toBe(false);
+    spy.mockRestore();
+    expect(await RateLimitFallbackHit.countDocuments()).toBe(0);
   });
 
   it('stores only an HMAC of the key, and rows that expire with their window', async () => {

@@ -991,10 +991,14 @@ describe('the sign-in limiters on a store outage: the MongoDB fallback (WIS-457)
       await checkRateLimit('signinIp', ipKey(new Headers({ 'x-real-ip': '203.0.113.9' })))
     ).toBe(true);
 
+    const deadline = expect.any(Number);
     expect(fallback.mock.calls).toEqual([
-      [{ id: 'signinEmail', key: 'a@b.com', tokens: 3, windowMs: 15 * 60_000 }],
-      [{ id: 'signinIp', key: 'ip:203.0.113.9', tokens: 10, windowMs: 15 * 60_000 }],
+      [{ id: 'signinEmail', key: 'a@b.com', tokens: 3, windowMs: 15 * 60_000, deadline }],
+      [{ id: 'signinIp', key: 'ip:203.0.113.9', tokens: 10, windowMs: 15 * 60_000, deadline }],
     ]);
+    const [[{ deadline: given }]] = fallback.mock.calls as unknown as [[{ deadline: number }]];
+    expect(given - Date.now()).toBeGreaterThan(FALLBACK_TIMEOUT_MS - 1_000);
+    expect(given - Date.now()).toBeLessThanOrEqual(FALLBACK_TIMEOUT_MS);
     expect(spies.warn).not.toHaveBeenCalled();
   });
 

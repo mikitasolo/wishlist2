@@ -22,14 +22,17 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const refused = cronRefusal(request);
   if (refused) return refused;
 
-  await pingRateLimitStore();
+  // Alongside the run, not before it: a down store would hold it up to 2 s.
+  const storePing = pingRateLimitStore();
 
   try {
     await connectDB();
     const result = await sendOccasionReminders();
     await pingCronHeartbeat('occasion-reminders', result);
+    await storePing;
     return NextResponse.json({ success: true, ...result });
   } catch (err) {
+    await storePing;
     console.error(
       `Occasion reminders failed (${err instanceof Error ? err.name : 'unknown error'})`
     );

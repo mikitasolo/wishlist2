@@ -449,7 +449,13 @@ async function storeFailure(tier: Tier, key: string, error: string): Promise<Rat
   let allowed: boolean;
   try {
     allowed = await withTimeout(
-      fallback({ id: spec.id, key, tokens: spec.tokens, windowMs }),
+      fallback({
+        id: spec.id,
+        key,
+        tokens: spec.tokens,
+        windowMs,
+        deadline: Date.now() + FALLBACK_TIMEOUT_MS,
+      }),
       FALLBACK_TIMEOUT_MS
     );
   } catch (fallbackError) {
@@ -466,6 +472,7 @@ async function storeFailure(tier: Tier, key: string, error: string): Promise<Rat
     );
     return refused;
   }
+  // No count of what's left: the fallback answers allowed or not.
   if (allowed) return { success: true, reset: 0, limit: spec.tokens, remaining: 0 };
   // A block, logged like any other, marked as the fallback's. Not counted in
   // `rl:stats:*`: that counter lives in the Redis that just failed.

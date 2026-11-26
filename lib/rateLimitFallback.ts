@@ -10,6 +10,12 @@ export interface FallbackLimit {
   key: string;
   tokens: number;
   windowMs: number;
+  /**
+   * Epoch ms after which the caller has stopped waiting (and refused): a hit
+   * written later is taken back, so a slow MongoDB never spends a token for a
+   * request that was never let through.
+   */
+  deadline: number;
 }
 
 /**
@@ -28,19 +34,23 @@ export function fallbackKey(id: string, key: string): string {
  * `lib/rateLimit.ts` only when Redis threw or timed out: `true` if the request
  * is within `tokens` per `windowMs` for this key.
  *
- * The hit is written first and then the window counted, so two requests racing
- * for the last token both see each other and neither slips past the limit; a
- * request turned away takes its hit back, so (as with Upstash's sliding window)
- * refused attempts don't keep a key blocked. Rows expire after their window.
- * Throws if MongoDB fails; the caller then refuses the request.
+ * The hit is written first, then ranked among the window's hits by `_id` (a
+ * total order), so of requests racing for the last tokens exactly that many
+ * are allowed: none slips past the limit, and none is refused for a token that
+ * was free. A request turned away takes its hit back, so (as with Upstash's
+ * sliding window) refused attempts don't keep a key blocked, and so does one
+ * whose caller had given up by the time it was written (`deadline`). Rows
+ * expire after their window. Throws if MongoDB fails; the caller then refuses.
  */
 export async function fallbackAllows({
   id,
   key,
   tokens,
   windowMs,
+  deadline,
 }: FallbackLimit): Promise<boolean> {
   await connectDB();
+  if (Date.now() > deadline) return false;
   const hashed = fallbackKey(id, key);
   const now = Date.now();
   const hit = await RateLimitFallbackHit.create({
@@ -48,11 +58,12 @@ export async function fallbackAllows({
     at: new Date(now),
     expiresAt: new Date(now + windowMs),
   });
-  const inWindow = await RateLimitFallbackHit.countDocuments({
+  const rank = await RateLimitFallbackHit.countDocuments({
     key: hashed,
     at: { $gt: new Date(now - windowMs) },
+    _id: { $lte: hit._id },
   });
-  if (inWindow <= tokens) return true;
+  if (rank <= tokens && Date.now() <= deadline) return true;
   await RateLimitFallbackHit.deleteOne({ _id: hit._id });
   return false;
 }

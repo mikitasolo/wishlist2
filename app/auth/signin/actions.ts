@@ -23,7 +23,7 @@ export type MagicLinkResult = { ok: true } | { ok: false; error: 'challenge' | '
  * Turnstile is off, fail-open when Cloudflare can't answer), before anything
  * else happens, so a refused request sends nothing. Then Auth.js's server-side `signIn` runs the usual email flow, inside
  * `asVerifiedSignIn` so `sendVerificationRequest` will send. Its rate limits (per
- * email and per IP, fail-closed) still apply there.
+ * email and per IP, never fail-open) still apply there.
  *
  * `redirect: false` makes `signIn` return the URL it would have redirected to
  * instead of throwing a redirect: the verify-request page on success, the error

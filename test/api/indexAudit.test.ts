@@ -459,7 +459,13 @@ describe('index audit (WIS-377): the hot queries never scan a collection', () =>
 
   // WIS-457: the sign-in limiters' count while Redis is down, refusal included.
   it('the rate-limit fallback’s count', async () => {
-    const limit = { id: 'signinEmail', key: 'audit@example.com', tokens: 1, windowMs: 60_000 };
+    const limit = {
+      id: 'signinEmail',
+      key: 'audit@example.com',
+      tokens: 1,
+      windowMs: 60_000,
+      deadline: Date.now() + 60_000,
+    };
     await expectIndexed(async () => {
       expect(await fallbackAllows(limit)).toBe(true);
       expect(await fallbackAllows(limit)).toBe(false);
