@@ -13,7 +13,7 @@ import { RequestTimeoutError, withRequestTimeout } from './utils/requestTimeout'
  * Cloudflare can't give a verdict (unreachable, a timeout, a 5xx, an answer we
  * can't read, its own `internal-error`, or a secret it doesn't recognise), the
  * check fails **open**: sign-in goes ahead and one `turnstile_unavailable` line
- * is logged. The sign-in limiters (per email and per IP, fail-closed, in
+ * is logged. The sign-in limiters (per email and per IP, never fail-open, in
  * `lib/signInEmail.ts`) stay the backstop. The split follows who controls the
  * cause: the visitor controls only the token, so everything about the token
  * fails closed, and only Cloudflare or our own configuration can fail it open.

@@ -20,6 +20,7 @@ import { GET as FEED } from '@/app/api/notifications/route';
 import { PATCH as PATCH_ME } from '@/app/api/users/me/route';
 import { sendOccasionReminders } from '@/lib/utils/occasionReminders';
 import { createOccasionReminders } from '@/lib/notifications';
+import { __setRateLimiters } from '@/lib/rateLimit';
 import Notification from '@/models/Notification';
 import User from '@/models/User';
 import Wishlist from '@/models/Wishlist';
@@ -111,6 +112,31 @@ describe('GET /api/cron/occasion-reminders', () => {
       capped: false,
       emailed: 1,
     });
+  });
+});
+
+describe('the cron’s rate-limit store ping (WIS-457)', () => {
+  afterEach(() => __setRateLimiters(null));
+
+  it('pings the store once a run, and sends the reminders even when the ping fails', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+    const l = await list({ kind: 'birthday', date: IN_A_WEEK, recurrence: null });
+    await join(l._id, await user('mia'));
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const ping = vi.fn(async () => {
+      throw new Error('database is archived');
+    });
+    __setRateLimiters({}, null, { ping });
+
+    const res = await cron('cron-secret');
+
+    expect(ping).toHaveBeenCalledTimes(1);
+    expect(res.status).toBe(200);
+    expect(await reminders()).toHaveLength(1);
+    expect(errors.mock.calls.map(([line]) => JSON.parse(String(line)))).toContainEqual(
+      expect.objectContaining({ event: 'rate_limit_store_error', op: 'ping' })
+    );
   });
 });
 
