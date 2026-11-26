@@ -716,6 +716,64 @@ describe('WishlistItem — the action row, by role and state', () => {
     }
   });
 
+  // WIS-458: a middle click (or Ctrl/Cmd + click) on the cover opens the
+  // product page in a new tab, as a link would; the cover stays a button.
+  describe('a middle or modified click on the cover', () => {
+    const coverButton = () =>
+      screen.getByRole('article').querySelector('[class*="aspect-"] button') as HTMLElement;
+    let open: ReturnType<typeof vi.spyOn>;
+    beforeEach(() => {
+      open = vi.spyOn(window, 'open').mockImplementation(() => null);
+    });
+
+    it('opens the product page in a new tab, not the sheet', () => {
+      render(
+        <WishlistItem item={item({ link: LINK })} onUpdate={vi.fn()} isAuthenticated isMember />
+      );
+      const press = fireEvent.mouseDown(coverButton(), { button: 1 });
+      expect(press).toBe(false); // no autoscroll
+      fireEvent(
+        coverButton(),
+        new MouseEvent('auxclick', { bubbles: true, cancelable: true, button: 1 })
+      );
+      fireEvent.click(coverButton(), { ctrlKey: true });
+      fireEvent.click(coverButton(), { metaKey: true });
+
+      expect(open.mock.calls).toEqual([
+        [LINK, '_blank', 'noopener,noreferrer'],
+        [LINK, '_blank', 'noopener,noreferrer'],
+        [LINK, '_blank', 'noopener,noreferrer'],
+      ]);
+      expect(screen.queryByRole('dialog')).toBeNull();
+      expect(coverButton()).toHaveAttribute('aria-hidden');
+    });
+
+    it('does nothing for an item with no product link, and a Ctrl click opens the sheet', () => {
+      render(
+        <WishlistItem item={item({ link: null })} onUpdate={vi.fn()} isAuthenticated isMember />
+      );
+      expect(fireEvent.mouseDown(coverButton(), { button: 1 })).toBe(true);
+      fireEvent(
+        coverButton(),
+        new MouseEvent('auxclick', { bubbles: true, cancelable: true, button: 1 })
+      );
+      expect(screen.queryByRole('dialog')).toBeNull();
+      fireEvent.click(coverButton(), { ctrlKey: true });
+
+      expect(open).not.toHaveBeenCalled();
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+    });
+
+    it('leaves a plain click opening the sheet', () => {
+      render(
+        <WishlistItem item={item({ link: LINK })} onUpdate={vi.fn()} isAuthenticated isMember />
+      );
+      fireEvent.click(coverButton());
+      expect(open).not.toHaveBeenCalled();
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+    });
+  });
+
   // Before the width is known (the server render, and the render hydrating
   // it), both layouts are in the HTML, and CSS shows the right one: so the
   // first paint is right at any width, and hydration can't disagree with it.

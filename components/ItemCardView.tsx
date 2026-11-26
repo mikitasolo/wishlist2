@@ -9,6 +9,11 @@ import type { statusMeta } from '@/lib/utils/itemStatus';
 import type { CardMotion } from '@/lib/utils/motion';
 import { plural } from '@/lib/utils/plural';
 
+/** Open a page in a new tab, as a link with `target="_blank" rel="noopener noreferrer"` would. */
+function openInNewTab(href: string): void {
+  window.open(href, '_blank', 'noopener,noreferrer');
+}
+
 /** How many tags a card names; the rest are a "+N" (the sheet lists them all). */
 export const CARD_TAGS_LIMIT = 2;
 
@@ -32,6 +37,12 @@ interface ItemCardViewProps {
    * since the title is the card's one named way in.
    */
   onCoverClick?: () => void;
+  /**
+   * The product page a middle click or Ctrl/Cmd + click on the cover opens in
+   * a new tab (WIS-458), as a link would; a plain click still opens the details.
+   * The cover stays a button (WIS-316), so this is pointer-only too.
+   */
+  coverNewTabHref?: string | null;
   /** The item's name, as a button or link whose `::after` stretches over the body. */
   title: ReactNode;
   /** Formatted price, and the original it was converted from. */
@@ -80,6 +91,7 @@ export default function ItemCardView({
   status,
   statusBadge,
   onCoverClick,
+  coverNewTabHref,
   title,
   priceText,
   originalPriceText,
@@ -149,7 +161,22 @@ export default function ItemCardView({
               type="button"
               tabIndex={-1}
               aria-hidden
-              onClick={onCoverClick}
+              onClick={(e) => {
+                if (coverNewTabHref && (e.metaKey || e.ctrlKey)) {
+                  openInNewTab(coverNewTabHref);
+                } else {
+                  onCoverClick();
+                }
+              }}
+              // Middle button: no autoscroll on press, and the product page on release.
+              onMouseDown={(e) => {
+                if (coverNewTabHref && e.button === 1) e.preventDefault();
+              }}
+              onAuxClick={(e) => {
+                if (!coverNewTabHref || e.button !== 1) return;
+                e.preventDefault();
+                openInNewTab(coverNewTabHref);
+              }}
               className="absolute inset-0 cursor-pointer"
             />
           )}
