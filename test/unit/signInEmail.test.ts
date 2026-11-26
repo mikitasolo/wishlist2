@@ -46,7 +46,7 @@ async function load(transport: EmailTransport) {
     for (const name of SMTP_ENV_VARS) vi.stubEnv(name, undefined);
   }
   vi.resetModules();
-  const [signInEmail, { __setRateLimiters }] = await Promise.all([
+  const [signInEmail, { __setRateLimiters, __setRateLimitFallback }] = await Promise.all([
     import('@/lib/signInEmail'),
     import('@/lib/rateLimit'),
   ]);
@@ -57,6 +57,7 @@ async function load(transport: EmailTransport) {
     sendVerificationRequest,
     sendUnverified: signInEmail.sendVerificationRequest,
     __setRateLimiters,
+    __setRateLimitFallback,
   };
 }
 
@@ -94,14 +95,40 @@ describe('sendVerificationRequest in console mode', () => {
     expect(sendMail).not.toHaveBeenCalled();
   });
 
-  it('prints nothing when the limit store is down (sign-in fails closed)', async () => {
-    const { sendVerificationRequest, __setRateLimiters } = await load('console');
-    const down: RateLimiter = {
-      async limit() {
-        throw new Error('redis unreachable');
-      },
-    };
+  const down: RateLimiter = {
+    async limit() {
+      throw new Error('redis unreachable');
+    },
+  };
+
+  // regression (WIS-457): an archived Redis failed every sign-in closed, so
+  // nobody could sign in until it was restored.
+  it('still prints the link when the limit store is down and its fallback allows it', async () => {
+    const { sendVerificationRequest, __setRateLimiters, __setRateLimitFallback } =
+      await load('console');
+    const fallback = vi.fn(async () => true);
     __setRateLimiters({ signinEmail: down, signinIp: down });
+    __setRateLimitFallback(fallback);
+
+    await sendVerificationRequest(verificationRequest());
+
+    expect(fallback).toHaveBeenCalledTimes(2); // the email and the IP limit
+    expect(String(log.mock.calls[0]![0])).toContain(MAGIC_LINK);
+  });
+
+  it.each([
+    ['refuses it', async () => false],
+    [
+      'fails too',
+      async () => {
+        throw new Error('mongo unreachable');
+      },
+    ],
+  ])('prints nothing when the limit store is down and its fallback %s', async (_, fallback) => {
+    const { sendVerificationRequest, __setRateLimiters, __setRateLimitFallback } =
+      await load('console');
+    __setRateLimiters({ signinEmail: down, signinIp: down });
+    __setRateLimitFallback(fallback);
 
     await expect(sendVerificationRequest(verificationRequest())).rejects.toThrow(
       'Too many sign-in attempts'

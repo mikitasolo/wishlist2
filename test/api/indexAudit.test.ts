@@ -83,6 +83,7 @@ import '@/models/WishlistJoinRequest';
 import '@/models/WishlistAsk';
 import '@/models/WishlistLinkBlock';
 import '@/models/PeopleGroup';
+import { fallbackAllows } from '@/lib/rateLimitFallback';
 
 const session = vi.mocked(auth);
 
@@ -453,6 +454,15 @@ describe('index audit (WIS-377): the hot queries never scan a collection', () =>
     await expectIndexed(async () => {
       await fitItemTags(w.listId, null, ['Books']);
       await listTagsOverCap(w.listId);
+    });
+  });
+
+  // WIS-457: the sign-in limiters' count while Redis is down, refusal included.
+  it('the rate-limit fallback’s count', async () => {
+    const limit = { id: 'signinEmail', key: 'audit@example.com', tokens: 1, windowMs: 60_000 };
+    await expectIndexed(async () => {
+      expect(await fallbackAllows(limit)).toBe(true);
+      expect(await fallbackAllows(limit)).toBe(false);
     });
   });
 

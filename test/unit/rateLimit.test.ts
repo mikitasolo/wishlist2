@@ -10,6 +10,10 @@ import {
   STORE_TIMEOUT_MS,
   BLOCK_STATS_TTL_SECONDS,
   __setRateLimiters,
+  __setRateLimitFallback,
+  durationMs,
+  pingRateLimitStore,
+  FALLBACK_TIMEOUT_MS,
   tierLimits,
   type BlockStatsPipeline,
   type BlockStatsStore,
@@ -47,7 +51,14 @@ const STANDARD = { newAccount: false };
 const consoleMethods = ['log', 'info', 'warn', 'error'] as const;
 let spies: Record<(typeof consoleMethods)[number], MockInstance>;
 
+// The sign-in limiters' MongoDB fallback, as each test sets it: by default it
+// refuses quietly, as if over the limit (a test about it sets its own).
+const fallback = vi.fn(async (): Promise<boolean> => false);
+
 beforeEach(() => {
+  fallback.mockReset();
+  fallback.mockResolvedValue(false);
+  __setRateLimitFallback(fallback);
   spies = {
     log: vi.spyOn(console, 'log').mockImplementation(() => {}),
     info: vi.spyOn(console, 'info').mockImplementation(() => {}),
@@ -58,6 +69,7 @@ beforeEach(() => {
 
 afterEach(() => {
   __setRateLimiters(null); // reset to real (env-driven) registry
+  __setRateLimitFallback(null);
   vi.restoreAllMocks();
   vi.mocked(after).mockReset(); // back to the real `after()`
 });
@@ -285,14 +297,16 @@ describe('failure policy when the store throws', () => {
       }),
     });
 
-    expect(await checkRateLimit('signinEmail', key)).toBe(false);
+    fallback.mockResolvedValue(true); // the fallback lets it through, quietly
+
+    expect(await checkRateLimit('signinEmail', key)).toBe(true);
 
     expect(lines('error')).toEqual([
       {
         event: 'rate_limit_store_error',
         name: 'signinEmail',
         keyKind: 'email',
-        policy: 'fail-closed',
+        policy: 'fallback',
         error: 'UpstashError: ERR max requests limit exceeded',
       },
     ]);
@@ -347,8 +361,7 @@ describe('failure policy when the store times out', () => {
   // reason: 'timeout' }` — and only a throw applied the failure policy, so on a
   // slow Redis the fail-closed sign-in limiters quietly failed open, unlogged.
   it.each([
-    ['signinEmail', 'email', 'fail-closed'],
-    ['signinIp', 'ip', 'fail-closed'],
+    ['emailProposal', 'user', 'fail-closed'],
     ['search', 'ip', 'fail-open'],
     ['upload', 'user', 'fail-open'],
   ] as const)(
@@ -413,7 +426,7 @@ describe('failure policy when the store times out', () => {
       vi.unstubAllGlobals();
     });
 
-    it('gives up after STORE_TIMEOUT_MS and fails the sign-in limiter closed', async () => {
+    it('gives up after STORE_TIMEOUT_MS and hands the sign-in limiter to its fallback', async () => {
       // Not awaited: it only settles once the clock reaches the SDK's timeout.
       let allowed: boolean | undefined;
       void checkRateLimit('signinEmail', emailKey(IDENTIFIERS.email)).then((ok) => (allowed = ok));
@@ -423,12 +436,13 @@ describe('failure policy when the store times out', () => {
       expect(allowed).toBeUndefined();
 
       await vi.advanceTimersByTimeAsync(1);
-      expect(allowed).toBe(false);
+      expect(allowed).toBe(false); // the fallback (refusing here) decided
+      expect(fallback).toHaveBeenCalledTimes(1);
       expect(lines('error')).toEqual([
         expect.objectContaining({
           event: 'rate_limit_store_error',
           name: 'signinEmail',
-          policy: 'fail-closed',
+          policy: 'fallback',
         }),
       ]);
       expect(everythingLogged()).not.toContain(IDENTIFIERS.email);
@@ -956,5 +970,162 @@ describe('clientIp', () => {
 
   it('returns "unknown" when no IP header is present', () => {
     expect(clientIp(new Headers())).toBe('unknown');
+  });
+});
+
+describe('the sign-in limiters on a store outage: the MongoDB fallback (WIS-457)', () => {
+  const down = () =>
+    fake(() => {
+      throw new Error('redis down');
+    });
+  const timedOut = () => fake({ success: true, reason: 'timeout' });
+
+  // regression: an archived Upstash database timed out every call, and the
+  // fail-closed sign-in limiters then refused every magic link: nobody could sign in.
+  it('lets a sign-in through when the fallback allows it, with the limiter’s own budget', async () => {
+    __setRateLimiters({ signinEmail: timedOut(), signinIp: down() });
+    fallback.mockResolvedValue(true);
+
+    expect(await checkRateLimit('signinEmail', emailKey('A@B.com'))).toBe(true);
+    expect(
+      await checkRateLimit('signinIp', ipKey(new Headers({ 'x-real-ip': '203.0.113.9' })))
+    ).toBe(true);
+
+    expect(fallback.mock.calls).toEqual([
+      [{ id: 'signinEmail', key: 'a@b.com', tokens: 3, windowMs: 15 * 60_000 }],
+      [{ id: 'signinIp', key: 'ip:203.0.113.9', tokens: 10, windowMs: 15 * 60_000 }],
+    ]);
+    expect(spies.warn).not.toHaveBeenCalled();
+  });
+
+  it('refuses what the fallback refuses, logged as a block of the fallback’s, not counted in Redis', async () => {
+    const { store, pipelines } = fakeStats();
+    __setRateLimiters({ signinEmail: down() }, store);
+    fallback.mockResolvedValue(false);
+
+    expect(await checkRateLimit('signinEmail', emailKey(IDENTIFIERS.email))).toBe(false);
+
+    expect(lines('warn')).toEqual([
+      { event: 'rate_limited', name: 'signinEmail', keyKind: 'email', store: 'fallback' },
+    ]);
+    expect(pipelines).toEqual([]);
+    expect(everythingLogged()).not.toContain(IDENTIFIERS.email);
+  });
+
+  it('refuses when the fallback fails too, logging only the error’s kind', async () => {
+    __setRateLimiters({ signinEmail: down() });
+    fallback.mockRejectedValue(
+      Object.assign(new Error(`E11000 on { key: "${IDENTIFIERS.email}" }`), {
+        name: 'MongoServerError',
+        code: 11000,
+      })
+    );
+
+    expect(await checkRateLimit('signinEmail', emailKey(IDENTIFIERS.email))).toBe(false);
+
+    expect(lines('error')).toEqual([
+      expect.objectContaining({ event: 'rate_limit_store_error', policy: 'fallback' }),
+      {
+        event: 'rate_limit_fallback_error',
+        name: 'signinEmail',
+        keyKind: 'email',
+        error: { name: 'MongoServerError', code: 11000 },
+      },
+    ]);
+    expect(everythingLogged()).not.toContain(IDENTIFIERS.email);
+  });
+
+  it('refuses when the fallback hasn’t answered within FALLBACK_TIMEOUT_MS', async () => {
+    vi.useFakeTimers();
+    try {
+      __setRateLimiters({ signinIp: down() });
+      fallback.mockReturnValue(new Promise<boolean>(() => {}));
+
+      let allowed: boolean | undefined;
+      void checkRateLimit('signinIp', ipKey(new Headers())).then((ok) => (allowed = ok));
+      await vi.advanceTimersByTimeAsync(FALLBACK_TIMEOUT_MS - 1);
+      expect(allowed).toBeUndefined();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(allowed).toBe(false);
+      expect(lines('error')).toContainEqual(
+        expect.objectContaining({ event: 'rate_limit_fallback_error', error: { name: 'Error' } })
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('answers a fallback refusal with a 429 whose Retry-After is the window', async () => {
+    __setRateLimiters({ signinEmail: down() });
+    const res = await enforce('signinEmail', emailKey('a@b.com'));
+    expect(res?.status).toBe(429);
+    const retryAfter = Number(res!.headers.get('Retry-After'));
+    expect(retryAfter).toBeGreaterThan(14 * 60);
+    expect(retryAfter).toBeLessThanOrEqual(15 * 60);
+  });
+
+  it('is never asked while Redis answers, nor by a fail-open or fail-closed limiter', async () => {
+    __setRateLimiters({
+      signinEmail: deny(),
+      signinIp: fake({ success: true }),
+      search: down(),
+      emailProposal: down(),
+    });
+
+    expect(await checkRateLimit('signinEmail', emailKey('a@b.com'))).toBe(false);
+    expect(await checkRateLimit('signinIp', ipKey(new Headers()))).toBe(true);
+    expect(await checkRateLimit('search', ipKey(new Headers()))).toBe(true);
+    expect(await checkRateLimit('emailProposal', userKey('user-1'))).toBe(false);
+    expect(fallback).not.toHaveBeenCalled();
+  });
+
+  it('reads every limiter window as milliseconds', () => {
+    expect(durationMs('15 m')).toBe(900_000);
+    expect(durationMs('1 h')).toBe(3_600_000);
+    expect(durationMs('1 d')).toBe(86_400_000);
+    expect(durationMs('10s')).toBe(10_000);
+    expect(durationMs('250 ms')).toBe(250);
+    for (const name of Object.keys(KEY_KINDS) as LimiterName[]) {
+      expect(durationMs(tierLimits(name, false).window)).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe('pingRateLimitStore (the daily keep-awake ping, WIS-457)', () => {
+  it('is disabled without a store, and pings the one there is', async () => {
+    __setRateLimiters({});
+    expect(await pingRateLimitStore()).toBe('disabled');
+
+    const ping = vi.fn(async () => 'PONG');
+    __setRateLimiters({}, null, { ping });
+    expect(await pingRateLimitStore()).toBe('ok');
+    expect(ping).toHaveBeenCalledTimes(1);
+    expect(spies.error).not.toHaveBeenCalled();
+  });
+
+  it('logs one store-error line when the ping fails, and never throws', async () => {
+    __setRateLimiters({}, null, {
+      ping: async () => {
+        throw new Error('database is archived, command was: ["ping"]');
+      },
+    });
+    expect(await pingRateLimitStore()).toBe('failed');
+    expect(lines('error')).toEqual([
+      { event: 'rate_limit_store_error', op: 'ping', error: 'Error: database is archived' },
+    ]);
+  });
+
+  it('gives up on a ping that hasn’t answered within STORE_TIMEOUT_MS', async () => {
+    vi.useFakeTimers();
+    try {
+      __setRateLimiters({}, null, { ping: () => new Promise(() => {}) });
+      let outcome: string | undefined;
+      void pingRateLimitStore().then((o) => (outcome = o));
+      await vi.advanceTimersByTimeAsync(STORE_TIMEOUT_MS);
+      expect(outcome).toBe('failed');
+      expect(lines('error')).toEqual([expect.objectContaining({ op: 'ping' })]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

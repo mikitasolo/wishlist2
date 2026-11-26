@@ -1,6 +1,8 @@
 import { NextResponse, after } from 'next/server';
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
+import type { FallbackLimit } from './rateLimitFallback';
+import { errorKind } from './utils/errorKind';
 
 /**
  * App-level rate limiting. See `README.md` (Security & privacy) for the design.
@@ -16,8 +18,10 @@ import { Redis } from '@upstash/redis';
  *  - **Configured but the store fails** at request time — it throws, or doesn't
  *    answer within `STORE_TIMEOUT_MS`: per-limiter policy — `fail-open` for
  *    user-facing reads/writes (an infra blip must not lock people out) and
- *    `fail-closed` for the cost-bearing sign-in email path (never let an email
- *    bomb through because Redis hiccuped).
+ *    `fail-closed` for the cost-bearing notification emails, and `fallback` for
+ *    the sign-in email path: it counts in MongoDB instead (WIS-457,
+ *    `lib/rateLimitFallback.ts`), so an outage neither lets an email bomb
+ *    through nor locks everyone out of signing in, and refuses if that fails too.
  *
  * Observability: each time a limiter turns a request away it logs one JSON
  * line, `{"event":"rate_limited","name":…,"keyKind":…}`, and — after the
@@ -57,7 +61,11 @@ export interface RateLimiter {
   limit(key: string): Promise<RateLimitResult>;
 }
 
-type Policy = 'fail-open' | 'fail-closed';
+/**
+ * What a limiter does when Redis throws or times out: allow, refuse, or (sign-in
+ * only, WIS-457) count in MongoDB instead and refuse if that fails too.
+ */
+type Policy = 'fail-open' | 'fail-closed' | 'fallback';
 
 /** What a limiter's key identifies. Logged on a block in place of the key itself. */
 export type KeyKind = 'user' | 'ip' | 'email';
@@ -83,10 +91,11 @@ interface LimiterSpec {
 // One entry per surface. Limits are starting points to tune from real traffic —
 // the `rl:stats:*` counters (and the `rate_limited` log lines) count blocks per surface.
 const SPECS = {
-  // Sign-in magic link — the top abuse target (email bombing + SMTP cost). Fail
-  // closed: better to reject a legitimate retry than to let a flood through.
-  signinEmail: { tokens: 3, window: '15 m', policy: 'fail-closed', keyKind: 'email' },
-  signinIp: { tokens: 10, window: '15 m', policy: 'fail-closed', keyKind: 'ip' },
+  // Sign-in magic link — the top abuse target (email bombing + SMTP cost). Never
+  // fail open; on a store outage they count in MongoDB (`fallback`, WIS-457), so
+  // signing in keeps working with the same limits, and refuse if that fails too.
+  signinEmail: { tokens: 3, window: '15 m', policy: 'fallback', keyKind: 'email' },
+  signinIp: { tokens: 10, window: '15 m', policy: 'fallback', keyKind: 'ip' },
   // Authenticated, cost-bearing or spammy write surfaces — keyed on user id.
   upload: { tokens: 20, window: '10 m', policy: 'fail-open', keyKind: 'user' },
   // Giving back an upload no form saved (WIS-181): its own budget, so a
@@ -291,8 +300,8 @@ export function emailKey(email: string): RateLimitKey<'email'> {
  * It also covers the Redis client's first four retries when a fetch fails fast
  * (a reset or DNS error — it sleeps 50, 136, 369 and 1004 ms before them), so a
  * brief blip is retried rather than failed. The trade-off: a store answering
- * slower than this fails the sign-in limiters closed rather than waiting for a
- * verdict. If timeout lines show up in the logs while Upstash is healthy, raise it.
+ * slower than this hands the sign-in limiters to their MongoDB fallback (and
+ * fails the email limiters closed) rather than waiting for a verdict. If timeout lines show up in the logs while Upstash is healthy, raise it.
  *
  * On timeout the SDK doesn't throw: it resolves `{ success: true, reason:
  * 'timeout' }`. A connection that hangs never retries, and a fast-failing one
@@ -327,6 +336,13 @@ let registry: Partial<Record<RegistryName, RateLimiter>> | null = null;
 /** Where blocks are counted — the limiters' Redis; `null` while limiting is disabled. */
 let statsStore: BlockStatsStore | null = null;
 let warned = false;
+/** The limiters' Redis, for the daily keep-awake ping; `null` while limiting is disabled. */
+let pingStore: PingStore | null = null;
+
+/** The slice of `@upstash/redis` the keep-awake ping uses — lets tests inject a fake. */
+export interface PingStore {
+  ping(): Promise<unknown>;
+}
 
 /**
  * REST credentials for the Redis store. Accepts either the Upstash-native names
@@ -377,6 +393,7 @@ function getRegistry(): Partial<Record<RegistryName, RateLimiter>> {
   }
   registry = built;
   statsStore = redis;
+  pingStore = redis;
   return registry;
 }
 
@@ -420,15 +437,84 @@ function logStoreError(
  * The store failed to answer (it threw or timed out): log one line — `error`
  * must already be free of the key — and apply the limiter's failure policy.
  */
-function storeFailure(tier: Tier, error: string): RateLimitResult {
+async function storeFailure(tier: Tier, key: string, error: string): Promise<RateLimitResult> {
   const { policy } = SPECS[tier.name];
   logStoreError(tier, { policy }, error);
-  return {
-    success: policy === 'fail-open',
-    reset: Date.now() + 60_000,
-    limit: tierSpec(tier).tokens,
-    remaining: 0,
-  };
+  const spec = tierSpec(tier);
+  const refused = { success: false, reset: Date.now() + 60_000, limit: spec.tokens, remaining: 0 };
+  if (policy === 'fail-open') return { ...refused, success: true };
+  if (policy === 'fail-closed') return refused;
+
+  const windowMs = durationMs(spec.window);
+  let allowed: boolean;
+  try {
+    allowed = await withTimeout(
+      fallback({ id: spec.id, key, tokens: spec.tokens, windowMs }),
+      FALLBACK_TIMEOUT_MS
+    );
+  } catch (fallbackError) {
+    // Neither store answered: refuse. Only the error's kind — a driver message
+    // could quote the query, and with it the hashed key.
+    console.error(
+      JSON.stringify({
+        event: 'rate_limit_fallback_error',
+        name: tier.name,
+        keyKind: SPECS[tier.name].keyKind,
+        ...tierField(tier),
+        error: errorKind(fallbackError),
+      })
+    );
+    return refused;
+  }
+  if (allowed) return { success: true, reset: 0, limit: spec.tokens, remaining: 0 };
+  // A block, logged like any other, marked as the fallback's. Not counted in
+  // `rl:stats:*`: that counter lives in the Redis that just failed.
+  console.warn(
+    JSON.stringify({
+      event: 'rate_limited',
+      name: tier.name,
+      keyKind: SPECS[tier.name].keyKind,
+      ...tierField(tier),
+      store: 'fallback',
+    })
+  );
+  return { ...refused, reset: Date.now() + windowMs };
+}
+
+/** How long a `fallback` limiter waits for MongoDB before refusing the request. */
+export const FALLBACK_TIMEOUT_MS = 3_000;
+
+/** The MongoDB stand-in for a `fallback` limiter: `true` if the request may go on. */
+export type RateLimitFallback = (limit: FallbackLimit) => Promise<boolean>;
+
+/** Loaded on first use, so a route that never sees a Redis outage never loads it. */
+const mongoFallback: RateLimitFallback = async (limit) =>
+  (await import('./rateLimitFallback')).fallbackAllows(limit);
+
+let fallback: RateLimitFallback = mongoFallback;
+
+const DURATION_UNIT_MS = { ms: 1, s: 1_000, m: 60_000, h: 3_600_000, d: 86_400_000 } as const;
+
+/** An Upstash duration (`'15 m'`, `'1h'`) in milliseconds. */
+export function durationMs(window: LimiterSpec['window']): number {
+  const match = /^(\d+)\s*(ms|s|m|h|d)$/.exec(window);
+  if (!match) throw new Error(`Unparseable rate-limit window: ${window}`);
+  return Number(match[1]) * DURATION_UNIT_MS[match[2] as keyof typeof DURATION_UNIT_MS];
+}
+
+/** `promise`, or a rejection once `ms` have passed without it settling. */
+async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`Timeout after ${ms} ms`)), ms);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /**
@@ -453,13 +539,13 @@ async function run(tier: Tier, key: string): Promise<RateLimitResult> {
   try {
     result = await limiter.limit(key);
   } catch (error) {
-    return storeFailure(tier, describeStoreError(error, key));
+    return storeFailure(tier, key, describeStoreError(error, key));
   }
 
   // Not a verdict: the SDK gave up waiting on Redis and defaulted to allow (see
   // `STORE_TIMEOUT_MS`). Taking its `success` would fail the sign-in limiters open.
   if (result.reason === 'timeout') {
-    return storeFailure(tier, STORE_TIMEOUT_ERROR);
+    return storeFailure(tier, key, STORE_TIMEOUT_ERROR);
   }
 
   if (!result.success) {
@@ -475,7 +561,7 @@ async function run(tier: Tier, key: string): Promise<RateLimitResult> {
     // And one count per block Redis answered. A repeat block the SDK answers from
     // its in-memory cache (`cacheBlock`) costs no Redis command; counting it would
     // let a flood from one source spend the store's command quota, which every
-    // limiter depends on (sign-in fails closed without it).
+    // limiter depends on (sign-in falls back to MongoDB without it).
     if (result.reason !== 'cacheBlock') countBlockAfterResponse(tier);
   }
   return result;
@@ -586,6 +672,32 @@ export async function checkRateLimit<N extends LimiterName>(
   return (await run({ name, newAccount: options?.newAccount === true }, key)).success;
 }
 
+/**
+ * Send the limiters' Redis one `PING` (WIS-457), from the daily cron: Upstash
+ * archives a free database that sees no commands for a while, and a quiet spell
+ * then took sign-in down with it. `'disabled'` when limiting is off. A failure
+ * (a throw, or no answer within `STORE_TIMEOUT_MS`) logs one
+ * `rate_limit_store_error` line, which reaches error monitoring, and never throws.
+ */
+export async function pingRateLimitStore(): Promise<'ok' | 'disabled' | 'failed'> {
+  getRegistry();
+  const store = pingStore;
+  if (!store) return 'disabled';
+  try {
+    await withTimeout(store.ping(), STORE_TIMEOUT_MS);
+    return 'ok';
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        event: 'rate_limit_store_error',
+        op: 'ping',
+        error: describeStoreError(error),
+      })
+    );
+    return 'failed';
+  }
+}
+
 /** What `clientIp` answers when the request carries no client IP. */
 export const UNKNOWN_CLIENT_IP = 'unknown';
 
@@ -602,8 +714,15 @@ export function clientIp(headers: Headers): string {
  */
 export function __setRateLimiters(
   r: Partial<Record<RegistryName, RateLimiter>> | null,
-  stats: BlockStatsStore | null = null
+  stats: BlockStatsStore | null = null,
+  ping: PingStore | null = null
 ): void {
   registry = r;
   statsStore = stats;
+  pingStore = ping;
+}
+
+/** Test-only: replace the MongoDB fallback of the `fallback` limiters, or `null` for the real one. */
+export function __setRateLimitFallback(f: RateLimitFallback | null): void {
+  fallback = f ?? mongoFallback;
 }
